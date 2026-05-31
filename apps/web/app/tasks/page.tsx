@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { Plus, Clock, AlertTriangle } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import type { Task, KanbanBoard, TaskStatus } from "@/lib/types";
 import { formatDate } from "@/lib/services/formatting";
 
