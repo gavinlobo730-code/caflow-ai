@@ -12,15 +12,19 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  CheckSquare,
+  UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: Home },
+  { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/parser", label: "Document Parser", icon: Upload },
   { href: "/assistant", label: "GST Assistant", icon: MessageSquare },
   { href: "/calendar", label: "Compliance Calendar", icon: Calendar },
   { href: "/clients", label: "Clients", icon: Users },
+  { href: "/team", label: "Team", icon: UserCheck },
 ];
 
 export function Sidebar() {

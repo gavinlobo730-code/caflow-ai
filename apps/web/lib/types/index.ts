@@ -154,3 +154,90 @@ export interface ApiResponse<T> {
   data: T;
   error: string | null;
 }
+
+// ─── WORKFLOW TYPES ────────────────────────────────────────────────────────
+
+export type TaskStatus =
+  | "todo"
+  | "in_progress"
+  | "waiting_client"
+  | "review_required"
+  | "completed";
+
+export type TaskPriority = "low" | "medium" | "high" | "critical";
+
+export interface WorkflowStep {
+  step_order: number;
+  step_name: string;
+  step_description?: string;
+  required: boolean;
+  default_assignee_role?: string;
+  estimated_hours?: number;
+}
+
+export interface Workflow {
+  id: string;
+  name: string;
+  description?: string;
+  compliance_type?: string;
+  is_template: boolean;
+  steps: WorkflowStep[];
+}
+
+export interface Task {
+  id: string;
+  client_id: string;
+  client_name?: string;
+  workflow_id?: string;
+  workflow_step_id?: string;
+  title: string;
+  description?: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  urgency?: string;
+  assigned_to?: string;
+  due_date?: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KanbanBoard {
+  todo: Task[];
+  in_progress: Task[];
+  waiting_client: Task[];
+  review_required: Task[];
+  completed: Task[];
+}
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  is_active: boolean;
+  assigned_open_tasks: number;
+  completed_tasks: number;
+  workload_pct: number;
+}
+
+export interface DashboardSummary {
+  active_clients: number;
+  tasks_due_today: number;
+  overdue_tasks: number;
+  waiting_client: number;
+  review_required: number;
+  total_open_tasks: number;
+}
+
+export interface Reminder {
+  id: string;
+  task_id?: string;
+  client_id?: string;
+  reminder_type: "email" | "whatsapp" | "system";
+  scheduled_for: string;
+  sent_at?: string;
+  status: "pending" | "sent" | "failed";
+  message?: string;
+  created_at: string;
+}

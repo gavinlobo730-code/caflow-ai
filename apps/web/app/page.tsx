@@ -1,113 +1,134 @@
-import { Upload, MessageSquare, Calendar, TrendingUp, AlertTriangle, CheckCircle } from "lucide-react";
+import { Users, Clock, AlertTriangle, MessageSquare, Calendar, CheckCircle, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 
-const metrics = [
-  {
-    title: "Total Clients",
-    value: "24",
-    icon: TrendingUp,
-    color: "text-blue-600",
-    bg: "bg-blue-50",
-  },
-  {
-    title: "Returns Due This Month",
-    value: "8",
-    icon: Calendar,
-    color: "text-amber-600",
-    bg: "bg-amber-50",
-  },
-  {
-    title: "Overdue",
-    value: "2",
-    icon: AlertTriangle,
-    color: "text-red-600",
-    bg: "bg-red-50",
-  },
+const DASHBOARD_STATS = [
+  { label: "Active Clients", value: "24", icon: Users, color: "text-blue-600", bg: "bg-blue-50", href: "/clients" },
+  { label: "Tasks Due Today", value: "3", icon: Clock, color: "text-amber-600", bg: "bg-amber-50", href: "/tasks" },
+  { label: "Overdue Tasks", value: "4", icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50", href: "/tasks?status=overdue" },
+  { label: "Awaiting Client", value: "2", icon: MessageSquare, color: "text-purple-600", bg: "bg-purple-50", href: "/tasks?status=waiting_client" },
+  { label: "Returns Due This Week", value: "5", icon: Calendar, color: "text-emerald-600", bg: "bg-emerald-50", href: "/calendar" },
+  { label: "Team Utilization", value: "78%", icon: TrendingUp, color: "text-indigo-600", bg: "bg-indigo-50", href: "/team" },
 ];
 
-const quickActions = [
-  { label: "Upload Document", href: "/parser", icon: Upload, color: "bg-blue-600 hover:bg-blue-700" },
-  { label: "Ask GST Question", href: "/assistant", icon: MessageSquare, color: "bg-purple-600 hover:bg-purple-700" },
-  { label: "View Calendar", href: "/calendar", icon: Calendar, color: "bg-emerald-600 hover:bg-emerald-700" },
+const URGENT_TASKS = [
+  { id: "task-007", client: "Sharma Enterprises", title: "CA Review — GSTR-1", status: "review_required", priority: "critical", due: "2 days", href: "/tasks" },
+  { id: "task-003", client: "Mehta Consulting", title: "Compute Tax Liability — GSTR-3B", status: "waiting_client", priority: "critical", due: "Overdue 10d", href: "/tasks" },
+  { id: "task-001", client: "Sharma Enterprises", title: "Collect Sales Data — GSTR-1", status: "in_progress", priority: "critical", due: "2 days", href: "/tasks" },
+  { id: "task-005", client: "Joshi Textiles", title: "Collect Documents — ITR", status: "in_progress", priority: "high", due: "10 days", href: "/tasks" },
+  { id: "task-004", client: "Patel & Sons", title: "Compute Tax Liability — GSTR-3B", status: "todo", priority: "high", due: "8 days", href: "/tasks" },
 ];
 
-const recentActivity = [
-  { id: 1, text: "GSTR-1 filed for Sharma Enterprises", time: "2 hours ago", status: "success" },
-  { id: 2, text: "Form 16 parsed for Joshi Textiles employee", time: "4 hours ago", status: "success" },
-  { id: 3, text: "GSTR-3B overdue reminder sent — Mehta Consulting", time: "6 hours ago", status: "warning" },
-  { id: 4, text: "New client added: Desai Traders (GSTIN: 27AADCS9929B1ZE)", time: "Yesterday", status: "info" },
-  { id: 5, text: "ITR filed for Patel & Sons FY 2023-24", time: "2 days ago", status: "success" },
+const RECENT_ACTIVITY = [
+  { id: 1, text: "CA Review task created for Sharma Enterprises GSTR-1", time: "1h ago", type: "task" },
+  { id: 2, text: "GSTR-3B filed for Desai Traders — ₹0 liability", time: "2h ago", type: "filed" },
+  { id: 3, text: "WhatsApp reminder pending for Mehta Consulting (overdue)", time: "3h ago", type: "reminder" },
+  { id: 4, text: "ITR workflow started for Joshi Textiles", time: "Yesterday", type: "workflow" },
+  { id: 5, text: "GST invoice uploaded — Sharma Enterprises", time: "Yesterday", type: "document" },
 ];
+
+const priorityColor: Record<string, string> = {
+  critical: "bg-red-100 text-red-700",
+  high: "bg-orange-100 text-orange-700",
+  medium: "bg-amber-100 text-amber-700",
+  low: "bg-gray-100 text-gray-600",
+};
+
+const statusColor: Record<string, string> = {
+  review_required: "bg-amber-100 text-amber-700",
+  waiting_client: "bg-purple-100 text-purple-700",
+  in_progress: "bg-blue-100 text-blue-700",
+  todo: "bg-gray-100 text-gray-600",
+  completed: "bg-green-100 text-green-700",
+};
+
+const statusLabel: Record<string, string> = {
+  review_required: "Review Required",
+  waiting_client: "Waiting Client",
+  in_progress: "In Progress",
+  todo: "To Do",
+  completed: "Done",
+};
 
 export default function DashboardPage() {
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 text-sm mt-1">Welcome back, Gavin Lobo, CA</p>
+          <h1 className="text-2xl font-bold text-gray-900">Operations Dashboard</h1>
+          <p className="text-gray-500 text-sm mt-1">Gavin Lobo &amp; Associates — CA Practice</p>
         </div>
         <Badge variant="outline" className="text-blue-700 border-blue-200 bg-blue-50 px-3 py-1">
           FY 2024-25
         </Badge>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {metrics.map((m) => (
-          <Card key={m.title}>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div className={`p-3 rounded-xl ${m.bg}`}>
-                  <m.icon className={`${m.color}`} size={22} />
+      {/* Stats grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {DASHBOARD_STATS.map((stat) => (
+          <Link key={stat.label} href={stat.href}>
+            <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+              <CardContent className="pt-5 pb-4">
+                <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center mb-3`}>
+                  <stat.icon className={stat.color} size={18} />
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">{m.title}</p>
-                  <p className="text-3xl font-bold text-gray-900">{m.value}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                <p className="text-xs text-gray-500 mt-0.5 leading-tight">{stat.label}</p>
+              </CardContent>
+            </Card>
+          </Link>
         ))}
       </div>
 
-      <div>
-        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Quick Actions</h2>
-        <div className="flex flex-wrap gap-3">
-          {quickActions.map((a) => (
-            <Link
-              key={a.href}
-              href={a.href}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm font-medium transition-colors ${a.color}`}
-            >
-              <a.icon size={16} />
-              {a.label}
-            </Link>
-          ))}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        {/* Urgent tasks — 3 cols */}
+        <div className="lg:col-span-3">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <CardTitle className="text-sm">Urgent Tasks</CardTitle>
+              <Link href="/tasks" className="text-xs text-blue-600 hover:underline">View all →</Link>
+            </CardHeader>
+            <CardContent className="divide-y divide-gray-50">
+              {URGENT_TASKS.map((task) => (
+                <div key={task.id} className="flex items-center gap-3 py-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{task.title}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{task.client}</p>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${statusColor[task.status]}`}>
+                    {statusLabel[task.status]}
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${priorityColor[task.priority]}`}>
+                    {task.priority}
+                  </span>
+                  <span className="text-xs text-gray-400 shrink-0 w-16 text-right">{task.due}</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Activity — 2 cols */}
+        <div className="lg:col-span-2">
+          <Card className="h-full">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Recent Activity</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {RECENT_ACTIVITY.map((item) => (
+                <div key={item.id} className="flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-2 shrink-0" />
+                  <div>
+                    <p className="text-xs text-gray-700 leading-snug">{item.text}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{item.time}</p>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         </div>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Recent Activity</CardTitle>
-        </CardHeader>
-        <CardContent className="divide-y divide-gray-100">
-          {recentActivity.map((item) => (
-            <div key={item.id} className="flex items-start gap-3 py-3">
-              <div className="mt-0.5 shrink-0">
-                {item.status === "success" && <CheckCircle size={16} className="text-green-500" />}
-                {item.status === "warning" && <AlertTriangle size={16} className="text-amber-500" />}
-                {item.status === "info" && <TrendingUp size={16} className="text-blue-500" />}
-              </div>
-              <div className="flex-1">
-                <p className="text-sm text-gray-800">{item.text}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{item.time}</p>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
     </div>
   );
 }
