@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useState } from "react";
 import {
-  FileText, AlertTriangle, CheckCircle, Clock, Bot,
+  FileText, Clock, Bot,
   ChevronRight, Building2, Mail, Phone, MapPin, Calendar,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -126,7 +125,6 @@ function InsightCard({ insight }: { insight: AIInsight }) {
 }
 
 export default function ClientWorkspacePage() {
-  const params = useParams();
   const [workspace] = useState<ClientWorkspace>(MOCK_WORKSPACE);
   const { profile, summary, compliance_tasks, documents, recent_activity, ai_insights } = workspace;
 
