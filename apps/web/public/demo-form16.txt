@@ -1,0 +1,14 @@
+DEMO PDF PLACEHOLDER
+====================
+
+Place your test PDF files in this directory (/apps/web/public/).
+
+For testing the Document Parser:
+- Form 16: Place a real Form 16 PDF here named "demo-form16.pdf"
+- GST Invoice: Place a GST invoice PDF named "demo-invoice.pdf"
+
+The parser currently returns mock data. Once the Claude API vision
+integration is wired up, these PDFs will be sent to Claude for extraction.
+
+Note: Do NOT commit real client PDFs to version control.
+Add *.pdf to your .gitignore if needed.
