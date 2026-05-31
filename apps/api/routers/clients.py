@@ -3,7 +3,7 @@ from models.client import ClientCreate, ClientUpdate
 from models.common import api_response
 from mock_data import (
     MOCK_CLIENTS, MOCK_COMPLIANCE_TASKS, MOCK_DOCUMENTS,
-    MOCK_ACTIVITY_LOGS, MOCK_AI_INSIGHTS, CLIENT_INDEX,
+    MOCK_ACTIVITY_LOGS, MOCK_AI_INSIGHTS, CLIENT_INDEX, MOCK_TASKS,
 )
 from datetime import date
 
@@ -25,6 +25,8 @@ def get_client_workspace(client_id: str = Path(...)):
     docs = [d for d in MOCK_DOCUMENTS if d["client_id"] == client_id]
     activity = [a for a in MOCK_ACTIVITY_LOGS if a["client_id"] == client_id]
     insights = [i for i in MOCK_AI_INSIGHTS if i["client_id"] == client_id]
+    client_tasks = [t for t in MOCK_TASKS if t["client_id"] == client_id and t["status"] != "completed"]
+    completed_tasks = [t for t in MOCK_TASKS if t["client_id"] == client_id and t["status"] == "completed"]
 
     upcoming = sorted(
         [t for t in tasks if t["status"] in ("pending", "overdue")],
@@ -38,6 +40,14 @@ def get_client_workspace(client_id: str = Path(...)):
         "documents": docs,
         "recent_activity": sorted(activity, key=lambda a: a["created_at"], reverse=True)[:10],
         "ai_insights": [i for i in insights if i["status"] in ("open", "acknowledged")],
+        "open_tasks": client_tasks,
+        "completed_tasks": completed_tasks[:5],
+        "task_summary": {
+            "open": len(client_tasks),
+            "completed": len(completed_tasks),
+            "overdue": len([t for t in client_tasks if t.get("due_date") and t["due_date"] < date.today().isoformat()]),
+            "review_required": len([t for t in client_tasks if t["status"] == "review_required"]),
+        },
         "summary": {
             "total_tasks": len(tasks),
             "overdue_count": sum(1 for t in tasks if t["status"] == "overdue"),

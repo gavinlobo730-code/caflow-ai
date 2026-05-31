@@ -45,4 +45,31 @@ export const api = {
     updateStatus: (id: string, status: string) =>
       request(`/api/insights/${id}/status?new_status=${status}`, { method: "PATCH" }),
   },
+  tasks: {
+    list: (params?: { client_id?: string; status?: string; assigned_to?: string; kanban?: boolean }) => {
+      const q = new URLSearchParams(params as Record<string, string>).toString();
+      return request(`/api/tasks${q ? `?${q}` : ""}`);
+    },
+    kanban: () => request("/api/tasks?kanban=true"),
+    create: (body: unknown) => request("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, body: unknown) => request(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    dashboardSummary: () => request("/api/tasks/summary/dashboard"),
+  },
+  workflows: {
+    list: () => request("/api/workflows"),
+    get: (id: string) => request(`/api/workflows/${id}`),
+    instantiate: (id: string, body: unknown) =>
+      request(`/api/workflows/${id}/instantiate`, { method: "POST", body: JSON.stringify(body) }),
+  },
+  team: {
+    list: () => request("/api/team"),
+  },
+  reminders: {
+    list: (params?: { client_id?: string; status?: string }) => {
+      const q = new URLSearchParams(params as Record<string, string>).toString();
+      return request(`/api/reminders${q ? `?${q}` : ""}`);
+    },
+    create: (body: unknown) => request("/api/reminders", { method: "POST", body: JSON.stringify(body) }),
+    markSent: (id: string) => request(`/api/reminders/${id}/sent`, { method: "PATCH" }),
+  },
 };

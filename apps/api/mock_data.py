@@ -3,6 +3,7 @@ Single source of truth for all mock data.
 All pages and routers import from here — no duplicated mocks.
 All monetary values in paise (integer). Never float.
 """
+import uuid
 from datetime import date, timedelta
 from services.compliance_engine import enrich_compliance_task
 
@@ -263,3 +264,129 @@ MOCK_AI_INSIGHTS = [
 ]
 
 CLIENT_INDEX = {c["id"]: c for c in MOCK_CLIENTS}
+
+from services.workflow_service import WORKFLOW_TEMPLATES
+
+MOCK_WORKFLOWS = WORKFLOW_TEMPLATES  # templates are the canonical workflow list
+
+MOCK_TASKS = [
+    # Sharma Enterprises — GSTR-1 urgent
+    {
+        "id": "task-001", "client_id": "c-001", "workflow_id": "wf-tpl-002",
+        "workflow_step_id": "wf-tpl-002-step-1",
+        "title": "Collect Sales Data — Sharma Enterprises",
+        "description": "Gather all sales invoices for the current month",
+        "status": "in_progress", "priority": "critical",
+        "assigned_to": "tm-001",
+        "due_date": (today + timedelta(days=2)).isoformat(),
+        "completed_at": None,
+        "created_at": (today - timedelta(days=3)).isoformat(),
+        "updated_at": today.isoformat(),
+    },
+    {
+        "id": "task-002", "client_id": "c-001", "workflow_id": "wf-tpl-002",
+        "workflow_step_id": "wf-tpl-002-step-2",
+        "title": "Classify Supplies — Sharma Enterprises",
+        "description": "Classify into B2B, B2C, exports",
+        "status": "todo", "priority": "critical",
+        "assigned_to": "tm-001",
+        "due_date": (today + timedelta(days=2)).isoformat(),
+        "completed_at": None,
+        "created_at": (today - timedelta(days=3)).isoformat(),
+        "updated_at": today.isoformat(),
+    },
+    # Mehta Consulting — overdue
+    {
+        "id": "task-003", "client_id": "c-003", "workflow_id": "wf-tpl-003",
+        "workflow_step_id": "wf-tpl-003-step-1",
+        "title": "Compute Tax Liability — Mehta Consulting",
+        "description": "GSTR-3B overdue — urgent action required",
+        "status": "waiting_client", "priority": "critical",
+        "assigned_to": "tm-001",
+        "due_date": (today - timedelta(days=10)).isoformat(),
+        "completed_at": None,
+        "created_at": (today - timedelta(days=15)).isoformat(),
+        "updated_at": (today - timedelta(days=2)).isoformat(),
+    },
+    # Patel & Sons — GSTR-3B
+    {
+        "id": "task-004", "client_id": "c-002", "workflow_id": "wf-tpl-003",
+        "workflow_step_id": "wf-tpl-003-step-1",
+        "title": "Compute Tax Liability — Patel & Sons",
+        "description": "Prepare GSTR-3B data",
+        "status": "todo", "priority": "high",
+        "assigned_to": "tm-001",
+        "due_date": (today + timedelta(days=8)).isoformat(),
+        "completed_at": None,
+        "created_at": (today - timedelta(days=5)).isoformat(),
+        "updated_at": today.isoformat(),
+    },
+    # Joshi Textiles — ITR
+    {
+        "id": "task-005", "client_id": "c-005", "workflow_id": "wf-tpl-004",
+        "workflow_step_id": "wf-tpl-004-step-1",
+        "title": "Collect Documents — Joshi Textiles ITR",
+        "description": "Gather Form 16, 26AS, AIS, bank statements",
+        "status": "in_progress", "priority": "high",
+        "assigned_to": "tm-001",
+        "due_date": (today + timedelta(days=10)).isoformat(),
+        "completed_at": None,
+        "created_at": (today - timedelta(days=7)).isoformat(),
+        "updated_at": today.isoformat(),
+    },
+    # Desai Traders — completed
+    {
+        "id": "task-006", "client_id": "c-004", "workflow_id": "wf-tpl-001",
+        "workflow_step_id": "wf-tpl-001-step-10",
+        "title": "File GSTR-3B — Desai Traders",
+        "description": "Filed successfully",
+        "status": "completed", "priority": "medium",
+        "assigned_to": "tm-001",
+        "due_date": (today - timedelta(days=10)).isoformat(),
+        "completed_at": (today - timedelta(days=11)).isoformat(),
+        "created_at": (today - timedelta(days=20)).isoformat(),
+        "updated_at": (today - timedelta(days=11)).isoformat(),
+    },
+    # Sharma — CA review
+    {
+        "id": "task-007", "client_id": "c-001", "workflow_id": "wf-tpl-002",
+        "workflow_step_id": "wf-tpl-002-step-4",
+        "title": "CA Review — GSTR-1 Sharma Enterprises",
+        "description": "Review and approve GSTR-1 before filing",
+        "status": "review_required", "priority": "critical",
+        "assigned_to": "tm-001",
+        "due_date": (today + timedelta(days=2)).isoformat(),
+        "completed_at": None,
+        "created_at": (today - timedelta(days=1)).isoformat(),
+        "updated_at": today.isoformat(),
+    },
+]
+
+MOCK_REMINDERS = [
+    {
+        "id": "rem-001",
+        "task_id": "task-003",
+        "client_id": "c-003",
+        "reminder_type": "whatsapp",
+        "scheduled_for": (today - timedelta(days=1)).isoformat() + "T10:00:00+05:30",
+        "sent_at": None,
+        "status": "pending",
+        "message": "Reminder: GSTR-3B for Mehta Consulting is overdue. Please provide bank statement.",
+        "created_at": (today - timedelta(days=2)).isoformat(),
+        "updated_at": (today - timedelta(days=2)).isoformat(),
+    },
+    {
+        "id": "rem-002",
+        "task_id": "task-001",
+        "client_id": "c-001",
+        "reminder_type": "system",
+        "scheduled_for": today.isoformat() + "T09:00:00+05:30",
+        "sent_at": today.isoformat() + "T09:00:01+05:30",
+        "status": "sent",
+        "message": "GSTR-1 collection task due in 2 days for Sharma Enterprises",
+        "created_at": (today - timedelta(days=1)).isoformat(),
+        "updated_at": today.isoformat(),
+    },
+]
+
+TASK_INDEX = {t["id"]: t for t in MOCK_TASKS}

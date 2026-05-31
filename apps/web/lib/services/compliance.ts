@@ -1,4 +1,4 @@
-import type { ComplianceStatus, CompliancePriority } from "@/lib/types";
+import type { ComplianceStatus, CompliancePriority, TaskStatus, TaskPriority } from "@/lib/types";
 
 export function daysRemaining(dueDateStr: string): number {
   const due = new Date(dueDateStr);
@@ -42,3 +42,26 @@ export function formatDueDateLabel(days: number): string {
   if (days === 1) return "Due tomorrow";
   return `${days}d remaining`;
 }
+
+export const taskStatusColor: Record<TaskStatus, string> = {
+  todo: "bg-gray-100 text-gray-700",
+  in_progress: "bg-blue-100 text-blue-700",
+  waiting_client: "bg-purple-100 text-purple-700",
+  review_required: "bg-amber-100 text-amber-700",
+  completed: "bg-green-100 text-green-700",
+};
+
+export const taskStatusLabel: Record<TaskStatus, string> = {
+  todo: "To Do",
+  in_progress: "In Progress",
+  waiting_client: "Waiting Client",
+  review_required: "Review Required",
+  completed: "Completed",
+};
+
+export const priorityDotColor: Record<TaskPriority, string> = {
+  critical: "bg-red-500",
+  high: "bg-orange-400",
+  medium: "bg-amber-400",
+  low: "bg-gray-300",
+};

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from routers import clients, compliance, documents, assistant, insights
+from routers import clients, compliance, documents, assistant, insights, tasks, workflows, reminders, team
 
 load_dotenv()
 
@@ -21,6 +21,10 @@ app.include_router(compliance.router)
 app.include_router(documents.router)
 app.include_router(assistant.router)
 app.include_router(insights.router)
+app.include_router(tasks.router)
+app.include_router(workflows.router)
+app.include_router(reminders.router)
+app.include_router(team.router)
 
 
 @app.get("/")
