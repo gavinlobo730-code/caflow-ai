@@ -9,6 +9,7 @@ import {
   Calendar, MessageSquare, BarChart3, Settings,
   ChevronLeft, ChevronRight, Landmark, Shield,
   FileStack, ShieldAlert, Sparkles, Bell, LogOut, ExternalLink,
+  Menu, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -51,15 +52,22 @@ const NAV_GROUPS = [
   },
 ];
 
-export function Sidebar() {
-  const [collapsed, setCollapsed] = useState(false);
+function SidebarContent({
+  collapsed,
+  setCollapsed,
+  onNavClick,
+}: {
+  collapsed: boolean;
+  setCollapsed: (v: boolean) => void;
+  onNavClick?: () => void;
+}) {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
 
   return (
     <aside
       className={cn(
-        "flex flex-col bg-white border-r border-gray-100 transition-all duration-200 shrink-0",
+        "flex flex-col bg-white border-r border-gray-100 transition-all duration-200 shrink-0 h-full",
         collapsed ? "w-14" : "w-56"
       )}
     >
@@ -76,7 +84,7 @@ export function Sidebar() {
         <button
           onClick={() => setCollapsed(!collapsed)}
           className={cn(
-            "p-1 rounded-md hover:bg-gray-100 text-gray-400 transition-colors",
+            "p-1 rounded-md hover:bg-gray-100 text-gray-400 transition-colors hidden md:flex",
             collapsed && "mx-auto"
           )}
         >
@@ -101,6 +109,7 @@ export function Sidebar() {
                     key={href}
                     href={href}
                     title={collapsed ? label : undefined}
+                    onClick={onNavClick}
                     className={cn(
                       "flex items-center gap-2.5 px-2 py-1.5 rounded-md text-[13px] font-medium transition-colors",
                       active
@@ -143,5 +152,62 @@ export function Sidebar() {
         </button>
       </div>
     </aside>
+  );
+}
+
+export function Sidebar() {
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  return (
+    <>
+      {/* Hamburger button — mobile only */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="md:hidden fixed top-3 left-3 z-40 p-2 rounded-lg bg-white border border-gray-200 shadow-sm text-gray-600 hover:bg-gray-50"
+        aria-label="Open menu"
+      >
+        <Menu size={18} />
+      </button>
+
+      {/* Mobile overlay backdrop */}
+      {mobileOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/40"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Mobile slide-in sidebar */}
+      <div
+        className={cn(
+          "md:hidden fixed inset-y-0 left-0 z-50 transition-transform duration-200",
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        <div className="relative h-full">
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="absolute top-3 right-3 z-10 p-1 rounded-md hover:bg-gray-100 text-gray-400"
+            aria-label="Close menu"
+          >
+            <X size={16} />
+          </button>
+          <SidebarContent
+            collapsed={false}
+            setCollapsed={() => {}}
+            onNavClick={() => setMobileOpen(false)}
+          />
+        </div>
+      </div>
+
+      {/* Desktop sidebar — hidden on mobile */}
+      <div className="hidden md:flex h-screen">
+        <SidebarContent
+          collapsed={collapsed}
+          setCollapsed={setCollapsed}
+        />
+      </div>
+    </>
   );
 }

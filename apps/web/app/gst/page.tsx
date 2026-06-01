@@ -209,7 +209,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-900">Add GST Filing</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">

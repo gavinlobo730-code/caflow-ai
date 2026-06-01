@@ -449,7 +449,7 @@ export default function TasksPage() {
       )}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-5 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
         <SummaryCard label="Total" value={stats.total} color="bg-gray-50 border-gray-200 text-gray-700" />
         <SummaryCard label="Pending" value={stats.pending} color="bg-slate-50 border-slate-200 text-slate-700" />
         <SummaryCard label="In Progress" value={stats.in_progress} color="bg-blue-50 border-blue-200 text-blue-700" />
@@ -541,8 +541,8 @@ export default function TasksPage() {
       )}
 
       {/* Table */}
-      <div className="flex-1 overflow-auto rounded-xl border border-gray-200 bg-white min-h-0">
-        <table className="w-full text-sm">
+      <div className="flex-1 overflow-x-auto rounded-xl border border-gray-200 bg-white min-h-0">
+        <table className="w-full text-sm min-w-[600px]">
           <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
             <tr>
               <th className="w-10 px-3 py-3">
