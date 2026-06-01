@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 
-const NO_SHELL_PATHS = ["/login", "/login/"];
+const NO_SHELL_PATHS = ["/login", "/login/", "/onboarding", "/onboarding/"];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -16,7 +16,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar />
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-auto pt-12 md:pt-0">{children}</main>
     </div>
   );
 }

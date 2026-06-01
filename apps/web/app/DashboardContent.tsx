@@ -13,6 +13,7 @@ import {
   Calendar,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 
@@ -153,6 +154,7 @@ function Skeleton({ className }: { className?: string }) {
 export default function DashboardContent() {
   const { user } = useAuth();
   const supabase = getSupabaseClient();
+  const router = useRouter();
 
   const [kpis, setKpis] = useState<KPIs | null>(null);
   const [recentClients, setRecentClients] = useState<RecentClient[] | null>(null);
@@ -180,6 +182,16 @@ export default function DashboardContent() {
           setRecentClients([]);
           setRecentTasks([]);
           setLoading(false);
+          return;
+        }
+
+        // ── Onboarding check: redirect new firms that haven't set up yet ──
+        const [{ data: firmMeta }, { count: coaCount }] = await Promise.all([
+          supabase.from("firms").select("name").eq("id", firmId).maybeSingle(),
+          supabase.from("chart_of_accounts").select("id", { count: "exact", head: true }).eq("firm_id", firmId),
+        ]);
+        if (!firmMeta?.name && (coaCount ?? 0) === 0) {
+          router.replace("/onboarding");
           return;
         }
 
