@@ -72,4 +72,27 @@ export const api = {
     create: (body: unknown) => request("/api/reminders", { method: "POST", body: JSON.stringify(body) }),
     markSent: (id: string) => request(`/api/reminders/${id}/sent`, { method: "PATCH" }),
   },
+  accounting: {
+    accounts: () => request("/api/accounting/accounts"),
+    createAccount: (data: unknown) => request("/api/accounting/accounts", { method: "POST", body: JSON.stringify(data) }),
+    updateAccount: (id: string, data: unknown) => request(`/api/accounting/accounts/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    journal: (params?: Record<string, string>) => request(`/api/accounting/journal${params ? "?" + new URLSearchParams(params) : ""}`),
+    createJournalEntry: (data: unknown) => request("/api/accounting/journal", { method: "POST", body: JSON.stringify(data) }),
+    postJournalEntry: (id: string) => request(`/api/accounting/journal/${id}/post`, { method: "PATCH" }),
+    ledger: (accountId: string, params?: Record<string, string>) => request(`/api/accounting/ledger?account_id=${accountId}${params ? "&" + new URLSearchParams(params) : ""}`),
+    trialBalance: (asOfDate?: string) => request(`/api/accounting/trial-balance${asOfDate ? "?as_of_date=" + asOfDate : ""}`),
+    profitLoss: (params?: Record<string, string>) => request(`/api/accounting/profit-loss${params ? "?" + new URLSearchParams(params) : ""}`),
+    balanceSheet: (params?: Record<string, string>) => request(`/api/accounting/balance-sheet${params ? "?" + new URLSearchParams(params) : ""}`),
+  },
+  complianceRecords: {
+    list: (params?: Record<string, string>) => request(`/api/compliance-records${params ? "?" + new URLSearchParams(params) : ""}`),
+    get: (id: string) => request(`/api/compliance-records/${id}`),
+    create: (data: unknown) => request("/api/compliance-records", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: unknown) => request(`/api/compliance-records/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    clientHealth: (clientId: string) => request(`/api/compliance-records/client/${clientId}/health`),
+    firmSummary: () => request("/api/compliance-records/firm/summary"),
+  },
+  dashboard: {
+    summary: () => request("/api/tasks/summary/dashboard"),
+  },
 };

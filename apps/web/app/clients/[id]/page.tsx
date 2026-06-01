@@ -1,14 +1,8 @@
 import ClientWorkspacePage from "./ClientWorkspacePage";
 
-// Pre-render the known mock client IDs for static export
+// Single placeholder — Cloudflare _redirects serves this for any /clients/ANYTHING
 export function generateStaticParams() {
-  return [
-    { id: "c-001" },
-    { id: "c-002" },
-    { id: "c-003" },
-    { id: "c-004" },
-    { id: "c-005" },
-  ];
+  return [{ id: "_placeholder" }];
 }
 
 export default function Page() {
