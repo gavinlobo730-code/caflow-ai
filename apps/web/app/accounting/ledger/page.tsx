@@ -5,9 +5,18 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
-import type { Account, LedgerLine, ApiResponse } from "@/lib/types";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import type { Account } from "@/lib/types";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+interface LedgerLineRow {
+  id: string;
+  date: string;
+  reference_no: string | null;
+  narration: string;
+  debit_paise: number;
+  credit_paise: number;
+  running_balance_paise: number;
+}
 
 function LoadingSpinner() {
   return (
@@ -19,10 +28,19 @@ function LoadingSpinner() {
   );
 }
 
+async function getFirmId(): Promise<string> {
+  const sb = getSupabaseClient();
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error("Not authenticated");
+  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).single();
+  if (!data) throw new Error("User not found");
+  return data.firm_id as string;
+}
+
 export default function LedgerPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountId, setAccountId] = useState("");
-  const [ledgerLines, setLedgerLines] = useState<LedgerLine[]>([]);
+  const [rawLines, setRawLines] = useState<LedgerLineRow[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [loadingLedger, setLoadingLedger] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,49 +48,70 @@ export default function LedgerPage() {
   const [endDate, setEndDate] = useState("");
 
   useEffect(() => {
-    fetch(`${BASE_URL}/api/accounting/accounts`)
-      .then((r) => r.json())
-      .then((res: ApiResponse<Account[]>) => {
-        if (res.success) {
-          setAccounts(res.data);
-          if (res.data.length > 0) setAccountId(res.data[0].id);
-        } else {
-          setError(res.error ?? "Failed to load accounts");
-        }
+    const sb = getSupabaseClient();
+    getFirmId()
+      .then(async (fid) => {
+        const { data, error: err } = await sb
+          .from("accounts")
+          .select("*")
+          .eq("firm_id", fid)
+          .order("account_name");
+        if (err) throw new Error(err.message);
+        const accs = (data ?? []) as Account[];
+        setAccounts(accs);
+        if (accs.length > 0) setAccountId(accs[0].id);
       })
-      .catch(() => setError("Failed to load accounts"))
+      .catch((e) => setError(e.message ?? "Failed to load accounts"))
       .finally(() => setLoadingAccounts(false));
   }, []);
 
   useEffect(() => {
     if (!accountId) return;
     setLoadingLedger(true);
-    fetch(`${BASE_URL}/api/accounting/ledger?account_id=${accountId}`)
-      .then((r) => r.json())
-      .then((res: ApiResponse<LedgerLine[]>) => {
-        if (res.success) setLedgerLines(res.data);
-        else setError(res.error ?? "Failed to load ledger");
-      })
-      .catch(() => setError("Failed to load ledger"))
-      .finally(() => setLoadingLedger(false));
+    const sb = getSupabaseClient();
+    sb.from("journal_entry_lines")
+      .select("id, debit_paise, credit_paise, narration, journal_entries(entry_date, reference_no)")
+      .eq("account_id", accountId)
+      .order("created_at", { ascending: true })
+      .then(({ data, error: err }) => {
+        if (err) { setError(err.message); setLoadingLedger(false); return; }
+        // Build ledger rows with running balance (integer paise — no float)
+        let running = 0;
+        const rows: LedgerLineRow[] = (data ?? []).map((row) => {
+          const jeRaw = row.journal_entries;
+          const entry = Array.isArray(jeRaw) ? jeRaw[0] : jeRaw;
+          const je = entry as { entry_date?: string; reference_no?: string } | null;
+          const debit = row.debit_paise ?? 0;
+          const credit = row.credit_paise ?? 0;
+          running = running + debit - credit;
+          return {
+            id: row.id,
+            date: je?.entry_date ?? "",
+            reference_no: je?.reference_no ?? null,
+            narration: row.narration ?? "",
+            debit_paise: debit,
+            credit_paise: credit,
+            running_balance_paise: running,
+          };
+        });
+        setRawLines(rows);
+        setLoadingLedger(false);
+      });
   }, [accountId]);
 
-  const filtered = useMemo(() => {
-    return ledgerLines.filter((l) => {
+  const linesWithBalance = useMemo(() => {
+    const filtered = rawLines.filter((l) => {
       if (startDate && l.date < startDate) return false;
       if (endDate && l.date > endDate) return false;
       return true;
     });
-  }, [ledgerLines, startDate, endDate]);
-
-  // Recompute running balance in integer paise for filtered lines
-  const linesWithBalance = useMemo(() => {
+    // Recompute running balance in integer paise for filtered window
     let running = 0;
     return filtered.map((l) => {
-      running += l.debit_paise - l.credit_paise;
+      running = running + l.debit_paise - l.credit_paise;
       return { ...l, running_balance_paise: running };
     });
-  }, [filtered]);
+  }, [rawLines, startDate, endDate]);
 
   const selectedAccount = accounts.find((a) => a.id === accountId);
 
@@ -117,9 +156,6 @@ export default function LedgerPage() {
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
             className="block mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
-        <button className="text-xs border border-gray-200 text-gray-600 px-3 py-1.5 rounded-md hover:bg-gray-50 mb-0.5">
-          Export
-        </button>
       </div>
 
       {/* Ledger table */}

@@ -5,9 +5,8 @@ import Link from "next/link";
 import { BookOpen, FileText, BarChart2, Scale, TrendingUp, List, ArrowUpRight, ArrowDownRight, Building2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
-import type { JournalEntry, Account, TrialBalance, ApiResponse } from "@/lib/types";
-
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import type { JournalEntry, Account } from "@/lib/types";
 
 const NAV_CARDS = [
   { label: "Chart of Accounts", description: "View and manage your account tree", href: "/accounting/chart-of-accounts", icon: List },
@@ -25,36 +24,40 @@ const statusBadge: Record<string, string> = {
   draft: "bg-amber-100 text-amber-700",
 };
 
+async function getFirmId(): Promise<string> {
+  const sb = getSupabaseClient();
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error("Not authenticated");
+  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).single();
+  if (!data) throw new Error("User not found");
+  return data.firm_id as string;
+}
+
 export default function AccountingHubPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
-  const [trialBalance, setTrialBalance] = useState<TrialBalance | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      fetch(`${BASE_URL}/api/accounting/accounts`).then((r) => r.json()) as Promise<ApiResponse<Account[]>>,
-      fetch(`${BASE_URL}/api/accounting/journal`).then((r) => r.json()) as Promise<ApiResponse<JournalEntry[]>>,
-      fetch(`${BASE_URL}/api/accounting/trial-balance`).then((r) => r.json()) as Promise<ApiResponse<TrialBalance>>,
-    ])
-      .then(([aRes, jRes, tbRes]) => {
-        if (aRes.success) setAccounts(aRes.data);
-        if (jRes.success) setEntries(jRes.data);
-        if (tbRes.success) setTrialBalance(tbRes.data);
+    const sb = getSupabaseClient();
+    getFirmId()
+      .then(async (fid) => {
+        const [{ data: accs }, { data: jes }] = await Promise.all([
+          sb.from("accounts").select("*").eq("firm_id", fid),
+          sb.from("journal_entries").select("*").eq("firm_id", fid).order("entry_date", { ascending: false }).limit(5),
+        ]);
+        setAccounts((accs ?? []) as Account[]);
+        setEntries((jes ?? []) as JournalEntry[]);
       })
       .catch(() => { /* silently degrade */ })
       .finally(() => setLoading(false));
   }, []);
 
-  const recentEntries = entries.slice(0, 5);
-  const tbStatus = trialBalance ? (trialBalance.is_balanced ? "Balanced" : "Imbalanced") : "—";
-  const tbColor = trialBalance ? (trialBalance.is_balanced ? "green" : "red") : undefined;
-
   const STATS = [
     { label: "Total Accounts", value: loading ? "…" : String(accounts.length), icon: List },
     { label: "Journal Entries", value: loading ? "…" : String(entries.length), icon: FileText },
-    { label: "Trial Balance", value: loading ? "…" : tbStatus, icon: Scale, highlight: tbColor },
-    { label: "Cash & Bank Balance", value: loading ? "…" : (accounts.length > 0 ? "—" : "—"), icon: BarChart2 },
+    { label: "Posted Entries", value: loading ? "…" : String(entries.filter(e => e.status === "posted").length), icon: Scale, highlight: undefined as string | undefined },
+    { label: "Draft Entries", value: loading ? "…" : String(entries.filter(e => e.status === "draft").length), icon: BarChart2 },
   ];
 
   return (
@@ -77,7 +80,7 @@ export default function AccountingHubPage() {
               <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center mb-3">
                 <s.icon size={16} className="text-blue-600" />
               </div>
-              <p className={`text-xl font-bold ${s.highlight === "green" ? "text-green-600" : s.highlight === "red" ? "text-red-600" : "text-gray-900"}`}>{s.value}</p>
+              <p className="text-xl font-bold text-gray-900">{s.value}</p>
               <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
             </CardContent>
           </Card>
@@ -113,7 +116,7 @@ export default function AccountingHubPage() {
           <div className="px-5 py-6 text-sm text-gray-400 text-center animate-pulse">Loading…</div>
         ) : (
           <div className="divide-y divide-gray-50">
-            {recentEntries.map((entry) => (
+            {entries.map((entry) => (
               <div key={entry.id} className="flex items-center gap-4 px-5 py-3.5">
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${entry.entry_type === "Receipt" || entry.entry_type === "Sales" ? "bg-green-50" : "bg-blue-50"}`}>
                   {entry.entry_type === "Receipt" || entry.entry_type === "Sales"
@@ -130,7 +133,7 @@ export default function AccountingHubPage() {
                 </p>
               </div>
             ))}
-            {recentEntries.length === 0 && (
+            {entries.length === 0 && (
               <div className="px-5 py-6 text-sm text-gray-400 text-center">No entries yet</div>
             )}
           </div>
