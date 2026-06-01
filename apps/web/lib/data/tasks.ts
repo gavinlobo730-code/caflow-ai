@@ -1,5 +1,5 @@
 import { getSupabaseClient } from "@/lib/supabase/client";
-import type { Task, KanbanBoard } from "@/lib/types";
+import type { Task, KanbanBoard, FirmUser } from "@/lib/types";
 
 export interface CreateTaskInput {
   client_id: string;
@@ -8,6 +8,7 @@ export interface CreateTaskInput {
   status?: string;
   priority: string;
   assigned_to?: string;
+  assignee_id?: string;
   due_date?: string;
   task_type?: string;
 }
@@ -48,6 +49,23 @@ export function groupByStatus(tasks: Task[]): KanbanBoard {
     if (col in board) board[col].push(t);
   }
   return board;
+}
+
+export async function getTeamMembers(): Promise<FirmUser[]> {
+  const sb = getSupabaseClient();
+  const firmId = await getFirmId();
+  const { data, error } = await sb
+    .from("users")
+    .select("id, auth_user_id, firm_id, name, email, role, is_active")
+    .eq("firm_id", firmId)
+    .order("name");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as FirmUser[];
+}
+
+export async function updateTask(id: string, input: Partial<CreateTaskInput>): Promise<void> {
+  const sb = getSupabaseClient();
+  await sb.from("tasks").update({ ...input, updated_at: new Date().toISOString() }).eq("id", id);
 }
 
 export async function createTask(input: CreateTaskInput): Promise<Task> {
