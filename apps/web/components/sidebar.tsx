@@ -41,7 +41,6 @@ const NAV_GROUPS = [
     items: [
       { href: "/parser", label: "Documents", icon: FileText },
       { href: "/calendar", label: "Calendar", icon: Calendar },
-      { href: "/ai-assistant", label: "AI Assistant", icon: MessageSquare },
       { href: "/reports", label: "Reports", icon: BarChart3 },
       { href: "/documents", label: "Doc Intelligence", icon: FileStack },
       { href: "/risks", label: "Risk Intelligence", icon: ShieldAlert },
