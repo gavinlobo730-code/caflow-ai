@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, CheckSquare, UserCheck,
   BookOpen, FileText, Receipt, Calculator, Building2,
-  Calendar, MessageSquare, BarChart3, Settings,
+  Calendar, BarChart3, Settings,
   ChevronLeft, ChevronRight, Landmark, Shield,
   FileStack, ShieldAlert, Sparkles, Bell, LogOut, ExternalLink,
   Menu, X,
