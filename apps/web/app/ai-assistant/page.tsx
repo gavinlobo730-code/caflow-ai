@@ -39,39 +39,37 @@ export default function AIAssistantPage() {
     setLoading(true);
 
     try {
-      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-      if (!apiKey) throw new Error("NEXT_PUBLIC_GEMINI_API_KEY is not configured");
+      const apiKey = process.env.NEXT_PUBLIC_GROQ_API_KEY;
+      if (!apiKey) throw new Error("NEXT_PUBLIC_GROQ_API_KEY is not configured");
 
       const SYSTEM_PROMPT = "You are an AI assistant for Indian Chartered Accountants using CAflow AI. You help with GST (CGST Act), Income Tax (IT Act), TDS, ROC/MCA filings, accounting, and practice management. Always cite relevant sections when giving tax advice. For compliance deadlines, be precise about Indian financial year (April-March). Never provide advice that could be construed as filing on behalf of the CA — always recommend CA review.";
 
-      const contents = [
-        ...(messages.map((m) => ({
-          role: m.role === "assistant" ? "model" : "user",
-          parts: [{ text: m.content }],
-        }))),
-        { role: "user", parts: [{ text: text.trim() }] },
+      const groqMessages = [
+        { role: "system", content: SYSTEM_PROMPT },
+        ...messages.map((m) => ({ role: m.role, content: m.content })),
+        { role: "user", content: text.trim() },
       ];
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-            contents,
-            generationConfig: { maxOutputTokens: 2048 },
-          }),
-        }
-      );
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          messages: groqMessages,
+          max_tokens: 2048,
+        }),
+      });
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson?.error?.message ?? `Gemini error ${res.status}`);
+        throw new Error(errJson?.error?.message ?? `Groq error ${res.status}`);
       }
 
       const json = await res.json();
-      const reply: string = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+      const reply: string = json?.choices?.[0]?.message?.content ?? "";
       if (!reply) throw new Error("Empty response from AI service");
 
       setMessages([...newHistory, { role: "assistant", content: reply }]);
