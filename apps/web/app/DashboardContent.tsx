@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Users, Clock, AlertTriangle, MessageSquare, Shield, Activity } from "lucide-react";
+import { Users, Clock, AlertTriangle, FileText, Shield, Calendar } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import type { DashboardSummary, ApiResponse, RiskStats, AIInsightV2 } from "@/lib/types";
-
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { getClients } from "@/lib/data/clients";
+import { getTasks } from "@/lib/data/tasks";
+import { getComplianceCalendar } from "@/lib/data/compliance";
+import { getTransactions } from "@/lib/data/transactions";
 
 const statusColor: Record<string, string> = {
   review_required: "bg-amber-100 text-amber-700",
@@ -32,47 +33,71 @@ function LoadingSpinner() {
   );
 }
 
+interface LiveStats {
+  activeClients: string;
+  tasksDueToday: string;
+  overdueTasks: string;
+  gstDeadlines7Days: string;
+  pendingInvoices: string;
+  waitingClient: string;
+}
+
 export default function DashboardContent() {
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [riskStats, setRiskStats] = useState<RiskStats | null>(null);
-  const [insightsFeed, setInsightsFeed] = useState<AIInsightV2[]>([]);
+  const [stats, setStats] = useState<LiveStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      fetch(`${BASE_URL}/api/tasks/summary/dashboard`).then((r) => r.json()),
-      fetch(`${BASE_URL}/api/risks/stats`).then((r) => r.json()).catch(() => null),
-      fetch(`${BASE_URL}/api/ai-insights/feed`).then((r) => r.json()).catch(() => null),
-    ])
-      .then(([dashRes, riskRes, feedRes]: [ApiResponse<DashboardSummary>, ApiResponse<RiskStats> | null, ApiResponse<AIInsightV2[]> | null]) => {
-        if (dashRes.success) setSummary(dashRes.data);
-        if (riskRes?.success) setRiskStats(riskRes.data);
-        if (feedRes?.success) setInsightsFeed((feedRes.data ?? []).slice(0, 5));
-      })
-      .catch(() => { /* silently degrade */ })
-      .finally(() => setLoading(false));
+    async function load() {
+      try {
+        const today = new Date().toISOString().split("T")[0];
+        const in7Days = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
+        const monthStart = today.slice(0, 7) + "-01";
+
+        const [clients, tasks, compliance, transactions] = await Promise.all([
+          getClients().catch(() => []),
+          getTasks().catch(() => []),
+          getComplianceCalendar().catch(() => []),
+          getTransactions().catch(() => []),
+        ]);
+
+        const activeClients = clients.filter(c => c.status === "active").length;
+        const tasksDueToday = tasks.filter(t => t.due_date === today && t.status !== "completed").length;
+        const overdueTasks = tasks.filter(t => t.due_date && t.due_date < today && t.status !== "completed").length;
+        const gstDeadlines7Days = compliance.filter(c =>
+          c.due_date >= today && c.due_date <= in7Days && c.filing_status !== "filed"
+        ).length;
+        const pendingInvoices = transactions.filter(t =>
+          t.status === "draft" && t.transaction_date >= monthStart
+        ).length;
+        const waitingClient = tasks.filter(t => t.status === "waiting_client").length;
+
+        setStats({
+          activeClients: String(activeClients),
+          tasksDueToday: String(tasksDueToday),
+          overdueTasks: String(overdueTasks),
+          gstDeadlines7Days: String(gstDeadlines7Days),
+          pendingInvoices: String(pendingInvoices),
+          waitingClient: String(waitingClient),
+        });
+      } catch {
+        // silently degrade — show zeros
+        setStats({ activeClients: "0", tasksDueToday: "0", overdueTasks: "0", gstDeadlines7Days: "0", pendingInvoices: "0", waitingClient: "0" });
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
   }, []);
 
-  if (loading) return <LoadingSpinner />;
-
-  const s = summary ?? {
-    active_clients: 0,
-    tasks_due_today: 0,
-    overdue_tasks: 0,
-    waiting_client: 0,
-    review_required: 0,
-    total_open_tasks: 0,
-    compliance_overdue: 0,
-    high_risk_clients: 0,
-  };
+  const s = stats ?? { activeClients: "…", tasksDueToday: "…", overdueTasks: "…", gstDeadlines7Days: "…", pendingInvoices: "…", waitingClient: "…" };
 
   const DASHBOARD_STATS = [
-    { label: "Active Clients", value: String(s.active_clients), icon: Users, color: "text-blue-600", bg: "bg-blue-50", href: "/clients" },
-    { label: "Tasks Due Today", value: String(s.tasks_due_today), icon: Clock, color: "text-amber-600", bg: "bg-amber-50", href: "/tasks" },
-    { label: "Overdue Tasks", value: String(s.overdue_tasks), icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50", href: "/tasks?status=overdue" },
-    { label: "Compliance Overdue", value: String(s.compliance_overdue ?? 0), icon: Shield, color: "text-orange-600", bg: "bg-orange-50", href: "/compliance" },
-    { label: "High-Risk Clients", value: String(s.high_risk_clients ?? 0), icon: Activity, color: "text-red-700", bg: "bg-red-50", href: "/compliance" },
-    { label: "Pending Reviews", value: String(s.review_required), icon: MessageSquare, color: "text-purple-600", bg: "bg-purple-50", href: "/tasks?status=review_required" },
+    { label: "Active Clients", value: loading ? "…" : s.activeClients, icon: Users, color: "text-blue-600", bg: "bg-blue-50", href: "/clients" },
+    { label: "Tasks Due Today", value: loading ? "…" : s.tasksDueToday, icon: Clock, color: "text-amber-600", bg: "bg-amber-50", href: "/tasks" },
+    { label: "Overdue Tasks", value: loading ? "…" : s.overdueTasks, icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50", href: "/tasks?status=overdue" },
+    { label: "GST Deadlines (7d)", value: loading ? "…" : s.gstDeadlines7Days, icon: Calendar, color: "text-orange-600", bg: "bg-orange-50", href: "/compliance" },
+    { label: "Pending Invoices", value: loading ? "…" : s.pendingInvoices, icon: FileText, color: "text-purple-600", bg: "bg-purple-50", href: "/gst" },
+    { label: "Waiting on Client", value: loading ? "…" : s.waitingClient, icon: Shield, color: "text-indigo-600", bg: "bg-indigo-50", href: "/tasks?status=waiting_client" },
   ];
 
   return (
