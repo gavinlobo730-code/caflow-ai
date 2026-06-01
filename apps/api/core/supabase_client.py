@@ -1,0 +1,23 @@
+"""
+Supabase client for the FastAPI backend.
+Uses SERVICE_ROLE key — full DB access, bypasses RLS for internal operations.
+All tenant isolation enforced at repository level via firm_id filter.
+"""
+import os
+from supabase import create_client, Client
+
+_client: Client | None = None
+
+
+def get_supabase() -> Client:
+    global _client
+    if _client is None:
+        url = os.environ.get("SUPABASE_URL", "")
+        key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+        if not url or not key:
+            raise RuntimeError(
+                "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set. "
+                "Copy apps/api/.env.example to apps/api/.env and fill in your values."
+            )
+        _client = create_client(url, key)
+    return _client
