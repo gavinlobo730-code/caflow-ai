@@ -39,22 +39,39 @@ export default function AIAssistantPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/ai-assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text.trim(),
-          history: messages,
-        }),
-      });
+      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      if (!apiKey) throw new Error("NEXT_PUBLIC_GEMINI_API_KEY is not configured");
+
+      const SYSTEM_PROMPT = "You are an AI assistant for Indian Chartered Accountants using CAflow AI. You help with GST (CGST Act), Income Tax (IT Act), TDS, ROC/MCA filings, accounting, and practice management. Always cite relevant sections when giving tax advice. For compliance deadlines, be precise about Indian financial year (April-March). Never provide advice that could be construed as filing on behalf of the CA — always recommend CA review.";
+
+      const contents = [
+        ...(messages.map((m) => ({
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: m.content }],
+        }))),
+        { role: "user", parts: [{ text: text.trim() }] },
+      ];
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            contents,
+            generationConfig: { maxOutputTokens: 2048 },
+          }),
+        }
+      );
+
+      if (!res.ok) throw new Error("AI service error. Please try again.");
 
       const json = await res.json();
+      const reply: string = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+      if (!reply) throw new Error("Empty response from AI service");
 
-      if (!res.ok || !json.success) {
-        throw new Error(json.error ?? "Request failed");
-      }
-
-      setMessages([...newHistory, { role: "assistant", content: json.data.reply }]);
+      setMessages([...newHistory, { role: "assistant", content: reply }]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
