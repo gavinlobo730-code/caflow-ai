@@ -44,7 +44,7 @@ const NAV_GROUPS = [
       { href: "/reports", label: "Reports", icon: BarChart3 },
       { href: "/documents", label: "Doc Intelligence", icon: FileStack },
       { href: "/risks", label: "Risk Intelligence", icon: ShieldAlert },
-      { href: "/ai-assistant", label: "AI Copilot", icon: Sparkles },
+      { href: "/ai-assistant", label: "AI Assistant", icon: Sparkles },
       { href: "/notifications", label: "Notifications", icon: Bell },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
