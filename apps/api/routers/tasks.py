@@ -38,20 +38,8 @@ class TaskUpdate(BaseModel):
 
 @router.get("/summary/dashboard")
 def dashboard_summary():
-    today_str = date.today().isoformat()
-    tasks = TASK_STORE
-    due_today = [t for t in tasks if t.get("due_date") == today_str and t["status"] != "completed"]
-    overdue = [t for t in tasks if t.get("due_date") and t.get("due_date") < today_str and t["status"] not in ("completed", "not_applicable")]
-    waiting = [t for t in tasks if t["status"] == "waiting_client"]
-    review = [t for t in tasks if t["status"] == "review_required"]
-    return api_response(True, {
-        "active_clients": len(MOCK_CLIENTS),
-        "tasks_due_today": len(due_today),
-        "overdue_tasks": len(overdue),
-        "waiting_client": len(waiting),
-        "review_required": len(review),
-        "total_open_tasks": len([t for t in tasks if t["status"] != "completed"]),
-    })
+    from domain.task_service import task_domain_service
+    return api_response(True, task_domain_service.get_dashboard_summary())
 
 
 @router.get("")
