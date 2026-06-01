@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { ClientWorkspace, ComplianceTask, AIInsight, ComplianceRecord, ComplianceRecordStatus, ClientHealthScore, ApiResponse } from "@/lib/types";
+import type { ClientWorkspace, ComplianceTask, AIInsight, ComplianceRecord, ComplianceRecordStatus, ClientHealthScore, ApiResponse, RiskItem, AIInsightV2 } from "@/lib/types";
 import { statusColor, priorityColor, formatDueDateLabel } from "@/lib/services/compliance";
 import { formatRelativeTime, formatDate, ENTITY_TYPE_LABELS } from "@/lib/services/formatting";
 
@@ -102,13 +102,14 @@ function InsightCard({ insight }: { insight: AIInsight }) {
   );
 }
 
-type TabId = "overview" | "compliance" | "documents" | "activity";
+type TabId = "overview" | "compliance" | "documents" | "activity" | "intelligence";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "compliance", label: "Compliance" },
   { id: "documents", label: "Documents" },
   { id: "activity", label: "Activity" },
+  { id: "intelligence", label: "Intelligence" },
 ];
 
 function healthColor(score: number): string {
@@ -130,6 +131,9 @@ export default function ClientWorkspacePage() {
   const [workspace, setWorkspace] = useState<ClientWorkspace | null>(null);
   const [complianceRecords, setComplianceRecords] = useState<ComplianceRecord[]>([]);
   const [health, setHealth] = useState<ClientHealthScore | null>(null);
+  const [clientRisks, setClientRisks] = useState<RiskItem[]>([]);
+  const [clientInsights, setClientInsights] = useState<AIInsightV2[]>([]);
+  const [generatingInsights, setGeneratingInsights] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
@@ -141,15 +145,19 @@ export default function ClientWorkspacePage() {
       setLoading(true);
       setError(null);
       try {
-        const [wsRes, crRes, hRes] = await Promise.all([
+        const [wsRes, crRes, hRes, risksRes, insightsRes] = await Promise.all([
           fetch(`${BASE_URL}/api/clients/${id}`).then((r) => r.json()) as Promise<ApiResponse<ClientWorkspace>>,
           fetch(`${BASE_URL}/api/compliance-records?client_id=${id}`).then((r) => r.json()) as Promise<ApiResponse<ComplianceRecord[]>>,
           fetch(`${BASE_URL}/api/compliance-records/client/${id}/health`).then((r) => r.json()) as Promise<ApiResponse<ClientHealthScore>>,
+          fetch(`${BASE_URL}/api/risks/client/${id}`).then((r) => r.json()),
+          fetch(`${BASE_URL}/api/ai-insights?client_id=${id}`).then((r) => r.json()),
         ]);
         if (!wsRes.success) { setError(wsRes.error ?? "Failed to load workspace"); return; }
         setWorkspace(wsRes.data);
         if (crRes.success) setComplianceRecords(crRes.data);
         if (hRes.success) setHealth(hRes.data);
+        if (risksRes.success) setClientRisks(risksRes.data ?? []);
+        if (insightsRes.success) setClientInsights(insightsRes.data ?? []);
       } catch {
         setError("Failed to load client workspace");
       } finally {
@@ -159,6 +167,18 @@ export default function ClientWorkspacePage() {
 
     loadData();
   }, [id]);
+
+  async function generateInsights() {
+    if (!id) return;
+    setGeneratingInsights(true);
+    try {
+      await fetch(`${BASE_URL}/api/ai-insights/generate/${id}`, { method: "POST" });
+      const res = await fetch(`${BASE_URL}/api/ai-insights?client_id=${id}`).then((r) => r.json());
+      if (res.success) setClientInsights(res.data ?? []);
+    } finally {
+      setGeneratingInsights(false);
+    }
+  }
 
   if (!id || id === "_placeholder") {
     return (
@@ -416,6 +436,109 @@ export default function ClientWorkspacePage() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Intelligence tab */}
+      {activeTab === "intelligence" && (
+        <div className="space-y-6">
+          {/* Health Score */}
+          {health && (
+            <Card>
+              <CardContent className={`pt-5 pb-4 ${healthBg(health.health_score)}`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Client Health Score</p>
+                    <p className={`text-4xl font-bold ${healthColor(health.health_score)}`}>
+                      {health.health_score}<span className="text-lg font-normal">/100</span>
+                    </p>
+                    <p className={`text-sm font-medium mt-1 capitalize ${healthColor(health.health_score)}`}>
+                      {health.risk_level} risk
+                    </p>
+                  </div>
+                  <div className="space-y-1 text-right">
+                    {health.breakdown.map((b, i) => (
+                      <p key={i} className="text-xs text-gray-600">-{b.deduction} · {b.label}</p>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Open Risks */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                Open Risks ({clientRisks.filter((r) => r.resolution_status === "open").length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {clientRisks.filter((r) => r.resolution_status === "open").length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">No open risks</p>
+              ) : (
+                <div className="space-y-3">
+                  {clientRisks.filter((r) => r.resolution_status === "open").map((risk) => (
+                    <div key={risk.id} className={`border rounded-lg p-4 ${severityColor[risk.severity]}`}>
+                      <div className="flex items-start gap-2 justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge variant="outline" className="text-xs">{risk.severity}</Badge>
+                            <span className="text-xs text-gray-500">{risk.category.replace(/_/g, " ")}</span>
+                          </div>
+                          <p className="text-sm font-semibold">{risk.title}</p>
+                          <p className="text-xs mt-1 opacity-90">{risk.description}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* AI Insights */}
+          <Card>
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Bot size={15} />
+                AI Insights ({clientInsights.length})
+              </CardTitle>
+              <button
+                onClick={generateInsights}
+                disabled={generatingInsights}
+                className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {generatingInsights ? "Generating…" : "Generate Insights"}
+              </button>
+            </CardHeader>
+            <CardContent>
+              {clientInsights.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">No insights yet. Click &quot;Generate Insights&quot; to analyse this client.</p>
+              ) : (
+                <div className="space-y-3">
+                  {clientInsights.map((insight) => (
+                    <div key={insight.id} className={`border rounded-lg p-4 ${severityColor[insight.severity]}`}>
+                      <div className="flex items-start gap-2">
+                        <Bot size={16} className="mt-0.5 shrink-0" />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge variant="outline" className="text-xs">{insight.severity}</Badge>
+                            <span className="text-xs text-gray-500 capitalize">{insight.category}</span>
+                          </div>
+                          <p className="text-sm font-semibold">{insight.title}</p>
+                          <p className="text-xs mt-1 opacity-90">{insight.description}</p>
+                          {insight.recommendation && (
+                            <p className="text-xs mt-2 font-medium">→ {insight.recommendation}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );

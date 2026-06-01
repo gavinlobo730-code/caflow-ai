@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 import { BarChart3, Users, TrendingUp, CheckSquare, Download } from "lucide-react";
 

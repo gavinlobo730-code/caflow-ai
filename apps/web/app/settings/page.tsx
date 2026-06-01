@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 import { Building2, Users, Bell, Clock } from "lucide-react";
 
