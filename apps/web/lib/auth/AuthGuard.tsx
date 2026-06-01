@@ -17,7 +17,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     if (!session && !isPublic) {
       router.replace("/login");
     }
-    if (session && pathname === "/login") {
+    if (session && (pathname === "/login" || pathname === "/login/")) {
       router.replace("/");
     }
   }, [session, loading, pathname, router]);
