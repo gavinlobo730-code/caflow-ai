@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 from routers import clients, compliance, documents, assistant, insights, tasks, workflows, reminders, team
+from routers import accounting, compliance_records
 
 load_dotenv()
 
@@ -25,6 +26,8 @@ app.include_router(tasks.router)
 app.include_router(workflows.router)
 app.include_router(reminders.router)
 app.include_router(team.router)
+app.include_router(accounting.router)
+app.include_router(compliance_records.router)
 
 
 @app.get("/")

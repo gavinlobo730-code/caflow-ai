@@ -230,6 +230,10 @@ export interface DashboardSummary {
   total_open_tasks: number;
   documents_pending_review?: number;
   overdue_compliance?: number;
+  compliance_due_week?: number;
+  compliance_overdue?: number;
+  high_risk_clients?: number;
+  returns_due_week?: number;
 }
 
 export interface Reminder {
@@ -245,6 +249,164 @@ export interface Reminder {
 }
 
 // ─── ACCOUNTING TYPES ──────────────────────────────────────────────────────
+
+export type AccountType = "Asset" | "Liability" | "Equity" | "Income" | "Expense";
+export type EntryType = "Sales" | "Purchase" | "Payment" | "Receipt" | "Journal" | "Contra" | "Opening";
+export type JournalStatus = "draft" | "posted";
+
+export interface Account {
+  id: string;
+  account_code: string;
+  account_name: string;
+  account_type: AccountType;
+  account_subtype?: string;
+  parent_id?: string;
+  is_active: boolean;
+  client_id?: string;
+  firm_id?: string;
+}
+
+export interface JournalLine {
+  id: string;
+  account_id: string;
+  account_name?: string;
+  debit_paise: number;
+  credit_paise: number;
+  narration?: string;
+}
+
+export interface JournalEntry {
+  id: string;
+  client_id: string;
+  firm_id?: string;
+  entry_date: string;
+  reference_no?: string;
+  narration: string;
+  entry_type: EntryType;
+  status: JournalStatus;
+  lines: JournalLine[];
+  total_debit_paise: number;
+  total_credit_paise: number;
+  created_by?: string;
+  created_at: string;
+}
+
+export interface LedgerLine {
+  date: string;
+  reference_no?: string;
+  narration: string;
+  debit_paise: number;
+  credit_paise: number;
+  running_balance_paise: number;
+  entry_id: string;
+}
+
+export interface TrialBalanceLine {
+  account_id: string;
+  account_code: string;
+  account_name: string;
+  account_type: AccountType;
+  total_debit_paise: number;
+  total_credit_paise: number;
+  net_paise: number;
+}
+
+export interface TrialBalance {
+  as_of_date: string;
+  lines: TrialBalanceLine[];
+  total_debit_paise: number;
+  total_credit_paise: number;
+  is_balanced: boolean;
+  difference_paise: number;
+}
+
+export interface PLSection {
+  label: string;
+  lines: { account_name: string; amount_paise: number }[];
+  total_paise: number;
+}
+
+export interface ProfitLoss {
+  start_date: string;
+  end_date: string;
+  revenue: PLSection;
+  cost_of_sales: PLSection;
+  gross_profit_paise: number;
+  operating_expenses: PLSection;
+  net_profit_paise: number;
+}
+
+export interface BalanceSheetSection {
+  label: string;
+  lines: { account_name: string; balance_paise: number }[];
+  total_paise: number;
+}
+
+export interface BalanceSheet {
+  as_of_date: string;
+  assets: BalanceSheetSection[];
+  liabilities: BalanceSheetSection[];
+  equity: BalanceSheetSection[];
+  total_assets_paise: number;
+  total_liabilities_equity_paise: number;
+  is_balanced: boolean;
+}
+
+// ─── COMPLIANCE RECORD TYPES ───────────────────────────────────────────────
+
+export type ComplianceRecordType = "GST" | "Income Tax" | "TDS" | "MCA" | "Payroll" | "Bookkeeping";
+export type ComplianceRecordStatus =
+  | "Not Started"
+  | "Awaiting Documents"
+  | "In Progress"
+  | "Ready For Review"
+  | "Ready To File"
+  | "Filed"
+  | "Overdue";
+
+export interface ComplianceRecord {
+  id: string;
+  firm_id?: string;
+  client_id: string;
+  client_name?: string;
+  compliance_type: ComplianceRecordType;
+  period_label: string;
+  period_start: string;
+  period_end: string;
+  status: ComplianceRecordStatus;
+  due_date: string;
+  assigned_to?: string;
+  priority: CompliancePriority;
+  notes?: string;
+  filed_date?: string;
+  acknowledgement_no?: string;
+  risk_score: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientHealthScore {
+  client_id: string;
+  client_name: string;
+  health_score: number;
+  risk_level: "critical" | "high" | "medium" | "low";
+  overdue_records: number;
+  overdue_tasks: number;
+  missing_documents: number;
+  breakdown: {
+    label: string;
+    deduction: number;
+  }[];
+}
+
+export interface ComplianceFirmSummary {
+  due_this_week: number;
+  overdue: number;
+  ready_for_review: number;
+  ready_to_file: number;
+  filed_this_month: number;
+  high_risk_clients: number;
+}
 
 export type TransactionType = "credit" | "debit";
 

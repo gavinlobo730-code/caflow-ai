@@ -9,12 +9,10 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { ClientWorkspace, ComplianceTask, AIInsight } from "@/lib/types";
+import type { ClientWorkspace, ComplianceTask, AIInsight, ComplianceRecord, ComplianceRecordStatus, ClientHealthScore } from "@/lib/types";
 import { statusColor, priorityColor, formatDueDateLabel } from "@/lib/services/compliance";
 import { formatRelativeTime, formatDate, ENTITY_TYPE_LABELS } from "@/lib/services/formatting";
 
-// Mock workspace data for client c-001 (Sharma Enterprises)
-// Wire to api.clients.getWorkspace(id) once backend is running
 const MOCK_WORKSPACE: ClientWorkspace = {
   profile: {
     id: "c-001",
@@ -60,6 +58,35 @@ const MOCK_WORKSPACE: ClientWorkspace = {
     document_count: 2,
     open_insights: 1,
   },
+};
+
+const MOCK_COMPLIANCE_RECORDS: ComplianceRecord[] = [
+  { id: "cr-001", client_id: "c-001", client_name: "Sharma Enterprises", compliance_type: "GST", period_label: "Apr 2025", period_start: "2025-04-01", period_end: "2025-04-30", status: "In Progress", due_date: "2026-06-04", assigned_to: "tm-001", priority: "critical", risk_score: 75, created_at: "2026-05-22", updated_at: "2026-05-31" },
+  { id: "cr-002", client_id: "c-001", client_name: "Sharma Enterprises", compliance_type: "Income Tax", period_label: "FY 2024-25", period_start: "2024-04-01", period_end: "2025-03-31", status: "Awaiting Documents", due_date: "2025-07-31", assigned_to: "tm-001", priority: "medium", risk_score: 25, created_at: "2026-05-12", updated_at: "2026-05-27" },
+  { id: "cr-003", client_id: "c-001", client_name: "Sharma Enterprises", compliance_type: "TDS", period_label: "Q4 FY 2024-25", period_start: "2025-01-01", period_end: "2025-03-31", status: "Filed", due_date: "2025-05-31", assigned_to: "tm-001", priority: "low", risk_score: 0, created_at: "2026-04-02", updated_at: "2026-05-29" },
+];
+
+const MOCK_HEALTH: ClientHealthScore = {
+  client_id: "c-001",
+  client_name: "Sharma Enterprises",
+  health_score: 75,
+  risk_level: "medium",
+  overdue_records: 0,
+  overdue_tasks: 0,
+  missing_documents: 1,
+  breakdown: [
+    { label: "Missing/awaited document", deduction: 5 },
+  ],
+};
+
+const STATUS_COLORS: Record<ComplianceRecordStatus, string> = {
+  "Not Started": "bg-gray-100 text-gray-600",
+  "Awaiting Documents": "bg-amber-100 text-amber-700",
+  "In Progress": "bg-blue-100 text-blue-700",
+  "Ready For Review": "bg-orange-100 text-orange-700",
+  "Ready To File": "bg-purple-100 text-purple-700",
+  "Filed": "bg-green-100 text-green-700",
+  "Overdue": "bg-red-100 text-red-700",
 };
 
 const severityColor: Record<string, string> = {
@@ -126,8 +153,30 @@ function InsightCard({ insight }: { insight: AIInsight }) {
   );
 }
 
+type TabId = "overview" | "compliance" | "documents" | "activity";
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "compliance", label: "Compliance" },
+  { id: "documents", label: "Documents" },
+  { id: "activity", label: "Activity" },
+];
+
+function healthColor(score: number): string {
+  if (score > 70) return "text-green-600";
+  if (score >= 40) return "text-amber-600";
+  return "text-red-600";
+}
+
+function healthBg(score: number): string {
+  if (score > 70) return "bg-green-50";
+  if (score >= 40) return "bg-amber-50";
+  return "bg-red-50";
+}
+
 export default function ClientWorkspacePage() {
   const [workspace] = useState<ClientWorkspace>(MOCK_WORKSPACE);
+  const [activeTab, setActiveTab] = useState<TabId>("overview");
   const { profile, summary, compliance_tasks, documents, recent_activity, ai_insights } = workspace;
 
   return (
@@ -159,134 +208,210 @@ export default function ClientWorkspacePage() {
         <SummaryCard label="AI Insights" value={summary.open_insights} color={summary.open_insights > 0 ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-600"} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column */}
-        <div className="space-y-4">
-          {/* Client profile */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Building2 size={15} />
-                Client Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div>
-                <p className="text-xs text-gray-500">PAN</p>
-                <p className="font-mono font-medium">{profile.pan}</p>
-              </div>
-              {profile.gstin && (
-                <div>
-                  <p className="text-xs text-gray-500">GSTIN</p>
-                  <p className="font-mono font-medium">{profile.gstin}</p>
-                </div>
-              )}
-              {profile.mobile && (
-                <div className="flex items-center gap-2 text-gray-700">
-                  <Phone size={13} />
-                  <span>{profile.mobile}</span>
-                </div>
-              )}
-              {profile.email && (
-                <div className="flex items-center gap-2 text-gray-700">
-                  <Mail size={13} />
-                  <span className="truncate">{profile.email}</span>
-                </div>
-              )}
-              {profile.city && (
-                <div className="flex items-center gap-2 text-gray-700">
-                  <MapPin size={13} />
-                  <span>{profile.city}, {profile.state} — {profile.pincode}</span>
-                </div>
-              )}
-              <div className="flex items-center gap-2 text-gray-700">
-                <Calendar size={13} />
-                <span>GST filing: {profile.gst_filing_frequency}</span>
-              </div>
-            </CardContent>
-          </Card>
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-100">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === tab.id
+                ? "border-blue-600 text-blue-700"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-          {/* Documents */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <FileText size={15} />
-                Documents ({documents.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {documents.map((doc) => (
-                <div key={doc.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-gray-900 truncate">{doc.file_name}</p>
-                    <p className="text-xs text-gray-500">{doc.document_type} · {doc.financial_year}</p>
-                  </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${reviewBadge[doc.review_status]}`}>
-                    {doc.review_status === "pending_review" ? "Pending" : doc.review_status}
-                  </span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right columns */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* AI Insights */}
-          {ai_insights.length > 0 && (
+      {/* Overview tab */}
+      {activeTab === "overview" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="space-y-4">
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Bot size={15} />
-                  AI Insights
+                  <Building2 size={15} />
+                  Client Information
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                {ai_insights.map((insight) => (
-                  <InsightCard key={insight.id} insight={insight} />
-                ))}
+              <CardContent className="space-y-3 text-sm">
+                <div>
+                  <p className="text-xs text-gray-500">PAN</p>
+                  <p className="font-mono font-medium">{profile.pan}</p>
+                </div>
+                {profile.gstin && (
+                  <div>
+                    <p className="text-xs text-gray-500">GSTIN</p>
+                    <p className="font-mono font-medium">{profile.gstin}</p>
+                  </div>
+                )}
+                {profile.mobile && (
+                  <div className="flex items-center gap-2 text-gray-700">
+                    <Phone size={13} />
+                    <span>{profile.mobile}</span>
+                  </div>
+                )}
+                {profile.email && (
+                  <div className="flex items-center gap-2 text-gray-700">
+                    <Mail size={13} />
+                    <span className="truncate">{profile.email}</span>
+                  </div>
+                )}
+                {profile.city && (
+                  <div className="flex items-center gap-2 text-gray-700">
+                    <MapPin size={13} />
+                    <span>{profile.city}, {profile.state} — {profile.pincode}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-gray-700">
+                  <Calendar size={13} />
+                  <span>GST filing: {profile.gst_filing_frequency}</span>
+                </div>
               </CardContent>
             </Card>
-          )}
+          </div>
 
-          {/* Compliance tasks */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Clock size={15} />
-                Compliance Tasks
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {compliance_tasks.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-4">No tasks</p>
-              ) : (
-                compliance_tasks.map((t) => <ComplianceRow key={t.id} task={t} />)
-              )}
-            </CardContent>
-          </Card>
+          <div className="lg:col-span-2 space-y-4">
+            {ai_insights.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Bot size={15} />
+                    AI Insights
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {ai_insights.map((insight) => (
+                    <InsightCard key={insight.id} insight={insight} />
+                  ))}
+                </CardContent>
+              </Card>
+            )}
 
-          {/* Activity timeline */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Clock size={15} />
+                  Compliance Tasks
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {compliance_tasks.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-4">No tasks</p>
+                ) : (
+                  compliance_tasks.map((t) => <ComplianceRow key={t.id} task={t} />)
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* Compliance tab */}
+      {activeTab === "compliance" && (
+        <div className="space-y-6">
+          {/* Health score */}
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Recent Activity</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {recent_activity.map((log) => (
-                  <div key={log.id} className="flex items-start gap-3">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-2 shrink-0" />
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-800">{log.description}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{formatRelativeTime(log.created_at)}</p>
-                    </div>
-                  </div>
-                ))}
+            <CardContent className={`pt-5 pb-4 ${healthBg(MOCK_HEALTH.health_score)}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Client Health Score</p>
+                  <p className={`text-4xl font-bold ${healthColor(MOCK_HEALTH.health_score)}`}>
+                    {MOCK_HEALTH.health_score}<span className="text-lg font-normal">/100</span>
+                  </p>
+                  <p className={`text-sm font-medium mt-1 capitalize ${healthColor(MOCK_HEALTH.health_score)}`}>
+                    {MOCK_HEALTH.risk_level} risk
+                  </p>
+                </div>
+                <div className="space-y-1 text-right">
+                  {MOCK_HEALTH.breakdown.map((b, i) => (
+                    <p key={i} className="text-xs text-gray-600">-{b.deduction} · {b.label}</p>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>
+
+          {/* Compliance records grouped by type */}
+          {(["GST", "Income Tax", "TDS"] as const).map((type) => {
+            const records = MOCK_COMPLIANCE_RECORDS.filter((r) => r.compliance_type === type);
+            if (records.length === 0) return null;
+            return (
+              <Card key={type}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">{type}</CardTitle>
+                </CardHeader>
+                <CardContent className="pb-4">
+                  <div className="divide-y divide-gray-50">
+                    {records.map((r) => (
+                      <div key={r.id} className="flex items-center gap-4 py-3">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">{r.period_label}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Due: {formatDate(r.due_date)}</p>
+                        </div>
+                        <Badge className={`text-xs ${STATUS_COLORS[r.status]}`}>{r.status}</Badge>
+                        <span className={`text-xs font-medium ${r.risk_score >= 70 ? "text-red-600" : r.risk_score >= 40 ? "text-amber-600" : "text-green-600"}`}>
+                          Risk: {r.risk_score}
+                        </span>
+                        <button className="text-xs text-blue-600 hover:underline shrink-0">Update</button>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
-      </div>
+      )}
+
+      {/* Documents tab */}
+      {activeTab === "documents" && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <FileText size={15} />
+              Documents ({documents.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {documents.map((doc) => (
+              <div key={doc.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-gray-900 truncate">{doc.file_name}</p>
+                  <p className="text-xs text-gray-500">{doc.document_type} · {doc.financial_year}</p>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${reviewBadge[doc.review_status]}`}>
+                  {doc.review_status === "pending_review" ? "Pending" : doc.review_status}
+                </span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Activity tab */}
+      {activeTab === "activity" && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Recent Activity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {recent_activity.map((log) => (
+                <div key={log.id} className="flex items-start gap-3">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-2 shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-800">{log.description}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{formatRelativeTime(log.created_at)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
