@@ -8,6 +8,7 @@ import {
   BookOpen, FileText, Receipt, Calculator, Building2,
   Calendar, MessageSquare, BarChart3, Settings,
   ChevronLeft, ChevronRight, Landmark, Shield,
+  FileStack, ShieldAlert, Sparkles, Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -39,6 +40,10 @@ const NAV_GROUPS = [
       { href: "/calendar", label: "Calendar", icon: Calendar },
       { href: "/assistant", label: "AI Assistant", icon: MessageSquare },
       { href: "/reports", label: "Reports", icon: BarChart3 },
+      { href: "/documents", label: "Doc Intelligence", icon: FileStack },
+      { href: "/risks", label: "Risk Intelligence", icon: ShieldAlert },
+      { href: "/ai-assistant", label: "AI Copilot", icon: Sparkles },
+      { href: "/notifications", label: "Notifications", icon: Bell },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
