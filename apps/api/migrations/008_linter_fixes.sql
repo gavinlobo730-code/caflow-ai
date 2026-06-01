@@ -10,7 +10,7 @@ SECURITY DEFINER
 STABLE
 SET search_path = pg_catalog, public
 AS $$
-  SELECT firm_id FROM users WHERE auth_user_id = (SELECT auth.uid()) LIMIT 1;
+  SELECT firm_id FROM public.users WHERE auth_user_id = (SELECT auth.uid()) LIMIT 1;
 $$;
 
 REVOKE EXECUTE ON FUNCTION get_my_firm_id() FROM anon;
@@ -21,6 +21,18 @@ GRANT EXECUTE ON FUNCTION get_my_firm_id() TO authenticated;
 DROP POLICY IF EXISTS "users_own_row" ON users;
 CREATE POLICY "users_own_row" ON users
   FOR ALL USING (auth_user_id = (SELECT auth.uid()));
+
+-- ─── ADD firm_id TO TABLES THAT ARE MISSING IT ───────────────────────────────
+
+ALTER TABLE filings            ADD COLUMN IF NOT EXISTS firm_id UUID REFERENCES firms(id);
+ALTER TABLE reminders          ADD COLUMN IF NOT EXISTS firm_id UUID REFERENCES firms(id);
+ALTER TABLE team_members       ADD COLUMN IF NOT EXISTS firm_id UUID REFERENCES firms(id);
+ALTER TABLE workflows          ADD COLUMN IF NOT EXISTS firm_id UUID REFERENCES firms(id);
+ALTER TABLE automation_executions ADD COLUMN IF NOT EXISTS firm_id UUID REFERENCES firms(id);
+ALTER TABLE permission_grants  ADD COLUMN IF NOT EXISTS firm_id UUID REFERENCES firms(id);
+
+-- workflow_steps is a child table — it uses workflow_id for RLS, no firm_id needed
+-- journal_lines is a child table — it uses journal_entry_id for RLS, no firm_id needed
 
 -- ─── ADD RLS POLICIES FOR TABLES WITH NO POLICIES ────────────────────────────
 
@@ -36,13 +48,13 @@ DROP POLICY IF EXISTS "filings_own_firm" ON filings;
 CREATE POLICY "filings_own_firm" ON filings
   FOR ALL USING (firm_id = get_my_firm_id());
 
--- journal_lines (child of journal_entries — use parent firm_id)
+-- journal_lines (child of journal_entries)
 ALTER TABLE journal_lines ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "journal_lines_own_firm" ON journal_lines;
 CREATE POLICY "journal_lines_own_firm" ON journal_lines
   FOR ALL USING (
     journal_entry_id IN (
-      SELECT id FROM journal_entries WHERE firm_id = get_my_firm_id()
+      SELECT id FROM public.journal_entries WHERE firm_id = get_my_firm_id()
     )
   );
 
@@ -70,7 +82,7 @@ DROP POLICY IF EXISTS "workflow_steps_own_firm" ON workflow_steps;
 CREATE POLICY "workflow_steps_own_firm" ON workflow_steps
   FOR ALL USING (
     workflow_id IN (
-      SELECT id FROM workflows WHERE firm_id = get_my_firm_id()
+      SELECT id FROM public.workflows WHERE firm_id = get_my_firm_id()
     )
   );
 
@@ -82,40 +94,42 @@ CREATE POLICY "workflows_own_firm" ON workflows
 
 -- ─── PERFORMANCE: INDEX UNINDEXED FOREIGN KEYS ───────────────────────────────
 
-CREATE INDEX IF NOT EXISTS idx_tasks_client_id ON tasks(client_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_firm_id ON tasks(firm_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to);
+-- Core tables (firm_id added in migration 007 — safe to index)
+CREATE INDEX IF NOT EXISTS idx_tasks_client_id       ON tasks(client_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_firm_id         ON tasks(firm_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to     ON tasks(assigned_to);
 
-CREATE INDEX IF NOT EXISTS idx_clients_firm_id ON clients(firm_id);
+CREATE INDEX IF NOT EXISTS idx_clients_firm_id       ON clients(firm_id);
 
-CREATE INDEX IF NOT EXISTS idx_documents_firm_id ON documents(firm_id);
-CREATE INDEX IF NOT EXISTS idx_documents_client_id ON documents(client_id);
+CREATE INDEX IF NOT EXISTS idx_documents_firm_id     ON documents(firm_id);
+CREATE INDEX IF NOT EXISTS idx_documents_client_id   ON documents(client_id);
 
-CREATE INDEX IF NOT EXISTS idx_journal_entries_firm_id ON journal_entries(firm_id);
+CREATE INDEX IF NOT EXISTS idx_journal_entries_firm_id   ON journal_entries(firm_id);
 CREATE INDEX IF NOT EXISTS idx_journal_entries_client_id ON journal_entries(client_id);
 
-CREATE INDEX IF NOT EXISTS idx_compliance_calendar_firm_id ON compliance_calendar(firm_id);
+CREATE INDEX IF NOT EXISTS idx_compliance_calendar_firm_id   ON compliance_calendar(firm_id);
 CREATE INDEX IF NOT EXISTS idx_compliance_calendar_client_id ON compliance_calendar(client_id);
 
-CREATE INDEX IF NOT EXISTS idx_transactions_firm_id ON transactions(firm_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_client_id ON transactions(client_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_firm_id    ON transactions(firm_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_client_id  ON transactions(client_id);
 
 CREATE INDEX IF NOT EXISTS idx_transaction_lines_transaction_id ON transaction_lines(transaction_id);
 
-CREATE INDEX IF NOT EXISTS idx_bank_statements_firm_id ON bank_statements(firm_id);
+CREATE INDEX IF NOT EXISTS idx_bank_statements_firm_id     ON bank_statements(firm_id);
 CREATE INDEX IF NOT EXISTS idx_bank_transactions_statement_id ON bank_transactions(statement_id);
-CREATE INDEX IF NOT EXISTS idx_bank_transactions_firm_id ON bank_transactions(firm_id);
+CREATE INDEX IF NOT EXISTS idx_bank_transactions_firm_id   ON bank_transactions(firm_id);
 
-CREATE INDEX IF NOT EXISTS idx_filings_firm_id ON filings(firm_id) WHERE firm_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_filings_client_id ON filings(client_id) WHERE client_id IS NOT NULL;
+-- Tables that just got firm_id added above (use partial indexes — NULL safe)
+CREATE INDEX IF NOT EXISTS idx_filings_firm_id         ON filings(firm_id)            WHERE firm_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_filings_client_id       ON filings(client_id)          WHERE client_id IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_reminders_firm_id ON reminders(firm_id) WHERE firm_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_reminders_client_id ON reminders(client_id) WHERE client_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_reminders_firm_id       ON reminders(firm_id)          WHERE firm_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_reminders_client_id     ON reminders(client_id)        WHERE client_id IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_team_members_firm_id ON team_members(firm_id) WHERE firm_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_team_members_user_id ON team_members(user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_team_members_firm_id    ON team_members(firm_id)       WHERE firm_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_team_members_user_id    ON team_members(user_id)       WHERE user_id IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_workflows_firm_id ON workflows(firm_id) WHERE firm_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_workflows_firm_id       ON workflows(firm_id)          WHERE firm_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_workflow_steps_workflow_id ON workflow_steps(workflow_id) WHERE workflow_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_automation_executions_firm_id ON automation_executions(firm_id) WHERE firm_id IS NOT NULL;
