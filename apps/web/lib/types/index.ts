@@ -241,3 +241,37 @@ export interface Reminder {
   message?: string;
   created_at: string;
 }
+
+// ─── ACCOUNTING TYPES ──────────────────────────────────────────────────────
+
+export type TransactionType = "credit" | "debit";
+
+export interface Transaction {
+  id: string;
+  date: string;
+  description: string;
+  type: TransactionType;
+  amount_paise: number;
+  amount_display: string;
+  category: string;
+}
+
+// ─── MODULE STATUS TYPES ───────────────────────────────────────────────────
+
+export type GSTReturnStatus =
+  | "Draft"
+  | "Awaiting Docs"
+  | "Ready for Review"
+  | "Approved"
+  | "Ready to File"
+  | "Filed";
+
+export type ITRStatus =
+  | "Draft"
+  | "Awaiting Docs"
+  | "Review Required"
+  | "Ready for Review"
+  | "Ready to File"
+  | "Filed";
+
+export type TDSReturnStatus = "Draft" | "Pending" | "Filed";
