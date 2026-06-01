@@ -23,7 +23,6 @@ import { getGSTSummary } from "@/lib/data/transactions";
 import { getComplianceCalendar } from "@/lib/data/compliance";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
-import type { Transaction } from "@/lib/data/transactions";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
