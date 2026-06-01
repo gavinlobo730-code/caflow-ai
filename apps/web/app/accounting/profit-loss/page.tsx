@@ -55,7 +55,7 @@ export default function ProfitLossPage() {
           .from("accounts")
           .select("id, account_name, account_type")
           .eq("firm_id", fid)
-          .in("account_type", ["Income", "Expense"]);
+          .in("account_type", ["Revenue", "Expense"]);
         if (accErr) throw new Error(accErr.message);
 
         // Fetch journal entry lines for posted entries in the date range
@@ -81,7 +81,7 @@ export default function ProfitLossPage() {
         for (const acc of (accs ?? [])) {
           const net = Math.abs(map.get(acc.id) ?? 0);
           if (net === 0) continue;
-          if (acc.account_type === "Income") {
+          if (acc.account_type === "Revenue") {
             income.push({ account_name: acc.account_name, amount_paise: net });
           } else {
             expenses.push({ account_name: acc.account_name, amount_paise: net });

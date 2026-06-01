@@ -250,7 +250,7 @@ export interface Reminder {
 
 // ─── ACCOUNTING TYPES ──────────────────────────────────────────────────────
 
-export type AccountType = "Asset" | "Liability" | "Equity" | "Income" | "Expense";
+export type AccountType = "Asset" | "Liability" | "Equity" | "Revenue" | "Expense";
 export type EntryType = "Sales" | "Purchase" | "Payment" | "Receipt" | "Journal" | "Contra" | "Opening";
 export type JournalStatus = "draft" | "posted";
 

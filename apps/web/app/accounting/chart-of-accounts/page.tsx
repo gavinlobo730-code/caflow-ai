@@ -12,11 +12,11 @@ const TYPE_COLORS: Record<AccountType, string> = {
   Asset: "bg-blue-100 text-blue-700",
   Liability: "bg-red-100 text-red-700",
   Equity: "bg-purple-100 text-purple-700",
-  Income: "bg-green-100 text-green-700",
+  Revenue: "bg-green-100 text-green-700",
   Expense: "bg-orange-100 text-orange-700",
 };
 
-const ACCOUNT_TYPES: AccountType[] = ["Asset", "Liability", "Equity", "Income", "Expense"];
+const ACCOUNT_TYPES: AccountType[] = ["Asset", "Liability", "Equity", "Revenue", "Expense"];
 
 function LoadingSpinner() {
   return (
@@ -116,7 +116,7 @@ export default function ChartOfAccountsPage() {
       acc[type] = filtered.filter((a) => a.account_type === type);
       return acc;
     },
-    { Asset: [], Liability: [], Equity: [], Income: [], Expense: [] }
+    { Asset: [], Liability: [], Equity: [], Revenue: [], Expense: [] }
   );
 
   return (
