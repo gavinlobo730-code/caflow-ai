@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { BookOpen, FileText, BarChart2, Scale, TrendingUp, List, ArrowUpRight, ArrowDownRight, Building2 } from "lucide-react";
+import { BookOpen, FileText, BarChart2, Scale, TrendingUp, List, ArrowUpRight, ArrowDownRight, Building2, Receipt } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { JournalEntry, Account } from "@/lib/types";
 
 const NAV_CARDS = [
+  { label: "Invoices", description: "Sales & purchase invoices with GST tracking", href: "/accounting/invoices", icon: Receipt },
   { label: "Chart of Accounts", description: "View and manage your account tree", href: "/accounting/chart-of-accounts", icon: List },
   { label: "Journal Entries", description: "Record and post accounting entries", href: "/accounting/journal", icon: FileText },
   { label: "General Ledger", description: "Transaction history per account", href: "/accounting/ledger", icon: BookOpen },
