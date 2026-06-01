@@ -18,19 +18,38 @@ class TaskDomainService:
         return task_repo.group_by_status() if not client_id else _group(enriched)
 
     def get_dashboard_summary(self, firm_id: Optional[str] = None) -> dict:
-        from datetime import date
-        today = date.today().isoformat()
+        from datetime import date, timedelta
+        today = date.today()
+        today_str = today.isoformat()
+        week_end = (today + timedelta(days=7)).isoformat()
         from mock_data import MOCK_TASKS, MOCK_CLIENTS, MOCK_COMPLIANCE_TASKS
+        from domain.compliance_record_service import compliance_record_service
         tasks = MOCK_TASKS
+        all_records = compliance_record_service.list_records()
+        compliance_overdue = len([r for r in all_records if r["status"] == "Overdue"])
+        compliance_due_week = len([
+            r for r in all_records
+            if r["status"] not in ("Filed",) and today_str <= r["due_date"] <= week_end
+        ])
+        # High-risk clients: health_score < 50
+        high_risk_clients = 0
+        for client in MOCK_CLIENTS:
+            hs = compliance_record_service.get_client_health_score(client["id"])
+            if hs["health_score"] < 50:
+                high_risk_clients += 1
         return {
             "active_clients": len([c for c in MOCK_CLIENTS if c.get("status") == "active"]),
-            "tasks_due_today": len([t for t in tasks if t.get("due_date") == today and t["status"] != "completed"]),
+            "tasks_due_today": len([t for t in tasks if t.get("due_date") == today_str and t["status"] != "completed"]),
             "overdue_tasks": len(task_repo.find_overdue()),
             "waiting_client": len([t for t in tasks if t["status"] == "waiting_client"]),
             "review_required": len([t for t in tasks if t["status"] == "review_required"]),
             "total_open_tasks": len([t for t in tasks if t["status"] != "completed"]),
             "documents_pending_review": 2,
             "overdue_compliance": len([c for c in MOCK_COMPLIANCE_TASKS if c["status"] == "overdue"]),
+            "compliance_due_week": compliance_due_week,
+            "compliance_overdue": compliance_overdue,
+            "high_risk_clients": high_risk_clients,
+            "returns_due_week": compliance_due_week,
         }
 
     def transition_status(self, task_id: str, new_status: str, actor_role: str = "Partner") -> dict:

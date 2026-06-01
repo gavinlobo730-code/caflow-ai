@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, CheckSquare, UserCheck,
   BookOpen, FileText, Receipt, Calculator, Building2,
   Calendar, MessageSquare, BarChart3, Settings,
-  ChevronLeft, ChevronRight, Landmark,
+  ChevronLeft, ChevronRight, Landmark, Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +25,7 @@ const NAV_GROUPS = [
     label: "Tax Modules",
     items: [
       { href: "/accounting", label: "Accounting", icon: BookOpen },
+      { href: "/compliance", label: "Compliance", icon: Shield },
       { href: "/gst", label: "GST", icon: Receipt },
       { href: "/income-tax", label: "Income Tax", icon: Calculator },
       { href: "/tds", label: "TDS", icon: Landmark },

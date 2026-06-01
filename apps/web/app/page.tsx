@@ -1,17 +1,34 @@
 export const runtime = "edge";
 
-import { Users, Clock, AlertTriangle, MessageSquare, Calendar, TrendingUp } from "lucide-react";
+import { Users, Clock, AlertTriangle, MessageSquare, Shield, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 
+// Structured to match GET /api/tasks/summary/dashboard response shape.
+// Swap data source to real fetch when backend is running.
+const SUMMARY = {
+  active_clients: 5,
+  tasks_due_today: 1,
+  overdue_tasks: 1,
+  waiting_client: 1,
+  review_required: 1,
+  total_open_tasks: 6,
+  documents_pending_review: 2,
+  overdue_compliance: 2,
+  compliance_due_week: 4,
+  compliance_overdue: 2,
+  high_risk_clients: 1,
+  returns_due_week: 4,
+};
+
 const DASHBOARD_STATS = [
-  { label: "Active Clients", value: "24", icon: Users, color: "text-blue-600", bg: "bg-blue-50", href: "/clients" },
-  { label: "Tasks Due Today", value: "3", icon: Clock, color: "text-amber-600", bg: "bg-amber-50", href: "/tasks" },
-  { label: "Overdue Tasks", value: "4", icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50", href: "/tasks?status=overdue" },
-  { label: "Awaiting Client", value: "2", icon: MessageSquare, color: "text-purple-600", bg: "bg-purple-50", href: "/tasks?status=waiting_client" },
-  { label: "Returns Due This Week", value: "5", icon: Calendar, color: "text-emerald-600", bg: "bg-emerald-50", href: "/calendar" },
-  { label: "Team Utilization", value: "78%", icon: TrendingUp, color: "text-indigo-600", bg: "bg-indigo-50", href: "/team" },
+  { label: "Active Clients", value: String(SUMMARY.active_clients), icon: Users, color: "text-blue-600", bg: "bg-blue-50", href: "/clients" },
+  { label: "Tasks Due Today", value: String(SUMMARY.tasks_due_today), icon: Clock, color: "text-amber-600", bg: "bg-amber-50", href: "/tasks" },
+  { label: "Overdue Tasks", value: String(SUMMARY.overdue_tasks), icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50", href: "/tasks?status=overdue" },
+  { label: "Compliance Overdue", value: String(SUMMARY.compliance_overdue), icon: Shield, color: "text-orange-600", bg: "bg-orange-50", href: "/compliance" },
+  { label: "High-Risk Clients", value: String(SUMMARY.high_risk_clients), icon: Activity, color: "text-red-700", bg: "bg-red-50", href: "/compliance" },
+  { label: "Pending Reviews", value: String(SUMMARY.review_required), icon: MessageSquare, color: "text-purple-600", bg: "bg-purple-50", href: "/tasks?status=review_required" },
 ];
 
 const URGENT_TASKS = [
