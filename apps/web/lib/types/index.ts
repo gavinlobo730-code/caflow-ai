@@ -228,6 +228,8 @@ export interface DashboardSummary {
   waiting_client: number;
   review_required: number;
   total_open_tasks: number;
+  documents_pending_review?: number;
+  overdue_compliance?: number;
 }
 
 export interface Reminder {
