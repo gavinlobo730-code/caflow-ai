@@ -21,7 +21,7 @@ const TYPE_COLORS: Record<AccountType, string> = {
   Asset: "text-blue-700",
   Liability: "text-red-700",
   Equity: "text-purple-700",
-  Income: "text-green-700",
+  Revenue: "text-green-700",
   Expense: "text-orange-700",
 };
 
