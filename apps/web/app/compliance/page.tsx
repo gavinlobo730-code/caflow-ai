@@ -1,50 +1,25 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Shield, AlertTriangle, Clock, CheckCircle, FileText, Plus } from "lucide-react";
+import { Shield, AlertTriangle, Clock, CheckCircle, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/services/formatting";
-import type { ComplianceRecord, ComplianceRecordStatus, ComplianceRecordType, ComplianceFirmSummary, ApiResponse } from "@/lib/types";
+import { getComplianceCalendar, updateFilingStatus, seedComplianceCalendar } from "@/lib/data/compliance";
+import type { ComplianceEntry } from "@/lib/data/compliance";
+import { getClients } from "@/lib/data/clients";
+import type { Client } from "@/lib/types";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-const STATUS_COLORS: Record<ComplianceRecordStatus, string> = {
-  "Not Started": "bg-gray-100 text-gray-600",
-  "Awaiting Documents": "bg-amber-100 text-amber-700",
-  "In Progress": "bg-blue-100 text-blue-700",
-  "Ready For Review": "bg-orange-100 text-orange-700",
-  "Ready To File": "bg-purple-100 text-purple-700",
-  "Filed": "bg-green-100 text-green-700",
-  "Overdue": "bg-red-100 text-red-700",
+const FILING_STATUS_COLORS: Record<string, string> = {
+  pending: "bg-amber-100 text-amber-700",
+  in_progress: "bg-blue-100 text-blue-700",
+  filed: "bg-green-100 text-green-700",
+  overdue: "bg-red-100 text-red-700",
+  na: "bg-gray-100 text-gray-500",
 };
 
-const RISK_COLORS: Record<string, string> = {
-  low: "text-green-600",
-  medium: "text-amber-600",
-  high: "text-orange-600",
-  critical: "text-red-600",
-};
-
-function riskLabel(score: number): string {
-  if (score >= 86) return "Critical";
-  if (score >= 70) return "High";
-  if (score >= 50) return "Medium";
-  if (score >= 10) return "Low";
-  return "None";
-}
-
-function riskLevel(score: number): string {
-  if (score >= 86) return "critical";
-  if (score >= 70) return "high";
-  if (score >= 50) return "medium";
-  return "low";
-}
-
-const ALL_STATUSES: ComplianceRecordStatus[] = [
-  "Not Started", "Awaiting Documents", "In Progress", "Ready For Review", "Ready To File", "Filed", "Overdue"
-];
-const ALL_TYPES: ComplianceRecordType[] = ["GST", "Income Tax", "TDS", "MCA", "Payroll", "Bookkeeping"];
+const ALL_TYPES = ["GSTR1", "GSTR3B", "GSTR9", "ITR", "TDS24Q", "TDS26Q", "ADVANCE_TAX"];
+const ALL_STATUSES = ["pending", "in_progress", "filed", "overdue", "na"];
 
 function LoadingSpinner() {
   return (
@@ -58,28 +33,41 @@ function LoadingSpinner() {
   );
 }
 
+interface MarkFiledForm {
+  id: string;
+  arn: string;
+}
+
 export default function CompliancePage() {
-  const [records, setRecords] = useState<ComplianceRecord[]>([]);
-  const [firmSummary, setFirmSummary] = useState<ComplianceFirmSummary | null>(null);
+  const [records, setRecords] = useState<ComplianceEntry[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<ComplianceRecordStatus | "">("");
-  const [typeFilter, setTypeFilter] = useState<ComplianceRecordType | "">("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
   const [clientFilter, setClientFilter] = useState("");
+  const [markFiled, setMarkFiled] = useState<MarkFiledForm | null>(null);
+  const [filingLoading, setFilingLoading] = useState(false);
 
-  async function loadData() {
+  async function loadData(clientId?: string) {
     setLoading(true);
     setError(null);
     try {
-      const [recRes, sumRes] = await Promise.all([
-        fetch(`${BASE_URL}/api/compliance-records`).then((r) => r.json()) as Promise<ApiResponse<ComplianceRecord[]>>,
-        fetch(`${BASE_URL}/api/compliance-records/firm/summary`).then((r) => r.json()) as Promise<ApiResponse<ComplianceFirmSummary>>,
+      const [recs, cls] = await Promise.all([
+        getComplianceCalendar(clientId || undefined),
+        getClients().catch(() => [] as Client[]),
       ]);
-      if (recRes.success) setRecords(recRes.data);
-      else setError(recRes.error ?? "Failed to load records");
-      if (sumRes.success) setFirmSummary(sumRes.data);
-    } catch {
-      setError("Failed to load compliance data");
+      // If filtering by client and empty — seed calendar
+      if (clientId && recs.length === 0) {
+        await seedComplianceCalendar(clientId).catch(() => undefined);
+        const seeded = await getComplianceCalendar(clientId).catch(() => [] as ComplianceEntry[]);
+        setRecords(seeded);
+      } else {
+        setRecords(recs);
+      }
+      setClients(cls);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load compliance data");
     } finally {
       setLoading(false);
     }
@@ -87,14 +75,17 @@ export default function CompliancePage() {
 
   useEffect(() => { loadData(); }, []);
 
-  async function handleStatusUpdate(id: string, newStatus: ComplianceRecordStatus) {
-    const res: ApiResponse<ComplianceRecord> = await fetch(`${BASE_URL}/api/compliance-records/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
-    }).then((r) => r.json());
-    if (res.success) {
-      setRecords((prev) => prev.map((r) => r.id === id ? res.data : r));
+  async function handleMarkFiled() {
+    if (!markFiled) return;
+    setFilingLoading(true);
+    try {
+      await updateFilingStatus(markFiled.id, "filed", markFiled.arn || undefined);
+      setRecords(prev => prev.map(r =>
+        r.id === markFiled.id ? { ...r, filing_status: "filed", arn_number: markFiled.arn } : r
+      ));
+      setMarkFiled(null);
+    } finally {
+      setFilingLoading(false);
     }
   }
 
@@ -108,20 +99,36 @@ export default function CompliancePage() {
     );
   }
 
-  const filtered = records.filter((r) => {
-    if (statusFilter && r.status !== statusFilter) return false;
-    if (typeFilter && r.compliance_type !== typeFilter) return false;
-    if (clientFilter && !r.client_name?.toLowerCase().includes(clientFilter.toLowerCase())) return false;
-    return true;
-  });
+  const today = new Date().toISOString().split("T")[0];
+  const in7Days = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
+
+  // Computed stats from fetched data
+  const overdue = records.filter(r => r.due_date < today && r.filing_status !== "filed" && r.filing_status !== "na").length;
+  const dueThisWeek = records.filter(r => r.due_date >= today && r.due_date <= in7Days && r.filing_status !== "filed").length;
+  const inProgress = records.filter(r => r.filing_status === "in_progress").length;
+  const filed = records.filter(r => r.filing_status === "filed").length;
+  const pending = records.filter(r => r.filing_status === "pending").length;
 
   const STATS = [
-    { label: "Due This Week", value: firmSummary?.due_this_week ?? 0, icon: Clock, color: "text-amber-600", bg: "bg-amber-50" },
-    { label: "Overdue", value: firmSummary?.overdue ?? 0, icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50" },
-    { label: "Ready For Review", value: firmSummary?.ready_for_review ?? 0, icon: FileText, color: "text-orange-600", bg: "bg-orange-50" },
-    { label: "Ready To File", value: firmSummary?.ready_to_file ?? 0, icon: Shield, color: "text-purple-600", bg: "bg-purple-50" },
-    { label: "Filed", value: firmSummary?.filed_this_month ?? 0, icon: CheckCircle, color: "text-green-600", bg: "bg-green-50" },
+    { label: "Due This Week", value: dueThisWeek, icon: Clock, color: "text-amber-600", bg: "bg-amber-50" },
+    { label: "Overdue", value: overdue, icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50" },
+    { label: "In Progress", value: inProgress, icon: FileText, color: "text-blue-600", bg: "bg-blue-50" },
+    { label: "Pending", value: pending, icon: Shield, color: "text-purple-600", bg: "bg-purple-50" },
+    { label: "Filed", value: filed, icon: CheckCircle, color: "text-green-600", bg: "bg-green-50" },
   ];
+
+  // Client lookup
+  const clientMap = Object.fromEntries(clients.map(c => [c.id, c.client_name]));
+
+  const filtered = records.filter(r => {
+    if (statusFilter && r.filing_status !== statusFilter) return false;
+    if (typeFilter && r.compliance_type !== typeFilter) return false;
+    if (clientFilter) {
+      const name = (clientMap[r.client_id] ?? "").toLowerCase();
+      if (!name.includes(clientFilter.toLowerCase())) return false;
+    }
+    return true;
+  });
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -130,9 +137,6 @@ export default function CompliancePage() {
           <h1 className="text-xl font-semibold text-gray-900">Compliance</h1>
           <p className="text-sm text-gray-500 mt-0.5">Track GST, ITR, TDS and other filings across all clients</p>
         </div>
-        <button className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700">
-          <Plus size={13} /> New Record
-        </button>
       </div>
 
       {/* Stat cards */}
@@ -150,27 +154,57 @@ export default function CompliancePage() {
         ))}
       </div>
 
+      {/* Mark as Filed inline form */}
+      {markFiled && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="pt-4 pb-4">
+            <p className="text-sm font-medium text-blue-900 mb-3">Mark as Filed</p>
+            <div className="flex gap-3 items-center">
+              <input
+                value={markFiled.arn}
+                onChange={e => setMarkFiled({ ...markFiled, arn: e.target.value })}
+                placeholder="ARN Number (optional)"
+                className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
+              <button
+                onClick={handleMarkFiled}
+                disabled={filingLoading}
+                className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+              >
+                {filingLoading ? "Saving…" : "Confirm Filed"}
+              </button>
+              <button
+                onClick={() => setMarkFiled(null)}
+                className="text-xs px-3 py-1.5 border border-gray-200 rounded-md hover:bg-gray-100 bg-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <div>
           <label className="text-xs text-gray-500">Status</label>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as ComplianceRecordStatus | "")}
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
             className="block mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="">All statuses</option>
-            {ALL_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div>
           <label className="text-xs text-gray-500">Type</label>
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as ComplianceRecordType | "")}
+          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
             className="block mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="">All types</option>
-            {ALL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            {ALL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
         <div>
           <label className="text-xs text-gray-500">Client</label>
-          <input value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}
+          <input value={clientFilter} onChange={e => setClientFilter(e.target.value)}
             placeholder="Search client…"
             className="block mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-48" />
         </div>
@@ -190,40 +224,51 @@ export default function CompliancePage() {
                 <th className="px-3 py-3 text-left font-semibold">Period</th>
                 <th className="px-3 py-3 text-left font-semibold">Due Date</th>
                 <th className="px-3 py-3 text-left font-semibold">Status</th>
-                <th className="px-3 py-3 text-left font-semibold">Assigned</th>
-                <th className="px-5 py-3 text-left font-semibold">Risk</th>
-                <th className="px-3 py-3 text-left font-semibold">Action</th>
+                <th className="px-3 py-3 text-left font-semibold">ARN</th>
+                <th className="px-5 py-3 text-left font-semibold">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtered.map((r) => (
                 <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="px-5 py-3 text-sm font-medium text-gray-900">{r.client_name}</td>
+                  <td className="px-5 py-3 text-sm font-medium text-gray-900">
+                    {clientMap[r.client_id] ?? r.client_id.slice(0, 8)}
+                  </td>
                   <td className="px-3 py-3 text-xs text-gray-600">{r.compliance_type}</td>
-                  <td className="px-3 py-3 text-xs text-gray-500">{r.period_label}</td>
-                  <td className="px-3 py-3 text-xs text-gray-600 whitespace-nowrap">{formatDate(r.due_date)}</td>
-                  <td className="px-3 py-3">
-                    <Badge className={`text-xs ${STATUS_COLORS[r.status]}`}>{r.status}</Badge>
+                  <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">
+                    {formatDate(r.period_start)} – {formatDate(r.period_end)}
                   </td>
-                  <td className="px-3 py-3 text-xs text-gray-500">{r.assigned_to ?? "—"}</td>
+                  <td className={`px-3 py-3 text-xs whitespace-nowrap ${r.due_date < today && r.filing_status !== "filed" ? "text-red-600 font-medium" : "text-gray-600"}`}>
+                    {formatDate(r.due_date)}
+                  </td>
+                  <td className="px-3 py-3">
+                    <Badge className={`text-xs ${FILING_STATUS_COLORS[r.filing_status] ?? "bg-gray-100 text-gray-600"}`}>
+                      {r.filing_status}
+                    </Badge>
+                  </td>
+                  <td className="px-3 py-3 text-xs text-gray-500 font-mono">{r.arn_number ?? "—"}</td>
                   <td className="px-5 py-3">
-                    <span className={`text-xs font-semibold ${RISK_COLORS[riskLevel(r.risk_score)]}`}>
-                      {riskLabel(r.risk_score)} ({r.risk_score})
-                    </span>
-                  </td>
-                  <td className="px-3 py-3">
-                    <select
-                      value={r.status}
-                      onChange={(e) => handleStatusUpdate(r.id, e.target.value as ComplianceRecordStatus)}
-                      className="text-xs border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      {ALL_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                    {r.filing_status !== "filed" && r.filing_status !== "na" && (
+                      <button
+                        onClick={() => setMarkFiled({ id: r.id, arn: r.arn_number ?? "" })}
+                        className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                      >
+                        <CheckCircle size={12} /> Mark Filed
+                      </button>
+                    )}
+                    {r.filing_status === "filed" && (
+                      <span className="text-xs text-green-600 flex items-center gap-1">
+                        <CheckCircle size={12} /> {r.filed_date ? formatDate(r.filed_date) : "Filed"}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {filtered.length === 0 && (
+            <div className="text-center py-8 text-sm text-gray-400">No compliance records found</div>
+          )}
         </div>
       </Card>
     </div>
