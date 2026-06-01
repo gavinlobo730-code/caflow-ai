@@ -8,7 +8,7 @@ import {
   BookOpen, FileText, Receipt, Calculator, Building2,
   Calendar, MessageSquare, BarChart3, Settings,
   ChevronLeft, ChevronRight, Landmark, Shield,
-  FileStack, ShieldAlert, Sparkles, Bell, LogOut,
+  FileStack, ShieldAlert, Sparkles, Bell, LogOut, ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -19,6 +19,7 @@ const NAV_GROUPS = [
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/clients", label: "Clients", icon: Users },
+      { href: "/clients/portal", label: "Client Portal", icon: ExternalLink },
       { href: "/tasks", label: "Tasks", icon: CheckSquare },
       { href: "/team", label: "Team", icon: UserCheck },
     ],
