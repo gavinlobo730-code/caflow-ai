@@ -37,7 +37,13 @@ function LoadingSkeleton() {
 
 export default function StatementDetailClient() {
   const params = useParams();
-  const statementId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const [statementId, setStatementId] = useState<string>(
+    Array.isArray(params.id) ? params.id[0] : (params.id ?? "")
+  );
+  useEffect(() => {
+    const match = window.location.pathname.match(/\/bank-statements\/([^/]+)/);
+    if (match && match[1] && match[1] !== "_placeholder") setStatementId(match[1]);
+  }, []);
 
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);

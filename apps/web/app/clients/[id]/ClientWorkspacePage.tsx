@@ -68,7 +68,14 @@ interface MarkFiledForm {
 
 export default function ClientWorkspacePage() {
   const params = useParams();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  // Static export serves /_placeholder/ — read real ID from URL on client
+  const [id, setId] = useState<string>(
+    Array.isArray(params.id) ? params.id[0] : (params.id ?? "")
+  );
+  useEffect(() => {
+    const match = window.location.pathname.match(/\/clients\/([^/]+)/);
+    if (match && match[1] && match[1] !== "_placeholder") setId(match[1]);
+  }, []);
 
   const [client, setClient] = useState<Client | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
