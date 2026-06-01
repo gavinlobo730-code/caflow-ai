@@ -2,6 +2,17 @@
 -- ROOT CAUSE: Tables have RLS policies but no GRANT to authenticated role.
 -- PostgreSQL denies access before even checking RLS if the role has no permission.
 -- This is why "permission denied for table clients" appears — not an RLS issue.
+--
+-- Also creates an `accounts` view over `chart_of_accounts` so the frontend
+-- can query .from("accounts") without renaming 9 files.
+
+-- ─── CREATE accounts VIEW (frontend queries this, real table is chart_of_accounts)
+
+CREATE OR REPLACE VIEW public.accounts AS
+  SELECT * FROM public.chart_of_accounts;
+
+-- Grant the view
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.accounts TO authenticated;
 
 -- ─── GRANT ALL CORE TABLES TO authenticated ──────────────────────────────────
 
@@ -15,7 +26,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.transactions        TO auth
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.transaction_lines   TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.journal_entries     TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.journal_lines       TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.accounts            TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.chart_of_accounts   TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.bank_statements     TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.bank_transactions   TO authenticated;
 
@@ -27,21 +38,13 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.reminders           TO auth
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.notifications       TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.activity_logs       TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.workflows           TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.workflow_steps      TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.automation_rules    TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.automation_executions TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.ai_insights         TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.document_extractions TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.document_risks      TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.filings             TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.team_members        TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.permission_grants   TO authenticated;
 
--- ─── GRANT SEQUENCE USAGE (needed for INSERT with serial/uuid columns) ────────
+-- ─── GRANT SEQUENCE USAGE (needed for INSERT) ────────────────────────────────
 
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO authenticated;
-
--- ─── VERIFY ──────────────────────────────────────────────────────────────────
--- After running, test from the browser — clients/tasks/dashboard should all load.
--- The RLS policies (firm_id = get_my_firm_id()) will still enforce data isolation.
--- GRANT just allows the role to attempt the query; RLS controls what rows are returned.
