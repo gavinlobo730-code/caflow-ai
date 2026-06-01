@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// System prompt for Indian CA assistant
 const SYSTEM_PROMPT = `You are an AI assistant for Indian Chartered Accountants using CAflow AI. You help with GST (CGST Act), Income Tax (IT Act), TDS, ROC/MCA filings, accounting, and practice management. Always cite relevant sections when giving tax advice. For compliance deadlines, be precise about Indian financial year (April-March). Never provide advice that could be construed as filing on behalf of the CA — always recommend CA review.`;
 
 interface HistoryItem {
@@ -25,16 +24,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { success: false, data: null, error: "ANTHROPIC_API_KEY is not configured" },
+        { success: false, data: null, error: "GEMINI_API_KEY is not configured" },
         { status: 500 }
       );
     }
 
-    // Build message list: prior history + new user message
-    const messages: { role: "user" | "assistant"; content: string }[] = [
+    // Build Gemini contents array from history + new message
+    const contents = [
       ...(Array.isArray(history)
         ? history
             .filter(
@@ -43,30 +42,31 @@ export async function POST(req: NextRequest) {
                 (h.role === "user" || h.role === "assistant") &&
                 typeof h.content === "string"
             )
-            .map((h) => ({ role: h.role, content: h.content }))
+            .map((h) => ({
+              role: h.role === "assistant" ? "model" : "user",
+              parts: [{ text: h.content }],
+            }))
         : []),
-      { role: "user", content: message.trim() },
+      { role: "user", parts: [{ text: message.trim() }] },
     ];
 
-    // Call Anthropic Claude API (claude-sonnet-4-6)
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 2048,
-        system: SYSTEM_PROMPT,
-        messages,
-      }),
-    });
+    // Call Google Gemini API (gemini-1.5-flash — free tier)
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          contents,
+          generationConfig: { maxOutputTokens: 2048 },
+        }),
+      }
+    );
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error("Anthropic API error:", errText);
+      console.error("Gemini API error:", errText);
       return NextResponse.json(
         { success: false, data: null, error: "AI service error. Please try again." },
         { status: 502 }
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
 
     const result = await response.json();
     const reply: string =
-      result?.content?.[0]?.type === "text" ? result.content[0].text : "";
+      result?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
     if (!reply) {
       return NextResponse.json(
