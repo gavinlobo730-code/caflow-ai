@@ -1,5 +1,16 @@
 import { getSupabaseClient } from "@/lib/supabase/client";
-import type { Task } from "@/lib/types";
+import type { Task, KanbanBoard } from "@/lib/types";
+
+export interface CreateTaskInput {
+  client_id: string;
+  title: string;
+  description?: string;
+  status?: string;
+  priority: string;
+  assigned_to?: string;
+  due_date?: string;
+  task_type?: string;
+}
 
 async function getFirmId(): Promise<string> {
   const sb = getSupabaseClient();
@@ -18,4 +29,36 @@ export async function getTasks(clientId?: string): Promise<Task[]> {
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   return (data ?? []) as Task[];
+}
+
+export async function updateTaskStatus(id: string, status: string): Promise<void> {
+  const sb = getSupabaseClient();
+  await sb.from("tasks").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
+}
+
+export async function deleteTask(id: string): Promise<void> {
+  const sb = getSupabaseClient();
+  await sb.from("tasks").delete().eq("id", id);
+}
+
+export function groupByStatus(tasks: Task[]): KanbanBoard {
+  const board: KanbanBoard = { todo: [], in_progress: [], waiting_client: [], review_required: [], completed: [] };
+  for (const t of tasks) {
+    const col = t.status as keyof KanbanBoard;
+    if (col in board) board[col].push(t);
+  }
+  return board;
+}
+
+export async function createTask(input: CreateTaskInput): Promise<Task> {
+  const sb = getSupabaseClient();
+  const firmId = await getFirmId();
+  const { data, error } = await sb.from("tasks").insert({
+    ...input,
+    firm_id: firmId,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).select().single();
+  if (error || !data) throw new Error(error?.message ?? "Failed to create task");
+  return data as Task;
 }
