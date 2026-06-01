@@ -1,37 +1,13 @@
 "use client";
-export const runtime = "edge";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ChevronLeft, Search, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { Account, AccountType } from "@/lib/types";
+import type { Account, AccountType, ApiResponse } from "@/lib/types";
 
-const MOCK_ACCOUNTS: Account[] = [
-  { id: "acc-001", account_code: "1001", account_name: "Cash in Hand", account_type: "Asset", account_subtype: "Current Asset", is_active: true },
-  { id: "acc-002", account_code: "1002", account_name: "Bank — HDFC Current Account", account_type: "Asset", account_subtype: "Current Asset", is_active: true },
-  { id: "acc-003", account_code: "1003", account_name: "Trade Receivables", account_type: "Asset", account_subtype: "Current Asset", is_active: true },
-  { id: "acc-004", account_code: "1004", account_name: "GST Input Tax Credit", account_type: "Asset", account_subtype: "Current Asset", is_active: true },
-  { id: "acc-005", account_code: "1005", account_name: "Advance Tax Paid", account_type: "Asset", account_subtype: "Current Asset", is_active: true },
-  { id: "acc-006", account_code: "1101", account_name: "Office Equipment", account_type: "Asset", account_subtype: "Fixed Asset", is_active: true },
-  { id: "acc-007", account_code: "1102", account_name: "Furniture & Fixtures", account_type: "Asset", account_subtype: "Fixed Asset", is_active: true },
-  { id: "acc-008", account_code: "2001", account_name: "Trade Payables", account_type: "Liability", account_subtype: "Current Liability", is_active: true },
-  { id: "acc-009", account_code: "2002", account_name: "GST Output Tax Payable", account_type: "Liability", account_subtype: "Current Liability", is_active: true },
-  { id: "acc-010", account_code: "2003", account_name: "TDS Payable", account_type: "Liability", account_subtype: "Current Liability", is_active: true },
-  { id: "acc-011", account_code: "2004", account_name: "Salary Payable", account_type: "Liability", account_subtype: "Current Liability", is_active: true },
-  { id: "acc-012", account_code: "2101", account_name: "Bank Loan — Term Loan", account_type: "Liability", account_subtype: "Long-term Liability", is_active: true },
-  { id: "acc-013", account_code: "3001", account_name: "Capital Account", account_type: "Equity", account_subtype: "Owner Equity", is_active: true },
-  { id: "acc-014", account_code: "3002", account_name: "Retained Earnings", account_type: "Equity", account_subtype: "Owner Equity", is_active: true },
-  { id: "acc-015", account_code: "4001", account_name: "Professional Fees — GST Clients", account_type: "Income", account_subtype: "Revenue", is_active: true },
-  { id: "acc-016", account_code: "4002", account_name: "Professional Fees — ITR Clients", account_type: "Income", account_subtype: "Revenue", is_active: true },
-  { id: "acc-017", account_code: "4003", account_name: "Audit Fees", account_type: "Income", account_subtype: "Revenue", is_active: true },
-  { id: "acc-018", account_code: "5001", account_name: "Salary Expense", account_type: "Expense", account_subtype: "Operating Expense", is_active: true },
-  { id: "acc-019", account_code: "5002", account_name: "Office Rent", account_type: "Expense", account_subtype: "Operating Expense", is_active: true },
-  { id: "acc-020", account_code: "5003", account_name: "Software Subscriptions", account_type: "Expense", account_subtype: "Operating Expense", is_active: true },
-  { id: "acc-021", account_code: "5004", account_name: "Bank Charges", account_type: "Expense", account_subtype: "Operating Expense", is_active: true },
-  { id: "acc-022", account_code: "5005", account_name: "Depreciation — Equipment", account_type: "Expense", account_subtype: "Non-cash Expense", is_active: true },
-];
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const TYPE_COLORS: Record<AccountType, string> = {
   Asset: "bg-blue-100 text-blue-700",
@@ -43,12 +19,68 @@ const TYPE_COLORS: Record<AccountType, string> = {
 
 const ACCOUNT_TYPES: AccountType[] = ["Asset", "Liability", "Equity", "Income", "Expense"];
 
+function LoadingSpinner() {
+  return (
+    <div className="p-6 max-w-5xl mx-auto space-y-4 animate-pulse">
+      <div className="h-6 bg-gray-200 rounded w-48" />
+      <div className="h-10 bg-gray-100 rounded" />
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="h-32 bg-gray-100 rounded-xl" />
+      ))}
+    </div>
+  );
+}
+
 export default function ChartOfAccountsPage() {
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [newAcc, setNewAcc] = useState({ account_code: "", account_name: "", account_type: "Asset" as AccountType, account_subtype: "" });
+  const [saving, setSaving] = useState(false);
 
-  const filtered = MOCK_ACCOUNTS.filter(
+  useEffect(() => {
+    fetch(`${BASE_URL}/api/accounting/accounts`)
+      .then((r) => r.json())
+      .then((res: ApiResponse<Account[]>) => {
+        if (res.success) setAccounts(res.data);
+        else setError(res.error ?? "Failed to load accounts");
+      })
+      .catch(() => setError("Failed to load accounts"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSaveAccount() {
+    if (!newAcc.account_code || !newAcc.account_name) return;
+    setSaving(true);
+    try {
+      const res: ApiResponse<Account> = await fetch(`${BASE_URL}/api/accounting/accounts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...newAcc, is_active: true }),
+      }).then((r) => r.json());
+      if (res.success) {
+        setAccounts((prev) => [...prev, res.data]);
+        setShowModal(false);
+        setNewAcc({ account_code: "", account_name: "", account_type: "Asset", account_subtype: "" });
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return <LoadingSpinner />;
+
+  if (error) {
+    return (
+      <div className="p-6 max-w-5xl mx-auto">
+        <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div>
+      </div>
+    );
+  }
+
+  const filtered = accounts.filter(
     (a) =>
       a.account_name.toLowerCase().includes(search.toLowerCase()) ||
       a.account_code.includes(search)
@@ -70,7 +102,7 @@ export default function ChartOfAccountsPage() {
         </Link>
         <div className="flex-1">
           <h1 className="text-xl font-semibold text-gray-900">Chart of Accounts</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{MOCK_ACCOUNTS.length} accounts</p>
+          <p className="text-sm text-gray-500 mt-0.5">{accounts.length} accounts</p>
         </div>
         <button
           onClick={() => setShowModal(true)}
@@ -94,19 +126,19 @@ export default function ChartOfAccountsPage() {
       {/* Groups */}
       <div className="space-y-4">
         {ACCOUNT_TYPES.map((type) => {
-          const accounts = grouped[type];
-          if (accounts.length === 0) return null;
+          const accs = grouped[type];
+          if (accs.length === 0) return null;
           return (
             <Card key={type}>
               <CardHeader className="pb-2 pt-4">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TYPE_COLORS[type]}`}>{type}</span>
-                  <span className="text-gray-400 font-normal text-xs">{accounts.length} accounts</span>
+                  <span className="text-gray-400 font-normal text-xs">{accs.length} accounts</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="pb-3">
                 <div className="divide-y divide-gray-50">
-                  {accounts.map((acc) => (
+                  {accs.map((acc) => (
                     <div key={acc.id} className="flex items-center gap-4 py-2.5">
                       <span className="text-xs font-mono text-gray-400 w-12 shrink-0">{acc.account_code}</span>
                       <span className="text-sm text-gray-900 flex-1">{acc.account_name}</span>
@@ -177,10 +209,11 @@ export default function ChartOfAccountsPage() {
                 Cancel
               </button>
               <button
-                onClick={() => setShowModal(false)}
-                className="flex-1 text-sm bg-blue-600 text-white py-1.5 rounded-md hover:bg-blue-700"
+                onClick={handleSaveAccount}
+                disabled={saving}
+                className="flex-1 text-sm bg-blue-600 text-white py-1.5 rounded-md hover:bg-blue-700 disabled:opacity-50"
               >
-                Save Account
+                {saving ? "Saving…" : "Save Account"}
               </button>
             </div>
           </div>
