@@ -28,7 +28,7 @@ interface KPIs {
 
 interface RecentClient {
   id: string;
-  name: string;
+  client_name: string;
   gstin: string | null;
   entity_type: string | null;
 }
@@ -244,7 +244,7 @@ export default function DashboardContent() {
         // ── Recent clients ────────────────────────────────────────────────
         const { data: clientsData } = await supabase
           .from("clients")
-          .select("id, name, gstin, entity_type")
+          .select("id, client_name, gstin, entity_type")
           .eq("firm_id", firmId)
           .order("created_at", { ascending: false })
           .limit(5);
@@ -402,7 +402,7 @@ export default function DashboardContent() {
                 <Link key={c.id} href="/clients">
                   <div className="flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors">
                     <div>
-                      <p className="text-sm font-medium text-gray-900">{c.name}</p>
+                      <p className="text-sm font-medium text-gray-900">{c.client_name}</p>
                       {c.gstin && (
                         <p className="text-xs text-gray-400 font-mono mt-0.5">{c.gstin}</p>
                       )}
