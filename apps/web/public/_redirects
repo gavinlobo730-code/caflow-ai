@@ -1,1 +1,2 @@
-/clients/*  /clients/_placeholder/  200
+/clients/:id  /clients/_placeholder/  200
+/accounting/bank-statements/:id  /accounting/bank-statements/_placeholder/  200
