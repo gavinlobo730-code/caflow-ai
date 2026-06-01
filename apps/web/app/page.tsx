@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 import { Users, Clock, AlertTriangle, MessageSquare, Shield, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

@@ -1,5 +1,4 @@
 "use client";
-export const runtime = "edge";
 
 import Link from "next/link";
 import { BookOpen, FileText, BarChart2, Scale, TrendingUp, List, ArrowUpRight, ArrowDownRight } from "lucide-react";

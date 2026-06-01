@@ -1,5 +1,4 @@
 "use client";
-export const runtime = "edge";
 
 import { useState } from "react";
 import { Building2, Calendar, UserCheck, AlertTriangle } from "lucide-react";
