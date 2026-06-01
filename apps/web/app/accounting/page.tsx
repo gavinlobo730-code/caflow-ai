@@ -16,6 +16,7 @@ const NAV_CARDS = [
   { label: "Trial Balance", description: "Verify debit/credit totals", href: "/accounting/trial-balance", icon: Scale },
   { label: "Profit & Loss", description: "Revenue, expenses and net profit", href: "/accounting/profit-loss", icon: TrendingUp },
   { label: "Balance Sheet", description: "Assets, liabilities and equity", href: "/accounting/balance-sheet", icon: BarChart2 },
+  { label: "Bank Statement Import", description: "Import CSV statements from any Indian bank", href: "/accounting/bank-import", icon: ArrowDownRight },
 ];
 
 const statusBadge: Record<string, string> = {
