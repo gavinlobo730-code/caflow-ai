@@ -1,4 +1,5 @@
 "use client";
+export const runtime = "edge";
 
 import { useState, useRef, useEffect } from "react";
 import { Send, Bot, User } from "lucide-react";
