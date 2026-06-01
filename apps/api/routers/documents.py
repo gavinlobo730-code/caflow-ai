@@ -1,9 +1,14 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+import os
+import uuid
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from models.common import api_response
-from mock_data import MOCK_DOCUMENTS
+from repositories.document_repository import document_repo
 from services.activity_service import log_activity
+from core.auth import get_current_user
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
+
+_USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 MOCK_FORM16_EXTRACTION = {
     "employee_name": "Rajesh Kumar Sharma",
@@ -44,13 +49,108 @@ MOCK_GST_INVOICE_EXTRACTION = {
     "place_of_supply": "Maharashtra (27)",
 }
 
+BUCKET = "Documents"
+
 
 @router.get("")
-def list_documents(client_id: str | None = None):
-    docs = MOCK_DOCUMENTS
-    if client_id:
-        docs = [d for d in docs if d["client_id"] == client_id]
+def list_documents(
+    client_id: str | None = None,
+    current_user: dict = Depends(get_current_user),
+):
+    docs = document_repo.find_all(firm_id=current_user["firm_id"], client_id=client_id)
     return api_response(True, {"documents": docs, "total": len(docs)})
+
+
+@router.post("/upload")
+async def upload_document(
+    file: UploadFile = File(...),
+    document_type: str = Form(...),
+    client_id: str = Form(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Upload a document to Supabase Storage and persist metadata.
+    Returns a signed download URL valid for 1 hour.
+    """
+    firm_id = current_user["firm_id"]
+    file_id = str(uuid.uuid4())
+    safe_name = file.filename or "upload"
+    storage_path = f"{firm_id}/{client_id}/{document_type}/{file_id}_{safe_name}"
+
+    content = await file.read()
+
+    if _USE_MOCK:
+        # In mock mode just store metadata — no real upload
+        doc = document_repo.create({
+            "client_id": client_id,
+            "firm_id": firm_id,
+            "document_type": document_type,
+            "file_name": safe_name,
+            "file_path": storage_path,
+            "storage_path": storage_path,
+            "file_size_bytes": len(content),
+            "review_status": "pending_review",
+            "uploaded_by": current_user.get("auth_user_id"),
+        })
+        return api_response(True, {"document": doc, "download_url": None})
+
+    from core.supabase_client import get_supabase
+    sb = get_supabase()
+
+    upload_result = sb.storage.from_(BUCKET).upload(
+        path=storage_path,
+        file=content,
+        file_options={"content-type": file.content_type or "application/octet-stream"},
+    )
+
+    if hasattr(upload_result, "error") and upload_result.error:
+        raise HTTPException(status_code=500, detail=f"Storage upload failed: {upload_result.error}")
+
+    doc = document_repo.create({
+        "client_id": client_id,
+        "firm_id": firm_id,
+        "document_type": document_type,
+        "file_name": safe_name,
+        "file_path": storage_path,
+        "storage_path": storage_path,
+        "storage_bucket": BUCKET,
+        "file_size_bytes": len(content),
+        "review_status": "pending_review",
+        "uploaded_by": current_user.get("auth_user_id"),
+    })
+
+    signed = sb.storage.from_(BUCKET).create_signed_url(storage_path, expires_in=3600)
+    download_url = signed.get("signedURL") if isinstance(signed, dict) else None
+
+    log_activity(
+        action="document_uploaded",
+        description=f"{document_type} uploaded: {safe_name}",
+        client_id=client_id,
+        entity_type="document",
+    )
+
+    return api_response(True, {"document": doc, "download_url": download_url})
+
+
+@router.get("/{doc_id}/download-url")
+def get_download_url(
+    doc_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Generate a fresh signed download URL for a document."""
+    doc = document_repo.get_or_raise(doc_id)
+
+    if doc.get("firm_id") and doc["firm_id"] != current_user["firm_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if _USE_MOCK or not doc.get("storage_path"):
+        return api_response(True, {"download_url": None})
+
+    from core.supabase_client import get_supabase
+    sb = get_supabase()
+    signed = sb.storage.from_(BUCKET).create_signed_url(doc["storage_path"], expires_in=3600)
+    download_url = signed.get("signedURL") if isinstance(signed, dict) else None
+    return api_response(True, {"download_url": download_url})
 
 
 @router.post("/parse")
@@ -58,8 +158,8 @@ async def parse_document(
     file: UploadFile = File(...),
     document_type: str = Form(...),
     client_id: str = Form(None),
+    current_user: dict = Depends(get_current_user),
 ):
-    # TODO: Replace mock with Claude API vision call
     allowed = {"form16": "FORM16", "gst_invoice": "GST_INVOICE",
                "FORM16": "FORM16", "GST_INVOICE": "GST_INVOICE"}
     if document_type not in allowed:

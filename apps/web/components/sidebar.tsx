@@ -8,9 +8,10 @@ import {
   BookOpen, FileText, Receipt, Calculator, Building2,
   Calendar, MessageSquare, BarChart3, Settings,
   ChevronLeft, ChevronRight, Landmark, Shield,
-  FileStack, ShieldAlert, Sparkles, Bell,
+  FileStack, ShieldAlert, Sparkles, Bell, LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth/AuthContext";
 
 const NAV_GROUPS = [
   {
@@ -52,6 +53,7 @@ const NAV_GROUPS = [
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
+  const { user, signOut } = useAuth();
 
   return (
     <aside
@@ -118,17 +120,26 @@ export function Sidebar() {
       {/* User */}
       <div className={cn(
         "border-t border-gray-100 p-3 flex items-center gap-2.5",
-        collapsed && "justify-center"
+        collapsed ? "justify-center flex-col" : ""
       )}>
         <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-semibold shrink-0">
-          GL
+          {user?.email?.slice(0, 2).toUpperCase() ?? "CA"}
         </div>
         {!collapsed && (
-          <div className="min-w-0">
-            <p className="text-xs font-semibold text-gray-900 truncate">Gavin Lobo, CA</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-gray-900 truncate">
+              {user?.email ?? "User"}
+            </p>
             <p className="text-[11px] text-gray-400 truncate">Partner</p>
           </div>
         )}
+        <button
+          onClick={signOut}
+          title="Sign out"
+          className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors shrink-0"
+        >
+          <LogOut size={14} />
+        </button>
       </div>
     </aside>
   );
