@@ -65,7 +65,10 @@ export default function AIAssistantPage() {
         }
       );
 
-      if (!res.ok) throw new Error("AI service error. Please try again.");
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson?.error?.message ?? `Gemini error ${res.status}`);
+      }
 
       const json = await res.json();
       const reply: string = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
