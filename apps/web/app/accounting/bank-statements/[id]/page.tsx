@@ -1,9 +1,9 @@
-import ClientWorkspacePage from "./ClientWorkspacePage";
+import StatementDetailClient from "./StatementDetailClient";
 
 export function generateStaticParams() {
   return [{ id: "_placeholder" }];
 }
 
 export default function Page() {
-  return <ClientWorkspacePage />;
+  return <StatementDetailClient />;
 }

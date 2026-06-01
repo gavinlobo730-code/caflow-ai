@@ -7,8 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { getClients } from "@/lib/data/clients";
 import { getTasks } from "@/lib/data/tasks";
-import { getComplianceCalendar } from "@/lib/data/compliance";
-import { getTransactions } from "@/lib/data/transactions";
+import { getComplianceCalendar, type ComplianceEntry } from "@/lib/data/compliance";
+import { getTransactions, type Transaction } from "@/lib/data/transactions";
+import type { Client, Task } from "@/lib/types";
 
 const statusColor: Record<string, string> = {
   review_required: "bg-amber-100 text-amber-700",
@@ -18,21 +19,6 @@ const statusColor: Record<string, string> = {
   completed: "bg-green-100 text-green-700",
 };
 
-function LoadingSpinner() {
-  return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6 animate-pulse">
-      <div className="h-8 bg-gray-200 rounded w-64" />
-      <div className="grid grid-cols-6 gap-3">
-        {[1, 2, 3, 4, 5, 6].map((i) => <div key={i} className="h-28 bg-gray-100 rounded-xl" />)}
-      </div>
-      <div className="grid grid-cols-5 gap-6">
-        <div className="col-span-3 h-64 bg-gray-100 rounded-xl" />
-        <div className="col-span-2 h-64 bg-gray-100 rounded-xl" />
-      </div>
-    </div>
-  );
-}
-
 interface LiveStats {
   activeClients: string;
   tasksDueToday: string;
@@ -40,6 +26,10 @@ interface LiveStats {
   gstDeadlines7Days: string;
   pendingInvoices: string;
   waitingClient: string;
+  totalOpenTasks: string;
+  reviewRequired: string;
+  complianceDueWeek: string;
+  complianceOverdue: string;
 }
 
 export default function DashboardContent() {
@@ -51,9 +41,10 @@ export default function DashboardContent() {
       try {
         const today = new Date().toISOString().split("T")[0];
         const in7Days = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
+        const in14Days = new Date(Date.now() + 14 * 86400000).toISOString().split("T")[0];
         const monthStart = today.slice(0, 7) + "-01";
 
-        const [clients, tasks, compliance, transactions] = await Promise.all([
+        const [clients, tasks, compliance, transactions]: [Client[], Task[], ComplianceEntry[], Transaction[]] = await Promise.all([
           getClients().catch(() => []),
           getTasks().catch(() => []),
           getComplianceCalendar().catch(() => []),
@@ -70,6 +61,14 @@ export default function DashboardContent() {
           t.status === "draft" && t.transaction_date >= monthStart
         ).length;
         const waitingClient = tasks.filter(t => t.status === "waiting_client").length;
+        const totalOpenTasks = tasks.filter(t => t.status !== "completed").length;
+        const reviewRequired = tasks.filter(t => t.status === "review_required").length;
+        const complianceDueWeek = compliance.filter(c =>
+          c.due_date >= today && c.due_date <= in14Days && c.filing_status !== "filed"
+        ).length;
+        const complianceOverdue = compliance.filter(c =>
+          c.due_date < today && c.filing_status !== "filed"
+        ).length;
 
         setStats({
           activeClients: String(activeClients),
@@ -78,10 +77,18 @@ export default function DashboardContent() {
           gstDeadlines7Days: String(gstDeadlines7Days),
           pendingInvoices: String(pendingInvoices),
           waitingClient: String(waitingClient),
+          totalOpenTasks: String(totalOpenTasks),
+          reviewRequired: String(reviewRequired),
+          complianceDueWeek: String(complianceDueWeek),
+          complianceOverdue: String(complianceOverdue),
         });
       } catch {
-        // silently degrade — show zeros
-        setStats({ activeClients: "0", tasksDueToday: "0", overdueTasks: "0", gstDeadlines7Days: "0", pendingInvoices: "0", waitingClient: "0" });
+        setStats({
+          activeClients: "0", tasksDueToday: "0", overdueTasks: "0",
+          gstDeadlines7Days: "0", pendingInvoices: "0", waitingClient: "0",
+          totalOpenTasks: "0", reviewRequired: "0", complianceDueWeek: "0",
+          complianceOverdue: "0",
+        });
       } finally {
         setLoading(false);
       }
@@ -89,7 +96,12 @@ export default function DashboardContent() {
     load();
   }, []);
 
-  const s = stats ?? { activeClients: "…", tasksDueToday: "…", overdueTasks: "…", gstDeadlines7Days: "…", pendingInvoices: "…", waitingClient: "…" };
+  const s = stats ?? {
+    activeClients: "…", tasksDueToday: "…", overdueTasks: "…",
+    gstDeadlines7Days: "…", pendingInvoices: "…", waitingClient: "…",
+    totalOpenTasks: "…", reviewRequired: "…", complianceDueWeek: "…",
+    complianceOverdue: "…",
+  };
 
   const DASHBOARD_STATS = [
     { label: "Active Clients", value: loading ? "…" : s.activeClients, icon: Users, color: "text-blue-600", bg: "bg-blue-50", href: "/clients" },
@@ -140,10 +152,10 @@ export default function DashboardContent() {
             <CardContent>
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  { label: "Total Open", value: s.total_open_tasks, status: "in_progress" },
-                  { label: "Waiting Client", value: s.waiting_client, status: "waiting_client" },
-                  { label: "Review Required", value: s.review_required, status: "review_required" },
-                  { label: "Due This Week", value: s.compliance_due_week ?? 0, status: "todo" },
+                  { label: "Total Open", value: loading ? "…" : s.totalOpenTasks, status: "in_progress" },
+                  { label: "Waiting Client", value: loading ? "…" : s.waitingClient, status: "waiting_client" },
+                  { label: "Review Required", value: loading ? "…" : s.reviewRequired, status: "review_required" },
+                  { label: "Compliance Due (14d)", value: loading ? "…" : s.complianceDueWeek, status: "todo" },
                 ].map((item) => (
                   <div key={item.label} className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50">
                     <span className="text-sm text-gray-700">{item.label}</span>
@@ -165,10 +177,10 @@ export default function DashboardContent() {
             </CardHeader>
             <CardContent className="space-y-3">
               {[
-                { label: "Overdue Filings", value: s.compliance_overdue ?? 0, color: "text-red-600" },
-                { label: "Due This Week", value: s.compliance_due_week ?? 0, color: "text-amber-600" },
-                { label: "High Risk Clients", value: s.high_risk_clients ?? 0, color: "text-orange-600" },
-                { label: "Documents Pending", value: s.documents_pending_review ?? 0, color: "text-blue-600" },
+                { label: "Overdue Filings", value: loading ? "…" : s.complianceOverdue, color: "text-red-600" },
+                { label: "Due Next 14 Days", value: loading ? "…" : s.complianceDueWeek, color: "text-amber-600" },
+                { label: "GST Deadlines (7d)", value: loading ? "…" : s.gstDeadlines7Days, color: "text-orange-600" },
+                { label: "Pending Invoices", value: loading ? "…" : s.pendingInvoices, color: "text-blue-600" },
               ].map((item) => (
                 <div key={item.label} className="flex items-center justify-between">
                   <span className="text-xs text-gray-600">{item.label}</span>
@@ -179,80 +191,6 @@ export default function DashboardContent() {
           </Card>
         </div>
       </div>
-
-      {/* Risk Overview */}
-      {riskStats && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Link href="/risks?severity=critical">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
-              <CardContent className="pt-5 pb-4">
-                <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center mb-3">
-                  <AlertTriangle className="text-red-600" size={18} />
-                </div>
-                <p className="text-2xl font-bold text-gray-900">{riskStats.critical}</p>
-                <p className="text-xs text-gray-500 mt-0.5">Critical Risks</p>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/risks?severity=high">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
-              <CardContent className="pt-5 pb-4">
-                <div className="w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center mb-3">
-                  <AlertTriangle className="text-orange-600" size={18} />
-                </div>
-                <p className="text-2xl font-bold text-gray-900">{riskStats.high}</p>
-                <p className="text-xs text-gray-500 mt-0.5">High Risks</p>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/risks">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
-              <CardContent className="pt-5 pb-4">
-                <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center mb-3">
-                  <Shield className="text-amber-600" size={18} />
-                </div>
-                <p className="text-2xl font-bold text-gray-900">{riskStats.total_open}</p>
-                <p className="text-xs text-gray-500 mt-0.5">Open Risks Total</p>
-              </CardContent>
-            </Card>
-          </Link>
-        </div>
-      )}
-
-      {/* AI Insights Feed */}
-      {insightsFeed.length > 0 && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <CardTitle className="text-sm">AI Insights Feed</CardTitle>
-            <Link href="/ai-assistant" className="text-xs text-blue-600 hover:underline">Open Copilot →</Link>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {insightsFeed.map((insight) => (
-              <div key={insight.id} className="flex items-start gap-3 py-2 border-b border-gray-50 last:border-0">
-                <Badge
-                  className={`text-xs shrink-0 ${
-                    insight.severity === "critical" ? "bg-red-100 text-red-700" :
-                    insight.severity === "high" ? "bg-orange-100 text-orange-700" :
-                    insight.severity === "medium" ? "bg-amber-100 text-amber-700" :
-                    insight.severity === "low" ? "bg-green-100 text-green-700" :
-                    "bg-gray-100 text-gray-600"
-                  }`}
-                >
-                  {insight.severity}
-                </Badge>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900">{insight.title}</p>
-                  <p className="text-xs text-gray-500 mt-0.5 truncate">{insight.description}</p>
-                </div>
-                {insight.client_name && (
-                  <span className="text-xs text-gray-400 shrink-0">{insight.client_name}</span>
-                )}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
     </div>
   );
 }
