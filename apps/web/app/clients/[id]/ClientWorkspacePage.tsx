@@ -1,81 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import {
   FileText, Clock, Bot,
   ChevronRight, Building2, Mail, Phone, MapPin, Calendar,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { ClientWorkspace, ComplianceTask, AIInsight, ComplianceRecord, ComplianceRecordStatus, ClientHealthScore } from "@/lib/types";
+import type { ClientWorkspace, ComplianceTask, AIInsight, ComplianceRecord, ComplianceRecordStatus, ClientHealthScore, ApiResponse } from "@/lib/types";
 import { statusColor, priorityColor, formatDueDateLabel } from "@/lib/services/compliance";
 import { formatRelativeTime, formatDate, ENTITY_TYPE_LABELS } from "@/lib/services/formatting";
 
-const MOCK_WORKSPACE: ClientWorkspace = {
-  profile: {
-    id: "c-001",
-    client_name: "Sharma Enterprises",
-    entity_type: "Proprietorship",
-    pan: "AABCS1429B",
-    gstin: "27AABCS1429B1ZB",
-    mobile: "+91 98765 43210",
-    email: "sharma@sharmaenterprises.in",
-    address_line1: "12, MG Road",
-    city: "Mumbai",
-    state: "Maharashtra",
-    pincode: "400001",
-    state_code: "27",
-    gst_filing_frequency: "monthly",
-    status: "active",
-    created_at: new Date(Date.now() - 180 * 86400000).toISOString(),
-  },
-  compliance_tasks: [
-    { id: "ct-001", client_id: "c-001", compliance_type: "GSTR1", period_start: "2025-04-01", period_end: "2025-04-30", due_date: new Date(Date.now() + 3 * 86400000).toISOString().split("T")[0], status: "pending", priority: "critical", days_remaining: 3, assigned_to: "tm-001" },
-    { id: "ct-002", client_id: "c-001", compliance_type: "GSTR3B", period_start: "2025-04-01", period_end: "2025-04-30", due_date: new Date(Date.now() + 18 * 86400000).toISOString().split("T")[0], status: "pending", priority: "medium", days_remaining: 18, assigned_to: "tm-001" },
-  ],
-  upcoming_deadlines: [
-    { id: "ct-001", client_id: "c-001", compliance_type: "GSTR1", period_start: "2025-04-01", period_end: "2025-04-30", due_date: new Date(Date.now() + 3 * 86400000).toISOString().split("T")[0], status: "pending", priority: "critical", days_remaining: 3, assigned_to: "tm-001" },
-  ],
-  documents: [
-    { id: "doc-001", client_id: "c-001", document_type: "GST_INVOICE", file_name: "invoice_march_2024.pdf", file_path: "/uploads/c-001/invoice_march_2024.pdf", financial_year: "2024-25", review_status: "approved", confidence_score: 0.97, upload_date: new Date(Date.now() - 5 * 86400000).toISOString() },
-    { id: "doc-002", client_id: "c-001", document_type: "FORM16", file_name: "form16_2024_25.pdf", file_path: "/uploads/c-001/form16_2024_25.pdf", financial_year: "2024-25", review_status: "pending_review", confidence_score: 0.91, upload_date: new Date(Date.now() - 2 * 86400000).toISOString() },
-  ],
-  recent_activity: [
-    { id: "al-001", client_id: "c-001", actor_id: "tm-001", action: "document_uploaded", description: "GST invoice uploaded: invoice_march_2024.pdf", entity_type: "document", entity_id: "doc-001", created_at: new Date(Date.now() - 5 * 86400000).toISOString() },
-    { id: "al-002", client_id: "c-001", actor_id: "tm-001", action: "compliance_task_created", description: "GSTR-1 task created for current period", entity_type: "compliance_task", entity_id: "ct-001", created_at: new Date(Date.now() - 10 * 86400000).toISOString() },
-    { id: "al-003", client_id: "c-001", actor_id: "tm-001", action: "reminder_sent", description: "WhatsApp compliance reminder sent", entity_type: undefined, entity_id: undefined, created_at: new Date(Date.now() - 86400000).toISOString() },
-  ],
-  ai_insights: [
-    { id: "ai-001", client_id: "c-001", insight_type: "DEADLINE_APPROACHING", severity: "high", title: "GSTR-1 due in 3 days", description: "GSTR-1 for the current period is approaching. Filing not yet initiated.", recommended_action: "Begin GSTR-1 preparation immediately. Reconcile sales invoices.", status: "open", created_at: new Date().toISOString() },
-  ],
-  summary: {
-    total_tasks: 2,
-    overdue_count: 0,
-    pending_count: 2,
-    filed_count: 0,
-    document_count: 2,
-    open_insights: 1,
-  },
-};
-
-const MOCK_COMPLIANCE_RECORDS: ComplianceRecord[] = [
-  { id: "cr-001", client_id: "c-001", client_name: "Sharma Enterprises", compliance_type: "GST", period_label: "Apr 2025", period_start: "2025-04-01", period_end: "2025-04-30", status: "In Progress", due_date: "2026-06-04", assigned_to: "tm-001", priority: "critical", risk_score: 75, created_at: "2026-05-22", updated_at: "2026-05-31" },
-  { id: "cr-002", client_id: "c-001", client_name: "Sharma Enterprises", compliance_type: "Income Tax", period_label: "FY 2024-25", period_start: "2024-04-01", period_end: "2025-03-31", status: "Awaiting Documents", due_date: "2025-07-31", assigned_to: "tm-001", priority: "medium", risk_score: 25, created_at: "2026-05-12", updated_at: "2026-05-27" },
-  { id: "cr-003", client_id: "c-001", client_name: "Sharma Enterprises", compliance_type: "TDS", period_label: "Q4 FY 2024-25", period_start: "2025-01-01", period_end: "2025-03-31", status: "Filed", due_date: "2025-05-31", assigned_to: "tm-001", priority: "low", risk_score: 0, created_at: "2026-04-02", updated_at: "2026-05-29" },
-];
-
-const MOCK_HEALTH: ClientHealthScore = {
-  client_id: "c-001",
-  client_name: "Sharma Enterprises",
-  health_score: 75,
-  risk_level: "medium",
-  overdue_records: 0,
-  overdue_tasks: 0,
-  missing_documents: 1,
-  breakdown: [
-    { label: "Missing/awaited document", deduction: 5 },
-  ],
-};
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const STATUS_COLORS: Record<ComplianceRecordStatus, string> = {
   "Not Started": "bg-gray-100 text-gray-600",
@@ -100,6 +37,20 @@ const reviewBadge: Record<string, string> = {
   pending_review: "bg-amber-100 text-amber-700",
   rejected: "bg-red-100 text-red-700",
 };
+
+function LoadingSkeleton() {
+  return (
+    <div className="p-6 max-w-7xl mx-auto space-y-6 animate-pulse">
+      <div className="h-8 bg-gray-200 rounded w-64" />
+      <div className="grid grid-cols-5 gap-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-20 bg-gray-100 rounded-lg" />
+        ))}
+      </div>
+      <div className="h-64 bg-gray-100 rounded-xl" />
+    </div>
+  );
+}
 
 function SummaryCard({ label, value, color }: { label: string; value: number; color: string }) {
   return (
@@ -173,8 +124,62 @@ function healthBg(score: number): string {
 }
 
 export default function ClientWorkspacePage() {
-  const [workspace] = useState<ClientWorkspace>(MOCK_WORKSPACE);
+  const params = useParams();
+  const id = Array.isArray(params.id) ? params.id[0] : params.id;
+
+  const [workspace, setWorkspace] = useState<ClientWorkspace | null>(null);
+  const [complianceRecords, setComplianceRecords] = useState<ComplianceRecord[]>([]);
+  const [health, setHealth] = useState<ClientHealthScore | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
+
+  useEffect(() => {
+    if (!id || id === "_placeholder") return;
+
+    async function loadData() {
+      setLoading(true);
+      setError(null);
+      try {
+        const [wsRes, crRes, hRes] = await Promise.all([
+          fetch(`${BASE_URL}/api/clients/${id}`).then((r) => r.json()) as Promise<ApiResponse<ClientWorkspace>>,
+          fetch(`${BASE_URL}/api/compliance-records?client_id=${id}`).then((r) => r.json()) as Promise<ApiResponse<ComplianceRecord[]>>,
+          fetch(`${BASE_URL}/api/compliance-records/client/${id}/health`).then((r) => r.json()) as Promise<ApiResponse<ClientHealthScore>>,
+        ]);
+        if (!wsRes.success) { setError(wsRes.error ?? "Failed to load workspace"); return; }
+        setWorkspace(wsRes.data);
+        if (crRes.success) setComplianceRecords(crRes.data);
+        if (hRes.success) setHealth(hRes.data);
+      } catch {
+        setError("Failed to load client workspace");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadData();
+  }, [id]);
+
+  if (!id || id === "_placeholder") {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <p className="text-gray-500 text-sm">Loading client…</p>
+      </div>
+    );
+  }
+
+  if (loading) return <LoadingSkeleton />;
+
+  if (error || !workspace) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">
+          {error ?? "Client not found"}
+        </div>
+      </div>
+    );
+  }
+
   const { profile, summary, compliance_tasks, documents, recent_activity, ai_insights } = workspace;
 
   return (
@@ -311,30 +316,32 @@ export default function ClientWorkspacePage() {
       {activeTab === "compliance" && (
         <div className="space-y-6">
           {/* Health score */}
-          <Card>
-            <CardContent className={`pt-5 pb-4 ${healthBg(MOCK_HEALTH.health_score)}`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Client Health Score</p>
-                  <p className={`text-4xl font-bold ${healthColor(MOCK_HEALTH.health_score)}`}>
-                    {MOCK_HEALTH.health_score}<span className="text-lg font-normal">/100</span>
-                  </p>
-                  <p className={`text-sm font-medium mt-1 capitalize ${healthColor(MOCK_HEALTH.health_score)}`}>
-                    {MOCK_HEALTH.risk_level} risk
-                  </p>
+          {health && (
+            <Card>
+              <CardContent className={`pt-5 pb-4 ${healthBg(health.health_score)}`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Client Health Score</p>
+                    <p className={`text-4xl font-bold ${healthColor(health.health_score)}`}>
+                      {health.health_score}<span className="text-lg font-normal">/100</span>
+                    </p>
+                    <p className={`text-sm font-medium mt-1 capitalize ${healthColor(health.health_score)}`}>
+                      {health.risk_level} risk
+                    </p>
+                  </div>
+                  <div className="space-y-1 text-right">
+                    {health.breakdown.map((b, i) => (
+                      <p key={i} className="text-xs text-gray-600">-{b.deduction} · {b.label}</p>
+                    ))}
+                  </div>
                 </div>
-                <div className="space-y-1 text-right">
-                  {MOCK_HEALTH.breakdown.map((b, i) => (
-                    <p key={i} className="text-xs text-gray-600">-{b.deduction} · {b.label}</p>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Compliance records grouped by type */}
           {(["GST", "Income Tax", "TDS"] as const).map((type) => {
-            const records = MOCK_COMPLIANCE_RECORDS.filter((r) => r.compliance_type === type);
+            const records = complianceRecords.filter((r) => r.compliance_type === type);
             if (records.length === 0) return null;
             return (
               <Card key={type}>

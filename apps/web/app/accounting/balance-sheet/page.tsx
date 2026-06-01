@@ -1,53 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ChevronLeft, CheckCircle, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatPaise } from "@/lib/services/formatting";
-import type { BalanceSheet, BalanceSheetSection } from "@/lib/types";
+import type { BalanceSheet, BalanceSheetSection, ApiResponse } from "@/lib/types";
 
-// Mock balance sheet — all amounts in paise (integer), never float
-const MOCK_BS: BalanceSheet = {
-  as_of_date: "2025-05-31",
-  assets: [
-    {
-      label: "Assets",
-      lines: [
-        { account_name: "Bank — HDFC Current Account", balance_paise: 44300000 },
-        { account_name: "Trade Receivables", balance_paise: 3540000 },
-        { account_name: "GST Input Tax Credit", balance_paise: 0 },
-        { account_name: "Advance Tax Paid", balance_paise: 0 },
-        { account_name: "Office Equipment", balance_paise: 0 },
-        { account_name: "Furniture & Fixtures", balance_paise: 0 },
-      ].filter((l) => l.balance_paise > 0),
-      total_paise: 47840000,
-    },
-  ],
-  liabilities: [
-    {
-      label: "Liabilities",
-      lines: [
-        { account_name: "GST Output Tax Payable", balance_paise: 1080000 },
-        { account_name: "TDS Payable", balance_paise: 350000 },
-      ],
-      total_paise: 1430000,
-    },
-  ],
-  equity: [
-    {
-      label: "Equity",
-      lines: [
-        { account_name: "Capital Account", balance_paise: 50000000 },
-        { account_name: "Net Loss (Current Year)", balance_paise: -3590000 },
-      ],
-      total_paise: 46410000,
-    },
-  ],
-  total_assets_paise: 47840000,
-  total_liabilities_equity_paise: 47840000,
-  is_balanced: true,
-};
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const TODAY = new Date().toISOString().split("T")[0];
+
+function LoadingSpinner() {
+  return (
+    <div className="p-6 max-w-4xl mx-auto space-y-4 animate-pulse">
+      <div className="h-6 bg-gray-200 rounded w-48" />
+      <div className="h-10 bg-gray-100 rounded w-48" />
+      <div className="grid grid-cols-2 gap-6">
+        <div className="h-64 bg-gray-100 rounded-xl" />
+        <div className="h-64 bg-gray-100 rounded-xl" />
+      </div>
+    </div>
+  );
+}
 
 function BSSection({ section }: { section: BalanceSheetSection }) {
   return (
@@ -69,8 +43,33 @@ function BSSection({ section }: { section: BalanceSheetSection }) {
 }
 
 export default function BalanceSheetPage() {
-  const [asOfDate, setAsOfDate] = useState("2025-05-31");
-  const bs = MOCK_BS;
+  const [asOfDate, setAsOfDate] = useState(TODAY);
+  const [bs, setBs] = useState<BalanceSheet | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    fetch(`${BASE_URL}/api/accounting/balance-sheet?as_of_date=${asOfDate}`)
+      .then((r) => r.json())
+      .then((res: ApiResponse<BalanceSheet>) => {
+        if (res.success) setBs(res.data);
+        else setError(res.error ?? "Failed to load balance sheet");
+      })
+      .catch(() => setError("Failed to load balance sheet"))
+      .finally(() => setLoading(false));
+  }, [asOfDate]);
+
+  if (loading) return <LoadingSpinner />;
+
+  if (error || !bs) {
+    return (
+      <div className="p-6 max-w-4xl mx-auto">
+        <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error ?? "No data"}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
