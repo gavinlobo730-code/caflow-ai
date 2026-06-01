@@ -1,689 +1,684 @@
 "use client";
 
 /**
- * GST Module — Outward/Inward supplies, GSTR-1, GSTR-3B, TDS summary
- * CGST Act Section 37 (GSTR-1 — Outward Supplies)
- * CGST Act Section 39 (GSTR-3B — Monthly Return)
- * IT Act Section 194 (TDS deduction)
- * All amounts stored and computed in paise (integer arithmetic only).
+ * GST Module — GSTR Filing Tracker & Reconciliation Hub
+ * CGST Act Section 37: GSTR-1 (Outward Supplies) — due 11th of following month
+ * CGST Act Section 39: GSTR-3B (Monthly Summary Return) — due 20th of following month
+ * CGST Act Section 44: GSTR-9 (Annual Return) — due 31st December
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   FileText,
+  Users,
+  CheckCircle,
+  AlertCircle,
+  Clock,
   Plus,
-  RefreshCw,
-  TrendingUp,
-  TrendingDown,
-  Minus,
-  AlertTriangle,
+  X,
+  Calendar,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { InvoiceFormModal } from "@/components/InvoiceFormModal";
+import { getSupabaseClient } from "@/lib/supabase/client";
 import { getClients } from "@/lib/data/clients";
-import {
-  getTransactions,
-  getGSTSummary,
-  type Transaction,
-} from "@/lib/data/transactions";
 import type { Client } from "@/lib/types";
-import { formatPaise, formatDate } from "@/lib/services/formatting";
 
-type GSTSummary = Awaited<ReturnType<typeof getGSTSummary>>;
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-// Indian financial year months (April → March)
-const MONTHS = [
-  "April", "May", "June", "July", "August", "September",
-  "October", "November", "December", "January", "February", "March",
+type FilingStatus = "Pending" | "Filed" | "Overdue";
+type ReturnType = "GSTR-1" | "GSTR-3B" | "GSTR-9";
+
+interface GSTFiling {
+  id: string;
+  client_id: string;
+  client_name: string;
+  gstin: string | null;
+  return_type: ReturnType;
+  period: string; // "MMM YYYY" e.g. "May 2026"
+  due_date: string; // ISO date string
+  status: FilingStatus;
+  filed_date: string | null;
+  created_at: string;
+  firm_id: string;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const TODAY = new Date("2026-06-01");
+
+const RETURN_TYPES: ReturnType[] = ["GSTR-1", "GSTR-3B", "GSTR-9"];
+
+const MONTH_NAMES = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
-function getDefaultMonth() {
-  const now = new Date();
-  const m = now.getMonth() + 1;
-  const y = now.getFullYear();
-  return `${y}-${String(m).padStart(2, "0")}`;
+/**
+ * Build month options for last 12 months (current + 11 prior) in MMM YYYY format.
+ * Financial year runs April–March (CGST Act).
+ */
+function buildMonthOptions(): { value: string; label: string }[] {
+  const options: { value: string; label: string }[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(TODAY.getFullYear(), TODAY.getMonth() - i, 1);
+    const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+    options.push({ value: label, label });
+  }
+  return options;
 }
 
-/** Compute GSTR-1 due date (11th of following month) — CGST Act Section 37 */
-function gstr1DueDate(month: string): string {
-  const [y, m] = month.split("-").map(Number);
-  const next = new Date(y, m, 11); // month is 1-based; Date uses 0-based, so m = next month index
-  return next.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+const MONTH_OPTIONS = buildMonthOptions();
+
+/** Auto-fill due date based on return type and period — CGST Act Sections 37, 39, 44 */
+function getDueDate(returnType: ReturnType, period: string): string {
+  if (returnType === "GSTR-9") {
+    // CGST Act Section 44 — GSTR-9 due 31st December of the following FY
+    const parts = period.split(" ");
+    const year = parseInt(parts[1] ?? "0");
+    return `${year + 1}-12-31`;
+  }
+  // Parse "MMM YYYY" into a date
+  const parts = period.split(" ");
+  if (parts.length < 2) return "";
+  const monthIdx = MONTH_NAMES.indexOf(parts[0]);
+  const year = parseInt(parts[1]);
+  if (monthIdx === -1 || isNaN(year)) return "";
+
+  // Advance to following month
+  const nextMonth = monthIdx === 11 ? 0 : monthIdx + 1;
+  const nextYear = monthIdx === 11 ? year + 1 : year;
+
+  // GSTR-1: 11th of following month — CGST Act Section 37
+  // GSTR-3B: 20th of following month — CGST Act Section 39
+  const dueDay = returnType === "GSTR-1" ? 11 : 20;
+  return `${nextYear}-${String(nextMonth + 1).padStart(2, "0")}-${String(dueDay).padStart(2, "0")}`;
 }
 
-/** Compute GSTR-3B due date (20th of following month) — CGST Act Section 39 */
-function gstr3bDueDate(month: string): string {
-  const [y, m] = month.split("-").map(Number);
-  const next = new Date(y, m, 20);
-  return next.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+/** Format ISO date to readable string */
+function fmtDate(iso: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-const TABS = ["GSTR-1", "GSTR-3B", "Invoices", "Purchases"] as const;
+/** Determine status — Overdue if past due_date and not Filed */
+function computeStatus(dueDate: string, filedDate: string | null): FilingStatus {
+  if (filedDate) return "Filed";
+  const due = new Date(dueDate + "T00:00:00");
+  return TODAY > due ? "Overdue" : "Pending";
+}
+
+// ─── Key deadlines banner ─────────────────────────────────────────────────────
+
+const currentMonth = MONTH_NAMES[TODAY.getMonth()];
+const currentYear = TODAY.getFullYear();
+
+/** CGST Act Section 37: GSTR-1 due 11th of this month (for prior month) */
+const KEY_DEADLINES = [
+  {
+    label: "GSTR-1",
+    date: `11 ${currentMonth} ${currentYear}`,
+    note: "CGST Act Section 37 — Outward Supplies",
+    color: "bg-blue-50 border-blue-200 text-blue-700",
+  },
+  {
+    label: "GSTR-3B",
+    date: `20 ${currentMonth} ${currentYear}`,
+    note: "CGST Act Section 39 — Monthly Summary",
+    color: "bg-amber-50 border-amber-200 text-amber-700",
+  },
+  {
+    label: "GSTR-9",
+    date: `31 Dec ${currentYear}`,
+    note: "CGST Act Section 44 — Annual Return",
+    color: "bg-purple-50 border-purple-200 text-purple-700",
+  },
+];
+
+// ─── Status badge style map ───────────────────────────────────────────────────
+
+const STATUS_STYLE: Record<FilingStatus, string> = {
+  Filed: "bg-green-100 text-green-700",
+  Pending: "bg-amber-100 text-amber-700",
+  Overdue: "bg-red-100 text-red-700",
+};
+
+// ─── Add Filing Modal ─────────────────────────────────────────────────────────
+
+interface AddFilingModalProps {
+  clients: Client[];
+  firmId: string;
+  onClose: () => void;
+  onAdded: (filing: GSTFiling) => void;
+}
+
+function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalProps) {
+  const [clientId, setClientId] = useState(clients[0]?.id ?? "");
+  const [returnType, setReturnType] = useState<ReturnType>("GSTR-1");
+  const [period, setPeriod] = useState(MONTH_OPTIONS[MONTH_OPTIONS.length - 1]?.value ?? "");
+  const [dueDate, setDueDate] = useState(() => getDueDate("GSTR-1", MONTH_OPTIONS[MONTH_OPTIONS.length - 1]?.value ?? ""));
+  const [status, setStatus] = useState<FilingStatus>("Pending");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Auto-fill due date when return type or period changes
+  useEffect(() => {
+    setDueDate(getDueDate(returnType, period));
+  }, [returnType, period]);
+
+  async function handleSave() {
+    if (!clientId || !period) {
+      setErr("Please fill all required fields.");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      const sb = getSupabaseClient();
+      const selectedClient = clients.find((c) => c.id === clientId);
+      const filedDate = status === "Filed" ? TODAY.toISOString().slice(0, 10) : null;
+
+      // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+      const { data, error } = await sb
+        .from("compliance_entries")
+        .insert({
+          firm_id: firmId,
+          client_id: clientId,
+          client_name: selectedClient?.client_name ?? "",
+          gstin: selectedClient?.gstin ?? null,
+          category: "GST",
+          return_type: returnType,
+          period,
+          due_date: dueDate,
+          status: filedDate ? "Filed" : computeStatus(dueDate, null),
+          filed_date: filedDate,
+        })
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      const filing = data as GSTFiling;
+      filing.status = computeStatus(filing.due_date, filing.filed_date);
+      onAdded(filing);
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to save filing.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">Add GST Filing</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {err && (
+          <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{err}</p>
+        )}
+
+        {/* Client */}
+        <div>
+          <label className="text-xs font-medium text-gray-700 block mb-1">Client</label>
+          <select
+            value={clientId}
+            onChange={(e) => setClientId(e.target.value)}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.client_name}
+                {c.gstin ? ` · ${c.gstin}` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Return Type */}
+        <div>
+          <label className="text-xs font-medium text-gray-700 block mb-1">Return Type</label>
+          <select
+            value={returnType}
+            onChange={(e) => setReturnType(e.target.value as ReturnType)}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {RETURN_TYPES.map((r) => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Period */}
+        <div>
+          <label className="text-xs font-medium text-gray-700 block mb-1">Period</label>
+          <select
+            value={period}
+            onChange={(e) => setPeriod(e.target.value)}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {MONTH_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Due Date — auto-filled, editable */}
+        <div>
+          <label className="text-xs font-medium text-gray-700 block mb-1">
+            Due Date
+            <span className="text-gray-400 font-normal ml-1">(auto-filled, editable)</span>
+          </label>
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <p className="text-[10px] text-gray-400 mt-1">
+            {returnType === "GSTR-1" && "CGST Act Section 37 — 11th of following month"}
+            {returnType === "GSTR-3B" && "CGST Act Section 39 — 20th of following month"}
+            {returnType === "GSTR-9" && "CGST Act Section 44 — 31st December"}
+          </p>
+        </div>
+
+        {/* Status */}
+        <div>
+          <label className="text-xs font-medium text-gray-700 block mb-1">Status</label>
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as FilingStatus)}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="Pending">Pending</option>
+            <option value="Filed">Filed</option>
+            <option value="Overdue">Overdue</option>
+          </select>
+        </div>
+
+        <div className="flex gap-2 pt-2">
+          <button
+            onClick={onClose}
+            className="flex-1 border border-gray-200 text-gray-600 text-sm py-2 rounded-lg hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save Filing"}
+          </button>
+        </div>
+
+        <p className="text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1.5">
+          {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
+          CAflow never auto-submits to the GST portal. Always file manually after CA review.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function GSTPage() {
+  const [filings, setFilings] = useState<GSTFiling[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [clientId, setClientId] = useState("");
-  const [month, setMonth] = useState(getDefaultMonth());
-  const [activeTab, setActiveTab] = useState<0 | 1 | 2 | 3>(0);
-  const [gstSummary, setGstSummary] = useState<GSTSummary | null>(null);
-  const [invoices, setInvoices] = useState<Transaction[]>([]);
-  const [purchases, setPurchases] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
-  const [invoiceType, setInvoiceType] = useState<"sales_invoice" | "purchase_invoice">("sales_invoice");
+  const [firmId, setFirmId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [filterPeriod, setFilterPeriod] = useState("all");
 
   useEffect(() => {
-    getClients()
-      .then((list) => {
-        setClients(list);
-        if (list.length > 0) setClientId(list[0].id);
-      })
-      .catch(() => {});
+    async function load() {
+      try {
+        setLoading(true);
+        const sb = getSupabaseClient();
+
+        // Resolve firm_id from authenticated user
+        const {
+          data: { session },
+        } = await sb.auth.getSession();
+
+        let resolvedFirmId = "";
+        if (session?.user?.id) {
+          const { data: userData } = await sb
+            .from("users")
+            .select("firm_id")
+            .eq("auth_user_id", session.user.id)
+            .single();
+          resolvedFirmId = userData?.firm_id ?? "";
+        }
+        setFirmId(resolvedFirmId);
+
+        const cls = await getClients().catch(() => [] as Client[]);
+        setClients(cls);
+
+        // Load compliance_entries filtered by firm and GST category
+        if (resolvedFirmId) {
+          const { data, error: dbErr } = await sb
+            .from("compliance_entries")
+            .select("*")
+            .eq("firm_id", resolvedFirmId)
+            .eq("category", "GST")
+            .order("due_date", { ascending: true });
+
+          if (dbErr) {
+            // Table may not exist yet — show empty state instead of crashing
+            if (dbErr.code === "42P01" || dbErr.message?.includes("does not exist")) {
+              setFilings([]);
+            } else {
+              throw new Error(dbErr.message);
+            }
+          } else {
+            const rows = (data ?? []) as GSTFiling[];
+            // Recompute live status
+            setFilings(rows.map((r) => ({ ...r, status: computeStatus(r.due_date, r.filed_date) })));
+          }
+        } else {
+          setFilings([]);
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load GST data.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
   }, []);
 
-  const refresh = useCallback(async () => {
-    if (!clientId) return;
-    setLoading(true);
-    try {
-      const [summary, inv, pur] = await Promise.all([
-        getGSTSummary(clientId, month),
-        getTransactions(clientId, "sales_invoice"),
-        getTransactions(clientId, "purchase_invoice"),
-      ]);
-      setGstSummary(summary);
-      // Filter invoices/purchases to the selected month
-      const [y, m] = month.split("-");
-      const prefix = `${y}-${m}`;
-      setInvoices(inv.filter((t) => t.transaction_date.startsWith(prefix)));
-      setPurchases(pur.filter((t) => t.transaction_date.startsWith(prefix)));
-    } catch {
-      // degrade silently
-    } finally {
-      setLoading(false);
+  // ── Mark as Filed ──────────────────────────────────────────────────────────
+  async function handleMarkFiled(id: string) {
+    const sb = getSupabaseClient();
+    // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    const { error: dbErr } = await sb
+      .from("compliance_entries")
+      .update({ status: "Filed", filed_date: TODAY.toISOString().slice(0, 10) })
+      .eq("id", id);
+
+    if (!dbErr) {
+      setFilings((prev) =>
+        prev.map((f) =>
+          f.id === id
+            ? { ...f, status: "Filed", filed_date: TODAY.toISOString().slice(0, 10) }
+            : f
+        )
+      );
     }
-  }, [clientId, month]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  function openModal(type: "sales_invoice" | "purchase_invoice") {
-    setInvoiceType(type);
-    setShowInvoiceModal(true);
   }
 
-  const selectedClient = clients.find((c) => c.id === clientId);
+  // ── Filter by period ───────────────────────────────────────────────────────
+  const filteredFilings =
+    filterPeriod === "all"
+      ? filings
+      : filings.filter((f) => f.period === filterPeriod);
 
-  // Build month options for the current Indian financial year
-  const now = new Date();
-  const fyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-  const monthOptions: { value: string; label: string }[] = [];
-  for (let i = 0; i < 12; i++) {
-    const mIdx = (i + 3) % 12; // April=3 → index 0
-    const yr = i < 9 ? fyStart : fyStart + 1;
-    const val = `${yr}-${String(mIdx + 1).padStart(2, "0")}`;
-    monthOptions.push({ value: val, label: `${MONTHS[i]} ${yr}` });
-  }
+  // ── Summary counts (current month) ────────────────────────────────────────
+  const currentPeriod = `${MONTH_NAMES[TODAY.getMonth()]} ${TODAY.getFullYear()}`;
 
-  const selectedMonthLabel = monthOptions.find((o) => o.value === month)?.label ?? month;
-  const hasData = gstSummary !== null;
-  const hasInvoices = invoices.length > 0;
-  const hasPurchases = purchases.length > 0;
+  const totalClients = new Set(filings.map((f) => f.client_id)).size;
 
-  // GSTR-3B net totals
-  const netCGST = gstSummary ? gstSummary.gstr3b.net_cgst : 0;
-  const netSGST = gstSummary ? gstSummary.gstr3b.net_sgst : 0;
-  const netIGST = gstSummary ? gstSummary.gstr3b.net_igst : 0;
-  const netTotal = netCGST + netSGST + netIGST;
+  const filedThisMonth = filings.filter(
+    (f) => f.period === currentPeriod && f.status === "Filed"
+  ).length;
+
+  const pendingThisMonth = filings.filter(
+    (f) => f.period === currentPeriod && f.status === "Pending"
+  ).length;
+
+  const overdueCount = filings.filter((f) => f.status === "Overdue").length;
+
+  // ── Unique periods from filings (for filter dropdown) ─────────────────────
+  const uniquePeriods = Array.from(new Set(filings.map((f) => f.period)));
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">GST</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Returns &amp; transactions — FY {fyStart}-{String(fyStart + 1).slice(2)}
+            GSTR Filing Tracker — CGST Act Sections 37, 39, 44
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => openModal("purchase_invoice")}
-            className="flex items-center gap-1.5 text-xs border border-gray-300 text-gray-700 px-3 py-1.5 rounded-md hover:bg-gray-50"
-          >
-            <Plus size={13} /> Purchase
-          </button>
-          <button
-            onClick={() => openModal("sales_invoice")}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700"
-          >
-            <Plus size={13} /> Sales Invoice
-          </button>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Add GST Filing
+        </button>
+      </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-red-700">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Key Deadlines Banner — CGST Act Sections 37, 39, 44 */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Calendar className="w-4 h-4 text-gray-500" />
+          <span className="text-xs font-semibold text-gray-700">
+            Key GST Deadlines — {currentMonth} {currentYear}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {KEY_DEADLINES.map((d) => (
+            <div
+              key={d.label}
+              className={`flex items-center gap-2 border rounded-lg px-3 py-2 text-xs ${d.color}`}
+            >
+              <span className="font-semibold">{d.label}</span>
+              <span className="font-mono">{d.date}</span>
+              <span className="text-opacity-75 hidden sm:inline">· {d.note}</span>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* ── Client + Month selectors ── */}
-      <div className="flex gap-3 flex-wrap items-center">
-        <select
-          value={clientId}
-          onChange={(e) => setClientId(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 min-w-[200px]"
-        >
-          <option value="">— Select client —</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.client_name}
-            </option>
-          ))}
-        </select>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="bg-white rounded-xl border border-gray-100 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+              <Users className="w-4 h-4 text-blue-600" />
+            </div>
+            <span className="text-xs text-gray-500">Total GST Clients</span>
+          </div>
+          <p className="text-lg font-semibold text-gray-900">{loading ? "—" : totalClients}</p>
+          <p className="text-xs text-gray-400 mt-0.5">With GST filings tracked</p>
+        </div>
 
-        <select
-          value={month}
-          onChange={(e) => setMonth(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-        >
-          {monthOptions.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+        <div className="bg-white rounded-xl border border-gray-100 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
+              <CheckCircle className="w-4 h-4 text-green-600" />
+            </div>
+            <span className="text-xs text-gray-500">Filed This Month</span>
+          </div>
+          <p className="text-lg font-semibold text-gray-900">{loading ? "—" : filedThisMonth}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{currentPeriod}</p>
+        </div>
 
-        <button
-          onClick={refresh}
-          disabled={loading}
-          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-        >
-          <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-          Refresh
-        </button>
+        <div className="bg-white rounded-xl border border-gray-100 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+              <Clock className="w-4 h-4 text-amber-600" />
+            </div>
+            <span className="text-xs text-gray-500">Pending This Month</span>
+          </div>
+          <p className="text-lg font-semibold text-gray-900">{loading ? "—" : pendingThisMonth}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{currentPeriod}</p>
+        </div>
 
-        {selectedClient && (
-          <span className="text-xs text-gray-400 ml-1">
-            GSTIN: <span className="font-mono">{selectedClient.gstin ?? "—"}</span>
-          </span>
+        <div className="bg-white rounded-xl border border-gray-100 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
+              <AlertCircle className="w-4 h-4 text-red-600" />
+            </div>
+            <span className="text-xs text-gray-500">Overdue</span>
+          </div>
+          <p className="text-lg font-semibold text-gray-900">{loading ? "—" : overdueCount}</p>
+          <p className="text-xs text-gray-400 mt-0.5">All periods</p>
+        </div>
+      </div>
+
+      {/* Month Filter + Table */}
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Filing Status</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Per client · per return type · per period
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-500">Period:</label>
+            <select
+              value={filterPeriod}
+              onChange={(e) => setFilterPeriod(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Periods</option>
+              {uniquePeriods.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="px-5 py-10 text-center text-sm text-gray-400">Loading…</div>
+        ) : filteredFilings.length === 0 ? (
+          <div className="px-5 py-12 text-center space-y-2">
+            <FileText className="w-8 h-8 mx-auto text-gray-200" />
+            <p className="text-sm text-gray-500 font-medium">No GST filings found</p>
+            <p className="text-xs text-gray-400">
+              {filings.length === 0
+                ? "Add your first GST filing to start tracking GSTR-1, GSTR-3B and GSTR-9 deadlines."
+                : "No filings match the selected period filter."}
+            </p>
+            {filings.length === 0 && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="mt-2 text-xs text-blue-600 hover:underline inline-flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" /> Add GST Filing
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-50">
+                  <th className="text-left text-xs font-medium text-gray-400 px-5 py-3">Client</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">GSTIN</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">Return Type</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">Period</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">Due Date</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">Status</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-5 py-3">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {filteredFilings.map((f) => (
+                  <tr key={f.id} className="hover:bg-gray-50/50">
+                    <td className="px-5 py-3">
+                      <p className="text-sm font-medium text-gray-900">{f.client_name}</p>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className="text-xs font-mono text-gray-500">{f.gstin ?? "—"}</span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+                        {f.return_type}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-sm text-gray-700">{f.period}</td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-3 h-3 text-gray-300" />
+                        <span className="text-xs text-gray-600">{fmtDate(f.due_date)}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLE[f.status]}`}
+                      >
+                        {f.status}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3">
+                      {f.status !== "Filed" ? (
+                        <button
+                          onClick={() => handleMarkFiled(f.id)}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
+                        >
+                          Mark as Filed
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1 text-green-600">
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          <span className="text-xs">
+                            {f.filed_date ? fmtDate(f.filed_date) : "Filed"}
+                          </span>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {filteredFilings.length > 0 && (
+          <div className="px-5 py-3 border-t border-gray-50 bg-gray-50/30">
+            <p className="text-[10px] text-gray-400">
+              {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
+              GSTR-1 (Section 37): 11th · GSTR-3B (Section 39): 20th · GSTR-9 (Section 44): 31 Dec ·
+              CAflow does not auto-submit to the GST portal — always file manually after CA review.
+            </p>
+          </div>
         )}
       </div>
 
-      {/* ── Summary stat cards ── */}
-      {hasData && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Card className="border-gray-100">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp size={14} className="text-green-600" />
-                <p className="text-xs text-gray-500">Output Tax</p>
-              </div>
-              <p className="text-lg font-bold text-gray-900">
-                {formatPaise(
-                  gstSummary!.gstr3b.output_cgst +
-                  gstSummary!.gstr3b.output_sgst +
-                  gstSummary!.gstr3b.output_igst
-                )}
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                on {formatPaise(gstSummary!.gstr1.taxable)} taxable
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-gray-100">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingDown size={14} className="text-blue-600" />
-                <p className="text-xs text-gray-500">Input Tax Credit</p>
-              </div>
-              <p className="text-lg font-bold text-gray-900">
-                {formatPaise(
-                  gstSummary!.gstr3b.itc_cgst +
-                  gstSummary!.gstr3b.itc_sgst +
-                  gstSummary!.gstr3b.itc_igst
-                )}
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {purchases.length} purchase invoice{purchases.length !== 1 ? "s" : ""}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-gray-100">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Minus size={14} className="text-amber-600" />
-                <p className="text-xs text-gray-500">Net GST Payable</p>
-              </div>
-              <p className={`text-lg font-bold ${netTotal > 0 ? "text-red-600" : "text-green-600"}`}>
-                {formatPaise(netTotal)}
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {netTotal > 0 ? "payable" : "credit balance"}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-gray-100">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <FileText size={14} className="text-purple-600" />
-                <p className="text-xs text-gray-500">TDS Deducted</p>
-              </div>
-              {/* IT Act Section 194 */}
-              <p className="text-lg font-bold text-gray-900">
-                {formatPaise(gstSummary!.tds_deducted)}
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {invoices.length} sales invoice{invoices.length !== 1 ? "s" : ""}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* ── Tabs ── */}
-      <div className="flex gap-1 border-b border-gray-100">
-        {TABS.map((tab, i) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(i as 0 | 1 | 2 | 3)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === i
-                ? "border-blue-600 text-blue-700"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
-
-      {/* ══════════════════════════════════════════════════════════
-          GSTR-1 TAB — Outward Supplies (CGST Act Section 37)
-          Due: 11th of the following month
-          CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-         ══════════════════════════════════════════════════════════ */}
-      {activeTab === 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-start justify-between">
-              <div>
-                <CardTitle className="text-sm font-semibold text-gray-900">
-                  GSTR-1 — Outward Supplies
-                </CardTitle>
-                {/* CGST Act Section 37 */}
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {selectedClient?.client_name} · {selectedMonthLabel}
-                  {" · "}Due by {gstr1DueDate(month)}
-                </p>
-              </div>
-              {/* CA REVIEW NOTE — filing must be done manually on GST portal */}
-              <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs px-3 py-1.5 rounded-lg">
-                <AlertTriangle size={12} />
-                CA REVIEW REQUIRED — file manually on GST portal
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent className="p-0">
-            {loading ? (
-              <div className="px-5 py-10 text-center text-sm text-gray-400 animate-pulse">
-                Loading…
-              </div>
-            ) : !clientId ? (
-              <div className="px-5 py-10 text-center text-sm text-gray-400">
-                Select a client to view GSTR-1 data.
-              </div>
-            ) : !hasData || invoices.length === 0 ? (
-              <div className="px-5 py-10 text-center space-y-1">
-                <FileText size={28} className="mx-auto text-gray-200" />
-                <p className="text-sm text-gray-400">No outward supply transactions for {selectedMonthLabel}.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                {/* Per-invoice table — CGST Act Section 37 */}
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 text-xs text-gray-500 font-medium">
-                      <th className="text-left px-4 py-3">Date</th>
-                      <th className="text-left px-4 py-3">Party Name</th>
-                      <th className="text-left px-4 py-3 font-mono">GSTIN</th>
-                      <th className="text-right px-4 py-3">Taxable Amt</th>
-                      <th className="text-right px-4 py-3">CGST</th>
-                      <th className="text-right px-4 py-3">SGST</th>
-                      <th className="text-right px-4 py-3">IGST</th>
-                      <th className="text-right px-4 py-3">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {invoices.map((inv) => (
-                      <tr key={inv.id} className="hover:bg-gray-50/60">
-                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                          {formatDate(inv.transaction_date)}
-                        </td>
-                        <td className="px-4 py-3 text-gray-900">{inv.party_name}</td>
-                        <td className="px-4 py-3 font-mono text-xs text-gray-500">
-                          {inv.party_gstin ?? "—"}
-                        </td>
-                        <td className="px-4 py-3 text-right tabular-nums text-gray-700">
-                          {formatPaise(inv.taxable_amount_paise)}
-                        </td>
-                        <td className="px-4 py-3 text-right tabular-nums text-gray-700">
-                          {formatPaise(inv.cgst_paise)}
-                        </td>
-                        <td className="px-4 py-3 text-right tabular-nums text-gray-700">
-                          {formatPaise(inv.sgst_paise)}
-                        </td>
-                        <td className="px-4 py-3 text-right tabular-nums text-gray-700">
-                          {formatPaise(inv.igst_paise)}
-                        </td>
-                        <td className="px-4 py-3 text-right tabular-nums font-semibold text-gray-900">
-                          {formatPaise(inv.total_paise)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  {/* Summary row */}
-                  <tfoot>
-                    <tr className="bg-gray-50 font-semibold text-gray-900 border-t border-gray-200">
-                      <td colSpan={3} className="px-4 py-3 text-xs uppercase tracking-wide text-gray-600">
-                        Total ({invoices.length} invoices)
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {formatPaise(gstSummary!.gstr1.taxable)}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {formatPaise(gstSummary!.gstr1.cgst)}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {formatPaise(gstSummary!.gstr1.sgst)}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {formatPaise(gstSummary!.gstr1.igst)}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-blue-700">
-                        {formatPaise(gstSummary!.gstr1.total)}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════
-          GSTR-3B TAB — Net Tax Liability (CGST Act Section 39)
-          Due: 20th of the following month
-          CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-         ══════════════════════════════════════════════════════════ */}
-      {activeTab === 1 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-start justify-between">
-              <div>
-                <CardTitle className="text-sm font-semibold text-gray-900">
-                  GSTR-3B — Summary Return
-                </CardTitle>
-                {/* CGST Act Section 39 */}
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {selectedClient?.client_name} · {selectedMonthLabel}
-                  {" · "}Due by {gstr3bDueDate(month)}
-                </p>
-              </div>
-              {/* CA REVIEW NOTE — filing must be done manually on GST portal */}
-              <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs px-3 py-1.5 rounded-lg">
-                <AlertTriangle size={12} />
-                CA REVIEW REQUIRED — file manually on GST portal
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent>
-            {loading ? (
-              <div className="py-8 text-center text-sm text-gray-400 animate-pulse">Loading…</div>
-            ) : !clientId ? (
-              <div className="py-8 text-center text-sm text-gray-400">Select a client to view GSTR-3B data.</div>
-            ) : !hasData ? (
-              <div className="py-8 text-center space-y-1">
-                <FileText size={28} className="mx-auto text-gray-200" />
-                <p className="text-sm text-gray-400">No transactions for {selectedMonthLabel}.</p>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {/* 3-column grid — CGST Act Section 39 */}
-                <div className="grid grid-cols-3 gap-1 text-sm">
-                  {/* Header row */}
-                  <div className="bg-gray-50 px-4 py-2 text-xs font-medium text-gray-500 rounded-tl-lg" />
-                  <div className="bg-gray-50 px-4 py-2 text-xs font-medium text-gray-500 text-right">CGST</div>
-                  <div className="bg-gray-50 px-4 py-2 text-xs font-medium text-gray-500 text-right rounded-tr-lg">SGST / IGST</div>
-
-                  {/* Output Tax */}
-                  <div className="bg-green-50 px-4 py-3 font-medium text-gray-700 flex items-center gap-2">
-                    <TrendingUp size={13} className="text-green-600 shrink-0" />
-                    Output Tax
-                  </div>
-                  <div className="bg-green-50 px-4 py-3 text-right tabular-nums text-gray-900 font-medium">
-                    {formatPaise(gstSummary!.gstr3b.output_cgst)}
-                  </div>
-                  <div className="bg-green-50 px-4 py-3 text-right tabular-nums text-gray-900 font-medium">
-                    {formatPaise(gstSummary!.gstr3b.output_sgst + gstSummary!.gstr3b.output_igst)}
-                  </div>
-
-                  {/* ITC */}
-                  <div className="bg-blue-50 px-4 py-3 font-medium text-gray-700 flex items-center gap-2">
-                    <TrendingDown size={13} className="text-blue-600 shrink-0" />
-                    Input Tax Credit
-                  </div>
-                  <div className="bg-blue-50 px-4 py-3 text-right tabular-nums text-green-700 font-medium">
-                    − {formatPaise(gstSummary!.gstr3b.itc_cgst)}
-                  </div>
-                  <div className="bg-blue-50 px-4 py-3 text-right tabular-nums text-green-700 font-medium">
-                    − {formatPaise(gstSummary!.gstr3b.itc_sgst + gstSummary!.gstr3b.itc_igst)}
-                  </div>
-
-                  {/* Net Payable */}
-                  <div className="bg-gray-100 px-4 py-3 font-semibold text-gray-800 flex items-center gap-2 rounded-bl-lg">
-                    <Minus size={13} className="text-amber-600 shrink-0" />
-                    Net Payable
-                  </div>
-                  <div className={`bg-gray-100 px-4 py-3 text-right tabular-nums font-bold ${netCGST > 0 ? "text-red-600" : "text-green-600"}`}>
-                    {formatPaise(netCGST)}
-                  </div>
-                  <div className={`bg-gray-100 px-4 py-3 text-right tabular-nums font-bold rounded-br-lg ${(netSGST + netIGST) > 0 ? "text-red-600" : "text-green-600"}`}>
-                    {formatPaise(netSGST + netIGST)}
-                  </div>
-                </div>
-
-                {/* Grand total banner */}
-                <div className={`flex items-center justify-between rounded-xl px-5 py-4 ${netTotal > 0 ? "bg-red-50 border border-red-100" : "bg-green-50 border border-green-100"}`}>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-0.5">Grand Total Net GST Payable</p>
-                    <p className={`text-xl font-bold ${netTotal > 0 ? "text-red-700" : "text-green-700"}`}>
-                      {formatPaise(netTotal)}
-                    </p>
-                  </div>
-                  <p className="text-xs text-gray-400 text-right max-w-[200px]">
-                    {netTotal > 0
-                      ? `Payable by ${gstr3bDueDate(month)}`
-                      : "Credit balance — carry forward"}
-                  </p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════
-          INVOICES TAB — Sales invoices list
-         ══════════════════════════════════════════════════════════ */}
-      {activeTab === 2 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold text-gray-900">
-                Sales Invoices — {selectedMonthLabel}
-              </CardTitle>
-              <button
-                onClick={() => openModal("sales_invoice")}
-                className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
-              >
-                <Plus size={12} /> New Invoice
-              </button>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {loading ? (
-              <div className="px-5 py-10 text-center text-sm text-gray-400 animate-pulse">Loading…</div>
-            ) : !hasInvoices ? (
-              <div className="px-5 py-10 text-center space-y-1">
-                <FileText size={28} className="mx-auto text-gray-200" />
-                <p className="text-sm text-gray-400">No sales invoices for {selectedMonthLabel}.</p>
-                <button
-                  onClick={() => openModal("sales_invoice")}
-                  className="mt-2 text-xs text-blue-600 hover:underline"
-                >
-                  Add sales invoice
-                </button>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-50">
-                {invoices.map((inv) => (
-                  <div key={inv.id} className="flex items-center gap-4 px-5 py-3.5">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-900">{inv.party_name}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {formatDate(inv.transaction_date)}
-                        {inv.reference_no ? ` · ${inv.reference_no}` : ""}
-                        {inv.party_gstin ? ` · ${inv.party_gstin}` : ""}
-                      </p>
-                    </div>
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${
-                        inv.status === "posted"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
-                      {inv.status}
-                    </span>
-                    <p className="text-sm font-semibold tabular-nums text-gray-700 shrink-0">
-                      {formatPaise(inv.total_paise)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════
-          PURCHASES TAB — Purchase invoices list
-         ══════════════════════════════════════════════════════════ */}
-      {activeTab === 3 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold text-gray-900">
-                Purchase Invoices — {selectedMonthLabel}
-              </CardTitle>
-              <button
-                onClick={() => openModal("purchase_invoice")}
-                className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
-              >
-                <Plus size={12} /> New Purchase
-              </button>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {loading ? (
-              <div className="px-5 py-10 text-center text-sm text-gray-400 animate-pulse">Loading…</div>
-            ) : !hasPurchases ? (
-              <div className="px-5 py-10 text-center space-y-1">
-                <FileText size={28} className="mx-auto text-gray-200" />
-                <p className="text-sm text-gray-400">No purchase invoices for {selectedMonthLabel}.</p>
-                <button
-                  onClick={() => openModal("purchase_invoice")}
-                  className="mt-2 text-xs text-blue-600 hover:underline"
-                >
-                  Add purchase invoice
-                </button>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-50">
-                {purchases.map((pur) => (
-                  <div key={pur.id} className="flex items-center gap-4 px-5 py-3.5">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-900">{pur.party_name}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {formatDate(pur.transaction_date)}
-                        {pur.reference_no ? ` · ${pur.reference_no}` : ""}
-                        {pur.party_gstin ? ` · ${pur.party_gstin}` : ""}
-                      </p>
-                    </div>
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${
-                        pur.status === "posted"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
-                      {pur.status}
-                    </span>
-                    <p className="text-sm font-semibold tabular-nums text-gray-700 shrink-0">
-                      {formatPaise(pur.total_paise)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── TDS Deducted card (IT Act Section 194) ── always visible when data loaded */}
-      {hasData && (
-        <Card className="border-purple-100">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-              <FileText size={14} className="text-purple-600" />
-              TDS Deducted — {selectedMonthLabel}
-            </CardTitle>
-            {/* IT Act Section 194 */}
-            <p className="text-xs text-gray-400">IT Act Section 194 — deducted on purchase invoices</p>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-2xl font-bold text-purple-700">
-                  {formatPaise(gstSummary!.tds_deducted)}
-                </p>
-                <p className="text-xs text-gray-400 mt-1">
-                  Across {purchases.length} purchase invoice{purchases.length !== 1 ? "s" : ""}
-                </p>
-              </div>
-              <div className="text-xs text-gray-400 text-right max-w-[240px]">
-                TDS return (26Q) due 31st of month following quarter end.
-                {" "}Verify deductions before filing.
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Invoice modal */}
-      {showInvoiceModal && (
-        <InvoiceFormModal
-          open={showInvoiceModal}
+      {/* Add Filing Modal */}
+      {showAddModal && clients.length > 0 && (
+        <AddFilingModal
           clients={clients}
-          type={invoiceType}
-          onClose={() => setShowInvoiceModal(false)}
-          onSaved={() => {
-            setShowInvoiceModal(false);
-            refresh();
-          }}
+          firmId={firmId}
+          onClose={() => setShowAddModal(false)}
+          onAdded={(filing) => setFilings((prev) => [...prev, filing])}
         />
+      )}
+
+      {showAddModal && clients.length === 0 && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4 text-center">
+            <p className="text-sm text-gray-700 font-medium">No clients found</p>
+            <p className="text-xs text-gray-500">
+              Add clients in the Clients section before adding GST filings.
+            </p>
+            <button
+              onClick={() => setShowAddModal(false)}
+              className="w-full border border-gray-200 text-gray-600 text-sm py-2 rounded-lg hover:bg-gray-50"
+            >
+              Close
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

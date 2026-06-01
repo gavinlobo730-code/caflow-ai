@@ -1,192 +1,613 @@
 "use client";
 
-import { useState } from "react";
-import { Bell, ChevronLeft, ChevronRight } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/components/ui/use-toast";
+/**
+ * Compliance Calendar — monthly view of all Indian tax filing deadlines
+ * CGST Act Section 37: GSTR-1 filing obligation
+ * CGST Act Section 39: GSTR-3B filing obligation
+ * CGST Act Section 44: GSTR-9 annual return
+ * IT Act Section 208: Advance Tax obligation
+ * IT Act Section 200: TDS return filing
+ * Companies Act 2013 Section 137: AOC-4 filing
+ * Companies Act 2013 Section 92: MGT-7 filing
+ */
 
-const CLIENTS = [
-  {
-    id: "1",
-    name: "Sharma Enterprises",
-    gstin: "27AABCS1429B1ZB",
-    status: "GSTR-1 due in 3 days",
-    urgency: "red",
-    details: [
-      { type: "GSTR-1", due: "3 days", status: "pending" },
-      { type: "GSTR-3B", due: "18 days", status: "pending" },
-    ],
-  },
-  {
-    id: "2",
-    name: "Patel & Sons",
-    gstin: "27AAPCS4229B1ZC",
-    status: "GSTR-3B due in 8 days",
-    urgency: "green",
-    details: [
-      { type: "GSTR-1", due: "Filed", status: "filed" },
-      { type: "GSTR-3B", due: "8 days", status: "pending" },
-    ],
-  },
-  {
-    id: "3",
-    name: "Mehta Consulting",
-    gstin: "27AACCS7829B1ZD",
-    status: "GSTR-1 OVERDUE",
-    urgency: "overdue",
-    details: [
-      { type: "GSTR-1", due: "2 days overdue", status: "overdue" },
-      { type: "GSTR-3B", due: "10 days overdue", status: "overdue" },
-    ],
-  },
-  {
-    id: "4",
-    name: "Desai Traders",
-    gstin: "27AADCS9929B1ZE",
-    status: "All clear this month",
-    urgency: "green",
-    details: [
-      { type: "GSTR-1", due: "Filed", status: "filed" },
-      { type: "GSTR-3B", due: "Filed", status: "filed" },
-    ],
-  },
-  {
-    id: "5",
-    name: "Joshi Textiles",
-    gstin: "27AAJCS3329B1ZF",
-    status: "ITR due in 12 days",
-    urgency: "amber",
-    details: [
-      { type: "GSTR-1", due: "Filed", status: "filed" },
-      { type: "GSTR-3B", due: "Filed", status: "filed" },
-      { type: "ITR", due: "12 days", status: "pending" },
-    ],
-  },
+import { useState, useEffect, useCallback } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  CheckCircle,
+  Circle,
+} from "lucide-react";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import type { Client } from "@/lib/types";
+
+// ─── TYPES ────────────────────────────────────────────────────────────────────
+
+type DeadlineCategory = "GST" | "IncomeTax" | "TDS" | "MCA" | "Other";
+
+interface Deadline {
+  id: string;
+  date: Date;
+  label: string;       // e.g. "GSTR-1", "Advance Tax"
+  category: DeadlineCategory;
+  description: string;
+  clientIds: string[]; // which clients this applies to (empty = firm-wide)
+  done: boolean;
+}
+
+// ─── COLOUR SCHEME ────────────────────────────────────────────────────────────
+
+const CATEGORY_STYLES: Record<DeadlineCategory, { chip: string; dot: string; badge: string }> = {
+  GST:        { chip: "bg-red-100 text-red-700 border-red-200",     dot: "bg-red-500",    badge: "bg-red-500" },
+  IncomeTax:  { chip: "bg-blue-100 text-blue-700 border-blue-200",  dot: "bg-blue-500",   badge: "bg-blue-500" },
+  TDS:        { chip: "bg-orange-100 text-orange-700 border-orange-200", dot: "bg-orange-500", badge: "bg-orange-500" },
+  MCA:        { chip: "bg-purple-100 text-purple-700 border-purple-200", dot: "bg-purple-500", badge: "bg-purple-500" },
+  Other:      { chip: "bg-green-100 text-green-700 border-green-200",  dot: "bg-green-500",  badge: "bg-green-500" },
+};
+
+const CATEGORY_LABELS: Record<DeadlineCategory, string> = {
+  GST: "GST",
+  IncomeTax: "Income Tax",
+  TDS: "TDS",
+  MCA: "MCA",
+  Other: "Other",
+};
+
+// ─── DEADLINE GENERATION ──────────────────────────────────────────────────────
+
+/**
+ * Generate all statutory deadlines for months [baseYear/baseMonth .. baseYear/baseMonth+3].
+ * Dates are based on the Indian tax calendar — no client filtering here.
+ *
+ * CGST Act / IT Act references in each block.
+ */
+function generateDeadlines(clientIds: string[]): Deadline[] {
+  const today = new Date();
+  const deadlines: Deadline[] = [];
+
+  // We generate for current month + next 3 months (4 months total)
+  for (let offset = 0; offset < 4; offset++) {
+    const refDate = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+    const y = refDate.getFullYear();
+    const m = refDate.getMonth(); // 0-based
+
+    // ── GSTR-1: 11th of every month — CGST Act Section 37
+    deadlines.push({
+      id: `gstr1-${y}-${m}`,
+      date: new Date(y, m, 11),
+      label: "GSTR-1",
+      category: "GST",
+      description: "CGST Act Section 37 — outward supplies return due 11th of following month",
+      clientIds,
+      done: false,
+    });
+
+    // ── GSTR-3B: 20th of every month — CGST Act Section 39
+    deadlines.push({
+      id: `gstr3b-${y}-${m}`,
+      date: new Date(y, m, 20),
+      label: "GSTR-3B",
+      category: "GST",
+      description: "CGST Act Section 39 — monthly summary return due 20th of following month",
+      clientIds,
+      done: false,
+    });
+
+    // ── GSTR-9: 31 Dec — CGST Act Section 44
+    if (m === 11) { // December
+      deadlines.push({
+        id: `gstr9-${y}`,
+        date: new Date(y, 11, 31),
+        label: "GSTR-9",
+        category: "GST",
+        description: "CGST Act Section 44 — annual return for FY ending March",
+        clientIds,
+        done: false,
+      });
+    }
+
+    // ── Advance Tax — IT Act Section 208 / 211
+    // 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)
+    if (m === 5) { // June
+      deadlines.push({
+        id: `adv-tax-jun-${y}`,
+        date: new Date(y, 5, 15),
+        label: "Advance Tax (15%)",
+        category: "IncomeTax",
+        description: "IT Act Section 211 — 1st instalment: 15% of advance tax by 15 Jun",
+        clientIds,
+        done: false,
+      });
+    }
+    if (m === 8) { // September
+      deadlines.push({
+        id: `adv-tax-sep-${y}`,
+        date: new Date(y, 8, 15),
+        label: "Advance Tax (45%)",
+        category: "IncomeTax",
+        description: "IT Act Section 211 — 2nd instalment: cumulative 45% by 15 Sep",
+        clientIds,
+        done: false,
+      });
+    }
+    if (m === 11) { // December
+      deadlines.push({
+        id: `adv-tax-dec-${y}`,
+        date: new Date(y, 11, 15),
+        label: "Advance Tax (75%)",
+        category: "IncomeTax",
+        description: "IT Act Section 211 — 3rd instalment: cumulative 75% by 15 Dec",
+        clientIds,
+        done: false,
+      });
+    }
+    if (m === 2) { // March
+      deadlines.push({
+        id: `adv-tax-mar-${y}`,
+        date: new Date(y, 2, 15),
+        label: "Advance Tax (100%)",
+        category: "IncomeTax",
+        description: "IT Act Section 211 — 4th instalment: 100% by 15 Mar",
+        clientIds,
+        done: false,
+      });
+    }
+
+    // ── TDS Returns (24Q/26Q) — IT Act Section 200(3)
+    // Q1 (Apr–Jun) → due 31 Jul
+    if (m === 6) { // July
+      deadlines.push({
+        id: `tds-q1-${y}`,
+        date: new Date(y, 6, 31),
+        label: "TDS Return Q1 (26Q)",
+        category: "TDS",
+        description: "IT Act Section 200(3) — Q1 (Apr–Jun) TDS return due 31 Jul",
+        clientIds,
+        done: false,
+      });
+    }
+    // Q2 (Jul–Sep) → due 31 Oct
+    if (m === 9) { // October
+      deadlines.push({
+        id: `tds-q2-${y}`,
+        date: new Date(y, 9, 31),
+        label: "TDS Return Q2 (26Q)",
+        category: "TDS",
+        description: "IT Act Section 200(3) — Q2 (Jul–Sep) TDS return due 31 Oct",
+        clientIds,
+        done: false,
+      });
+    }
+    // Q3 (Oct–Dec) → due 31 Jan
+    if (m === 0) { // January
+      deadlines.push({
+        id: `tds-q3-${y}`,
+        date: new Date(y, 0, 31),
+        label: "TDS Return Q3 (26Q)",
+        category: "TDS",
+        description: "IT Act Section 200(3) — Q3 (Oct–Dec) TDS return due 31 Jan",
+        clientIds,
+        done: false,
+      });
+    }
+    // Q4 (Jan–Mar) → due 31 May
+    if (m === 4) { // May
+      deadlines.push({
+        id: `tds-q4-${y}`,
+        date: new Date(y, 4, 31),
+        label: "TDS Return Q4 (26Q)",
+        category: "TDS",
+        description: "IT Act Section 200(3) — Q4 (Jan–Mar) TDS return due 31 May",
+        clientIds,
+        done: false,
+      });
+    }
+
+    // ── MCA Deadlines (Companies Act 2013)
+    // DIR-3 KYC: 30 Sep every year
+    if (m === 8) { // September
+      deadlines.push({
+        id: `dir3kyc-${y}`,
+        date: new Date(y, 8, 30),
+        label: "DIR-3 KYC",
+        category: "MCA",
+        description: "Companies Act 2013 Rule 12A — Director KYC due 30 Sep",
+        clientIds,
+        done: false,
+      });
+    }
+    // AOC-4: 29 Oct (within 30 days of AGM on 30 Sep)
+    if (m === 9) { // October
+      deadlines.push({
+        id: `aoc4-${y}`,
+        date: new Date(y, 9, 29),
+        label: "AOC-4",
+        category: "MCA",
+        description: "Companies Act 2013 Section 137 — financial statements filing due 29 Oct",
+        clientIds,
+        done: false,
+      });
+    }
+    // MGT-7: 28 Nov (within 60 days of AGM on 30 Sep)
+    if (m === 10) { // November
+      deadlines.push({
+        id: `mgt7-${y}`,
+        date: new Date(y, 10, 28),
+        label: "MGT-7",
+        category: "MCA",
+        description: "Companies Act 2013 Section 92 — annual return due 28 Nov",
+        clientIds,
+        done: false,
+      });
+    }
+  }
+
+  return deadlines;
+}
+
+// ─── CALENDAR HELPERS ─────────────────────────────────────────────────────────
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function firstDayOfMonth(year: number, month: number): number {
+  return new Date(year, month, 1).getDay(); // 0=Sun
+}
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
 ];
 
-const urgencyStyles: Record<string, string> = {
-  red: "border-l-red-500 bg-red-50",
-  overdue: "border-l-red-700 bg-red-100",
-  amber: "border-l-amber-500 bg-amber-50",
-  green: "border-l-green-500 bg-green-50",
-};
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const urgencyBadge: Record<string, string> = {
-  red: "bg-red-100 text-red-700",
-  overdue: "bg-red-200 text-red-800 font-bold",
-  amber: "bg-amber-100 text-amber-700",
-  green: "bg-green-100 text-green-700",
-};
+function isSameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+}
 
-const statusColor: Record<string, string> = {
-  filed: "text-green-600",
-  pending: "text-amber-600",
-  overdue: "text-red-700 font-bold",
-};
+// ─── COMPONENTS ───────────────────────────────────────────────────────────────
 
-export default function CalendarPage() {
-  const [selectedClient, setSelectedClient] = useState(CLIENTS[0]);
-  const { toast } = useToast();
+interface DeadlineChipProps {
+  deadline: Deadline;
+  clientMap: Map<string, Client>;
+  compact?: boolean;
+  onToggle: (id: string) => void;
+}
 
-  const sendReminder = (clientName: string) => {
-    toast({
-      title: "Reminder Sent",
-      description: `WhatsApp reminder sent to ${clientName}`,
-    });
-  };
+function DeadlineChip({ deadline, clientMap, compact = false, onToggle }: DeadlineChipProps) {
+  const style = CATEGORY_STYLES[deadline.category];
+  const clientCount = deadline.clientIds.length;
 
-  const now = new Date();
-  const monthName = now.toLocaleString("default", { month: "long", year: "numeric" });
+  let clientLabel = "";
+  if (clientCount === 1) {
+    clientLabel = clientMap.get(deadline.clientIds[0])?.client_name ?? "";
+  } else if (clientCount > 1) {
+    clientLabel = `${clientCount} clients`;
+  }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
+    <div
+      className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-medium cursor-pointer select-none transition-opacity
+        ${style.chip} ${deadline.done ? "opacity-50 line-through" : ""}`}
+      onClick={() => onToggle(deadline.id)}
+      title={deadline.description}
+    >
+      {deadline.done
+        ? <CheckCircle className="w-3 h-3 shrink-0" />
+        : <Circle className="w-3 h-3 shrink-0" />
+      }
+      <span className="truncate">{deadline.label}</span>
+      {!compact && clientLabel && (
+        <span className="opacity-70 truncate">· {clientLabel}</span>
+      )}
+    </div>
+  );
+}
+
+// ─── MAIN PAGE ────────────────────────────────────────────────────────────────
+
+export default function CalendarPage() {
+  const today = new Date();
+
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [clients, setClients] = useState<Client[]>([]);
+  const [deadlines, setDeadlines] = useState<Deadline[]>([]);
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Load clients from Supabase
+  useEffect(() => {
+    async function load() {
+      try {
+        setLoading(true);
+        const sb = getSupabaseClient();
+        const { data, error } = await sb
+          .from("clients")
+          .select("*")
+          .is("deleted_at", null)
+          .order("client_name");
+        if (error) throw new Error(error.message);
+        setClients((data ?? []) as Client[]);
+      } catch {
+        // Silently degrade — deadlines still show without client names
+        setClients([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  // Regenerate deadlines when clients load
+  useEffect(() => {
+    const clientIds = clients.map(c => c.id);
+    setDeadlines(generateDeadlines(clientIds));
+  }, [clients]);
+
+  const clientMap = new Map(clients.map(c => [c.id, c]));
+
+  const toggleDone = useCallback((id: string) => {
+    setDeadlines(prev => prev.map(d => d.id === id ? { ...d, done: !d.done } : d));
+  }, []);
+
+  // Navigation
+  function prevMonth() {
+    if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
+    else setViewMonth(m => m - 1);
+  }
+  function nextMonth() {
+    if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); }
+    else setViewMonth(m => m + 1);
+  }
+  function goToday() {
+    setViewYear(today.getFullYear());
+    setViewMonth(today.getMonth());
+    setSelectedDay(today);
+  }
+
+  // Build calendar grid
+  const totalDays = daysInMonth(viewYear, viewMonth);
+  const startDow = firstDayOfMonth(viewYear, viewMonth); // 0=Sun
+
+  // Deadlines indexed by day-of-month for current view
+  function deadlinesForDay(day: number): Deadline[] {
+    return deadlines.filter(d =>
+      d.date.getFullYear() === viewYear &&
+      d.date.getMonth() === viewMonth &&
+      d.date.getDate() === day
+    );
+  }
+
+  // Deadlines for selected day panel
+  const selectedDayDeadlines = selectedDay
+    ? deadlines.filter(d => isSameDay(d.date, selectedDay))
+    : [];
+
+  // Upcoming 10 deadlines from today
+  const upcomingDeadlines = deadlines
+    .filter(d => d.date >= today && !d.done)
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+    .slice(0, 10);
+
+  // Build grid cells: leading empty + day cells
+  const gridCells: Array<{ day: number | null }> = [];
+  for (let i = 0; i < startDow; i++) gridCells.push({ day: null });
+  for (let d = 1; d <= totalDays; d++) gridCells.push({ day: d });
+  // Pad to complete last row
+  while (gridCells.length % 7 !== 0) gridCells.push({ day: null });
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Compliance Calendar</h1>
-          <p className="text-gray-500 text-sm mt-1">Track deadlines across all clients</p>
+          <h1 className="text-xl font-semibold text-gray-900">Compliance Calendar</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Indian tax & regulatory deadlines across all clients
+          </p>
         </div>
-        <div className="flex items-center gap-2 text-gray-600">
-          <button className="p-1 hover:bg-gray-100 rounded"><ChevronLeft size={18} /></button>
-          <span className="text-sm font-medium w-36 text-center">{monthName}</span>
-          <button className="p-1 hover:bg-gray-100 rounded"><ChevronRight size={18} /></button>
+
+        {/* Month navigation */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={goToday}
+            className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
+          >
+            Today
+          </button>
+          <button
+            onClick={prevMonth}
+            className="p-1.5 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50"
+            aria-label="Previous month"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span className="text-sm font-semibold text-gray-900 w-36 text-center">
+            {MONTH_NAMES[viewMonth]} {viewYear}
+          </span>
+          <button
+            onClick={nextMonth}
+            className="p-1.5 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50"
+            aria-label="Next month"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="space-y-2">
-          <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-3">Clients</p>
-          {CLIENTS.map((client) => (
-            <div
-              key={client.id}
-              onClick={() => setSelectedClient(client)}
-              className={`
-                border-l-4 rounded-r-lg px-4 py-3 cursor-pointer transition-all
-                ${urgencyStyles[client.urgency]}
-                ${selectedClient.id === client.id ? "ring-2 ring-blue-500 ring-offset-1" : "hover:opacity-90"}
-              `}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">{client.name}</p>
-                  <p className="text-xs text-gray-500 mt-0.5 font-mono">{client.gstin}</p>
-                </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${urgencyBadge[client.urgency]}`}>
-                  {client.urgency === "overdue" ? "OVERDUE" : client.urgency === "red" ? "Urgent" : client.urgency === "amber" ? "Soon" : "On Track"}
-                </span>
+      {/* Legend */}
+      <div className="flex flex-wrap gap-3">
+        {(Object.keys(CATEGORY_STYLES) as DeadlineCategory[]).map(cat => (
+          <div key={cat} className="flex items-center gap-1.5">
+            <span className={`w-2.5 h-2.5 rounded-full ${CATEGORY_STYLES[cat].badge}`} />
+            <span className="text-xs text-gray-500">{CATEGORY_LABELS[cat]}</span>
+          </div>
+        ))}
+        {loading && <span className="text-xs text-gray-400 ml-2">Loading clients…</span>}
+      </div>
+
+      {/* Main layout: Calendar + Side panel */}
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-6">
+
+        {/* Calendar grid */}
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          {/* Day headers */}
+          <div className="grid grid-cols-7 border-b border-gray-100">
+            {DAY_LABELS.map(d => (
+              <div key={d} className="py-2 text-center text-xs font-medium text-gray-400">
+                {d}
               </div>
-              <p className="text-xs text-gray-600 mt-1">{client.status}</p>
-            </div>
-          ))}
+            ))}
+          </div>
+
+          {/* Day cells */}
+          <div className="grid grid-cols-7">
+            {gridCells.map((cell, idx) => {
+              if (cell.day === null) {
+                return <div key={`empty-${idx}`} className="min-h-[90px] border-b border-r border-gray-50 bg-gray-50/30" />;
+              }
+
+              const cellDate = new Date(viewYear, viewMonth, cell.day);
+              const isToday = isSameDay(cellDate, today);
+              const isSelected = selectedDay ? isSameDay(cellDate, selectedDay) : false;
+              const chips = deadlinesForDay(cell.day);
+
+              return (
+                <div
+                  key={cell.day}
+                  onClick={() => setSelectedDay(isSelected ? null : cellDate)}
+                  className={`min-h-[90px] border-b border-r border-gray-100 p-1.5 cursor-pointer transition-colors
+                    ${isSelected ? "bg-blue-50" : "hover:bg-gray-50/60"}`}
+                >
+                  {/* Day number */}
+                  <div className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium mb-1
+                    ${isToday ? "bg-blue-600 text-white" : "text-gray-700"}`}>
+                    {cell.day}
+                  </div>
+
+                  {/* Deadline chips — show max 3, then "+N more" */}
+                  <div className="space-y-0.5">
+                    {chips.slice(0, 3).map(dl => (
+                      <DeadlineChip
+                        key={dl.id}
+                        deadline={dl}
+                        clientMap={clientMap}
+                        compact
+                        onToggle={toggleDone}
+                      />
+                    ))}
+                    {chips.length > 3 && (
+                      <div className="text-[10px] text-gray-400 pl-1">+{chips.length - 3} more</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
-              <div>
-                <CardTitle className="text-base">{selectedClient.name}</CardTitle>
-                <p className="text-xs text-gray-500 font-mono mt-0.5">{selectedClient.gstin}</p>
+        {/* Right side panel */}
+        <div className="space-y-4">
+
+          {/* Selected day panel */}
+          {selectedDay && (
+            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-blue-600" />
+                <h2 className="text-sm font-semibold text-gray-900">
+                  {selectedDay.getDate()} {MONTH_NAMES[selectedDay.getMonth()]} {selectedDay.getFullYear()}
+                </h2>
               </div>
-              <button
-                onClick={() => sendReminder(selectedClient.name)}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
-              >
-                <Bell size={14} />
-                Send Reminder
-              </button>
-            </CardHeader>
-            <CardContent>
-              <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-3">Compliance Status</p>
-              <div className="space-y-3">
-                {selectedClient.details.map((item, i) => (
-                  <div key={i} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{item.type}</p>
-                      <p className={`text-xs mt-0.5 ${statusColor[item.status]}`}>
-                        {item.status === "filed"
-                          ? "Filed"
-                          : item.status === "overdue"
-                          ? `${item.due}`
-                          : `Due in ${item.due}`}
-                      </p>
+              {selectedDayDeadlines.length === 0 ? (
+                <p className="px-4 py-6 text-xs text-gray-400 text-center">No deadlines this day</p>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {selectedDayDeadlines.map(dl => {
+                    const style = CATEGORY_STYLES[dl.category];
+                    const clientCount = dl.clientIds.length;
+                    const clientLabel = clientCount === 1
+                      ? clientMap.get(dl.clientIds[0])?.client_name ?? ""
+                      : clientCount > 1 ? `${clientCount} clients` : "Firm-wide";
+
+                    return (
+                      <div key={dl.id} className="px-4 py-3 flex items-start gap-3">
+                        <button
+                          onClick={() => toggleDone(dl.id)}
+                          className={`mt-0.5 shrink-0 ${dl.done ? "text-green-500" : "text-gray-300 hover:text-gray-500"}`}
+                          aria-label={dl.done ? "Mark pending" : "Mark done"}
+                        >
+                          {dl.done
+                            ? <CheckCircle className="w-4 h-4" />
+                            : <Circle className="w-4 h-4" />
+                          }
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${style.chip}`}>
+                              {CATEGORY_LABELS[dl.category]}
+                            </span>
+                            <span className={`text-sm font-medium ${dl.done ? "line-through text-gray-400" : "text-gray-900"}`}>
+                              {dl.label}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5">{dl.description}</p>
+                          {clientLabel && (
+                            <p className="text-[10px] text-gray-400 mt-0.5">{clientLabel}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Upcoming deadlines */}
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-50">
+              <h2 className="text-sm font-semibold text-gray-900">Upcoming Deadlines</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Next 10 pending</p>
+            </div>
+            {upcomingDeadlines.length === 0 ? (
+              <p className="px-4 py-6 text-xs text-gray-400 text-center">All caught up!</p>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {upcomingDeadlines.map(dl => {
+                  const style = CATEGORY_STYLES[dl.category];
+                  const daysAway = Math.ceil((dl.date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                  const urgentClass = daysAway <= 3 ? "text-red-600 font-semibold" : daysAway <= 7 ? "text-amber-600" : "text-gray-400";
+
+                  return (
+                    <div key={dl.id} className="px-4 py-3 flex items-center gap-3">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${style.badge}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-900 truncate">{dl.label}</p>
+                        <p className="text-[10px] text-gray-400">
+                          {dl.date.getDate()} {MONTH_NAMES[dl.date.getMonth()]}
+                        </p>
+                      </div>
+                      <span className={`text-[10px] shrink-0 ${urgentClass}`}>
+                        {daysAway === 0 ? "Today" : daysAway === 1 ? "Tomorrow" : `${daysAway}d`}
+                      </span>
+                      <button
+                        onClick={() => toggleDone(dl.id)}
+                        className="text-gray-300 hover:text-gray-500 shrink-0"
+                        aria-label="Mark done"
+                      >
+                        <Circle className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                    <Badge
-                      variant="secondary"
-                      className={
-                        item.status === "filed"
-                          ? "bg-green-100 text-green-700"
-                          : item.status === "overdue"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-amber-100 text-amber-700"
-                      }
-                    >
-                      {item.status}
-                    </Badge>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-            </CardContent>
-          </Card>
+            )}
+          </div>
         </div>
       </div>
     </div>
