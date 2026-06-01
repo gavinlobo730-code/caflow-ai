@@ -6,9 +6,8 @@ import { ChevronLeft, Plus, Trash2, CheckCircle, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
-import type { JournalEntry, EntryType, Account, ApiResponse } from "@/lib/types";
-
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import type { JournalEntry, EntryType, Account } from "@/lib/types";
 
 const ENTRY_TYPES: EntryType[] = ["Sales", "Purchase", "Payment", "Receipt", "Journal", "Contra", "Opening"];
 
@@ -32,6 +31,15 @@ function LoadingSpinner() {
   );
 }
 
+async function getFirmId(): Promise<string> {
+  const sb = getSupabaseClient();
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error("Not authenticated");
+  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).single();
+  if (!data) throw new Error("User not found");
+  return data.firm_id as string;
+}
+
 export default function JournalPage() {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -44,18 +52,21 @@ export default function JournalPage() {
   const [lines, setLines] = useState<NewLine[]>([emptyLine(), emptyLine()]);
   const [formData, setFormData] = useState({ entry_date: "", reference_no: "", narration: "", entry_type: "Journal" as EntryType });
   const [submitting, setSubmitting] = useState(false);
+  const [firmId, setFirmId] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      fetch(`${BASE_URL}/api/accounting/journal`).then((r) => r.json()) as Promise<ApiResponse<JournalEntry[]>>,
-      fetch(`${BASE_URL}/api/accounting/accounts`).then((r) => r.json()) as Promise<ApiResponse<Account[]>>,
-    ])
-      .then(([jRes, aRes]) => {
-        if (jRes.success) setEntries(jRes.data);
-        else setError(jRes.error ?? "Failed to load journal entries");
-        if (aRes.success) setAccounts(aRes.data);
+    const sb = getSupabaseClient();
+    getFirmId()
+      .then(async (fid) => {
+        setFirmId(fid);
+        const [{ data: je }, { data: acc }] = await Promise.all([
+          sb.from("journal_entries").select("*").eq("firm_id", fid).order("entry_date", { ascending: false }),
+          sb.from("accounts").select("*").eq("firm_id", fid).order("account_name"),
+        ]);
+        setEntries((je ?? []) as JournalEntry[]);
+        setAccounts((acc ?? []) as Account[]);
       })
-      .catch(() => setError("Failed to load data"))
+      .catch((e) => setError(e.message ?? "Failed to load data"))
       .finally(() => setLoading(false));
   }, []);
 
@@ -83,37 +94,58 @@ export default function JournalPage() {
   }
 
   async function handlePost(entryId: string) {
-    const res: ApiResponse<JournalEntry> = await fetch(`${BASE_URL}/api/accounting/journal/${entryId}/post`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-    }).then((r) => r.json());
-    if (res.success) {
-      setEntries((prev) => prev.map((e) => e.id === entryId ? res.data : e));
-      if (selectedEntry?.id === entryId) setSelectedEntry(res.data);
+    const sb = getSupabaseClient();
+    const { data, error: err } = await sb
+      .from("journal_entries")
+      .update({ status: "posted" })
+      .eq("id", entryId)
+      .select()
+      .single();
+    if (!err && data) {
+      setEntries((prev) => prev.map((e) => e.id === entryId ? data as JournalEntry : e));
+      if (selectedEntry?.id === entryId) setSelectedEntry(data as JournalEntry);
     }
   }
 
   async function handleSubmit(asDraft: boolean) {
     if (!isBalanced && !asDraft) return;
+    if (!firmId) return;
     setSubmitting(true);
+    const sb = getSupabaseClient();
     try {
-      const payload = {
-        ...formData,
-        lines: lines.map((l) => ({
-          account_id: l.account_id,
-          debit_paise: l.debit_paise,
-          credit_paise: l.credit_paise,
-          narration: l.narration,
-        })),
-        status: asDraft ? "draft" : "posted",
-      };
-      const res: ApiResponse<JournalEntry> = await fetch(`${BASE_URL}/api/accounting/journal`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }).then((r) => r.json());
-      if (res.success) {
-        setEntries((prev) => [res.data, ...prev]);
+      // All money uses integer paise — no floating point
+      const totalDebitPaise = lines.reduce((s, l) => s + (Number(l.debit_paise) || 0), 0);
+      const totalCreditPaise = lines.reduce((s, l) => s + (Number(l.credit_paise) || 0), 0);
+      const { data: newEntry, error: entryErr } = await sb
+        .from("journal_entries")
+        .insert({
+          firm_id: firmId,
+          entry_date: formData.entry_date,
+          reference_no: formData.reference_no,
+          narration: formData.narration,
+          entry_type: formData.entry_type,
+          status: asDraft ? "draft" : "posted",
+          total_debit_paise: totalDebitPaise,
+          total_credit_paise: totalCreditPaise,
+        })
+        .select()
+        .single();
+      if (entryErr) throw new Error(entryErr.message);
+      if (newEntry) {
+        const linePayload = lines
+          .filter((l) => l.account_id)
+          .map((l) => ({
+            journal_entry_id: (newEntry as { id: string }).id,
+            account_id: l.account_id,
+            account_name: accounts.find((a) => a.id === l.account_id)?.account_name ?? "",
+            debit_paise: Number(l.debit_paise) || 0,
+            credit_paise: Number(l.credit_paise) || 0,
+            narration: l.narration,
+          }));
+        if (linePayload.length > 0) {
+          await sb.from("journal_entry_lines").insert(linePayload);
+        }
+        setEntries((prev) => [newEntry as JournalEntry, ...prev]);
         setShowForm(false);
         setLines([emptyLine(), emptyLine()]);
         setFormData({ entry_date: "", reference_no: "", narration: "", entry_type: "Journal" });
@@ -177,6 +209,9 @@ export default function JournalPage() {
             <span className="col-span-2 text-right">Debit</span>
             <span className="col-span-1"></span>
           </div>
+          {filtered.length === 0 && (
+            <div className="px-5 py-8 text-center text-sm text-gray-400">No entries yet. Create your first journal entry.</div>
+          )}
           {filtered.map((entry) => (
             <div key={entry.id} className="grid grid-cols-12 gap-2 px-5 py-3 hover:bg-gray-50 transition-colors items-center">
               <button onClick={() => { setSelectedEntry(entry); setShowForm(false); }} className="col-span-2 text-xs text-gray-600 text-left">{formatDate(entry.entry_date)}</button>
@@ -268,8 +303,8 @@ export default function JournalPage() {
             <div>
               <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-gray-400 mb-1">
                 <span className="col-span-4">Account</span>
-                <span className="col-span-3">Debit (₹)</span>
-                <span className="col-span-3">Credit (₹)</span>
+                <span className="col-span-3">Debit (paise)</span>
+                <span className="col-span-3">Credit (paise)</span>
                 <span className="col-span-1">Narration</span>
                 <span className="col-span-1"></span>
               </div>
@@ -316,8 +351,8 @@ export default function JournalPage() {
             {/* Balance indicator */}
             <div className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${isBalanced ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
               {isBalanced
-                ? <><CheckCircle size={15} /> Balanced ✓ — {formatPaise(totalDebit)}</>
-                : <><XCircle size={15} /> Unbalanced ✗ (Diff: {formatPaise(Math.abs(diff))})</>
+                ? <><CheckCircle size={15} /> Balanced — {formatPaise(totalDebit)}</>
+                : <><XCircle size={15} /> Unbalanced (Diff: {formatPaise(Math.abs(diff))})</>
               }
             </div>
 

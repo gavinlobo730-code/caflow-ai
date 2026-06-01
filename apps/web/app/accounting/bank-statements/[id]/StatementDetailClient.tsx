@@ -10,7 +10,7 @@ import { formatDate, formatPaise } from "@/lib/services/formatting";
 import { getBankTransactions, updateTransactionAccount, postBankTransaction } from "@/lib/data/bankStatements";
 import type { BankTransaction } from "@/lib/data/bankStatements";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 const MATCH_STATUS_COLORS: Record<string, string> = {
   unmatched: "bg-amber-100 text-amber-700",
@@ -52,14 +52,26 @@ export default function StatementDetailClient() {
     setLoading(true);
     setError(null);
     try {
-      const [txns, accRes] = await Promise.all([
-        getBankTransactions(statementId as string),
-        fetch(`${BASE_URL}/api/accounting/accounts`).then(r => r.json()).catch(() => ({ success: false })),
-      ]);
+      const sb = getSupabaseClient();
+      // Get firm_id for the current session
+      const { data: { session } } = await sb.auth.getSession();
+      let firmId: string | null = null;
+      if (session) {
+        const { data: userData } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).single();
+        firmId = userData?.firm_id ?? null;
+      }
+
+      const txns = await getBankTransactions(statementId as string);
       setTransactions(txns);
-      if (accRes.success && Array.isArray(accRes.data)) {
-        setAccounts(accRes.data as Account[]);
-        const bankAcc = (accRes.data as Account[]).find(
+
+      if (firmId) {
+        const { data: accData } = await sb
+          .from("accounts")
+          .select("id, account_code, account_name, account_type")
+          .eq("firm_id", firmId);
+        const accs = (accData ?? []) as Account[];
+        setAccounts(accs);
+        const bankAcc = accs.find(
           a => a.account_type === "Asset" &&
             (a.account_name.toLowerCase().includes("bank") || a.account_name.toLowerCase().includes("cash"))
         );

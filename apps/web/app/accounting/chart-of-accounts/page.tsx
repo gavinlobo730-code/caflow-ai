@@ -5,9 +5,8 @@ import Link from "next/link";
 import { ChevronLeft, Search, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { Account, AccountType, ApiResponse } from "@/lib/types";
-
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import type { Account, AccountType } from "@/lib/types";
 
 const TYPE_COLORS: Record<AccountType, string> = {
   Asset: "bg-blue-100 text-blue-700",
@@ -31,6 +30,15 @@ function LoadingSpinner() {
   );
 }
 
+async function getFirmId(): Promise<string> {
+  const sb = getSupabaseClient();
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error("Not authenticated");
+  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).single();
+  if (!data) throw new Error("User not found");
+  return data.firm_id as string;
+}
+
 export default function ChartOfAccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,29 +47,46 @@ export default function ChartOfAccountsPage() {
   const [showModal, setShowModal] = useState(false);
   const [newAcc, setNewAcc] = useState({ account_code: "", account_name: "", account_type: "Asset" as AccountType, account_subtype: "" });
   const [saving, setSaving] = useState(false);
+  const [firmId, setFirmId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${BASE_URL}/api/accounting/accounts`)
-      .then((r) => r.json())
-      .then((res: ApiResponse<Account[]>) => {
-        if (res.success) setAccounts(res.data);
-        else setError(res.error ?? "Failed to load accounts");
+    const sb = getSupabaseClient();
+    getFirmId()
+      .then(async (fid) => {
+        setFirmId(fid);
+        const { data, error: err } = await sb
+          .from("accounts")
+          .select("*")
+          .eq("firm_id", fid)
+          .order("account_code");
+        if (err) throw new Error(err.message);
+        setAccounts((data ?? []) as Account[]);
       })
-      .catch(() => setError("Failed to load accounts"))
+      .catch((e) => setError(e.message ?? "Failed to load accounts"))
       .finally(() => setLoading(false));
   }, []);
 
   async function handleSaveAccount() {
-    if (!newAcc.account_code || !newAcc.account_name) return;
+    if (!newAcc.account_code || !newAcc.account_name || !firmId) return;
     setSaving(true);
+    const sb = getSupabaseClient();
     try {
-      const res: ApiResponse<Account> = await fetch(`${BASE_URL}/api/accounting/accounts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...newAcc, is_active: true }),
-      }).then((r) => r.json());
-      if (res.success) {
-        setAccounts((prev) => [...prev, res.data]);
+      const { data, error: err } = await sb
+        .from("accounts")
+        .insert({
+          firm_id: firmId,
+          account_code: newAcc.account_code,
+          account_name: newAcc.account_name,
+          account_type: newAcc.account_type,
+          account_subtype: newAcc.account_subtype || null,
+          is_active: true,
+          balance_paise: 0,
+        })
+        .select()
+        .single();
+      if (err) throw new Error(err.message);
+      if (data) {
+        setAccounts((prev) => [...prev, data as Account]);
         setShowModal(false);
         setNewAcc({ account_code: "", account_name: "", account_type: "Asset", account_subtype: "" });
       }
@@ -122,6 +147,12 @@ export default function ChartOfAccountsPage() {
           className="w-full pl-8 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
+
+      {accounts.length === 0 && (
+        <div className="bg-gray-50 rounded-xl border border-gray-100 p-12 text-center">
+          <p className="text-sm text-gray-500">No accounts yet. Add your first account to get started.</p>
+        </div>
+      )}
 
       {/* Groups */}
       <div className="space-y-4">
