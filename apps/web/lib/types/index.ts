@@ -439,3 +439,157 @@ export type ITRStatus =
   | "Filed";
 
 export type TDSReturnStatus = "Draft" | "Pending" | "Filed";
+
+// ─── DOCUMENT INTELLIGENCE TYPES ──────────────────────────────────────────
+
+export type ExtractionStatus = "pending" | "processing" | "completed" | "failed";
+export type ExtractionProvider = "mock" | "aws_textract" | "google_docai" | "azure_formrec" | "claude_vision";
+export type RiskCategory =
+  | "AIS_MISMATCH" | "TDS_MISMATCH" | "MISSING_INVOICE" | "GST_MISMATCH"
+  | "BANK_RECONCILIATION" | "HIGH_LIABILITY" | "MISSING_FORM16" | "MCA_OVERDUE"
+  | "DUPLICATE_ENTRY" | "CLASSIFICATION_ERROR" | "OTHER";
+export type RiskResolutionStatus = "open" | "acknowledged" | "resolved" | "false_positive";
+
+export interface DocumentExtraction {
+  id: string;
+  document_id: string;
+  extraction_status: ExtractionStatus;
+  provider: ExtractionProvider;
+  confidence_score?: number;
+  extracted_data?: Record<string, unknown>;
+  validation_results?: Record<string, unknown>;
+  error_message?: string;
+  created_at: string;
+}
+
+export interface DocumentRisk {
+  id: string;
+  document_id: string;
+  client_id: string;
+  severity: InsightSeverity;
+  category: RiskCategory;
+  title: string;
+  description: string;
+  resolution_status: RiskResolutionStatus;
+  resolved_at?: string;
+  created_at: string;
+}
+
+export interface DocumentWithIntelligence extends Document {
+  client_name?: string;
+  extraction?: DocumentExtraction;
+  risks?: DocumentRisk[];
+  risk_level?: InsightSeverity;
+}
+
+export interface DocumentStats {
+  total: number;
+  pending_review: number;
+  processing: number;
+  high_risk: number;
+  extraction_failures: number;
+}
+
+// ─── RISK ENGINE TYPES ────────────────────────────────────────────────────
+
+export interface RiskItem {
+  id: string;
+  source: "document" | "compliance" | "task" | "system";
+  client_id: string;
+  client_name?: string;
+  severity: InsightSeverity;
+  category: string;
+  title: string;
+  description: string;
+  resolution_status: RiskResolutionStatus;
+  created_at: string;
+}
+
+export interface RiskStats {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  info: number;
+  resolved: number;
+  total_open: number;
+}
+
+// ─── AI INSIGHTS V2 TYPES ─────────────────────────────────────────────────
+
+export interface AIInsightV2 {
+  id: string;
+  client_id?: string;
+  client_name?: string;
+  category: "compliance" | "accounting" | "document" | "risk" | "performance";
+  severity: InsightSeverity;
+  title: string;
+  description: string;
+  recommendation?: string;
+  status: InsightStatus;
+  created_at: string;
+}
+
+// ─── AUTOMATION TYPES ─────────────────────────────────────────────────────
+
+export type AutomationTrigger = "risk_detected" | "document_uploaded" | "compliance_due" | "status_changed" | "deadline_approaching";
+export type AutomationAction = "create_task" | "send_notification" | "update_status" | "assign_user" | "create_insight";
+
+export interface AutomationRule {
+  id: string;
+  name: string;
+  trigger_type: AutomationTrigger;
+  trigger_config: Record<string, unknown>;
+  action_type: AutomationAction;
+  action_config: Record<string, unknown>;
+  is_enabled: boolean;
+  created_at: string;
+}
+
+export interface AutomationExecution {
+  id: string;
+  rule_id: string;
+  rule_name?: string;
+  status: "success" | "failed" | "skipped";
+  trigger_data?: Record<string, unknown>;
+  result_data?: Record<string, unknown>;
+  error_message?: string;
+  executed_at: string;
+}
+
+export interface AutomationStats {
+  rules_active: number;
+  executions_today: number;
+  tasks_created: number;
+  notifications_sent: number;
+}
+
+// ─── NOTIFICATION TYPES ───────────────────────────────────────────────────
+
+export type NotificationType = "task_assigned" | "risk_detected" | "document_processed" | "compliance_due" | "ai_recommendation" | "status_changed";
+
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  severity: InsightSeverity;
+  is_read: boolean;
+  client_id?: string;
+  action_url?: string;
+  created_at: string;
+}
+
+export interface NotificationStats {
+  total: number;
+  unread: number;
+  by_type: Record<string, number>;
+}
+
+// ─── AI COPILOT TYPES ─────────────────────────────────────────────────────
+
+export interface CopilotMessage {
+  role: "user" | "assistant";
+  content: string;
+  suggested_actions?: string[];
+}

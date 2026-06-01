@@ -95,4 +95,43 @@ export const api = {
   dashboard: {
     summary: () => request("/api/tasks/summary/dashboard"),
   },
+  documentIntelligence: {
+    list: (client_id?: string) => request(`/api/document-intelligence/documents${client_id ? `?client_id=${client_id}` : ""}`),
+    stats: () => request("/api/document-intelligence/stats"),
+    getExtraction: (docId: string) => request(`/api/document-intelligence/${docId}/extraction`),
+    triggerExtraction: (docId: string) => request(`/api/document-intelligence/${docId}/extract`, { method: "POST" }),
+    getRisks: (docId: string) => request(`/api/document-intelligence/${docId}/risks`),
+    resolveRisk: (docId: string, riskId: string) => request(`/api/document-intelligence/${docId}/risks/${riskId}/resolve`, { method: "POST" }),
+  },
+  risks: {
+    list: (params?: Record<string, string>) => request(`/api/risks${params ? "?" + new URLSearchParams(params) : ""}`),
+    stats: () => request("/api/risks/stats"),
+    clientRisks: (clientId: string) => request(`/api/risks/client/${clientId}`),
+    update: (riskId: string, data: unknown) => request(`/api/risks/${riskId}`, { method: "PATCH", body: JSON.stringify(data) }),
+    firmScore: () => request("/api/risks/firm/score"),
+  },
+  aiInsights: {
+    list: (params?: Record<string, string>) => request(`/api/ai-insights${params ? "?" + new URLSearchParams(params) : ""}`),
+    feed: () => request("/api/ai-insights/feed"),
+    generate: (clientId: string) => request(`/api/ai-insights/generate/${clientId}`, { method: "POST" }),
+    acknowledge: (id: string) => request(`/api/ai-insights/${id}/acknowledge`, { method: "PATCH" }),
+    dismiss: (id: string) => request(`/api/ai-insights/${id}/dismiss`, { method: "PATCH" }),
+  },
+  automation: {
+    rules: () => request("/api/automation/rules"),
+    toggleRule: (id: string, enabled: boolean) => request(`/api/automation/rules/${id}/toggle`, { method: "PATCH", body: JSON.stringify({ enabled }) }),
+    executions: () => request("/api/automation/executions"),
+    stats: () => request("/api/automation/stats"),
+  },
+  notifications: {
+    list: (unreadOnly?: boolean) => request(`/api/notifications${unreadOnly ? "?unread_only=true" : ""}`),
+    count: () => request("/api/notifications/count"),
+    markRead: (id: string) => request(`/api/notifications/${id}/read`, { method: "PATCH" }),
+    markAllRead: () => request("/api/notifications/read-all", { method: "PATCH" }),
+    stats: () => request("/api/notifications/stats"),
+  },
+  copilot: {
+    chat: (body: { message: string; conversation_history: import("@/lib/types").CopilotMessage[]; context?: string }) =>
+      request("/api/ai-copilot/chat", { method: "POST", body: JSON.stringify(body) }),
+  },
 };

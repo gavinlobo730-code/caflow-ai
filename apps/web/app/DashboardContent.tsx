@@ -5,7 +5,7 @@ import { Users, Clock, AlertTriangle, MessageSquare, Shield, Activity } from "lu
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import type { DashboardSummary, ApiResponse } from "@/lib/types";
+import type { DashboardSummary, ApiResponse, RiskStats, AIInsightV2 } from "@/lib/types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -34,15 +34,22 @@ function LoadingSpinner() {
 
 export default function DashboardContent() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [riskStats, setRiskStats] = useState<RiskStats | null>(null);
+  const [insightsFeed, setInsightsFeed] = useState<AIInsightV2[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${BASE_URL}/api/tasks/summary/dashboard`)
-      .then((r) => r.json())
-      .then((res: ApiResponse<DashboardSummary>) => {
-        if (res.success) setSummary(res.data);
+    Promise.all([
+      fetch(`${BASE_URL}/api/tasks/summary/dashboard`).then((r) => r.json()),
+      fetch(`${BASE_URL}/api/risks/stats`).then((r) => r.json()).catch(() => null),
+      fetch(`${BASE_URL}/api/ai-insights/feed`).then((r) => r.json()).catch(() => null),
+    ])
+      .then(([dashRes, riskRes, feedRes]: [ApiResponse<DashboardSummary>, ApiResponse<RiskStats> | null, ApiResponse<AIInsightV2[]> | null]) => {
+        if (dashRes.success) setSummary(dashRes.data);
+        if (riskRes?.success) setRiskStats(riskRes.data);
+        if (feedRes?.success) setInsightsFeed((feedRes.data ?? []).slice(0, 5));
       })
-      .catch(() => { /* silently degrade to zeroes */ })
+      .catch(() => { /* silently degrade */ })
       .finally(() => setLoading(false));
   }, []);
 
@@ -147,6 +154,79 @@ export default function DashboardContent() {
           </Card>
         </div>
       </div>
+
+      {/* Risk Overview */}
+      {riskStats && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Link href="/risks?severity=critical">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer">
+              <CardContent className="pt-5 pb-4">
+                <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center mb-3">
+                  <AlertTriangle className="text-red-600" size={18} />
+                </div>
+                <p className="text-2xl font-bold text-gray-900">{riskStats.critical}</p>
+                <p className="text-xs text-gray-500 mt-0.5">Critical Risks</p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/risks?severity=high">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer">
+              <CardContent className="pt-5 pb-4">
+                <div className="w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center mb-3">
+                  <AlertTriangle className="text-orange-600" size={18} />
+                </div>
+                <p className="text-2xl font-bold text-gray-900">{riskStats.high}</p>
+                <p className="text-xs text-gray-500 mt-0.5">High Risks</p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/risks">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer">
+              <CardContent className="pt-5 pb-4">
+                <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center mb-3">
+                  <Shield className="text-amber-600" size={18} />
+                </div>
+                <p className="text-2xl font-bold text-gray-900">{riskStats.total_open}</p>
+                <p className="text-xs text-gray-500 mt-0.5">Open Risks Total</p>
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
+      )}
+
+      {/* AI Insights Feed */}
+      {insightsFeed.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="text-sm">AI Insights Feed</CardTitle>
+            <Link href="/ai-assistant" className="text-xs text-blue-600 hover:underline">Open Copilot →</Link>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {insightsFeed.map((insight) => (
+              <div key={insight.id} className="flex items-start gap-3 py-2 border-b border-gray-50 last:border-0">
+                <Badge
+                  className={`text-xs shrink-0 ${
+                    insight.severity === "critical" ? "bg-red-100 text-red-700" :
+                    insight.severity === "high" ? "bg-orange-100 text-orange-700" :
+                    insight.severity === "medium" ? "bg-amber-100 text-amber-700" :
+                    insight.severity === "low" ? "bg-green-100 text-green-700" :
+                    "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {insight.severity}
+                </Badge>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900">{insight.title}</p>
+                  <p className="text-xs text-gray-500 mt-0.5 truncate">{insight.description}</p>
+                </div>
+                {insight.client_name && (
+                  <span className="text-xs text-gray-400 shrink-0">{insight.client_name}</span>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
     </div>
   );
