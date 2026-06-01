@@ -188,6 +188,9 @@ export interface Task {
   id: string;
   client_id: string;
   client_name?: string;
+  assignee_id?: string;
+  assignee_name?: string;
+  assignee_email?: string;
   workflow_id?: string;
   workflow_step_id?: string;
   title: string;
@@ -200,6 +203,16 @@ export interface Task {
   completed_at?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface FirmUser {
+  id: string;
+  auth_user_id?: string;
+  firm_id?: string;
+  name?: string;
+  email?: string;
+  role?: string;
+  is_active?: boolean;
 }
 
 export interface KanbanBoard {

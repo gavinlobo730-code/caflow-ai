@@ -2,7 +2,7 @@
 
 import { useState, useEffect, FormEvent } from "react";
 import { X } from "lucide-react";
-import type { Client } from "@/lib/types";
+import type { Client, FirmUser } from "@/lib/types";
 import type { CreateTaskInput } from "@/lib/data/tasks";
 
 const PRIORITIES = ["low", "medium", "high", "critical"] as const;
@@ -28,6 +28,7 @@ interface Props {
   onClose: () => void;
   onSaved: (task: import("@/lib/types").Task) => void;
   clients: Client[];
+  teamMembers?: FirmUser[];
   defaultClientId?: string;
 }
 
@@ -37,9 +38,10 @@ const EMPTY: CreateTaskInput = {
   description: "",
   priority: "medium",
   due_date: "",
+  assignee_id: "",
 };
 
-export function TaskFormModal({ open, onClose, onSaved, clients, defaultClientId }: Props) {
+export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [], defaultClientId }: Props) {
   const [form, setForm] = useState<CreateTaskInput>({ ...EMPTY, client_id: defaultClientId ?? "" });
   const [customTitle, setCustomTitle] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -119,6 +121,23 @@ export function TaskFormModal({ open, onClose, onSaved, clients, defaultClientId
               ))}
             </select>
           </div>
+
+          {/* Assignee */}
+          {teamMembers.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Assign To</label>
+              <select
+                value={form.assignee_id ?? ""}
+                onChange={e => set("assignee_id", e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+              >
+                <option value="">Unassigned</option>
+                {teamMembers.map(m => (
+                  <option key={m.id} value={m.id}>{m.name ?? m.email}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Task type */}
           <div>
