@@ -137,7 +137,6 @@ export default function JournalPage() {
           .map((l) => ({
             journal_entry_id: (newEntry as { id: string }).id,
             account_id: l.account_id,
-            account_name: accounts.find((a) => a.id === l.account_id)?.account_name ?? "",
             debit_paise: Number(l.debit_paise) || 0,
             credit_paise: Number(l.credit_paise) || 0,
             narration: l.narration,
