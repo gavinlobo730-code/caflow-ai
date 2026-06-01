@@ -76,6 +76,18 @@ export async function updateClient(id: string, input: Partial<CreateClientInput>
   return data as Client;
 }
 
+export async function getClient(id: string): Promise<Client> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("clients")
+    .select("*")
+    .eq("id", id)
+    .is("deleted_at", null)
+    .single();
+  if (error) throw new Error(error.message);
+  return data as Client;
+}
+
 export async function deleteClient(id: string): Promise<void> {
   const sb = getSupabaseClient();
   const { error } = await sb
