@@ -1,19 +1,13 @@
 "use client";
-export const runtime = "edge";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { BookOpen, FileText, BarChart2, Scale, TrendingUp, List, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
-import type { JournalEntry } from "@/lib/types";
+import type { JournalEntry, Account, TrialBalance, ApiResponse } from "@/lib/types";
 
-// Mock summary stats — wire to /api/accounting/* once backend is running
-const STATS = [
-  { label: "Total Accounts", value: "22", icon: List },
-  { label: "Journal Entries", value: "10", icon: FileText },
-  { label: "Trial Balance", value: "Balanced", icon: Scale, highlight: "green" },
-  { label: "Cash & Bank Balance", value: formatPaise(43360000), icon: BarChart2 },
-];
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const NAV_CARDS = [
   { label: "Chart of Accounts", description: "View and manage your account tree", href: "/accounting/chart-of-accounts", icon: List },
@@ -24,40 +18,43 @@ const NAV_CARDS = [
   { label: "Balance Sheet", description: "Assets, liabilities and equity", href: "/accounting/balance-sheet", icon: BarChart2 },
 ];
 
-const RECENT_ENTRIES: JournalEntry[] = [
-  {
-    id: "je-010", client_id: "c-001", entry_date: "2025-05-31", reference_no: "BNK/2025-26/001",
-    narration: "Bank charges — HDFC May 2025", entry_type: "Journal", status: "posted",
-    lines: [], total_debit_paise: 50000, total_credit_paise: 50000, created_at: "2025-05-31T18:00:00+05:30",
-  },
-  {
-    id: "je-008", client_id: "c-001", entry_date: "2025-05-01", reference_no: "EXP/2025-26/002",
-    narration: "Software subscription — Winman, Tally", entry_type: "Payment", status: "posted",
-    lines: [], total_debit_paise: 500000, total_credit_paise: 500000, created_at: "2025-05-01T09:00:00+05:30",
-  },
-  {
-    id: "je-007", client_id: "c-001", entry_date: "2025-05-20", reference_no: "GST/2025-26/001",
-    narration: "GST payment — April 2025 GSTR-3B", entry_type: "Payment", status: "posted",
-    lines: [], total_debit_paise: 540000, total_credit_paise: 540000, created_at: "2025-05-20T14:00:00+05:30",
-  },
-  {
-    id: "je-006", client_id: "c-005", entry_date: "2025-05-15", reference_no: "REC/2025-26/001",
-    narration: "Receipt from Joshi Textiles — ITR fees", entry_type: "Receipt", status: "posted",
-    lines: [], total_debit_paise: 2360000, total_credit_paise: 2360000, created_at: "2025-05-15T12:00:00+05:30",
-  },
-  {
-    id: "je-005", client_id: "c-005", entry_date: "2025-05-10", reference_no: "INV/2025-26/002",
-    narration: "ITR filing fees — Joshi Textiles", entry_type: "Sales", status: "posted",
-    lines: [], total_debit_paise: 2360000, total_credit_paise: 2360000, created_at: "2025-05-10T10:00:00+05:30",
-  },
-];
-
 const statusBadge: Record<string, string> = {
   posted: "bg-green-100 text-green-700",
   draft: "bg-amber-100 text-amber-700",
 };
 
 export default function AccountingHubPage() {
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [entries, setEntries] = useState<JournalEntry[]>([]);
+  const [trialBalance, setTrialBalance] = useState<TrialBalance | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      fetch(`${BASE_URL}/api/accounting/accounts`).then((r) => r.json()) as Promise<ApiResponse<Account[]>>,
+      fetch(`${BASE_URL}/api/accounting/journal`).then((r) => r.json()) as Promise<ApiResponse<JournalEntry[]>>,
+      fetch(`${BASE_URL}/api/accounting/trial-balance`).then((r) => r.json()) as Promise<ApiResponse<TrialBalance>>,
+    ])
+      .then(([aRes, jRes, tbRes]) => {
+        if (aRes.success) setAccounts(aRes.data);
+        if (jRes.success) setEntries(jRes.data);
+        if (tbRes.success) setTrialBalance(tbRes.data);
+      })
+      .catch(() => { /* silently degrade */ })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const recentEntries = entries.slice(0, 5);
+  const tbStatus = trialBalance ? (trialBalance.is_balanced ? "Balanced" : "Imbalanced") : "—";
+  const tbColor = trialBalance ? (trialBalance.is_balanced ? "green" : "red") : undefined;
+
+  const STATS = [
+    { label: "Total Accounts", value: loading ? "…" : String(accounts.length), icon: List },
+    { label: "Journal Entries", value: loading ? "…" : String(entries.length), icon: FileText },
+    { label: "Trial Balance", value: loading ? "…" : tbStatus, icon: Scale, highlight: tbColor },
+    { label: "Cash & Bank Balance", value: loading ? "…" : (accounts.length > 0 ? "—" : "—"), icon: BarChart2 },
+  ];
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-start justify-between">
@@ -78,7 +75,7 @@ export default function AccountingHubPage() {
               <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center mb-3">
                 <s.icon size={16} className="text-blue-600" />
               </div>
-              <p className={`text-xl font-bold ${s.highlight === "green" ? "text-green-600" : "text-gray-900"}`}>{s.value}</p>
+              <p className={`text-xl font-bold ${s.highlight === "green" ? "text-green-600" : s.highlight === "red" ? "text-red-600" : "text-gray-900"}`}>{s.value}</p>
               <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
             </CardContent>
           </Card>
@@ -110,25 +107,32 @@ export default function AccountingHubPage() {
           <CardTitle className="text-sm">Recent Journal Entries</CardTitle>
           <Link href="/accounting/journal" className="text-xs text-blue-600 hover:underline">View all →</Link>
         </CardHeader>
-        <div className="divide-y divide-gray-50">
-          {RECENT_ENTRIES.map((entry) => (
-            <div key={entry.id} className="flex items-center gap-4 px-5 py-3.5">
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${entry.entry_type === "Receipt" || entry.entry_type === "Sales" ? "bg-green-50" : "bg-blue-50"}`}>
-                {entry.entry_type === "Receipt" || entry.entry_type === "Sales"
-                  ? <ArrowUpRight size={14} className="text-green-600" />
-                  : <ArrowDownRight size={14} className="text-blue-500" />}
+        {loading ? (
+          <div className="px-5 py-6 text-sm text-gray-400 text-center animate-pulse">Loading…</div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {recentEntries.map((entry) => (
+              <div key={entry.id} className="flex items-center gap-4 px-5 py-3.5">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${entry.entry_type === "Receipt" || entry.entry_type === "Sales" ? "bg-green-50" : "bg-blue-50"}`}>
+                  {entry.entry_type === "Receipt" || entry.entry_type === "Sales"
+                    ? <ArrowUpRight size={14} className="text-green-600" />
+                    : <ArrowDownRight size={14} className="text-blue-500" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-900 truncate">{entry.narration}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{formatDate(entry.entry_date)} · {entry.reference_no} · {entry.entry_type}</p>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${statusBadge[entry.status]}`}>{entry.status}</span>
+                <p className="text-sm font-semibold tabular-nums text-gray-700 shrink-0">
+                  {formatPaise(entry.total_debit_paise)}
+                </p>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-900 truncate">{entry.narration}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{formatDate(entry.entry_date)} · {entry.reference_no} · {entry.entry_type}</p>
-              </div>
-              <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${statusBadge[entry.status]}`}>{entry.status}</span>
-              <p className="text-sm font-semibold tabular-nums text-gray-700 shrink-0">
-                {formatPaise(entry.total_debit_paise)}
-              </p>
-            </div>
-          ))}
-        </div>
+            ))}
+            {recentEntries.length === 0 && (
+              <div className="px-5 py-6 text-sm text-gray-400 text-center">No entries yet</div>
+            )}
+          </div>
+        )}
       </Card>
     </div>
   );

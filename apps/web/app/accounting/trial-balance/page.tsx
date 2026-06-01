@@ -1,29 +1,13 @@
 "use client";
-export const runtime = "edge";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ChevronLeft, CheckCircle, AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { formatPaise } from "@/lib/services/formatting";
-import type { TrialBalanceLine, AccountType } from "@/lib/types";
+import type { TrialBalance, TrialBalanceLine, AccountType, ApiResponse } from "@/lib/types";
 
-// Mock trial balance — all values in paise (integer), never float
-const MOCK_TB_LINES: TrialBalanceLine[] = [
-  { account_id: "acc-001", account_code: "1001", account_name: "Cash in Hand", account_type: "Asset", total_debit_paise: 0, total_credit_paise: 0, net_paise: 0 },
-  { account_id: "acc-002", account_code: "1002", account_name: "Bank — HDFC Current Account", account_type: "Asset", total_debit_paise: 53540000, total_credit_paise: 9240000, net_paise: 44300000 },
-  { account_id: "acc-003", account_code: "1003", account_name: "Trade Receivables", account_type: "Asset", total_debit_paise: 5900000, total_credit_paise: 2360000, net_paise: 3540000 },
-  { account_id: "acc-009", account_code: "2002", account_name: "GST Output Tax Payable", account_type: "Liability", total_debit_paise: 540000, total_credit_paise: 1620000, net_paise: -1080000 },
-  { account_id: "acc-010", account_code: "2003", account_name: "TDS Payable", account_type: "Liability", total_debit_paise: 0, total_credit_paise: 350000, net_paise: -350000 },
-  { account_id: "acc-013", account_code: "3001", account_name: "Capital Account", account_type: "Equity", total_debit_paise: 0, total_credit_paise: 50000000, net_paise: -50000000 },
-  { account_id: "acc-015", account_code: "4001", account_name: "Professional Fees — GST Clients", account_type: "Income", total_debit_paise: 0, total_credit_paise: 1000000, net_paise: -1000000 },
-  { account_id: "acc-016", account_code: "4002", account_name: "Professional Fees — ITR Clients", account_type: "Income", total_debit_paise: 0, total_credit_paise: 2000000, net_paise: -2000000 },
-  { account_id: "acc-017", account_code: "4003", account_name: "Audit Fees", account_type: "Income", total_debit_paise: 0, total_credit_paise: 3000000, net_paise: -3000000 },
-  { account_id: "acc-018", account_code: "5001", account_name: "Salary Expense", account_type: "Expense", total_debit_paise: 5000000, total_credit_paise: 0, net_paise: 5000000 },
-  { account_id: "acc-019", account_code: "5002", account_name: "Office Rent", account_type: "Expense", total_debit_paise: 3500000, total_credit_paise: 0, net_paise: 3500000 },
-  { account_id: "acc-020", account_code: "5003", account_name: "Software Subscriptions", account_type: "Expense", total_debit_paise: 500000, total_credit_paise: 0, net_paise: 500000 },
-  { account_id: "acc-021", account_code: "5004", account_name: "Bank Charges", account_type: "Expense", total_debit_paise: 50000, total_credit_paise: 0, net_paise: 50000 },
-];
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const TYPE_COLORS: Record<AccountType, string> = {
   Asset: "text-blue-700",
@@ -33,16 +17,50 @@ const TYPE_COLORS: Record<AccountType, string> = {
   Expense: "text-orange-700",
 };
 
+function LoadingSpinner() {
+  return (
+    <div className="p-6 max-w-5xl mx-auto space-y-4 animate-pulse">
+      <div className="h-6 bg-gray-200 rounded w-48" />
+      <div className="h-10 bg-gray-100 rounded w-48" />
+      <div className="h-64 bg-gray-100 rounded-xl" />
+    </div>
+  );
+}
+
 export default function TrialBalancePage() {
   const [asOfDate, setAsOfDate] = useState("2025-05-31");
+  const [trialBalance, setTrialBalance] = useState<TrialBalance | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const lines = MOCK_TB_LINES.filter((l) => l.total_debit_paise > 0 || l.total_credit_paise > 0);
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    fetch(`${BASE_URL}/api/accounting/trial-balance?as_of_date=${asOfDate}`)
+      .then((r) => r.json())
+      .then((res: ApiResponse<TrialBalance>) => {
+        if (res.success) setTrialBalance(res.data);
+        else setError(res.error ?? "Failed to load trial balance");
+      })
+      .catch(() => setError("Failed to load trial balance"))
+      .finally(() => setLoading(false));
+  }, [asOfDate]);
 
-  // All arithmetic in integer paise
-  const totalDebit: number = lines.reduce((s, l) => s + l.total_debit_paise, 0);
-  const totalCredit: number = lines.reduce((s, l) => s + l.total_credit_paise, 0);
-  const isBalanced = totalDebit === totalCredit;
-  const difference: number = totalDebit - totalCredit;
+  if (loading) return <LoadingSpinner />;
+
+  if (error || !trialBalance) {
+    return (
+      <div className="p-6 max-w-5xl mx-auto">
+        <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error ?? "No data"}</div>
+      </div>
+    );
+  }
+
+  const lines: TrialBalanceLine[] = trialBalance.lines.filter((l) => l.total_debit_paise > 0 || l.total_credit_paise > 0);
+  const isBalanced = trialBalance.is_balanced;
+  const totalDebit: number = trialBalance.total_debit_paise;
+  const totalCredit: number = trialBalance.total_credit_paise;
+  const difference: number = trialBalance.difference_paise;
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
