@@ -3,39 +3,48 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import {
-  FileText, Clock, Bot,
-  ChevronRight, Building2, Mail, Phone, MapPin, Calendar,
+  Building2, Mail, Phone, MapPin, Calendar, FileText, Clock,
+  ChevronRight, CheckCircle, AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { ClientWorkspace, ComplianceTask, AIInsight, ComplianceRecord, ComplianceRecordStatus, ClientHealthScore, ApiResponse, RiskItem, AIInsightV2 } from "@/lib/types";
-import { statusColor, priorityColor, formatDueDateLabel } from "@/lib/services/compliance";
-import { formatRelativeTime, formatDate, ENTITY_TYPE_LABELS } from "@/lib/services/formatting";
+import { getClient } from "@/lib/data/clients";
+import { getTasks } from "@/lib/data/tasks";
+import { getComplianceCalendar, updateFilingStatus, seedComplianceCalendar } from "@/lib/data/compliance";
+import { getTransactions } from "@/lib/data/transactions";
+import { getBankStatements } from "@/lib/data/bankStatements";
+import type { Client } from "@/lib/types";
+import type { Task } from "@/lib/types";
+import type { ComplianceEntry } from "@/lib/data/compliance";
+import type { Transaction } from "@/lib/data/transactions";
+import type { BankStatement } from "@/lib/data/bankStatements";
+import { formatDate, ENTITY_TYPE_LABELS } from "@/lib/services/formatting";
+import { formatPaise } from "@/lib/services/formatting";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+type TabId = "overview" | "tasks" | "compliance" | "invoices" | "bank";
 
-const STATUS_COLORS: Record<ComplianceRecordStatus, string> = {
-  "Not Started": "bg-gray-100 text-gray-600",
-  "Awaiting Documents": "bg-amber-100 text-amber-700",
-  "In Progress": "bg-blue-100 text-blue-700",
-  "Ready For Review": "bg-orange-100 text-orange-700",
-  "Ready To File": "bg-purple-100 text-purple-700",
-  "Filed": "bg-green-100 text-green-700",
-  "Overdue": "bg-red-100 text-red-700",
+const TABS: { id: TabId; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "tasks", label: "Tasks" },
+  { id: "compliance", label: "Compliance" },
+  { id: "invoices", label: "Invoices" },
+  { id: "bank", label: "Bank Statements" },
+];
+
+const TASK_STATUS_COLORS: Record<string, string> = {
+  todo: "bg-gray-100 text-gray-600",
+  in_progress: "bg-blue-100 text-blue-700",
+  waiting_client: "bg-purple-100 text-purple-700",
+  review_required: "bg-amber-100 text-amber-700",
+  completed: "bg-green-100 text-green-700",
 };
 
-const severityColor: Record<string, string> = {
-  critical: "bg-red-100 text-red-800 border-red-200",
-  high: "bg-orange-100 text-orange-800 border-orange-200",
-  medium: "bg-amber-100 text-amber-800 border-amber-200",
-  low: "bg-blue-100 text-blue-800 border-blue-200",
-  info: "bg-gray-100 text-gray-800 border-gray-200",
-};
-
-const reviewBadge: Record<string, string> = {
-  approved: "bg-green-100 text-green-700",
-  pending_review: "bg-amber-100 text-amber-700",
-  rejected: "bg-red-100 text-red-700",
+const FILING_STATUS_COLORS: Record<string, string> = {
+  pending: "bg-amber-100 text-amber-700",
+  in_progress: "bg-blue-100 text-blue-700",
+  filed: "bg-green-100 text-green-700",
+  overdue: "bg-red-100 text-red-700",
+  na: "bg-gray-100 text-gray-500",
 };
 
 function LoadingSkeleton() {
@@ -52,155 +61,93 @@ function LoadingSkeleton() {
   );
 }
 
-function SummaryCard({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className={`rounded-lg px-4 py-3 ${color}`}>
-      <p className="text-2xl font-bold">{value}</p>
-      <p className="text-xs mt-0.5 opacity-80">{label}</p>
-    </div>
-  );
-}
-
-function ComplianceRow({ task }: { task: ComplianceTask }) {
-  return (
-    <div className="flex items-center gap-3 py-3 border-b border-gray-50 last:border-0">
-      <div className="flex-1">
-        <p className="text-sm font-medium text-gray-900">{task.compliance_type}</p>
-        <p className="text-xs text-gray-500 mt-0.5">
-          {formatDate(task.period_start)} — {formatDate(task.period_end)}
-        </p>
-      </div>
-      <div className="text-right">
-        <p className="text-xs text-gray-500">{formatDueDateLabel(task.days_remaining)}</p>
-        <p className="text-xs text-gray-400">{formatDate(task.due_date)}</p>
-      </div>
-      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[task.status]}`}>
-        {task.status}
-      </span>
-      <span className={`text-xs px-2 py-0.5 rounded-full ${priorityColor[task.priority]}`}>
-        {task.priority}
-      </span>
-    </div>
-  );
-}
-
-function InsightCard({ insight }: { insight: AIInsight }) {
-  return (
-    <div className={`border rounded-lg p-4 ${severityColor[insight.severity]}`}>
-      <div className="flex items-start gap-2">
-        <Bot size={16} className="mt-0.5 shrink-0" />
-        <div className="flex-1">
-          <p className="text-sm font-semibold">{insight.title}</p>
-          <p className="text-xs mt-1 opacity-90">{insight.description}</p>
-          {insight.recommended_action && (
-            <p className="text-xs mt-2 font-medium">→ {insight.recommended_action}</p>
-          )}
-        </div>
-        <Badge variant="outline" className="text-xs shrink-0">{insight.severity}</Badge>
-      </div>
-    </div>
-  );
-}
-
-type TabId = "overview" | "compliance" | "documents" | "activity" | "intelligence";
-
-const TABS: { id: TabId; label: string }[] = [
-  { id: "overview", label: "Overview" },
-  { id: "compliance", label: "Compliance" },
-  { id: "documents", label: "Documents" },
-  { id: "activity", label: "Activity" },
-  { id: "intelligence", label: "Intelligence" },
-];
-
-function healthColor(score: number): string {
-  if (score > 70) return "text-green-600";
-  if (score >= 40) return "text-amber-600";
-  return "text-red-600";
-}
-
-function healthBg(score: number): string {
-  if (score > 70) return "bg-green-50";
-  if (score >= 40) return "bg-amber-50";
-  return "bg-red-50";
+interface MarkFiledForm {
+  id: string;
+  arn: string;
 }
 
 export default function ClientWorkspacePage() {
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
 
-  const [workspace, setWorkspace] = useState<ClientWorkspace | null>(null);
-  const [complianceRecords, setComplianceRecords] = useState<ComplianceRecord[]>([]);
-  const [health, setHealth] = useState<ClientHealthScore | null>(null);
-  const [clientRisks, setClientRisks] = useState<RiskItem[]>([]);
-  const [clientInsights, setClientInsights] = useState<AIInsightV2[]>([]);
-  const [generatingInsights, setGeneratingInsights] = useState(false);
+  const [client, setClient] = useState<Client | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [compliance, setCompliance] = useState<ComplianceEntry[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [bankStatements, setBankStatements] = useState<BankStatement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const [markFiled, setMarkFiled] = useState<MarkFiledForm | null>(null);
+  const [filingLoading, setFilingLoading] = useState(false);
 
   useEffect(() => {
     if (!id || id === "_placeholder") return;
 
-    async function loadData() {
+    async function load() {
       setLoading(true);
       setError(null);
       try {
-        const [wsRes, crRes, hRes, risksRes, insightsRes] = await Promise.all([
-          fetch(`${BASE_URL}/api/clients/${id}`).then((r) => r.json()) as Promise<ApiResponse<ClientWorkspace>>,
-          fetch(`${BASE_URL}/api/compliance-records?client_id=${id}`).then((r) => r.json()) as Promise<ApiResponse<ComplianceRecord[]>>,
-          fetch(`${BASE_URL}/api/compliance-records/client/${id}/health`).then((r) => r.json()) as Promise<ApiResponse<ClientHealthScore>>,
-          fetch(`${BASE_URL}/api/risks/client/${id}`).then((r) => r.json()),
-          fetch(`${BASE_URL}/api/ai-insights?client_id=${id}`).then((r) => r.json()),
+        const [c, t, comp, txns, bs] = await Promise.all([
+          getClient(id as string),
+          getTasks(id as string).catch(() => [] as Task[]),
+          getComplianceCalendar(id as string).catch(() => [] as ComplianceEntry[]),
+          getTransactions(id as string).catch(() => [] as Transaction[]),
+          getBankStatements(id as string).catch(() => [] as BankStatement[]),
         ]);
-        if (!wsRes.success) { setError(wsRes.error ?? "Failed to load workspace"); return; }
-        setWorkspace(wsRes.data);
-        if (crRes.success) setComplianceRecords(crRes.data);
-        if (hRes.success) setHealth(hRes.data);
-        if (risksRes.success) setClientRisks(risksRes.data ?? []);
-        if (insightsRes.success) setClientInsights(insightsRes.data ?? []);
-      } catch {
-        setError("Failed to load client workspace");
+        setClient(c);
+        setTasks(t);
+        // Seed compliance calendar if empty
+        if (comp.length === 0) {
+          await seedComplianceCalendar(id as string).catch(() => undefined);
+          const seeded = await getComplianceCalendar(id as string).catch(() => [] as ComplianceEntry[]);
+          setCompliance(seeded);
+        } else {
+          setCompliance(comp);
+        }
+        setTransactions(txns);
+        setBankStatements(bs);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load client");
       } finally {
         setLoading(false);
       }
     }
-
-    loadData();
+    load();
   }, [id]);
 
-  async function generateInsights() {
-    if (!id) return;
-    setGeneratingInsights(true);
+  async function handleMarkFiled() {
+    if (!markFiled) return;
+    setFilingLoading(true);
     try {
-      await fetch(`${BASE_URL}/api/ai-insights/generate/${id}`, { method: "POST" });
-      const res = await fetch(`${BASE_URL}/api/ai-insights?client_id=${id}`).then((r) => r.json());
-      if (res.success) setClientInsights(res.data ?? []);
+      await updateFilingStatus(markFiled.id, "filed", markFiled.arn || undefined);
+      setCompliance(prev => prev.map(c =>
+        c.id === markFiled.id ? { ...c, filing_status: "filed", arn_number: markFiled.arn } : c
+      ));
+      setMarkFiled(null);
     } finally {
-      setGeneratingInsights(false);
+      setFilingLoading(false);
     }
   }
 
   if (!id || id === "_placeholder") {
-    return (
-      <div className="p-6 max-w-7xl mx-auto">
-        <p className="text-gray-500 text-sm">Loading client…</p>
-      </div>
-    );
+    return <div className="p-6 max-w-7xl mx-auto"><p className="text-gray-500 text-sm">Loading client…</p></div>;
   }
-
   if (loading) return <LoadingSkeleton />;
-
-  if (error || !workspace) {
+  if (error || !client) {
     return (
       <div className="p-6 max-w-7xl mx-auto">
-        <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">
-          {error ?? "Client not found"}
-        </div>
+        <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error ?? "Client not found"}</div>
       </div>
     );
   }
 
-  const { profile, summary, compliance_tasks, documents, recent_activity, ai_insights } = workspace;
+  const today = new Date().toISOString().split("T")[0];
+  const monthStart = today.slice(0, 7) + "-01";
+
+  const openTasks = tasks.filter(t => t.status !== "completed").length;
+  const pendingFilings = compliance.filter(c => c.filing_status === "pending" || c.filing_status === "overdue").length;
+  const invoicesThisMonth = transactions.filter(t => t.transaction_date >= monthStart).length;
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -210,25 +157,34 @@ export default function ClientWorkspacePage() {
           <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
             <span>Clients</span>
             <ChevronRight size={14} />
-            <span className="text-gray-900 font-medium">{profile.client_name}</span>
+            <span className="text-gray-900 font-medium">{client.client_name}</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">{profile.client_name}</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{client.client_name}</h1>
           <div className="flex items-center gap-2 mt-1">
-            <Badge variant="secondary" className="text-xs">{ENTITY_TYPE_LABELS[profile.entity_type] ?? profile.entity_type}</Badge>
-            <Badge variant={profile.status === "active" ? "secondary" : "outline"} className={profile.status === "active" ? "bg-green-100 text-green-700 text-xs" : "text-xs"}>
-              {profile.status}
+            <Badge variant="secondary" className="text-xs">
+              {ENTITY_TYPE_LABELS[client.entity_type] ?? client.entity_type}
+            </Badge>
+            <Badge variant="secondary" className={`text-xs ${client.status === "active" ? "bg-green-100 text-green-700" : ""}`}>
+              {client.status}
             </Badge>
           </div>
         </div>
       </div>
 
-      {/* Summary row */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <SummaryCard label="Total Tasks" value={summary.total_tasks} color="bg-gray-100 text-gray-800" />
-        <SummaryCard label="Overdue" value={summary.overdue_count} color={summary.overdue_count > 0 ? "bg-red-100 text-red-800" : "bg-gray-100 text-gray-600"} />
-        <SummaryCard label="Pending" value={summary.pending_count} color="bg-amber-100 text-amber-800" />
-        <SummaryCard label="Filed" value={summary.filed_count} color="bg-green-100 text-green-800" />
-        <SummaryCard label="AI Insights" value={summary.open_insights} color={summary.open_insights > 0 ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-600"} />
+      {/* Quick stats row */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-lg bg-blue-50 text-blue-800 px-4 py-3">
+          <p className="text-2xl font-bold">{openTasks}</p>
+          <p className="text-xs mt-0.5 opacity-80">Open Tasks</p>
+        </div>
+        <div className={`rounded-lg px-4 py-3 ${pendingFilings > 0 ? "bg-amber-50 text-amber-800" : "bg-gray-100 text-gray-600"}`}>
+          <p className="text-2xl font-bold">{pendingFilings}</p>
+          <p className="text-xs mt-0.5 opacity-80">Pending Filings</p>
+        </div>
+        <div className="rounded-lg bg-purple-50 text-purple-800 px-4 py-3">
+          <p className="text-2xl font-bold">{invoicesThisMonth}</p>
+          <p className="text-xs mt-0.5 opacity-80">Invoices This Month</p>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -251,294 +207,321 @@ export default function ClientWorkspacePage() {
       {/* Overview tab */}
       {activeTab === "overview" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Building2 size={15} />
-                  Client Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Building2 size={15} /> Client Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div>
+                <p className="text-xs text-gray-500">PAN</p>
+                <p className="font-mono font-medium">{client.pan}</p>
+              </div>
+              {client.gstin && (
                 <div>
-                  <p className="text-xs text-gray-500">PAN</p>
-                  <p className="font-mono font-medium">{profile.pan}</p>
+                  <p className="text-xs text-gray-500">GSTIN</p>
+                  <p className="font-mono font-medium">{client.gstin}</p>
                 </div>
-                {profile.gstin && (
-                  <div>
-                    <p className="text-xs text-gray-500">GSTIN</p>
-                    <p className="font-mono font-medium">{profile.gstin}</p>
-                  </div>
-                )}
-                {profile.mobile && (
-                  <div className="flex items-center gap-2 text-gray-700">
-                    <Phone size={13} />
-                    <span>{profile.mobile}</span>
-                  </div>
-                )}
-                {profile.email && (
-                  <div className="flex items-center gap-2 text-gray-700">
-                    <Mail size={13} />
-                    <span className="truncate">{profile.email}</span>
-                  </div>
-                )}
-                {profile.city && (
-                  <div className="flex items-center gap-2 text-gray-700">
-                    <MapPin size={13} />
-                    <span>{profile.city}, {profile.state} — {profile.pincode}</span>
-                  </div>
-                )}
+              )}
+              {client.mobile && (
                 <div className="flex items-center gap-2 text-gray-700">
-                  <Calendar size={13} />
-                  <span>GST filing: {profile.gst_filing_frequency}</span>
+                  <Phone size={13} /><span>{client.mobile}</span>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+              )}
+              {client.email && (
+                <div className="flex items-center gap-2 text-gray-700">
+                  <Mail size={13} /><span className="truncate">{client.email}</span>
+                </div>
+              )}
+              {client.city && (
+                <div className="flex items-center gap-2 text-gray-700">
+                  <MapPin size={13} />
+                  <span>{client.city}{client.state ? `, ${client.state}` : ""}{client.pincode ? ` — ${client.pincode}` : ""}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2 text-gray-700">
+                <Calendar size={13} />
+                <span>GST filing: {client.gst_filing_frequency}</span>
+              </div>
+              {client.notes && (
+                <div>
+                  <p className="text-xs text-gray-500">Notes</p>
+                  <p className="text-xs text-gray-700">{client.notes}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           <div className="lg:col-span-2 space-y-4">
-            {ai_insights.length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Bot size={15} />
-                    AI Insights
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {ai_insights.map((insight) => (
-                    <InsightCard key={insight.id} insight={insight} />
-                  ))}
-                </CardContent>
-              </Card>
-            )}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2"><Clock size={15} /> Recent Tasks</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {tasks.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-4">No tasks</p>
+                ) : (
+                  <div className="space-y-2">
+                    {tasks.slice(0, 5).map(t => (
+                      <div key={t.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">{t.title}</p>
+                          {t.due_date && <p className="text-xs text-gray-500">Due: {formatDate(t.due_date)}</p>}
+                        </div>
+                        <Badge className={`text-xs ${TASK_STATUS_COLORS[t.status] ?? "bg-gray-100 text-gray-600"}`}>
+                          {t.status.replace(/_/g, " ")}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Clock size={15} />
-                  Compliance Tasks
-                </CardTitle>
+                <CardTitle className="text-sm flex items-center gap-2"><AlertTriangle size={15} /> Upcoming Filings</CardTitle>
               </CardHeader>
               <CardContent>
-                {compliance_tasks.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-4">No tasks</p>
+                {compliance.filter(c => c.filing_status !== "filed" && c.due_date >= today).slice(0, 5).length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-4">No upcoming filings</p>
                 ) : (
-                  compliance_tasks.map((t) => <ComplianceRow key={t.id} task={t} />)
+                  <div className="space-y-2">
+                    {compliance.filter(c => c.filing_status !== "filed" && c.due_date >= today).slice(0, 5).map(c => (
+                      <div key={c.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">{c.compliance_type}</p>
+                          <p className="text-xs text-gray-500">Due: {formatDate(c.due_date)}</p>
+                        </div>
+                        <Badge className={`text-xs ${FILING_STATUS_COLORS[c.filing_status] ?? "bg-gray-100 text-gray-600"}`}>
+                          {c.filing_status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </CardContent>
             </Card>
           </div>
         </div>
+      )}
+
+      {/* Tasks tab */}
+      {activeTab === "tasks" && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Clock size={15} /> Tasks ({tasks.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {tasks.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">No tasks for this client</p>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {tasks.map(t => (
+                  <div key={t.id} className="flex items-center gap-4 py-3">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">{t.title}</p>
+                      {t.description && <p className="text-xs text-gray-500 mt-0.5">{t.description}</p>}
+                    </div>
+                    {t.due_date && (
+                      <p className={`text-xs shrink-0 ${t.due_date < today && t.status !== "completed" ? "text-red-600 font-medium" : "text-gray-500"}`}>
+                        {formatDate(t.due_date)}
+                      </p>
+                    )}
+                    <Badge className={`text-xs shrink-0 ${TASK_STATUS_COLORS[t.status] ?? "bg-gray-100 text-gray-600"}`}>
+                      {t.status.replace(/_/g, " ")}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Compliance tab */}
       {activeTab === "compliance" && (
-        <div className="space-y-6">
-          {/* Health score */}
-          {health && (
-            <Card>
-              <CardContent className={`pt-5 pb-4 ${healthBg(health.health_score)}`}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Client Health Score</p>
-                    <p className={`text-4xl font-bold ${healthColor(health.health_score)}`}>
-                      {health.health_score}<span className="text-lg font-normal">/100</span>
-                    </p>
-                    <p className={`text-sm font-medium mt-1 capitalize ${healthColor(health.health_score)}`}>
-                      {health.risk_level} risk
-                    </p>
-                  </div>
-                  <div className="space-y-1 text-right">
-                    {health.breakdown.map((b, i) => (
-                      <p key={i} className="text-xs text-gray-600">-{b.deduction} · {b.label}</p>
-                    ))}
-                  </div>
+        <div className="space-y-4">
+          {/* Mark as Filed inline form */}
+          {markFiled && (
+            <Card className="border-blue-200 bg-blue-50">
+              <CardContent className="pt-4 pb-4">
+                <p className="text-sm font-medium text-blue-900 mb-3">Mark as Filed</p>
+                <div className="flex gap-3 items-center">
+                  <input
+                    value={markFiled.arn}
+                    onChange={e => setMarkFiled({ ...markFiled, arn: e.target.value })}
+                    placeholder="ARN Number (optional)"
+                    className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  />
+                  <button
+                    onClick={handleMarkFiled}
+                    disabled={filingLoading}
+                    className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {filingLoading ? "Saving…" : "Confirm Filed"}
+                  </button>
+                  <button
+                    onClick={() => setMarkFiled(null)}
+                    className="text-xs px-3 py-1.5 border border-gray-200 rounded-md hover:bg-gray-100"
+                  >
+                    Cancel
+                  </button>
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Compliance records grouped by type */}
-          {(["GST", "Income Tax", "TDS"] as const).map((type) => {
-            const records = complianceRecords.filter((r) => r.compliance_type === type);
-            if (records.length === 0) return null;
-            return (
-              <Card key={type}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">{type}</CardTitle>
-                </CardHeader>
-                <CardContent className="pb-4">
-                  <div className="divide-y divide-gray-50">
-                    {records.map((r) => (
-                      <div key={r.id} className="flex items-center gap-4 py-3">
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-900">{r.period_label}</p>
-                          <p className="text-xs text-gray-500 mt-0.5">Due: {formatDate(r.due_date)}</p>
-                        </div>
-                        <Badge className={`text-xs ${STATUS_COLORS[r.status]}`}>{r.status}</Badge>
-                        <span className={`text-xs font-medium ${r.risk_score >= 70 ? "text-red-600" : r.risk_score >= 40 ? "text-amber-600" : "text-green-600"}`}>
-                          Risk: {r.risk_score}
-                        </span>
-                        <button className="text-xs text-blue-600 hover:underline shrink-0">Update</button>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Compliance Calendar ({compliance.length} deadlines)</CardTitle>
+            </CardHeader>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 text-xs text-gray-400">
+                    <th className="px-5 py-3 text-left font-semibold">Type</th>
+                    <th className="px-3 py-3 text-left font-semibold">Period</th>
+                    <th className="px-3 py-3 text-left font-semibold">Due Date</th>
+                    <th className="px-3 py-3 text-left font-semibold">Status</th>
+                    <th className="px-3 py-3 text-left font-semibold">ARN</th>
+                    <th className="px-5 py-3 text-left font-semibold">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {compliance.map(c => (
+                    <tr key={c.id} className="hover:bg-gray-50">
+                      <td className="px-5 py-3 text-sm font-medium text-gray-900">{c.compliance_type}</td>
+                      <td className="px-3 py-3 text-xs text-gray-500">
+                        {formatDate(c.period_start)} – {formatDate(c.period_end)}
+                      </td>
+                      <td className={`px-3 py-3 text-xs whitespace-nowrap ${c.due_date < today && c.filing_status !== "filed" ? "text-red-600 font-medium" : "text-gray-600"}`}>
+                        {formatDate(c.due_date)}
+                      </td>
+                      <td className="px-3 py-3">
+                        <Badge className={`text-xs ${FILING_STATUS_COLORS[c.filing_status] ?? "bg-gray-100 text-gray-600"}`}>
+                          {c.filing_status}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-3 text-xs text-gray-500 font-mono">{c.arn_number ?? "—"}</td>
+                      <td className="px-5 py-3">
+                        {c.filing_status !== "filed" && (
+                          <button
+                            onClick={() => setMarkFiled({ id: c.id, arn: c.arn_number ?? "" })}
+                            className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                          >
+                            <CheckCircle size={12} /> Mark Filed
+                          </button>
+                        )}
+                        {c.filing_status === "filed" && (
+                          <span className="text-xs text-green-600 flex items-center gap-1">
+                            <CheckCircle size={12} /> Filed {c.filed_date ? `on ${formatDate(c.filed_date)}` : ""}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {compliance.length === 0 && (
+                <div className="text-center py-8 text-sm text-gray-400">No compliance deadlines found</div>
+              )}
+            </div>
+          </Card>
         </div>
       )}
 
-      {/* Documents tab */}
-      {activeTab === "documents" && (
+      {/* Invoices tab */}
+      {activeTab === "invoices" && (
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
-              <FileText size={15} />
-              Documents ({documents.length})
+              <FileText size={15} /> Transactions ({transactions.length})
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {documents.map((doc) => (
-              <div key={doc.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-gray-900 truncate">{doc.file_name}</p>
-                  <p className="text-xs text-gray-500">{doc.document_type} · {doc.financial_year}</p>
-                </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${reviewBadge[doc.review_status]}`}>
-                  {doc.review_status === "pending_review" ? "Pending" : doc.review_status}
-                </span>
-              </div>
-            ))}
-          </CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-xs text-gray-400">
+                  <th className="px-5 py-3 text-left font-semibold">Date</th>
+                  <th className="px-3 py-3 text-left font-semibold">Type</th>
+                  <th className="px-3 py-3 text-left font-semibold">Party</th>
+                  <th className="px-3 py-3 text-left font-semibold">Ref</th>
+                  <th className="px-3 py-3 text-right font-semibold">Amount</th>
+                  <th className="px-5 py-3 text-left font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {transactions.map(t => (
+                  <tr key={t.id} className="hover:bg-gray-50">
+                    <td className="px-5 py-3 text-xs text-gray-600 whitespace-nowrap">{formatDate(t.transaction_date)}</td>
+                    <td className="px-3 py-3 text-xs text-gray-600">{t.transaction_type.replace(/_/g, " ")}</td>
+                    <td className="px-3 py-3 text-sm font-medium text-gray-900">{t.party_name}</td>
+                    <td className="px-3 py-3 text-xs text-gray-500 font-mono">{t.reference_no ?? "—"}</td>
+                    <td className="px-3 py-3 text-sm text-right tabular-nums text-gray-700">{formatPaise(t.total_paise)}</td>
+                    <td className="px-5 py-3">
+                      <Badge className={`text-xs ${t.status === "posted" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                        {t.status}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {transactions.length === 0 && (
+              <div className="text-center py-8 text-sm text-gray-400">No transactions found</div>
+            )}
+          </div>
         </Card>
       )}
 
-      {/* Activity tab */}
-      {activeTab === "activity" && (
+      {/* Bank Statements tab */}
+      {activeTab === "bank" && (
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Recent Activity</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Bank Statements ({bankStatements.length})</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {recent_activity.map((log) => (
-                <div key={log.id} className="flex items-start gap-3">
-                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-2 shrink-0" />
-                  <div className="flex-1">
-                    <p className="text-sm text-gray-800">{log.description}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{formatRelativeTime(log.created_at)}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-xs text-gray-400">
+                  <th className="px-5 py-3 text-left font-semibold">Bank</th>
+                  <th className="px-3 py-3 text-left font-semibold">Account</th>
+                  <th className="px-3 py-3 text-left font-semibold">Period</th>
+                  <th className="px-3 py-3 text-right font-semibold">Debits</th>
+                  <th className="px-3 py-3 text-right font-semibold">Credits</th>
+                  <th className="px-3 py-3 text-center font-semibold">Rows</th>
+                  <th className="px-5 py-3 text-left font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {bankStatements.map(bs => (
+                  <tr key={bs.id} className="hover:bg-gray-50">
+                    <td className="px-5 py-3 text-sm font-medium text-gray-900">{bs.bank_name}</td>
+                    <td className="px-3 py-3 text-xs text-gray-500 font-mono">{bs.account_number ?? "—"}</td>
+                    <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">
+                      {formatDate(bs.statement_from)} – {formatDate(bs.statement_to)}
+                    </td>
+                    <td className="px-3 py-3 text-sm text-right tabular-nums text-red-600">{formatPaise(bs.total_debits_paise)}</td>
+                    <td className="px-3 py-3 text-sm text-right tabular-nums text-green-600">{formatPaise(bs.total_credits_paise)}</td>
+                    <td className="px-3 py-3 text-xs text-center text-gray-500">{bs.row_count}</td>
+                    <td className="px-5 py-3">
+                      <Badge className={`text-xs ${bs.import_status === "posted" ? "bg-green-100 text-green-700" : bs.import_status === "reviewed" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}>
+                        {bs.import_status}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {bankStatements.length === 0 && (
+              <div className="text-center py-8 text-sm text-gray-400">No bank statements imported</div>
+            )}
+          </div>
         </Card>
-      )}
-
-      {/* Intelligence tab */}
-      {activeTab === "intelligence" && (
-        <div className="space-y-6">
-          {/* Health Score */}
-          {health && (
-            <Card>
-              <CardContent className={`pt-5 pb-4 ${healthBg(health.health_score)}`}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Client Health Score</p>
-                    <p className={`text-4xl font-bold ${healthColor(health.health_score)}`}>
-                      {health.health_score}<span className="text-lg font-normal">/100</span>
-                    </p>
-                    <p className={`text-sm font-medium mt-1 capitalize ${healthColor(health.health_score)}`}>
-                      {health.risk_level} risk
-                    </p>
-                  </div>
-                  <div className="space-y-1 text-right">
-                    {health.breakdown.map((b, i) => (
-                      <p key={i} className="text-xs text-gray-600">-{b.deduction} · {b.label}</p>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Open Risks */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                Open Risks ({clientRisks.filter((r) => r.resolution_status === "open").length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {clientRisks.filter((r) => r.resolution_status === "open").length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-4">No open risks</p>
-              ) : (
-                <div className="space-y-3">
-                  {clientRisks.filter((r) => r.resolution_status === "open").map((risk) => (
-                    <div key={risk.id} className={`border rounded-lg p-4 ${severityColor[risk.severity]}`}>
-                      <div className="flex items-start gap-2 justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge variant="outline" className="text-xs">{risk.severity}</Badge>
-                            <span className="text-xs text-gray-500">{risk.category.replace(/_/g, " ")}</span>
-                          </div>
-                          <p className="text-sm font-semibold">{risk.title}</p>
-                          <p className="text-xs mt-1 opacity-90">{risk.description}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* AI Insights */}
-          <Card>
-            <CardHeader className="pb-3 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Bot size={15} />
-                AI Insights ({clientInsights.length})
-              </CardTitle>
-              <button
-                onClick={generateInsights}
-                disabled={generatingInsights}
-                className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5"
-              >
-                {generatingInsights ? "Generating…" : "Generate Insights"}
-              </button>
-            </CardHeader>
-            <CardContent>
-              {clientInsights.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-4">No insights yet. Click &quot;Generate Insights&quot; to analyse this client.</p>
-              ) : (
-                <div className="space-y-3">
-                  {clientInsights.map((insight) => (
-                    <div key={insight.id} className={`border rounded-lg p-4 ${severityColor[insight.severity]}`}>
-                      <div className="flex items-start gap-2">
-                        <Bot size={16} className="mt-0.5 shrink-0" />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge variant="outline" className="text-xs">{insight.severity}</Badge>
-                            <span className="text-xs text-gray-500 capitalize">{insight.category}</span>
-                          </div>
-                          <p className="text-sm font-semibold">{insight.title}</p>
-                          <p className="text-xs mt-1 opacity-90">{insight.description}</p>
-                          {insight.recommendation && (
-                            <p className="text-xs mt-2 font-medium">→ {insight.recommendation}</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
       )}
     </div>
   );

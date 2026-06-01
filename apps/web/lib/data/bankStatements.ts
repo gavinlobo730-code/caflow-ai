@@ -230,6 +230,88 @@ export async function updateTransactionAccount(id: string, accountId: string): P
   }).eq("id", id);
 }
 
+/**
+ * Post a single bank transaction to the accounting ledger (double-entry).
+ * Creates a journal entry in journal_entries + journal_lines.
+ * All amounts in paise — never float.
+ * Double-entry rules (CGST Act Section 2 read with IT Act Section 145):
+ *   Debit (money out of bank) → Dr selected account / Cr bank account
+ *   Credit (money into bank) → Dr bank account / Cr selected account
+ */
+export async function postBankTransaction(
+  transactionId: string,
+  accountId: string,
+  bankAccountId: string,
+  clientId: string,
+): Promise<void> {
+  const sb = getSupabaseClient();
+  const firmId = await getFirmId();
+
+  // Fetch the bank transaction
+  const { data: txn, error: txnErr } = await sb
+    .from("bank_transactions")
+    .select("*")
+    .eq("id", transactionId)
+    .single();
+  if (txnErr || !txn) throw new Error(txnErr?.message ?? "Transaction not found");
+
+  const debitPaise = txn.debit_paise as number;
+  const creditPaise = txn.credit_paise as number;
+  const amount = Math.max(debitPaise, creditPaise); // one will be 0
+  if (amount === 0) throw new Error("Transaction has zero amount");
+
+  // Determine narration
+  const narration = `Bank import: ${txn.description as string}`;
+
+  // Create journal entry
+  const { data: je, error: jeErr } = await sb.from("journal_entries").insert({
+    firm_id: firmId,
+    client_id: clientId,
+    entry_date: txn.transaction_date,
+    narration,
+    entry_type: debitPaise > 0 ? "Payment" : "Receipt",
+    reference_no: txn.reference_no ?? null,
+    is_posted: true,
+    posted_at: new Date().toISOString(),
+  }).select().single();
+  if (jeErr || !je) throw new Error(jeErr?.message ?? "Failed to create journal entry");
+
+  // Create journal lines (double-entry)
+  const lines = debitPaise > 0
+    ? [
+        // Debit: selected account (expense/asset)
+        { journal_entry_id: je.id, account_id: accountId, debit_paise: amount, credit_paise: 0 },
+        // Credit: bank account
+        { journal_entry_id: je.id, account_id: bankAccountId, debit_paise: 0, credit_paise: amount },
+      ]
+    : [
+        // Debit: bank account
+        { journal_entry_id: je.id, account_id: bankAccountId, debit_paise: amount, credit_paise: 0 },
+        // Credit: selected account (income/liability)
+        { journal_entry_id: je.id, account_id: accountId, debit_paise: 0, credit_paise: amount },
+      ];
+
+  const { error: linesErr } = await sb.from("journal_lines").insert(lines);
+  if (linesErr) throw new Error(linesErr.message);
+
+  // Mark bank transaction as posted
+  await sb.from("bank_transactions").update({
+    account_id: accountId,
+    match_status: "posted",
+    updated_at: new Date().toISOString(),
+  }).eq("id", transactionId);
+}
+
+export async function getAllBankStatements(): Promise<BankStatement[]> {
+  const sb = getSupabaseClient();
+  const firmId = await getFirmId();
+  const { data, error } = await sb.from("bank_statements")
+    .select("*").eq("firm_id", firmId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as BankStatement[];
+}
+
 export async function postBankStatement(statementId: string): Promise<void> {
   const sb = getSupabaseClient();
   await sb.from("bank_transactions")

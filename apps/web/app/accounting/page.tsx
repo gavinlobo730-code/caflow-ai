@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { BookOpen, FileText, BarChart2, Scale, TrendingUp, List, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { BookOpen, FileText, BarChart2, Scale, TrendingUp, List, ArrowUpRight, ArrowDownRight, Building2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
 import type { JournalEntry, Account, TrialBalance, ApiResponse } from "@/lib/types";
@@ -17,6 +17,7 @@ const NAV_CARDS = [
   { label: "Profit & Loss", description: "Revenue, expenses and net profit", href: "/accounting/profit-loss", icon: TrendingUp },
   { label: "Balance Sheet", description: "Assets, liabilities and equity", href: "/accounting/balance-sheet", icon: BarChart2 },
   { label: "Bank Statement Import", description: "Import CSV statements from any Indian bank", href: "/accounting/bank-import", icon: ArrowDownRight },
+  { label: "Bank Statements", description: "Allocate and post bank transactions", href: "/accounting/bank-statements", icon: Building2 },
 ];
 
 const statusBadge: Record<string, string> = {
