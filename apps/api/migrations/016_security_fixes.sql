@@ -27,7 +27,7 @@ AS
     jl.credit_paise,
     je.firm_id,
     je.entry_date,
-    je.reference,
+    je.reference_no,
     coa.account_name,
     coa.account_code,
     coa.account_type
