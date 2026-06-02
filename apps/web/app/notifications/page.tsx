@@ -8,7 +8,9 @@ import {
   CheckCircle,
   Users,
   X,
+  MessageSquare,
 } from "lucide-react";
+import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
 // ---------------------------------------------------------------------------
@@ -366,6 +368,19 @@ export default function NotificationsPage() {
           </button>
         )}
       </div>
+
+      {/* WhatsApp shortcut */}
+      <Link
+        href="/notifications/whatsapp"
+        className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3 hover:bg-green-100 transition-colors"
+      >
+        <MessageSquare size={16} className="text-green-600 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-green-800">WhatsApp Reminder Templates</p>
+          <p className="text-xs text-green-600">Compose and send GSTR, ITR, and fee reminders via WhatsApp Web</p>
+        </div>
+        <span className="text-green-500 text-xs font-medium shrink-0">Open →</span>
+      </Link>
 
       {/* Filter tabs */}
       <div className="flex gap-1 border-b border-gray-100">

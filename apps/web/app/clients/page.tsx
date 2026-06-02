@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { ChevronRight, Plus, Search, RefreshCw, Pencil } from "lucide-react";
+import { ChevronRight, Plus, Search, RefreshCw, Pencil, KanbanSquare } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ClientFormModal } from "@/components/ClientFormModal";
@@ -94,6 +94,13 @@ export default function ClientsPage() {
           >
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
           </button>
+          <Link
+            href="/clients/pipeline"
+            className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            <KanbanSquare size={15} />
+            Pipeline
+          </Link>
           <button
             onClick={openCreate}
             className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"

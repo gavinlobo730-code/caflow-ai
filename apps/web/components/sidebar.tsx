@@ -9,7 +9,7 @@ import {
   Calendar, BarChart3, Settings,
   ChevronLeft, ChevronRight, Landmark, Shield,
   FileStack, ShieldAlert, Sparkles, Bell, LogOut, ExternalLink,
-  Menu, X,
+  Menu, X, KanbanSquare, MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -21,6 +21,7 @@ const NAV_GROUPS = [
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/clients", label: "Clients", icon: Users },
+      { href: "/clients/pipeline", label: "Prospect Pipeline", icon: KanbanSquare },
       { href: "/clients/portal", label: "Client Portal", icon: ExternalLink },
       { href: "/tasks", label: "Tasks", icon: CheckSquare },
       { href: "/team", label: "Team", icon: UserCheck },
@@ -43,10 +44,11 @@ const NAV_GROUPS = [
       { href: "/parser", label: "Documents", icon: FileText },
       { href: "/calendar", label: "Calendar", icon: Calendar },
       { href: "/reports", label: "Reports", icon: BarChart3 },
-      { href: "/documents", label: "Doc Intelligence", icon: FileStack },
+      { href: "/documents/intelligence", label: "Doc Intelligence", icon: FileStack },
       { href: "/risks", label: "Risk Intelligence", icon: ShieldAlert },
       { href: "/ai-assistant", label: "AI Assistant", icon: Sparkles },
       { href: "/notifications", label: "Notifications", icon: Bell },
+      { href: "/notifications/whatsapp", label: "WhatsApp Reminders", icon: MessageSquare },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
