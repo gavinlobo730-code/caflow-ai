@@ -89,6 +89,12 @@ $$;
 -- These tables block ALL queries without at least one policy.
 -- DROP first to make this idempotent (safe to re-run).
 
+-- Ensure firm_id columns exist on tables that may have missed earlier migrations
+ALTER TABLE public.workflows     ADD COLUMN IF NOT EXISTS firm_id UUID REFERENCES public.firms(id);
+ALTER TABLE public.team_members  ADD COLUMN IF NOT EXISTS firm_id UUID REFERENCES public.firms(id);
+ALTER TABLE public.tasks         ADD COLUMN IF NOT EXISTS firm_id UUID REFERENCES public.firms(id);
+ALTER TABLE public.compliance_tasks ADD COLUMN IF NOT EXISTS firm_id UUID REFERENCES public.firms(id);
+
 DROP POLICY IF EXISTS "firm_isolation" ON public.automation_executions;
 DROP POLICY IF EXISTS "firm_isolation" ON public.filings;
 DROP POLICY IF EXISTS "firm_isolation" ON public.journal_lines;
