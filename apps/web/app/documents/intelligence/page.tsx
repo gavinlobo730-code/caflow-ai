@@ -146,11 +146,18 @@ Return ONLY the JSON. No markdown fences, no explanation.`;
   );
 
   if (!res.ok) {
-    const errText = await res.text();
-    if (res.status === 429) {
-      throw new Error("Gemini free tier quota reached. Please wait 1 minute and try again, or use a different API key from aistudio.google.com");
+    const errBody = await res.json().catch(() => ({})) as { error?: { message?: string; code?: number } };
+    const msg = errBody?.error?.message ?? "";
+    if (res.status === 429 || msg.includes("limit: 0") || msg.includes("RESOURCE_EXHAUSTED")) {
+      throw new Error(
+        "Gemini API quota error. Your API key may be from Google Cloud Console (requires billing). " +
+        "Please get a free key from aistudio.google.com → Get API Key, then add it as NEXT_PUBLIC_GEMINI_API_KEY in Cloudflare Pages settings."
+      );
     }
-    throw new Error(`Gemini API error ${res.status}: ${errText}`);
+    if (res.status === 404) {
+      throw new Error("Gemini model not found. Please check your NEXT_PUBLIC_GEMINI_API_KEY in Cloudflare Pages environment variables.");
+    }
+    throw new Error(`Gemini API error ${res.status}: ${msg || JSON.stringify(errBody)}`);
   }
 
   const json = await res.json() as {
