@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { canAccessHref } from "@/lib/auth/permissions";
 
 const NAV_GROUPS = [
   {
@@ -61,7 +62,7 @@ function SidebarContent({
   onNavClick?: () => void;
 }) {
   const pathname = usePathname();
-  const { user, signOut } = useAuth();
+  const { user, userRole, signOut } = useAuth();
 
   return (
     <aside
@@ -101,7 +102,7 @@ function SidebarContent({
               </p>
             )}
             <div className="space-y-0.5">
-              {group.items.map(({ href, label, icon: Icon }) => {
+              {group.items.filter(({ href }) => canAccessHref(href, userRole)).map(({ href, label, icon: Icon }) => {
                 const active = pathname === href;
                 return (
                   <Link
@@ -139,7 +140,7 @@ function SidebarContent({
             <p className="text-xs font-semibold text-gray-900 truncate">
               {user?.email ?? "User"}
             </p>
-            <p className="text-[11px] text-gray-400 truncate">Partner</p>
+            <p className="text-[11px] text-gray-400 truncate">{userRole ?? "Partner"}</p>
           </div>
         )}
         <button

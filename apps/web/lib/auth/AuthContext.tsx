@@ -10,10 +10,12 @@ import {
 } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
+import type { UserRole } from "@/lib/auth/permissions";
 
 interface AuthContextValue {
   session: Session | null;
   user: User | null;
+  userRole: UserRole | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -24,6 +26,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [userRole] = useState<UserRole | null>("Partner"); // default to Partner — never lock out existing users
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -53,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ session, user, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ session, user, userRole, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
