@@ -26,13 +26,20 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [userRole] = useState<UserRole | null>("Partner"); // default to Partner — never lock out existing users
+  const [userRole] = useState<UserRole | null>("Partner");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Safety timeout — if Supabase doesn't respond in 5s, unblock the UI
+    const timeout = setTimeout(() => setLoading(false), 5000);
+
     supabase.auth.getSession().then(({ data: { session } }) => {
+      clearTimeout(timeout);
       setSession(session);
       setUser(session?.user ?? null);
+      setLoading(false);
+    }).catch(() => {
+      clearTimeout(timeout);
       setLoading(false);
     });
 
@@ -43,7 +50,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
