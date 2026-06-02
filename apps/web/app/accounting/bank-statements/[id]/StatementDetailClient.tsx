@@ -63,7 +63,7 @@ export default function StatementDetailClient() {
       const { data: { session } } = await sb.auth.getSession();
       let firmId: string | null = null;
       if (session) {
-        const { data: userData } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).single();
+        const { data: userData } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).maybeSingle();
         firmId = userData?.firm_id ?? null;
       }
 

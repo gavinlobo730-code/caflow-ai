@@ -1,3 +1,4 @@
+import { getFirmId } from "./getFirmId";
 /**
  * Compliance Calendar data layer.
  * Auto-generates filing deadlines when a client is registered.
@@ -23,14 +24,6 @@ export interface ComplianceEntry {
   notes?: string;
 }
 
-async function getFirmId(): Promise<string> {
-  const sb = getSupabaseClient();
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).single();
-  if (!data) throw new Error("User not found");
-  return data.firm_id;
-}
 
 /** Generate compliance deadlines for a financial year for a GST-registered client */
 export function generateGSTDeadlines(clientId: string, firmId: string, financialYear: number) {

@@ -1,3 +1,4 @@
+import { getFirmId } from "./getFirmId";
 /**
  * Transaction data layer — Sales Invoices, Expenses, Journal Auto-creation
  * All amounts in paise (integer). Never float.
@@ -60,14 +61,6 @@ export interface Transaction {
   created_at: string;
 }
 
-async function getFirmId(): Promise<string> {
-  const sb = getSupabaseClient();
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).single();
-  if (!data) throw new Error("User not found");
-  return data.firm_id;
-}
 
 /** Compute totals from lines — all in paise */
 export function computeInvoiceTotals(lines: TransactionLine[], isInterstate: boolean) {
