@@ -296,8 +296,8 @@ export default function JournalPage() {
                 </span>
                 <span className="col-span-2 text-sm font-semibold tabular-nums text-right text-gray-700">
                   {showForex
-                    ? formatForexDisplay(forexCurrency, forexForeignAmt, forexRate, entry.total_debit_paise)
-                    : formatPaise(entry.total_debit_paise)}
+                    ? formatForexDisplay(forexCurrency, forexForeignAmt, forexRate, entry.total_debit_paise ?? 0)
+                    : formatPaise(entry.total_debit_paise ?? 0)}
                 </span>
                 <span className="col-span-1 text-right">
                   {entry.status === "draft" && (
@@ -329,9 +329,9 @@ export default function JournalPage() {
               </div>
             </div>
             <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
-              Total Debit: <span className="font-semibold text-gray-900">{formatPaise(selectedEntry.total_debit_paise)}</span>
+              Total Debit: <span className="font-semibold text-gray-900">{formatPaise(selectedEntry.total_debit_paise ?? 0)}</span>
               {" | "}
-              Total Credit: <span className="font-semibold text-gray-900">{formatPaise(selectedEntry.total_credit_paise)}</span>
+              Total Credit: <span className="font-semibold text-gray-900">{formatPaise(selectedEntry.total_credit_paise ?? 0)}</span>
             </div>
           </CardContent>
         </Card>

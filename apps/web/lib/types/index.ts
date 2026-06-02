@@ -297,9 +297,10 @@ export interface JournalEntry {
   narration: string;
   entry_type: EntryType;
   status: JournalStatus;
+  is_posted?: boolean;
   lines: JournalLine[];
-  total_debit_paise: number;
-  total_credit_paise: number;
+  total_debit_paise?: number;
+  total_credit_paise?: number;
   created_by?: string;
   created_at: string;
 }

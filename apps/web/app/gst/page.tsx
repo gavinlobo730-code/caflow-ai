@@ -180,26 +180,42 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
       const filedDate = status === "Filed" ? TODAY.toISOString().slice(0, 10) : null;
 
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+      // Map ReturnType to compliance_calendar compliance_type values
+      const complianceTypeMap: Record<string, string> = { "GSTR-1": "GSTR1", "GSTR-3B": "GSTR3B", "GSTR-9": "GSTR9" };
+      const [pYear, pMonth] = period.split("-").map(Number);
+      const periodStart = `${pYear}-${String(pMonth).padStart(2, "0")}-01`;
+      const periodEnd = new Date(pYear, pMonth, 0).toISOString().slice(0, 10);
       const { data, error } = await sb
-        .from("compliance_entries")
+        .from("compliance_calendar")
         .insert({
           firm_id: firmId,
           client_id: clientId,
-          client_name: selectedClient?.client_name ?? "",
-          gstin: selectedClient?.gstin ?? null,
-          category: "GST",
-          return_type: returnType,
-          period,
+          compliance_type: complianceTypeMap[returnType] ?? returnType,
+          period_start: periodStart,
+          period_end: periodEnd,
           due_date: dueDate,
-          status: filedDate ? "Filed" : computeStatus(dueDate, null),
+          filing_status: filedDate ? "filed" : "pending",
           filed_date: filedDate,
         })
         .select()
         .single();
 
       if (error) throw new Error(error.message);
-      const filing = data as GSTFiling;
-      filing.status = computeStatus(filing.due_date, filing.filed_date);
+      const returnTypeMap: Record<string, ReturnType> = { GSTR1: "GSTR-1", GSTR3B: "GSTR-3B", GSTR9: "GSTR-9" };
+      const r = data as Record<string, unknown>;
+      const filing: GSTFiling = {
+        id: r.id as string,
+        firm_id: r.firm_id as string,
+        client_id: r.client_id as string,
+        client_name: selectedClient?.client_name ?? "",
+        gstin: selectedClient?.gstin ?? null,
+        return_type: returnTypeMap[r.compliance_type as string] ?? returnType,
+        period: new Date((r.period_start as string) + "T00:00:00").toLocaleString("default", { month: "short", year: "numeric" }),
+        due_date: r.due_date as string,
+        status: computeStatus(r.due_date as string, r.filed_date as string | null),
+        filed_date: r.filed_date as string | null,
+        created_at: r.created_at as string,
+      };
       onAdded(filing);
       onClose();
     } catch (e) {
@@ -362,26 +378,40 @@ export default function GSTPage() {
         const cls = await getClients().catch(() => [] as Client[]);
         setClients(cls);
 
-        // Load compliance_entries filtered by firm and GST category
+        // Load from compliance_calendar with client join for GST types
         if (resolvedFirmId) {
           const { data, error: dbErr } = await sb
-            .from("compliance_entries")
-            .select("*")
+            .from("compliance_calendar")
+            .select("id, firm_id, client_id, compliance_type, period_start, period_end, due_date, filing_status, filed_date, created_at, clients(client_name, gstin)")
             .eq("firm_id", resolvedFirmId)
-            .eq("category", "GST")
+            .in("compliance_type", ["GSTR1", "GSTR3B", "GSTR9"])
             .order("due_date", { ascending: true });
 
           if (dbErr) {
-            // Table may not exist yet — show empty state instead of crashing
             if (dbErr.code === "42P01" || dbErr.message?.includes("does not exist")) {
               setFilings([]);
             } else {
               throw new Error(dbErr.message);
             }
           } else {
-            const rows = (data ?? []) as GSTFiling[];
-            // Recompute live status
-            setFilings(rows.map((r) => ({ ...r, status: computeStatus(r.due_date, r.filed_date) })));
+            const returnTypeMap: Record<string, ReturnType> = { GSTR1: "GSTR-1", GSTR3B: "GSTR-3B", GSTR9: "GSTR-9" };
+            const rows: GSTFiling[] = (data ?? []).map((r: Record<string, unknown>) => {
+              const client = r.clients as { client_name?: string; gstin?: string } | null;
+              return {
+                id: r.id as string,
+                firm_id: r.firm_id as string,
+                client_id: r.client_id as string,
+                client_name: client?.client_name ?? "",
+                gstin: client?.gstin ?? null,
+                return_type: returnTypeMap[r.compliance_type as string] ?? (r.compliance_type as ReturnType),
+                period: new Date((r.period_start as string) + "T00:00:00").toLocaleString("default", { month: "short", year: "numeric" }),
+                due_date: r.due_date as string,
+                status: computeStatus(r.due_date as string, r.filed_date as string | null),
+                filed_date: r.filed_date as string | null,
+                created_at: r.created_at as string,
+              };
+            });
+            setFilings(rows);
           }
         } else {
           setFilings([]);
@@ -400,8 +430,8 @@ export default function GSTPage() {
     const sb = getSupabaseClient();
     // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     const { error: dbErr } = await sb
-      .from("compliance_entries")
-      .update({ status: "Filed", filed_date: TODAY.toISOString().slice(0, 10) })
+      .from("compliance_calendar")
+      .update({ filing_status: "filed", filed_date: TODAY.toISOString().slice(0, 10) })
       .eq("id", id);
 
     if (!dbErr) {
