@@ -95,16 +95,15 @@ function formatDateTime(iso: string): string {
   });
 }
 
-// ─── Claude Vision Extraction ─────────────────────────────────────────────────
-// Uses claude-sonnet-4-6 vision via Anthropic API — NEXT_PUBLIC_ANTHROPIC_API_KEY required
+// ─── Groq Vision Extraction ───────────────────────────────────────────────────
+// Uses llama-4-scout (free Groq tier) — NEXT_PUBLIC_GROQ_API_KEY required
 
 async function extractWithClaude(file: File, docType: DocTypeValue): Promise<ExtractedData> {
-  const apiKey = process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("NEXT_PUBLIC_ANTHROPIC_API_KEY is not set in environment variables");
+  const apiKey = process.env.NEXT_PUBLIC_GROQ_API_KEY;
+  if (!apiKey) throw new Error("NEXT_PUBLIC_GROQ_API_KEY is not set in environment variables");
 
   const base64 = await fileToBase64(file);
   const mimeType = (file.type && file.type.startsWith("image/")) ? file.type : "image/jpeg";
-  const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 
   const prompt = `You are an expert Indian CA document parser. Extract all key information from this ${docType} document.
 
@@ -117,51 +116,45 @@ Return ONLY a valid JSON object with these fields (omit fields not found):
 - period: period covered
 - employer_name: employer/deductor name
 - employer_tan: employer TAN
-- amounts: object of label→value for all monetary amounts (gross salary, TDS, tax payable, etc.)
-- dates: object of label→date for all dates
-- other fields specific to ${docType}
+- amounts: object of label to value for all monetary amounts (gross salary, TDS, tax payable etc.)
+- dates: object of label to date string for all dates found
 
-Important: Return ONLY the JSON. No markdown, no explanation.`;
+Return ONLY the JSON object. No markdown, no explanation.`;
 
   const body = {
-    model: "claude-sonnet-4-6",
-    max_tokens: 1024,
+    model: "meta-llama/llama-4-scout-17b-16e-instruct",
     messages: [
       {
         role: "user",
-        content: isPdf
-          ? [
-              { type: "text", text: `${prompt}\n\nNote: This is a PDF document. Extract data from the text content.` },
-            ]
-          : [
-              {
-                type: "image",
-                source: { type: "base64", media_type: mimeType, data: base64 },
-              },
-              { type: "text", text: prompt },
-            ],
+        content: [
+          {
+            type: "image_url",
+            image_url: { url: `data:${mimeType};base64,${base64}` },
+          },
+          { type: "text", text: prompt },
+        ],
       },
     ],
+    max_tokens: 1024,
+    temperature: 0,
   };
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Claude API error ${res.status}: ${errText}`);
+    throw new Error(`Groq API error ${res.status}: ${errText}`);
   }
 
-  const json = await res.json() as { content: Array<{ type: string; text: string }> };
-  const content = json.content?.[0]?.text ?? "{}";
+  const json = await res.json() as { choices: Array<{ message: { content: string } }> };
+  const content = json.choices?.[0]?.message?.content ?? "{}";
 
   const cleaned = content
     .replace(/```json\s*/gi, "")

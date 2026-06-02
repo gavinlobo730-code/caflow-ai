@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, CheckSquare, UserCheck,
-  BookOpen, FileText, Receipt, Calculator, Building2,
+  BookOpen, Receipt, Calculator, Building2,
   Calendar, BarChart3, Settings,
   ChevronLeft, ChevronRight, Landmark, Shield,
   FileStack, ShieldAlert, Sparkles, Bell, LogOut,
