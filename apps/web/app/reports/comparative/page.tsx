@@ -142,30 +142,38 @@ export default function ComparativeReportsPage() {
           .lte("journal_entries.entry_date", prevFy.end),
       ]);
 
-      type JournalLineRow = {
+      type RawRow = {
         debit_paise: number;
         credit_paise: number;
-        chart_of_accounts: { account_name: string; account_type: string } | null;
+        chart_of_accounts: { account_name: string; account_type: string } | { account_name: string; account_type: string }[] | null;
+        journal_entries?: { entry_date: string } | { entry_date: string }[] | null;
       };
 
-      const aggregate = (rows: JournalLineRow[]): Map<string, { name: string; type: string; net: number }> => {
+      const getAccount = (r: RawRow) => {
+        const coa = r.chart_of_accounts;
+        if (!coa) return null;
+        return Array.isArray(coa) ? coa[0] ?? null : coa;
+      };
+
+      const aggregate = (rows: RawRow[]): Map<string, { name: string; type: string; net: number }> => {
         const m = new Map<string, { name: string; type: string; net: number }>();
         for (const r of rows) {
-          const acc = r.chart_of_accounts;
+          const acc = getAccount(r);
           if (!acc) continue;
           const key = acc.account_name;
           const existing = m.get(key) ?? { name: acc.account_name, type: acc.account_type, net: 0 };
-          // Net = credit - debit for income/equity, debit - credit for assets/expenses
           existing.net += (r.credit_paise ?? 0) - (r.debit_paise ?? 0);
           m.set(key, existing);
         }
         return m;
       };
 
-      const currMap = aggregate((currRes.data ?? []) as JournalLineRow[]);
-      const prevMap = aggregate((prevRes.data ?? []) as JournalLineRow[]);
+      const currRows = (currRes.data ?? []) as unknown as RawRow[];
+      const prevRows = (prevRes.data ?? []) as unknown as RawRow[];
+      const currMap = aggregate(currRows);
+      const prevMap = aggregate(prevRows);
 
-      const allAccounts = new Set([...currMap.keys(), ...prevMap.keys()]);
+      const allAccounts = Array.from(new Set([...Array.from(currMap.keys()), ...Array.from(prevMap.keys())]));
 
       const revenue: AccountLine[] = [];
       const expenses: AccountLine[] = [];
@@ -173,7 +181,7 @@ export default function ComparativeReportsPage() {
       const liabilities: AccountLine[] = [];
       const equity: AccountLine[] = [];
 
-      for (const name of allAccounts) {
+      for (const name of Array.from(allAccounts)) {
         const curr = currMap.get(name);
         const prev = prevMap.get(name);
         const type = curr?.type ?? prev?.type ?? "";
@@ -225,14 +233,15 @@ export default function ComparativeReportsPage() {
         { quarter: `Q4 (Jan-Mar ${fyYear + 1})`, revenue: 0, expenses: 0 },
       ];
 
-      for (const r of (currRes.data ?? []) as (JournalLineRow & { journal_entries: { entry_date: string } | null })[]) {
-        const entryDate = r.journal_entries?.entry_date;
+      for (const r of currRows) {
+        const je = r.journal_entries;
+        const entryDate = je ? (Array.isArray(je) ? je[0]?.entry_date : je.entry_date) : undefined;
         if (!entryDate) continue;
         const m = parseInt(entryDate.split("-")[1]);
         // FY months: Apr=4,May=5,...Mar=3
         // Q1: Apr-Jun (4-6), Q2: Jul-Sep (7-9), Q3: Oct-Dec (10-12), Q4: Jan-Mar (1-3)
         const qIdx = m >= 4 && m <= 6 ? 0 : m >= 7 && m <= 9 ? 1 : m >= 10 ? 2 : 3;
-        const acc = r.chart_of_accounts;
+        const acc = getAccount(r);
         if (!acc) continue;
         const net = (r.credit_paise ?? 0) - (r.debit_paise ?? 0);
         if (acc.account_type === "Income" || acc.account_type === "Revenue") {
