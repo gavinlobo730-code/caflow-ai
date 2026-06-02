@@ -209,7 +209,7 @@ export interface FirmUser {
   id: string;
   auth_user_id?: string;
   firm_id?: string;
-  name?: string;
+  full_name?: string;
   email?: string;
   role?: string;
   is_active?: boolean;

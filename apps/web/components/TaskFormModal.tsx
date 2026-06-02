@@ -133,7 +133,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
               >
                 <option value="">Unassigned</option>
                 {teamMembers.map(m => (
-                  <option key={m.id} value={m.id}>{m.name ?? m.email}</option>
+                  <option key={m.id} value={m.id}>{m.full_name ?? m.email}</option>
                 ))}
               </select>
             </div>
