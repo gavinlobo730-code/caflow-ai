@@ -157,71 +157,88 @@ async function extractWithClaude(file: File, docType: DocTypeValue): Promise<Ext
     try {
       const fullText = await extractTextFromPdf(file);
       if (!fullText.trim()) throw new Error("No text found in PDF");
-      // Truncate to ~2500 chars to stay within Groq free tier token limits
-      documentContent = fullText.length > 2500 ? fullText.substring(0, 2500) + "\n...[truncated]" : fullText;
+      documentContent = fullText;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
-      if (msg === "No text found in PDF") throw new Error("This PDF has no extractable text. It may be a scanned image. Please try a digitally-generated PDF.");
+      if (msg === "No text found in PDF") throw new Error("This PDF has no extractable text. It may be a scanned image. Please use a digitally-generated PDF.");
       throw new Error("Could not read this PDF. Please try again or use a different file.");
     }
   } else {
     const base64 = await fileToBase64(file);
-    documentContent = `[Image file: ${file.name}, size: ${Math.round(file.size / 1024)}KB]\nNote: Describe any PAN, GSTIN, names, amounts and dates visible in this image.`;
-    // For images we just send a short description — vision not available on text models
+    documentContent = `[Image file: ${file.name}, size: ${Math.round(file.size / 1024)}KB]\nExtract any PAN, GSTIN, names, monetary amounts and dates visible.`;
     void base64;
   }
 
-  const prompt = `You are an expert Indian CA document parser. Extract all key information from this ${docType} document text.
+  // Split into 4000-char chunks so each request stays within token limits.
+  // Process all chunks in parallel and merge results.
+  const CHUNK_SIZE = 4000;
+  const chunks: string[] = [];
+  for (let i = 0; i < documentContent.length; i += CHUNK_SIZE) {
+    chunks.push(documentContent.slice(i, i + CHUNK_SIZE));
+  }
 
-DOCUMENT CONTENT:
-${documentContent}
+  async function extractChunk(chunk: string, chunkIndex: number): Promise<ExtractedData> {
+    const prompt = `You are an expert Indian CA document parser. Extract key information from this ${docType} document (part ${chunkIndex + 1} of ${chunks.length}).
 
-Return ONLY a valid JSON object with these fields (include only fields that are present in the document):
+DOCUMENT TEXT:
+${chunk}
+
+Return ONLY a valid JSON object. Include only fields actually present in this text:
 - name: full name of individual or company
 - pan: PAN number (format AAAAA9999A)
-- gstin: GSTIN if present
+- gstin: GSTIN (15-char alphanumeric)
 - assessment_year: e.g. "2024-25"
 - financial_year: e.g. "2023-24"
-- period: period covered by this document
+- period: period covered
 - employer_name: employer or deductor name
-- employer_tan: employer TAN number
-- amounts: object mapping label to rupee value for all monetary amounts
-- dates: object mapping label to date string for all dates
+- employer_tan: TAN number
+- amounts: object of {label: rupee_value} for ALL monetary amounts
+- dates: object of {label: date_string} for ALL dates
 
-Return ONLY the JSON object. No markdown fences, no explanation.`;
+Return ONLY the JSON. No markdown, no explanation.`;
 
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "llama-3.1-8b-instant",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 1024,
-      temperature: 0,
-    }),
-  });
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 1024,
+        temperature: 0,
+      }),
+    });
 
-  if (!res.ok) {
-    const errBody = await res.json().catch(() => ({})) as { error?: { message?: string } };
-    throw new Error(`AI extraction failed: ${errBody?.error?.message ?? res.statusText}`);
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({})) as { error?: { message?: string } };
+      throw new Error(`AI extraction failed: ${errBody?.error?.message ?? res.statusText}`);
+    }
+
+    const json = await res.json() as { choices: Array<{ message: { content: string } }> };
+    const content = json.choices?.[0]?.message?.content ?? "{}";
+    const cleaned = content.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+    try { return JSON.parse(cleaned) as ExtractedData; } catch { return {}; }
   }
 
-  const json = await res.json() as { choices: Array<{ message: { content: string } }> };
-  const content = json.choices?.[0]?.message?.content ?? "{}";
-
-  const cleaned = content
-    .replace(/```json\s*/gi, "")
-    .replace(/```\s*/g, "")
-    .trim();
-
-  try {
-    return JSON.parse(cleaned) as ExtractedData;
-  } catch {
-    return { raw_response: content };
+  // Process chunks sequentially to avoid hitting rate limits
+  const results: ExtractedData[] = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const result = await extractChunk(chunks[i], i);
+    results.push(result);
   }
+
+  // Merge all chunk results — later chunks override earlier for scalars, amounts/dates are merged
+  const merged: ExtractedData = {};
+  for (const r of results) {
+    for (const [k, v] of Object.entries(r)) {
+      if (!v) continue;
+      if (typeof v === "object" && !Array.isArray(v)) {
+        merged[k] = { ...(merged[k] as Record<string, unknown> ?? {}), ...(v as Record<string, unknown>) };
+      } else if (!merged[k]) {
+        merged[k] = v;
+      }
+    }
+  }
+  return Object.keys(merged).length > 0 ? merged : { raw_response: "No data could be extracted from this document." };
 }
 
 // ─── Extracted Data Display ───────────────────────────────────────────────────
