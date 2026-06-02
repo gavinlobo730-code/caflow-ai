@@ -51,7 +51,6 @@ const NAV_GROUPS = [
     label: "Tools & AI",
     items: [
       { href: "/ai-assistant", label: "AI Assistant", icon: Sparkles },
-      { href: "/parser", label: "Documents", icon: FileText },
       { href: "/documents/intelligence", label: "Doc Intelligence", icon: FileStack },
       { href: "/risks", label: "Risk Intelligence", icon: ShieldAlert },
       { href: "/calendar", label: "Calendar", icon: Calendar },
