@@ -1,3 +1,4 @@
+import { getFirmId } from "./getFirmId";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { Task, KanbanBoard, FirmUser } from "@/lib/types";
 
@@ -13,14 +14,6 @@ export interface CreateTaskInput {
   task_type?: string;
 }
 
-async function getFirmId(): Promise<string> {
-  const sb = getSupabaseClient();
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).maybeSingle();
-  if (!data?.firm_id) throw new Error("No firm found for this user");
-  return data.firm_id;
-}
 
 export async function getTasks(clientId?: string): Promise<Task[]> {
   const sb = getSupabaseClient();

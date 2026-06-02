@@ -454,7 +454,7 @@ export default function RetainerPage() {
         const sb = getSupabaseClient();
         const { data: { session } } = await sb.auth.getSession();
         if (session) {
-          const { data: userData } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).single();
+          const { data: userData } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).maybeSingle();
           if (userData?.firm_id) {
             const { data: firmData } = await sb.from("firms").select("name, gstin").eq("id", userData.firm_id).single();
             if (firmData) {

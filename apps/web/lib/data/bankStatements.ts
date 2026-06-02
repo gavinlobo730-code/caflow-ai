@@ -1,3 +1,4 @@
+import { getFirmId } from "./getFirmId";
 /**
  * Bank Statement import layer.
  * Parses CSV exports from major Indian banks.
@@ -142,14 +143,6 @@ export function parseCSV(csvText: string): ParsedTransaction[] {
   return results;
 }
 
-async function getFirmId(): Promise<string> {
-  const sb = getSupabaseClient();
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).single();
-  if (!data) throw new Error("User not found");
-  return data.firm_id;
-}
 
 export async function importBankStatement(
   clientId: string,
