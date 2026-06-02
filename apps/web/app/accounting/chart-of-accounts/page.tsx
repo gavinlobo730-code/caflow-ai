@@ -63,7 +63,7 @@ export default function ChartOfAccountsPage() {
       setFirmId(fid);
       const sb = getSupabaseClient();
       const { data, error: err } = await sb
-        .from("accounts")
+        .from("chart_of_accounts")
         .select("*")
         .eq("firm_id", fid)
         .order("account_code");
