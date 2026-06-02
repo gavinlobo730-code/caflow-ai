@@ -10,10 +10,12 @@ import {
   ChevronLeft, ChevronRight, Landmark, Shield,
   FileStack, ShieldAlert, Sparkles, Bell, LogOut,
   ExternalLink, Menu, X, KanbanSquare, MessageSquare, KeyRound,
+  Search, Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { canAccessHref } from "@/lib/auth/permissions";
+import { SearchModal } from "@/components/SearchModal";
 
 const NAV_GROUPS = [
   {
@@ -36,6 +38,12 @@ const NAV_GROUPS = [
       { href: "/income-tax", label: "Income Tax", icon: Calculator },
       { href: "/tds", label: "TDS", icon: Landmark },
       { href: "/mca", label: "MCA", icon: Building2 },
+    ],
+  },
+  {
+    label: "Payroll",
+    items: [
+      { href: "/payroll", label: "Payroll", icon: Briefcase },
     ],
   },
   {
@@ -66,6 +74,7 @@ function SidebarContent({
 }) {
   const pathname = usePathname();
   const { user, userRole, signOut } = useAuth();
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const initials = user?.email?.slice(0, 2).toUpperCase() ?? "CA";
   const displayEmail = user?.email ?? "user@firm.com";
@@ -78,6 +87,7 @@ function SidebarContent({
         collapsed ? "w-[60px]" : "w-[220px]"
       )}
     >
+      <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
       {/* Logo */}
       <div className={cn(
         "flex items-center border-b border-white/5 shrink-0",
@@ -107,6 +117,22 @@ function SidebarContent({
             <ChevronLeft size={14} />
           </button>
         )}
+      </div>
+
+      {/* Search button */}
+      <div className={cn("px-2 py-2 border-b border-white/5", collapsed ? "flex justify-center" : "")}>
+        <button
+          onClick={() => setSearchOpen(true)}
+          title="Search (⌘K)"
+          className={cn(
+            "flex items-center gap-2 rounded-lg text-[12.5px] font-medium transition-colors text-white/40 hover:text-white/80 hover:bg-white/5",
+            collapsed ? "p-2" : "px-2.5 py-1.5 w-full"
+          )}
+        >
+          <Search size={14} className="shrink-0" />
+          {!collapsed && <span className="flex-1 text-left">Search</span>}
+          {!collapsed && <kbd className="text-[10px] text-white/20 font-mono">⌘K</kbd>}
+        </button>
       </div>
 
       {/* Nav */}
