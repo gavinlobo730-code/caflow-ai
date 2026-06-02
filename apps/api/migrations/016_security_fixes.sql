@@ -52,8 +52,9 @@ REVOKE EXECUTE ON FUNCTION public.get_my_firm_id() FROM anon;
 GRANT EXECUTE ON FUNCTION public.get_my_firm_id() TO authenticated;
 
 -- ─── 3. Restrict rls_auto_enable() from anon role ────────────────────────────
-REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM anon, public;
-GRANT EXECUTE ON FUNCTION public.rls_auto_enable() TO authenticated;
+DO $$ BEGIN
+  REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM anon;
+EXCEPTION WHEN undefined_function THEN NULL; END $$;
 
 -- ─── 4. Fix mutable search_path on functions ─────────────────────────────────
 -- Prevents search_path injection attacks.
@@ -86,6 +87,17 @@ $$;
 
 -- ─── 5. RLS policies for tables with RLS enabled but no policies ─────────────
 -- These tables block ALL queries without at least one policy.
+-- DROP first to make this idempotent (safe to re-run).
+
+DROP POLICY IF EXISTS "firm_isolation" ON public.automation_executions;
+DROP POLICY IF EXISTS "firm_isolation" ON public.filings;
+DROP POLICY IF EXISTS "firm_isolation" ON public.journal_lines;
+DROP POLICY IF EXISTS "user_isolation" ON public.permission_grants;
+DROP POLICY IF EXISTS "firm_isolation" ON public.permission_grants;
+DROP POLICY IF EXISTS "firm_isolation" ON public.reminders;
+DROP POLICY IF EXISTS "firm_isolation" ON public.team_members;
+DROP POLICY IF EXISTS "firm_isolation" ON public.workflow_steps;
+DROP POLICY IF EXISTS "firm_isolation" ON public.workflows;
 
 -- automation_executions (no firm_id — isolated via rule_id → automation_rules.firm_id)
 CREATE POLICY "firm_isolation" ON public.automation_executions
@@ -194,21 +206,3 @@ CREATE POLICY "firm_isolation" ON public.workflows
   FOR ALL TO authenticated
   USING (firm_id = public.get_my_firm_id())
   WITH CHECK (firm_id = public.get_my_firm_id());
-
--- ─── 6. Performance: indexes for high-traffic foreign keys ───────────────────
--- Adding the most commonly queried FK columns (skipping ones already indexed).
-
-CREATE INDEX IF NOT EXISTS idx_journal_lines_journal_entry_id ON public.journal_lines(journal_entry_id);
-CREATE INDEX IF NOT EXISTS idx_journal_lines_account_id ON public.journal_lines(account_id);
-CREATE INDEX IF NOT EXISTS idx_journal_entries_firm_id ON public.journal_entries(firm_id);
-CREATE INDEX IF NOT EXISTS idx_journal_entries_entry_date ON public.journal_entries(entry_date);
-CREATE INDEX IF NOT EXISTS idx_clients_firm_id ON public.clients(firm_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_firm_id ON public.tasks(firm_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_client_id ON public.tasks(client_id);
-CREATE INDEX IF NOT EXISTS idx_reminders_client_id ON public.reminders(client_id);
-CREATE INDEX IF NOT EXISTS idx_filings_client_id ON public.filings(client_id);
-CREATE INDEX IF NOT EXISTS idx_compliance_tasks_client_id ON public.compliance_tasks(client_id);
-CREATE INDEX IF NOT EXISTS idx_fee_invoices_firm_id ON public.fee_invoices(firm_id);
-CREATE INDEX IF NOT EXISTS idx_fee_invoices_client_id ON public.fee_invoices(client_id);
-CREATE INDEX IF NOT EXISTS idx_sales_invoices_firm_id ON public.sales_invoices(firm_id);
-CREATE INDEX IF NOT EXISTS idx_sales_invoices_client_id ON public.sales_invoices(client_id);
