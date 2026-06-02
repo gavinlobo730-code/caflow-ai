@@ -360,22 +360,19 @@ export default function IncomeTaxPage() {
           label="Total ITRs Due"
           value={String(totalDue)}
           icon={FileText}
-          iconColor="text-blue-600"
-          iconBg="bg-blue-50"
+          gradient="bg-gradient-to-br from-indigo-500 to-indigo-600"
         />
         <StatCard
           label="Filed This Year"
           value={String(filed)}
           icon={CheckCircle2}
-          iconColor="text-green-600"
-          iconBg="bg-green-50"
+          gradient="bg-gradient-to-br from-emerald-500 to-teal-600"
         />
         <StatCard
           label="Pending / Overdue"
           value={String(pending + overdue)}
           icon={Clock}
-          iconColor="text-amber-600"
-          iconBg="bg-amber-50"
+          gradient="bg-gradient-to-br from-amber-400 to-orange-500"
           alert={overdue > 0}
         />
         <StatCard
@@ -386,8 +383,7 @@ export default function IncomeTaxPage() {
               : "—"
           }
           icon={CalendarDays}
-          iconColor="text-purple-600"
-          iconBg="bg-purple-50"
+          gradient="bg-gradient-to-br from-violet-500 to-purple-600"
         />
       </div>
 

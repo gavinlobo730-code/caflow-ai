@@ -383,32 +383,28 @@ export default function TeamPage() {
       label: "Total Members",
       value: members.length,
       icon: Users,
-      iconBg: "bg-blue-50",
-      iconColor: "text-blue-600",
+      gradient: "bg-gradient-to-br from-indigo-500 to-indigo-600",
       sub: `${activeMembers.length} active`,
     },
     {
       label: "Partners",
       value: partners,
       icon: Shield,
-      iconBg: "bg-purple-50",
-      iconColor: "text-purple-600",
+      gradient: "bg-gradient-to-br from-violet-500 to-purple-600",
       sub: "Senior leadership",
     },
     {
       label: "Managers",
       value: managers,
       icon: Users,
-      iconBg: "bg-blue-50",
-      iconColor: "text-blue-600",
+      gradient: "bg-gradient-to-br from-blue-500 to-blue-600",
       sub: "Team leads",
     },
     {
       label: "Articles / Staff",
       value: articlesStaff,
       icon: Users,
-      iconBg: "bg-amber-50",
-      iconColor: "text-amber-600",
+      gradient: "bg-gradient-to-br from-amber-400 to-orange-500",
       sub: "Support staff",
     },
   ];
@@ -442,8 +438,8 @@ export default function TeamPage() {
         {SUMMARY_CARDS.map(card => (
           <div key={card.label} className="bg-white rounded-xl border border-gray-100 p-4">
             <div className="flex items-center gap-2 mb-3">
-              <div className={`w-8 h-8 rounded-lg ${card.iconBg} flex items-center justify-center`}>
-                <card.icon className={`w-4 h-4 ${card.iconColor}`} />
+              <div className={`w-8 h-8 rounded-xl ${card.gradient} flex items-center justify-center shadow-sm`}>
+                <card.icon className="w-4 h-4 text-white" />
               </div>
               <span className="text-xs text-gray-500">{card.label}</span>
             </div>
