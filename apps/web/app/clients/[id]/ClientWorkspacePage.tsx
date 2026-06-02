@@ -69,21 +69,14 @@ interface MarkFiledForm {
 export default function ClientWorkspacePage() {
   const params = useParams();
   // Static export serves /_placeholder/ — read real ID from URL on client
-  const [id, setId] = useState<string>(
-    Array.isArray(params.id) ? params.id[0] : (params.id ?? "")
-  );
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const [id, setId] = useState<string>("");
   useEffect(() => {
     const match = window.location.pathname.match(/\/clients\/([^/]+)/);
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!match || !match[1]) return;
+    if (!match?.[1]) return;
     const seg = match[1];
-    if (seg === "_placeholder") return;
-    // Non-UUID segments (pipeline, portal, documents) are their own pages — redirect
-    if (!UUID_RE.test(seg)) {
-      window.location.replace(`/clients/${seg}`);
-      return;
-    }
-    setId(seg);
+    // Only set ID if it's actually a UUID — ignore pipeline, portal, documents etc.
+    if (UUID_RE.test(seg)) setId(seg);
   }, []);
 
   const [client, setClient] = useState<Client | null>(null);
@@ -146,9 +139,7 @@ export default function ClientWorkspacePage() {
     }
   }
 
-  if (!id || id === "_placeholder") {
-    return <div className="p-6 max-w-7xl mx-auto"><p className="text-gray-500 text-sm">Loading client…</p></div>;
-  }
+  if (!id) return null;
   if (loading) return <LoadingSkeleton />;
   if (error || !client) {
     return (
