@@ -344,6 +344,18 @@ export default function IncomeTaxPage() {
           <p className="text-sm text-gray-500 mt-0.5">
             ITR Tracking — IT Act Section 139
           </p>
+          {/* Sub-navigation */}
+          <div className="flex gap-2 mt-3">
+            <a href="/income-tax/capital-gains" className="text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 bg-blue-50 px-2.5 py-1 rounded-lg hover:bg-blue-100 transition-colors">
+              Capital Gains Calculator
+            </a>
+            <a href="/income-tax/advance-tax" className="text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 px-2.5 py-1 rounded-lg hover:bg-gray-50 transition-colors">
+              Advance Tax
+            </a>
+            <a href="/income-tax/notices" className="text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 px-2.5 py-1 rounded-lg hover:bg-gray-50 transition-colors">
+              Notices
+            </a>
+          </div>
         </div>
         <button
           onClick={() => setShowAddModal(true)}

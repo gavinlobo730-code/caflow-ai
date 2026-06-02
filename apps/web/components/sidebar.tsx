@@ -9,7 +9,7 @@ import {
   Calendar, BarChart3, Settings,
   ChevronLeft, ChevronRight, Landmark, Shield,
   FileStack, ShieldAlert, Sparkles, Bell, LogOut,
-  ExternalLink, Menu, X, KanbanSquare, MessageSquare,
+  ExternalLink, Menu, X, KanbanSquare, MessageSquare, KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -50,6 +50,7 @@ const NAV_GROUPS = [
       { href: "/notifications/whatsapp", label: "WhatsApp", icon: MessageSquare },
       { href: "/notifications", label: "Notifications", icon: Bell },
       { href: "/settings", label: "Settings", icon: Settings },
+      { href: "/settings/dsc-tracker", label: "DSC Tracker", icon: KeyRound },
     ],
   },
 ];

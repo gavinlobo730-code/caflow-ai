@@ -1,33 +1,26 @@
 "use client";
 
 /**
- * MCA Module — Ministry of Corporate Affairs / ROC Filings Tracker
+ * MCA Module — Ministry of Corporate Affairs / ROC Compliance Tracker
  * Companies Act 2013:
- *   - Section 137: Filing of financial statements (AOC-4) within 30 days of AGM
- *   - Section 92: Annual return (MGT-7) within 60 days of AGM
- *   - Section 139: Auditor appointment (ADT-1) within 15 days of AGM
- *   - Section 10A: Declaration for commencement of business (INC-20A) within 180 days
- *   - Rule 12A Companies (Appointment and Qualification of Directors) Rules: DIR-3 KYC by 30 Sep annually
- *   - Section 77: Charge registration (CHG-1) within 30 days of creation
+ *   Section 92: Annual return (MGT-7) within 60 days of AGM
+ *   Section 137: Filing of financial statements (AOC-4) within 30 days of AGM
+ *   Section 139: Auditor appointment (ADT-1) within 15 days of AGM
+ *   Section 10A: Commencement of business (INC-20A) within 180 days
+ *   Section 77: Charge registration (CHG-1) within 30 days
+ *   Rule 12A (Director KYC Rules): DIR-3 KYC by 30 Sep annually
  */
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import {
-  Building2,
-  FileText,
-  CheckCircle,
-  AlertTriangle,
-  Clock,
-  Plus,
-  ArrowLeft,
-  X,
-  Calendar,
-  AlertCircle,
+  Building2, FileText, CheckCircle, AlertTriangle, Clock,
+  Plus, X, AlertCircle, Users, Calendar,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
+import { useToast } from "@/components/ui/use-toast";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -35,201 +28,157 @@ type FilingStatus = "Pending" | "Filed" | "Overdue";
 
 interface MCAFiling {
   id: string;
+  firm_id?: string;
   client_id: string;
   client_name: string;
-  cin: string;
+  company_cin: string;
   form_type: string;
-  due_date: string; // ISO date string
-  status: FilingStatus;
+  period: string;
+  due_date: string;
   filed_date: string | null;
-  created_at: string;
+  srn: string | null;
+  status: FilingStatus;
+  notes: string | null;
+}
+
+interface Director {
+  id: string;
+  name: string;
+  din: string;
+  pan: string;
+  designation: string;
+  appointment_date: string;
+  kyc_due_date: string;
+}
+
+interface CompanyClient {
+  id: string;
+  client_name: string;
+  cin: string;
+  incorp_date: string;
+  auth_capital_paise: number;
+  paidup_capital_paise: number;
+  regd_office: string;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const TODAY = new Date("2026-06-01");
+const TODAY = new Date("2026-06-02");
 
-/**
- * MCA form types — Companies Act 2013
- * AGM is held within 6 months of FY end (31 Mar) → typically 30 Sep.
- * Deadlines computed from AGM date of 30 Sep 2025 for FY 2024-25:
- *   AOC-4: 30 days from AGM → 29 Oct 2025 (Section 137)
- *   MGT-7: 60 days from AGM → 28 Nov 2025 (Section 92)
- *   DIR-3 KYC: 30 Sep annually (Rule 12A)
- */
 const FORM_TYPES = [
-  { value: "AOC-4", label: "AOC-4 — Annual Financial Statement" },
-  { value: "MGT-7", label: "MGT-7 — Annual Return (Pvt Ltd)" },
-  { value: "MGT-7A", label: "MGT-7A — Annual Return (OPC/Small Co)" },
-  { value: "ADT-1", label: "ADT-1 — Auditor Appointment" },
-  { value: "INC-20A", label: "INC-20A — Commencement of Business" },
-  { value: "DIR-3 KYC", label: "DIR-3 KYC — Director KYC" },
-  { value: "CHG-1", label: "CHG-1 — Charge Creation" },
+  { value: "AOC-4",      label: "AOC-4 — Annual Financial Statement (Section 137)" },
+  { value: "MGT-7",      label: "MGT-7 — Annual Return Pvt Ltd (Section 92)" },
+  { value: "MGT-7A",     label: "MGT-7A — Annual Return OPC/Small Co (Section 92)" },
+  { value: "ADT-1",      label: "ADT-1 — Auditor Appointment (Section 139)" },
+  { value: "INC-20A",    label: "INC-20A — Commencement of Business (Section 10A)" },
+  { value: "DIR-3 KYC",  label: "DIR-3 KYC — Director KYC (Rule 12A)" },
+  { value: "CHG-1",      label: "CHG-1 — Charge Creation (Section 77)" },
+  { value: "MSME-1",     label: "MSME-1 — Outstanding payments to MSME" },
 ];
 
-/** FY 2025-26 key MCA deadlines */
-const KEY_DEADLINES = [
-  { label: "DIR-3 KYC", date: "30 Sep 2025", note: "Rule 12A — Annual" },
-  { label: "AOC-4", date: "29 Oct 2025", note: "Section 137 — 30 days from AGM" },
-  { label: "MGT-7/7A", date: "28 Nov 2025", note: "Section 92 — 60 days from AGM" },
-  { label: "ADT-1", date: "14 Oct 2025", note: "Section 139 — 15 days from AGM" },
-  { label: "INC-20A", date: "26 Sep 2025", note: "Section 10A — 180 days from incorporation" },
-  { label: "CHG-1", date: "Within 30 days", note: "Section 77 — charge creation" },
-  { label: "MSME-1", date: "30 Apr 2026", note: "Half-yearly — Oct–Mar 2026" },
-  { label: "BEN-2", date: "As applicable", note: "Section 90 — significant beneficial owner" },
-];
-
-/** Sample seed data shown when table doesn't exist yet */
-const SEED_FILINGS: MCAFiling[] = [
-  {
-    id: "seed-1",
-    client_id: "",
-    client_name: "Joshi Textiles Pvt Ltd",
-    cin: "U17200MH2010PTC205678",
-    form_type: "AOC-4",
-    due_date: "2025-10-29",
-    status: "Filed",
-    filed_date: "2025-10-20",
-    created_at: "",
-  },
-  {
-    id: "seed-2",
-    client_id: "",
-    client_name: "Joshi Textiles Pvt Ltd",
-    cin: "U17200MH2010PTC205678",
-    form_type: "MGT-7",
-    due_date: "2025-11-28",
-    status: "Filed",
-    filed_date: "2025-11-15",
-    created_at: "",
-  },
-  {
-    id: "seed-3",
-    client_id: "",
-    client_name: "Sharma Industries Pvt Ltd",
-    cin: "U15200MH2015PTC301234",
-    form_type: "DIR-3 KYC",
-    due_date: "2025-09-30",
-    status: "Overdue",
-    filed_date: null,
-    created_at: "",
-  },
-  {
-    id: "seed-4",
-    client_id: "",
-    client_name: "Mehta Consulting LLP",
-    cin: "AAC-1234",
-    form_type: "MGT-7A",
-    due_date: "2025-11-28",
-    status: "Filed",
-    filed_date: "2025-11-20",
-    created_at: "",
-  },
-  {
-    id: "seed-5",
-    client_id: "",
-    client_name: "Patel Pharma Pvt Ltd",
-    cin: "U24200GJ2018PTC102345",
-    form_type: "ADT-1",
-    due_date: "2025-10-14",
-    status: "Pending",
-    filed_date: null,
-    created_at: "",
-  },
-  {
-    id: "seed-6",
-    client_id: "",
-    client_name: "Gupta Infra Pvt Ltd",
-    cin: "U45200DL2020PTC375890",
-    form_type: "INC-20A",
-    due_date: "2025-09-26",
-    status: "Overdue",
-    filed_date: null,
-    created_at: "",
-  },
-];
-
-// ─── Status helpers ───────────────────────────────────────────────────────────
+const TABS = ["Companies", "Filings", "Directors", "Deadlines"];
 
 const STATUS_STYLE: Record<FilingStatus, string> = {
-  Filed: "bg-green-100 text-green-700",
-  Pending: "bg-amber-100 text-amber-700",
-  Overdue: "bg-red-100 text-red-700",
+  Filed:    "bg-green-100 text-green-700",
+  Pending:  "bg-amber-100 text-amber-700",
+  Overdue:  "bg-red-100 text-red-700",
 };
+
+// Key annual MCA deadlines — Companies Act 2013
+const KEY_DEADLINES = [
+  { label: "DIR-3 KYC",    date: "30 Sep 2026", note: "Rule 12A — Director KYC annual", daysLeft: Math.ceil((new Date("2026-09-30").getTime() - TODAY.getTime()) / 86400000) },
+  { label: "AOC-4",        date: "30 Oct 2026", note: "Section 137 — 30 days from AGM", daysLeft: Math.ceil((new Date("2026-10-30").getTime() - TODAY.getTime()) / 86400000) },
+  { label: "MGT-7/7A",     date: "29 Nov 2026", note: "Section 92 — 60 days from AGM", daysLeft: Math.ceil((new Date("2026-11-29").getTime() - TODAY.getTime()) / 86400000) },
+  { label: "ADT-1",        date: "14 Oct 2026", note: "Section 139 — 15 days from AGM", daysLeft: Math.ceil((new Date("2026-10-14").getTime() - TODAY.getTime()) / 86400000) },
+  { label: "MSME-1 (H2)",  date: "30 Apr 2027", note: "Half-yearly — Oct 2026–Mar 2027", daysLeft: Math.ceil((new Date("2027-04-30").getTime() - TODAY.getTime()) / 86400000) },
+];
+
+// Seed data
+const SEED_FILINGS: MCAFiling[] = [
+  { id: "s1", client_id: "", client_name: "Joshi Textiles Pvt Ltd",   company_cin: "U17200MH2010PTC205678", form_type: "AOC-4",     period: "FY 2024-25", due_date: "2025-10-29", filed_date: "2025-10-20", srn: "SRN12345678", status: "Filed",   notes: null },
+  { id: "s2", client_id: "", client_name: "Joshi Textiles Pvt Ltd",   company_cin: "U17200MH2010PTC205678", form_type: "MGT-7",     period: "FY 2024-25", due_date: "2025-11-28", filed_date: "2025-11-15", srn: "SRN12345679", status: "Filed",   notes: null },
+  { id: "s3", client_id: "", client_name: "Sharma Industries Pvt Ltd", company_cin: "U15200MH2015PTC301234", form_type: "DIR-3 KYC", period: "FY 2025-26", due_date: "2025-09-30", filed_date: null,          srn: null,           status: "Overdue", notes: null },
+  { id: "s4", client_id: "", client_name: "Mehta Consulting LLP",      company_cin: "AAC-1234",              form_type: "MGT-7A",    period: "FY 2024-25", due_date: "2025-11-28", filed_date: "2025-11-20", srn: "SRN12345680", status: "Filed",   notes: null },
+  { id: "s5", client_id: "", client_name: "Patel Pharma Pvt Ltd",      company_cin: "U24200GJ2018PTC102345", form_type: "AOC-4",     period: "FY 2025-26", due_date: "2026-10-30", filed_date: null,          srn: null,           status: "Pending", notes: null },
+];
+
+const SEED_COMPANIES: CompanyClient[] = [
+  { id: "co1", client_name: "Joshi Textiles Pvt Ltd",   cin: "U17200MH2010PTC205678", incorp_date: "2010-05-15", auth_capital_paise: 100000000, paidup_capital_paise: 50000000, regd_office: "Mumbai, Maharashtra" },
+  { id: "co2", client_name: "Sharma Industries Pvt Ltd", cin: "U15200MH2015PTC301234", incorp_date: "2015-08-22", auth_capital_paise: 50000000,  paidup_capital_paise: 25000000, regd_office: "Pune, Maharashtra" },
+  { id: "co3", client_name: "Patel Pharma Pvt Ltd",      cin: "U24200GJ2018PTC102345", incorp_date: "2018-03-10", auth_capital_paise: 200000000, paidup_capital_paise: 100000000, regd_office: "Ahmedabad, Gujarat" },
+];
+
+const SEED_DIRECTORS: Director[] = [
+  { id: "d1", name: "Vikram Joshi",   din: "01234567", pan: "ABCPJ1234K", designation: "Managing Director", appointment_date: "2010-05-15", kyc_due_date: "2026-09-30" },
+  { id: "d2", name: "Priya Sharma",   din: "02345678", pan: "CDFPS5678L", designation: "Director",           appointment_date: "2015-08-22", kyc_due_date: "2026-09-30" },
+  { id: "d3", name: "Rajesh Patel",   din: "03456789", pan: "EFGRP9012M", designation: "Director",           appointment_date: "2018-03-10", kyc_due_date: "2026-09-30" },
+  { id: "d4", name: "Sunita Mehta",   din: "04567890", pan: "GHISM3456N", designation: "Independent Director", appointment_date: "2020-01-01", kyc_due_date: "2025-09-30" }, // KYC overdue
+];
 
 function computeStatus(dueDate: string, filed: string | null): FilingStatus {
   if (filed) return "Filed";
-  const due = new Date(dueDate);
-  return TODAY > due ? "Overdue" : "Pending";
+  return TODAY > new Date(dueDate) ? "Overdue" : "Pending";
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-// ─── Add Filing Modal ─────────────────────────────────────────────────────────
+function fmtLakhs(paise: number) {
+  const rupees = paise / 100;
+  if (rupees >= 10000000) return `₹${(rupees / 10000000).toFixed(2)} Cr`;
+  if (rupees >= 100000) return `₹${(rupees / 100000).toFixed(2)} L`;
+  return `₹${rupees.toLocaleString("en-IN")}`;
+}
 
-interface AddFilingModalProps {
+// ─── Add Filing Modal ────────────────────────────────────────────────────────
+
+function AddFilingModal({ clients, firmId, onClose, onAdded }: {
   clients: Client[];
   firmId: string;
   onClose: () => void;
-  onAdded: (filing: MCAFiling) => void;
-}
-
-function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalProps) {
+  onAdded: (f: MCAFiling) => void;
+}) {
+  const { toast } = useToast();
   const [clientId, setClientId] = useState("");
   const [cin, setCin] = useState("");
   const [formType, setFormType] = useState("AOC-4");
+  const [period, setPeriod] = useState("FY 2025-26");
   const [dueDate, setDueDate] = useState("");
+  const [srn, setSrn] = useState("");
   const [status, setStatus] = useState<FilingStatus>("Pending");
+  const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Auto-fill CIN from selected client if available
-  useEffect(() => {
-    if (!clientId) return;
-    const c = clients.find((cl) => cl.id === clientId);
-    if (c && (c as unknown as Record<string, string>).cin) {
-      setCin((c as unknown as Record<string, string>).cin);
-    }
-  }, [clientId, clients]);
-
   async function handleSubmit() {
-    if (!clientId || !cin.trim() || !dueDate) {
-      setErr("Client, CIN and Due Date are required.");
-      return;
-    }
-    setSaving(true);
-    setErr(null);
+    if (!clientId || !cin.trim() || !dueDate) { setErr("Client, CIN and Due Date are required."); return; }
+    setSaving(true); setErr(null);
     try {
       const sb = getSupabaseClient();
-      const selectedClient = clients.find((c) => c.id === clientId);
+      const selectedClient = clients.find(c => c.id === clientId);
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-      const { data, error } = await sb
-        .from("mca_filings")
-        .insert({
-          firm_id: firmId,
-          client_id: clientId,
-          client_name: selectedClient?.client_name ?? "",
-          cin: cin.trim().toUpperCase(),
-          form_type: formType,
-          due_date: dueDate,
-          status,
-          filed_date: status === "Filed" ? new Date().toISOString().slice(0, 10) : null,
-        })
-        .select()
-        .single();
+      const { data, error } = await sb.from("mca_filings").insert({
+        firm_id: firmId,
+        client_id: clientId,
+        client_name: selectedClient?.client_name ?? "",
+        company_cin: cin.trim().toUpperCase(),
+        form_type: formType,
+        period,
+        due_date: dueDate,
+        filed_date: status === "Filed" ? TODAY.toISOString().slice(0, 10) : null,
+        srn: srn.trim() || null,
+        status,
+        notes: notes.trim() || null,
+      }).select().single();
       if (error) throw new Error(error.message);
       const filing = data as MCAFiling;
       filing.status = computeStatus(filing.due_date, filing.filed_date);
       onAdded(filing);
+      toast({ title: "MCA filing added" });
       onClose();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Failed to save filing");
+      setErr(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSaving(false);
     }
@@ -237,175 +186,102 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-900">Add MCA Filing</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X className="w-4 h-4" />
-          </button>
+          <button onClick={onClose}><X className="w-4 h-4 text-gray-400" /></button>
         </div>
-
-        {err && (
-          <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{err}</p>
-        )}
-
-        {/* Client */}
-        <div>
-          <label className="text-xs font-medium text-gray-700 block mb-1">Client</label>
-          <select
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
-          >
-            <option value="">Select client…</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.client_name}
-              </option>
-            ))}
-          </select>
+        {err && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{err}</p>}
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Client</label>
+            <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={clientId} onChange={e => setClientId(e.target.value)}>
+              <option value="">Select client…</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">CIN / LLPIN</label>
+            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="U17200MH2010PTC205678" value={cin} onChange={e => setCin(e.target.value.toUpperCase())} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Form Type</label>
+            <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={formType} onChange={e => setFormType(e.target.value)}>
+              {FORM_TYPES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1">Period</label>
+              <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={period} onChange={e => setPeriod(e.target.value)} placeholder="FY 2025-26" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1">Due Date</label>
+              <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1">Status</label>
+              <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={status} onChange={e => setStatus(e.target.value as FilingStatus)}>
+                <option value="Pending">Pending</option>
+                <option value="Filed">Filed</option>
+                <option value="Overdue">Overdue</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1">SRN (if filed)</label>
+              <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" value={srn} onChange={e => setSrn(e.target.value)} placeholder="SRN12345678" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Notes</label>
+            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
+          </div>
         </div>
-
-        {/* CIN */}
-        <div>
-          <label className="text-xs font-medium text-gray-700 block mb-1">
-            CIN / LLPIN
-          </label>
-          <input
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="e.g. U17200MH2010PTC205678"
-            value={cin}
-            onChange={(e) => setCin(e.target.value.toUpperCase())}
-          />
-        </div>
-
-        {/* Form Type */}
-        <div>
-          <label className="text-xs font-medium text-gray-700 block mb-1">Form Type</label>
-          <select
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={formType}
-            onChange={(e) => setFormType(e.target.value)}
-          >
-            {FORM_TYPES.map((f) => (
-              <option key={f.value} value={f.value}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Due Date */}
-        <div>
-          <label className="text-xs font-medium text-gray-700 block mb-1">Due Date</label>
-          <input
-            type="date"
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-          />
-        </div>
-
-        {/* Status */}
-        <div>
-          <label className="text-xs font-medium text-gray-700 block mb-1">Status</label>
-          <select
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as FilingStatus)}
-          >
-            <option value="Pending">Pending</option>
-            <option value="Filed">Filed</option>
-            <option value="Overdue">Overdue</option>
-          </select>
-        </div>
-
-        <div className="flex gap-2 pt-1">
-          <button
-            onClick={onClose}
-            className="flex-1 border border-gray-200 text-gray-600 text-sm py-2 rounded-lg hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={saving}
-            className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 text-sm py-2 rounded-lg">Cancel</button>
+          <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
             {saving ? "Saving…" : "Add Filing"}
           </button>
         </div>
-
         <p className="text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1.5">
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
-          All MCA filings must be submitted manually on the MCA21 portal after CA review.
+          All filings must be submitted manually on MCA21 portal (mca.gov.in) after CA review.
         </p>
       </div>
     </div>
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function MCAPage() {
-  const [filings, setFilings] = useState<MCAFiling[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
+  const [activeTab, setActiveTab] = useState(0);
   const [firmId, setFirmId] = useState("");
+  const [filings, setFilings] = useState<MCAFiling[]>(SEED_FILINGS);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [companies] = useState<CompanyClient[]>(SEED_COMPANIES);
+  const [directors] = useState<Director[]>(SEED_DIRECTORS);
   const [loading, setLoading] = useState(true);
   const [tableError, setTableError] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
 
-  // ── Load data ──────────────────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
       try {
-        setLoading(true);
-        const sb = getSupabaseClient();
-
-        // Resolve firm_id from authenticated user
-        const {
-          data: { session },
-        } = await sb.auth.getSession();
-
-        let resolvedFirmId = "";
-        if (session?.user?.id) {
-          const { data: userData } = await sb
-            .from("users")
-            .select("firm_id")
-            .eq("auth_user_id", session.user.id)
-            .single();
-          resolvedFirmId = userData?.firm_id ?? "";
-        }
-        setFirmId(resolvedFirmId);
-
-        // Load clients for the Add Filing modal
-        const cls = await getClients().catch(() => []);
+        const fid = await getFirmId().catch(() => "");
+        setFirmId(fid);
+        const cls = await getClients().catch(() => [] as Client[]);
         setClients(cls);
-
-        // Load mca_filings — gracefully handle missing table
-        // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-        const { data, error: dbErr } = await sb
-          .from("mca_filings")
-          .select("*")
-          .order("due_date");
-
-        if (dbErr) {
-          // Table likely doesn't exist yet
-          setTableError(true);
-          setFilings(SEED_FILINGS);
-        } else {
-          const rows = (data ?? []) as MCAFiling[];
-          // Recompute status based on today's date
-          const enriched = rows.map((r) => ({
-            ...r,
-            status: computeStatus(r.due_date, r.filed_date),
-          }));
-          setFilings(enriched.length > 0 ? enriched : SEED_FILINGS);
+        if (!fid) return;
+        const sb = getSupabaseClient();
+        const { data, error } = await sb.from("mca_filings").select("*").eq("firm_id", fid).order("due_date");
+        if (error) { setTableError(true); }
+        else {
+          const rows = ((data ?? []) as MCAFiling[]).map(r => ({ ...r, status: computeStatus(r.due_date, r.filed_date) }));
+          if (rows.length > 0) setFilings(rows);
         }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load MCA data");
-        setFilings(SEED_FILINGS);
       } finally {
         setLoading(false);
       }
@@ -413,301 +289,244 @@ export default function MCAPage() {
     load();
   }, []);
 
-  // ── Mark as Filed ──────────────────────────────────────────────────────────
   async function handleMarkFiled(id: string) {
-    // Optimistic update
-    setFilings((prev) =>
-      prev.map((f) =>
-        f.id === id
-          ? { ...f, status: "Filed", filed_date: TODAY.toISOString().slice(0, 10) }
-          : f
-      )
-    );
-
-    if (!tableError) {
+    setFilings(prev => prev.map(f => f.id === id ? { ...f, status: "Filed" as FilingStatus, filed_date: TODAY.toISOString().slice(0, 10) } : f));
+    if (!tableError && firmId) {
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
       const sb = getSupabaseClient();
-      await sb
-        .from("mca_filings")
-        .update({
-          status: "Filed",
-          filed_date: TODAY.toISOString().slice(0, 10),
-        })
-        .eq("id", id);
+      await sb.from("mca_filings").update({ status: "Filed", filed_date: TODAY.toISOString().slice(0, 10) }).eq("id", id);
     }
   }
 
-  // ── Summary counts ──────────────────────────────────────────────────────────
-  const totalFilings = filings.length;
-  const pendingCount = filings.filter((f) => f.status === "Pending").length;
-  const overdueCount = filings.filter((f) => f.status === "Overdue").length;
-  const thisMonth = TODAY.getMonth();
-  const thisYear = TODAY.getFullYear();
-  const filedThisMonth = filings.filter((f) => {
-    if (!f.filed_date) return false;
-    const d = new Date(f.filed_date);
-    return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
+  const totalCompanies = companies.length;
+  const dueThisMonth = filings.filter(f => { const d = new Date(f.due_date); return d.getMonth() === TODAY.getMonth() && d.getFullYear() === TODAY.getFullYear() && f.status !== "Filed"; }).length;
+  const overdueCount = filings.filter(f => f.status === "Overdue").length;
+  const kycDueSoon = directors.filter(d => {
+    const diff = Math.ceil((new Date(d.kyc_due_date).getTime() - TODAY.getTime()) / 86400000);
+    return diff >= 0 && diff <= 30;
   }).length;
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link
-          href="/dashboard"
-          className="text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-gray-900">MCA / ROC Filings</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Ministry of Corporate Affairs — Companies Act 2013 compliance tracker
-          </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">MCA / ROC Module</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Ministry of Corporate Affairs — Companies Act 2013 compliance tracker</p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-1.5 bg-blue-600 text-white text-sm px-3 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Filing
-        </button>
+        {activeTab === 1 && (
+          <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-blue-600 text-white text-sm px-3 py-2 rounded-lg hover:bg-blue-700">
+            <Plus className="w-4 h-4" /> Add Filing
+          </button>
+        )}
       </div>
 
-      {/* Error banner */}
-      {error && (
-        <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-red-700">
-          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {/* Migration notice when table missing */}
       {tableError && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex gap-2">
           <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-amber-800">MCA module not yet migrated</p>
-            <p className="text-xs text-amber-700 mt-0.5">
-              Run migration to enable MCA module: <code className="font-mono bg-amber-100 px-1 rounded">CREATE TABLE mca_filings (...)</code> — showing sample data below.
-            </p>
-          </div>
+          <p className="text-sm text-amber-700">MCA filings table not found — showing sample data. Run migration to create <code className="font-mono bg-amber-100 px-1 rounded">mca_filings</code>.</p>
         </div>
       )}
 
-      {/* Key Deadlines Banner — FY 2025-26 */}
-      <div>
-        <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1.5">
-          <Calendar className="w-3.5 h-3.5" />
-          Key MCA Deadlines — FY 2025-26
-        </p>
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {KEY_DEADLINES.map((d) => (
-            <div
-              key={d.label}
-              className="shrink-0 border border-gray-200 bg-white rounded-lg px-3 py-2 min-w-[140px]"
-            >
-              <p className="text-xs font-semibold text-gray-800">{d.label}</p>
-              <p className="text-[11px] text-blue-600 font-medium mt-0.5">{d.date}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5 leading-tight">{d.note}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-              <Building2 className="w-4 h-4 text-blue-600" />
+        {[
+          { icon: <Building2 className="w-4 h-4 text-blue-600" />,    bg: "bg-blue-50",   label: "Total Companies",       value: String(totalCompanies), sub: "Company clients" },
+          { icon: <Clock className="w-4 h-4 text-amber-600" />,       bg: "bg-amber-50",  label: "Filings Due This Month", value: loading ? "—" : String(dueThisMonth), sub: "Jun 2026" },
+          { icon: <AlertTriangle className="w-4 h-4 text-red-600" />, bg: "bg-red-50",    label: "Overdue Filings",       value: loading ? "—" : String(overdueCount), sub: "Past due date" },
+          { icon: <Users className="w-4 h-4 text-purple-600" />,      bg: "bg-purple-50", label: "Directors KYC Due",     value: String(kycDueSoon), sub: "Within 30 days" },
+        ].map(c => (
+          <div key={c.label} className="bg-white rounded-xl border border-gray-100 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className={`w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center`}>{c.icon}</div>
+              <span className="text-xs text-gray-500">{c.label}</span>
             </div>
-            <span className="text-xs text-gray-500">Total Filings</span>
+            <p className="text-lg font-semibold text-gray-900">{c.value}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{c.sub}</p>
           </div>
-          <p className="text-lg font-semibold text-gray-900">
-            {loading ? "—" : totalFilings}
-          </p>
-          <p className="text-xs text-gray-400 mt-0.5">All tracked</p>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
-              <Clock className="w-4 h-4 text-amber-600" />
-            </div>
-            <span className="text-xs text-gray-500">Pending</span>
-          </div>
-          <p className="text-lg font-semibold text-gray-900">
-            {loading ? "—" : pendingCount}
-          </p>
-          <p className="text-xs text-gray-400 mt-0.5">Not yet filed</p>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
-              <AlertTriangle className="w-4 h-4 text-red-600" />
-            </div>
-            <span className="text-xs text-gray-500">Overdue</span>
-          </div>
-          <p className="text-lg font-semibold text-gray-900">
-            {loading ? "—" : overdueCount}
-          </p>
-          <p className="text-xs text-gray-400 mt-0.5">Past due date</p>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
-              <CheckCircle className="w-4 h-4 text-green-600" />
-            </div>
-            <span className="text-xs text-gray-500">Filed This Month</span>
-          </div>
-          <p className="text-lg font-semibold text-gray-900">
-            {loading ? "—" : filedThisMonth}
-          </p>
-          <p className="text-xs text-gray-400 mt-0.5">Jun 2026</p>
-        </div>
+        ))}
       </div>
 
-      {/* Filing Tracker Table */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">Filing Tracker</h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              ROC / MCA filing obligations — Companies Act 2013
-            </p>
-          </div>
-          <FileText className="w-4 h-4 text-gray-300" />
-        </div>
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-100">
+        {TABS.map((tab, i) => (
+          <button key={tab} onClick={() => setActiveTab(i)}
+            className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === i ? "border-blue-600 text-blue-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
+            {tab}
+          </button>
+        ))}
+      </div>
 
-        {loading ? (
-          <div className="px-5 py-10 text-center text-sm text-gray-400">
-            Loading filings…
+      {/* Tab: Companies */}
+      {activeTab === 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-50">
+            <h2 className="text-sm font-semibold text-gray-900">Company Clients</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Companies Act 2013 — incorporated entities</p>
           </div>
-        ) : filings.length === 0 ? (
-          <div className="px-5 py-10 text-center">
-            <Building2 className="w-8 h-8 text-gray-200 mx-auto mb-3" />
-            <p className="text-sm text-gray-500 font-medium">No filings tracked yet</p>
-            <p className="text-xs text-gray-400 mt-1">
-              Click &ldquo;Add Filing&rdquo; to start tracking MCA obligations.
-            </p>
-          </div>
-        ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-50">
-                  <th className="text-left text-xs font-medium text-gray-400 px-5 py-3">
-                    Client Name
-                  </th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">
-                    CIN / LLPIN
-                  </th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">
-                    Form Type
-                  </th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">
-                    Due Date
-                  </th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">
-                    Status
-                  </th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-5 py-3">
-                    Action
-                  </th>
+                  {["Company Name", "CIN", "Incorp. Date", "Auth. Capital", "Paid-up Capital", "Regd. Office"].map(h => (
+                    <th key={h} className="text-left text-xs font-medium text-gray-400 px-4 py-3">{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filings.map((f) => (
-                  <tr key={f.id} className="hover:bg-gray-50/50">
-                    {/* Client Name */}
-                    <td className="px-5 py-3">
+                {companies.map(c => (
+                  <tr key={c.id} className="hover:bg-gray-50/50">
+                    <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-md bg-blue-50 flex items-center justify-center shrink-0">
-                          <Building2 className="w-3.5 h-3.5 text-blue-600" />
-                        </div>
-                        <span className="text-sm font-medium text-gray-900">
-                          {f.client_name}
-                        </span>
+                        <div className="w-7 h-7 rounded-md bg-blue-50 flex items-center justify-center shrink-0"><Building2 className="w-3.5 h-3.5 text-blue-600" /></div>
+                        <span className="text-sm font-medium text-gray-900">{c.client_name}</span>
                       </div>
                     </td>
-
-                    {/* CIN */}
-                    <td className="px-3 py-3">
-                      <span className="text-xs font-mono text-gray-600">{f.cin}</span>
-                    </td>
-
-                    {/* Form Type */}
-                    <td className="px-3 py-3">
-                      <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
-                        <FileText className="w-3 h-3" />
-                        {f.form_type}
-                      </span>
-                    </td>
-
-                    {/* Due Date */}
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="w-3 h-3 text-gray-300" />
-                        <span className="text-xs text-gray-600">
-                          {formatDate(f.due_date)}
-                        </span>
-                      </div>
-                    </td>
-
-                    {/* Status */}
-                    <td className="px-3 py-3">
-                      <span
-                        className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLE[f.status]}`}
-                      >
-                        {f.status === "Filed" && <CheckCircle className="w-3 h-3" />}
-                        {f.status === "Overdue" && <AlertTriangle className="w-3 h-3" />}
-                        {f.status === "Pending" && <Clock className="w-3 h-3" />}
-                        {f.status}
-                      </span>
-                    </td>
-
-                    {/* Action */}
-                    <td className="px-5 py-3">
-                      {f.status === "Filed" ? (
-                        <span className="text-xs text-gray-400">
-                          {f.filed_date ? `Filed ${formatDate(f.filed_date)}` : "Filed"}
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handleMarkFiled(f.id)}
-                          className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
-                        >
-                          Mark as Filed
-                        </button>
-                      )}
-                    </td>
+                    <td className="px-4 py-3 text-xs font-mono text-gray-600">{c.cin}</td>
+                    <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(c.incorp_date)}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{fmtLakhs(c.auth_capital_paise)}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{fmtLakhs(c.paidup_capital_paise)}</td>
+                    <td className="px-4 py-3 text-xs text-gray-600">{c.regd_office}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
-
-        {/* Footer note */}
-        <div className="px-5 py-3 border-t border-gray-50 bg-gray-50/30">
-          <p className="text-[10px] text-gray-400">
-            {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
-            All filings must be submitted manually on MCA21 portal (mca.gov.in) after CA review. CAflow does not auto-submit to any government portal.
-          </p>
         </div>
-      </div>
+      )}
 
-      {/* Add Filing Modal */}
+      {/* Tab: Filings */}
+      {activeTab === 1 && (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-50">
+            <h2 className="text-sm font-semibold text-gray-900">ROC Filing Tracker</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Companies Act 2013 — ROC/MCA filing obligations</p>
+          </div>
+          {loading ? <div className="px-5 py-10 text-center text-sm text-gray-400">Loading…</div> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-50">
+                    {["Company Name", "CIN", "Form Type", "Period", "Due Date", "Filed Date", "SRN", "Status", "Action"].map(h => (
+                      <th key={h} className="text-left text-xs font-medium text-gray-400 px-4 py-3">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {filings.map(f => (
+                    <tr key={f.id} className="hover:bg-gray-50/50">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{f.client_name}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-gray-600">{f.company_cin}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+                          <FileText className="w-3 h-3" />{f.form_type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-600">{f.period}</td>
+                      <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(f.due_date)}</td>
+                      <td className="px-4 py-3 text-xs text-gray-600">{f.filed_date ? fmtDate(f.filed_date) : "—"}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-gray-600">{f.srn || "—"}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLE[f.status]}`}>
+                          {f.status === "Filed" && <CheckCircle className="w-3 h-3" />}
+                          {f.status === "Overdue" && <AlertTriangle className="w-3 h-3" />}
+                          {f.status === "Pending" && <Clock className="w-3 h-3" />}
+                          {f.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {f.status !== "Filed" ? (
+                          <button onClick={() => handleMarkFiled(f.id)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark Filed</button>
+                        ) : (
+                          <span className="text-xs text-gray-400">Done</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="px-5 py-3 border-t border-gray-50 bg-gray-50/30">
+            <p className="text-[10px] text-gray-400">
+              {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
+              All filings must be submitted manually on MCA21 portal. CAflow does not auto-submit.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Directors */}
+      {activeTab === 2 && (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-50">
+            <h2 className="text-sm font-semibold text-gray-900">Director Master</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Director KYC due date: 30 Sep annually — Rule 12A Companies (Appointment and Qualification of Directors) Rules</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-50">
+                  {["Name", "DIN", "PAN", "Designation", "Appointment Date", "KYC Due Date", "KYC Status"].map(h => (
+                    <th key={h} className="text-left text-xs font-medium text-gray-400 px-4 py-3">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {directors.map(d => {
+                  const kycDate = new Date(d.kyc_due_date);
+                  const daysToKyc = Math.ceil((kycDate.getTime() - TODAY.getTime()) / 86400000);
+                  const kycStyle = daysToKyc < 0 ? "bg-red-100 text-red-700" : daysToKyc <= 30 ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700";
+                  const kycLabel = daysToKyc < 0 ? "Overdue" : daysToKyc <= 30 ? `Due in ${daysToKyc}d` : "Valid";
+                  return (
+                    <tr key={d.id} className="hover:bg-gray-50/50">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{d.name}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-gray-600">{d.din}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-gray-600">{d.pan}</td>
+                      <td className="px-4 py-3 text-xs text-gray-600">{d.designation}</td>
+                      <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(d.appointment_date)}</td>
+                      <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(d.kyc_due_date)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${kycStyle}`}>{kycLabel}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Deadlines */}
+      {activeTab === 3 && (
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 flex gap-2">
+            <AlertCircle className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-blue-800">MCA Deadlines for FY 2025-26 / 2026-27</p>
+              <p className="text-xs text-blue-700 mt-0.5">AGM is typically held by 30 Sep (6 months after FY end 31 Mar). Deadlines computed from AGM date.</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {KEY_DEADLINES.map(d => (
+              <div key={d.label} className="bg-white rounded-xl border border-gray-100 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center"><Calendar className="w-4 h-4 text-blue-600" /></div>
+                  <span className="text-sm font-semibold text-gray-900">{d.label}</span>
+                </div>
+                <p className="text-base font-bold text-blue-600">{d.date}</p>
+                <p className="text-xs text-gray-400 mt-1">{d.note}</p>
+                <p className={`text-xs font-medium mt-2 ${d.daysLeft < 30 ? "text-amber-600" : "text-gray-500"}`}>
+                  {d.daysLeft > 0 ? `${d.daysLeft} days remaining` : "Past due"}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {showModal && (
-        <AddFilingModal
-          clients={clients}
-          firmId={firmId}
-          onClose={() => setShowModal(false)}
-          onAdded={(filing) => setFilings((prev) => [...prev, filing])}
-        />
+        <AddFilingModal clients={clients} firmId={firmId} onClose={() => setShowModal(false)} onAdded={f => setFilings(prev => [...prev, f])} />
       )}
     </div>
   );
