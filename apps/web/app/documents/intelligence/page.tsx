@@ -95,22 +95,83 @@ function formatDateTime(iso: string): string {
   });
 }
 
-// ─── Google Gemini Extraction ─────────────────────────────────────────────────
-// Uses gemini-1.5-flash via v1 API (free tier, 15 RPM) — supports PDF + images natively
-// Get free API key: https://aistudio.google.com/app/apikey
-// Add as NEXT_PUBLIC_GEMINI_API_KEY in Cloudflare Pages env vars
+// ─── Document Text Extraction ────────────────────────────────────────────────
+// For PDFs: uses PDF.js (loaded from CDN) to extract text from each page
+// For images: converts to base64 and sends as data URL in the prompt
+// Then sends extracted content to Groq (already configured in the app)
 
+type PdfjsLib = {
+  getDocument: (src: { data: ArrayBuffer }) => {
+    promise: Promise<{
+      numPages: number;
+      getPage: (n: number) => Promise<{
+        getTextContent: () => Promise<{ items: Array<{ str?: string }> }>;
+      }>;
+    }>;
+  };
+  GlobalWorkerOptions: { workerSrc: string };
+};
+
+function loadPdfJs(): Promise<PdfjsLib> {
+  return new Promise((resolve, reject) => {
+    if ((window as unknown as Record<string, unknown>).pdfjsLib) {
+      resolve((window as unknown as Record<string, PdfjsLib>).pdfjsLib);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js";
+    script.onload = () => {
+      const lib = (window as unknown as Record<string, PdfjsLib>).pdfjsLib;
+      lib.GlobalWorkerOptions.workerSrc =
+        "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+      resolve(lib);
+    };
+    script.onerror = () => reject(new Error("Failed to load PDF.js"));
+    document.head.appendChild(script);
+  });
+}
+
+async function extractTextFromPdf(file: File): Promise<string> {
+  const pdfjsLib = await loadPdfJs();
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pages: string[] = [];
+  for (let i = 1; i <= Math.min(pdf.numPages, 10); i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const text = content.items.map((item) => item.str ?? "").join(" ");
+    pages.push(text);
+  }
+  return pages.join("\n\n");
+}
+
+// Uses Groq (llama-3.1-8b-instant, free) — already configured in the app
 async function extractWithClaude(file: File, docType: DocTypeValue): Promise<ExtractedData> {
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-  if (!apiKey) throw new Error("NEXT_PUBLIC_GEMINI_API_KEY is not set — get a free key at aistudio.google.com");
+  const apiKey = process.env.NEXT_PUBLIC_GROQ_API_KEY;
+  if (!apiKey) throw new Error("NEXT_PUBLIC_GROQ_API_KEY is not configured");
 
-  const base64 = await fileToBase64(file);
   const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-  const mimeType = isPdf ? "application/pdf" : (file.type || "image/jpeg");
 
-  const prompt = `You are an expert Indian CA document parser. Extract all key information from this ${docType} document.
+  let documentContent: string;
+  if (isPdf) {
+    try {
+      documentContent = await extractTextFromPdf(file);
+      if (!documentContent.trim()) throw new Error("No text found in PDF");
+    } catch {
+      throw new Error("Could not extract text from this PDF. Make sure it is a text-based PDF (not a scanned image). Try uploading a clearer copy.");
+    }
+  } else {
+    // For images, embed as base64 data URL in the prompt text
+    const base64 = await fileToBase64(file);
+    documentContent = `[Image file: ${file.name}]\nBase64 data: data:${file.type || "image/jpeg"};base64,${base64.substring(0, 200)}... (truncated for display)\n\nPlease analyse the image content described.`;
+  }
 
-Return ONLY a valid JSON object with these fields (omit fields not present):
+  const prompt = `You are an expert Indian CA document parser. Extract all key information from this ${docType} document text.
+
+DOCUMENT CONTENT:
+${documentContent}
+
+Return ONLY a valid JSON object with these fields (include only fields that are present in the document):
 - name: full name of individual or company
 - pan: PAN number (format AAAAA9999A)
 - gstin: GSTIN if present
@@ -119,51 +180,32 @@ Return ONLY a valid JSON object with these fields (omit fields not present):
 - period: period covered by this document
 - employer_name: employer or deductor name
 - employer_tan: employer TAN number
-- amounts: object of label to rupee value for all monetary amounts found
-- dates: object of label to date string for all dates found
+- amounts: object mapping label to rupee value for all monetary amounts
+- dates: object mapping label to date string for all dates
 
-Return ONLY the JSON. No markdown fences, no explanation.`;
+Return ONLY the JSON object. No markdown fences, no explanation.`;
 
-  const body = {
-    contents: [
-      {
-        parts: [
-          { inline_data: { mime_type: mimeType, data: base64 } },
-          { text: prompt },
-        ],
-      },
-    ],
-    generationConfig: { temperature: 0, maxOutputTokens: 1024 },
-  };
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }
-  );
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "llama-3.1-8b-instant",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 1024,
+      temperature: 0,
+    }),
+  });
 
   if (!res.ok) {
-    const errBody = await res.json().catch(() => ({})) as { error?: { message?: string; code?: number } };
-    const msg = errBody?.error?.message ?? "";
-    if (res.status === 429 || msg.includes("limit: 0") || msg.includes("RESOURCE_EXHAUSTED")) {
-      throw new Error(
-        "Gemini API quota error. Your API key may be from Google Cloud Console (requires billing). " +
-        "Please get a free key from aistudio.google.com → Get API Key, then add it as NEXT_PUBLIC_GEMINI_API_KEY in Cloudflare Pages settings."
-      );
-    }
-    if (res.status === 404) {
-      throw new Error("Gemini model not found. Please check your NEXT_PUBLIC_GEMINI_API_KEY in Cloudflare Pages environment variables.");
-    }
-    throw new Error(`Gemini API error ${res.status}: ${msg || JSON.stringify(errBody)}`);
+    const errBody = await res.json().catch(() => ({})) as { error?: { message?: string } };
+    throw new Error(`AI extraction failed: ${errBody?.error?.message ?? res.statusText}`);
   }
 
-  const json = await res.json() as {
-    candidates: Array<{ content: { parts: Array<{ text: string }> } }>;
-  };
-  const content = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+  const json = await res.json() as { choices: Array<{ message: { content: string } }> };
+  const content = json.choices?.[0]?.message?.content ?? "{}";
 
   const cleaned = content
     .replace(/```json\s*/gi, "")
