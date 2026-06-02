@@ -20,6 +20,7 @@ const NAV_CARDS = [
   { label: "Bank Statements", description: "Allocate and post bank transactions", href: "/accounting/bank-statements", icon: Building2 },
   { label: "Recurring Transactions", description: "Automate monthly, quarterly & yearly entries", href: "/accounting/recurring", icon: RefreshCw },
   { label: "Budget vs Actuals", description: "Compare budgeted amounts with posted entries", href: "/accounting/budget", icon: Target },
+  { label: "MSME 43B(h) Tracker", description: "Track MSME vendor payments to avoid IT Act Section 43B(h) disallowance", href: "/accounting/msme-tracker", icon: FileText },
 ];
 
 const statusBadge: Record<string, string> = {
