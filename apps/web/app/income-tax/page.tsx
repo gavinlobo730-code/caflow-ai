@@ -712,6 +712,44 @@ export default function IncomeTaxPage() {
       )}
 
       {/* ================================================================== */}
+      {/* Quick links to sub-tools                                           */}
+      {/* ================================================================== */}
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide mb-1">
+              AIS Ingestion Tool
+            </p>
+            <p className="text-sm text-blue-700">
+              Upload and review Annual Information Statement JSON — compare AIS with books before filing ITR.
+            </p>
+          </div>
+          <Link
+            href="/income-tax/ais"
+            className="shrink-0 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Open AIS Tool →
+          </Link>
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1">
+              IT Notice Tracker
+            </p>
+            <p className="text-sm text-amber-700">
+              Track and manage IT notices, faceless assessments, demand notices and penalty proceedings.
+            </p>
+          </div>
+          <Link
+            href="/income-tax/notices"
+            className="shrink-0 px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors"
+          >
+            Open Tracker →
+          </Link>
+        </div>
+      </div>
+
+      {/* ================================================================== */}
       {/* MODAL: Add ITR Deadline                                             */}
       {/* ================================================================== */}
       {showAddModal && (
