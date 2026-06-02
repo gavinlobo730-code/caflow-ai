@@ -25,7 +25,6 @@ AS
     jl.account_id,
     jl.debit_paise,
     jl.credit_paise,
-    jl.description,
     je.firm_id,
     je.entry_date,
     je.reference,
