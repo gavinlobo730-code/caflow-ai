@@ -95,60 +95,74 @@ function formatDateTime(iso: string): string {
   });
 }
 
-// ─── Groq AI Extraction ───────────────────────────────────────────────────────
+// ─── Claude Vision Extraction ─────────────────────────────────────────────────
+// Uses claude-sonnet-4-6 vision via Anthropic API — NEXT_PUBLIC_ANTHROPIC_API_KEY required
 
-async function extractWithGroq(file: File, docType: DocTypeValue): Promise<ExtractedData> {
-  const apiKey = process.env.NEXT_PUBLIC_GROQ_API_KEY;
-  if (!apiKey) throw new Error("NEXT_PUBLIC_GROQ_API_KEY is not set");
+async function extractWithClaude(file: File, docType: DocTypeValue): Promise<ExtractedData> {
+  const apiKey = process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("NEXT_PUBLIC_ANTHROPIC_API_KEY is not set in environment variables");
 
   const base64 = await fileToBase64(file);
-  const mimeType = file.type || "application/octet-stream";
+  const mimeType = (file.type && file.type.startsWith("image/")) ? file.type : "image/jpeg";
+  const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 
-  const prompt = `Extract key information from this ${docType}. Return ONLY a valid JSON object (no markdown, no explanation) with fields: name, pan, gstin, period, amounts (as object of label:value pairs), dates (as object of label:value pairs), and any other relevant fields specific to a ${docType}.`;
+  const prompt = `You are an expert Indian CA document parser. Extract all key information from this ${docType} document.
+
+Return ONLY a valid JSON object with these fields (omit fields not found):
+- name: full name of individual/company
+- pan: PAN number (format: AAAAA9999A)
+- gstin: GSTIN if present
+- assessment_year: e.g. "2024-25"
+- financial_year: e.g. "2023-24"
+- period: period covered
+- employer_name: employer/deductor name
+- employer_tan: employer TAN
+- amounts: object of label→value for all monetary amounts (gross salary, TDS, tax payable, etc.)
+- dates: object of label→date for all dates
+- other fields specific to ${docType}
+
+Important: Return ONLY the JSON. No markdown, no explanation.`;
 
   const body = {
-    model: "llama-3.2-90b-vision-preview",
+    model: "claude-sonnet-4-6",
+    max_tokens: 1024,
     messages: [
       {
         role: "user",
-        content: [
-          {
-            type: "image_url",
-            image_url: {
-              url: `data:${mimeType};base64,${base64}`,
-            },
-          },
-          {
-            type: "text",
-            text: prompt,
-          },
-        ],
+        content: isPdf
+          ? [
+              { type: "text", text: `${prompt}\n\nNote: This is a PDF document. Extract data from the text content.` },
+            ]
+          : [
+              {
+                type: "image",
+                source: { type: "base64", media_type: mimeType, data: base64 },
+              },
+              { type: "text", text: prompt },
+            ],
       },
     ],
-    max_tokens: 1024,
-    temperature: 0,
   };
 
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
     },
     body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Groq API error ${res.status}: ${errText}`);
+    throw new Error(`Claude API error ${res.status}: ${errText}`);
   }
 
-  const json = await res.json() as {
-    choices: Array<{ message: { content: string } }>;
-  };
-  const content = json.choices?.[0]?.message?.content ?? "{}";
+  const json = await res.json() as { content: Array<{ type: string; text: string }> };
+  const content = json.content?.[0]?.text ?? "{}";
 
-  // Parse JSON — strip any markdown fences if present
   const cleaned = content
     .replace(/```json\s*/gi, "")
     .replace(/```\s*/g, "")
@@ -157,7 +171,6 @@ async function extractWithGroq(file: File, docType: DocTypeValue): Promise<Extra
   try {
     return JSON.parse(cleaned) as ExtractedData;
   } catch {
-    // If not valid JSON, return raw text
     return { raw_response: content };
   }
 }
@@ -318,7 +331,7 @@ export default function DocIntelligencePage() {
     setSaved(false);
 
     try {
-      const data = await extractWithGroq(file, docType);
+      const data = await extractWithClaude(file, docType);
       setExtracted(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analysis failed");
