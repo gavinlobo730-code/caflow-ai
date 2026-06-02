@@ -23,6 +23,8 @@ const NAV_CARDS = [
   { label: "MSME 43B(h) Tracker", description: "Track MSME vendor payments to avoid IT Act Section 43B(h) disallowance", href: "/accounting/msme-tracker", icon: FileText },
   { label: "Schedule III Statements", description: "Balance Sheet & P&L in Companies Act 2013 Schedule III format for MCA/ROC filing", href: "/accounting/schedule-iii", icon: ClipboardCheck },
   { label: "Retainer Tracker", description: "Track monthly retainer clients, work done, and generate GST invoices", href: "/accounting/retainer", icon: IndianRupee },
+  { label: "Bank Reconciliation", description: "Match bank statement transactions with journal ledger entries", href: "/accounting/bank-reconciliation", icon: ArrowUpRight },
+  { label: "Trial Balance Import", description: "Import opening balances from Tally, Busy, QuickBooks, Zoho, Excel CSV", href: "/accounting/trial-balance-import", icon: Scale },
 ];
 
 const statusBadge: Record<string, string> = {
