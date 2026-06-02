@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Building2, AlertTriangle, Calendar, LogOut } from "lucide-react";
+import Link from "next/link";
+import { Building2, AlertTriangle, Calendar, LogOut, ShieldCheck } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useRouter } from "next/navigation";
@@ -437,6 +438,28 @@ export default function SettingsPage() {
           </p>
         </div>
       </div>
+
+      {/* ── Audit Log — Partner only ─────────────────────────────────────── */}
+      <RoleGuard allowed={["Partner"]} redirect={false}>
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+            <ShieldCheck size={15} className="text-blue-600" />
+            <h2 className="text-sm font-semibold text-gray-900">Audit Log</h2>
+          </div>
+          <div className="px-5 py-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-700">View a timeline of all changes made across clients, journals, compliance and accounts.</p>
+              <p className="text-xs text-gray-400 mt-0.5">Partner access only.</p>
+            </div>
+            <Link
+              href="/settings/audit-log"
+              className="px-4 py-1.5 border border-blue-300 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors"
+            >
+              View Audit Log →
+            </Link>
+          </div>
+        </div>
+      </RoleGuard>
 
       {/* ── Danger Zone ──────────────────────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-red-100 overflow-hidden">

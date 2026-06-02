@@ -11,6 +11,8 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "CAflow AI",
   description: "AI-powered practice management for Indian Chartered Accountants",
+  manifest: "/manifest.json",
+  themeColor: "#2563eb",
 };
 
 export default function RootLayout({
@@ -20,6 +22,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#2563eb" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `if ('serviceWorker' in navigator) { window.addEventListener('load', function() { navigator.serviceWorker.register('/sw.js'); }); }`,
+          }}
+        />
+      </head>
       <body className={inter.className}>
         <AuthProvider>
           <AuthGuard>

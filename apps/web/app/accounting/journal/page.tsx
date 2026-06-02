@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ChevronLeft, Plus, Trash2, CheckCircle, XCircle } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, CheckCircle, XCircle, Info } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
@@ -10,6 +10,20 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import type { JournalEntry, EntryType, Account } from "@/lib/types";
 
 const ENTRY_TYPES: EntryType[] = ["Sales", "Purchase", "Payment", "Receipt", "Journal", "Contra", "Opening"];
+
+// Supported foreign currencies (ISO 4217 codes)
+const CURRENCIES = ["INR", "USD", "EUR", "GBP", "AED", "SGD", "JPY"] as const;
+type Currency = (typeof CURRENCIES)[number];
+
+const CURRENCY_SYMBOLS: Record<Currency, string> = {
+  INR: "₹",
+  USD: "$",
+  EUR: "€",
+  GBP: "£",
+  AED: "د.إ",
+  SGD: "S$",
+  JPY: "¥",
+};
 
 const statusBadge: Record<string, string> = {
   posted: "bg-green-100 text-green-700",
@@ -40,6 +54,23 @@ async function getFirmId(): Promise<string> {
   return data.firm_id as string;
 }
 
+/**
+ * Format a forex display string for the journal entry list.
+ * e.g. "USD 1,000 @ 83.50 = ₹83,500"
+ */
+function formatForexDisplay(
+  currency: string,
+  foreignAmount: number,
+  exchangeRate: number,
+  inrPaise: number,
+): string {
+  const sym = CURRENCY_SYMBOLS[currency as Currency] ?? currency;
+  const fmtForeign = foreignAmount.toLocaleString("en-IN");
+  const fmtRate = exchangeRate.toFixed(2);
+  const inrRupees = Math.round(inrPaise / 100).toLocaleString("en-IN");
+  return `${sym}${fmtForeign} @ ${fmtRate} = ₹${inrRupees}`;
+}
+
 export default function JournalPage() {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -50,7 +81,16 @@ export default function JournalPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [lines, setLines] = useState<NewLine[]>([emptyLine(), emptyLine()]);
-  const [formData, setFormData] = useState({ entry_date: "", reference_no: "", narration: "", entry_type: "Journal" as EntryType });
+  const [formData, setFormData] = useState({
+    entry_date: "",
+    reference_no: "",
+    narration: "",
+    entry_type: "Journal" as EntryType,
+    // Multi-currency fields
+    currency: "INR" as Currency,
+    exchange_rate: "",          // string for controlled input; rate per 1 foreign unit in INR
+    foreign_amount: "",         // string for controlled input
+  });
   const [submitting, setSubmitting] = useState(false);
   const [firmId, setFirmId] = useState<string | null>(null);
 
@@ -69,6 +109,17 @@ export default function JournalPage() {
       .catch((e) => setError(e.message ?? "Failed to load data"))
       .finally(() => setLoading(false));
   }, []);
+
+  // ── Derived forex conversion ─────────────────────────────────────────────
+  // Integer paise arithmetic — no floating point (per CGST Act best-practice).
+  // Formula: foreign_amount × exchange_rate × 100 (converted to integer paise)
+  const isForex = formData.currency !== "INR";
+  const parsedForeignAmount = parseFloat(formData.foreign_amount) || 0;
+  const parsedExchangeRate = parseFloat(formData.exchange_rate) || 0;
+  // Multiply then round to integer paise — never store fractional paise
+  const convertedInrPaise = isForex
+    ? Math.round(parsedForeignAmount * parsedExchangeRate * 100)
+    : 0;
 
   const totalDebit: number = lines.reduce((sum, l) => sum + (Number(l.debit_paise) || 0), 0);
   const totalCredit: number = lines.reduce((sum, l) => sum + (Number(l.credit_paise) || 0), 0);
@@ -116,13 +167,19 @@ export default function JournalPage() {
       // All money uses integer paise — no floating point
       const totalDebitPaise = lines.reduce((s, l) => s + (Number(l.debit_paise) || 0), 0);
       const totalCreditPaise = lines.reduce((s, l) => s + (Number(l.credit_paise) || 0), 0);
+
+      // Build metadata for forex entries (stored in narration suffix if non-INR)
+      const forexMeta = isForex && parsedForeignAmount > 0 && parsedExchangeRate > 0
+        ? ` [${formData.currency} ${parsedForeignAmount} @ ${parsedExchangeRate}]`
+        : "";
+
       const { data: newEntry, error: entryErr } = await sb
         .from("journal_entries")
         .insert({
           firm_id: firmId,
           entry_date: formData.entry_date,
           reference_no: formData.reference_no,
-          narration: formData.narration,
+          narration: formData.narration + forexMeta,
           entry_type: formData.entry_type,
           status: asDraft ? "draft" : "posted",
           total_debit_paise: totalDebitPaise,
@@ -147,7 +204,15 @@ export default function JournalPage() {
         setEntries((prev) => [newEntry as JournalEntry, ...prev]);
         setShowForm(false);
         setLines([emptyLine(), emptyLine()]);
-        setFormData({ entry_date: "", reference_no: "", narration: "", entry_type: "Journal" });
+        setFormData({
+          entry_date: "",
+          reference_no: "",
+          narration: "",
+          entry_type: "Journal",
+          currency: "INR",
+          exchange_rate: "",
+          foreign_amount: "",
+        });
       }
     } finally {
       setSubmitting(false);
@@ -211,25 +276,37 @@ export default function JournalPage() {
           {filtered.length === 0 && (
             <div className="px-5 py-8 text-center text-sm text-gray-400">No entries yet. Create your first journal entry.</div>
           )}
-          {filtered.map((entry) => (
-            <div key={entry.id} className="grid grid-cols-12 gap-2 px-5 py-3 hover:bg-gray-50 transition-colors items-center">
-              <button onClick={() => { setSelectedEntry(entry); setShowForm(false); }} className="col-span-2 text-xs text-gray-600 text-left">{formatDate(entry.entry_date)}</button>
-              <button onClick={() => { setSelectedEntry(entry); setShowForm(false); }} className="col-span-2 text-xs font-mono text-gray-500 truncate text-left">{entry.reference_no}</button>
-              <button onClick={() => { setSelectedEntry(entry); setShowForm(false); }} className="col-span-3 text-sm text-gray-900 truncate text-left">{entry.narration}</button>
-              <span className="col-span-1 text-xs text-gray-500">{entry.entry_type}</span>
-              <span className="col-span-1">
-                <Badge className={`text-xs ${statusBadge[entry.status]}`}>{entry.status}</Badge>
-              </span>
-              <span className="col-span-2 text-sm font-semibold tabular-nums text-right text-gray-700">
-                {formatPaise(entry.total_debit_paise)}
-              </span>
-              <span className="col-span-1 text-right">
-                {entry.status === "draft" && (
-                  <button onClick={() => handlePost(entry.id)} className="text-xs text-blue-600 hover:underline">Post</button>
-                )}
-              </span>
-            </div>
-          ))}
+          {filtered.map((entry) => {
+            // Parse forex metadata from narration if present: "[USD 1000 @ 83.5]"
+            const forexMatch = entry.narration?.match(/\[([A-Z]{3}) ([\d.]+) @ ([\d.]+)\]$/);
+            const forexCurrency = forexMatch?.[1];
+            const forexForeignAmt = forexMatch ? parseFloat(forexMatch[2]) : 0;
+            const forexRate = forexMatch ? parseFloat(forexMatch[3]) : 0;
+            const showForex = forexCurrency && forexCurrency !== "INR" && forexForeignAmt > 0;
+            return (
+              <div key={entry.id} className="grid grid-cols-12 gap-2 px-5 py-3 hover:bg-gray-50 transition-colors items-center">
+                <button onClick={() => { setSelectedEntry(entry); setShowForm(false); }} className="col-span-2 text-xs text-gray-600 text-left">{formatDate(entry.entry_date)}</button>
+                <button onClick={() => { setSelectedEntry(entry); setShowForm(false); }} className="col-span-2 text-xs font-mono text-gray-500 truncate text-left">{entry.reference_no}</button>
+                <button onClick={() => { setSelectedEntry(entry); setShowForm(false); }} className="col-span-3 text-sm text-gray-900 truncate text-left">
+                  {entry.narration?.replace(/\[[A-Z]{3} [\d.]+ @ [\d.]+\]$/, "").trim()}
+                </button>
+                <span className="col-span-1 text-xs text-gray-500">{entry.entry_type}</span>
+                <span className="col-span-1">
+                  <Badge className={`text-xs ${statusBadge[entry.status]}`}>{entry.status}</Badge>
+                </span>
+                <span className="col-span-2 text-sm font-semibold tabular-nums text-right text-gray-700">
+                  {showForex
+                    ? formatForexDisplay(forexCurrency, forexForeignAmt, forexRate, entry.total_debit_paise)
+                    : formatPaise(entry.total_debit_paise)}
+                </span>
+                <span className="col-span-1 text-right">
+                  {entry.status === "draft" && (
+                    <button onClick={() => handlePost(entry.id)} className="text-xs text-blue-600 hover:underline">Post</button>
+                  )}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </Card>
 
@@ -238,7 +315,7 @@ export default function JournalPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center justify-between">
-              <span>{selectedEntry.narration}</span>
+              <span>{selectedEntry.narration?.replace(/\[[A-Z]{3} [\d.]+ @ [\d.]+\]$/, "").trim()}</span>
               <button onClick={() => setSelectedEntry(null)} className="text-xs text-gray-400 hover:text-gray-600">Close</button>
             </CardTitle>
           </CardHeader>
@@ -296,6 +373,82 @@ export default function JournalPage() {
                   className="w-full mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Description of entry" />
               </div>
+            </div>
+
+            {/* ── Multi-currency fields ─────────────────────────────────── */}
+            <div className="border border-gray-100 rounded-lg p-3 bg-gray-50 space-y-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Currency</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500">Currency</label>
+                  <select
+                    value={formData.currency}
+                    onChange={(e) => setFormData({ ...formData, currency: e.target.value as Currency, exchange_rate: "", foreign_amount: "" })}
+                    className="w-full mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  >
+                    {CURRENCIES.map((c) => (
+                      <option key={c} value={c}>{c}{c === "INR" ? " (default)" : ""}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {isForex && (
+                  <>
+                    <div>
+                      <label className="text-xs text-gray-500">
+                        Exchange Rate <span className="text-gray-400">(1 {formData.currency} = ? INR)</span>
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.0001"
+                        value={formData.exchange_rate}
+                        onChange={(e) => setFormData({ ...formData, exchange_rate: e.target.value })}
+                        className="w-full mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        placeholder="e.g. 83.50"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-gray-500">
+                        Foreign Amount <span className="text-gray-400">({formData.currency})</span>
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={formData.foreign_amount}
+                        onChange={(e) => setFormData({ ...formData, foreign_amount: e.target.value })}
+                        className="w-full mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        placeholder="e.g. 1000"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-gray-500">INR Equivalent (paise)</label>
+                      <div className="w-full mt-1 px-3 py-1.5 text-sm border border-gray-100 rounded-md bg-white text-gray-700 font-mono tabular-nums">
+                        {convertedInrPaise > 0 ? formatPaise(convertedInrPaise) : "—"}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {parsedForeignAmount > 0 && parsedExchangeRate > 0
+                          ? `${parsedForeignAmount} × ${parsedExchangeRate} × 100 = ${convertedInrPaise} paise`
+                          : "Enter rate and amount above"}
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Forex gain/loss notice */}
+              {isForex && (
+                <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 text-amber-700 text-xs rounded-md px-3 py-2">
+                  <Info size={13} className="mt-0.5 shrink-0" />
+                  <span>
+                    Forex difference will be posted to <strong>Forex Gain/Loss account</strong> at the time of settlement.
+                    Exchange rate entered here is the transaction-date rate (manual entry — no live API).
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Lines */}
