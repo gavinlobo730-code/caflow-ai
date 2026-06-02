@@ -41,9 +41,10 @@ const NAV_GROUPS = [
     ],
   },
   {
-    label: "Payroll",
+    label: "Payroll & Billing",
     items: [
       { href: "/payroll", label: "Payroll", icon: Briefcase },
+      { href: "/billing", label: "Fee Billing", icon: Receipt },
     ],
   },
   {
