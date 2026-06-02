@@ -23,8 +23,8 @@ const NAV_GROUPS = [
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/clients", label: "Clients", icon: Users },
-      { href: "/clients/pipeline", label: "Pipeline", icon: KanbanSquare },
-      { href: "/clients/portal", label: "Client Portal", icon: ExternalLink },
+      { href: "/pipeline", label: "Pipeline", icon: KanbanSquare },
+      { href: "/client-portal", label: "Client Portal", icon: ExternalLink },
       { href: "/tasks", label: "Tasks", icon: CheckSquare },
       { href: "/team", label: "Team", icon: UserCheck },
     ],
