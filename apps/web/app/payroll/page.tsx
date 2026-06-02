@@ -6,9 +6,10 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
   Users, Play, FileText, Shield, Plus, X, AlertCircle,
-  Download, CheckCircle, Clock, AlertTriangle,
+  Download, CheckCircle, Clock, AlertTriangle, BarChart2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -949,9 +950,16 @@ export default function PayrollPage() {
       {viewSlip && <PayslipModal slip={viewSlip} onClose={() => setViewSlip(null)} />}
 
       <div className="max-w-6xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Payroll</h1>
-          <p className="text-sm text-gray-500 mt-0.5">IT Act Section 192 &middot; EPF Act &middot; ESI Act</p>
+        <div className="mb-6 flex items-start justify-between flex-wrap gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Payroll</h1>
+            <p className="text-sm text-gray-500 mt-0.5">IT Act Section 192 &middot; EPF Act &middot; ESI Act</p>
+          </div>
+          <Link href="/payroll/reports">
+            <Button variant="outline" className="flex items-center gap-1.5">
+              <BarChart2 size={15} />Reports
+            </Button>
+          </Link>
         </div>
 
         <Tabs defaultValue="employees">
