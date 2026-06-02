@@ -17,7 +17,9 @@ import {
   Plus,
   X,
   Calendar,
+  GitMerge,
 } from "lucide-react";
+import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
@@ -447,13 +449,22 @@ export default function GSTPage() {
             GSTR Filing Tracker — CGST Act Sections 37, 39, 44
           </p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Add GST Filing
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/gst/reconciliation"
+            className="flex items-center gap-1.5 text-xs bg-white border border-gray-200 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50"
+          >
+            <GitMerge className="w-3.5 h-3.5" />
+            GSTR-2B Reconciliation
+          </Link>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add GST Filing
+          </button>
+        </div>
       </div>
 
       {/* Error banner */}
