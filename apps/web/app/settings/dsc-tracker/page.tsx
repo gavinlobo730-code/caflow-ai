@@ -1,0 +1,303 @@
+"use client";
+
+/**
+ * DSC Tracker — Digital Signature Certificate expiry tracker
+ * DSCs are required for GST filing (CGST Act), MCA filings (Companies Act 2013),
+ * and Income Tax returns. Expire every 1-2 years.
+ */
+
+import { useState, useEffect } from "react";
+import { Shield, Plus, X, AlertCircle, AlertTriangle, CheckCircle } from "lucide-react";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
+import { useToast } from "@/components/ui/use-toast";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface DSCRecord {
+  id: string;
+  firm_id: string;
+  holder_name: string;
+  pan: string;
+  dsc_type: "Class 2" | "Class 3";
+  purpose: string;
+  issuing_ca: string;
+  issue_date: string;
+  expiry_date: string;
+  notes: string | null;
+  created_at: string;
+}
+
+const DSC_TYPES = ["Class 2", "Class 3"];
+const DSC_PURPOSES = ["GST", "MCA", "Income Tax", "All"];
+const ISSUING_CAS = ["eMudhra", "NSDL e-Governance", "Sify Technologies", "CDAC", "MTNL TrustLine"];
+
+const TODAY = new Date("2026-06-02");
+
+function getDaysRemaining(expiryDate: string): number {
+  return Math.ceil((new Date(expiryDate).getTime() - TODAY.getTime()) / 86400000);
+}
+
+interface DSCStatus {
+  label: string;
+  style: string;
+}
+
+function getDSCStatus(expiryDate: string): DSCStatus {
+  const days = getDaysRemaining(expiryDate);
+  if (days < 0)  return { label: "Expired",      style: "bg-red-100 text-red-700" };
+  if (days <= 30) return { label: "Renew Now",    style: "bg-amber-100 text-amber-700" };
+  if (days <= 90) return { label: "Renew Soon",   style: "bg-yellow-100 text-yellow-700" };
+  return              { label: "Valid",          style: "bg-green-100 text-green-700" };
+}
+
+// Seed data
+const SEED_DSCS: DSCRecord[] = [
+  { id: "d1", firm_id: "", holder_name: "CA Rajesh Sharma",   pan: "ABCRS1234K", dsc_type: "Class 3", purpose: "All",         issuing_ca: "eMudhra",             issue_date: "2024-06-01", expiry_date: "2026-06-01", notes: null, created_at: "" },
+  { id: "d2", firm_id: "", holder_name: "Priya Mehta",        pan: "CDFPM5678L", dsc_type: "Class 3", purpose: "MCA",         issuing_ca: "NSDL e-Governance",   issue_date: "2025-03-15", expiry_date: "2027-03-15", notes: null, created_at: "" },
+  { id: "d3", firm_id: "", holder_name: "Sunita Joshi",       pan: "EFGSJ9012M", dsc_type: "Class 2", purpose: "GST",         issuing_ca: "Sify Technologies",   issue_date: "2024-09-01", expiry_date: "2026-08-31", notes: null, created_at: "" },
+  { id: "d4", firm_id: "", holder_name: "Vikram Patel",       pan: "GHIVP3456N", dsc_type: "Class 3", purpose: "Income Tax",  issuing_ca: "eMudhra",             issue_date: "2023-06-20", expiry_date: "2026-06-20", notes: "Renewal reminder sent", created_at: "" },
+];
+
+// ─── Add DSC Modal ────────────────────────────────────────────────────────────
+
+function AddDSCModal({ firmId, onClose, onAdded }: {
+  firmId: string;
+  onClose: () => void;
+  onAdded: (d: DSCRecord) => void;
+}) {
+  const { toast } = useToast();
+  const [holderName, setHolderName] = useState("");
+  const [pan, setPan] = useState("");
+  const [dscType, setDscType] = useState<"Class 2" | "Class 3">("Class 3");
+  const [purpose, setPurpose] = useState("All");
+  const [issuingCA, setIssuingCA] = useState("eMudhra");
+  const [issueDate, setIssueDate] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    if (!holderName.trim() || !issueDate || !expiryDate) {
+      setErr("Name, issue date and expiry date are required.");
+      return;
+    }
+    setSaving(true); setErr(null);
+    try {
+      const sb = getSupabaseClient();
+      const { data, error } = await sb.from("dsc_records").insert({
+        firm_id: firmId,
+        holder_name: holderName.trim(),
+        pan: pan.trim().toUpperCase(),
+        dsc_type: dscType,
+        purpose,
+        issuing_ca: issuingCA,
+        issue_date: issueDate,
+        expiry_date: expiryDate,
+        notes: notes.trim() || null,
+      }).select().single();
+      if (error) throw new Error(error.message);
+      onAdded(data as DSCRecord);
+      toast({ title: "DSC record added" });
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">Add DSC Record</h3>
+          <button onClick={onClose}><X className="w-4 h-4 text-gray-400" /></button>
+        </div>
+        {err && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{err}</p>}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <label className="text-xs font-medium text-gray-700 block mb-1">Full Name</label>
+            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={holderName} onChange={e => setHolderName(e.target.value)} placeholder="CA / Director name" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">PAN</label>
+            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500" value={pan} onChange={e => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Type</label>
+            <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={dscType} onChange={e => setDscType(e.target.value as "Class 2" | "Class 3")}>
+              {DSC_TYPES.map(t => <option key={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Purpose</label>
+            <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purpose} onChange={e => setPurpose(e.target.value)}>
+              {DSC_PURPOSES.map(p => <option key={p}>{p}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Issuing CA</label>
+            <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={issuingCA} onChange={e => setIssuingCA(e.target.value)}>
+              {ISSUING_CAS.map(c => <option key={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Issue Date</label>
+            <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Expiry Date</label>
+            <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
+          </div>
+          <div className="col-span-2">
+            <label className="text-xs font-medium text-gray-700 block mb-1">Notes</label>
+            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 text-sm py-2 rounded-lg">Cancel</button>
+          <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            {saving ? "Saving…" : "Add DSC"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ───────────────────────────────────────────────────────────────
+
+export default function DSCTrackerPage() {
+  const [dscs, setDscs] = useState<DSCRecord[]>(SEED_DSCS);
+  const [firmId, setFirmId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [tableError, setTableError] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const fid = await getFirmId().catch(() => "");
+        setFirmId(fid);
+        if (!fid) return;
+        const sb = getSupabaseClient();
+        const { data, error } = await sb.from("dsc_records").select("*").eq("firm_id", fid).order("expiry_date");
+        if (error) { setTableError(true); }
+        else if (data && data.length > 0) { setDscs(data as DSCRecord[]); }
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  const expiringIn30 = dscs.filter(d => { const days = getDaysRemaining(d.expiry_date); return days >= 0 && days <= 30; }).length;
+  const expiringIn90 = dscs.filter(d => { const days = getDaysRemaining(d.expiry_date); return days >= 0 && days <= 90; }).length;
+  const expired = dscs.filter(d => getDaysRemaining(d.expiry_date) < 0).length;
+
+  return (
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">DSC Tracker</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Digital Signature Certificate expiry tracker</p>
+        </div>
+        <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-blue-600 text-white text-sm px-3 py-2 rounded-lg hover:bg-blue-700">
+          <Plus className="w-4 h-4" /> Add DSC
+        </button>
+      </div>
+
+      {/* Alert banner */}
+      {expiringIn30 > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-sm font-medium text-amber-800">
+            {expiringIn30} DSC{expiringIn30 > 1 ? "s" : ""} expiring within 30 days — renew immediately to avoid disruption to GST / MCA filings.
+          </p>
+        </div>
+      )}
+
+      {tableError && (
+        <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 flex gap-2">
+          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-700">DSC records table not found — showing sample data. Run migration to create <code className="font-mono bg-amber-100 px-1 rounded">dsc_records</code> table.</p>
+        </div>
+      )}
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          { icon: <Shield className="w-4 h-4 text-blue-600" />,    bg: "bg-blue-50",   label: "Total DSCs",         value: String(dscs.length), sub: "Tracked" },
+          { icon: <AlertTriangle className="w-4 h-4 text-red-600" />,   bg: "bg-red-50",   label: "Expired",            value: String(expired),       sub: "Immediate action" },
+          { icon: <AlertCircle className="w-4 h-4 text-amber-600" />,  bg: "bg-amber-50",  label: "Expiring (30 days)", value: String(expiringIn30), sub: "Renew Now" },
+          { icon: <CheckCircle className="w-4 h-4 text-green-600" />,  bg: "bg-green-50",  label: "Expiring (90 days)", value: String(expiringIn90), sub: "Renew Soon" },
+        ].map(c => (
+          <div key={c.label} className="bg-white rounded-xl border border-gray-100 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className={`w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center`}>{c.icon}</div>
+              <span className="text-xs text-gray-500">{c.label}</span>
+            </div>
+            <p className="text-lg font-semibold text-gray-900">{c.value}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{c.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-50">
+          <h2 className="text-sm font-semibold text-gray-900">DSC Records</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Class 2/3 digital signatures for GST, MCA, Income Tax filings</p>
+        </div>
+        {loading ? <div className="px-5 py-10 text-center text-sm text-gray-400">Loading…</div> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-50">
+                  {["Name", "PAN", "Type", "Purpose", "Issuing CA", "Issue Date", "Expiry Date", "Days Remaining", "Status"].map(h => (
+                    <th key={h} className="text-left text-xs font-medium text-gray-400 px-4 py-3">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {dscs.sort((a, b) => getDaysRemaining(a.expiry_date) - getDaysRemaining(b.expiry_date)).map(d => {
+                  const days = getDaysRemaining(d.expiry_date);
+                  const status = getDSCStatus(d.expiry_date);
+                  return (
+                    <tr key={d.id} className="hover:bg-gray-50/50">
+                      <td className="px-4 py-3">
+                        <p className="text-sm font-medium text-gray-900">{d.holder_name}</p>
+                      </td>
+                      <td className="px-4 py-3 text-xs font-mono text-gray-600">{d.pan || "—"}</td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs font-medium text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">{d.dsc_type}</span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-600">{d.purpose}</td>
+                      <td className="px-4 py-3 text-xs text-gray-600">{d.issuing_ca}</td>
+                      <td className="px-4 py-3 text-xs text-gray-600">{new Date(d.issue_date).toLocaleDateString("en-IN")}</td>
+                      <td className="px-4 py-3 text-xs text-gray-600 font-medium">{new Date(d.expiry_date).toLocaleDateString("en-IN")}</td>
+                      <td className="px-4 py-3 text-xs font-medium">
+                        <span className={days < 0 ? "text-red-600" : days <= 30 ? "text-amber-600" : days <= 90 ? "text-yellow-600" : "text-green-600"}>
+                          {days < 0 ? `${Math.abs(days)}d overdue` : `${days} days`}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${status.style}`}>{status.label}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {showModal && firmId && (
+        <AddDSCModal firmId={firmId} onClose={() => setShowModal(false)} onAdded={d => setDscs(prev => [...prev, d])} />
+      )}
+    </div>
+  );
+}
