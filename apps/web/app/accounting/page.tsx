@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { BookOpen, FileText, BarChart2, Scale, TrendingUp, List, ArrowUpRight, ArrowDownRight, Building2, Receipt, RefreshCw, Target, IndianRupee, ClipboardCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatPaise, formatDate } from "@/lib/services/formatting";
+import { formatDate } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { JournalEntry, Account } from "@/lib/types";
 
@@ -134,9 +134,9 @@ export default function AccountingHubPage() {
                   <p className="text-xs text-gray-400 mt-0.5">{formatDate(entry.entry_date)} · {entry.reference_no} · {entry.entry_type}</p>
                 </div>
                 <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${statusBadge[entry.status]}`}>{entry.status}</span>
-                <p className="text-sm font-semibold tabular-nums text-gray-700 shrink-0">
-                  {formatPaise(entry.total_debit_paise)}
-                </p>
+                <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 font-medium ${entry.is_posted ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
+                  {entry.is_posted ? "Posted" : "Draft"}
+                </span>
               </div>
             ))}
             {entries.length === 0 && (

@@ -20,7 +20,7 @@ import { getClients } from "@/lib/data/clients";
 interface ComplianceEntry {
   id: string;
   client_id: string;
-  filing_type: string;
+  compliance_type: string;
   due_date: string;
   filing_status: string;
 }
@@ -161,7 +161,7 @@ export default function RisksPage() {
       // Compliance calendar
       const { data: complianceData, error: compErr } = await sb
         .from("compliance_calendar")
-        .select("id, client_id, filing_type, due_date, filing_status")
+        .select("id, client_id, compliance_type, due_date, filing_status")
         .eq("firm_id", firmId)
         .lt("due_date", todayStr);
 
@@ -171,10 +171,10 @@ export default function RisksPage() {
       // Overdue filing risk
       setOverdueRisks(
         compliance
-          .filter((e) => e.filing_status !== "filed" && !["TDS24Q", "TDS26Q"].includes(e.filing_type))
+          .filter((e) => e.filing_status !== "filed" && !["TDS24Q", "TDS26Q"].includes(e.compliance_type))
           .map((e) => {
             const days = daysBetween(e.due_date, today);
-            return { clientId: e.client_id, clientName: clientMap[e.client_id] ?? "Unknown", filingType: e.filing_type, dueDate: e.due_date, daysOverdue: days, riskLevel: overdueRiskLevel(days) };
+            return { clientId: e.client_id, clientName: clientMap[e.client_id] ?? "Unknown", filingType: e.compliance_type, dueDate: e.due_date, daysOverdue: days, riskLevel: overdueRiskLevel(days) };
           })
           .sort((a, b) => b.daysOverdue - a.daysOverdue)
       );
@@ -182,8 +182,8 @@ export default function RisksPage() {
       // TDS default risk — IT Act Section 200A
       setTdsRisks(
         compliance
-          .filter((e) => ["TDS24Q", "TDS26Q"].includes(e.filing_type) && e.filing_status !== "filed")
-          .map((e) => ({ clientId: e.client_id, clientName: clientMap[e.client_id] ?? "Unknown", filingType: e.filing_type, dueDate: e.due_date, daysOverdue: daysBetween(e.due_date, today), riskLevel: "high" as const }))
+          .filter((e) => ["TDS24Q", "TDS26Q"].includes(e.compliance_type) && e.filing_status !== "filed")
+          .map((e) => ({ clientId: e.client_id, clientName: clientMap[e.client_id] ?? "Unknown", filingType: e.compliance_type, dueDate: e.due_date, daysOverdue: daysBetween(e.due_date, today), riskLevel: "high" as const }))
           .sort((a, b) => b.daysOverdue - a.daysOverdue)
       );
 
