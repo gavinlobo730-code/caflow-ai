@@ -95,66 +95,65 @@ function formatDateTime(iso: string): string {
   });
 }
 
-// ─── Groq Vision Extraction ───────────────────────────────────────────────────
-// Uses llama-4-scout (free Groq tier) — NEXT_PUBLIC_GROQ_API_KEY required
+// ─── Google Gemini Extraction ─────────────────────────────────────────────────
+// Uses gemini-2.0-flash (free tier) — supports PDF + images natively
+// Get free API key: https://aistudio.google.com/app/apikey
+// Add as NEXT_PUBLIC_GEMINI_API_KEY in Cloudflare Pages env vars
 
 async function extractWithClaude(file: File, docType: DocTypeValue): Promise<ExtractedData> {
-  const apiKey = process.env.NEXT_PUBLIC_GROQ_API_KEY;
-  if (!apiKey) throw new Error("NEXT_PUBLIC_GROQ_API_KEY is not set in environment variables");
+  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  if (!apiKey) throw new Error("NEXT_PUBLIC_GEMINI_API_KEY is not set — get a free key at aistudio.google.com");
 
   const base64 = await fileToBase64(file);
-  const mimeType = (file.type && file.type.startsWith("image/")) ? file.type : "image/jpeg";
+  const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  const mimeType = isPdf ? "application/pdf" : (file.type || "image/jpeg");
 
   const prompt = `You are an expert Indian CA document parser. Extract all key information from this ${docType} document.
 
-Return ONLY a valid JSON object with these fields (omit fields not found):
-- name: full name of individual/company
-- pan: PAN number (format: AAAAA9999A)
+Return ONLY a valid JSON object with these fields (omit fields not present):
+- name: full name of individual or company
+- pan: PAN number (format AAAAA9999A)
 - gstin: GSTIN if present
 - assessment_year: e.g. "2024-25"
 - financial_year: e.g. "2023-24"
-- period: period covered
-- employer_name: employer/deductor name
-- employer_tan: employer TAN
-- amounts: object of label to value for all monetary amounts (gross salary, TDS, tax payable etc.)
+- period: period covered by this document
+- employer_name: employer or deductor name
+- employer_tan: employer TAN number
+- amounts: object of label to rupee value for all monetary amounts found
 - dates: object of label to date string for all dates found
 
-Return ONLY the JSON object. No markdown, no explanation.`;
+Return ONLY the JSON. No markdown fences, no explanation.`;
 
   const body = {
-    model: "meta-llama/llama-4-scout-17b-16e-instruct",
-    messages: [
+    contents: [
       {
-        role: "user",
-        content: [
-          {
-            type: "image_url",
-            image_url: { url: `data:${mimeType};base64,${base64}` },
-          },
-          { type: "text", text: prompt },
+        parts: [
+          { inline_data: { mime_type: mimeType, data: base64 } },
+          { text: prompt },
         ],
       },
     ],
-    max_tokens: 1024,
-    temperature: 0,
+    generationConfig: { temperature: 0, maxOutputTokens: 1024 },
   };
 
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  );
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Groq API error ${res.status}: ${errText}`);
+    throw new Error(`Gemini API error ${res.status}: ${errText}`);
   }
 
-  const json = await res.json() as { choices: Array<{ message: { content: string } }> };
-  const content = json.choices?.[0]?.message?.content ?? "{}";
+  const json = await res.json() as {
+    candidates: Array<{ content: { parts: Array<{ text: string }> } }>;
+  };
+  const content = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
 
   const cleaned = content
     .replace(/```json\s*/gi, "")
