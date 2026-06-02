@@ -2,22 +2,18 @@
 
 import { useState, useEffect } from "react";
 import {
-  Users,
-  Clock,
-  AlertTriangle,
-  FileCheck,
-  Plus,
-  BookOpen,
-  Receipt,
-  Bot,
-  Calendar,
+  Users, Clock, AlertTriangle, FileCheck,
+  BookOpen, Receipt, Bot, Calendar, TrendingUp,
+  ArrowUpRight, Sparkles, CheckCircle2, Circle,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { cn } from "@/lib/utils";
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface KPIs {
   totalClients: number;
@@ -43,59 +39,43 @@ interface RecentTask {
 
 interface UpcomingDeadline {
   name: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   daysLeft: number;
 }
 
-// ─── Indian tax deadline generator ─────────────────────────────────────────
-// CGST Act §39 — GSTR-1 due 11th of following month
-// CGST Act §39 — GSTR-3B due 20th of following month
-// IT Act §139 — ITR due 31st July
-// Finance Act — Advance tax: 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)
-// CGST Act §44 — GSTR-9 annual: 31st December
-// IT Act §200 — TDS return: 31st of month following quarter end
+// ─── Deadline generator ───────────────────────────────────────────────────────
+// CGST Act §39 — GSTR-1 due 11th; GSTR-3B due 20th of following month
+// IT Act §139 — ITR due 31st July; §208 — advance tax instalments
+// CGST Act §44 — GSTR-9 annual 31st December
+// IT Act §200 — TDS return 31st of month following quarter end
 function getUpcomingDeadlines(today: Date): UpcomingDeadline[] {
   const year = today.getFullYear();
-  const month = today.getMonth(); // 0-based
-
+  const month = today.getMonth();
   const deadlines: { name: string; date: Date }[] = [];
 
-  // Generate GSTR-1 and GSTR-3B for current month and next 2 months
   for (let offset = -1; offset <= 2; offset++) {
     let m = month + offset;
     let y = year;
     while (m < 0) { m += 12; y--; }
     while (m > 11) { m -= 12; y++; }
-
-    // GSTR-1: 11th of the following month (for filings of month m)
     const gstr1Month = m + 1 > 11 ? 0 : m + 1;
     const gstr1Year = m + 1 > 11 ? y + 1 : y;
-    deadlines.push({ name: `GSTR-1 (${new Date(y, m, 1).toLocaleString("default", { month: "short" })} ${y})`, date: new Date(gstr1Year, gstr1Month, 11) });
-
-    // GSTR-3B: 20th of the following month
-    deadlines.push({ name: `GSTR-3B (${new Date(y, m, 1).toLocaleString("default", { month: "short" })} ${y})`, date: new Date(gstr1Year, gstr1Month, 20) });
+    const monthLabel = new Date(y, m, 1).toLocaleString("default", { month: "short" });
+    deadlines.push({ name: `GSTR-1 (${monthLabel} ${y})`, date: new Date(gstr1Year, gstr1Month, 11) });
+    deadlines.push({ name: `GSTR-3B (${monthLabel} ${y})`, date: new Date(gstr1Year, gstr1Month, 20) });
   }
 
-  // Advance tax dates for current FY
-  // Indian FY: April 1 to March 31
   const fyStart = month >= 3 ? year : year - 1;
-  deadlines.push({ name: "Advance Tax — 1st Instalment (15%)", date: new Date(fyStart, 5, 15) });     // 15 Jun
-  deadlines.push({ name: "Advance Tax — 2nd Instalment (45%)", date: new Date(fyStart, 8, 15) });     // 15 Sep
-  deadlines.push({ name: "Advance Tax — 3rd Instalment (75%)", date: new Date(fyStart, 11, 15) });    // 15 Dec
-  deadlines.push({ name: "Advance Tax — Final Instalment (100%)", date: new Date(fyStart + 1, 2, 15) }); // 15 Mar
-
-  // GSTR-9 annual (31 Dec)
+  deadlines.push({ name: "Advance Tax — 1st (15%)", date: new Date(fyStart, 5, 15) });
+  deadlines.push({ name: "Advance Tax — 2nd (45%)", date: new Date(fyStart, 8, 15) });
+  deadlines.push({ name: "Advance Tax — 3rd (75%)", date: new Date(fyStart, 11, 15) });
+  deadlines.push({ name: "Advance Tax — Final (100%)", date: new Date(fyStart + 1, 2, 15) });
   deadlines.push({ name: "GSTR-9 Annual Return", date: new Date(year, 11, 31) });
-
-  // TDS returns — 31st of month following each quarter end
-  // Q1: Apr–Jun → 31 Jul | Q2: Jul–Sep → 31 Oct | Q3: Oct–Dec → 31 Jan | Q4: Jan–Mar → 31 May
   const fyYear = month >= 3 ? year : year - 1;
-  deadlines.push({ name: "TDS Return Q1 (24Q/26Q)", date: new Date(fyYear, 6, 31) });
-  deadlines.push({ name: "TDS Return Q2 (24Q/26Q)", date: new Date(fyYear, 9, 31) });
-  deadlines.push({ name: "TDS Return Q3 (24Q/26Q)", date: new Date(fyYear + 1, 0, 31) });
-  deadlines.push({ name: "TDS Return Q4 (24Q/26Q)", date: new Date(fyYear + 1, 4, 31) });
-
-  // ITR due date: 31 July
+  deadlines.push({ name: "TDS Return Q1", date: new Date(fyYear, 6, 31) });
+  deadlines.push({ name: "TDS Return Q2", date: new Date(fyYear, 9, 31) });
+  deadlines.push({ name: "TDS Return Q3", date: new Date(fyYear + 1, 0, 31) });
+  deadlines.push({ name: "TDS Return Q4", date: new Date(fyYear + 1, 4, 31) });
   deadlines.push({ name: "ITR Filing Deadline", date: new Date(fyYear + 1, 6, 31) });
 
   const todayMs = today.getTime();
@@ -107,50 +87,96 @@ function getUpcomingDeadlines(today: Date): UpcomingDeadline[] {
     }))
     .filter((d) => d.daysLeft >= 0)
     .sort((a, b) => a.daysLeft - b.daysLeft)
-    .slice(0, 7);
+    .slice(0, 6);
 }
 
-// ─── Greeting ────────────────────────────────────────────────────────────────
 function getGreeting(email: string): string {
   const hour = new Date().getHours();
-  const name = email.split("@")[0];
+  const name = email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   return `${greeting}, ${name}`;
 }
 
-// ─── Badge colors ────────────────────────────────────────────────────────────
-const STATUS_COLORS: Record<string, string> = {
-  completed: "bg-green-100 text-green-700",
-  in_progress: "bg-blue-100 text-blue-700",
-  todo: "bg-gray-100 text-gray-600",
-  review_required: "bg-amber-100 text-amber-700",
-  waiting_client: "bg-purple-100 text-purple-700",
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+function Skeleton({ className }: { className?: string }) {
+  return <div className={cn("skeleton-shimmer rounded-md", className)} />;
+}
+
+// ─── Deadline badge ───────────────────────────────────────────────────────────
+function DeadlineBadge({ daysLeft }: { daysLeft: number }) {
+  if (daysLeft === 0) return (
+    <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold ring-1 ring-red-200">Today</span>
+  );
+  if (daysLeft <= 3) return (
+    <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-semibold">{daysLeft}d</span>
+  );
+  if (daysLeft <= 7) return (
+    <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-semibold">{daysLeft}d</span>
+  );
+  if (daysLeft <= 14) return (
+    <span className="text-[11px] px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700 font-medium">{daysLeft}d</span>
+  );
+  return (
+    <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium">{daysLeft}d</span>
+  );
+}
+
+// ─── Status badge ─────────────────────────────────────────────────────────────
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof Circle }> = {
+  completed:       { label: "Done",        color: "text-emerald-600 bg-emerald-50", icon: CheckCircle2 },
+  in_progress:     { label: "In Progress", color: "text-blue-600 bg-blue-50",       icon: Circle },
+  todo:            { label: "To Do",       color: "text-gray-500 bg-gray-100",      icon: Circle },
+  review_required: { label: "Review",      color: "text-amber-600 bg-amber-50",     icon: Circle },
+  waiting_client:  { label: "Waiting",     color: "text-purple-600 bg-purple-50",   icon: Circle },
 };
 
-function statusBadge(status: string | null) {
+function StatusBadge({ status }: { status: string | null }) {
   const s = status ?? "todo";
-  const cls = STATUS_COLORS[s] ?? "bg-gray-100 text-gray-600";
+  const cfg = STATUS_CONFIG[s] ?? STATUS_CONFIG.todo;
   return (
-    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cls}`}>
-      {s.replace(/_/g, " ")}
+    <span className={cn("text-[11px] px-2 py-0.5 rounded-full font-medium", cfg.color)}>
+      {cfg.label}
     </span>
   );
 }
 
-function deadlineBadge(daysLeft: number) {
-  if (daysLeft === 0) return <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">Today</span>;
-  if (daysLeft <= 3) return <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">{daysLeft}d</span>;
-  if (daysLeft <= 7) return <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">{daysLeft}d</span>;
-  if (daysLeft <= 14) return <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700">{daysLeft}d</span>;
-  return <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">{daysLeft}d</span>;
+// ─── KPI Card ─────────────────────────────────────────────────────────────────
+interface KpiCardProps {
+  label: string;
+  value: number;
+  icon: typeof Users;
+  gradient: string;
+  href: string;
+  loading: boolean;
+  alert?: boolean;
 }
 
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
-function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-gray-200 rounded ${className ?? ""}`} />;
+function KpiCard({ label, value, icon: Icon, gradient, href, loading, alert }: KpiCardProps) {
+  return (
+    <Link href={href} className="block">
+      <div className={cn(
+        "relative bg-white rounded-2xl p-5 shadow-sm border border-white/80 card-hover overflow-hidden",
+        alert && value > 0 ? "ring-1 ring-red-200" : ""
+      )}>
+        <div className={cn("absolute -top-4 -right-4 w-20 h-20 rounded-full opacity-10", gradient)} />
+        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center mb-4 shadow-sm", gradient)}>
+          <Icon size={18} className="text-white" />
+        </div>
+        {loading ? (
+          <Skeleton className="h-9 w-14 mb-1" />
+        ) : (
+          <p className={cn("text-3xl font-bold tracking-tight", alert && value > 0 ? "text-red-600" : "text-gray-900")}>
+            {value.toLocaleString()}
+          </p>
+        )}
+        <p className="text-xs text-gray-500 mt-1 font-medium leading-tight">{label}</p>
+        <ArrowUpRight size={14} className="absolute top-4 right-4 text-gray-300" />
+      </div>
+    </Link>
+  );
 }
 
-// ─── Main component ──────────────────────────────────────────────────────────
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function DashboardContent() {
   const { user } = useAuth();
   const supabase = getSupabaseClient();
@@ -166,249 +192,218 @@ export default function DashboardContent() {
 
   useEffect(() => {
     if (!user) return;
-
     async function load() {
       try {
-        // Get firm_id from users table
         const { data: userData } = await supabase
-          .from("users")
-          .select("firm_id")
-          .eq("auth_user_id", user!.id)
-          .maybeSingle();
-
+          .from("users").select("firm_id").eq("auth_user_id", user!.id).maybeSingle();
         const firmId: string | null = userData?.firm_id ?? null;
         if (!firmId) {
           setKpis({ totalClients: 0, pendingTasks: 0, filingsDueThisMonth: 0, overdueFilings: 0 });
-          setRecentClients([]);
-          setRecentTasks([]);
-          setLoading(false);
-          return;
+          setRecentClients([]); setRecentTasks([]); setLoading(false); return;
         }
 
-        // ── Onboarding check: redirect new firms that haven't set up yet ──
         const [{ data: firmMeta }, { count: coaCount }] = await Promise.all([
           supabase.from("firms").select("name").eq("id", firmId).maybeSingle(),
           supabase.from("chart_of_accounts").select("id", { count: "exact", head: true }).eq("firm_id", firmId),
         ]);
-        if (!firmMeta?.name && (coaCount ?? 0) === 0) {
-          router.replace("/onboarding");
-          return;
-        }
+        if (!firmMeta?.name && (coaCount ?? 0) === 0) { router.replace("/onboarding"); return; }
 
         const todayStr = today.toISOString().split("T")[0];
         const monthStart = todayStr.slice(0, 7) + "-01";
         const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split("T")[0];
 
-        // ── KPI: Total clients ────────────────────────────────────────────
-        const { count: totalClients } = await supabase
-          .from("clients")
-          .select("id", { count: "exact", head: true })
-          .eq("firm_id", firmId);
-
-        // ── KPI: Pending tasks ────────────────────────────────────────────
-        let pendingTasks = 0;
-        try {
-          const { count } = await supabase
-            .from("tasks")
-            .select("id", { count: "exact", head: true })
-            .eq("firm_id", firmId)
-            .neq("status", "completed");
-          pendingTasks = count ?? 0;
-        } catch { pendingTasks = 0; }
-
-        // ── KPI: Filings due this month ────────────────────────────────────
-        let filingsDueThisMonth = 0;
-        try {
-          const { count } = await supabase
-            .from("compliance_entries")
-            .select("id", { count: "exact", head: true })
-            .eq("firm_id", firmId)
-            .gte("due_date", monthStart)
-            .lte("due_date", monthEnd)
-            .neq("status", "filed");
-          filingsDueThisMonth = count ?? 0;
-        } catch { filingsDueThisMonth = 0; }
-
-        // ── KPI: Overdue filings ──────────────────────────────────────────
-        let overdueFilings = 0;
-        try {
-          const { count } = await supabase
-            .from("compliance_entries")
-            .select("id", { count: "exact", head: true })
-            .eq("firm_id", firmId)
-            .lt("due_date", todayStr)
-            .neq("status", "filed");
-          overdueFilings = count ?? 0;
-        } catch { overdueFilings = 0; }
-
-        // ── Recent clients ────────────────────────────────────────────────
-        const { data: clientsData } = await supabase
-          .from("clients")
-          .select("id, client_name, gstin, entity_type")
-          .eq("firm_id", firmId)
-          .order("created_at", { ascending: false })
-          .limit(5);
-
-        // ── Recent tasks ──────────────────────────────────────────────────
-        let tasksData: RecentTask[] = [];
-        try {
-          const { data } = await supabase
-            .from("tasks")
-            .select("id, title, due_date, status, client_name")
-            .eq("firm_id", firmId)
-            .order("created_at", { ascending: false })
-            .limit(5);
-          tasksData = (data as RecentTask[]) ?? [];
-        } catch { tasksData = []; }
+        const [
+          { count: totalClients },
+          { count: pendingCount },
+          { count: filingsDue },
+          { count: overdueCount },
+          { data: clientsData },
+          { data: tasksRaw },
+        ] = await Promise.all([
+          supabase.from("clients").select("id", { count: "exact", head: true }).eq("firm_id", firmId),
+          supabase.from("tasks").select("id", { count: "exact", head: true }).eq("firm_id", firmId).neq("status", "completed"),
+          supabase.from("compliance_entries").select("id", { count: "exact", head: true }).eq("firm_id", firmId).gte("due_date", monthStart).lte("due_date", monthEnd).neq("status", "filed"),
+          supabase.from("compliance_entries").select("id", { count: "exact", head: true }).eq("firm_id", firmId).lt("due_date", todayStr).neq("status", "filed"),
+          supabase.from("clients").select("id, client_name, gstin, entity_type").eq("firm_id", firmId).order("created_at", { ascending: false }).limit(5),
+          supabase.from("tasks").select("id, title, due_date, status, client_name").eq("firm_id", firmId).order("created_at", { ascending: false }).limit(6),
+        ]);
 
         setKpis({
           totalClients: totalClients ?? 0,
-          pendingTasks: pendingTasks ?? 0,
-          filingsDueThisMonth: filingsDueThisMonth ?? 0,
-          overdueFilings: overdueFilings ?? 0,
+          pendingTasks: pendingCount ?? 0,
+          filingsDueThisMonth: filingsDue ?? 0,
+          overdueFilings: overdueCount ?? 0,
         });
         setRecentClients((clientsData as RecentClient[]) ?? []);
-        setRecentTasks(tasksData);
+        setRecentTasks((tasksRaw as RecentTask[]) ?? []);
       } catch {
         setKpis({ totalClients: 0, pendingTasks: 0, filingsDueThisMonth: 0, overdueFilings: 0 });
-        setRecentClients([]);
-        setRecentTasks([]);
+        setRecentClients([]); setRecentTasks([]);
       } finally {
         setLoading(false);
       }
     }
-
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const greeting = user?.email ? getGreeting(user.email) : "Good day";
+  const dateLabel = today.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
-  // ── KPI card definitions ──────────────────────────────────────────────────
-  const KPI_CARDS = [
-    {
-      label: "Total Clients",
-      value: kpis?.totalClients ?? 0,
-      icon: Users,
-      iconBg: "bg-blue-50",
-      iconColor: "text-blue-600",
-      href: "/clients",
-    },
-    {
-      label: "Pending Tasks",
-      value: kpis?.pendingTasks ?? 0,
-      icon: Clock,
-      iconBg: "bg-amber-50",
-      iconColor: "text-amber-600",
-      href: "/tasks",
-    },
-    {
-      label: "Filings Due This Month",
-      value: kpis?.filingsDueThisMonth ?? 0,
-      icon: FileCheck,
-      iconBg: "bg-indigo-50",
-      iconColor: "text-indigo-600",
-      href: "/compliance",
-    },
-    {
-      label: "Overdue Filings",
-      value: kpis?.overdueFilings ?? 0,
-      icon: AlertTriangle,
-      iconBg: "bg-red-50",
-      iconColor: "text-red-600",
-      href: "/compliance",
-    },
+  const KPI_CARDS: KpiCardProps[] = [
+    { label: "Total Clients",         value: kpis?.totalClients ?? 0,         icon: Users,         gradient: "bg-gradient-to-br from-indigo-500 to-indigo-600",  href: "/clients",    loading, alert: false },
+    { label: "Pending Tasks",         value: kpis?.pendingTasks ?? 0,         icon: Clock,         gradient: "bg-gradient-to-br from-amber-400 to-orange-500",    href: "/tasks",      loading, alert: false },
+    { label: "Filings Due This Month",value: kpis?.filingsDueThisMonth ?? 0,  icon: FileCheck,     gradient: "bg-gradient-to-br from-violet-500 to-purple-600",   href: "/compliance", loading, alert: false },
+    { label: "Overdue Filings",       value: kpis?.overdueFilings ?? 0,       icon: AlertTriangle, gradient: "bg-gradient-to-br from-red-500 to-rose-600",        href: "/compliance", loading, alert: true  },
   ];
 
   const QUICK_ACTIONS = [
-    { label: "+ New Client", href: "/clients", color: "bg-blue-600 hover:bg-blue-700 text-white" },
-    { label: "+ Journal Entry", href: "/accounting", color: "bg-emerald-600 hover:bg-emerald-700 text-white" },
-    { label: "View GST", href: "/gst", color: "bg-orange-500 hover:bg-orange-600 text-white" },
-    { label: "AI Assistant", href: "/ai-assistant", color: "bg-violet-600 hover:bg-violet-700 text-white" },
+    { label: "New Client",     href: "/clients",      gradient: "from-indigo-500 to-indigo-600",  icon: Users },
+    { label: "Journal Entry",  href: "/accounting/journal", gradient: "from-emerald-500 to-teal-600", icon: BookOpen },
+    { label: "GST Module",     href: "/gst",          gradient: "from-orange-500 to-amber-500",   icon: Receipt },
+    { label: "AI Assistant",   href: "/ai-assistant", gradient: "from-violet-500 to-purple-600",  icon: Sparkles },
   ];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-7">
+
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">{greeting}</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Here&apos;s your practice overview for today, {today.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}.
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{greeting} 👋</h1>
+          <p className="text-sm text-gray-500 mt-1">{dateLabel}</p>
+        </div>
+        <Link href="/ai-assistant">
+          <div className="hidden sm:flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-medium px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-all hover:scale-105">
+            <Sparkles size={15} />
+            Ask AI
+          </div>
+        </Link>
       </div>
 
       {/* ── KPI Cards ──────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {KPI_CARDS.map((card) => (
-          <Link key={card.label} href={card.href}>
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-shadow cursor-pointer h-full">
-              <div className={`w-9 h-9 rounded-lg ${card.iconBg} flex items-center justify-center mb-3`}>
-                <card.icon size={17} className={card.iconColor} />
-              </div>
-              {loading ? (
-                <Skeleton className="h-8 w-12 mb-1" />
-              ) : (
-                <p className="text-3xl font-bold text-gray-900">{card.value}</p>
-              )}
-              <p className="text-xs text-gray-500 mt-1 leading-tight">{card.label}</p>
-            </div>
-          </Link>
-        ))}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        {KPI_CARDS.map((card) => <KpiCard key={card.label} {...card} />)}
       </div>
 
-      {/* ── Middle row: Deadlines + Recent Clients ─────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* ── Middle row ─────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
-        {/* Upcoming Deadlines */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-            <Calendar size={15} className="text-gray-500" />
-            <h2 className="text-sm font-semibold text-gray-900">Upcoming Tax Deadlines</h2>
+        {/* Upcoming Deadlines — 3 cols */}
+        <div className="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                <Calendar size={14} className="text-white" />
+              </div>
+              <h2 className="text-sm font-semibold text-gray-900">Upcoming Tax Deadlines</h2>
+            </div>
+            <Link href="/compliance" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1">
+              View all <ChevronRight size={12} />
+            </Link>
           </div>
           <div className="divide-y divide-gray-50">
             {upcomingDeadlines.map((d) => (
-              <div key={d.name + d.date} className="flex items-center justify-between px-5 py-3">
-                <div>
-                  <p className="text-sm text-gray-800 font-medium leading-tight">{d.name}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {new Date(d.date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                  </p>
+              <div key={d.name + d.date} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50/50 transition-colors">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={cn(
+                    "w-1.5 h-1.5 rounded-full shrink-0",
+                    d.daysLeft === 0 ? "bg-red-500" :
+                    d.daysLeft <= 3 ? "bg-red-400" :
+                    d.daysLeft <= 7 ? "bg-amber-400" :
+                    "bg-emerald-400"
+                  )} />
+                  <div className="min-w-0">
+                    <p className="text-sm text-gray-800 font-medium truncate">{d.name}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {new Date(d.date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                    </p>
+                  </div>
                 </div>
-                {deadlineBadge(d.daysLeft)}
+                <DeadlineBadge daysLeft={d.daysLeft} />
               </div>
             ))}
           </div>
         </div>
 
+        {/* Quick Actions — 2 cols */}
+        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
+              <TrendingUp size={14} className="text-white" />
+            </div>
+            <h2 className="text-sm font-semibold text-gray-900">Quick Actions</h2>
+          </div>
+          <div className="p-4 grid grid-cols-2 gap-3">
+            {QUICK_ACTIONS.map((action) => (
+              <Link key={action.label} href={action.href}>
+                <div className={cn(
+                  "flex flex-col items-center justify-center gap-2 p-4 rounded-xl bg-gradient-to-br text-white text-center cursor-pointer transition-all hover:scale-105 hover:shadow-md",
+                  action.gradient
+                )}>
+                  <action.icon size={20} className="opacity-90" />
+                  <span className="text-[12px] font-semibold leading-tight">{action.label}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+          <div className="px-4 pb-4">
+            <Link href="/ai-assistant">
+              <div className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-gradient-to-r from-violet-50 to-indigo-50 border border-indigo-100 hover:border-indigo-200 transition-colors cursor-pointer">
+                <div className="flex items-center gap-2.5">
+                  <Bot size={16} className="text-indigo-600" />
+                  <div>
+                    <p className="text-xs font-semibold text-indigo-900">Ask AI Assistant</p>
+                    <p className="text-[10px] text-indigo-500">Tax, GST, ITR queries</p>
+                  </div>
+                </div>
+                <ChevronRight size={14} className="text-indigo-400" />
+              </div>
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Bottom row: Clients + Tasks ─────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
         {/* Recent Clients */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
             <div className="flex items-center gap-2.5">
-              <Users size={15} className="text-gray-500" />
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center">
+                <Users size={14} className="text-white" />
+              </div>
               <h2 className="text-sm font-semibold text-gray-900">Recent Clients</h2>
             </div>
-            <Link href="/clients" className="text-xs text-blue-600 hover:underline">View all →</Link>
+            <Link href="/clients" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1">
+              View all <ChevronRight size={12} />
+            </Link>
           </div>
           <div className="divide-y divide-gray-50">
             {loading ? (
               Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3 px-5 py-3">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-4 w-24 ml-auto" />
+                <div key={i} className="flex items-center gap-3 px-5 py-3.5">
+                  <Skeleton className="h-8 w-8 rounded-full" />
+                  <div className="flex-1 space-y-1.5">
+                    <Skeleton className="h-3.5 w-36" />
+                    <Skeleton className="h-3 w-24" />
+                  </div>
                 </div>
               ))
             ) : recentClients && recentClients.length > 0 ? (
               recentClients.map((c) => (
                 <Link key={c.id} href="/clients">
-                  <div className="flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{c.client_name}</p>
-                      {c.gstin && (
-                        <p className="text-xs text-gray-400 font-mono mt-0.5">{c.gstin}</p>
-                      )}
+                  <div className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50/50 transition-colors">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-indigo-700 text-xs font-bold shrink-0">
+                      {c.client_name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{c.client_name}</p>
+                      {c.gstin && <p className="text-[11px] text-gray-400 font-mono">{c.gstin}</p>}
                     </div>
                     {c.entity_type && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium shrink-0">
                         {c.entity_type}
                       </span>
                     )}
@@ -416,101 +411,71 @@ export default function DashboardContent() {
                 </Link>
               ))
             ) : (
-              <div className="px-5 py-8 text-center text-sm text-gray-400">No clients yet</div>
+              <div className="px-5 py-10 text-center">
+                <Users size={24} className="text-gray-200 mx-auto mb-2" />
+                <p className="text-sm text-gray-400">No clients yet</p>
+                <Link href="/clients" className="text-xs text-indigo-600 font-medium mt-1 inline-block">Add your first client →</Link>
+              </div>
             )}
           </div>
         </div>
-      </div>
-
-      {/* ── Bottom row: Recent Tasks + Quick Actions ────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* Recent Tasks */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
             <div className="flex items-center gap-2.5">
-              <BookOpen size={15} className="text-gray-500" />
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                <BookOpen size={14} className="text-white" />
+              </div>
               <h2 className="text-sm font-semibold text-gray-900">Recent Tasks</h2>
             </div>
-            <Link href="/tasks" className="text-xs text-blue-600 hover:underline">View all →</Link>
+            <Link href="/tasks" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1">
+              View all <ChevronRight size={12} />
+            </Link>
           </div>
           <div className="divide-y divide-gray-50">
             {loading ? (
               Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3 px-5 py-3">
-                  <Skeleton className="h-4 w-40" />
-                  <Skeleton className="h-4 w-16 ml-auto" />
+                <div key={i} className="flex items-center gap-3 px-5 py-3.5">
+                  <Skeleton className="h-4 w-4 rounded-full" />
+                  <div className="flex-1 space-y-1.5">
+                    <Skeleton className="h-3.5 w-48" />
+                    <Skeleton className="h-3 w-28" />
+                  </div>
+                  <Skeleton className="h-5 w-16 rounded-full" />
                 </div>
               ))
             ) : recentTasks && recentTasks.length > 0 ? (
               recentTasks.map((t) => (
-                <div key={t.id} className="flex items-center justify-between px-5 py-3">
+                <div key={t.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50/50 transition-colors">
+                  <div className={cn(
+                    "w-1.5 h-1.5 rounded-full shrink-0 mt-0.5",
+                    t.status === "completed" ? "bg-emerald-400" :
+                    t.status === "in_progress" ? "bg-blue-400" :
+                    t.status === "review_required" ? "bg-amber-400" :
+                    "bg-gray-300"
+                  )} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-gray-900 truncate">{t.title}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      {t.client_name && (
-                        <span className="text-xs text-gray-400 truncate">{t.client_name}</span>
-                      )}
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      {t.client_name && <span className="text-[11px] text-gray-400 truncate">{t.client_name}</span>}
                       {t.due_date && (
-                        <span className="text-xs text-gray-400">
-                          · Due {new Date(t.due_date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                        <span className="text-[11px] text-gray-400">
+                          · {new Date(t.due_date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                         </span>
                       )}
                     </div>
                   </div>
-                  <div className="ml-3 shrink-0">{statusBadge(t.status)}</div>
+                  <StatusBadge status={t.status} />
                 </div>
               ))
             ) : (
-              <div className="px-5 py-8 text-center text-sm text-gray-400">No tasks yet</div>
-            )}
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-            <Receipt size={15} className="text-gray-500" />
-            <h2 className="text-sm font-semibold text-gray-900">Quick Actions</h2>
-          </div>
-          <div className="p-5 space-y-3">
-            {QUICK_ACTIONS.map((action) => (
-              <Link key={action.label} href={action.href}>
-                <button className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${action.color}`}>
-                  {action.label}
-                </button>
-              </Link>
-            ))}
-
-            <div className="pt-3 border-t border-gray-50">
-              <p className="text-xs text-gray-400 mb-2">Shortcuts</p>
-              <div className="grid grid-cols-2 gap-2">
-                <Link href="/compliance">
-                  <div className="flex flex-col items-center gap-1 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
-                    <FileCheck size={16} className="text-indigo-600" />
-                    <span className="text-xs text-gray-600 text-center leading-tight">Compliance</span>
-                  </div>
-                </Link>
-                <Link href="/ai-assistant">
-                  <div className="flex flex-col items-center gap-1 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
-                    <Bot size={16} className="text-violet-600" />
-                    <span className="text-xs text-gray-600 text-center leading-tight">AI Help</span>
-                  </div>
-                </Link>
-                <Link href="/tasks">
-                  <div className="flex flex-col items-center gap-1 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
-                    <Clock size={16} className="text-amber-600" />
-                    <span className="text-xs text-gray-600 text-center leading-tight">All Tasks</span>
-                  </div>
-                </Link>
-                <Link href="/clients">
-                  <div className="flex flex-col items-center gap-1 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
-                    <Plus size={16} className="text-blue-600" />
-                    <span className="text-xs text-gray-600 text-center leading-tight">New Client</span>
-                  </div>
-                </Link>
+              <div className="px-5 py-10 text-center">
+                <CheckCircle2 size={24} className="text-gray-200 mx-auto mb-2" />
+                <p className="text-sm text-gray-400">No tasks yet</p>
+                <Link href="/tasks" className="text-xs text-indigo-600 font-medium mt-1 inline-block">Create your first task →</Link>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

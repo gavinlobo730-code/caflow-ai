@@ -8,8 +8,8 @@ import {
   BookOpen, FileText, Receipt, Calculator, Building2,
   Calendar, BarChart3, Settings,
   ChevronLeft, ChevronRight, Landmark, Shield,
-  FileStack, ShieldAlert, Sparkles, Bell, LogOut, ExternalLink,
-  Menu, X, KanbanSquare, MessageSquare,
+  FileStack, ShieldAlert, Sparkles, Bell, LogOut,
+  ExternalLink, Menu, X, KanbanSquare, MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -21,14 +21,14 @@ const NAV_GROUPS = [
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/clients", label: "Clients", icon: Users },
-      { href: "/clients/pipeline", label: "Prospect Pipeline", icon: KanbanSquare },
+      { href: "/clients/pipeline", label: "Pipeline", icon: KanbanSquare },
       { href: "/clients/portal", label: "Client Portal", icon: ExternalLink },
       { href: "/tasks", label: "Tasks", icon: CheckSquare },
       { href: "/team", label: "Team", icon: UserCheck },
     ],
   },
   {
-    label: "Tax Modules",
+    label: "Tax & Compliance",
     items: [
       { href: "/accounting", label: "Accounting", icon: BookOpen },
       { href: "/compliance", label: "Compliance", icon: Shield },
@@ -39,16 +39,16 @@ const NAV_GROUPS = [
     ],
   },
   {
-    label: "Tools",
+    label: "Tools & AI",
     items: [
+      { href: "/ai-assistant", label: "AI Assistant", icon: Sparkles },
       { href: "/parser", label: "Documents", icon: FileText },
-      { href: "/calendar", label: "Calendar", icon: Calendar },
-      { href: "/reports", label: "Reports", icon: BarChart3 },
       { href: "/documents/intelligence", label: "Doc Intelligence", icon: FileStack },
       { href: "/risks", label: "Risk Intelligence", icon: ShieldAlert },
-      { href: "/ai-assistant", label: "AI Assistant", icon: Sparkles },
+      { href: "/calendar", label: "Calendar", icon: Calendar },
+      { href: "/reports", label: "Reports", icon: BarChart3 },
+      { href: "/notifications/whatsapp", label: "WhatsApp", icon: MessageSquare },
       { href: "/notifications", label: "Notifications", icon: Bell },
-      { href: "/notifications/whatsapp", label: "WhatsApp Reminders", icon: MessageSquare },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
@@ -66,91 +66,117 @@ function SidebarContent({
   const pathname = usePathname();
   const { user, userRole, signOut } = useAuth();
 
+  const initials = user?.email?.slice(0, 2).toUpperCase() ?? "CA";
+  const displayEmail = user?.email ?? "user@firm.com";
+
   return (
     <aside
       className={cn(
-        "flex flex-col bg-white border-r border-gray-100 transition-all duration-200 shrink-0 h-full",
-        collapsed ? "w-14" : "w-56"
+        "flex flex-col h-full transition-all duration-200 shrink-0",
+        "bg-[hsl(224,71%,4%)]",
+        collapsed ? "w-[60px]" : "w-[220px]"
       )}
     >
       {/* Logo */}
-      <div className="flex items-center justify-between px-3 py-4 border-b border-gray-100">
+      <div className={cn(
+        "flex items-center border-b border-white/5 shrink-0",
+        collapsed ? "justify-center px-0 py-4 h-14" : "justify-between px-4 py-4 h-14"
+      )}>
         {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-blue-600 flex items-center justify-center">
-              <span className="text-white text-xs font-bold">CA</span>
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg">
+              <span className="text-white text-[11px] font-bold tracking-tight">CA</span>
             </div>
-            <span className="font-semibold text-gray-900 text-sm tracking-tight">CAflow AI</span>
+            <div>
+              <span className="text-white text-[13px] font-semibold tracking-tight">CAflow</span>
+              <span className="text-indigo-400 text-[13px] font-semibold ml-0.5">AI</span>
+            </div>
           </div>
         )}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className={cn(
-            "p-1 rounded-md hover:bg-gray-100 text-gray-400 transition-colors hidden md:flex",
-            collapsed && "mx-auto"
-          )}
-        >
-          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-        </button>
+        {collapsed && (
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg">
+            <span className="text-white text-[11px] font-bold">CA</span>
+          </div>
+        )}
+        {!collapsed && (
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="p-1 rounded-md text-white/30 hover:text-white/60 hover:bg-white/5 transition-colors hidden md:flex"
+          >
+            <ChevronLeft size={14} />
+          </button>
+        )}
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-5">
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
             {!collapsed && (
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest px-2 mb-1">
+              <p className="text-[10px] font-semibold uppercase tracking-widest px-2 mb-1.5 text-white/25">
                 {group.label}
               </p>
             )}
+            {collapsed && <div className="border-t border-white/5 mb-2" />}
             <div className="space-y-0.5">
-              {group.items.filter(({ href }) => canAccessHref(href, userRole)).map(({ href, label, icon: Icon }) => {
-                const active = pathname === href;
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    title={collapsed ? label : undefined}
-                    onClick={onNavClick}
-                    className={cn(
-                      "flex items-center gap-2.5 px-2 py-1.5 rounded-md text-[13px] font-medium transition-colors",
-                      active
-                        ? "bg-blue-50 text-blue-700"
-                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                    )}
-                  >
-                    <Icon size={15} className="shrink-0" />
-                    {!collapsed && <span>{label}</span>}
-                  </Link>
-                );
-              })}
+              {group.items
+                .filter(({ href }) => canAccessHref(href, userRole))
+                .map(({ href, label, icon: Icon }) => {
+                  const active = pathname === href || (href !== "/" && pathname.startsWith(href));
+                  return (
+                    <Link
+                      key={href}
+                      href={href}
+                      title={collapsed ? label : undefined}
+                      onClick={onNavClick}
+                      className={cn(
+                        "flex items-center gap-2.5 rounded-lg text-[12.5px] font-medium transition-all duration-100",
+                        collapsed ? "justify-center px-0 py-2.5 mx-0" : "px-2.5 py-2",
+                        active
+                          ? "bg-indigo-600 text-white shadow-sm shadow-indigo-900/50"
+                          : "text-white/50 hover:text-white/90 hover:bg-white/5"
+                      )}
+                    >
+                      <Icon size={15} className={cn("shrink-0", active ? "text-white" : "")} />
+                      {!collapsed && <span className="truncate">{label}</span>}
+                    </Link>
+                  );
+                })}
             </div>
           </div>
         ))}
       </nav>
 
-      {/* User */}
+      {/* Expand button when collapsed */}
+      {collapsed && (
+        <button
+          onClick={() => setCollapsed(false)}
+          className="mx-auto mb-2 p-1.5 rounded-md text-white/30 hover:text-white/60 hover:bg-white/5 transition-colors hidden md:flex"
+        >
+          <ChevronRight size={14} />
+        </button>
+      )}
+
+      {/* User footer */}
       <div className={cn(
-        "border-t border-gray-100 p-3 flex items-center gap-2.5",
+        "border-t border-white/5 p-3 flex items-center gap-2.5",
         collapsed ? "justify-center flex-col" : ""
       )}>
-        <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-semibold shrink-0">
-          {user?.email?.slice(0, 2).toUpperCase() ?? "CA"}
+        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center text-[11px] font-bold shrink-0">
+          {initials}
         </div>
         {!collapsed && (
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-gray-900 truncate">
-              {user?.email ?? "User"}
-            </p>
-            <p className="text-[11px] text-gray-400 truncate">{userRole ?? "Partner"}</p>
+            <p className="text-[12px] font-semibold text-white/80 truncate">{displayEmail}</p>
+            <p className="text-[10px] text-white/35 truncate">{userRole ?? "Partner"}</p>
           </div>
         )}
         <button
           onClick={signOut}
           title="Sign out"
-          className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors shrink-0"
+          className="p-1.5 rounded-md text-white/25 hover:text-red-400 hover:bg-white/5 transition-colors shrink-0"
         >
-          <LogOut size={14} />
+          <LogOut size={13} />
         </button>
       </div>
     </aside>
@@ -163,24 +189,24 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Hamburger button — mobile only */}
+      {/* Hamburger — mobile */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="md:hidden fixed top-3 left-3 z-40 p-2 rounded-lg bg-white border border-gray-200 shadow-sm text-gray-600 hover:bg-gray-50"
+        className="md:hidden fixed top-3 left-3 z-40 p-2 rounded-lg bg-[hsl(224,71%,4%)] text-white/60 hover:text-white shadow-lg"
         aria-label="Open menu"
       >
         <Menu size={18} />
       </button>
 
-      {/* Mobile overlay backdrop */}
+      {/* Mobile backdrop */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-40 bg-black/40"
+          className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
           onClick={() => setMobileOpen(false)}
         />
       )}
 
-      {/* Mobile slide-in sidebar */}
+      {/* Mobile slide-in */}
       <div
         className={cn(
           "md:hidden fixed inset-y-0 left-0 z-50 transition-transform duration-200",
@@ -190,10 +216,10 @@ export function Sidebar() {
         <div className="relative h-full">
           <button
             onClick={() => setMobileOpen(false)}
-            className="absolute top-3 right-3 z-10 p-1 rounded-md hover:bg-gray-100 text-gray-400"
+            className="absolute top-3 right-3 z-10 p-1.5 rounded-md text-white/30 hover:text-white/60 hover:bg-white/5"
             aria-label="Close menu"
           >
-            <X size={16} />
+            <X size={15} />
           </button>
           <SidebarContent
             collapsed={false}
@@ -203,12 +229,9 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Desktop sidebar — hidden on mobile */}
+      {/* Desktop sidebar */}
       <div className="hidden md:flex h-screen">
-        <SidebarContent
-          collapsed={collapsed}
-          setCollapsed={setCollapsed}
-        />
+        <SidebarContent collapsed={collapsed} setCollapsed={setCollapsed} />
       </div>
     </>
   );
