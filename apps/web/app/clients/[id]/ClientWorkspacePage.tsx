@@ -75,7 +75,15 @@ export default function ClientWorkspacePage() {
   useEffect(() => {
     const match = window.location.pathname.match(/\/clients\/([^/]+)/);
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (match && match[1] && match[1] !== "_placeholder" && UUID_RE.test(match[1])) setId(match[1]);
+    if (!match || !match[1]) return;
+    const seg = match[1];
+    if (seg === "_placeholder") return;
+    // Non-UUID segments (pipeline, portal, documents) are their own pages — redirect
+    if (!UUID_RE.test(seg)) {
+      window.location.replace(`/clients/${seg}`);
+      return;
+    }
+    setId(seg);
   }, []);
 
   const [client, setClient] = useState<Client | null>(null);
@@ -83,7 +91,7 @@ export default function ClientWorkspacePage() {
   const [compliance, setCompliance] = useState<ComplianceEntry[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [bankStatements, setBankStatements] = useState<BankStatement[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [markFiled, setMarkFiled] = useState<MarkFiledForm | null>(null);
