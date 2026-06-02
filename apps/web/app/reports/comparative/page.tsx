@@ -148,7 +148,7 @@ export default function ComparativeReportsPage() {
         chart_of_accounts: { account_name: string; account_type: string } | null;
       };
 
-      function aggregate(rows: JournalLineRow[]): Map<string, { name: string; type: string; net: number }> {
+      const aggregate = (rows: JournalLineRow[]): Map<string, { name: string; type: string; net: number }> => {
         const m = new Map<string, { name: string; type: string; net: number }>();
         for (const r of rows) {
           const acc = r.chart_of_accounts;
@@ -160,7 +160,7 @@ export default function ComparativeReportsPage() {
           m.set(key, existing);
         }
         return m;
-      }
+      };
 
       const currMap = aggregate((currRes.data ?? []) as JournalLineRow[]);
       const prevMap = aggregate((prevRes.data ?? []) as JournalLineRow[]);
