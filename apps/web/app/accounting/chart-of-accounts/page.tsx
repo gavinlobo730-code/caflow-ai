@@ -97,6 +97,19 @@ export default function ChartOfAccountsPage() {
 
   async function handleSave() {
     if (!form.account_code.trim() || !form.account_name.trim() || !firmId) return;
+
+    // Client-side duplicate check — prevent duplicate code or name
+    const code = form.account_code.trim().toUpperCase();
+    const name = form.account_name.trim().toLowerCase();
+    const isDuplicateCode = accounts.some(a =>
+      a.account_code.toUpperCase() === code && a.id !== editTarget?.id
+    );
+    const isDuplicateName = accounts.some(a =>
+      a.account_name.toLowerCase() === name && a.id !== editTarget?.id
+    );
+    if (isDuplicateCode) { setSaveError(`Account code "${code}" already exists`); return; }
+    if (isDuplicateName) { setSaveError(`Account name "${form.account_name.trim()}" already exists`); return; }
+
     setSaving(true);
     setSaveError(null);
     const sb = getSupabaseClient();
@@ -105,8 +118,8 @@ export default function ChartOfAccountsPage() {
         const { data, error: err } = await sb
           .from("chart_of_accounts")
           .update({
-            account_code: form.account_code,
-            account_name: form.account_name,
+            account_code: form.account_code.trim(),
+            account_name: form.account_name.trim(),
             account_type: form.account_type,
             account_subtype: form.account_subtype || null,
             updated_at: new Date().toISOString(),
@@ -121,15 +134,19 @@ export default function ChartOfAccountsPage() {
           .from("chart_of_accounts")
           .insert({
             firm_id: firmId,
-            account_code: form.account_code,
-            account_name: form.account_name,
+            account_code: form.account_code.trim(),
+            account_name: form.account_name.trim(),
             account_type: form.account_type,
             account_subtype: form.account_subtype || null,
             is_active: true,
           })
           .select()
           .single();
-        if (err) throw new Error(err.message);
+        if (err) {
+          // DB unique constraint violation
+          if (err.code === "23505") throw new Error("An account with this code or name already exists");
+          throw new Error(err.message);
+        }
         setAccounts(prev => [...prev, data as Account].sort((a, b) => a.account_code.localeCompare(b.account_code)));
       }
       setModalOpen(false);
