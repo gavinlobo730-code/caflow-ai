@@ -1,5 +1,5 @@
-const CACHE_NAME = 'caflow-v3';
-const STATIC_ASSETS = ['/', '/login/'];
+const CACHE_NAME = 'caflow-v5';
+const STATIC_ASSETS = ['/login/'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(STATIC_ASSETS)));
