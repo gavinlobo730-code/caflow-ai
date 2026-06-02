@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
 import {
   Building2, Mail, Phone, MapPin, Calendar, FileText, Clock,
   ChevronRight, CheckCircle, AlertTriangle,
@@ -66,10 +65,9 @@ interface MarkFiledForm {
   arn: string;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default function ClientWorkspacePage() {
-  const params = useParams();
-  // Static export serves /_placeholder/ — read real ID from URL on client
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const [id, setId] = useState<string>("");
   useEffect(() => {
     const match = window.location.pathname.match(/\/clients\/([^/]+)/);
