@@ -96,7 +96,7 @@ function formatDateTime(iso: string): string {
 }
 
 // ─── Google Gemini Extraction ─────────────────────────────────────────────────
-// Uses gemini-2.0-flash (free tier, 15 RPM) — supports PDF + images natively
+// Uses gemini-1.5-flash via v1 API (free tier, 15 RPM) — supports PDF + images natively
 // Get free API key: https://aistudio.google.com/app/apikey
 // Add as NEXT_PUBLIC_GEMINI_API_KEY in Cloudflare Pages env vars
 
@@ -137,7 +137,7 @@ Return ONLY the JSON. No markdown fences, no explanation.`;
   };
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
