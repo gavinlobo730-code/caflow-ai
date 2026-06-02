@@ -282,7 +282,16 @@ export default function ComparativeReportsPage() {
           </div>
         </div>
         <button
-          onClick={() => { window.dispatchEvent(new CustomEvent("toast", { detail: "Export to Excel coming soon" })); }}
+          onClick={() => {
+            const rows: string[][] = [["Section", "Account", `${currentFy.label} (₹)`, `${prevFy.label} (₹)`, "Change %"]];
+            const addRows = (section: string, data: AccountLine[]) => {
+              data.forEach(r => rows.push([section, r.account_name, String(Math.round(r.current / 100)), String(Math.round(r.previous / 100)), r.changePct !== null ? r.changePct.toFixed(1) + "%" : "—"]));
+            };
+            if (plData) { addRows("Revenue", plData.revenue); addRows("Expenses", plData.expenses); }
+            if (bsData) { addRows("Assets", bsData.assets); addRows("Liabilities", bsData.liabilities); addRows("Equity", bsData.equity); }
+            const csv = rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n");
+            const a = document.createElement("a"); a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv); a.download = `comparative-${currentFy.label}.csv`; a.click();
+          }}
           className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-50">
           <Download size={15} /> Export to Excel
         </button>

@@ -510,7 +510,7 @@ export default function ClientPortalPage() {
                     ))}
                     <div className="pt-2 border-t border-gray-100">
                       <p className="text-xs text-gray-400 text-center">
-                        Two-way messaging coming soon. Contact your CA directly for now.
+                        To reply or send documents, contact your CA directly via phone or email.
                       </p>
                     </div>
                   </CardContent>

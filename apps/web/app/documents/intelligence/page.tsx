@@ -155,15 +155,20 @@ async function extractWithClaude(file: File, docType: DocTypeValue): Promise<Ext
   let documentContent: string;
   if (isPdf) {
     try {
-      documentContent = await extractTextFromPdf(file);
-      if (!documentContent.trim()) throw new Error("No text found in PDF");
-    } catch {
-      throw new Error("Could not extract text from this PDF. Make sure it is a text-based PDF (not a scanned image). Try uploading a clearer copy.");
+      const fullText = await extractTextFromPdf(file);
+      if (!fullText.trim()) throw new Error("No text found in PDF");
+      // Truncate to ~2500 chars to stay within Groq free tier token limits
+      documentContent = fullText.length > 2500 ? fullText.substring(0, 2500) + "\n...[truncated]" : fullText;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (msg === "No text found in PDF") throw new Error("This PDF has no extractable text. It may be a scanned image. Please try a digitally-generated PDF.");
+      throw new Error("Could not read this PDF. Please try again or use a different file.");
     }
   } else {
-    // For images, embed as base64 data URL in the prompt text
     const base64 = await fileToBase64(file);
-    documentContent = `[Image file: ${file.name}]\nBase64 data: data:${file.type || "image/jpeg"};base64,${base64.substring(0, 200)}... (truncated for display)\n\nPlease analyse the image content described.`;
+    documentContent = `[Image file: ${file.name}, size: ${Math.round(file.size / 1024)}KB]\nNote: Describe any PAN, GSTIN, names, amounts and dates visible in this image.`;
+    // For images we just send a short description — vision not available on text models
+    void base64;
   }
 
   const prompt = `You are an expert Indian CA document parser. Extract all key information from this ${docType} document text.
