@@ -157,3 +157,4 @@ env/
 .DS_Store
 .vercel
 .turbo
+.claude/worktrees/

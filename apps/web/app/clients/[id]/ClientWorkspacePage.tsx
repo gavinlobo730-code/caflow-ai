@@ -74,7 +74,8 @@ export default function ClientWorkspacePage() {
   );
   useEffect(() => {
     const match = window.location.pathname.match(/\/clients\/([^/]+)/);
-    if (match && match[1] && match[1] !== "_placeholder") setId(match[1]);
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (match && match[1] && match[1] !== "_placeholder" && UUID_RE.test(match[1])) setId(match[1]);
   }, []);
 
   const [client, setClient] = useState<Client | null>(null);
