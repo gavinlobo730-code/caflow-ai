@@ -87,17 +87,41 @@ $$;
 -- ─── 5. RLS policies for tables with RLS enabled but no policies ─────────────
 -- These tables block ALL queries without at least one policy.
 
--- automation_executions
+-- automation_executions (no firm_id — isolated via rule_id → automation_rules.firm_id)
 CREATE POLICY "firm_isolation" ON public.automation_executions
   FOR ALL TO authenticated
-  USING (firm_id = public.get_my_firm_id())
-  WITH CHECK (firm_id = public.get_my_firm_id());
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.automation_rules ar
+      WHERE ar.id = automation_executions.rule_id
+        AND ar.firm_id = public.get_my_firm_id()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.automation_rules ar
+      WHERE ar.id = automation_executions.rule_id
+        AND ar.firm_id = public.get_my_firm_id()
+    )
+  );
 
--- filings
+-- filings (no firm_id — isolated via client_id → clients.firm_id)
 CREATE POLICY "firm_isolation" ON public.filings
   FOR ALL TO authenticated
-  USING (firm_id = public.get_my_firm_id())
-  WITH CHECK (firm_id = public.get_my_firm_id());
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.clients c
+      WHERE c.id = filings.client_id
+        AND c.firm_id = public.get_my_firm_id()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.clients c
+      WHERE c.id = filings.client_id
+        AND c.firm_id = public.get_my_firm_id()
+    )
+  );
 
 -- journal_lines (accessed via journal_entries join)
 CREATE POLICY "firm_isolation" ON public.journal_lines
@@ -117,17 +141,29 @@ CREATE POLICY "firm_isolation" ON public.journal_lines
     )
   );
 
--- permission_grants
-CREATE POLICY "firm_isolation" ON public.permission_grants
+-- permission_grants (no firm_id — user-scoped, restrict to own records)
+CREATE POLICY "user_isolation" ON public.permission_grants
   FOR ALL TO authenticated
-  USING (firm_id = public.get_my_firm_id())
-  WITH CHECK (firm_id = public.get_my_firm_id());
+  USING (user_id = auth.uid() OR granted_by = auth.uid())
+  WITH CHECK (granted_by = auth.uid());
 
--- reminders
+-- reminders (no firm_id — isolated via client_id → clients.firm_id)
 CREATE POLICY "firm_isolation" ON public.reminders
   FOR ALL TO authenticated
-  USING (firm_id = public.get_my_firm_id())
-  WITH CHECK (firm_id = public.get_my_firm_id());
+  USING (
+    client_id IS NULL OR EXISTS (
+      SELECT 1 FROM public.clients c
+      WHERE c.id = reminders.client_id
+        AND c.firm_id = public.get_my_firm_id()
+    )
+  )
+  WITH CHECK (
+    client_id IS NULL OR EXISTS (
+      SELECT 1 FROM public.clients c
+      WHERE c.id = reminders.client_id
+        AND c.firm_id = public.get_my_firm_id()
+    )
+  );
 
 -- team_members
 CREATE POLICY "firm_isolation" ON public.team_members
@@ -169,10 +205,9 @@ CREATE INDEX IF NOT EXISTS idx_journal_entries_entry_date ON public.journal_entr
 CREATE INDEX IF NOT EXISTS idx_clients_firm_id ON public.clients(firm_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_firm_id ON public.tasks(firm_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_client_id ON public.tasks(client_id);
-CREATE INDEX IF NOT EXISTS idx_reminders_firm_id ON public.reminders(firm_id);
-CREATE INDEX IF NOT EXISTS idx_filings_firm_id ON public.filings(firm_id);
+CREATE INDEX IF NOT EXISTS idx_reminders_client_id ON public.reminders(client_id);
 CREATE INDEX IF NOT EXISTS idx_filings_client_id ON public.filings(client_id);
-CREATE INDEX IF NOT EXISTS idx_compliance_tasks_firm_id ON public.compliance_tasks(firm_id);
+CREATE INDEX IF NOT EXISTS idx_compliance_tasks_client_id ON public.compliance_tasks(client_id);
 CREATE INDEX IF NOT EXISTS idx_fee_invoices_firm_id ON public.fee_invoices(firm_id);
 CREATE INDEX IF NOT EXISTS idx_fee_invoices_client_id ON public.fee_invoices(client_id);
 CREATE INDEX IF NOT EXISTS idx_sales_invoices_firm_id ON public.sales_invoices(firm_id);
