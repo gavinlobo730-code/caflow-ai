@@ -148,7 +148,7 @@ IMPORTANT RULES:
           <h1 className="text-sm font-semibold text-gray-900">AI Assistant</h1>
         </div>
         <span className="text-xs text-gray-400 hidden sm:block">
-          Powered by Claude &mdash; ask about GST, Income Tax, TDS, and practice management
+          Powered by AI &mdash; ask about GST, Income Tax, TDS, and practice management
         </span>
       </div>
 
