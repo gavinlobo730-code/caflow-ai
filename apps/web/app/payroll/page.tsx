@@ -6,7 +6,10 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { Users, Play, FileText, Shield, Plus, X, AlertCircle } from "lucide-react";
+import {
+  Users, Play, FileText, Shield, Plus, X, AlertCircle,
+  Download, CheckCircle, Clock, AlertTriangle,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -169,6 +172,216 @@ CREATE TABLE IF NOT EXISTS payroll_slips (
   net_paise BIGINT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );`;
+
+// ── Statutory Returns helpers ─────────────────────────────────────────────
+
+/**
+ * Given today's date, compute the list of statutory return deadlines
+ * relevant for the current month/quarter.
+ *
+ * PF ECR: monthly, due 15th of following month (EPF Act)
+ * ESI Return: half-yearly (Apr-Sep → Nov 11; Oct-Mar → May 11)
+ * PT: monthly challan (Maharashtra example)
+ * TDS 24Q: quarterly (IT Act Section 192)
+ *   Q1 Apr-Jun → 31 Jul | Q2 Jul-Sep → 31 Oct | Q3 Oct-Dec → 31 Jan | Q4 Jan-Mar → 31 May
+ */
+function getStatutoryDeadlines(today: Date): {
+  id: string;
+  label: string;
+  description: string;
+  dueDate: Date;
+  status: "overdue" | "due-soon" | "upcoming";
+  portal: string;
+}[] {
+  const y = today.getFullYear();
+  const m = today.getMonth(); // 0-indexed
+
+  const deadlines = [];
+
+  // PF ECR — due 15th of current month for prior month
+  const pfMonth = m === 0 ? 11 : m - 1;
+  const pfYear = m === 0 ? y - 1 : y;
+  const pfDue = new Date(y, m, 15);
+  const pfMonthName = new Date(pfYear, pfMonth, 1).toLocaleString("en-IN", { month: "long", year: "numeric" });
+  deadlines.push({
+    id: "pf-ecr",
+    label: `PF ECR — ${pfMonthName}`,
+    description: "Electronic Challan cum Return — EPFO Unified Portal",
+    dueDate: pfDue,
+    status: getDueDateStatus(pfDue, today),
+    portal: "EPFO Unified Portal",
+  });
+
+  // ESI Return — half-yearly
+  // Apr-Sep period → due Nov 11; Oct-Mar period → due May 11
+  let esiDue: Date;
+  let esiPeriod: string;
+  if (m >= 3 && m <= 8) {
+    // Apr–Sep period, due Nov 11 this year
+    esiDue = new Date(y, 10, 11);
+    esiPeriod = `Apr–Sep ${y}`;
+  } else if (m >= 9) {
+    // Oct–Dec, due May 11 next year
+    esiDue = new Date(y + 1, 4, 11);
+    esiPeriod = `Oct ${y}–Mar ${y + 1}`;
+  } else {
+    // Jan–Mar, due May 11 this year
+    esiDue = new Date(y, 4, 11);
+    esiPeriod = `Oct ${y - 1}–Mar ${y}`;
+  }
+  deadlines.push({
+    id: "esi-return",
+    label: `ESI Return — ${esiPeriod}`,
+    description: "Half-yearly return — ESIC Portal (employees ≤ ₹21,000/month)",
+    dueDate: esiDue,
+    status: getDueDateStatus(esiDue, today),
+    portal: "ESIC Portal",
+  });
+
+  // PT Challan — monthly, due by end of current month (state-dependent; showing general)
+  const ptDue = new Date(y, m + 1, 0); // last day of current month
+  deadlines.push({
+    id: "pt-challan",
+    label: `Professional Tax — ${today.toLocaleString("en-IN", { month: "long", year: "numeric" })}`,
+    description: "Monthly PT challan — State treasury (Maharashtra: ₹200 if salary > ₹10,000)",
+    dueDate: ptDue,
+    status: getDueDateStatus(ptDue, today),
+    portal: "State Treasury Portal",
+  });
+
+  // TDS 24Q — quarterly (IT Act Section 192)
+  // Q1: Apr-Jun → 31 Jul | Q2: Jul-Sep → 31 Oct | Q3: Oct-Dec → 31 Jan | Q4: Jan-Mar → 31 May
+  let tdsQuarter: string;
+  let tdsDue: Date;
+  if (m >= 3 && m <= 5) {
+    tdsQuarter = `Q1 Apr–Jun ${y}`;
+    tdsDue = new Date(y, 6, 31);
+  } else if (m >= 6 && m <= 8) {
+    tdsQuarter = `Q2 Jul–Sep ${y}`;
+    tdsDue = new Date(y, 9, 31);
+  } else if (m >= 9 && m <= 11) {
+    tdsQuarter = `Q3 Oct–Dec ${y}`;
+    tdsDue = new Date(y + 1, 0, 31);
+  } else {
+    tdsQuarter = `Q4 Jan–Mar ${y}`;
+    tdsDue = new Date(y, 4, 31);
+  }
+  deadlines.push({
+    id: "tds-24q",
+    label: `TDS 24Q — ${tdsQuarter}`,
+    description: "Quarterly TDS return on salary — IT Act Section 192 — filed via TRACES/NSDL",
+    dueDate: tdsDue,
+    status: getDueDateStatus(tdsDue, today),
+    portal: "TRACES / NSDL",
+  });
+
+  return deadlines;
+}
+
+function getDueDateStatus(
+  due: Date,
+  today: Date,
+): "overdue" | "due-soon" | "upcoming" {
+  const diffMs = due.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return "overdue";
+  if (diffDays <= 7) return "due-soon";
+  return "upcoming";
+}
+
+/**
+ * Generate PF ECR text in EPFO-specified tab/tilde-separated format.
+ * Format: MEMBER_ID~MEMBER_NAME~GROSS_WAGES~EPF_WAGES~EPS_WAGES~EDLI_WAGES~
+ *         EPF_CONTRI_REMITTED~EPS_CONTRI_REMITTED~EPF_EPS_DIFF_REMITTED~NCP_DAYS~REFUND_OF_ADVANCES
+ * EPF Act: employee + employer 12% of basic each; EPS 8.33% of basic (capped Rs 1,250/month)
+ */
+function generatePfEcr(slips: PayrollSlip[]): string {
+  const header = "MEMBER_ID~MEMBER_NAME~GROSS_WAGES~EPF_WAGES~EPS_WAGES~EDLI_WAGES~EPF_CONTRI_REMITTED~EPS_CONTRI_REMITTED~EPF_EPS_DIFF_REMITTED~NCP_DAYS~REFUND_OF_ADVANCES";
+  const rows = slips
+    .filter(s => s.employee?.pf_applicable)
+    .map((s, idx) => {
+      const emp = s.employee!;
+      // All amounts in whole rupees (EPFO expects rupees, not paise)
+      const grossRs = Math.floor(s.gross_paise / 100);
+      const basicRs = Math.floor(emp.basic_paise / 100);
+      // EPF wages = basic (EPF Act)
+      const epfWages = basicRs;
+      // EPS wages = basic capped at Rs 15,000 (EPF Act Schedule)
+      const epsWages = Math.min(basicRs, 15000);
+      // EDLI wages same as EPF wages capped at Rs 15,000
+      const edliWages = Math.min(basicRs, 15000);
+      // Employee EPF contribution = 12% of basic
+      const epfContri = Math.floor(basicRs * 12 / 100);
+      // EPS employer contribution = 8.33% of basic capped Rs 1,250
+      const epsContri = Math.min(Math.floor(epsWages * 833 / 10000), 1250);
+      // EPF-EPS diff = employee epf - eps contri (remaining goes to EPF)
+      const epfEpsDiff = epfContri - epsContri;
+      // Member ID: use PAN if available, else generate a placeholder
+      const memberId = emp.pan || `EMP${String(idx + 1).padStart(4, "0")}`;
+      return `${memberId}~${emp.name}~${grossRs}~${epfWages}~${epsWages}~${edliWages}~${epfContri}~${epsContri}~${epfEpsDiff}~0~0`;
+    });
+  return [header, ...rows].join("\n");
+}
+
+/**
+ * Generate ESI Statement CSV.
+ * ESI Act: employee 0.75%, employer 3.25% of gross for employees earning <= Rs 21,000/month.
+ */
+function generateEsiStatement(slips: PayrollSlip[], month: string): string {
+  const header = "Employee Name,PAN,Gross Wages (Rs),ESI Wages (Rs),Employee Contribution (0.75%),Employer Contribution (3.25%),Total Contribution";
+  const rows = slips
+    .filter(s => s.employee?.esi_applicable && s.gross_paise <= 2100000)
+    .map(s => {
+      const emp = s.employee!;
+      const grossRs = Math.floor(s.gross_paise / 100);
+      const empContri = Math.floor(s.gross_paise * 75 / 10000) / 100; // 0.75% in rupees
+      const emplrContri = Math.floor(s.gross_paise * 325 / 10000) / 100; // 3.25% in rupees
+      const total = (empContri + emplrContri).toFixed(2);
+      return `"${emp.name}","${emp.pan || ""}",${grossRs},${grossRs},${empContri.toFixed(2)},${emplrContri.toFixed(2)},${total}`;
+    });
+  const footer = `\n"# ESI Return — Period: ${month}"\n"# Filed with ESIC Portal"\n"# ESI Act: Employee 0.75% + Employer 3.25% of gross wages"`;
+  return [header, ...rows, footer].join("\n");
+}
+
+/**
+ * Generate TDS 24Q summary CSV.
+ * IT Act Section 192 — TDS on salary.
+ * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+ */
+function generateTds24QData(slips: PayrollSlip[], quarter: string): string {
+  // # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+  const header = `# TDS 24Q Summary — ${quarter}\n# IT Act Section 192 — TDS on Salary\n# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT\n# This data must be reviewed and filed via TRACES/NSDL by a qualified CA\n`;
+  const csvHeader = "Employee Name,PAN,Designation,Gross Salary (Rs),TDS Deducted (Rs),Quarter";
+  const rows = slips.map(s => {
+    const emp = s.employee!;
+    const grossRs = (s.gross_paise / 100).toFixed(2);
+    const tdsRs = (s.tds_paise / 100).toFixed(2);
+    return `"${emp.name}","${emp.pan || "PAN NOT AVAILABLE"}","${emp.designation || ""}",${grossRs},${tdsRs},"${quarter}"`;
+  });
+  const totalGross = slips.reduce((sum, s) => sum + s.gross_paise, 0);
+  const totalTds = slips.reduce((sum, s) => sum + s.tds_paise, 0);
+  const footer = `"TOTAL","","",${(totalGross / 100).toFixed(2)},${(totalTds / 100).toFixed(2)},""`;
+  return [header, csvHeader, ...rows, footer].join("\n");
+}
+
+function downloadFile(content: string, filename: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Determine the TDS 24Q quarter label for a given YYYY-MM month string */
+function getTdsQuarterLabel(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  if (m >= 4 && m <= 6) return `Q1 Apr–Jun ${y}`;
+  if (m >= 7 && m <= 9) return `Q2 Jul–Sep ${y}`;
+  if (m >= 10 && m <= 12) return `Q3 Oct–Dec ${y}`;
+  return `Q4 Jan–Mar ${y}`;
+}
 
 // ── Add Employee Modal ────────────────────────────────────────────────────
 
@@ -335,6 +548,259 @@ function PayslipModal({ slip, onClose }: { slip: PayrollSlip; onClose: () => voi
   );
 }
 
+// ── Statutory Returns Tab ─────────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: "overdue" | "due-soon" | "upcoming" | "filed" }) {
+  if (status === "overdue") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+        <AlertTriangle size={11} />Overdue
+      </span>
+    );
+  }
+  if (status === "due-soon") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+        <Clock size={11} />Due Soon
+      </span>
+    );
+  }
+  if (status === "filed") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+        <CheckCircle size={11} />Filed
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+      <Clock size={11} />Upcoming
+    </span>
+  );
+}
+
+function StatutoryReturnsTab({
+  runs,
+  slips,
+  clients,
+}: {
+  runs: PayrollRun[];
+  slips: PayrollSlip[];
+  clients: Client[];
+}) {
+  const today = new Date();
+  const deadlines = getStatutoryDeadlines(today);
+
+  // Group runs by client for the "Generate" section
+  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.id ?? "");
+
+  const clientRuns = runs.filter(r => r.client_id === selectedClientId);
+
+  function slipsForRun(runId: string): PayrollSlip[] {
+    return slips.filter(s => s.run_id === runId);
+  }
+
+  function handleGeneratePfEcr(run: PayrollRun) {
+    const runSlips = slipsForRun(run.id);
+    const content = generatePfEcr(runSlips);
+    downloadFile(content, `PF_ECR_${run.month}.txt`, "text/plain");
+  }
+
+  function handleGenerateEsiStatement(run: PayrollRun) {
+    const runSlips = slipsForRun(run.id);
+    const content = generateEsiStatement(runSlips, run.month);
+    downloadFile(content, `ESI_Statement_${run.month}.csv`, "text/csv");
+  }
+
+  function handleGenerate24Q(run: PayrollRun) {
+    // # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    const runSlips = slipsForRun(run.id);
+    const quarter = getTdsQuarterLabel(run.month);
+    const content = generateTds24QData(runSlips, quarter);
+    downloadFile(content, `TDS_24Q_${run.month}.csv`, "text/csv");
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Due Date Checklist */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Statutory Return Deadlines</CardTitle>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Based on today&apos;s date. Mark as filed in your records after submission.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {deadlines.map(d => (
+              <div
+                key={d.id}
+                className={`flex items-start justify-between p-3 rounded-lg border ${
+                  d.status === "overdue"
+                    ? "border-red-200 bg-red-50"
+                    : d.status === "due-soon"
+                    ? "border-amber-200 bg-amber-50"
+                    : "border-gray-200 bg-white"
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900">{d.label}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{d.description}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Portal: {d.portal} &middot; Due:{" "}
+                    {d.dueDate.toLocaleDateString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </p>
+                </div>
+                <div className="ml-4 flex-shrink-0">
+                  <StatusBadge status={d.status} />
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 mt-4 border-t pt-3">
+            Note: Status is computed from today&apos;s date. This checklist does not auto-track filed
+            returns — update your firm records after each submission.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Generate Returns for Payroll Runs */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Generate Statutory Return Files</CardTitle>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Download files in the correct format for each portal. Review before uploading.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {clients.length > 1 && (
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Client</label>
+              <select
+                className="border rounded-lg px-3 py-2 text-sm"
+                value={selectedClientId}
+                onChange={e => setSelectedClientId(e.target.value)}
+              >
+                {clients.map(c => (
+                  <option key={c.id} value={c.id}>{c.client_name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {clientRuns.length === 0 ? (
+            <p className="text-sm text-gray-400 py-6 text-center">
+              No payroll runs for this client. Run a Monthly Payroll first.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {/* CA Review notice */}
+              <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <AlertCircle size={15} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-amber-800">
+                  <strong>CA Review Required.</strong> These files are generated for review only.
+                  Do not upload to any government portal without explicit CA verification and approval.
+                  All statutory returns must be authorised by a qualified Chartered Accountant.
+                </p>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      <th className="text-left py-3 px-3">Month</th>
+                      <th className="text-center py-3 px-3">Employees</th>
+                      <th className="text-right py-3 px-3">Total Gross</th>
+                      <th className="text-right py-3 px-3">Total TDS</th>
+                      <th className="py-3 px-3 text-right">Generate Files</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clientRuns.map(run => {
+                      const runSlips = slipsForRun(run.id);
+                      const totalGross = runSlips.reduce((sum, s) => sum + s.gross_paise, 0);
+                      const totalTds = runSlips.reduce((sum, s) => sum + s.tds_paise, 0);
+                      const pfCount = runSlips.filter(s => s.employee?.pf_applicable).length;
+                      const esiCount = runSlips.filter(
+                        s => s.employee?.esi_applicable && s.gross_paise <= 2100000,
+                      ).length;
+                      return (
+                        <tr key={run.id} className="border-b hover:bg-gray-50">
+                          <td className="py-3 px-3 font-medium">{run.month}</td>
+                          <td className="py-3 px-3 text-center text-gray-600">{runSlips.length}</td>
+                          <td className="py-3 px-3 text-right font-mono">{fmtRs(totalGross)}</td>
+                          <td className="py-3 px-3 text-right font-mono text-red-600">{fmtRs(totalTds)}</td>
+                          <td className="py-3 px-3">
+                            <div className="flex gap-2 justify-end flex-wrap">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex items-center gap-1 text-xs"
+                                onClick={() => handleGeneratePfEcr(run)}
+                                disabled={pfCount === 0}
+                                title={pfCount === 0 ? "No PF-applicable employees this month" : `Generate PF ECR for ${pfCount} employees`}
+                              >
+                                <Download size={12} />
+                                PF ECR
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex items-center gap-1 text-xs"
+                                onClick={() => handleGenerateEsiStatement(run)}
+                                disabled={esiCount === 0}
+                                title={esiCount === 0 ? "No ESI-applicable employees this month" : `Generate ESI statement for ${esiCount} employees`}
+                              >
+                                <Download size={12} />
+                                ESI
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex items-center gap-1 text-xs"
+                                onClick={() => handleGenerate24Q(run)}
+                                disabled={runSlips.length === 0}
+                                title="Generate TDS 24Q data — CA review required before filing"
+                              >
+                                <Download size={12} />
+                                24Q
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Format notes */}
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-gray-500">
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                  <p className="font-medium text-gray-700 mb-1">PF ECR (.txt)</p>
+                  <p>Tilde-separated format for EPFO Unified Portal. Upload via &quot;ECR Upload&quot; on epfindia.gov.in. Due by 15th each month.</p>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                  <p className="font-medium text-gray-700 mb-1">ESI Statement (.csv)</p>
+                  <p>Employee-wise ESI contribution data for ESIC portal. Half-yearly filing — Apr-Sep by Nov 11, Oct-Mar by May 11.</p>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                  <p className="font-medium text-gray-700 mb-1">TDS 24Q (.csv)</p>
+                  <p>Quarterly TDS data per IT Act Section 192. Must be filed via TRACES/NSDL. CA review mandatory before submission.</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────
 
 export default function PayrollPage() {
@@ -494,6 +960,7 @@ export default function PayrollPage() {
             <TabsTrigger value="monthly" className="flex items-center gap-1.5"><Play size={14} />Monthly Run</TabsTrigger>
             <TabsTrigger value="payslips" className="flex items-center gap-1.5"><FileText size={14} />Payslips</TabsTrigger>
             <TabsTrigger value="statutory" className="flex items-center gap-1.5"><Shield size={14} />Statutory</TabsTrigger>
+            <TabsTrigger value="statutory-returns" className="flex items-center gap-1.5"><Download size={14} />Statutory Returns</TabsTrigger>
           </TabsList>
 
           {/* EMPLOYEES TAB */}
@@ -735,6 +1202,11 @@ export default function PayrollPage() {
                 </Card>
               );
             })()}
+          </TabsContent>
+
+          {/* STATUTORY RETURNS TAB */}
+          <TabsContent value="statutory-returns">
+            <StatutoryReturnsTab runs={runs} slips={slips} clients={clients} />
           </TabsContent>
         </Tabs>
       </div>
