@@ -13,7 +13,6 @@ import { ChevronLeft, TrendingUp, TrendingDown, Minus, Download } from "lucide-r
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { formatPaise } from "@/lib/services/formatting";
-import { useToast } from "@/components/ui/use-toast";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -170,7 +169,6 @@ function CashFlowSectionBlock({ section }: { section: CashFlowSection }) {
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function CashFlowPage() {
-  const { toast } = useToast();
   const [selectedFY, setSelectedFY] = useState(0);
   const [lines, setLines] = useState<JournalLine[]>([]);
   const [loading, setLoading] = useState(true);
@@ -255,7 +253,24 @@ export default function CashFlowPage() {
             {FY_LIST.map((f, i) => <option key={f.label} value={i}>{f.label}</option>)}
           </select>
           <button
-            onClick={() => toast({ title: "Export to Excel — coming soon" })}
+            onClick={() => {
+              const cf = computeCashFlow(lines);
+              const rows = [
+                ["Section", "Item", "Amount (₹)"],
+                ...cf.operating.items.map(i => [cf.operating.title, i.label, String(Math.round(i.amount_paise / 100))]),
+                [cf.operating.title, "Net Cash from Operations", String(Math.round(cf.operating.total_paise / 100))],
+                ...cf.investing.items.map(i => [cf.investing.title, i.label, String(Math.round(i.amount_paise / 100))]),
+                [cf.investing.title, "Net Cash from Investing", String(Math.round(cf.investing.total_paise / 100))],
+                ...cf.financing.items.map(i => [cf.financing.title, i.label, String(Math.round(i.amount_paise / 100))]),
+                [cf.financing.title, "Net Cash from Financing", String(Math.round(cf.financing.total_paise / 100))],
+                ["Summary", "Net Change in Cash", String(Math.round(cf.closingCash / 100))],
+              ];
+              const csv = rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n");
+              const a = document.createElement("a");
+              a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+              a.download = `cash-flow-${fy.label.replace(/\s/g, "-")}.csv`;
+              a.click();
+            }}
             className="flex items-center gap-1.5 border border-gray-200 text-gray-600 text-sm px-3 py-1.5 rounded-lg hover:bg-gray-50"
           >
             <Download className="w-3.5 h-3.5" /> Export

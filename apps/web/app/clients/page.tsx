@@ -95,7 +95,7 @@ export default function ClientsPage() {
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
           </button>
           <Link
-            href="/clients/pipeline"
+            href="/pipeline"
             className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
           >
             <KanbanSquare size={15} />
