@@ -5,6 +5,7 @@ import { Building2, AlertTriangle, Calendar, LogOut } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useRouter } from "next/navigation";
+import { RoleGuard } from "@/components/RoleGuard";
 
 // ─── Indian states list ────────────────────────────────────────────────────
 const INDIAN_STATES = [
@@ -333,6 +334,8 @@ export default function SettingsPage() {
         <p className="text-sm text-gray-500 mt-0.5">Firm configuration and preferences</p>
       </div>
 
+      {/* ── Firm Profile — Partner only (firm financials) ────────────────── */}
+      <RoleGuard allowed={["Partner"]} redirect={false}>
       {/* ── Firm Profile ─────────────────────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
@@ -415,6 +418,8 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+
+      </RoleGuard>
 
       {/* ── Financial Year (display only) ────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
