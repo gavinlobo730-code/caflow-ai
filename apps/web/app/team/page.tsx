@@ -1,10 +1,118 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Users, UserPlus, Shield, Mail, MoreVertical, X, AlertCircle } from "lucide-react";
+import { Users, UserPlus, Shield, Mail, MoreVertical, X, AlertCircle, Lock } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
 type Role = "Partner" | "Manager" | "Article" | "Staff";
+
+// All modules trackable in the permissions matrix
+const MODULES = [
+  "Accounting",
+  "GST",
+  "Income Tax",
+  "TDS",
+  "MCA",
+  "Payroll",
+  "Billing",
+  "Reports",
+  "Settings",
+  "Clients",
+  "Tasks",
+] as const;
+
+type Module = (typeof MODULES)[number];
+
+// Default module access per role — mirrors permissions.ts logic
+const ROLE_DEFAULTS: Record<Role, Record<Module, boolean>> = {
+  Partner: {
+    Accounting: true,
+    GST: true,
+    "Income Tax": true,
+    TDS: true,
+    MCA: true,
+    Payroll: true,
+    Billing: true,
+    Reports: true,
+    Settings: true,
+    Clients: true,
+    Tasks: true,
+  },
+  Manager: {
+    Accounting: true,
+    GST: true,
+    "Income Tax": true,
+    TDS: true,
+    MCA: true,
+    Payroll: true,
+    Billing: true,
+    Reports: false,
+    Settings: false,
+    Clients: true,
+    Tasks: true,
+  },
+  Article: {
+    Accounting: false,
+    GST: false,
+    "Income Tax": false,
+    TDS: false,
+    MCA: false,
+    Payroll: false,
+    Billing: false,
+    Reports: false,
+    Settings: false,
+    Clients: true,
+    Tasks: true,
+  },
+  Staff: {
+    Accounting: false,
+    GST: false,
+    "Income Tax": false,
+    TDS: false,
+    MCA: false,
+    Payroll: false,
+    Billing: false,
+    Reports: false,
+    Settings: false,
+    Clients: true,
+    Tasks: true,
+  },
+};
+
+// Per-member permissions map: memberId -> module -> boolean
+type MemberPermissions = Record<string, Record<Module, boolean>>;
+
+// localStorage key per firm
+function permissionsKey(firmId: string): string {
+  return `caflow_permissions_${firmId}`;
+}
+
+function loadPermissionsFromStorage(firmId: string): MemberPermissions {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(permissionsKey(firmId));
+    if (!raw) return {};
+    return JSON.parse(raw) as MemberPermissions;
+  } catch {
+    return {};
+  }
+}
+
+function savePermissionsToStorage(firmId: string, perms: MemberPermissions): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(permissionsKey(firmId), JSON.stringify(perms));
+}
+
+/** Returns the effective permissions for a member — stored overrides, or role defaults */
+function effectivePermissions(
+  member: { id: string; role: Role },
+  stored: MemberPermissions
+): Record<Module, boolean> {
+  if (stored[member.id]) {
+    return stored[member.id];
+  }
+  return { ...ROLE_DEFAULTS[member.role] };
+}
 
 interface TeamMember {
   id: string;
@@ -248,6 +356,252 @@ function ActionsMenu({ member, onEdit, onDeactivate }: ActionsMenuProps) {
   );
 }
 
+// ---- Role Permissions Info Card ----
+function RolePermissionsCard() {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center">
+          <Lock className="w-3.5 h-3.5 text-violet-600" />
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Default Role Permissions</h3>
+          <p className="text-xs text-gray-400">Admins can override these per person in the matrix above</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {ROLES.map(role => {
+          const defaults = ROLE_DEFAULTS[role];
+          const allowed = MODULES.filter(m => defaults[m]);
+          const denied = MODULES.filter(m => !defaults[m]);
+          return (
+            <div key={role} className="border border-gray-100 rounded-lg p-3 space-y-2">
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[role]}`}>
+                {role}
+              </span>
+              <div className="space-y-1">
+                {allowed.map(m => (
+                  <div key={m} className="flex items-center gap-1.5 text-xs text-green-700">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
+                    {m}
+                  </div>
+                ))}
+                {denied.map(m => (
+                  <div key={m} className="flex items-center gap-1.5 text-xs text-gray-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-200 shrink-0" />
+                    {m}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---- Permissions Matrix Tab ----
+interface PermissionsMatrixProps {
+  members: TeamMember[];
+  firmId: string;
+}
+
+function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
+  const [stored, setStored] = useState<MemberPermissions>({});
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    setStored(loadPermissionsFromStorage(firmId));
+  }, [firmId]);
+
+  function togglePermission(memberId: string, memberRole: Role, module: Module) {
+    setStored(prev => {
+      // Start from current effective permissions for this member
+      const current = effectivePermissions({ id: memberId, role: memberRole }, prev);
+      const updated: MemberPermissions = {
+        ...prev,
+        [memberId]: {
+          ...current,
+          [module]: !current[module],
+        },
+      };
+      savePermissionsToStorage(firmId, updated);
+      return updated;
+    });
+  }
+
+  function resetMemberToDefault(memberId: string) {
+    setStored(prev => {
+      const updated = { ...prev };
+      delete updated[memberId];
+      savePermissionsToStorage(firmId, updated);
+      return updated;
+    });
+  }
+
+  const activeMembers = members.filter(m => m.is_active !== false);
+
+  if (activeMembers.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-100 p-10 text-center">
+        <Users className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+        <p className="text-sm text-gray-400">No active team members to configure</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Matrix table */}
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-50">
+          <h2 className="text-sm font-semibold text-gray-900">Module Access Matrix</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Toggle access per member per module. Changes are saved instantly.
+            Overrides the role default for that individual.
+          </p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-gray-50 bg-gray-50/50">
+                <th className="text-left text-xs font-medium text-gray-500 px-4 py-3 min-w-[180px] sticky left-0 bg-gray-50/80 backdrop-blur-sm z-10">
+                  Member
+                </th>
+                {MODULES.map(mod => (
+                  <th
+                    key={mod}
+                    className="text-center text-xs font-medium text-gray-500 px-2 py-3 min-w-[70px]"
+                  >
+                    <span className="block">{mod.split(" ")[0]}</span>
+                    {mod.includes(" ") && (
+                      <span className="block text-gray-400">{mod.split(" ").slice(1).join(" ")}</span>
+                    )}
+                  </th>
+                ))}
+                <th className="text-center text-xs font-medium text-gray-500 px-3 py-3 min-w-[80px]">
+                  Reset
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {activeMembers.map(member => {
+                const perms = effectivePermissions({ id: member.id, role: member.role }, stored);
+                const isOverridden = !!stored[member.id];
+                const initials = member.full_name
+                  .split(" ")
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map(n => n[0])
+                  .join("")
+                  .toUpperCase();
+
+                return (
+                  <tr key={member.id} className="hover:bg-gray-50/40">
+                    {/* Sticky member name column */}
+                    <td className="px-4 py-3 sticky left-0 bg-white hover:bg-gray-50/40 z-10">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-blue-700 text-white flex items-center justify-center text-xs font-semibold shrink-0">
+                          {initials}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-gray-900 truncate max-w-[110px]">
+                            {member.full_name}
+                          </p>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className={`text-xs px-1.5 py-px rounded-full font-medium ${ROLE_COLORS[member.role]}`}>
+                              {member.role}
+                            </span>
+                            {isOverridden && (
+                              <span className="text-xs text-orange-500 font-medium">custom</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Module checkboxes */}
+                    {MODULES.map(mod => {
+                      const enabled = perms[mod];
+                      const defaultVal = ROLE_DEFAULTS[member.role][mod];
+                      const differs = isOverridden && stored[member.id]?.[mod] !== defaultVal;
+                      return (
+                        <td key={mod} className="px-2 py-3 text-center">
+                          <label className="inline-flex items-center justify-center cursor-pointer group">
+                            <input
+                              type="checkbox"
+                              checked={enabled}
+                              onChange={() => togglePermission(member.id, member.role, mod)}
+                              className="sr-only"
+                            />
+                            <span
+                              className={[
+                                "w-5 h-5 rounded flex items-center justify-center border transition-colors",
+                                enabled
+                                  ? differs
+                                    ? "bg-orange-500 border-orange-500"
+                                    : "bg-blue-600 border-blue-600"
+                                  : "border-gray-200 bg-white group-hover:border-gray-300",
+                              ].join(" ")}
+                            >
+                              {enabled && (
+                                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12">
+                                  <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              )}
+                            </span>
+                          </label>
+                        </td>
+                      );
+                    })}
+
+                    {/* Reset to role defaults */}
+                    <td className="px-3 py-3 text-center">
+                      {isOverridden ? (
+                        <button
+                          onClick={() => resetMemberToDefault(member.id)}
+                          className="text-xs text-gray-400 hover:text-blue-600 underline underline-offset-2 transition-colors"
+                          title="Reset to role defaults"
+                        >
+                          Reset
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-200">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Legend */}
+        <div className="px-5 py-3 border-t border-gray-50 bg-gray-50/30 flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+            <span className="w-4 h-4 rounded bg-blue-600 inline-block" />
+            Access granted (role default)
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+            <span className="w-4 h-4 rounded bg-orange-500 inline-block" />
+            Access granted (admin override)
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+            <span className="w-4 h-4 rounded border border-gray-200 bg-white inline-block" />
+            No access
+          </div>
+        </div>
+      </div>
+
+      {/* Role defaults info card */}
+      <RolePermissionsCard />
+    </div>
+  );
+}
+
 // ---- Main Page ----
 export default function TeamPage() {
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -257,6 +611,7 @@ export default function TeamPage() {
   const [firmId, setFirmId] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [editMember, setEditMember] = useState<TeamMember | null>(null);
+  const [activeTab, setActiveTab] = useState<"members" | "permissions">("members");
 
   const loadTeam = useCallback(async () => {
     try {
@@ -450,100 +805,141 @@ export default function TeamPage() {
         ))}
       </div>
 
-      {/* Team Table */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50">
-          <h2 className="text-sm font-semibold text-gray-900">Team Members</h2>
-          <p className="text-xs text-gray-400 mt-0.5">All staff registered under your firm</p>
-        </div>
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-100">
+        <button
+          onClick={() => setActiveTab("members")}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            activeTab === "members"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Team Members
+        </button>
+        <button
+          onClick={() => setActiveTab("permissions")}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-1.5 ${
+            activeTab === "permissions"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <Lock className="w-3.5 h-3.5" />
+          Permissions
+        </button>
+      </div>
 
-        {loading ? (
-          <div className="px-5 py-10 text-center text-sm text-gray-400">Loading…</div>
-        ) : members.length === 0 ? (
-          <div className="px-5 py-10 text-center">
-            <Users className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-            <p className="text-sm text-gray-400">No team members yet</p>
-            <p className="text-xs text-gray-300 mt-1">Invite someone to get started</p>
+      {/* Tab: Team Members */}
+      {activeTab === "members" && (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-50">
+            <h2 className="text-sm font-semibold text-gray-900">Team Members</h2>
+            <p className="text-xs text-gray-400 mt-0.5">All staff registered under your firm</p>
+          </div>
+
+          {loading ? (
+            <div className="px-5 py-10 text-center text-sm text-gray-400">Loading…</div>
+          ) : members.length === 0 ? (
+            <div className="px-5 py-10 text-center">
+              <Users className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+              <p className="text-sm text-gray-400">No team members yet</p>
+              <p className="text-xs text-gray-300 mt-1">Invite someone to get started</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-50">
+                    <th className="text-left text-xs font-medium text-gray-400 px-5 py-3">Name</th>
+                    <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">Email</th>
+                    <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">Role</th>
+                    <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">Status</th>
+                    <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">Joined</th>
+                    <th className="px-5 py-3 w-10"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {members.map(member => {
+                    const isCurrentUser = member.auth_user_id === currentUserId;
+                    const isActive = member.is_active !== false;
+                    const initials = member.full_name
+                      .split(" ")
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .map(n => n[0])
+                      .join("")
+                      .toUpperCase();
+                    const joinedDate = member.created_at
+                      ? new Date(member.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+                      : "—";
+
+                    return (
+                      <tr key={member.id} className={`hover:bg-gray-50/50 ${!isActive ? "opacity-60" : ""}`}>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-blue-700 text-white flex items-center justify-center text-xs font-semibold shrink-0">
+                              {initials}
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">
+                                {member.full_name}
+                                {isCurrentUser && (
+                                  <span className="ml-1.5 text-xs text-blue-500 font-normal">(You)</span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                            <Mail className="w-3 h-3 shrink-0 text-gray-300" />
+                            {member.email}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[member.role] ?? "bg-gray-100 text-gray-600"}`}>
+                            {member.role}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                            {isActive ? "Active" : "Inactive"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-gray-500">{joinedDate}</td>
+                        <td className="px-5 py-3">
+                          {!isCurrentUser && (
+                            <ActionsMenu
+                              member={member}
+                              onEdit={() => setEditMember(member)}
+                              onDeactivate={() => handleDeactivate(member)}
+                            />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Permissions */}
+      {activeTab === "permissions" && (
+        loading ? (
+          <div className="bg-white rounded-xl border border-gray-100 px-5 py-10 text-center text-sm text-gray-400">
+            Loading…
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-50">
-                  <th className="text-left text-xs font-medium text-gray-400 px-5 py-3">Name</th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">Email</th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">Role</th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">Status</th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">Joined</th>
-                  <th className="px-5 py-3 w-10"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {members.map(member => {
-                  const isCurrentUser = member.auth_user_id === currentUserId;
-                  const isActive = member.is_active !== false;
-                  const initials = member.full_name
-                    .split(" ")
-                    .filter(Boolean)
-                    .slice(0, 2)
-                    .map(n => n[0])
-                    .join("")
-                    .toUpperCase();
-                  const joinedDate = member.created_at
-                    ? new Date(member.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
-                    : "—";
-
-                  return (
-                    <tr key={member.id} className={`hover:bg-gray-50/50 ${!isActive ? "opacity-60" : ""}`}>
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-blue-700 text-white flex items-center justify-center text-xs font-semibold shrink-0">
-                            {initials}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">
-                              {member.full_name}
-                              {isCurrentUser && (
-                                <span className="ml-1.5 text-xs text-blue-500 font-normal">(You)</span>
-                              )}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3">
-                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                          <Mail className="w-3 h-3 shrink-0 text-gray-300" />
-                          {member.email}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[member.role] ?? "bg-gray-100 text-gray-600"}`}>
-                          {member.role}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                          {isActive ? "Active" : "Inactive"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3 text-xs text-gray-500">{joinedDate}</td>
-                      <td className="px-5 py-3">
-                        {!isCurrentUser && (
-                          <ActionsMenu
-                            member={member}
-                            onEdit={() => setEditMember(member)}
-                            onDeactivate={() => handleDeactivate(member)}
-                          />
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+          <PermissionsMatrix
+            members={members}
+            firmId={firmId ?? "local"}
+          />
+        )
+      )}
 
       {/* Modals */}
       {showInvite && (
