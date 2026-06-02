@@ -177,6 +177,37 @@ async function extractWithClaude(file: File, docType: DocTypeValue): Promise<Ext
     chunks.push(documentContent.slice(i, i + CHUNK_SIZE));
   }
 
+  async function callGroq(prompt: string, retries = 4): Promise<string> {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: "llama-3.1-8b-instant",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 1024,
+        temperature: 0,
+      }),
+    });
+
+    if (res.status === 429 && retries > 0) {
+      // Parse retry delay from Groq error message e.g. "Please try again in 8.37s"
+      const errBody = await res.json().catch(() => ({})) as { error?: { message?: string } };
+      const msg = errBody?.error?.message ?? "";
+      const match = msg.match(/try again in ([\d.]+)s/);
+      const waitMs = match ? Math.ceil(parseFloat(match[1]) * 1000) + 500 : 15000;
+      await new Promise(r => setTimeout(r, waitMs));
+      return callGroq(prompt, retries - 1);
+    }
+
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({})) as { error?: { message?: string } };
+      throw new Error(`AI extraction failed: ${errBody?.error?.message ?? res.statusText}`);
+    }
+
+    const json = await res.json() as { choices: Array<{ message: { content: string } }> };
+    return json.choices?.[0]?.message?.content ?? "{}";
+  }
+
   async function extractChunk(chunk: string, chunkIndex: number): Promise<ExtractedData> {
     const prompt = `You are an expert Indian CA document parser. Extract key information from this ${docType} document (part ${chunkIndex + 1} of ${chunks.length}).
 
@@ -197,29 +228,12 @@ Return ONLY a valid JSON object. Include only fields actually present in this te
 
 Return ONLY the JSON. No markdown, no explanation.`;
 
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 1024,
-        temperature: 0,
-      }),
-    });
-
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({})) as { error?: { message?: string } };
-      throw new Error(`AI extraction failed: ${errBody?.error?.message ?? res.statusText}`);
-    }
-
-    const json = await res.json() as { choices: Array<{ message: { content: string } }> };
-    const content = json.choices?.[0]?.message?.content ?? "{}";
+    const content = await callGroq(prompt);
     const cleaned = content.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
     try { return JSON.parse(cleaned) as ExtractedData; } catch { return {}; }
   }
 
-  // Process chunks sequentially to avoid hitting rate limits
+  // Process chunks sequentially with auto-retry on rate limits
   const results: ExtractedData[] = [];
   for (let i = 0; i < chunks.length; i++) {
     const result = await extractChunk(chunks[i], i);
