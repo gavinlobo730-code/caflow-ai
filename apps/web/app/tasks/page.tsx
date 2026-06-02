@@ -163,7 +163,7 @@ function DetailPanel({ task, clients, teamMembers, onClose, onUpdated }: DetailP
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
                 >
                   <option value="">Unassigned</option>
-                  {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name ?? m.email}</option>)}
+                  {teamMembers.map(m => <option key={m.id} value={m.id}>{m.full_name ?? m.email}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -252,7 +252,7 @@ function DetailPanel({ task, clients, teamMembers, onClose, onUpdated }: DetailP
 
               <div className="space-y-3">
                 <Row label="Client" value={clientName} />
-                <Row label="Assignee" value={assignee ? (assignee.name ?? assignee.email ?? "—") : "Unassigned"} />
+                <Row label="Assignee" value={assignee ? (assignee.full_name ?? assignee.email ?? "—") : "Unassigned"} />
                 <Row label="Due Date" value={fmt(task.due_date)} highlight={overdue} />
                 <Row label="Created" value={fmt(task.created_at.split("T")[0])} />
               </div>
@@ -316,7 +316,7 @@ export default function TasksPage() {
       const enriched = taskList.map(t => ({
         ...t,
         client_name: clientMap.get(t.client_id) ?? t.client_name,
-        assignee_name: t.assignee_id ? (memberMap.get(t.assignee_id)?.name ?? memberMap.get(t.assignee_id)?.email) : undefined,
+        assignee_name: t.assignee_id ? (memberMap.get(t.assignee_id)?.full_name ?? memberMap.get(t.assignee_id)?.email) : undefined,
         assignee_email: t.assignee_id ? memberMap.get(t.assignee_id)?.email : undefined,
       }));
       setTasks(enriched);
@@ -369,7 +369,7 @@ export default function TasksPage() {
     setTasks(prev => [{
       ...task,
       client_name: client?.client_name ?? task.client_name,
-      assignee_name: member?.name ?? member?.email,
+      assignee_name: member?.full_name ?? member?.email,
     }, ...prev]);
   }
 
@@ -491,7 +491,7 @@ export default function TasksPage() {
           >
             <option value="all">All Assignees</option>
             {teamMembers.map(m => (
-              <option key={m.id} value={m.id}>{m.name ?? m.email}</option>
+              <option key={m.id} value={m.id}>{m.full_name ?? m.email}</option>
             ))}
           </select>
         )}

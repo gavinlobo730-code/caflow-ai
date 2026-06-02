@@ -17,8 +17,8 @@ async function getFirmId(): Promise<string> {
   const sb = getSupabaseClient();
   const { data: { session } } = await sb.auth.getSession();
   if (!session) throw new Error("Not authenticated");
-  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).single();
-  if (!data) throw new Error("User not found");
+  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).maybeSingle();
+  if (!data?.firm_id) throw new Error("No firm found for this user");
   return data.firm_id;
 }
 
@@ -56,9 +56,9 @@ export async function getTeamMembers(): Promise<FirmUser[]> {
   const firmId = await getFirmId();
   const { data, error } = await sb
     .from("users")
-    .select("id, auth_user_id, firm_id, name, email, role, is_active")
+    .select("id, auth_user_id, firm_id, full_name, email, role, is_active")
     .eq("firm_id", firmId)
-    .order("name");
+    .order("full_name");
   if (error) throw new Error(error.message);
   return (data ?? []) as FirmUser[];
 }

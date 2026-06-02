@@ -8,7 +8,7 @@ type Role = "Partner" | "Manager" | "Article" | "Staff";
 
 interface TeamMember {
   id: string;
-  name: string;
+  full_name: string;
   email: string;
   role: Role;
   is_active?: boolean;
@@ -168,7 +168,7 @@ function EditRoleModal({ member, onClose, onSave }: EditRoleModalProps) {
           <h3 className="text-sm font-semibold text-gray-900">Edit Role</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
         </div>
-        <p className="text-xs text-gray-500">{member.name} · {member.email}</p>
+        <p className="text-xs text-gray-500">{member.full_name} · {member.email}</p>
 
         {error && (
           <div className="bg-red-50 border border-red-100 rounded-lg px-3 py-2 flex gap-2 text-xs text-red-700">
@@ -280,7 +280,7 @@ export default function TeamPage() {
       // Get current user's firm_id
       const { data: currentUserRow, error: userErr } = await supabase
         .from("users")
-        .select("id, name, email, role, is_active, created_at, firm_id, auth_user_id")
+        .select("id, full_name, email, role, is_active, created_at, firm_id, auth_user_id")
         .eq("auth_user_id", authUserId)
         .maybeSingle();
 
@@ -290,7 +290,7 @@ export default function TeamPage() {
         if (currentUserRow) {
           setMembers([{
             id: currentUserRow.id,
-            name: currentUserRow.name ?? session.user.email ?? "You",
+            full_name: currentUserRow.full_name ?? session.user.email ?? "You",
             email: currentUserRow.email ?? session.user.email ?? "",
             role: (currentUserRow.role as Role) ?? "Staff",
             is_active: currentUserRow.is_active !== false,
@@ -309,7 +309,7 @@ export default function TeamPage() {
       // Load all team members for this firm
       const { data: teamRows, error: teamErr } = await supabase
         .from("users")
-        .select("id, name, email, role, is_active, created_at, auth_user_id, firm_id")
+        .select("id, full_name, email, role, is_active, created_at, auth_user_id, firm_id")
         .eq("firm_id", fId)
         .order("created_at", { ascending: true });
 
@@ -317,7 +317,7 @@ export default function TeamPage() {
 
       setMembers((teamRows ?? []).map(r => ({
         id: r.id,
-        name: r.name ?? r.email ?? "—",
+        full_name: r.full_name ?? r.email ?? "—",
         email: r.email ?? "",
         role: (r.role as Role) ?? "Staff",
         is_active: r.is_active !== false,
@@ -339,11 +339,12 @@ export default function TeamPage() {
   async function handleInvite(name: string, email: string, role: Role) {
     const supabase = getSupabaseClient();
     const { error: insertErr } = await supabase.from("users").insert({
-      name,
+      full_name: name,
       email,
       role,
       firm_id: firmId,
       is_active: true,
+      status: "invited",
     });
     if (insertErr) throw new Error(insertErr.message);
     await loadTeam();
@@ -481,7 +482,7 @@ export default function TeamPage() {
                 {members.map(member => {
                   const isCurrentUser = member.auth_user_id === currentUserId;
                   const isActive = member.is_active !== false;
-                  const initials = member.name
+                  const initials = member.full_name
                     .split(" ")
                     .filter(Boolean)
                     .slice(0, 2)
@@ -501,7 +502,7 @@ export default function TeamPage() {
                           </div>
                           <div>
                             <p className="text-sm font-medium text-gray-900">
-                              {member.name}
+                              {member.full_name}
                               {isCurrentUser && (
                                 <span className="ml-1.5 text-xs text-blue-500 font-normal">(You)</span>
                               )}
