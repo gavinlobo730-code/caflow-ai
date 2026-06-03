@@ -212,7 +212,6 @@ export default function ClientPortalPage() {
     try {
       const firmId = await getFirmId();
       const sb = getSupabaseClient();
-      const ext = file.name.split(".").pop();
       const uuid = crypto.randomUUID();
       const storagePath = `${firmId}/${selectedClientId}/${uuid}-${file.name}`;
 
