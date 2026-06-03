@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, FormEvent } from "react";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { Sparkles, Shield, Zap, TrendingUp } from "lucide-react";
 
@@ -153,7 +154,13 @@ export default function LoginPage() {
             </form>
           </div>
 
-          <p className="text-center text-xs text-gray-400 mt-6">
+          <p className="text-center text-xs text-gray-400 mt-4">
+            New firm?{" "}
+            <Link href="/signup" className="text-indigo-600 hover:underline">
+              Create your account →
+            </Link>
+          </p>
+          <p className="text-center text-xs text-gray-400 mt-2">
             CAflow AI — AI-powered practice management for Indian CAs
           </p>
         </div>

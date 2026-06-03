@@ -208,6 +208,58 @@ export default function OnboardingPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ─── Auto-create firm+user from Partner signup localStorage data ──────
+  useEffect(() => {
+    if (!user) return;
+    const currentUser = user; // capture non-null reference
+    async function autoCreateFirmFromSignup() {
+      const raw = typeof window !== "undefined" ? localStorage.getItem("caflow_signup") : null;
+      if (!raw) return;
+      let signupData: { firmName?: string; fullName?: string } = {};
+      try { signupData = JSON.parse(raw); } catch { return; }
+      if (!signupData.firmName) return;
+
+      // Check if user already has a row
+      const { data: existingUser } = await supabase
+        .from("users")
+        .select("id, firm_id")
+        .eq("auth_user_id", currentUser.id)
+        .maybeSingle();
+      if (existingUser?.firm_id) {
+        // Already onboarded — clear storage
+        localStorage.removeItem("caflow_signup");
+        setFirmId(existingUser.firm_id);
+        return;
+      }
+
+      // Create firm row
+      const { data: newFirm, error: firmErr } = await supabase
+        .from("firms")
+        .insert({ name: signupData.firmName.trim(), email: currentUser.email })
+        .select("id")
+        .single();
+      if (firmErr) { console.error("autoCreateFirm firmErr:", firmErr); return; }
+
+      // Create user row
+      const { error: userErr } = await supabase.from("users").insert({
+        auth_user_id: currentUser.id,
+        firm_id: newFirm.id,
+        full_name: signupData.fullName?.trim() ?? currentUser.email,
+        email: currentUser.email,
+        role: "Partner",
+        is_active: true,
+      });
+      if (userErr) { console.error("autoCreateFirm userErr:", userErr); return; }
+
+      localStorage.removeItem("caflow_signup");
+      setFirmId(newFirm.id);
+      // Pre-fill firm name in form
+      setFirmForm((f) => ({ ...f, name: signupData.firmName ?? f.name }));
+    }
+    autoCreateFirmFromSignup();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   // ─── Load firm_id on mount ────────────────────────────────────────────
   const loadFirmId = useCallback(async () => {
     if (!user) return;

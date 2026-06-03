@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   FileText, Calendar, FolderOpen, LogOut, AlertCircle, Upload,
   CheckCircle, AlertTriangle, Download,
@@ -132,6 +132,41 @@ export default function PortalPage() {
   const [uploadingRequestId, setUploadingRequestId] = useState<string | null>(null);
   const uploadRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
+  // Read ?client= param from magic link redirect URL
+  const clientIdFromUrl =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("client")
+      : null;
+
+  const loadPortalData = useCallback(async (authUserId: string, supabase: ReturnType<typeof getSupabaseClient>) => {
+    // Try auto-link from magic link redirect if client ID is in URL
+    if (clientIdFromUrl) {
+      const { data: linkedRow } = await supabase
+        .from("clients")
+        .select("portal_user_id")
+        .eq("id", clientIdFromUrl)
+        .eq("portal_enabled", true)
+        .maybeSingle();
+      if (linkedRow && !linkedRow.portal_user_id) {
+        // Auto-link on first login — no manual SQL needed
+        await supabase
+          .from("clients")
+          .update({ portal_user_id: authUserId })
+          .eq("id", clientIdFromUrl)
+          .eq("portal_enabled", true);
+      }
+    }
+
+    const { data: clientRow, error: clientErr } = await supabase
+      .from("clients")
+      .select("id, client_name, gst_filing_frequency, firm_id")
+      .eq("portal_user_id", authUserId)
+      .eq("portal_enabled", true)
+      .maybeSingle();
+
+    return { clientRow, clientErr };
+  }, [clientIdFromUrl]);
+
   useEffect(() => {
     async function load() {
       const supabase = getSupabaseClient();
@@ -146,12 +181,7 @@ export default function PortalPage() {
 
         const authUserId = session.user.id;
 
-        const { data: clientRow, error: clientErr } = await supabase
-          .from("clients")
-          .select("id, client_name, gst_filing_frequency, firm_id")
-          .eq("portal_user_id", authUserId)
-          .eq("portal_enabled", true)
-          .maybeSingle();
+        const { clientRow, clientErr } = await loadPortalData(authUserId, supabase);
 
         if (clientErr) throw new Error(clientErr.message);
         if (!clientRow) {
@@ -192,7 +222,7 @@ export default function PortalPage() {
       }
     }
     load();
-  }, []);
+  }, [loadPortalData]);
 
   async function handleUploadForRequest(requestId: string, file: File) {
     if (!client) return;
