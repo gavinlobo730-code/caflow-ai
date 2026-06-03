@@ -10,7 +10,7 @@ import {
   ChevronLeft, ChevronRight, Landmark, Shield,
   ShieldAlert, Sparkles, Bell, LogOut,
   ExternalLink, Menu, X, KanbanSquare, MessageSquare, KeyRound,
-  Search, Briefcase,
+  Search, Briefcase, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -33,6 +33,7 @@ const NAV_GROUPS = [
     label: "Tax & Compliance",
     items: [
       { href: "/accounting", label: "Accounting", icon: BookOpen },
+      { href: "/accounting/auto-journals", label: "Auto Journals", icon: Zap },
       { href: "/compliance", label: "Compliance", icon: Shield },
       { href: "/gst", label: "GST", icon: Receipt },
       { href: "/income-tax", label: "Income Tax", icon: Calculator },
