@@ -2,7 +2,18 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ChevronLeft, Plus, Trash2, CheckCircle, XCircle, Info } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, CheckCircle, XCircle, Info, Upload } from "lucide-react";
+import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+
+const JOURNAL_IMPORT_COLUMNS = [
+  { key: "entry_date",    label: "Entry Date",    required: true,  hint: "YYYY-MM-DD e.g. 2025-04-01" },
+  { key: "narration",     label: "Narration",     required: true,  hint: "Description of the transaction" },
+  { key: "reference_no",  label: "Reference No",  required: false, hint: "e.g. INV-001 or Bill-22" },
+  { key: "entry_type",    label: "Entry Type",    required: false, hint: "Sales | Purchase | Payment | Receipt | Journal | Contra | Opening" },
+  { key: "account_code",  label: "Account Code",  required: true,  hint: "From Chart of Accounts e.g. 1001" },
+  { key: "debit_rs",      label: "Debit (₹)",     required: false, hint: "Amount in rupees e.g. 10000" },
+  { key: "credit_rs",     label: "Credit (₹)",    required: false, hint: "Amount in rupees e.g. 10000" },
+];
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
@@ -77,6 +88,7 @@ export default function JournalPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -257,12 +269,20 @@ export default function JournalPage() {
           <h1 className="text-xl font-semibold text-gray-900">Journal Entries</h1>
           <p className="text-sm text-gray-500 mt-0.5">{entries.length} entries</p>
         </div>
-        <button
-          onClick={() => { setShowForm(true); setSelectedEntry(null); }}
-          className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700"
-        >
-          <Plus size={13} /> New Entry
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 px-3 py-1.5 rounded-md hover:bg-gray-50"
+          >
+            <Upload size={13} /> Import CSV
+          </button>
+          <button
+            onClick={() => { setShowForm(true); setSelectedEntry(null); }}
+            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700"
+          >
+            <Plus size={13} /> New Entry
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -547,6 +567,69 @@ export default function JournalPage() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {showImport && firmId && (
+        <CsvImportModal
+          title="Import Journal Entries from CSV"
+          columns={JOURNAL_IMPORT_COLUMNS}
+          templateFilename="caflow-journal-template.csv"
+          onClose={() => setShowImport(false)}
+          onImport={async (rows: ImportRow[]) => {
+            // Group rows by narration+date+reference to merge multi-line entries
+            const sb = getSupabaseClient();
+            type EntryGroup = { entry_date: string; narration: string; reference_no: string; entry_type: string; lines: { account_code: string; debit_rs: string; credit_rs: string }[] };
+            const groups = new Map<string, EntryGroup>();
+            for (const row of rows) {
+              const key = `${row.entry_date}||${row.narration}||${row.reference_no ?? ""}`;
+              if (!groups.has(key)) {
+                groups.set(key, { entry_date: row.entry_date, narration: row.narration, reference_no: row.reference_no ?? "", entry_type: row.entry_type || "Journal", lines: [] });
+              }
+              groups.get(key)!.lines.push({ account_code: row.account_code, debit_rs: row.debit_rs, credit_rs: row.credit_rs });
+            }
+            let imported = 0;
+            const errors: string[] = [];
+            for (const group of Array.from(groups.values())) {
+              const totalDebit = group.lines.reduce((s: number, l: EntryGroup["lines"][0]) => s + Math.round(parseFloat(l.debit_rs ?? "0") * 100), 0);
+              const totalCredit = group.lines.reduce((s: number, l: EntryGroup["lines"][0]) => s + Math.round(parseFloat(l.credit_rs ?? "0") * 100), 0);
+              const { data: je, error: jeErr } = await sb.from("journal_entries").insert({
+                firm_id: firmId,
+                client_id: (accounts[0] as unknown as { client_id?: string })?.client_id ?? null,
+                entry_date: group.entry_date,
+                narration: group.narration,
+                reference_no: group.reference_no || null,
+                entry_type: group.entry_type,
+                status: "draft",
+                total_debit_paise: totalDebit,
+                total_credit_paise: totalCredit,
+              }).select().single();
+              if (jeErr) { errors.push(`${group.narration}: ${jeErr.message}`); continue; }
+              const linePayload = group.lines.map((l: EntryGroup["lines"][0]) => {
+                const acct = accounts.find(a => a.account_code === l.account_code);
+                return {
+                  journal_entry_id: (je as { id: string }).id,
+                  account_id: acct?.id ?? null,
+                  debit_paise: Math.round(parseFloat(l.debit_rs ?? "0") * 100),
+                  credit_paise: Math.round(parseFloat(l.credit_rs ?? "0") * 100),
+                  narration: group.narration,
+                };
+              }).filter((l: { account_id: string | null | undefined }) => l.account_id);
+              if (linePayload.length > 0) await sb.from("journal_lines").insert(linePayload);
+              imported++;
+            }
+            if (imported > 0) {
+              const { data } = await sb.from("journal_entries").select("*").eq("firm_id", firmId).order("entry_date", { ascending: false });
+              if (data) setEntries(data as JournalEntry[]);
+            }
+            return { imported, errors };
+          }}
+          validateRow={(row) => {
+            const errs: string[] = [];
+            if (row.entry_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.entry_date)) errs.push("entry_date must be YYYY-MM-DD");
+            if (!row.debit_rs && !row.credit_rs) errs.push("Either debit_rs or credit_rs must be provided");
+            return errs;
+          }}
+        />
       )}
     </div>
   );

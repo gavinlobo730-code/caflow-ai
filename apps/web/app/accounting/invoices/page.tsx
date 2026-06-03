@@ -6,7 +6,22 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, X, Printer, AlertCircle, FileText } from "lucide-react";
+import { Plus, X, Printer, AlertCircle, FileText, Upload } from "lucide-react";
+import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+
+const INVOICE_IMPORT_COLUMNS = [
+  { key: "invoice_no",      label: "Invoice No",      required: true,  hint: "e.g. INV-2025-001" },
+  { key: "invoice_date",    label: "Invoice Date",    required: true,  hint: "YYYY-MM-DD e.g. 2025-04-01" },
+  { key: "client_name",     label: "Client Name",     required: true,  hint: "Must match existing client name exactly" },
+  { key: "description",     label: "Description",     required: true,  hint: "Service/item description" },
+  { key: "sac_code",        label: "SAC/HSN Code",    required: false, hint: "e.g. 998211" },
+  { key: "quantity",        label: "Quantity",         required: false, hint: "e.g. 1" },
+  { key: "rate_rs",         label: "Rate (₹)",         required: true,  hint: "e.g. 10000 (in rupees, not paise)" },
+  { key: "gst_rate_pct",    label: "GST Rate %",      required: true,  hint: "e.g. 18" },
+  { key: "place_of_supply", label: "Place of Supply", required: false, hint: "e.g. Maharashtra" },
+  { key: "is_igst",         label: "IGST?",           required: false, hint: "true | false (interstate supply)" },
+  { key: "notes",           label: "Notes",           required: false, hint: "Optional" },
+];
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -532,6 +547,7 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const [filterClient, setFilterClient] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
@@ -562,6 +578,57 @@ export default function InvoicesPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  async function handleInvoiceImport(rows: ImportRow[]) {
+    if (!firmId) return { imported: 0, errors: ["Not authenticated"] };
+    const sb = getSupabaseClient();
+    let imported = 0;
+    const errors: string[] = [];
+    for (const row of rows) {
+      const client = clients.find(c => c.client_name.toLowerCase() === row.client_name?.toLowerCase());
+      if (!client) { errors.push(`Row: client "${row.client_name}" not found`); continue; }
+      const rateRs = parseFloat(row.rate_rs ?? "0");
+      const qty = parseFloat(row.quantity ?? "1") || 1;
+      const gstPct = parseFloat(row.gst_rate_pct ?? "18");
+      const isIgst = row.is_igst?.toLowerCase() === "true";
+      const subtotalPaise = Math.round(rateRs * qty * 100);
+      const gstPaise = Math.round(subtotalPaise * gstPct / 100);
+      const cgstPaise = isIgst ? 0 : Math.round(gstPaise / 2);
+      const sgstPaise = isIgst ? 0 : Math.round(gstPaise / 2);
+      const igstPaise = isIgst ? gstPaise : 0;
+      const totalPaise = subtotalPaise + gstPaise;
+      const { data: inv, error: invErr } = await sb.from("sales_invoices").insert({
+        firm_id: firmId,
+        client_id: client.id,
+        invoice_no: row.invoice_no,
+        invoice_date: row.invoice_date,
+        place_of_supply: row.place_of_supply || null,
+        is_igst: isIgst,
+        subtotal_paise: subtotalPaise,
+        cgst_paise: cgstPaise,
+        sgst_paise: sgstPaise,
+        igst_paise: igstPaise,
+        total_paise: totalPaise,
+        status: "draft",
+        notes: row.notes || null,
+      }).select().single();
+      if (invErr) { errors.push(`${row.invoice_no}: ${invErr.message}`); continue; }
+      if (inv) {
+        await sb.from("invoice_lines").insert({
+          invoice_id: (inv as { id: string }).id,
+          description: row.description,
+          sac_code: row.sac_code || "998211",
+          quantity: qty,
+          rate_paise: Math.round(rateRs * 100),
+          amount_paise: subtotalPaise,
+          gst_rate_pct: gstPct,
+        });
+      }
+      imported++;
+    }
+    if (imported > 0) load();
+    return { imported, errors };
+  }
 
   const nextInvoiceNo = `INV-${new Date().getFullYear()}-${String(invoices.length + 1).padStart(3, "0")}`;
 
@@ -611,6 +678,9 @@ export default function InvoicesPage() {
             <h1 className="text-2xl font-bold text-gray-900">Sales Invoices</h1>
             <p className="text-sm text-gray-500 mt-0.5">CGST Act Section 31 - Tax Invoice</p>
           </div>
+          <Button variant="outline" onClick={() => setShowImport(true)} className="flex items-center gap-1.5">
+            <Upload size={14} />Import CSV
+          </Button>
           <Button onClick={() => setShowNew(true)} className="flex items-center gap-1.5">
             <Plus size={14} />New Invoice
           </Button>
@@ -697,6 +767,23 @@ export default function InvoicesPage() {
           </CardContent>
         </Card>
       </div>
+
+      {showImport && (
+        <CsvImportModal
+          title="Import Sales Invoices from CSV"
+          columns={INVOICE_IMPORT_COLUMNS}
+          templateFilename="caflow-invoices-template.csv"
+          onClose={() => setShowImport(false)}
+          onImport={handleInvoiceImport}
+          validateRow={(row) => {
+            const errs: string[] = [];
+            if (row.invoice_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.invoice_date)) errs.push("invoice_date must be YYYY-MM-DD");
+            if (row.rate_rs && isNaN(parseFloat(row.rate_rs))) errs.push("rate_rs must be a number");
+            if (row.gst_rate_pct && isNaN(parseFloat(row.gst_rate_pct))) errs.push("gst_rate_pct must be a number");
+            return errs;
+          }}
+        />
+      )}
     </div>
   );
 }

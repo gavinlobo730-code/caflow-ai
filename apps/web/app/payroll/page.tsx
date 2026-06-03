@@ -9,8 +9,22 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Users, Play, FileText, Shield, Plus, X, AlertCircle,
-  Download, CheckCircle, Clock, AlertTriangle, BarChart2,
+  Download, CheckCircle, Clock, AlertTriangle, BarChart2, Upload,
 } from "lucide-react";
+import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+
+const EMPLOYEE_IMPORT_COLUMNS = [
+  { key: "name",                    label: "Employee Name",       required: true,  hint: "e.g. Ramesh Kumar" },
+  { key: "pan",                     label: "PAN",                 required: true,  hint: "e.g. AABCU9603R" },
+  { key: "designation",             label: "Designation",         required: false, hint: "e.g. Senior Associate" },
+  { key: "client_name",             label: "Client Name",         required: true,  hint: "Must match existing client" },
+  { key: "basic_rs",                label: "Basic Salary (₹/mo)", required: true,  hint: "e.g. 30000" },
+  { key: "hra_percent",             label: "HRA %",               required: false, hint: "e.g. 40" },
+  { key: "da_percent",              label: "DA %",                required: false, hint: "e.g. 0" },
+  { key: "other_allowances_rs",     label: "Other Allow. (₹/mo)",required: false, hint: "e.g. 5000" },
+  { key: "pf_applicable",           label: "PF Applicable",       required: false, hint: "true | false" },
+  { key: "esi_applicable",          label: "ESI Applicable",      required: false, hint: "true | false" },
+];
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -824,6 +838,7 @@ export default function PayrollPage() {
   const [statSlips, setStatSlips] = useState<PayrollSlip[]>([]);
 
   const [showAdd, setShowAdd] = useState(false);
+  const [showImportEmp, setShowImportEmp] = useState(false);
   const [viewSlip, setViewSlip] = useState<PayrollSlip | null>(null);
 
   const load = useCallback(async () => {
@@ -976,9 +991,14 @@ export default function PayrollPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Employees</CardTitle>
-                <Button size="sm" onClick={() => setShowAdd(true)} className="flex items-center gap-1.5">
-                  <Plus size={14} />Add Employee
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setShowImportEmp(true)} className="flex items-center gap-1.5">
+                    <Upload size={14} />Import CSV
+                  </Button>
+                  <Button size="sm" onClick={() => setShowAdd(true)} className="flex items-center gap-1.5">
+                    <Plus size={14} />Add Employee
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 {employees.length === 0 ? (
@@ -1218,6 +1238,47 @@ export default function PayrollPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {showImportEmp && firmId && (
+        <CsvImportModal
+          title="Import Employees from CSV"
+          columns={EMPLOYEE_IMPORT_COLUMNS}
+          templateFilename="caflow-employees-template.csv"
+          onClose={() => setShowImportEmp(false)}
+          onImport={async (rows: ImportRow[]) => {
+            const sb = getSupabaseClient();
+            let imported = 0;
+            const errors: string[] = [];
+            for (const row of rows) {
+              const client = clients.find(c => c.client_name.toLowerCase() === row.client_name?.toLowerCase());
+              if (!client) { errors.push(`Employee "${row.name}": client "${row.client_name}" not found`); continue; }
+              const { error } = await sb.from("payroll_employees").insert({
+                firm_id: firmId,
+                client_id: client.id,
+                name: row.name,
+                pan: row.pan.toUpperCase(),
+                designation: row.designation || "",
+                basic_paise: Math.round(parseFloat(row.basic_rs ?? "0") * 100),
+                hra_percent: parseFloat(row.hra_percent ?? "40"),
+                da_percent: parseFloat(row.da_percent ?? "0"),
+                other_allowances_paise: Math.round(parseFloat(row.other_allowances_rs ?? "0") * 100),
+                pf_applicable: row.pf_applicable?.toLowerCase() !== "false",
+                esi_applicable: row.esi_applicable?.toLowerCase() === "true",
+              });
+              if (error) errors.push(`${row.name}: ${error.message}`);
+              else imported++;
+            }
+            if (imported > 0) load();
+            return { imported, errors };
+          }}
+          validateRow={(row) => {
+            const errs: string[] = [];
+            if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(row.pan?.toUpperCase() ?? "")) errs.push("Invalid PAN format");
+            if (row.basic_rs && isNaN(parseFloat(row.basic_rs))) errs.push("basic_rs must be a number");
+            return errs;
+          }}
+        />
+      )}
     </div>
   );
 }
