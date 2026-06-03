@@ -211,7 +211,7 @@ export default function EmployeePortalPage() {
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-xs font-bold text-indigo-600 tracking-wide uppercase"><PracticeSync</span>
+              <span className="text-xs font-bold text-indigo-600 tracking-wide uppercase">PracticeSync</span>
               <span className="text-xs text-gray-300">|</span>
               <span className="text-xs text-gray-400">Employee Portal</span>
             </div>
