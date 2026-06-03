@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { BookOpen, FileText, BarChart2, Scale, TrendingUp, List, ArrowUpRight, ArrowDownRight, Building2, Receipt, RefreshCw, Target, IndianRupee, ClipboardCheck } from "lucide-react";
+import { BookOpen, FileText, BarChart2, Scale, TrendingUp, List, ArrowUpRight, ArrowDownRight, Building2, Receipt, RefreshCw, Target, IndianRupee, ClipboardCheck, Lock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -25,6 +25,7 @@ const NAV_CARDS = [
   { label: "Retainer Tracker", description: "Track monthly retainer clients, work done, and generate GST invoices", href: "/accounting/retainer", icon: IndianRupee },
   { label: "Bank Reconciliation", description: "Match bank statement transactions with journal ledger entries", href: "/accounting/bank-reconciliation", icon: ArrowUpRight },
   { label: "Trial Balance Import", description: "Import opening balances from Tally, Busy, QuickBooks, Zoho, Excel CSV", href: "/accounting/trial-balance-import", icon: Scale },
+  { label: "Lock Financial Year", description: "Lock closed years to prevent accidental edits — Partner only", href: "/accounting/lock-year", icon: Lock },
 ];
 
 const statusBadge: Record<string, string> = {
