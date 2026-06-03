@@ -21,7 +21,7 @@ export default function SignupPage() {
       // Store signup data so /onboarding can read it after magic link click
       if (typeof window !== "undefined") {
         localStorage.setItem(
-          "caflow_signup",
+          "practicesync_signup",
           JSON.stringify({ firmName: firmName.trim(), fullName: fullName.trim() })
         );
       }
@@ -51,8 +51,8 @@ export default function SignupPage() {
           <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center mx-auto mb-4">
             <span className="text-white font-bold text-lg">CA</span>
           </div>
-          <h1 className="text-white text-2xl font-bold">CAflow AI</h1>
-          <p className="text-indigo-300 text-sm mt-1">AI-powered practice management for CAs</p>
+          <h1 className="text-white text-2xl font-bold">PracticeSync AI</h1>
+          <p className="text-indigo-300 text-sm mt-1">AI-powered operating system for modern accounting and advisory firms</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-2xl p-8">

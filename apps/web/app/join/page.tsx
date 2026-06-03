@@ -76,7 +76,7 @@ export default function JoinPage() {
           <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center mx-auto mb-4">
             <span className="text-white font-bold text-lg">CA</span>
           </div>
-          <h1 className="text-white text-2xl font-bold">CAflow AI</h1>
+          <h1 className="text-white text-2xl font-bold">PracticeSync AI</h1>
         </div>
 
         <div className="bg-white rounded-2xl shadow-2xl p-8 text-center space-y-4">

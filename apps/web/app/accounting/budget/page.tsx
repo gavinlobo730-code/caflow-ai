@@ -32,7 +32,7 @@ interface BudgetRow {
 // ─── localStorage helpers ──────────────────────────────────────────────────
 
 function lsKey(fy: FY): string {
-  return `caflow_budget_${fy}`;
+  return `practicesync_budget_${fy}`;
 }
 
 function loadBudgets(fy: FY): Record<string, number> {

@@ -123,7 +123,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
 
     // Add an Instructions sheet
     const instructions = [
-      ["CAflow AI — Import Template"],
+      ["PracticeSync AI — Import Template"],
       [""],
       ["INSTRUCTIONS:"],
       ["1. Do NOT modify the header row (Row 1)"],

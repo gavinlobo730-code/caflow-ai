@@ -573,7 +573,7 @@ export default function JournalPage() {
         <CsvImportModal
           title="Import Journal Entries from CSV"
           columns={JOURNAL_IMPORT_COLUMNS}
-          templateFilename="caflow-journal-template.xlsx"
+          templateFilename="practicesync-journal-template.xlsx"
           onClose={() => setShowImport(false)}
           onImport={async (rows: ImportRow[]) => {
             // Group rows by narration+date+reference to merge multi-line entries

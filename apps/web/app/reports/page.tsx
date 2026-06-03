@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Reports Hub — CAflow AI
+ * Reports Hub — PracticeSync AI
  * Inline report viewer with print/export via window.print()
  */
 

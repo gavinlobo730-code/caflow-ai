@@ -335,7 +335,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
 
         <p className="text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1.5">
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
-          CAflow never auto-submits to the GST portal. Always file manually after CA review.
+          PracticeSync never auto-submits to the GST portal. Always file manually after CA review.
         </p>
       </div>
     </div>
@@ -689,7 +689,7 @@ export default function GSTPage() {
             <p className="text-[10px] text-gray-400">
               {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
               GSTR-1 (Section 37): 11th · GSTR-3B (Section 39): 20th · GSTR-9 (Section 44): 31 Dec ·
-              CAflow does not auto-submit to the GST portal — always file manually after CA review.
+              PracticeSync does not auto-submit to the GST portal — always file manually after CA review.
             </p>
           </div>
         )}

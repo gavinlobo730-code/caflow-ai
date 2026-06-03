@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Employee Self-Service Portal — CAflow AI
+ * Employee Self-Service Portal — PracticeSync AI
  * Allows employees of CA firm clients to view their own payroll info.
  * Detects employee record by matching auth_user_id on payroll_employees.
  */
@@ -211,7 +211,7 @@ export default function EmployeePortalPage() {
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-xs font-bold text-indigo-600 tracking-wide uppercase">CAflow</span>
+              <span className="text-xs font-bold text-indigo-600 tracking-wide uppercase">PracticeSync</span>
               <span className="text-xs text-gray-300">|</span>
               <span className="text-xs text-gray-400">Employee Portal</span>
             </div>

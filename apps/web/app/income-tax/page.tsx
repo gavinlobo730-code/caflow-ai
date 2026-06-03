@@ -905,7 +905,7 @@ export default function IncomeTaxPage() {
                   CA Confirmation Required
                 </p>
                 <p className="text-xs text-amber-700 mt-1">
-                  This records an already-filed return. CAflow does NOT
+                  This records an already-filed return. PracticeSync does NOT
                   auto-submit to the Income Tax Portal. Verify the
                   acknowledgement number before saving.
                 </p>

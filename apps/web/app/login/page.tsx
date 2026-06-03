@@ -40,7 +40,7 @@ export default function LoginPage() {
             <span className="text-white font-bold text-sm">CA</span>
           </div>
           <div>
-            <span className="text-white font-bold text-xl tracking-tight">CAflow</span>
+            <span className="text-white font-bold text-xl tracking-tight">PracticeSync</span>
             <span className="text-indigo-300 font-bold text-xl ml-1">AI</span>
           </div>
         </div>
@@ -49,11 +49,11 @@ export default function LoginPage() {
         <div className="relative z-10 space-y-8">
           <div>
             <h1 className="text-4xl font-bold text-white leading-tight">
-              Practice management<br />
-              <span className="text-indigo-300">built for Indian CAs</span>
+              PracticeSync AI<br />
+              <span className="text-indigo-300">built for modern firms</span>
             </h1>
             <p className="text-indigo-200 mt-4 text-base leading-relaxed">
-              Replace Tally + ClearTax + Winman + WhatsApp with one AI-first platform.
+              Manage clients, compliance, accounting, payroll, documents and workflows from one intelligent workspace.
             </p>
           </div>
 
@@ -70,7 +70,7 @@ export default function LoginPage() {
         </div>
 
         <p className="relative z-10 text-indigo-400 text-xs">
-          © 2026 CAflow AI. Trusted by CA firms across India.
+          © 2026 PracticeSync AI. Trusted by accounting and advisory firms.
         </p>
       </div>
 
@@ -84,7 +84,7 @@ export default function LoginPage() {
               <span className="text-white font-bold text-sm">CA</span>
             </div>
             <span className="text-xl font-bold text-gray-900">
-              CAflow<span className="text-indigo-600">AI</span>
+              PracticeSync<span className="text-indigo-600">AI</span>
             </span>
           </div>
 
@@ -97,7 +97,7 @@ export default function LoginPage() {
                 </div>
                 <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Welcome back</span>
               </div>
-              <h2 className="text-2xl font-bold text-gray-900">Sign in to your firm</h2>
+              <h2 className="text-2xl font-bold text-gray-900">Welcome to PracticeSync AI</h2>
               <p className="text-sm text-gray-500 mt-1">Enter your credentials to continue</p>
             </div>
 
@@ -161,7 +161,7 @@ export default function LoginPage() {
             </Link>
           </p>
           <p className="text-center text-xs text-gray-400 mt-2">
-            CAflow AI — AI-powered practice management for Indian CAs
+            PracticeSync AI — The operating system for modern accounting and advisory firms
           </p>
         </div>
       </div>

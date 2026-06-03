@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Attendance & Leave Management — CAflow AI
+ * Attendance & Leave Management — PracticeSync AI
  * All leave/attendance data stored per employee per month/year.
  * LOP (Loss of Pay) = Working Days - Days Present - CL - SL - EL
  */
@@ -510,7 +510,7 @@ export default function AttendancePage() {
         <CsvImportModal
           title="Import Attendance from CSV"
           columns={ATTENDANCE_IMPORT_COLUMNS}
-          templateFilename="caflow-attendance-template.xlsx"
+          templateFilename="practicesync-attendance-template.xlsx"
           onClose={() => setShowImport(false)}
           onImport={async (rows: ImportRow[]) => {
             let imported = 0;

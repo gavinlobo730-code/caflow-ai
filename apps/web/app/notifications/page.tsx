@@ -253,7 +253,7 @@ async function fetchNotifications(): Promise<Notification[]> {
 // localStorage read-state helpers
 // ---------------------------------------------------------------------------
 
-const LS_KEY = "caflow_read_notifs";
+const LS_KEY = "practicesync_read_notifs";
 
 function getReadSet(): Set<string> {
   if (typeof window === "undefined") return new Set();

@@ -93,7 +93,7 @@ export default function BankImportPage() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Template");
     XLSX.utils.book_append_sheet(wb, wsInfo, "Instructions");
-    XLSX.writeFile(wb, "caflow-bank-statement-template.xlsx");
+    XLSX.writeFile(wb, "practicesync-bank-statement-template.xlsx");
   }
 
   const totalDebits = parsed.reduce((s, t) => s + t.debit_paise, 0);

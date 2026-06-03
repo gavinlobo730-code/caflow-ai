@@ -265,7 +265,7 @@ function AddDeductionModal({ firmId, onClose, onAdded }: {
         </div>
         <p className="text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1.5">
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
-          Deposit TDS to government account via TRACES portal. CAflow does not auto-submit.
+          Deposit TDS to government account via TRACES portal. PracticeSync does not auto-submit.
         </p>
       </div>
     </div>
@@ -562,7 +562,7 @@ export default function TDSPage() {
           <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 flex gap-2">
             {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
             <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-sm text-amber-700">File 24Q/26Q returns manually on TRACES portal (traces.gov.in). CAflow does not auto-submit to any government portal.</p>
+            <p className="text-sm text-amber-700">File 24Q/26Q returns manually on TRACES portal (traces.gov.in). PracticeSync does not auto-submit to any government portal.</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50">
@@ -645,7 +645,7 @@ export default function TDSPage() {
         <CsvImportModal
           title="Import TDS Deductions from CSV"
           columns={TDS_IMPORT_COLUMNS}
-          templateFilename="caflow-tds-template.xlsx"
+          templateFilename="practicesync-tds-template.xlsx"
           onClose={() => setShowImport(false)}
           onImport={async (rows: ImportRow[]) => {
             const sb = getSupabaseClient();

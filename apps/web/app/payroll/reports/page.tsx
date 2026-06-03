@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Payroll Reports — CAflow AI
+ * Payroll Reports — PracticeSync AI
  *
  * IT Act Section 192 (TDS on Salary), EPF Act, ESI Act
  * All monetary values stored and computed in integer paise.

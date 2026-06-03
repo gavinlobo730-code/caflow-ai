@@ -99,7 +99,7 @@ function SidebarContent({
               <span className="text-white text-[11px] font-bold tracking-tight">CA</span>
             </div>
             <div>
-              <span className="text-white text-[13px] font-semibold tracking-tight">CAflow</span>
+              <span className="text-white text-[13px] font-semibold tracking-tight">PracticeSync</span>
               <span className="text-indigo-400 text-[13px] font-semibold ml-0.5">AI</span>
             </div>
           </div>

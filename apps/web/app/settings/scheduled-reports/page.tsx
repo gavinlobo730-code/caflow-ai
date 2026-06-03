@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Scheduled Report Delivery — CAflow AI
+ * Scheduled Report Delivery — PracticeSync AI
  * Firm staff can schedule automatic report emails to clients.
  */
 

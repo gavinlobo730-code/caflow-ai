@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Cash Flow Forecast — CAflow AI
+ * Cash Flow Forecast — PracticeSync AI
  * 6-month cash flow projection per client.
  * All monetary values in integer paise. Never use floating point for rupee calculations.
  */

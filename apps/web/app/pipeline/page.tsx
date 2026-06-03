@@ -92,7 +92,7 @@ const STAGE_COLORS: Record<Stage, { bg: string; header: string; badge: string }>
 // localStorage helpers
 // ---------------------------------------------------------------------------
 
-const LS_KEY = "caflow_pipeline";
+const LS_KEY = "practicesync_pipeline";
 
 function loadLeads(): Lead[] {
   if (typeof window === "undefined") return [];
