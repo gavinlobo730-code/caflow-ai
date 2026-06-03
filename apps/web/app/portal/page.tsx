@@ -48,11 +48,6 @@ interface GSTDueDate {
 
 type PortalTab = "requests" | "shared" | "filings" | "dues";
 
-function formatPaise(paise: number): string {
-  const rupees = Math.floor(paise / 100);
-  const paiseRemainder = paise % 100;
-  return `₹${rupees.toLocaleString("en-IN")}.${String(paiseRemainder).padStart(2, "0")}`;
-}
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
