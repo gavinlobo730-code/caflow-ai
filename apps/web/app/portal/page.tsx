@@ -10,6 +10,15 @@ interface PortalClient {
   gst_filing_frequency: string | null;
 }
 
+interface PortalDocument {
+  id: string;
+  file_name: string;
+  label: string;
+  storage_path: string;
+  file_size_bytes: number | null;
+  created_at: string;
+}
+
 interface PortalInvoice {
   id: string;
   invoice_number: string | null;
@@ -99,6 +108,7 @@ function LoadingScreen() {
 export default function PortalPage() {
   const [client, setClient] = useState<PortalClient | null>(null);
   const [invoices, setInvoices] = useState<PortalInvoice[]>([]);
+  const [documents, setDocuments] = useState<PortalDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -140,6 +150,14 @@ export default function PortalPage() {
           .limit(10);
 
         setInvoices(invoiceRows ?? []);
+
+        const { data: docRows } = await supabase
+          .from("client_documents")
+          .select("id, file_name, label, storage_path, file_size_bytes, created_at")
+          .eq("client_id", clientRow.id)
+          .order("created_at", { ascending: false });
+
+        setDocuments(docRows ?? []);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load portal");
       } finally {
@@ -148,6 +166,25 @@ export default function PortalPage() {
     }
     load();
   }, []);
+
+  async function handleDownloadDoc(doc: PortalDocument) {
+    const supabase = getSupabaseClient();
+    const { data, error: err } = await supabase.storage
+      .from("Documents")
+      .createSignedUrl(doc.storage_path, 3600);
+    if (err || !data) {
+      alert("Could not generate download link. Please try again.");
+      return;
+    }
+    window.open(data.signedUrl, "_blank");
+  }
+
+  function formatFileSize(bytes: number | null): string {
+    if (bytes === null) return "";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
 
   async function handleSignOut() {
     const supabase = getSupabaseClient();
@@ -284,17 +321,40 @@ export default function PortalPage() {
           )}
         </div>
 
-        {/* Documents — placeholder */}
+        {/* Documents */}
         <div className="bg-white rounded-xl border border-gray-100">
           <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2">
             <FolderOpen className="w-4 h-4 text-blue-600" />
             <h2 className="text-sm font-semibold text-gray-900">Documents</h2>
           </div>
-          <div className="px-5 py-10 text-center space-y-1">
-            <FolderOpen className="w-8 h-8 text-gray-200 mx-auto" />
-            <p className="text-sm text-gray-400">Coming soon</p>
-            <p className="text-xs text-gray-300">Your CA will share returns, notices, and reports here</p>
-          </div>
+          {documents.length === 0 ? (
+            <div className="px-5 py-10 text-center space-y-1">
+              <FolderOpen className="w-8 h-8 text-gray-200 mx-auto" />
+              <p className="text-sm text-gray-400">No documents shared yet — your CA will upload returns, notices, and reports here</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {documents.map(doc => (
+                <div key={doc.id} className="px-5 py-3 flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{doc.label}</p>
+                    <p className="text-xs text-gray-400 mt-0.5 truncate">
+                      {doc.file_name}{doc.file_size_bytes ? ` · ${formatFileSize(doc.file_size_bytes)}` : ""} · {formatDate(doc.created_at)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleDownloadDoc(doc)}
+                    className="shrink-0 flex items-center gap-1.5 text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
