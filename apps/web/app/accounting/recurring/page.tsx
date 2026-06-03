@@ -31,7 +31,7 @@ interface RecurringTemplate {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-const LS_KEY = "caflow_recurring_templates";
+const LS_KEY = "practicesync_recurring_templates";
 
 function loadTemplates(): RecurringTemplate[] {
   if (typeof window === "undefined") return [];

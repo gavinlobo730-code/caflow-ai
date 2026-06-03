@@ -1,4 +1,4 @@
-const CACHE_NAME = 'caflow-v6';
+const CACHE_NAME = 'practicesync-v1';
 const STATIC_ASSETS = ['/login/'];
 
 self.addEventListener('install', e => {

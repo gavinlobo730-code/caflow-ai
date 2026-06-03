@@ -84,7 +84,7 @@ type MemberPermissions = Record<string, Record<Module, boolean>>;
 
 // localStorage key per firm
 function permissionsKey(firmId: string): string {
-  return `caflow_permissions_${firmId}`;
+  return `practicesync_permissions_${firmId}`;
 }
 
 function loadPermissionsFromStorage(firmId: string): MemberPermissions {

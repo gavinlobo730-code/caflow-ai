@@ -1,7 +1,7 @@
 {
-  "name": "CAflow AI",
-  "short_name": "CAflow",
-  "description": "AI-powered practice management for Indian CAs",
+  "name": "PracticeSync AI",
+  "short_name": "PracticeSync",
+  "description": "AI-powered operating system for modern accounting and advisory firms",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

@@ -42,7 +42,7 @@ export default function AIAssistantPage() {
       const apiKey = process.env.NEXT_PUBLIC_GROQ_API_KEY;
       if (!apiKey) throw new Error("NEXT_PUBLIC_GROQ_API_KEY is not configured");
 
-      const SYSTEM_PROMPT = `You are an expert AI assistant for Indian Chartered Accountants using CAflow AI. You have deep knowledge of Indian taxation and compliance as of FY 2026-27.
+      const SYSTEM_PROMPT = `You are an expert AI assistant for Indian Chartered Accountants using PracticeSync AI. You have deep knowledge of Indian taxation and compliance as of FY 2026-27.
 
 KEY FACTS FOR FY 2026-27 (AY 2027-28):
 - New Tax Regime (default): 0-4L: Nil, 4-8L: 5%, 8-12L: 10%, 12-16L: 15%, 16-20L: 20%, 20-24L: 25%, Above 24L: 30%

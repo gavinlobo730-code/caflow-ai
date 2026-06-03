@@ -348,7 +348,7 @@ function exportExcel(rows: ReconRow[], period: string, clientName: string) {
 
 function downloadTemplate(filename: string) {
   const csv = [
-    "# CAflow GSTR-2A / Purchase Register CSV Template",
+    "# PracticeSync GSTR-2A / Purchase Register CSV Template",
     "# Required: supplier_gstin, invoice_number, taxable_value",
     "# All amounts in Indian Rupees (decimal)",
     CSV_TEMPLATE_HEADER,
@@ -888,7 +888,7 @@ export default function GstReconciliationPage() {
                 <p className="text-[10px] text-gray-400">
                   {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
                   CGST Act Section 16 · Rule 36(4) — ITC subject to 105% cap of GSTR-2A eligible credit ·
-                  CAflow does not auto-submit anything to the GST portal — CA must review and file manually.
+                  PracticeSync does not auto-submit anything to the GST portal — CA must review and file manually.
                 </p>
               </div>
             </div>

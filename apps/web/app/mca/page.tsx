@@ -449,7 +449,7 @@ export default function MCAPage() {
           <div className="px-5 py-3 border-t border-gray-50 bg-gray-50/30">
             <p className="text-[10px] text-gray-400">
               {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
-              All filings must be submitted manually on MCA21 portal. CAflow does not auto-submit.
+              All filings must be submitted manually on MCA21 portal. PracticeSync does not auto-submit.
             </p>
           </div>
         </div>

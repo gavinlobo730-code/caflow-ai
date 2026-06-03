@@ -101,7 +101,7 @@ const TEMPLATES: Template[] = [
 // localStorage helpers — message history (max 20)
 // ---------------------------------------------------------------------------
 
-const LS_HISTORY_KEY = "caflow_wa_history";
+const LS_HISTORY_KEY = "practicesync_wa_history";
 const MAX_HISTORY = 20;
 
 function loadHistory(): MessageHistoryEntry[] {
