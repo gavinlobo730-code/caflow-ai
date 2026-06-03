@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Upload, CheckCircle, AlertCircle, ArrowRight, Building2, FileText } from "lucide-react";
+import { Upload, CheckCircle, AlertCircle, ArrowRight, Building2, FileText, Download } from "lucide-react";
 import { getClients } from "@/lib/data/clients";
 import { parseCSV, importBankStatement } from "@/lib/data/bankStatements";
 import type { ParsedTransaction } from "@/lib/data/bankStatements";
 import type { Client } from "@/lib/types";
+import * as XLSX from "xlsx";
 
 const BANKS = [
   "HDFC Bank", "SBI", "ICICI Bank", "Axis Bank", "Kotak Mahindra Bank",
@@ -70,14 +71,48 @@ export default function BankImportPage() {
     }
   }
 
+  function downloadTemplate() {
+    const headers = ["Date", "Description", "Debit", "Credit", "Balance"];
+    const hints   = ["DD/MM/YYYY or YYYY-MM-DD", "Transaction narration", "Amount debited (leave blank if credit)", "Amount credited (leave blank if debit)", "Closing balance"];
+    const example = ["01/04/2024", "NEFT CR - SALARY", "", "50000.00", "1,50,000.00"];
+    const ws = XLSX.utils.aoa_to_sheet([headers, hints, example]);
+    ws["!cols"] = headers.map(() => ({ wch: 28 }));
+
+    const wsInfo = XLSX.utils.aoa_to_sheet([
+      ["Bank Statement Import — Instructions"],
+      [],
+      ["1. Export a CSV statement from your bank's net banking portal"],
+      ["2. If columns differ, rename them to: Date, Description, Debit, Credit, Balance"],
+      ["3. Date formats accepted: DD/MM/YYYY, YYYY-MM-DD, DD-MM-YYYY"],
+      ["4. Amount columns: numeric values, commas ignored (e.g. 1,00,000 or 100000)"],
+      ["5. Leave Debit blank for credit rows and vice versa — do NOT enter 0"],
+      [],
+      ["Supported banks: HDFC, SBI, ICICI, Axis, Kotak, Canara, PNB, BoB, Union"],
+    ]);
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template");
+    XLSX.utils.book_append_sheet(wb, wsInfo, "Instructions");
+    XLSX.writeFile(wb, "caflow-bank-statement-template.xlsx");
+  }
+
   const totalDebits = parsed.reduce((s, t) => s + t.debit_paise, 0);
   const totalCredits = parsed.reduce((s, t) => s + t.credit_paise, 0);
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Bank Statement Import</h1>
-        <p className="text-sm text-gray-500 mt-1">Import CSV bank statements from any Indian bank</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Bank Statement Import</h1>
+          <p className="text-sm text-gray-500 mt-1">Import CSV bank statements from any Indian bank</p>
+        </div>
+        <button
+          onClick={downloadTemplate}
+          className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+        >
+          <Download size={15} />
+          Download Template
+        </button>
       </div>
 
       {/* Steps indicator */}

@@ -1243,7 +1243,7 @@ export default function PayrollPage() {
         <CsvImportModal
           title="Import Employees from CSV"
           columns={EMPLOYEE_IMPORT_COLUMNS}
-          templateFilename="caflow-employees-template.csv"
+          templateFilename="caflow-employees-template.xlsx"
           onClose={() => setShowImportEmp(false)}
           onImport={async (rows: ImportRow[]) => {
             const sb = getSupabaseClient();

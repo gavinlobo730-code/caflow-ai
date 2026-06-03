@@ -11,6 +11,7 @@
 
 import { useState, useRef } from "react";
 import { X, Download, Upload, AlertCircle, CheckCircle, Loader } from "lucide-react";
+import * as XLSX from "xlsx";
 
 export interface CsvColumn {
   key: string;          // CSV header name (must match template)
@@ -96,14 +97,48 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
   const fileRef = useRef<HTMLInputElement>(null);
 
   function downloadTemplate() {
-    const headerRow = columns.map(c => `"${c.key}"`).join(",");
-    const hintRow = "# " + columns.map(c => c.hint ?? (c.required ? "required" : "optional")).join(",");
-    const exampleRow = columns.map(c => `"${c.hint ?? ""}`).join(",");
-    const csv = [hintRow, headerRow, exampleRow].join("\n");
-    const a = document.createElement("a");
-    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-    a.download = templateFilename;
-    a.click();
+    // Build worksheet: row 1 = headers, row 2 = hints, row 3 = example placeholder
+    const headerRow = columns.map(c => c.key);
+    const hintRow = columns.map(c => c.hint ?? (c.required ? "REQUIRED" : "optional"));
+    const exampleRow = columns.map(c => c.hint ?? "");
+
+    const ws = XLSX.utils.aoa_to_sheet([headerRow, hintRow, exampleRow]);
+
+    // Style header row bold + blue fill using column widths
+    ws["!cols"] = columns.map(() => ({ wch: 22 }));
+
+    // Mark required columns with a note in the hint row
+    columns.forEach((col, i) => {
+      const cell = ws[XLSX.utils.encode_cell({ r: 0, c: i })];
+      if (cell) {
+        cell.s = {
+          font: { bold: true, color: { rgb: col.required ? "C00000" : "1F3864" } },
+          fill: { fgColor: { rgb: col.required ? "FFE6E6" : "DCE6F1" } },
+        };
+      }
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template");
+
+    // Add an Instructions sheet
+    const instructions = [
+      ["CAflow AI — Import Template"],
+      [""],
+      ["INSTRUCTIONS:"],
+      ["1. Do NOT modify the header row (Row 1)"],
+      ["2. Delete Row 2 (hints) before uploading"],
+      ["3. Enter your data from Row 3 onwards"],
+      ["4. Save as CSV (comma-separated) before uploading"],
+      [""],
+      ["Column Guide:"],
+      ...columns.map(c => [c.key, c.required ? "REQUIRED" : "optional", c.hint ?? c.label]),
+    ];
+    const wsInfo = XLSX.utils.aoa_to_sheet(instructions);
+    wsInfo["!cols"] = [{ wch: 28 }, { wch: 12 }, { wch: 50 }];
+    XLSX.utils.book_append_sheet(wb, wsInfo, "Instructions");
+
+    XLSX.writeFile(wb, templateFilename.replace(".csv", ".xlsx"));
   }
 
   function handleFile(file: File) {

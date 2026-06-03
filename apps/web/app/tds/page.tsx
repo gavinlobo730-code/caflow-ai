@@ -645,7 +645,7 @@ export default function TDSPage() {
         <CsvImportModal
           title="Import TDS Deductions from CSV"
           columns={TDS_IMPORT_COLUMNS}
-          templateFilename="caflow-tds-template.csv"
+          templateFilename="caflow-tds-template.xlsx"
           onClose={() => setShowImport(false)}
           onImport={async (rows: ImportRow[]) => {
             const sb = getSupabaseClient();

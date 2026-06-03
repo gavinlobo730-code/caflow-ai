@@ -278,7 +278,7 @@ export default function ClientsPage() {
         <CsvImportModal
           title="Import Clients from CSV"
           columns={CLIENT_IMPORT_COLUMNS}
-          templateFilename="caflow-clients-template.csv"
+          templateFilename="caflow-clients-template.xlsx"
           onClose={() => setImportOpen(false)}
           onImport={handleClientImport}
           validateRow={(row) => {
