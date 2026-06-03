@@ -172,7 +172,7 @@ export default function SettingsPage() {
       // Fetch firm details
       const { data: firmData, error: firmError } = await supabase
         .from("firms")
-        .select("name, email, phone, address_line1, city, state, pincode, gst_number, icai_mrn")
+        .select("name, email, phone, address_line1, city, state, pincode, gst_number, icai_mrn, pan, website")
         .eq("id", userData.firm_id)
         .single();
 
@@ -181,11 +181,11 @@ export default function SettingsPage() {
       setForm({
         name: firmData.name ?? "",
         gstin: firmData.gst_number ?? "",
-        pan: "", // pan column not yet in schema — UI only for now
+        pan: firmData.pan ?? "",
         icai_mrn: firmData.icai_mrn ?? "",
         phone: firmData.phone ?? "",
         email: firmData.email ?? "",
-        website: "", // website column not yet in schema — UI only for now
+        website: firmData.website ?? "",
         address_line1: firmData.address_line1 ?? "",
         city: firmData.city ?? "",
         state: firmData.state ?? "",
@@ -259,6 +259,8 @@ export default function SettingsPage() {
           state: form.state || null,
           pincode: form.pincode.trim() || null,
           gst_number: form.gstin.trim() || null,
+          pan: form.pan.trim() || null,
+          website: form.website.trim() || null,
           icai_mrn: form.icai_mrn.trim() || null,
         })
         .eq("id", firmId);
