@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "./AuthContext";
+import { LogoIcon } from "@/components/LogoIcon";
 
 const PUBLIC_PREFIXES = ["/login", "/signup", "/onboarding", "/join", "/auth", "/portal"];
 
@@ -30,9 +31,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex h-screen items-center justify-center bg-gradient-to-br from-indigo-950 via-indigo-900 to-violet-900">
         <div className="text-center space-y-4">
-          <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center mx-auto backdrop-blur-sm">
-            <span className="text-white font-bold text-lg">CA</span>
-          </div>
+          <LogoIcon size="xl" />
           <div className="flex items-center justify-center gap-1.5">
             <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:0ms]" />
             <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:150ms]" />

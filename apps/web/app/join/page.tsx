@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { LogoIcon } from "@/components/LogoIcon";
 
 export default function JoinPage() {
   const searchParams = useSearchParams();
@@ -73,9 +74,7 @@ export default function JoinPage() {
     <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-indigo-900 to-violet-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center mx-auto mb-4">
-            <span className="text-white font-bold text-lg">CA</span>
-          </div>
+          <LogoIcon size="xl" />
           <h1 className="text-white text-2xl font-bold">PracticeSync AI</h1>
         </div>
 

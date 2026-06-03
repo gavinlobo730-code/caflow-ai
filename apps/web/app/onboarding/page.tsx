@@ -1,4 +1,5 @@
 "use client";
+import { LogoIcon } from "@/components/LogoIcon";
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -513,9 +514,7 @@ export default function OnboardingPage() {
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white text-xs font-bold">CA</span>
-            </div>
+            <LogoIcon size="sm" />
             <span className="text-sm font-semibold text-gray-700">PracticeSync AI</span>
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mt-4">Welcome! Let&apos;s set up your firm</h1>
