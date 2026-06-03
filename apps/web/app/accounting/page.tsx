@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { BookOpen, FileText, BarChart2, Scale, TrendingUp, List, ArrowUpRight, ArrowDownRight, Building2, Receipt, RefreshCw, Target, IndianRupee, ClipboardCheck, Lock, Layers, Landmark } from "lucide-react";
+import { BookOpen, FileText, BarChart2, Scale, TrendingUp, List, ArrowUpRight, ArrowDownRight, Building2, Receipt, RefreshCw, Target, IndianRupee, ClipboardCheck, Lock, Layers, Landmark, Users, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -28,6 +28,8 @@ const NAV_CARDS = [
   { label: "Lock Financial Year", description: "Lock closed years to prevent accidental edits — Partner only", href: "/accounting/lock-year", icon: Lock },
   { label: "Fixed Assets", description: "Asset register with SL/WDV depreciation per IT Act 1961 Schedule II", href: "/accounting/fixed-assets", icon: Layers },
   { label: "Loans & FD", description: "Track client loans, EMI schedules and FD investments with maturity alerts and TDS flags", href: "/accounting/loans", icon: Landmark },
+  { label: "Supplier Master", description: "Manage supplier TDS sections, credit limits and payment terms", href: "/accounting/suppliers", icon: Users },
+  { label: "Receivables Aging", description: "Outstanding invoices grouped by aging bucket — identify overdue collections", href: "/accounting/receivables", icon: Clock },
 ];
 
 const statusBadge: Record<string, string> = {
