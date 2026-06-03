@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   ExternalLink, Copy, CheckCircle, FileText, MessageSquare, Receipt,
 } from "lucide-react";
@@ -74,6 +74,19 @@ export default function ClientPortalPage() {
   const [clientsLoading, setClientsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<PortalTab>("documents");
   const [copied, setCopied] = useState(false);
+  const [uploadingDocId, setUploadingDocId] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const uploadRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  function handleDocUpload(docId: string, file: File) {
+    setUploadingDocId(docId);
+    // Simulate upload delay — in real portal this would go to Supabase Storage
+    setTimeout(() => {
+      setUploadingDocId(null);
+      setUploadSuccess(docId);
+      setTimeout(() => setUploadSuccess(null), 3000);
+    }, 1200);
+  }
 
   // Load clients list on mount
   useEffect(() => {
@@ -296,9 +309,31 @@ export default function ClientPortalPage() {
                             Urgent
                           </Badge>
                         )}
-                        <button className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shrink-0">
-                          Upload
-                        </button>
+                        <div className="shrink-0">
+                          <input
+                            type="file"
+                            className="hidden"
+                            ref={el => { uploadRefs.current[doc.id] = el; }}
+                            onChange={e => {
+                              const f = e.target.files?.[0];
+                              if (f) handleDocUpload(doc.id, f);
+                              e.target.value = "";
+                            }}
+                          />
+                          {uploadSuccess === doc.id ? (
+                            <span className="text-xs px-3 py-1.5 bg-green-100 text-green-700 rounded-md flex items-center gap-1">
+                              <CheckCircle size={11} /> Uploaded
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => uploadRefs.current[doc.id]?.click()}
+                              disabled={uploadingDocId === doc.id}
+                              className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-60"
+                            >
+                              {uploadingDocId === doc.id ? "Uploading…" : "Upload"}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                     {pendingFilings.length > 0 && (
