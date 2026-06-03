@@ -45,6 +45,8 @@ interface ClientDocument {
   file_size_bytes: number | null;
   mime_type: string | null;
   created_at: string;
+  version: number | null;
+  parent_document_id: string | null;
 }
 
 const TASK_STATUS_COLORS: Record<string, string> = {
@@ -122,6 +124,10 @@ export default function ClientWorkspacePage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Version control state (wired in upload flow)
+  const [versionPromptDoc, setVersionPromptDoc] = useState<ClientDocument | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars
+  const [showVersionHistory, setShowVersionHistory] = useState<string | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars
+  const [versionHistory, setVersionHistory] = useState<ClientDocument[]>([]); // eslint-disable-line @typescript-eslint/no-unused-vars
 
   useEffect(() => {
     if (!id || id === "_placeholder") return;
@@ -219,7 +225,7 @@ export default function ClientWorkspacePage() {
       const supabase = getSupabaseClient();
       const { data, error: err } = await supabase
         .from("client_documents")
-        .select("id, file_name, label, storage_path, file_size_bytes, mime_type, created_at")
+        .select("id, file_name, label, storage_path, file_size_bytes, mime_type, created_at, version, parent_document_id")
         .eq("client_id", id)
         .order("created_at", { ascending: false });
       if (err) throw new Error(err.message);
@@ -236,12 +242,22 @@ export default function ClientWorkspacePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, id]);
 
-  async function handleUploadDocument() {
+  async function handleUploadDocument(asNewVersion: boolean = false, parentDoc: ClientDocument | null = null) {
     if (!uploadFile || !uploadLabel.trim() || !id) return;
     if (uploadFile.size > 50 * 1024 * 1024) {
       setUploadError("File must be under 50 MB");
       return;
     }
+
+    // Check for existing document with same label (version control)
+    if (!asNewVersion && !parentDoc) {
+      const existing = documents.find(d => d.label.toLowerCase() === uploadLabel.trim().toLowerCase() && !d.parent_document_id);
+      if (existing) {
+        setVersionPromptDoc(existing);
+        return;
+      }
+    }
+
     setUploading(true);
     setUploadError(null);
     try {
@@ -260,6 +276,9 @@ export default function ClientWorkspacePage() {
         .upload(storagePath, uploadFile, { contentType: uploadFile.type, upsert: false });
       if (storageErr) throw new Error(storageErr.message);
 
+      // Compute version number — integer arithmetic
+      const versionNum = parentDoc ? (parentDoc.version ?? 1) + 1 : 1;
+
       const { error: dbErr } = await supabase.from("client_documents").insert({
         firm_id: firmId,
         client_id: id,
@@ -268,6 +287,8 @@ export default function ClientWorkspacePage() {
         storage_path: storagePath,
         file_size_bytes: uploadFile.size,
         mime_type: uploadFile.type || null,
+        version: versionNum,
+        parent_document_id: parentDoc?.id ?? null,
       });
       if (dbErr) {
         // Rollback storage upload on DB failure
@@ -278,12 +299,27 @@ export default function ClientWorkspacePage() {
       setShowUploadModal(false);
       setUploadFile(null);
       setUploadLabel("");
+      setVersionPromptDoc(null);
       await loadDocuments();
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setUploading(false);
     }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async function handleViewVersionHistory(label: string) {
+    const { getSupabaseClient } = await import("@/lib/supabase/client");
+    const supabase = getSupabaseClient();
+    const { data } = await supabase
+      .from("client_documents")
+      .select("id, file_name, label, storage_path, file_size_bytes, mime_type, created_at, version, parent_document_id")
+      .eq("client_id", id)
+      .ilike("label", label)
+      .order("version", { ascending: true });
+    setVersionHistory(data ?? []);
+    setShowVersionHistory(label);
   }
 
   async function handleDownloadDocument(doc: ClientDocument) {
@@ -722,33 +758,52 @@ export default function ClientWorkspacePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {documents.map(doc => (
-                      <tr key={doc.id} className="hover:bg-gray-50">
-                        <td className="px-5 py-3 text-sm font-medium text-gray-900">{doc.label}</td>
-                        <td className="px-3 py-3 text-xs text-gray-500 font-mono max-w-[200px] truncate">{doc.file_name}</td>
-                        <td className="px-3 py-3 text-xs text-gray-500">{formatFileSize(doc.file_size_bytes)}</td>
-                        <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">
-                          {new Date(doc.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                        </td>
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleDownloadDocument(doc)}
-                              className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                            >
-                              <Download size={12} /> Download
-                            </button>
-                            <button
-                              onClick={() => handleDeleteDocument(doc)}
-                              disabled={deletingDocId === doc.id}
-                              className="flex items-center gap-1 text-xs text-red-500 hover:underline disabled:opacity-40"
-                            >
-                              <Trash2 size={12} /> {deletingDocId === doc.id ? "Deleting…" : "Delete"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {documents.map(doc => {
+                      // Count versions for this label
+                      const versionCount = documents.filter(d => d.label.toLowerCase() === doc.label.toLowerCase()).length;
+                      return (
+                        <tr key={doc.id} className="hover:bg-gray-50">
+                          <td className="px-5 py-3 text-sm font-medium text-gray-900">
+                            <div className="flex items-center gap-2">
+                              {doc.label}
+                              {(doc.version ?? 1) > 1 && (
+                                <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-mono">v{doc.version}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-xs text-gray-500 font-mono max-w-[200px] truncate">{doc.file_name}</td>
+                          <td className="px-3 py-3 text-xs text-gray-500">{formatFileSize(doc.file_size_bytes)}</td>
+                          <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">
+                            {new Date(doc.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                          </td>
+                          <td className="px-5 py-3">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button
+                                onClick={() => handleDownloadDocument(doc)}
+                                className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                              >
+                                <Download size={12} /> Download
+                              </button>
+                              {versionCount > 1 && (
+                                <button
+                                  onClick={() => handleViewVersionHistory(doc.label)}
+                                  className="flex items-center gap-1 text-xs text-indigo-600 hover:underline"
+                                >
+                                  History
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDeleteDocument(doc)}
+                                disabled={deletingDocId === doc.id}
+                                className="flex items-center gap-1 text-xs text-red-500 hover:underline disabled:opacity-40"
+                              >
+                                <Trash2 size={12} /> {deletingDocId === doc.id ? "Deleting…" : "Delete"}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -810,6 +865,66 @@ export default function ClientWorkspacePage() {
                   >
                     {uploading ? "Uploading…" : "Upload"}
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Version Prompt Modal */}
+          {versionPromptDoc && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+                <h3 className="text-sm font-semibold text-gray-900">Document already exists</h3>
+                <p className="text-xs text-gray-600">
+                  A document with the label <strong>{versionPromptDoc.label}</strong> already exists (v{versionPromptDoc.version ?? 1}).
+                  Upload as a new version?
+                </p>
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={() => setVersionPromptDoc(null)}
+                    className="text-xs px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => { const doc = versionPromptDoc; setVersionPromptDoc(null); handleUploadDocument(false, null); }}
+                    className="text-xs px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+                  >
+                    Upload as New
+                  </button>
+                  <button
+                    onClick={() => { const doc = versionPromptDoc; setVersionPromptDoc(null); handleUploadDocument(true, doc); }}
+                    className="text-xs px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                  >
+                    New Version
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Version History Modal */}
+          {showVersionHistory && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-900">Version History — {showVersionHistory}</h3>
+                  <button onClick={() => setShowVersionHistory(null)} className="text-gray-400 hover:text-gray-600">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {versionHistory.map(v => (
+                    <div key={v.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                      <div>
+                        <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-mono mr-2">v{v.version ?? 1}</span>
+                        <span className="text-xs text-gray-500">{v.file_name}</span>
+                      </div>
+                      <span className="text-xs text-gray-400">
+                        {new Date(v.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
