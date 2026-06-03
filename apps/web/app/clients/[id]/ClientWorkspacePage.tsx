@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Building2, Mail, Phone, MapPin, Calendar, FileText, Clock,
   ChevronRight, CheckCircle, AlertTriangle, Globe, Copy, X,
+  Upload, Download, Trash2, FolderOpen,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +26,7 @@ interface PortalState {
   invitedAt: string | null;
 }
 
-type TabId = "overview" | "tasks" | "compliance" | "invoices" | "bank";
+type TabId = "overview" | "tasks" | "compliance" | "invoices" | "bank" | "documents";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -33,7 +34,18 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "compliance", label: "Compliance" },
   { id: "invoices", label: "Invoices" },
   { id: "bank", label: "Bank Statements" },
+  { id: "documents", label: "Documents" },
 ];
+
+interface ClientDocument {
+  id: string;
+  file_name: string;
+  label: string;
+  storage_path: string;
+  file_size_bytes: number | null;
+  mime_type: string | null;
+  created_at: string;
+}
 
 const TASK_STATUS_COLORS: Record<string, string> = {
   todo: "bg-gray-100 text-gray-600",
@@ -95,6 +107,17 @@ export default function ClientWorkspacePage() {
   const [portal, setPortal] = useState<PortalState | null>(null);
   const [showPortalModal, setShowPortalModal] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
+
+  // Documents state
+  const [documents, setDocuments] = useState<ClientDocument[]>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadLabel, setUploadLabel] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!id || id === "_placeholder") return;
@@ -158,6 +181,122 @@ export default function ClientWorkspacePage() {
     } finally {
       setPortalLoading(false);
     }
+  }
+
+  async function loadDocuments() {
+    if (!id) return;
+    setDocsLoading(true);
+    try {
+      const { getSupabaseClient } = await import("@/lib/supabase/client");
+      const supabase = getSupabaseClient();
+      const { data, error: err } = await supabase
+        .from("client_documents")
+        .select("id, file_name, label, storage_path, file_size_bytes, mime_type, created_at")
+        .eq("client_id", id)
+        .order("created_at", { ascending: false });
+      if (err) throw new Error(err.message);
+      setDocuments(data ?? []);
+    } catch (e) {
+      console.error("loadDocuments:", e);
+    } finally {
+      setDocsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === "documents" && id) loadDocuments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, id]);
+
+  async function handleUploadDocument() {
+    if (!uploadFile || !uploadLabel.trim() || !id) return;
+    if (uploadFile.size > 50 * 1024 * 1024) {
+      setUploadError("File must be under 50 MB");
+      return;
+    }
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const { getSupabaseClient } = await import("@/lib/supabase/client");
+      const { getFirmId } = await import("@/lib/data/getFirmId");
+      const supabase = getSupabaseClient();
+      const firmId = await getFirmId();
+
+      // Sanitize filename
+      const sanitized = uploadFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const uuid = crypto.randomUUID();
+      const storagePath = `${firmId}/${id}/${uuid}-${sanitized}`;
+
+      const { error: storageErr } = await supabase.storage
+        .from("Documents")
+        .upload(storagePath, uploadFile, { contentType: uploadFile.type, upsert: false });
+      if (storageErr) throw new Error(storageErr.message);
+
+      const { error: dbErr } = await supabase.from("client_documents").insert({
+        firm_id: firmId,
+        client_id: id,
+        file_name: uploadFile.name,
+        label: uploadLabel.trim(),
+        storage_path: storagePath,
+        file_size_bytes: uploadFile.size,
+        mime_type: uploadFile.type || null,
+      });
+      if (dbErr) {
+        // Rollback storage upload on DB failure
+        await supabase.storage.from("Documents").remove([storagePath]);
+        throw new Error(dbErr.message);
+      }
+
+      setShowUploadModal(false);
+      setUploadFile(null);
+      setUploadLabel("");
+      await loadDocuments();
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleDownloadDocument(doc: ClientDocument) {
+    try {
+      const { getSupabaseClient } = await import("@/lib/supabase/client");
+      const supabase = getSupabaseClient();
+      const { data, error: err } = await supabase.storage
+        .from("Documents")
+        .createSignedUrl(doc.storage_path, 3600); // 1 hour expiry
+      if (err) throw new Error(err.message);
+      window.open(data.signedUrl, "_blank");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Could not generate download link");
+    }
+  }
+
+  async function handleDeleteDocument(doc: ClientDocument) {
+    if (!confirm(`Delete "${doc.label}" (${doc.file_name})?`)) return;
+    setDeletingDocId(doc.id);
+    try {
+      const { getSupabaseClient } = await import("@/lib/supabase/client");
+      const supabase = getSupabaseClient();
+      await supabase.storage.from("Documents").remove([doc.storage_path]);
+      const { error: dbErr } = await supabase
+        .from("client_documents")
+        .delete()
+        .eq("id", doc.id);
+      if (dbErr) throw new Error(dbErr.message);
+      setDocuments(prev => prev.filter(d => d.id !== doc.id));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeletingDocId(null);
+    }
+  }
+
+  function formatFileSize(bytes: number | null): string {
+    if (bytes === null) return "—";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   async function handleMarkFiled() {
@@ -518,6 +657,136 @@ export default function ClientWorkspacePage() {
             )}
           </div>
         </Card>
+      )}
+
+      {/* Documents tab */}
+      {activeTab === "documents" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700">Documents ({documents.length})</h2>
+            <button
+              onClick={() => { setShowUploadModal(true); setUploadError(null); }}
+              className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+            >
+              <Upload size={13} /> Upload Document
+            </button>
+          </div>
+
+          {docsLoading ? (
+            <div className="text-sm text-gray-400 text-center py-8">Loading documents…</div>
+          ) : documents.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-100 px-5 py-12 text-center space-y-2">
+              <FolderOpen className="w-8 h-8 text-gray-200 mx-auto" />
+              <p className="text-sm text-gray-400">No documents uploaded yet</p>
+              <p className="text-xs text-gray-300">Upload returns, notices, Form 16, and other files for this client</p>
+            </div>
+          ) : (
+            <Card>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-xs text-gray-400">
+                      <th className="px-5 py-3 text-left font-semibold">Label</th>
+                      <th className="px-3 py-3 text-left font-semibold">File Name</th>
+                      <th className="px-3 py-3 text-left font-semibold">Size</th>
+                      <th className="px-3 py-3 text-left font-semibold">Uploaded</th>
+                      <th className="px-5 py-3 text-left font-semibold">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {documents.map(doc => (
+                      <tr key={doc.id} className="hover:bg-gray-50">
+                        <td className="px-5 py-3 text-sm font-medium text-gray-900">{doc.label}</td>
+                        <td className="px-3 py-3 text-xs text-gray-500 font-mono max-w-[200px] truncate">{doc.file_name}</td>
+                        <td className="px-3 py-3 text-xs text-gray-500">{formatFileSize(doc.file_size_bytes)}</td>
+                        <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">
+                          {new Date(doc.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleDownloadDocument(doc)}
+                              className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                            >
+                              <Download size={12} /> Download
+                            </button>
+                            <button
+                              onClick={() => handleDeleteDocument(doc)}
+                              disabled={deletingDocId === doc.id}
+                              className="flex items-center gap-1 text-xs text-red-500 hover:underline disabled:opacity-40"
+                            >
+                              <Trash2 size={12} /> {deletingDocId === doc.id ? "Deleting…" : "Delete"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {/* Upload Modal */}
+          {showUploadModal && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-900">Upload Document</h3>
+                  <button onClick={() => { setShowUploadModal(false); setUploadFile(null); setUploadLabel(""); }} className="text-gray-400 hover:text-gray-600">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Label *</label>
+                    <input
+                      type="text"
+                      value={uploadLabel}
+                      onChange={e => setUploadLabel(e.target.value)}
+                      placeholder="e.g. GSTR-9 FY 2024-25, ITR AY 2024-25, Form 16"
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">File * (max 50 MB)</label>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      onChange={e => setUploadFile(e.target.files?.[0] ?? null)}
+                      className="w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                    />
+                    {uploadFile && (
+                      <p className="text-xs text-gray-400 mt-1">{uploadFile.name} — {formatFileSize(uploadFile.size)}</p>
+                    )}
+                  </div>
+
+                  {uploadError && (
+                    <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{uploadError}</p>
+                  )}
+                </div>
+
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={() => { setShowUploadModal(false); setUploadFile(null); setUploadLabel(""); }}
+                    className="text-xs px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleUploadDocument}
+                    disabled={uploading || !uploadFile || !uploadLabel.trim()}
+                    className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
+                  >
+                    {uploading ? "Uploading…" : "Upload"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Portal Access section — always visible below tabs */}
