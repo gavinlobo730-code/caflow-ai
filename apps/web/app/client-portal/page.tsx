@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import {
   ExternalLink, Copy, CheckCircle, FileText, MessageSquare, Receipt,
-  Plus, Trash2, Download, Upload, FolderOpen, AlertTriangle,
+  Plus, Trash2, Download, Upload, FolderOpen, AlertTriangle, BarChart3,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,11 +18,12 @@ import type { Transaction } from "@/lib/data/transactions";
 import { formatDate } from "@/lib/services/formatting";
 import { formatPaise } from "@/lib/services/formatting";
 
-type PortalTab = "requests" | "shared" | "filings" | "dues" | "messages";
+type PortalTab = "requests" | "shared" | "reports" | "filings" | "dues" | "messages";
 
 const PORTAL_TABS: { id: PortalTab; label: string; icon: React.ElementType }[] = [
   { id: "requests", label: "Document Requests", icon: FileText },
   { id: "shared", label: "Shared Documents", icon: FolderOpen },
+  { id: "reports", label: "Shared Reports", icon: BarChart3 },
   { id: "filings", label: "Recent Filings", icon: Receipt },
   { id: "dues", label: "Outstanding Dues", icon: Receipt },
   { id: "messages", label: "Messages", icon: MessageSquare },
@@ -66,6 +67,17 @@ interface SharedDocument {
   created_at: string;
 }
 
+interface SharedReport {
+  id: string;
+  report_label: string;
+  report_type: string;
+  financial_year: string;
+  storage_path: string;
+  file_name: string;
+  file_size_bytes: number | null;
+  created_at: string;
+}
+
 interface NewRequestForm {
   title: string;
   description: string;
@@ -99,6 +111,7 @@ export default function ClientPortalPage() {
 
   // Shared documents state
   const [sharedDocs, setSharedDocs] = useState<SharedDocument[]>([]);
+  const [sharedReports, setSharedReports] = useState<SharedReport[]>([]);
   const [sharedLoading, setSharedLoading] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [uploadLabel, setUploadLabel] = useState("");
@@ -168,6 +181,14 @@ export default function ClientPortalPage() {
         .eq("client_id", clientId)
         .order("created_at", { ascending: false });
       setSharedDocs(data ?? []);
+
+      // Load shared reports
+      const { data: reportData } = await sb
+        .from("shared_reports")
+        .select("id, report_label, report_type, financial_year, storage_path, file_name, file_size_bytes, created_at")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false });
+      setSharedReports(reportData ?? []);
     } catch {
       setSharedDocs([]);
     } finally {
@@ -552,6 +573,65 @@ export default function ClientPortalPage() {
                                 title="Delete"
                               >
                                 <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Shared Reports tab */}
+              {activeTab === "reports" && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <BarChart3 size={14} className="text-blue-600" />
+                      Reports Shared with Client
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {sharedReports.length === 0 ? (
+                      <div className="px-6 py-10 text-center text-sm text-gray-400">
+                        <BarChart3 size={28} className="mx-auto mb-2 opacity-20" />
+                        <p>No reports shared yet.</p>
+                        <p className="text-xs mt-1 text-gray-300">Go to Reports → Financial Statements → Generate → Share with Client</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-gray-50">
+                        {sharedReports.map((r) => (
+                          <div key={r.id} className="px-4 py-3 flex items-center justify-between gap-4">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">{r.report_label}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                FY {r.financial_year}
+                                {r.file_size_bytes ? ` · ${formatFileSize(r.file_size_bytes)}` : ""}
+                                {" · "}{formatDate(r.created_at)}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                onClick={async () => {
+                                  const sb = getSupabaseClient();
+                                  const { data } = await sb.storage.from("Documents").createSignedUrl(r.storage_path, 3600);
+                                  if (data) window.open(data.signedUrl, "_blank");
+                                }}
+                                className="flex items-center gap-1.5 text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100"
+                              >
+                                <Download size={12} /> Download
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (!confirm("Remove this shared report?")) return;
+                                  const sb = getSupabaseClient();
+                                  await sb.from("shared_reports").delete().eq("id", r.id);
+                                  setSharedReports((prev) => prev.filter((x) => x.id !== r.id));
+                                }}
+                                className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600 px-2 py-1.5 rounded-lg hover:bg-red-50"
+                              >
+                                <Trash2 size={12} />
                               </button>
                             </div>
                           </div>
