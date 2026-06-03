@@ -1,5 +1,5 @@
 /**
- * Role-Based Access Control permissions for CAflow AI.
+ * Role-Based Access Control permissions for PracticeSync AI.
  *
  * Roles: Partner | Manager | Article | Staff
  *

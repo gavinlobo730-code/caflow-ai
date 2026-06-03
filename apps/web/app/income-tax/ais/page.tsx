@@ -767,7 +767,7 @@ export default function AISPage() {
       {/* Footer note */}
       <div className="bg-blue-50 border border-blue-100 rounded-xl px-5 py-3">
         <p className="text-xs text-blue-700">
-          <span className="font-semibold">Note:</span> AIS data is governed by IT Act Section 285BB. Data entered here is stored locally in your browser only. CAflow does not transmit AIS data to any external server or government portal.
+          <span className="font-semibold">Note:</span> AIS data is governed by IT Act Section 285BB. Data entered here is stored locally in your browser only. PracticeSync does not transmit AIS data to any external server or government portal.
         </p>
       </div>
     </div>

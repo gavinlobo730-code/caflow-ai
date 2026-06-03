@@ -213,7 +213,7 @@ export default function OnboardingPage() {
     if (!user) return;
     const currentUser = user; // capture non-null reference
     async function autoCreateFirmFromSignup() {
-      const raw = typeof window !== "undefined" ? localStorage.getItem("caflow_signup") : null;
+      const raw = typeof window !== "undefined" ? localStorage.getItem("practicesync_signup") : null;
       if (!raw) return;
       let signupData: { firmName?: string; fullName?: string } = {};
       try { signupData = JSON.parse(raw); } catch { return; }
@@ -227,7 +227,7 @@ export default function OnboardingPage() {
         .maybeSingle();
       if (existingUser?.firm_id) {
         // Already onboarded — clear storage
-        localStorage.removeItem("caflow_signup");
+        localStorage.removeItem("practicesync_signup");
         setFirmId(existingUser.firm_id);
         return;
       }
@@ -251,7 +251,7 @@ export default function OnboardingPage() {
       });
       if (userErr) { console.error("autoCreateFirm userErr:", userErr); return; }
 
-      localStorage.removeItem("caflow_signup");
+      localStorage.removeItem("practicesync_signup");
       setFirmId(newFirm.id);
       // Pre-fill firm name in form
       setFirmForm((f) => ({ ...f, name: signupData.firmName ?? f.name }));
@@ -516,7 +516,7 @@ export default function OnboardingPage() {
             <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
               <span className="text-white text-xs font-bold">CA</span>
             </div>
-            <span className="text-sm font-semibold text-gray-700">CAflow AI</span>
+            <span className="text-sm font-semibold text-gray-700">PracticeSync AI</span>
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mt-4">Welcome! Let&apos;s set up your firm</h1>
           <p className="text-sm text-gray-500 mt-1">This takes about 2 minutes. You can always update these later in Settings.</p>

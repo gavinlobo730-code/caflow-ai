@@ -38,7 +38,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
             <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:150ms]" />
             <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:300ms]" />
           </div>
-          <p className="text-indigo-300 text-sm font-medium">CAflow AI</p>
+          <p className="text-indigo-300 text-sm font-medium">PracticeSync AI</p>
         </div>
       </div>
     );

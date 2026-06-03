@@ -311,7 +311,7 @@ export default function PortalPage() {
             <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
               <span className="text-white font-bold text-xs">CA</span>
             </div>
-            <span className="text-base font-bold text-gray-900">CAflow AI</span>
+            <span className="text-base font-bold text-gray-900">PracticeSync AI</span>
           </div>
           <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-red-700 text-left">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -351,7 +351,7 @@ export default function PortalPage() {
           <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
             <span className="text-white font-bold text-xs">CA</span>
           </div>
-          <span className="text-sm font-bold text-gray-900">CAflow AI</span>
+          <span className="text-sm font-bold text-gray-900">PracticeSync AI</span>
           <span className="text-gray-300 text-sm">·</span>
           <span className="text-sm text-gray-500">Client Portal</span>
         </div>

@@ -9,8 +9,8 @@ import { Toaster } from "@/components/ui/toaster";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "CAflow AI",
-  description: "AI-powered practice management for Indian Chartered Accountants",
+  title: "PracticeSync AI",
+  description: "AI-powered operating system for modern accounting and advisory firms",
   manifest: "/manifest.json",
   themeColor: "#2563eb",
 };
