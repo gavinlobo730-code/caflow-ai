@@ -14,7 +14,7 @@ import { useState, useCallback, useEffect } from "react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { formatPaise } from "@/lib/services/formatting";
-import { Download, Loader2, AlertCircle, BarChart3 } from "lucide-react";
+import { Download, Loader2, AlertCircle, BarChart3, Share2, X, CheckCircle } from "lucide-react";
 import * as XLSX from "xlsx";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -611,6 +611,11 @@ export default function FinancialStatementsPage() {
   const [currentBS, setCurrentBS] = useState<BSData | null>(null);
   const [priorBS, setPriorBS] = useState<BSData | null>(null);
 
+  // Share with client
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [shareSuccess, setShareSuccess] = useState(false);
+
   // Load clients on mount
   useEffect(() => {
     fetchClients()
@@ -667,6 +672,76 @@ export default function FinancialStatementsPage() {
     exportToExcel(currentFY, priorFY, currentPL, priorPL, currentBS, priorBS);
   }, [hasData, currentFY, priorFY, currentPL, priorPL, currentBS, priorBS]);
 
+  const handleShareWithClient = useCallback(async () => {
+    if (!hasData || !selectedClientId) return;
+    setSharing(true);
+    setShareSuccess(false);
+    try {
+      // Generate Excel and upload to Supabase Storage
+      const wb = XLSX.utils.book_new();
+      const reportType = activeTab === "bs" ? "balance_sheet" : "pl";
+      const label = activeTab === "bs" ? `Balance Sheet FY ${currentFY}` : `P&L FY ${currentFY}`;
+      exportToExcel(currentFY, priorFY, currentPL, priorPL, currentBS, priorBS);
+
+      // Build a simple CSV blob for sharing (Excel export already ran above for download)
+      const rows: (string | number)[][] = [];
+      if (activeTab === "pl" && currentPL) {
+        rows.push(["P&L Statement", `FY ${currentFY}`, `FY ${priorFY}`]);
+        rows.push(["INCOME"]);
+        for (const a of currentPL.incomeAccounts) {
+          const prior = priorPL?.incomeAccounts.find((x) => x.accountId === a.accountId);
+          rows.push([a.accountName, a.balancePaise / 100, (prior?.balancePaise ?? 0) / 100]);
+        }
+        rows.push(["Total Income", currentPL.totalIncome / 100, (priorPL?.totalIncome ?? 0) / 100]);
+        rows.push(["EXPENSES"]);
+        for (const a of currentPL.expenseAccounts) {
+          const prior = priorPL?.expenseAccounts.find((x) => x.accountId === a.accountId);
+          rows.push([a.accountName, a.balancePaise / 100, (prior?.balancePaise ?? 0) / 100]);
+        }
+        rows.push(["Net Profit / (Loss)", currentPL.profitAfterTax / 100, (priorPL?.profitAfterTax ?? 0) / 100]);
+      } else if (activeTab === "bs" && currentBS) {
+        rows.push(["Balance Sheet", `FY ${currentFY}`, `FY ${priorFY}`]);
+        rows.push(["ASSETS"]);
+        for (const a of currentBS.assetAccounts) {
+          const prior = priorBS?.assetAccounts.find((x) => x.accountId === a.accountId);
+          rows.push([a.accountName, a.balancePaise / 100, (prior?.balancePaise ?? 0) / 100]);
+        }
+        rows.push(["Total Assets", currentBS.totalAssets / 100, (priorBS?.totalAssets ?? 0) / 100]);
+      }
+
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, ws, "Report");
+      const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+      const file = new File([buf], `${label}.xlsx`, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+
+      const sb = getSupabaseClient();
+      const firmId = await getFirmId();
+      const uuid = crypto.randomUUID();
+      const storagePath = `${firmId}/${selectedClientId}/reports/${uuid}-${file.name}`;
+      const { error: upErr } = await sb.storage.from("Documents").upload(storagePath, file, { contentType: file.type });
+      if (upErr) throw new Error(upErr.message);
+
+      const { error: dbErr } = await sb.from("shared_reports").insert({
+        firm_id: firmId,
+        client_id: selectedClientId,
+        report_type: reportType,
+        report_label: label,
+        financial_year: currentFY,
+        storage_path: storagePath,
+        file_name: file.name,
+        file_size_bytes: file.size,
+      });
+      if (dbErr) throw new Error(dbErr.message);
+
+      setShareSuccess(true);
+      setTimeout(() => { setShowShareModal(false); setShareSuccess(false); }, 1800);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Share failed");
+    } finally {
+      setSharing(false);
+    }
+  }, [hasData, selectedClientId, activeTab, currentFY, priorFY, currentPL, priorPL, currentBS, priorBS]);
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Header */}
@@ -679,13 +754,22 @@ export default function FinancialStatementsPage() {
           <p className="text-sm text-gray-500 mt-0.5">Year-on-year comparison — P&L and Balance Sheet</p>
         </div>
         {hasData && (
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
-          >
-            <Download size={14} />
-            Export Excel
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowShareModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+            >
+              <Share2 size={14} />
+              Share with Client
+            </button>
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+            >
+              <Download size={14} />
+              Export Excel
+            </button>
+          </div>
         )}
       </div>
 
@@ -819,6 +903,55 @@ export default function FinancialStatementsPage() {
           <BarChart3 size={32} className="mx-auto mb-3 opacity-30" />
           <p className="text-sm">Cash Flow Statement requires direct cash account mapping.</p>
           <p className="text-xs mt-1 text-gray-300">Coming in next phase — configure cash &amp; bank accounts in Chart of Accounts first.</p>
+        </div>
+      )}
+
+      {/* Share with Client Modal */}
+      {showShareModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">Share with Client</h3>
+              <button onClick={() => setShowShareModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+            {shareSuccess ? (
+              <div className="flex flex-col items-center gap-3 py-4">
+                <CheckCircle size={40} className="text-green-500" />
+                <p className="text-sm font-medium text-gray-900">Shared successfully!</p>
+                <p className="text-xs text-gray-400">The client can now view and download this report from their portal.</p>
+              </div>
+            ) : (
+              <>
+                <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-sm text-blue-800">
+                  <p className="font-medium">{activeTab === "bs" ? `Balance Sheet FY ${currentFY}` : `P&L FY ${currentFY}`}</p>
+                  <p className="text-xs text-blue-600 mt-0.5">
+                    {clients.find((c) => c.id === selectedClientId)?.client_name ?? "Selected client"}
+                  </p>
+                </div>
+                <p className="text-xs text-gray-500">
+                  This will upload an Excel copy to the client&apos;s portal under the <strong>Reports</strong> tab. The client can view and download it.
+                </p>
+                <div className="flex gap-2 justify-end pt-1">
+                  <button
+                    onClick={() => setShowShareModal(false)}
+                    className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleShareWithClient}
+                    disabled={sharing}
+                    className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60"
+                  >
+                    {sharing ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />}
+                    {sharing ? "Sharing…" : "Share"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

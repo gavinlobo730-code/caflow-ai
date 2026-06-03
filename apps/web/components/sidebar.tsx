@@ -8,7 +8,7 @@ import {
   BookOpen, Receipt, Calculator, Building2,
   Calendar, BarChart3, Settings,
   ChevronLeft, ChevronRight, Landmark, Shield,
-  FileStack, ShieldAlert, Sparkles, Bell, LogOut,
+  ShieldAlert, Sparkles, Bell, LogOut,
   ExternalLink, Menu, X, KanbanSquare, MessageSquare, KeyRound,
   Search, Briefcase,
 } from "lucide-react";
@@ -51,7 +51,6 @@ const NAV_GROUPS = [
     label: "Tools & AI",
     items: [
       { href: "/ai-assistant", label: "AI Assistant", icon: Sparkles },
-      { href: "/documents/intelligence", label: "Doc Intelligence", icon: FileStack },
       { href: "/risks", label: "Risk Intelligence", icon: ShieldAlert },
       { href: "/calendar", label: "Calendar", icon: Calendar },
       { href: "/reports", label: "Reports", icon: BarChart3 },
