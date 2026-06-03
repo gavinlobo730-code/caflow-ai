@@ -3,11 +3,13 @@
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 
-const NO_SHELL_PATHS = ["/login", "/login/", "/onboarding", "/onboarding/", "/portal", "/portal/"];
+const NO_SHELL_PREFIXES = ["/login", "/signup", "/onboarding", "/join", "/auth", "/portal"];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const showShell = !NO_SHELL_PATHS.includes(pathname);
+  const showShell = !NO_SHELL_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(prefix + "/")
+  );
 
   if (!showShell) {
     return <>{children}</>;
