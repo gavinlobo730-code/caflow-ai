@@ -152,14 +152,14 @@ function LockYearContent() {
         .from("users")
         .select("firm_id")
         .eq("auth_user_id", session.user.id)
-        .single();
-      if (!user?.firm_id) throw new Error("Firm not found");
+        .maybeSingle();
+      if (!user?.firm_id) throw new Error("Firm not found — please complete onboarding first");
       setFirmId(user.firm_id);
       const { data: firm, error: firmErr } = await sb
         .from("firms")
         .select("locked_financial_years, lock_pin")
         .eq("id", user.firm_id)
-        .single();
+        .maybeSingle();
       if (firmErr) throw new Error(firmErr.message);
       setLockedYears(firm?.locked_financial_years ?? []);
       setLockPin(firm?.lock_pin ?? null);
