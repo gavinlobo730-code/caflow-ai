@@ -3,31 +3,29 @@
 import { useState, useEffect, useRef } from "react";
 import {
   ExternalLink, Copy, CheckCircle, FileText, MessageSquare, Receipt,
+  Plus, Trash2, Download, Upload, FolderOpen, AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getClients } from "@/lib/data/clients";
 import { getComplianceCalendar } from "@/lib/data/compliance";
 import { getTransactions } from "@/lib/data/transactions";
+import { getFirmId } from "@/lib/data/getFirmId";
+import { getSupabaseClient } from "@/lib/supabase/client";
 import type { Client } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import type { Transaction } from "@/lib/data/transactions";
 import { formatDate } from "@/lib/services/formatting";
 import { formatPaise } from "@/lib/services/formatting";
 
-type PortalTab = "documents" | "filings" | "dues" | "messages";
+type PortalTab = "requests" | "shared" | "filings" | "dues" | "messages";
 
 const PORTAL_TABS: { id: PortalTab; label: string; icon: React.ElementType }[] = [
-  { id: "documents", label: "Pending Documents", icon: FileText },
+  { id: "requests", label: "Document Requests", icon: FileText },
+  { id: "shared", label: "Shared Documents", icon: FolderOpen },
   { id: "filings", label: "Recent Filings", icon: Receipt },
   { id: "dues", label: "Outstanding Dues", icon: Receipt },
   { id: "messages", label: "Messages", icon: MessageSquare },
-];
-
-const MOCK_DOCUMENTS = [
-  { id: "1", title: "Upload Q4 Bank Statement", desc: "For the period Jan–Mar 2026", urgent: true },
-  { id: "2", title: "Provide TDS Certificate 16A", desc: "From all deductors for FY 2025–26", urgent: true },
-  { id: "3", title: "Submit Investment Proofs", desc: "LIC, PPF, ELSS for 80C deductions", urgent: false },
 ];
 
 const MOCK_DUES = [
@@ -36,24 +34,9 @@ const MOCK_DUES = [
 ];
 
 const MOCK_MESSAGES = [
-  {
-    id: "1",
-    from: "CA",
-    text: "Your GSTR-1 for March 2026 has been filed successfully. ✓",
-    time: "2 days ago",
-  },
-  {
-    id: "2",
-    from: "CA",
-    text: "Please upload your Q4 bank statement at the earliest so we can reconcile before the audit.",
-    time: "5 days ago",
-  },
-  {
-    id: "3",
-    from: "CA",
-    text: "Advance tax instalment of 15% was due on 15 Jun. Please confirm payment made.",
-    time: "1 week ago",
-  },
+  { id: "1", from: "CA", text: "Your GSTR-1 for March 2026 has been filed successfully. ✓", time: "2 days ago" },
+  { id: "2", from: "CA", text: "Please upload your Q4 bank statement at the earliest so we can reconcile before the audit.", time: "5 days ago" },
+  { id: "3", from: "CA", text: "Advance tax instalment of 15% was due on 15 Jun. Please confirm payment made.", time: "1 week ago" },
 ];
 
 const FILING_STATUS_COLORS: Record<string, string> = {
@@ -64,6 +47,38 @@ const FILING_STATUS_COLORS: Record<string, string> = {
   na: "bg-gray-100 text-gray-500",
 };
 
+interface DocumentRequest {
+  id: string;
+  title: string;
+  description: string | null;
+  is_urgent: boolean;
+  status: string;
+  fulfilled_at: string | null;
+  created_at: string;
+}
+
+interface SharedDocument {
+  id: string;
+  file_name: string;
+  label: string;
+  storage_path: string;
+  file_size_bytes: number | null;
+  created_at: string;
+}
+
+interface NewRequestForm {
+  title: string;
+  description: string;
+  is_urgent: boolean;
+}
+
+function formatFileSize(bytes: number | null): string {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function ClientPortalPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string>("");
@@ -72,21 +87,22 @@ export default function ClientPortalPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [clientsLoading, setClientsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<PortalTab>("documents");
+  const [activeTab, setActiveTab] = useState<PortalTab>("requests");
   const [copied, setCopied] = useState(false);
-  const [uploadingDocId, setUploadingDocId] = useState<string | null>(null);
-  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
-  const uploadRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  function handleDocUpload(docId: string, file: File) {
-    setUploadingDocId(docId);
-    // Simulate upload delay — in real portal this would go to Supabase Storage
-    setTimeout(() => {
-      setUploadingDocId(null);
-      setUploadSuccess(docId);
-      setTimeout(() => setUploadSuccess(null), 3000);
-    }, 1200);
-  }
+  // Document requests state
+  const [docRequests, setDocRequests] = useState<DocumentRequest[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [showNewRequestModal, setShowNewRequestModal] = useState(false);
+  const [newRequest, setNewRequest] = useState<NewRequestForm>({ title: "", description: "", is_urgent: false });
+  const [savingRequest, setSavingRequest] = useState(false);
+
+  // Shared documents state
+  const [sharedDocs, setSharedDocs] = useState<SharedDocument[]>([]);
+  const [sharedLoading, setSharedLoading] = useState(false);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [uploadLabel, setUploadLabel] = useState("");
+  const sharedUploadRef = useRef<HTMLInputElement | null>(null);
 
   // Load clients list on mount
   useEffect(() => {
@@ -102,6 +118,8 @@ export default function ClientPortalPage() {
       setSelectedClient(null);
       setCompliance([]);
       setTransactions([]);
+      setDocRequests([]);
+      setSharedDocs([]);
       return;
     }
     const client = clients.find((c) => c.id === selectedClientId) ?? null;
@@ -117,26 +135,142 @@ export default function ClientPortalPage() {
         setTransactions(txns);
       })
       .finally(() => setLoading(false));
+
+    loadDocRequests(selectedClientId);
+    loadSharedDocs(selectedClientId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClientId, clients]);
 
+  async function loadDocRequests(clientId: string) {
+    setRequestsLoading(true);
+    try {
+      const sb = getSupabaseClient();
+      const { data } = await sb
+        .from("document_requests")
+        .select("id, title, description, is_urgent, status, fulfilled_at, created_at")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false });
+      setDocRequests(data ?? []);
+    } catch {
+      setDocRequests([]);
+    } finally {
+      setRequestsLoading(false);
+    }
+  }
+
+  async function loadSharedDocs(clientId: string) {
+    setSharedLoading(true);
+    try {
+      const sb = getSupabaseClient();
+      const { data } = await sb
+        .from("client_documents")
+        .select("id, file_name, label, storage_path, file_size_bytes, created_at")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false });
+      setSharedDocs(data ?? []);
+    } catch {
+      setSharedDocs([]);
+    } finally {
+      setSharedLoading(false);
+    }
+  }
+
+  async function handleCreateRequest() {
+    if (!newRequest.title.trim() || !selectedClientId) return;
+    setSavingRequest(true);
+    try {
+      const firmId = await getFirmId();
+      const sb = getSupabaseClient();
+      await sb.from("document_requests").insert({
+        firm_id: firmId,
+        client_id: selectedClientId,
+        title: newRequest.title.trim(),
+        description: newRequest.description.trim() || null,
+        is_urgent: newRequest.is_urgent,
+      });
+      setShowNewRequestModal(false);
+      setNewRequest({ title: "", description: "", is_urgent: false });
+      await loadDocRequests(selectedClientId);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to create request");
+    } finally {
+      setSavingRequest(false);
+    }
+  }
+
+  async function handleDeleteRequest(id: string) {
+    if (!confirm("Delete this document request?")) return;
+    const sb = getSupabaseClient();
+    await sb.from("document_requests").delete().eq("id", id);
+    setDocRequests((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  async function handleSharedDocUpload(file: File) {
+    if (!selectedClientId) return;
+    const label = uploadLabel.trim() || file.name;
+    setUploadingDoc(true);
+    try {
+      const firmId = await getFirmId();
+      const sb = getSupabaseClient();
+      const ext = file.name.split(".").pop();
+      const uuid = crypto.randomUUID();
+      const storagePath = `${firmId}/${selectedClientId}/${uuid}-${file.name}`;
+
+      const { error: uploadErr } = await sb.storage
+        .from("Documents")
+        .upload(storagePath, file, { contentType: file.type || "application/octet-stream" });
+      if (uploadErr) throw new Error(uploadErr.message);
+
+      const { data: userSession } = await sb.auth.getSession();
+      await sb.from("client_documents").insert({
+        firm_id: firmId,
+        client_id: selectedClientId,
+        uploaded_by: userSession?.session?.user?.id ?? null,
+        file_name: file.name,
+        label,
+        storage_path: storagePath,
+        file_size_bytes: file.size,
+        mime_type: file.type || null,
+      });
+
+      setUploadLabel("");
+      await loadSharedDocs(selectedClientId);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploadingDoc(false);
+    }
+  }
+
+  async function handleDeleteSharedDoc(doc: SharedDocument) {
+    if (!confirm(`Delete "${doc.label}"?`)) return;
+    const sb = getSupabaseClient();
+    await sb.storage.from("Documents").remove([doc.storage_path]);
+    await sb.from("client_documents").delete().eq("id", doc.id);
+    setSharedDocs((prev) => prev.filter((d) => d.id !== doc.id));
+  }
+
+  async function handleDownloadSharedDoc(doc: SharedDocument) {
+    const sb = getSupabaseClient();
+    const { data, error: err } = await sb.storage
+      .from("Documents")
+      .createSignedUrl(doc.storage_path, 3600);
+    if (err || !data) {
+      alert("Could not generate download link.");
+      return;
+    }
+    window.open(data.signedUrl, "_blank");
+  }
+
   async function handleCopyPortalLink() {
-    const url = `${window.location.origin}/client-portal/${selectedClientId}`;
+    const url = `${window.location.origin}/portal`;
     await navigator.clipboard.writeText(url).catch(() => undefined);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   }
 
-  const recentFilings = compliance
-    .filter((c) => c.filing_status === "filed")
-    .slice(0, 8);
-
-  const pendingFilings = compliance
-    .filter((c) => c.filing_status !== "filed")
-    .slice(0, 5);
-
-  const unpaidInvoices = transactions.filter(
-    (t) => t.status !== "posted"
-  );
+  const recentFilings = compliance.filter((c) => c.filing_status === "filed").slice(0, 8);
+  const unpaidInvoices = transactions.filter((t) => t.status !== "posted");
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -145,7 +279,7 @@ export default function ClientPortalPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Client Portal Preview</h1>
           <p className="text-sm text-gray-500 mt-1">
-            This is how your clients see their workspace
+            Manage document requests and shared files for your clients
           </p>
         </div>
         {selectedClient && (
@@ -175,7 +309,7 @@ export default function ClientPortalPage() {
             <ExternalLink size={16} className="text-gray-400 shrink-0" />
             <div className="flex-1">
               <label htmlFor="client-select" className="block text-xs font-medium text-gray-500 mb-1">
-                Select a client to preview their portal
+                Select a client to manage their portal
               </label>
               <select
                 id="client-select"
@@ -202,45 +336,35 @@ export default function ClientPortalPage() {
       {!selectedClient && !loading && (
         <div className="flex flex-col items-center justify-center py-20 text-gray-400">
           <ExternalLink size={40} className="mb-3 opacity-30" />
-          <p className="text-base font-medium">Select a client to preview their portal</p>
+          <p className="text-base font-medium">Select a client to manage their portal</p>
           <p className="text-sm mt-1 opacity-70">
-            You&apos;ll see exactly what they see when they log in
+            Request documents, share files, and view compliance status
           </p>
         </div>
       )}
 
-      {/* Portal Preview */}
+      {/* Portal management area */}
       {selectedClient && (
         <div className="space-y-5">
-          {/* Welcome banner — simulating what the client sees */}
+          {/* Client info banner */}
           <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-indigo-50 p-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-1">
-                  Client Portal — Preview Mode
-                </p>
-                <h2 className="text-xl font-bold text-gray-900">
-                  Welcome, {selectedClient.client_name}
-                </h2>
-                <p className="text-sm text-gray-500 mt-1">
-                  Managed by your CA firm
-                </p>
-              </div>
+            <div>
+              <p className="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-1">
+                Portal Management
+              </p>
+              <h2 className="text-xl font-bold text-gray-900">{selectedClient.client_name}</h2>
+              <p className="text-sm text-gray-500 mt-1">Manage documents and requests for this client</p>
             </div>
             <div className="mt-4 flex flex-wrap gap-4 text-sm">
               {selectedClient.gstin && (
                 <div>
                   <span className="text-xs text-gray-400 block">GSTIN</span>
-                  <span className="font-mono font-semibold text-gray-800">
-                    {selectedClient.gstin}
-                  </span>
+                  <span className="font-mono font-semibold text-gray-800">{selectedClient.gstin}</span>
                 </div>
               )}
               <div>
                 <span className="text-xs text-gray-400 block">PAN</span>
-                <span className="font-mono font-semibold text-gray-800">
-                  {selectedClient.pan}
-                </span>
+                <span className="font-mono font-semibold text-gray-800">{selectedClient.pan}</span>
               </div>
               {selectedClient.entity_type && (
                 <div>
@@ -253,13 +377,13 @@ export default function ClientPortalPage() {
             </div>
           </div>
 
-          {/* Portal tabs */}
-          <div className="flex gap-1 border-b border-gray-100">
+          {/* Tabs */}
+          <div className="flex gap-1 border-b border-gray-100 overflow-x-auto">
             {PORTAL_TABS.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                   activeTab === tab.id
                     ? "border-blue-600 text-blue-700"
                     : "border-transparent text-gray-500 hover:text-gray-700"
@@ -273,84 +397,76 @@ export default function ClientPortalPage() {
 
           {loading && (
             <div className="text-center py-8 text-sm text-gray-400 animate-pulse">
-              Loading portal data…
+              Loading client data…
             </div>
           )}
 
           {!loading && (
             <>
-              {/* Pending Documents */}
-              {activeTab === "documents" && (
+              {/* Document Requests tab */}
+              {activeTab === "requests" && (
                 <Card>
-                  <CardHeader className="pb-3">
+                  <CardHeader className="pb-3 flex flex-row items-center justify-between">
                     <CardTitle className="text-sm flex items-center gap-2">
-                      <FileText size={15} /> Documents Requested by Your CA
+                      <FileText size={15} /> Document Requests
                     </CardTitle>
+                    <button
+                      onClick={() => setShowNewRequestModal(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <Plus size={13} /> New Request
+                    </button>
                   </CardHeader>
-                  <CardContent className="space-y-3">
-                    {MOCK_DOCUMENTS.map((doc) => (
-                      <div
-                        key={doc.id}
-                        className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50"
-                      >
-                        <div className="mt-0.5">
-                          <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
-                            <FileText size={14} />
-                          </div>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900">
-                            {doc.title}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-0.5">{doc.desc}</p>
-                        </div>
-                        {doc.urgent && (
-                          <Badge className="text-xs bg-amber-100 text-amber-700 shrink-0">
-                            Urgent
-                          </Badge>
-                        )}
-                        <div className="shrink-0">
-                          <input
-                            type="file"
-                            className="hidden"
-                            ref={el => { uploadRefs.current[doc.id] = el; }}
-                            onChange={e => {
-                              const f = e.target.files?.[0];
-                              if (f) handleDocUpload(doc.id, f);
-                              e.target.value = "";
-                            }}
-                          />
-                          {uploadSuccess === doc.id ? (
-                            <span className="text-xs px-3 py-1.5 bg-green-100 text-green-700 rounded-md flex items-center gap-1">
-                              <CheckCircle size={11} /> Uploaded
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => uploadRefs.current[doc.id]?.click()}
-                              disabled={uploadingDocId === doc.id}
-                              className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-60"
-                            >
-                              {uploadingDocId === doc.id ? "Uploading…" : "Upload"}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {pendingFilings.length > 0 && (
-                      <div className="mt-2 pt-3 border-t border-gray-100">
-                        <p className="text-xs font-medium text-gray-500 mb-2">
-                          Also pending from compliance calendar:
+                  <CardContent>
+                    {requestsLoading ? (
+                      <div className="text-center py-6 text-sm text-gray-400 animate-pulse">Loading…</div>
+                    ) : docRequests.length === 0 ? (
+                      <div className="text-center py-10 space-y-2">
+                        <FileText size={32} className="text-gray-200 mx-auto" />
+                        <p className="text-sm text-gray-400">
+                          No document requests yet — click New Request to ask your client for files
                         </p>
-                        {pendingFilings.map((c) => (
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {docRequests.map((req) => (
                           <div
-                            key={c.id}
-                            className="flex items-center gap-3 py-2 text-sm text-gray-600"
+                            key={req.id}
+                            className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50"
                           >
-                            <CheckCircle size={13} className="text-amber-400 shrink-0" />
-                            <span className="flex-1">{c.compliance_type}</span>
-                            <span className="text-xs text-gray-400">
-                              Due {formatDate(c.due_date)}
-                            </span>
+                            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 mt-0.5">
+                              <FileText size={14} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900">{req.title}</p>
+                              {req.description && (
+                                <p className="text-xs text-gray-500 mt-0.5">{req.description}</p>
+                              )}
+                              <p className="text-xs text-gray-400 mt-1">{formatDate(req.created_at)}</p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {req.is_urgent && (
+                                <Badge className="text-xs bg-amber-100 text-amber-700">
+                                  <AlertTriangle size={10} className="mr-1" /> Urgent
+                                </Badge>
+                              )}
+                              <Badge
+                                className={`text-xs ${
+                                  req.status === "fulfilled"
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-gray-100 text-gray-600"
+                                }`}
+                              >
+                                {req.status === "fulfilled" ? "Fulfilled" : "Pending"}
+                              </Badge>
+                              <button
+                                onClick={() => handleDeleteRequest(req.id)}
+                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                title="Delete request"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -359,7 +475,95 @@ export default function ClientPortalPage() {
                 </Card>
               )}
 
-              {/* Recent Filings */}
+              {/* Shared Documents tab */}
+              {activeTab === "shared" && (
+                <Card>
+                  <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <FolderOpen size={15} /> Shared Documents
+                      <span className="text-xs text-gray-400 font-normal ml-1">(CA → Client)</span>
+                    </CardTitle>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Label (optional)"
+                        value={uploadLabel}
+                        onChange={(e) => setUploadLabel(e.target.value)}
+                        className="text-xs px-2 py-1.5 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                      />
+                      <input
+                        type="file"
+                        className="hidden"
+                        ref={sharedUploadRef}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleSharedDocUpload(f);
+                          e.target.value = "";
+                        }}
+                      />
+                      <button
+                        onClick={() => sharedUploadRef.current?.click()}
+                        disabled={uploadingDoc}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60"
+                      >
+                        <Upload size={13} />
+                        {uploadingDoc ? "Uploading…" : "Upload"}
+                      </button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {sharedLoading ? (
+                      <div className="text-center py-6 text-sm text-gray-400 animate-pulse">Loading…</div>
+                    ) : sharedDocs.length === 0 ? (
+                      <div className="text-center py-10 space-y-2">
+                        <FolderOpen size={32} className="text-gray-200 mx-auto" />
+                        <p className="text-sm text-gray-400">
+                          No documents shared yet — upload returns, notices, and certificates for this client
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {sharedDocs.map((doc) => (
+                          <div
+                            key={doc.id}
+                            className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                              <FolderOpen size={14} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">{doc.label}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {doc.file_name}
+                                {doc.file_size_bytes ? ` · ${formatFileSize(doc.file_size_bytes)}` : ""}
+                                {" · "}{formatDate(doc.created_at)}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                onClick={() => handleDownloadSharedDoc(doc)}
+                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                title="Download"
+                              >
+                                <Download size={13} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteSharedDoc(doc)}
+                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                title="Delete"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Recent Filings tab */}
               {activeTab === "filings" && (
                 <Card>
                   <CardHeader className="pb-2">
@@ -389,12 +593,7 @@ export default function ClientPortalPage() {
                                   {formatDate(c.period_start)} – {formatDate(c.period_end)}
                                 </td>
                                 <td className="px-3 py-3">
-                                  <Badge
-                                    className={`text-xs ${
-                                      FILING_STATUS_COLORS[c.filing_status] ??
-                                      "bg-gray-100 text-gray-600"
-                                    }`}
-                                  >
+                                  <Badge className={`text-xs ${FILING_STATUS_COLORS[c.filing_status] ?? "bg-gray-100 text-gray-600"}`}>
                                     {c.filing_status}
                                   </Badge>
                                 </td>
@@ -406,60 +605,20 @@ export default function ClientPortalPage() {
                                 </td>
                               </tr>
                             ))
-                          : [
-                              {
-                                id: "m1",
-                                form: "GSTR-3B",
-                                period: "Mar 2026",
-                                status: "Filed",
-                                filed: "20 Apr 2026",
-                                arn: "AA261200099999",
-                              },
-                              {
-                                id: "m2",
-                                form: "GSTR-1",
-                                period: "Mar 2026",
-                                status: "Filed",
-                                filed: "11 Apr 2026",
-                                arn: "AA261100088888",
-                              },
-                              {
-                                id: "m3",
-                                form: "GSTR-3B",
-                                period: "Feb 2026",
-                                status: "Filed",
-                                filed: "20 Mar 2026",
-                                arn: "AA260300077777",
-                              },
-                            ].map((row) => (
-                              <tr key={row.id} className="hover:bg-gray-50">
-                                <td className="px-5 py-3 text-sm font-medium text-gray-900">
-                                  {row.form}
-                                </td>
-                                <td className="px-3 py-3 text-xs text-gray-500">{row.period}</td>
-                                <td className="px-3 py-3">
-                                  <Badge className="text-xs bg-green-100 text-green-700">
-                                    {row.status}
-                                  </Badge>
-                                </td>
-                                <td className="px-3 py-3 text-xs text-gray-500">{row.filed}</td>
-                                <td className="px-5 py-3 text-xs font-mono text-gray-400">
-                                  {row.arn}
-                                </td>
-                              </tr>
-                            ))}
+                          : (
+                            <tr>
+                              <td colSpan={5} className="text-center text-xs text-gray-400 py-8">
+                                No filed entries in compliance calendar for this client
+                              </td>
+                            </tr>
+                          )}
                       </tbody>
                     </table>
-                    {recentFilings.length === 0 && (
-                      <p className="text-center text-xs text-gray-400 py-2 pb-4">
-                        Showing sample data — no filed entries found in compliance calendar
-                      </p>
-                    )}
                   </div>
                 </Card>
               )}
 
-              {/* Outstanding Dues */}
+              {/* Outstanding Dues tab */}
               {activeTab === "dues" && (
                 <Card>
                   <CardHeader className="pb-3">
@@ -475,9 +634,7 @@ export default function ClientPortalPage() {
                           className="flex items-center gap-4 p-3 rounded-lg border border-gray-100 hover:bg-gray-50"
                         >
                           <div className="flex-1">
-                            <p className="text-sm font-medium text-gray-900">
-                              {t.party_name}
-                            </p>
+                            <p className="text-sm font-medium text-gray-900">{t.party_name}</p>
                             <p className="text-xs text-gray-500 mt-0.5">
                               {formatDate(t.transaction_date)}
                               {t.reference_no ? ` · Ref: ${t.reference_no}` : ""}
@@ -486,32 +643,23 @@ export default function ClientPortalPage() {
                           <span className="text-sm font-semibold text-gray-800">
                             {formatPaise(t.total_paise)}
                           </span>
-                          <Badge className="text-xs bg-amber-100 text-amber-700">
-                            {t.status}
-                          </Badge>
+                          <Badge className="text-xs bg-amber-100 text-amber-700">{t.status}</Badge>
                         </div>
                       ))
                     ) : (
-                      // Mock dues when no real unpaid transactions
                       MOCK_DUES.map((due) => (
                         <div
                           key={due.id}
                           className="flex items-center gap-4 p-3 rounded-lg border border-gray-100 hover:bg-gray-50"
                         >
                           <div className="flex-1">
-                            <p className="text-sm font-medium text-gray-900">
-                              {due.description}
-                            </p>
+                            <p className="text-sm font-medium text-gray-900">{due.description}</p>
                             <p className="text-xs text-gray-500 mt-0.5">Due: {due.due}</p>
                           </div>
-                          <span className="text-sm font-semibold text-gray-800">
-                            {due.amount}
-                          </span>
+                          <span className="text-sm font-semibold text-gray-800">{due.amount}</span>
                           <Badge
                             className={`text-xs ${
-                              due.status === "Overdue"
-                                ? "bg-red-100 text-red-700"
-                                : "bg-amber-100 text-amber-700"
+                              due.status === "Overdue" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
                             }`}
                           >
                             {due.status}
@@ -523,12 +671,12 @@ export default function ClientPortalPage() {
                 </Card>
               )}
 
-              {/* Messages */}
+              {/* Messages tab */}
               {activeTab === "messages" && (
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm flex items-center gap-2">
-                      <MessageSquare size={15} /> Messages from Your CA
+                      <MessageSquare size={15} /> Messages from CA
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -553,6 +701,66 @@ export default function ClientPortalPage() {
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* New Request Modal */}
+      {showNewRequestModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <h3 className="text-base font-semibold text-gray-900">New Document Request</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Title *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Upload Q4 Bank Statement"
+                  value={newRequest.title}
+                  onChange={(e) => setNewRequest((p) => ({ ...p, title: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+                <textarea
+                  placeholder="e.g. For the period Jan–Mar 2026"
+                  value={newRequest.description}
+                  onChange={(e) => setNewRequest((p) => ({ ...p, description: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  rows={3}
+                />
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newRequest.is_urgent}
+                  onChange={(e) => setNewRequest((p) => ({ ...p, is_urgent: e.target.checked }))}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">Mark as Urgent</span>
+                <AlertTriangle size={14} className="text-amber-500" />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => {
+                  setShowNewRequestModal(false);
+                  setNewRequest({ title: "", description: "", is_urgent: false });
+                }}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateRequest}
+                disabled={!newRequest.title.trim() || savingRequest}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+              >
+                {savingRequest ? "Creating…" : "Create Request"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
