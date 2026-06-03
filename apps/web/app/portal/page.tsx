@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   FileText, Calendar, FolderOpen, LogOut, AlertCircle, Upload,
-  CheckCircle, AlertTriangle, Download,
+  CheckCircle, AlertTriangle, Download, BarChart3,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
@@ -40,13 +40,24 @@ interface SharedDocument {
   created_at: string;
 }
 
+interface SharedReport {
+  id: string;
+  report_label: string;
+  report_type: string;
+  financial_year: string;
+  storage_path: string;
+  file_name: string;
+  file_size_bytes: number | null;
+  created_at: string;
+}
+
 interface GSTDueDate {
   label: string;
   dueDate: string;
   description: string;
 }
 
-type PortalTab = "requests" | "shared" | "filings" | "dues";
+type PortalTab = "requests" | "shared" | "reports" | "filings" | "dues";
 
 
 function formatDate(iso: string): string {
@@ -129,6 +140,7 @@ export default function PortalPage() {
   const [activeTab, setActiveTab] = useState<PortalTab>("requests");
 
   // Upload state per request
+  const [sharedReports, setSharedReports] = useState<SharedReport[]>([]);
   const [uploadingRequestId, setUploadingRequestId] = useState<string | null>(null);
   const uploadRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -215,6 +227,14 @@ export default function PortalPage() {
           .eq("client_id", clientRow.id)
           .order("created_at", { ascending: false });
         setDocRequests(requestRows ?? []);
+
+        // Load shared reports from CA
+        const { data: reportRows } = await supabase
+          .from("shared_reports")
+          .select("id, report_label, report_type, financial_year, storage_path, file_name, file_size_bytes, created_at")
+          .eq("client_id", clientRow.id)
+          .order("created_at", { ascending: false });
+        setSharedReports(reportRows ?? []);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load portal");
       } finally {
@@ -318,6 +338,7 @@ export default function PortalPage() {
   const TABS: { id: PortalTab; label: string; icon: React.ElementType; count?: number }[] = [
     { id: "requests", label: "Documents Requested", icon: FileText, count: pendingRequests.length || undefined },
     { id: "shared", label: "Shared by CA", icon: FolderOpen },
+    { id: "reports", label: "Reports", icon: BarChart3 },
     { id: "filings", label: "Recent Filings", icon: Calendar },
     { id: "dues", label: "Outstanding Dues", icon: AlertCircle },
   ];
@@ -498,6 +519,55 @@ export default function PortalPage() {
                     </div>
                     <button
                       onClick={() => handleDownloadDoc(doc)}
+                      className="shrink-0 flex items-center gap-1.5 text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100"
+                    >
+                      <Download className="w-3 h-3" />
+                      Download
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Reports tab — shared by CA */}
+        {activeTab === "reports" && (
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-blue-600" />
+              <h2 className="text-sm font-semibold text-gray-900">Reports Shared by Your CA</h2>
+            </div>
+            {sharedReports.length === 0 ? (
+              <div className="px-5 py-12 text-center space-y-2">
+                <BarChart3 className="w-8 h-8 text-gray-200 mx-auto" />
+                <p className="text-sm text-gray-400">No reports shared yet</p>
+                <p className="text-xs text-gray-300">Your CA will share P&L, Balance Sheet, and other reports here</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {sharedReports.map((r) => (
+                  <div key={r.id} className="px-5 py-3 flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{r.report_label}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        FY {r.financial_year}
+                        {r.file_size_bytes ? ` · ${formatFileSize(r.file_size_bytes)}` : ""}
+                        {" · "}{formatDate(r.created_at)}
+                      </p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const supabase = getSupabaseClient();
+                        const { data, error: err } = await supabase.storage
+                          .from("Documents")
+                          .createSignedUrl(r.storage_path, 3600);
+                        if (err || !data) { alert("Could not generate download link."); return; }
+                        const a = document.createElement("a");
+                        a.href = data.signedUrl;
+                        a.download = r.file_name;
+                        a.click();
+                      }}
                       className="shrink-0 flex items-center gap-1.5 text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100"
                     >
                       <Download className="w-3 h-3" />
