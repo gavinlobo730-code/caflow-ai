@@ -772,7 +772,7 @@ export default function InvoicesPage() {
         <CsvImportModal
           title="Import Sales Invoices from CSV"
           columns={INVOICE_IMPORT_COLUMNS}
-          templateFilename="caflow-invoices-template.csv"
+          templateFilename="caflow-invoices-template.xlsx"
           onClose={() => setShowImport(false)}
           onImport={handleInvoiceImport}
           validateRow={(row) => {
