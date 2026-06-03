@@ -463,6 +463,26 @@ export default function SettingsPage() {
         </div>
       </RoleGuard>
 
+      {/* ── Scheduled Reports ───────────────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+          <Calendar size={15} className="text-indigo-500" />
+          <h2 className="text-sm font-semibold text-gray-900">Scheduled Reports</h2>
+        </div>
+        <div className="px-5 py-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm text-gray-700">Automatically email P&L, GST, TDS, and payroll reports to clients on a schedule.</p>
+            <p className="text-xs text-gray-400 mt-0.5">Configure frequency, recipients, and delivery day.</p>
+          </div>
+          <Link
+            href="/settings/scheduled-reports"
+            className="px-4 py-1.5 border border-indigo-300 text-indigo-700 text-sm font-medium rounded-lg hover:bg-indigo-50 transition-colors whitespace-nowrap"
+          >
+            Manage Schedules →
+          </Link>
+        </div>
+      </div>
+
       {/* ── Danger Zone ──────────────────────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-red-100 overflow-hidden">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-red-50">

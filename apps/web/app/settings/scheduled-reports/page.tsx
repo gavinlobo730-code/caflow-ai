@@ -97,10 +97,10 @@ export default function ScheduledReportsPage() {
       const supabase = getSupabaseClient();
       const firmId = await getFirmId();
 
-      const [{ data: sr }, { data: cl }] = await Promise.all([
+      const [{ data: srRaw }, { data: cl }] = await Promise.all([
         supabase
           .from("scheduled_reports")
-          .select("id, client_id, report_type, frequency, recipients, day_of_month, is_active, last_sent_at, created_at, clients(name)")
+          .select("id, client_id, report_type, frequency, recipients, day_of_month, is_active, last_sent_at, created_at")
           .eq("firm_id", firmId)
           .order("created_at", { ascending: false }),
         supabase
@@ -110,22 +110,21 @@ export default function ScheduledReportsPage() {
           .order("name"),
       ]);
 
-      const mapped = (sr ?? []).map((r: {
-        id: string;
-        client_id: string | null;
-        report_type: string;
-        frequency: string;
-        recipients: string[];
-        day_of_month: number;
-        is_active: boolean;
-        last_sent_at: string | null;
-        created_at: string;
-        clients?: { name: string } | null;
-      }) => ({
-        ...r,
+      // Build client lookup
+      const clientMap: Record<string, string> = {};
+      for (const c of (cl ?? [])) { clientMap[c.id] = c.name; }
+
+      const mapped = (srRaw ?? []).map((r: Record<string, unknown>) => ({
+        id: r.id as string,
+        client_id: (r.client_id as string | null) ?? null,
         report_type: r.report_type as ReportType,
         frequency: r.frequency as Frequency,
-        client_name: r.clients?.name ?? null,
+        recipients: r.recipients as string[],
+        day_of_month: r.day_of_month as number,
+        is_active: r.is_active as boolean,
+        last_sent_at: (r.last_sent_at as string | null) ?? null,
+        created_at: r.created_at as string,
+        client_name: r.client_id ? (clientMap[r.client_id as string] ?? null) : null,
       }));
 
       setSchedules(mapped);
