@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   Building2, Mail, Phone, MapPin, Calendar, FileText, Clock,
-  ChevronRight, CheckCircle, AlertTriangle,
+  ChevronRight, CheckCircle, AlertTriangle, Globe, Copy, X,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,11 @@ import type { Transaction } from "@/lib/data/transactions";
 import type { BankStatement } from "@/lib/data/bankStatements";
 import { formatDate, ENTITY_TYPE_LABELS } from "@/lib/services/formatting";
 import { formatPaise } from "@/lib/services/formatting";
+
+interface PortalState {
+  enabled: boolean;
+  invitedAt: string | null;
+}
 
 type TabId = "overview" | "tasks" | "compliance" | "invoices" | "bank";
 
@@ -87,6 +92,9 @@ export default function ClientWorkspacePage() {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [markFiled, setMarkFiled] = useState<MarkFiledForm | null>(null);
   const [filingLoading, setFilingLoading] = useState(false);
+  const [portal, setPortal] = useState<PortalState | null>(null);
+  const [showPortalModal, setShowPortalModal] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
 
   useEffect(() => {
     if (!id || id === "_placeholder") return;
@@ -103,6 +111,18 @@ export default function ClientWorkspacePage() {
           getBankStatements(id as string).catch(() => [] as BankStatement[]),
         ]);
         setClient(c);
+
+        // Load portal status
+        const { getSupabaseClient } = await import("@/lib/supabase/client");
+        const supabase = getSupabaseClient();
+        const { data: portalRow } = await supabase
+          .from("clients")
+          .select("portal_enabled, portal_invited_at")
+          .eq("id", id as string)
+          .maybeSingle();
+        if (portalRow) {
+          setPortal({ enabled: !!portalRow.portal_enabled, invitedAt: portalRow.portal_invited_at ?? null });
+        }
         setTasks(t);
         // Seed compliance calendar if empty
         if (comp.length === 0) {
@@ -122,6 +142,23 @@ export default function ClientWorkspacePage() {
     }
     load();
   }, [id]);
+
+  async function handleInviteToPortal() {
+    if (!id) return;
+    setPortalLoading(true);
+    try {
+      const { getSupabaseClient } = await import("@/lib/supabase/client");
+      const supabase = getSupabaseClient();
+      await supabase
+        .from("clients")
+        .update({ portal_enabled: true, portal_invited_at: new Date().toISOString() })
+        .eq("id", id);
+      setPortal({ enabled: true, invitedAt: new Date().toISOString() });
+      setShowPortalModal(true);
+    } finally {
+      setPortalLoading(false);
+    }
+  }
 
   async function handleMarkFiled() {
     if (!markFiled) return;
@@ -481,6 +518,77 @@ export default function ClientWorkspacePage() {
             )}
           </div>
         </Card>
+      )}
+
+      {/* Portal Access section — always visible below tabs */}
+      <div className="bg-white rounded-xl border border-gray-100 p-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Globe className="w-4 h-4 text-blue-600" />
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Portal Access</h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {portal?.enabled
+                  ? `Portal active${portal.invitedAt ? ` · Invited ${new Date(portal.invitedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : ""}`
+                  : "Not enabled — client cannot log in yet"}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${portal?.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+              {portal?.enabled ? "Active" : "Not enabled"}
+            </span>
+            <button
+              onClick={handleInviteToPortal}
+              disabled={portalLoading}
+              className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              {portalLoading ? "Saving…" : portal?.enabled ? "Resend Invite" : "Invite to Portal"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Portal invite modal */}
+      {showPortalModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900">Share Portal Link</h3>
+              <button onClick={() => setShowPortalModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 space-y-2">
+              <p className="text-xs font-medium text-blue-900">Portal URL</p>
+              <div className="flex items-center gap-2">
+                <code className="text-xs text-blue-700 flex-1 break-all">
+                  {typeof window !== "undefined" ? `${window.location.origin}/portal` : "/portal"}
+                </code>
+                <button
+                  onClick={() => {
+                    if (typeof window !== "undefined") {
+                      navigator.clipboard.writeText(`${window.location.origin}/portal`);
+                    }
+                  }}
+                  className="shrink-0 text-blue-600 hover:text-blue-800"
+                  title="Copy URL"
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500">
+              Copy this link and share it with your client. They will need to sign up at this URL using the email address on their profile.
+            </p>
+            <button
+              onClick={() => setShowPortalModal(false)}
+              className="w-full bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700"
+            >
+              Done
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Bank Statements tab */}
