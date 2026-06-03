@@ -128,7 +128,7 @@ async function getFirmId(): Promise<string> {
     .select("firm_id")
     .eq("auth_user_id", session.user.id)
     .single();
-  if (!data) throw new Error("User not found");
+  if (!data?.firm_id) throw new Error("Firm not found — please complete onboarding.");
   return data.firm_id;
 }
 
