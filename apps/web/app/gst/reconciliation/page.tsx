@@ -1,241 +1,201 @@
 "use client";
 
 /**
- * GSTR-2B Reconciliation Tool
- * Section 16(2)(aa) of CGST Act — Input Tax Credit (ITC) can only be claimed
- * if the inward supply is reflected in GSTR-2B of the recipient.
+ * GSTR-2A vs Purchase Register ITC Reconciliation
  *
- * CAs must reconcile GSTR-2B (as filed by vendors on GSTN portal) against the
- * client's own purchase register to identify ITC discrepancies before filing GSTR-3B.
+ * CGST Act Section 16 — ITC eligibility conditions
+ * CGST Rule 36(4) — ITC restricted to 105% of eligible ITC appearing in GSTR-2A/2B
+ * Reconciliation mandatory for accurate ITC claims
+ *
+ * All monetary values stored and computed in integer paise (never floating point).
+ * CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
  */
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
+  ChevronLeft,
   Upload,
   Download,
   CheckCircle,
   AlertCircle,
-  AlertTriangle,
   Info,
-  ChevronLeft,
   FileText,
   Users,
+  BookOpen,
 } from "lucide-react";
 import Link from "next/link";
+import * as XLSX from "xlsx";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-/** One invoice line from GSTR-2B JSON (GSTN standard format) */
-interface Gstr2bInvoice {
-  supplierGstin: string;
-  invoiceNo: string;
-  invoiceDate: string;
-  taxableAmount: number; // in paise (integer arithmetic — CGST Act requirement)
-  igst: number;
-  cgst: number;
-  sgst: number;
-  total: number;
+/** One invoice row — used for both purchase register and GSTR-2A */
+interface InvoiceRow {
+  supplier_gstin: string;
+  supplier_name: string;
+  invoice_number: string;
+  invoice_date: string;
+  /** Integer paise — CGST Act integer arithmetic requirement */
+  taxable_value_paise: number;
+  igst_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
 }
 
-/** One row from the client's purchase register CSV */
-interface PurchaseRegisterRow {
-  supplierGstin: string;
-  invoiceNo: string;
-  invoiceDate: string;
-  taxableAmount: number; // in paise
-  igst: number;
-  cgst: number;
-  sgst: number;
-  total: number;
-}
+type ReconStatus = "matched" | "mismatch" | "missing_in_2a" | "extra_in_2a";
 
-type ReconciliationStatus =
-  | "matched"
-  | "gstr2b_only"
-  | "purchase_only"
-  | "amount_mismatch";
-
-/** One reconciled line — result of matching GSTR-2B vs purchase register */
+/** One reconciled line — result of matching Purchase Register vs GSTR-2A */
 interface ReconRow {
-  key: string; // supplierGstin + "|" + invoiceNo (normalised)
-  supplierGstin: string;
-  invoiceNo: string;
-  invoiceDate: string;
-  status: ReconciliationStatus;
-  gstr2bTaxable: number | null; // paise
-  gstr2bIgst: number | null;
-  gstr2bCgst: number | null;
-  gstr2bSgst: number | null;
-  prTaxable: number | null; // paise
-  prIgst: number | null;
-  prCgst: number | null;
-  prSgst: number | null;
-  itcAmount: number; // paise — igst+cgst+sgst from whichever side is authoritative
+  key: string; // supplier_gstin + "|" + invoice_number (normalised)
+  supplier_gstin: string;
+  supplier_name: string;
+  invoice_number: string;
+  invoice_date: string;
+  status: ReconStatus;
+
+  // Books side (purchase register)
+  books_taxable: number | null; // paise
+  books_igst: number | null;
+  books_cgst: number | null;
+  books_sgst: number | null;
+
+  // GSTR-2A side
+  gstr2a_taxable: number | null; // paise
+  gstr2a_igst: number | null;
+  gstr2a_cgst: number | null;
+  gstr2a_sgst: number | null;
+
+  // Difference (books - 2A), non-zero only for "mismatch"
+  diff_igst: number;
+  diff_cgst: number;
+  diff_sgst: number;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MONTH_NAMES = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+const MONTHS = [
+  { value: "01", label: "January" },
+  { value: "02", label: "February" },
+  { value: "03", label: "March" },
+  { value: "04", label: "April" },
+  { value: "05", label: "May" },
+  { value: "06", label: "June" },
+  { value: "07", label: "July" },
+  { value: "08", label: "August" },
+  { value: "09", label: "September" },
+  { value: "10", label: "October" },
+  { value: "11", label: "November" },
+  { value: "12", label: "December" },
 ];
 
-const TODAY = new Date("2026-06-02");
-
-function buildMonthOptions(): { value: string; label: string }[] {
-  const options: { value: string; label: string }[] = [];
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(TODAY.getFullYear(), TODAY.getMonth() - i, 1);
-    const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
-    options.push({ value: label, label });
-  }
-  return options;
+const TODAY = new Date("2026-06-03");
+const CURRENT_YEAR = TODAY.getFullYear();
+const YEAR_OPTIONS: number[] = [];
+for (let y = CURRENT_YEAR; y >= CURRENT_YEAR - 4; y--) {
+  YEAR_OPTIONS.push(y);
 }
 
-const MONTH_OPTIONS = buildMonthOptions();
+// ─── CSV Columns definition ───────────────────────────────────────────────────
+
+const CSV_COLUMNS = [
+  "supplier_gstin",
+  "supplier_name",
+  "invoice_number",
+  "invoice_date",
+  "taxable_value",
+  "igst",
+  "cgst",
+  "sgst",
+] as const;
+
+const CSV_TEMPLATE_HEADER = CSV_COLUMNS.join(",");
+const CSV_TEMPLATE_SAMPLE =
+  "27AABCU9603R1ZX,Supplier Co Ltd,INV/2025/001,01-04-2025,100000,18000,0,0";
 
 // ─── Paise helpers ────────────────────────────────────────────────────────────
 
-/** Convert rupee float string → integer paise. Never use floating point for money. */
-function toPaise(val: string | number): number {
-  if (typeof val === "number") return Math.round(val * 100);
-  const cleaned = String(val).replace(/,/g, "").trim();
-  const f = parseFloat(cleaned);
+/** Parse a rupee string (may have commas) → integer paise. NEVER float. */
+function toPaise(val: string | number | undefined | null): number {
+  if (val === null || val === undefined || val === "") return 0;
+  const s = String(val).replace(/,/g, "").trim();
+  const f = parseFloat(s);
   if (isNaN(f)) return 0;
+  // Round to nearest paise — avoids floating point drift
   return Math.round(f * 100);
 }
 
-/** Format paise → ₹ string with Indian number formatting */
+/** Format paise → Indian rupee string (en-IN locale) */
 function fmtRupees(paise: number | null): string {
   if (paise === null) return "—";
   const rupees = paise / 100;
-  return rupees.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return rupees.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
-// ─── GSTR-2B JSON Parser ──────────────────────────────────────────────────────
+// ─── CSV Parser ───────────────────────────────────────────────────────────────
 
-/**
- * Parse GSTN's standard GSTR-2B JSON format.
- * Structure: { data: { docdata: { b2b: [{ ctin, inv: [{ inum, dt, val, itms: [{ rt, txval, igst, cgst, sgst }] }] }] } } }
- * Section 16(2)(aa) CGST Act — ITC eligible only if reflected in GSTR-2B.
- */
-function parseGstr2bJson(text: string): { rows: Gstr2bInvoice[]; error: string | null } {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const parsed: any = JSON.parse(text);
-    const b2b =
-      parsed?.data?.docdata?.b2b ??
-      parsed?.docdata?.b2b ??
-      parsed?.b2b ??
-      [];
-
-    if (!Array.isArray(b2b)) {
-      return { rows: [], error: "Invalid GSTR-2B format: missing b2b array." };
+function parseLine(line: string): string[] {
+  const result: string[] = [];
+  let cur = "";
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (ch === "," && !inQ) {
+      result.push(cur.trim());
+      cur = "";
+    } else {
+      cur += ch ?? "";
     }
-
-    const rows: Gstr2bInvoice[] = [];
-
-    for (const supplier of b2b) {
-      const ctin: string = String(supplier?.ctin ?? "").trim().toUpperCase();
-      const invList = supplier?.inv ?? [];
-      if (!Array.isArray(invList)) continue;
-
-      for (const inv of invList) {
-        const invoiceNo: string = String(inv?.inum ?? "").trim();
-        const invoiceDate: string = String(inv?.dt ?? "").trim();
-        // Aggregate tax across all line items (itms)
-        const itms = Array.isArray(inv?.itms) ? inv.itms : [];
-        let txvalPaise = 0;
-        let igstPaise = 0;
-        let cgstPaise = 0;
-        let sgstPaise = 0;
-
-        if (itms.length > 0) {
-          for (const itm of itms) {
-            const item = itm?.itm_det ?? itm;
-            txvalPaise += toPaise(item?.txval ?? 0);
-            igstPaise += toPaise(item?.igst ?? 0);
-            cgstPaise += toPaise(item?.cgst ?? 0);
-            sgstPaise += toPaise(item?.sgst ?? 0);
-          }
-        } else {
-          // Fallback: val at invoice level, no breakdown
-          txvalPaise = toPaise(inv?.val ?? 0);
-        }
-
-        const totalPaise = txvalPaise + igstPaise + cgstPaise + sgstPaise;
-
-        rows.push({
-          supplierGstin: ctin,
-          invoiceNo,
-          invoiceDate,
-          taxableAmount: txvalPaise,
-          igst: igstPaise,
-          cgst: cgstPaise,
-          sgst: sgstPaise,
-          total: totalPaise,
-        });
-      }
-    }
-
-    return { rows, error: null };
-  } catch {
-    return { rows: [], error: "Failed to parse JSON. Please upload a valid GSTR-2B JSON file." };
   }
+  result.push(cur.trim());
+  return result;
 }
 
-// ─── Purchase Register CSV Parser ─────────────────────────────────────────────
-
-/**
- * Parse purchase register CSV.
- * Expected columns: supplier_gstin, invoice_no, invoice_date, taxable_amount, igst, cgst, sgst, total
- * Manual CSV parsing (no papaparse dependency).
- */
-function parsePurchaseCsv(text: string): { rows: PurchaseRegisterRow[]; error: string | null } {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+function parseCsv(text: string): { rows: InvoiceRow[]; error: string | null } {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith("#"));
   if (lines.length < 2) {
     return { rows: [], error: "CSV must have a header row and at least one data row." };
   }
 
-  const headers = lines[0]!.split(",").map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"));
+  const headers = parseLine(lines[0]!).map((h) =>
+    h.toLowerCase().trim().replace(/\s+/g, "_")
+  );
 
-  const idx = (col: string): number => headers.indexOf(col);
-  const required = ["supplier_gstin", "invoice_no", "invoice_date", "taxable_amount"];
-  const missing = required.filter((c) => idx(c) === -1);
+  const required = ["supplier_gstin", "invoice_number", "taxable_value"];
+  const missing = required.filter((c) => !headers.includes(c));
   if (missing.length > 0) {
     return {
       rows: [],
-      error: `CSV is missing required columns: ${missing.join(", ")}. Expected: supplier_gstin, invoice_no, invoice_date, taxable_amount, igst, cgst, sgst, total`,
+      error: `Missing required columns: ${missing.join(", ")}. Expected: ${CSV_TEMPLATE_HEADER}`,
     };
   }
 
-  const rows: PurchaseRegisterRow[] = [];
+  const idx = (col: string) => headers.indexOf(col);
+  const rows: InvoiceRow[] = [];
+
   for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i]!.split(",");
+    const cols = parseLine(lines[i]!);
     const get = (col: string): string => (cols[idx(col)] ?? "").trim();
 
-    const supplierGstin = get("supplier_gstin").toUpperCase();
-    const invoiceNo = get("invoice_no");
-    if (!supplierGstin || !invoiceNo) continue;
-
-    const taxableAmount = toPaise(get("taxable_amount"));
-    const igst = toPaise(get("igst"));
-    const cgst = toPaise(get("cgst"));
-    const sgst = toPaise(get("sgst"));
-    const totalRaw = get("total");
-    const total = totalRaw ? toPaise(totalRaw) : taxableAmount + igst + cgst + sgst;
+    const supplier_gstin = get("supplier_gstin").toUpperCase();
+    const invoice_number = get("invoice_number");
+    if (!supplier_gstin || !invoice_number) continue;
 
     rows.push({
-      supplierGstin,
-      invoiceNo,
-      invoiceDate: get("invoice_date"),
-      taxableAmount,
-      igst,
-      cgst,
-      sgst,
-      total,
+      supplier_gstin,
+      supplier_name: get("supplier_name"),
+      invoice_number,
+      invoice_date: get("invoice_date"),
+      taxable_value_paise: toPaise(get("taxable_value")),
+      igst_paise: toPaise(get("igst")),
+      cgst_paise: toPaise(get("cgst")),
+      sgst_paise: toPaise(get("sgst")),
     });
   }
 
@@ -245,172 +205,189 @@ function parsePurchaseCsv(text: string): { rows: PurchaseRegisterRow[]; error: s
 // ─── Reconciliation Engine ────────────────────────────────────────────────────
 
 /**
- * Match GSTR-2B vs Purchase Register by supplier_gstin + invoice_no.
- * Section 16(2)(aa) CGST Act — ITC can only be claimed on matched invoices.
+ * Match Purchase Register vs GSTR-2A by supplier_gstin + invoice_number.
  *
- * Result categories:
- *   matched         — same invoice on both sides, amounts agree (green)
- *   gstr2b_only     — vendor filed but not in purchase register (orange — missing from books)
- *   purchase_only   — in books but vendor hasn't filed (red — ITC at risk)
- *   amount_mismatch — invoice on both sides but amounts differ (yellow)
+ * CGST Act Section 16 — ITC eligibility conditions
+ * CGST Rule 36(4) — ITC restricted to 105% of eligible ITC in GSTR-2A/2B
+ *
+ * Sections:
+ *   matched        — invoice in both, amounts match (green)
+ *   mismatch       — invoice in both but amounts differ (amber)
+ *   missing_in_2a  — in books but supplier hasn't filed in GSTR-2A (red)
+ *   extra_in_2a    — in GSTR-2A but not in books (blue)
  */
-function reconcile(
-  gstr2bRows: Gstr2bInvoice[],
-  prRows: PurchaseRegisterRow[]
-): ReconRow[] {
-  // Build lookup maps: key = GSTIN|invoice_no (normalised upper-case)
-  const gstr2bMap = new Map<string, Gstr2bInvoice>();
-  for (const r of gstr2bRows) {
-    const key = `${r.supplierGstin.toUpperCase()}|${r.invoiceNo.toUpperCase()}`;
-    gstr2bMap.set(key, r);
+function reconcile(books: InvoiceRow[], gstr2a: InvoiceRow[]): ReconRow[] {
+  const booksMap = new Map<string, InvoiceRow>();
+  for (const r of books) {
+    const key = `${r.supplier_gstin.toUpperCase()}|${r.invoice_number.toUpperCase().trim()}`;
+    booksMap.set(key, r);
   }
 
-  const prMap = new Map<string, PurchaseRegisterRow>();
-  for (const r of prRows) {
-    const key = `${r.supplierGstin.toUpperCase()}|${r.invoiceNo.toUpperCase()}`;
-    prMap.set(key, r);
+  const gstr2aMap = new Map<string, InvoiceRow>();
+  for (const r of gstr2a) {
+    const key = `${r.supplier_gstin.toUpperCase()}|${r.invoice_number.toUpperCase().trim()}`;
+    gstr2aMap.set(key, r);
   }
 
-  const allKeys = Array.from(new Set([...Array.from(gstr2bMap.keys()), ...Array.from(prMap.keys())]));
+  const allKeys = Array.from(
+    new Set([...Array.from(booksMap.keys()), ...Array.from(gstr2aMap.keys())])
+  );
+
   const result: ReconRow[] = [];
 
-  for (let i = 0; i < allKeys.length; i++) {
-    const key = allKeys[i];
-    const g = gstr2bMap.get(key);
-    const p = prMap.get(key);
-    const [gstin, invoiceNo] = key.split("|") as [string, string];
+  for (const key of allKeys) {
+    const b = booksMap.get(key);
+    const g = gstr2aMap.get(key);
+    const [gstin, invNo] = key.split("|") as [string, string];
 
-    let status: ReconciliationStatus;
-    let itcAmount: number;
+    let status: ReconStatus;
+    let diff_igst = 0;
+    let diff_cgst = 0;
+    let diff_sgst = 0;
 
-    if (g && p) {
-      // Both sides — check if amounts match (within 1 paise rounding tolerance)
-      const taxDiff = Math.abs(g.taxableAmount - p.taxableAmount);
-      const igstDiff = Math.abs(g.igst - p.igst);
-      const cgstDiff = Math.abs(g.cgst - p.cgst);
-      const sgstDiff = Math.abs(g.sgst - p.sgst);
-      const totalDiff = taxDiff + igstDiff + cgstDiff + sgstDiff;
-
-      status = totalDiff <= 4 ? "matched" : "amount_mismatch"; // 4 paise = 1 paise per tax head
-      // ITC = tax from GSTR-2B (authoritative per Section 16(2)(aa))
-      itcAmount = g.igst + g.cgst + g.sgst;
-    } else if (g && !p) {
-      status = "gstr2b_only";
-      itcAmount = g.igst + g.cgst + g.sgst;
+    if (b && g) {
+      // Both sides — check if tax amounts match (within 1 paise per head tolerance)
+      diff_igst = b.igst_paise - g.igst_paise;
+      diff_cgst = b.cgst_paise - g.cgst_paise;
+      diff_sgst = b.sgst_paise - g.sgst_paise;
+      const totalDiff = Math.abs(diff_igst) + Math.abs(diff_cgst) + Math.abs(diff_sgst);
+      status = totalDiff <= 3 ? "matched" : "mismatch";
+    } else if (b && !g) {
+      status = "missing_in_2a";
     } else {
-      // p && !g
-      status = "purchase_only";
-      itcAmount = 0; // ITC at risk — not in GSTR-2B, Section 16(2)(aa)
+      status = "extra_in_2a";
     }
 
     result.push({
       key,
-      supplierGstin: gstin,
-      invoiceNo,
-      invoiceDate: g?.invoiceDate ?? p?.invoiceDate ?? "",
+      supplier_gstin: gstin,
+      supplier_name: b?.supplier_name ?? g?.supplier_name ?? "",
+      invoice_number: invNo,
+      invoice_date: b?.invoice_date ?? g?.invoice_date ?? "",
       status,
-      gstr2bTaxable: g?.taxableAmount ?? null,
-      gstr2bIgst: g?.igst ?? null,
-      gstr2bCgst: g?.cgst ?? null,
-      gstr2bSgst: g?.sgst ?? null,
-      prTaxable: p?.taxableAmount ?? null,
-      prIgst: p?.igst ?? null,
-      prCgst: p?.cgst ?? null,
-      prSgst: p?.sgst ?? null,
-      itcAmount,
+      books_taxable: b?.taxable_value_paise ?? null,
+      books_igst: b?.igst_paise ?? null,
+      books_cgst: b?.cgst_paise ?? null,
+      books_sgst: b?.sgst_paise ?? null,
+      gstr2a_taxable: g?.taxable_value_paise ?? null,
+      gstr2a_igst: g?.igst_paise ?? null,
+      gstr2a_cgst: g?.cgst_paise ?? null,
+      gstr2a_sgst: g?.sgst_paise ?? null,
+      diff_igst,
+      diff_cgst,
+      diff_sgst,
     });
   }
 
-  // Sort: matched first, then mismatch, then gstr2b_only, then purchase_only
-  const ORDER: ReconciliationStatus[] = ["matched", "amount_mismatch", "gstr2b_only", "purchase_only"];
+  // Sort: matched, mismatch, missing_in_2a, extra_in_2a
+  const ORDER: ReconStatus[] = ["matched", "mismatch", "missing_in_2a", "extra_in_2a"];
   result.sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status));
-
   return result;
 }
 
-// ─── Export CSV ───────────────────────────────────────────────────────────────
+// ─── Excel Export ─────────────────────────────────────────────────────────────
 
-function exportCsv(rows: ReconRow[], period: string, clientName: string) {
-  const header = [
-    "status",
-    "supplier_gstin",
-    "invoice_no",
-    "invoice_date",
-    "gstr2b_taxable",
-    "gstr2b_igst",
-    "gstr2b_cgst",
-    "gstr2b_sgst",
-    "pr_taxable",
-    "pr_igst",
-    "pr_cgst",
-    "pr_sgst",
-    "itc_amount",
-  ].join(",");
+/**
+ * Export reconciliation as Excel with 4 sheets.
+ * Uses xlsx library — all amounts in rupees (paise / 100) for readability.
+ */
+function exportExcel(rows: ReconRow[], period: string, clientName: string) {
+  const toRs = (p: number | null): string =>
+    p === null ? "" : (p / 100).toFixed(2);
 
-  const lines = rows.map((r) =>
-    [
-      r.status,
-      r.supplierGstin,
-      r.invoiceNo,
-      r.invoiceDate,
-      r.gstr2bTaxable !== null ? (r.gstr2bTaxable / 100).toFixed(2) : "",
-      r.gstr2bIgst !== null ? (r.gstr2bIgst / 100).toFixed(2) : "",
-      r.gstr2bCgst !== null ? (r.gstr2bCgst / 100).toFixed(2) : "",
-      r.gstr2bSgst !== null ? (r.gstr2bSgst / 100).toFixed(2) : "",
-      r.prTaxable !== null ? (r.prTaxable / 100).toFixed(2) : "",
-      r.prIgst !== null ? (r.prIgst / 100).toFixed(2) : "",
-      r.prCgst !== null ? (r.prCgst / 100).toFixed(2) : "",
-      r.prSgst !== null ? (r.prSgst / 100).toFixed(2) : "",
-      (r.itcAmount / 100).toFixed(2),
-    ].join(",")
-  );
+  const headers = [
+    "Supplier GSTIN",
+    "Supplier Name",
+    "Invoice Number",
+    "Invoice Date",
+    "Books Taxable (₹)",
+    "Books IGST (₹)",
+    "Books CGST (₹)",
+    "Books SGST (₹)",
+    "GSTR-2A Taxable (₹)",
+    "GSTR-2A IGST (₹)",
+    "GSTR-2A CGST (₹)",
+    "GSTR-2A SGST (₹)",
+    "Diff IGST (₹)",
+    "Diff CGST (₹)",
+    "Diff SGST (₹)",
+  ];
 
-  const csv = [header, ...lines].join("\n");
+  const toSheetRow = (r: ReconRow): (string | number)[] => [
+    r.supplier_gstin,
+    r.supplier_name,
+    r.invoice_number,
+    r.invoice_date,
+    toRs(r.books_taxable),
+    toRs(r.books_igst),
+    toRs(r.books_cgst),
+    toRs(r.books_sgst),
+    toRs(r.gstr2a_taxable),
+    toRs(r.gstr2a_igst),
+    toRs(r.gstr2a_cgst),
+    toRs(r.gstr2a_sgst),
+    toRs(r.diff_igst),
+    toRs(r.diff_cgst),
+    toRs(r.diff_sgst),
+  ];
+
+  const makeSheet = (filtered: ReconRow[]) =>
+    XLSX.utils.aoa_to_sheet([headers, ...filtered.map(toSheetRow)]);
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, makeSheet(rows.filter((r) => r.status === "matched")), "Matched");
+  XLSX.utils.book_append_sheet(wb, makeSheet(rows.filter((r) => r.status === "mismatch")), "Mismatch");
+  XLSX.utils.book_append_sheet(wb, makeSheet(rows.filter((r) => r.status === "missing_in_2a")), "Missing in 2A");
+  XLSX.utils.book_append_sheet(wb, makeSheet(rows.filter((r) => r.status === "extra_in_2a")), "Extra in 2A");
+
+  const filename = `GSTR2A_Recon_${clientName.replace(/\s+/g, "_")}_${period.replace(/\s+/g, "_")}.xlsx`;
+  XLSX.writeFile(wb, filename);
+}
+
+// ─── Template download ────────────────────────────────────────────────────────
+
+function downloadTemplate(filename: string) {
+  const csv = [
+    "# CAflow GSTR-2A / Purchase Register CSV Template",
+    "# Required: supplier_gstin, invoice_number, taxable_value",
+    "# All amounts in Indian Rupees (decimal)",
+    CSV_TEMPLATE_HEADER,
+    CSV_TEMPLATE_SAMPLE,
+  ].join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `GSTR2B_Recon_${clientName.replace(/\s+/g, "_")}_${period.replace(/\s+/g, "_")}.csv`;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-// ─── Status UI helpers ────────────────────────────────────────────────────────
+// ─── Upload Panel Component ───────────────────────────────────────────────────
 
-const STATUS_LABEL: Record<ReconciliationStatus, string> = {
-  matched: "Matched",
-  gstr2b_only: "Missing from Books",
-  purchase_only: "ITC at Risk",
-  amount_mismatch: "Amount Mismatch",
-};
-
-const STATUS_BADGE: Record<ReconciliationStatus, string> = {
-  matched: "bg-green-100 text-green-700",
-  gstr2b_only: "bg-orange-100 text-orange-700",
-  purchase_only: "bg-red-100 text-red-700",
-  amount_mismatch: "bg-yellow-100 text-yellow-700",
-};
-
-const STATUS_ROW: Record<ReconciliationStatus, string> = {
-  matched: "hover:bg-green-50/30",
-  gstr2b_only: "bg-orange-50/20 hover:bg-orange-50/40",
-  purchase_only: "bg-red-50/20 hover:bg-red-50/40",
-  amount_mismatch: "bg-yellow-50/20 hover:bg-yellow-50/40",
-};
-
-// ─── Upload Zone Component ────────────────────────────────────────────────────
-
-interface UploadZoneProps {
-  label: string;
-  subLabel: string;
-  accept: string;
+interface UploadPanelProps {
+  title: string;
+  subtitle: string;
+  templateFilename: string;
   fileName: string | null;
-  onFile: (text: string, name: string) => void;
+  rowCount: number;
   error: string | null;
-  icon: React.ReactNode;
+  onFile: (text: string, name: string) => void;
+  note?: string;
+  accent: "green" | "blue";
 }
 
-function UploadZone({ label, subLabel, accept, fileName, onFile, error, icon }: UploadZoneProps) {
+function UploadPanel({
+  title,
+  subtitle,
+  templateFilename,
+  fileName,
+  rowCount,
+  error,
+  onFile,
+  note,
+  accent,
+}: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -418,169 +395,200 @@ function UploadZone({ label, subLabel, accept, fileName, onFile, error, icon }: 
     if (!files || files.length === 0) return;
     const file = files[0]!;
     const reader = new FileReader();
-    reader.onload = (e) => {
-      onFile(e.target?.result as string, file.name);
-    };
+    reader.onload = (e) => onFile(e.target?.result as string, file.name);
     reader.readAsText(file);
   }
 
+  const borderClass =
+    dragging
+      ? "border-blue-400 bg-blue-50/40"
+      : fileName
+      ? accent === "green"
+        ? "border-green-400 bg-green-50/20"
+        : "border-blue-400 bg-blue-50/20"
+      : error
+      ? "border-red-300 bg-red-50/10"
+      : "border-gray-200 hover:border-blue-300 hover:bg-blue-50/10";
+
   return (
-    <div
-      className={`relative border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transition-colors
-        ${dragging ? "border-blue-400 bg-blue-50" : fileName ? "border-green-400 bg-green-50/30" : "border-gray-200 hover:border-blue-300 hover:bg-blue-50/20"}
-        ${error ? "border-red-300 bg-red-50/20" : ""}
-      `}
-      onClick={() => inputRef.current?.click()}
-      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={(e) => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
-    >
-      <input
-        ref={inputRef}
-        type="file"
-        accept={accept}
-        className="hidden"
-        onChange={(e) => handleFiles(e.target.files)}
-      />
-      <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
-        {icon}
-      </div>
-      <div className="text-center">
-        <p className="text-sm font-semibold text-gray-800">{label}</p>
-        <p className="text-xs text-gray-400 mt-0.5">{subLabel}</p>
-      </div>
-      {fileName ? (
-        <div className="flex items-center gap-1.5 text-green-600 text-xs font-medium">
-          <CheckCircle className="w-3.5 h-3.5" />
-          <span>{fileName}</span>
+    <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">{title}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>
         </div>
-      ) : (
-        <p className="text-xs text-blue-600 font-medium">Click or drag to upload</p>
-      )}
-      {error && (
-        <p className="text-xs text-red-600 bg-red-50 rounded px-2 py-1">{error}</p>
+        <button
+          type="button"
+          onClick={() => downloadTemplate(templateFilename)}
+          className="flex items-center gap-1 text-[10px] text-blue-600 hover:underline whitespace-nowrap"
+        >
+          <Download className="w-3 h-3" />
+          Template
+        </button>
+      </div>
+
+      <div
+        className={`border-2 border-dashed rounded-xl px-4 py-6 flex flex-col items-center gap-2 cursor-pointer transition-colors ${borderClass}`}
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={(e) => handleFiles(e.target.files)}
+        />
+        {fileName ? (
+          <>
+            <CheckCircle className={`w-6 h-6 ${accent === "green" ? "text-green-500" : "text-blue-500"}`} />
+            <p className="text-xs font-medium text-gray-700">{fileName}</p>
+            <p className="text-[10px] text-gray-400">{rowCount} invoices loaded · click to replace</p>
+          </>
+        ) : (
+          <>
+            <Upload className="w-6 h-6 text-gray-300" />
+            <p className="text-xs text-gray-500">Click or drag &amp; drop CSV</p>
+          </>
+        )}
+        {error && (
+          <p className="text-xs text-red-600 bg-red-50 rounded px-2 py-1 text-center">{error}</p>
+        )}
+      </div>
+
+      {note && (
+        <p className="text-[10px] text-gray-400 bg-gray-50 rounded-lg px-3 py-2 leading-relaxed">
+          {note}
+        </p>
       )}
     </div>
   );
 }
 
+// ─── Status UI helpers ────────────────────────────────────────────────────────
+
+const STATUS_LABEL: Record<ReconStatus, string> = {
+  matched: "Matched",
+  mismatch: "Mismatch",
+  missing_in_2a: "Missing in 2A",
+  extra_in_2a: "Extra in 2A",
+};
+
+const STATUS_BADGE: Record<ReconStatus, string> = {
+  matched: "bg-green-100 text-green-700",
+  mismatch: "bg-amber-100 text-amber-700",
+  missing_in_2a: "bg-red-100 text-red-700",
+  extra_in_2a: "bg-blue-100 text-blue-700",
+};
+
+const STATUS_ROW: Record<ReconStatus, string> = {
+  matched: "hover:bg-green-50/30",
+  mismatch: "bg-amber-50/20 hover:bg-amber-50/40",
+  missing_in_2a: "bg-red-50/20 hover:bg-red-50/40",
+  extra_in_2a: "bg-blue-50/10 hover:bg-blue-50/30",
+};
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function Gstr2bReconciliationPage() {
-  // Client & period selection
+export default function GstReconciliationPage() {
+  // Step 1: parameters
   const [clients, setClients] = useState<Client[]>([]);
-  const [selectedClientId, setSelectedClientId] = useState("");
-  const [period, setPeriod] = useState(MONTH_OPTIONS[MONTH_OPTIONS.length - 2]?.value ?? "");
   const [loadingClients, setLoadingClients] = useState(true);
+  const [selectedClientId, setSelectedClientId] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState(
+    String(TODAY.getMonth() + 1).padStart(2, "0") // current month as MM
+  );
+  const [selectedYear, setSelectedYear] = useState(String(CURRENT_YEAR));
+  const [paramsLoaded, setParamsLoaded] = useState(false);
 
-  // File state
-  const [gstr2bFileName, setGstr2bFileName] = useState<string | null>(null);
-  const [prFileName, setPrFileName] = useState<string | null>(null);
-  const [gstr2bRows, setGstr2bRows] = useState<Gstr2bInvoice[]>([]);
-  const [prRows, setPrRows] = useState<PurchaseRegisterRow[]>([]);
-  const [gstr2bError, setGstr2bError] = useState<string | null>(null);
-  const [prError, setPrError] = useState<string | null>(null);
+  // Step 2: file state
+  const [booksFile, setBooksFile] = useState<string | null>(null);
+  const [booksRows, setBooksRows] = useState<InvoiceRow[]>([]);
+  const [booksError, setBooksError] = useState<string | null>(null);
 
-  // Reconciliation results
+  const [gstr2aFile, setGstr2aFile] = useState<string | null>(null);
+  const [gstr2aRows, setGstr2aRows] = useState<InvoiceRow[]>([]);
+  const [gstr2aError, setGstr2aError] = useState<string | null>(null);
+
+  // Step 3: reconciliation
   const [reconRows, setReconRows] = useState<ReconRow[]>([]);
-  const [filterStatus, setFilterStatus] = useState<ReconciliationStatus | "all">("all");
+  const [filterStatus, setFilterStatus] = useState<ReconStatus | "all">("all");
 
-  // Load clients from Supabase
+  // Load clients
   useEffect(() => {
-    async function load() {
-      setLoadingClients(true);
-      try {
-        const cls = await getClients().catch(() => [] as Client[]);
+    getClients()
+      .then((cls) => {
         setClients(cls);
-        if (cls.length > 0 && cls[0]) {
-          setSelectedClientId(cls[0].id);
-        }
-      } finally {
-        setLoadingClients(false);
-      }
-    }
-    load();
+        if (cls.length > 0 && cls[0]) setSelectedClientId(cls[0].id);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingClients(false));
   }, []);
 
-  // Re-run reconciliation whenever inputs change
+  // Auto-reconcile whenever files change
   const runRecon = useCallback(() => {
-    if (gstr2bRows.length === 0 && prRows.length === 0) {
+    if (booksRows.length === 0 && gstr2aRows.length === 0) {
       setReconRows([]);
       return;
     }
-    setReconRows(reconcile(gstr2bRows, prRows));
-  }, [gstr2bRows, prRows]);
+    setReconRows(reconcile(booksRows, gstr2aRows));
+  }, [booksRows, gstr2aRows]);
 
   useEffect(() => {
     runRecon();
   }, [runRecon]);
 
-  // ── File handlers ────────────────────────────────────────────────────────
-  function handleGstr2bFile(text: string, name: string) {
-    setGstr2bFileName(name);
-    setGstr2bError(null);
-    const { rows, error } = parseGstr2bJson(text);
-    if (error) {
-      setGstr2bError(error);
-      setGstr2bRows([]);
-    } else if (rows.length === 0) {
-      setGstr2bError("No B2B invoices found in the GSTR-2B file.");
-      setGstr2bRows([]);
-    } else {
-      setGstr2bRows(rows);
-    }
+  function handleBooksFile(text: string, name: string) {
+    setBooksFile(name);
+    setBooksError(null);
+    const { rows, error } = parseCsv(text);
+    if (error) { setBooksError(error); setBooksRows([]); }
+    else if (rows.length === 0) { setBooksError("No valid rows found."); setBooksRows([]); }
+    else setBooksRows(rows);
   }
 
-  function handlePrFile(text: string, name: string) {
-    setPrFileName(name);
-    setPrError(null);
-    const { rows, error } = parsePurchaseCsv(text);
-    if (error) {
-      setPrError(error);
-      setPrRows([]);
-    } else if (rows.length === 0) {
-      setPrError("No valid rows found in the Purchase Register CSV.");
-      setPrRows([]);
-    } else {
-      setPrRows(rows);
-    }
+  function handleGstr2aFile(text: string, name: string) {
+    setGstr2aFile(name);
+    setGstr2aError(null);
+    const { rows, error } = parseCsv(text);
+    if (error) { setGstr2aError(error); setGstr2aRows([]); }
+    else if (rows.length === 0) { setGstr2aError("No valid rows found."); setGstr2aRows([]); }
+    else setGstr2aRows(rows);
   }
 
-  // ── Summary ──────────────────────────────────────────────────────────────
-  const matched = reconRows.filter((r) => r.status === "matched");
-  const gstr2bOnly = reconRows.filter((r) => r.status === "gstr2b_only");
-  const purchaseOnly = reconRows.filter((r) => r.status === "purchase_only");
-  const amountMismatch = reconRows.filter((r) => r.status === "amount_mismatch");
+  // ── Summary maths (all in paise — CGST Act integer arithmetic) ──────────────
+  const matched       = reconRows.filter((r) => r.status === "matched");
+  const mismatches    = reconRows.filter((r) => r.status === "mismatch");
+  const missingIn2a   = reconRows.filter((r) => r.status === "missing_in_2a");
+  const extraIn2a     = reconRows.filter((r) => r.status === "extra_in_2a");
 
-  // Total ITC Available = sum of GSTR-2B tax (matched + gstr2b_only + mismatch)
-  // Section 16(2)(aa) CGST Act — ITC eligible only if in GSTR-2B
-  const totalItcAvailable = reconRows
-    .filter((r) => r.status !== "purchase_only")
-    .reduce((sum, r) => sum + r.itcAmount, 0);
-
-  const matchedItc = matched.reduce((sum, r) => sum + r.itcAmount, 0);
-
-  // ITC at Risk = purchase_only (vendor hasn't filed)
-  const itcAtRisk = purchaseOnly.reduce(
-    (sum, r) => sum + (r.prIgst ?? 0) + (r.prCgst ?? 0) + (r.prSgst ?? 0),
-    0
+  const totalBooksITC = booksRows.reduce(
+    (s, r) => s + r.igst_paise + r.cgst_paise + r.sgst_paise, 0
   );
+  const totalGstr2aITC = gstr2aRows.reduce(
+    (s, r) => s + r.igst_paise + r.cgst_paise + r.sgst_paise, 0
+  );
+  const matchedITC = matched.reduce(
+    (s, r) => s + (r.gstr2a_igst ?? 0) + (r.gstr2a_cgst ?? 0) + (r.gstr2a_sgst ?? 0), 0
+  );
+  const diffITC = totalBooksITC - totalGstr2aITC;
 
-  // Missing from Books = gstr2b_only ITC (vendor filed, CA hasn't booked)
-  const missingFromBooks = gstr2bOnly.reduce((sum, r) => sum + r.itcAmount, 0);
-
-  // ── Filtered rows ────────────────────────────────────────────────────────
   const displayRows =
     filterStatus === "all" ? reconRows : reconRows.filter((r) => r.status === filterStatus);
 
   const selectedClient = clients.find((c) => c.id === selectedClientId);
+  const periodLabel = `${MONTHS.find((m) => m.value === selectedMonth)?.label ?? selectedMonth} ${selectedYear}`;
+  // Return period in MMYYYY format (used for gstr2a_records table)
+  const returnPeriod = `${selectedMonth}${selectedYear}`;
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-1.5 mb-1">
             <Link
               href="/gst"
               className="text-gray-400 hover:text-gray-600 flex items-center gap-1 text-xs"
@@ -589,46 +597,52 @@ export default function Gstr2bReconciliationPage() {
               GST
             </Link>
           </div>
-          <h1 className="text-xl font-semibold text-gray-900">GSTR-2B Reconciliation</h1>
+          <h1 className="text-xl font-semibold text-gray-900">
+            GSTR-2A vs Purchase Reconciliation
+          </h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Section 16(2)(aa) CGST Act — Match vendor-filed GSTR-2B against purchase register to claim ITC
+            CGST Rule 36(4) · Section 16 — Reconcile purchase register against GSTR-2A to verify ITC claims
           </p>
         </div>
         {reconRows.length > 0 && (
           <button
-            onClick={() =>
-              exportCsv(reconRows, period, selectedClient?.client_name ?? "Client")
-            }
+            onClick={() => exportExcel(reconRows, periodLabel, selectedClient?.client_name ?? "Client")}
             className="flex items-center gap-1.5 text-xs bg-gray-800 text-white px-3 py-2 rounded-lg hover:bg-gray-900"
           >
             <Download className="w-3.5 h-3.5" />
-            Export CSV
+            Export Excel
           </button>
         )}
       </div>
 
-      {/* ITC notice banner */}
+      {/* Info banner */}
       <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex gap-2.5 text-xs text-blue-700">
         <Info className="w-4 h-4 shrink-0 mt-0.5" />
         <span>
-          <strong>Section 16(2)(aa) CGST Act:</strong> ITC is available only if the inward supply is reflected in
-          the recipient&apos;s GSTR-2B. Mismatches must be resolved with vendors before filing GSTR-3B.
+          <strong>CGST Rule 36(4):</strong> ITC is restricted to 105% of eligible credit appearing in GSTR-2A/2B.
+          Reconcile every period before filing GSTR-3B to avoid ITC reversal notices.{" "}
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
         </span>
       </div>
 
-      {/* Client + Period selectors */}
-      <div className="bg-white rounded-xl border border-gray-100 p-4">
+      {/* Step 1 — Select parameters */}
+      <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">Step 1 — Select Parameters</p>
+          <p className="text-xs text-gray-400 mt-0.5">Choose client and return period, then upload files</p>
+        </div>
+
         <div className="flex flex-wrap gap-4">
+          {/* Client */}
           <div className="flex-1 min-w-[200px]">
             <label className="text-xs font-medium text-gray-700 block mb-1">
-              <Users className="w-3.5 h-3.5 inline mr-1" />
+              <Users className="w-3 h-3 inline mr-1" />
               Client
             </label>
             {loadingClients ? (
-              <div className="h-9 bg-gray-50 rounded-lg animate-pulse" />
+              <div className="h-9 rounded-lg bg-gray-50 animate-pulse" />
             ) : clients.length === 0 ? (
-              <p className="text-xs text-gray-400 italic">No clients found — add clients first</p>
+              <p className="text-xs text-gray-400 italic">No clients found</p>
             ) : (
               <select
                 value={selectedClientId}
@@ -637,239 +651,262 @@ export default function Gstr2bReconciliationPage() {
               >
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.client_name}
-                    {c.gstin ? ` · ${c.gstin}` : ""}
+                    {c.client_name}{c.gstin ? ` · ${c.gstin}` : ""}
                   </option>
                 ))}
               </select>
             )}
           </div>
-          <div className="min-w-[180px]">
-            <label className="text-xs font-medium text-gray-700 block mb-1">
-              GSTR-2B Period
-            </label>
+
+          {/* Month */}
+          <div className="min-w-[150px]">
+            <label className="text-xs font-medium text-gray-700 block mb-1">Month</label>
             <select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {MONTH_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+              {MONTHS.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
               ))}
             </select>
           </div>
-        </div>
-      </div>
 
-      {/* Upload Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <UploadZone
-          label="Upload GSTR-2B JSON"
-          subLabel="Downloaded from GSTN portal (JSON format)"
-          accept=".json,application/json"
-          fileName={gstr2bFileName}
-          onFile={handleGstr2bFile}
-          error={gstr2bError}
-          icon={<FileText className="w-5 h-5 text-blue-600" />}
-        />
-        <UploadZone
-          label="Upload Purchase Register CSV"
-          subLabel="Columns: supplier_gstin, invoice_no, invoice_date, taxable_amount, igst, cgst, sgst, total"
-          accept=".csv,text/csv"
-          fileName={prFileName}
-          onFile={handlePrFile}
-          error={prError}
-          icon={<Upload className="w-5 h-5 text-green-600" />}
-        />
-      </div>
-
-      {/* File parse summary */}
-      {(gstr2bRows.length > 0 || prRows.length > 0) && (
-        <div className="flex flex-wrap gap-3 text-xs text-gray-500">
-          {gstr2bRows.length > 0 && (
-            <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full">
-              GSTR-2B: {gstr2bRows.length} invoices loaded
-            </span>
-          )}
-          {prRows.length > 0 && (
-            <span className="bg-green-50 text-green-700 px-2.5 py-1 rounded-full">
-              Purchase Register: {prRows.length} rows loaded
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Summary Cards — shown only after reconciliation */}
-      {reconRows.length > 0 && (
-        <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* Total ITC Available */}
-            <div className="bg-white rounded-xl border border-gray-100 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-                  <Info className="w-4 h-4 text-blue-600" />
-                </div>
-                <span className="text-xs text-gray-500">Total ITC Available</span>
-              </div>
-              <p className="text-base font-semibold text-gray-900">₹{fmtRupees(totalItcAvailable)}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">From GSTR-2B (Sec 16(2)(aa))</p>
-            </div>
-
-            {/* Matched ITC */}
-            <div className="bg-white rounded-xl border border-gray-100 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
-                  <CheckCircle className="w-4 h-4 text-green-600" />
-                </div>
-                <span className="text-xs text-gray-500">Matched ITC</span>
-              </div>
-              <p className="text-base font-semibold text-gray-900">₹{fmtRupees(matchedItc)}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">{matched.length} invoices matched</p>
-            </div>
-
-            {/* ITC at Risk */}
-            <div className="bg-white rounded-xl border border-gray-100 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
-                  <AlertCircle className="w-4 h-4 text-red-600" />
-                </div>
-                <span className="text-xs text-gray-500">ITC at Risk</span>
-              </div>
-              <p className="text-base font-semibold text-gray-900">₹{fmtRupees(itcAtRisk)}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">{purchaseOnly.length} invoices — vendor not filed</p>
-            </div>
-
-            {/* Missing from Books */}
-            <div className="bg-white rounded-xl border border-gray-100 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center">
-                  <AlertTriangle className="w-4 h-4 text-orange-600" />
-                </div>
-                <span className="text-xs text-gray-500">Missing from Books</span>
-              </div>
-              <p className="text-base font-semibold text-gray-900">₹{fmtRupees(missingFromBooks)}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">{gstr2bOnly.length} invoices — not in purchase register</p>
-            </div>
+          {/* Year */}
+          <div className="min-w-[110px]">
+            <label className="text-xs font-medium text-gray-700 block mb-1">Year</label>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {YEAR_OPTIONS.map((y) => (
+                <option key={y} value={String(y)}>{y}</option>
+              ))}
+            </select>
           </div>
 
-          {/* Mismatch summary pill */}
-          {amountMismatch.length > 0 && (
-            <div className="bg-yellow-50 border border-yellow-100 rounded-xl px-4 py-2.5 flex items-center gap-2 text-xs text-yellow-700">
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-              <span>
-                <strong>{amountMismatch.length} invoices</strong> have amount mismatches between GSTR-2B and purchase register — verify with vendors.
-              </span>
+          {/* Load Data button */}
+          <div className="flex items-end">
+            <button
+              onClick={() => setParamsLoaded(true)}
+              className="h-9 px-4 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+            >
+              Load Data
+            </button>
+          </div>
+        </div>
+
+        {paramsLoaded && (
+          <div className="flex items-center gap-2 text-xs text-green-600 bg-green-50 rounded-lg px-3 py-2">
+            <CheckCircle className="w-3.5 h-3.5" />
+            <span>
+              Parameters set: <strong>{selectedClient?.client_name ?? "—"}</strong> · Period{" "}
+              <strong>{periodLabel}</strong> · Return period code: <strong>{returnPeriod}</strong>
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Step 2 — Upload files */}
+      <div>
+        <p className="text-sm font-semibold text-gray-900 mb-3">Step 2 — Upload Files</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <UploadPanel
+            title="Purchase Register (Your Books)"
+            subtitle="Your recorded purchase invoices for this period"
+            templateFilename="purchase_register_template.csv"
+            fileName={booksFile}
+            rowCount={booksRows.length}
+            error={booksError}
+            onFile={handleBooksFile}
+            accent="green"
+          />
+          <UploadPanel
+            title="GSTR-2A (From GST Portal)"
+            subtitle="Supplier-filed invoices reflected in your GSTR-2A"
+            templateFilename="gstr2a_template.csv"
+            fileName={gstr2aFile}
+            rowCount={gstr2aRows.length}
+            error={gstr2aError}
+            onFile={handleGstr2aFile}
+            note="Download GSTR-2A from GST Portal → Returns → View/Download → GSTR-2A → export to CSV"
+            accent="blue"
+          />
+        </div>
+      </div>
+
+      {/* Step 3 — Results */}
+      {reconRows.length > 0 && (
+        <>
+          <div>
+            <p className="text-sm font-semibold text-gray-900 mb-3">Step 3 — Reconciliation Results</p>
+
+            {/* Summary cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+              {/* Total ITC in Books */}
+              <div className="bg-white rounded-xl border border-gray-100 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center">
+                    <BookOpen className="w-4 h-4 text-gray-600" />
+                  </div>
+                  <span className="text-xs text-gray-500">ITC in Books</span>
+                </div>
+                <p className="text-base font-semibold text-gray-900">₹{fmtRupees(totalBooksITC)}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">{booksRows.length} purchase invoices</p>
+              </div>
+
+              {/* Total ITC in GSTR-2A */}
+              <div className="bg-white rounded-xl border border-gray-100 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                    <FileText className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <span className="text-xs text-gray-500">ITC in GSTR-2A</span>
+                </div>
+                <p className="text-base font-semibold text-gray-900">₹{fmtRupees(totalGstr2aITC)}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">{gstr2aRows.length} supplier-filed invoices</p>
+              </div>
+
+              {/* Matched ITC */}
+              <div className="bg-white rounded-xl border border-gray-100 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                  </div>
+                  <span className="text-xs text-gray-500">Matched ITC</span>
+                </div>
+                <p className="text-base font-semibold text-gray-900">₹{fmtRupees(matchedITC)}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">{matched.length} invoices matched</p>
+              </div>
+
+              {/* Difference */}
+              <div className="bg-white rounded-xl border border-gray-100 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${diffITC === 0 ? "bg-gray-50" : diffITC > 0 ? "bg-red-50" : "bg-amber-50"}`}>
+                    <AlertCircle className={`w-4 h-4 ${diffITC === 0 ? "text-gray-400" : diffITC > 0 ? "text-red-600" : "text-amber-600"}`} />
+                  </div>
+                  <span className="text-xs text-gray-500">Difference (Books − 2A)</span>
+                </div>
+                <p className={`text-base font-semibold ${diffITC === 0 ? "text-gray-900" : diffITC > 0 ? "text-red-600" : "text-amber-600"}`}>
+                  {diffITC >= 0 ? "" : "−"}₹{fmtRupees(Math.abs(diffITC))}
+                </p>
+                <p className="text-[10px] text-gray-400 mt-0.5">
+                  {diffITC > 0 ? "Books > 2A — ITC at risk" : diffITC < 0 ? "2A > Books — unclaimed ITC" : "Fully reconciled"}
+                </p>
+              </div>
             </div>
-          )}
+
+            {/* Section pills */}
+            <div className="flex flex-wrap gap-2 mb-3">
+              {(
+                [
+                  { status: "all" as const,           label: `All (${reconRows.length})`,          cls: "bg-gray-100 text-gray-700" },
+                  { status: "matched" as ReconStatus,       label: `Matched ✓ (${matched.length})`,      cls: "bg-green-100 text-green-700" },
+                  { status: "mismatch" as ReconStatus,      label: `Mismatch ⚠ (${mismatches.length})`, cls: "bg-amber-100 text-amber-700" },
+                  { status: "missing_in_2a" as ReconStatus, label: `Missing in 2A (${missingIn2a.length})`, cls: "bg-red-100 text-red-700" },
+                  { status: "extra_in_2a" as ReconStatus,   label: `Extra in 2A (${extraIn2a.length})`,  cls: "bg-blue-100 text-blue-700" },
+                ] as { status: ReconStatus | "all"; label: string; cls: string }[]
+              ).map(({ status, label, cls }) => (
+                <button
+                  key={status}
+                  onClick={() => setFilterStatus(status)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-opacity ${cls} ${filterStatus === status ? "opacity-100 ring-2 ring-offset-1 ring-current" : "opacity-70 hover:opacity-100"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Results table */}
+            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-50 bg-gray-50/50">
+                      <th className="text-left font-medium text-gray-400 px-4 py-3">Status</th>
+                      <th className="text-left font-medium text-gray-400 px-3 py-3">Supplier GSTIN</th>
+                      <th className="text-left font-medium text-gray-400 px-3 py-3">Supplier Name</th>
+                      <th className="text-left font-medium text-gray-400 px-3 py-3">Invoice No.</th>
+                      <th className="text-left font-medium text-gray-400 px-3 py-3">Date</th>
+                      <th className="text-right font-medium text-gray-400 px-3 py-3">Books Tax (₹)</th>
+                      <th className="text-right font-medium text-gray-400 px-3 py-3">2A Tax (₹)</th>
+                      <th className="text-right font-medium text-gray-400 px-4 py-3">Diff (₹)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {displayRows.map((r) => {
+                      const booksTax =
+                        r.books_igst !== null || r.books_cgst !== null || r.books_sgst !== null
+                          ? (r.books_igst ?? 0) + (r.books_cgst ?? 0) + (r.books_sgst ?? 0)
+                          : null;
+                      const gstr2aTax =
+                        r.gstr2a_igst !== null || r.gstr2a_cgst !== null || r.gstr2a_sgst !== null
+                          ? (r.gstr2a_igst ?? 0) + (r.gstr2a_cgst ?? 0) + (r.gstr2a_sgst ?? 0)
+                          : null;
+                      const diffTax =
+                        r.status === "mismatch"
+                          ? r.diff_igst + r.diff_cgst + r.diff_sgst
+                          : null;
+                      return (
+                        <tr key={r.key} className={STATUS_ROW[r.status]}>
+                          <td className="px-4 py-2.5">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[r.status]}`}>
+                              {STATUS_LABEL[r.status]}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 font-mono text-gray-600">{r.supplier_gstin}</td>
+                          <td className="px-3 py-2.5 text-gray-700 max-w-[160px] truncate" title={r.supplier_name}>
+                            {r.supplier_name || "—"}
+                          </td>
+                          <td className="px-3 py-2.5 text-gray-700 font-medium">{r.invoice_number}</td>
+                          <td className="px-3 py-2.5 text-gray-500">{r.invoice_date || "—"}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-700">
+                            {booksTax !== null ? fmtRupees(booksTax) : "—"}
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-gray-700">
+                            {gstr2aTax !== null ? fmtRupees(gstr2aTax) : "—"}
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-medium">
+                            {diffTax !== null ? (
+                              <span className={diffTax !== 0 ? "text-amber-600" : "text-gray-400"}>
+                                {diffTax >= 0 ? "" : "−"}
+                                {fmtRupees(Math.abs(diffTax))}
+                              </span>
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="px-5 py-3 border-t border-gray-50 bg-gray-50/30">
+                <p className="text-[10px] text-gray-400">
+                  {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
+                  CGST Act Section 16 · Rule 36(4) — ITC subject to 105% cap of GSTR-2A eligible credit ·
+                  CAflow does not auto-submit anything to the GST portal — CA must review and file manually.
+                </p>
+              </div>
+            </div>
+          </div>
         </>
       )}
 
-      {/* Reconciliation Table */}
-      {reconRows.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900">Reconciliation Results</h2>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {reconRows.length} invoices · {period}{selectedClient ? ` · ${selectedClient.client_name}` : ""}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500">Filter:</label>
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value as ReconciliationStatus | "all")}
-                className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All ({reconRows.length})</option>
-                <option value="matched">Matched ({matched.length})</option>
-                <option value="amount_mismatch">Amount Mismatch ({amountMismatch.length})</option>
-                <option value="gstr2b_only">Missing from Books ({gstr2bOnly.length})</option>
-                <option value="purchase_only">ITC at Risk ({purchaseOnly.length})</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-gray-50">
-                  <th className="text-left font-medium text-gray-400 px-4 py-3">Status</th>
-                  <th className="text-left font-medium text-gray-400 px-3 py-3">Supplier GSTIN</th>
-                  <th className="text-left font-medium text-gray-400 px-3 py-3">Invoice No.</th>
-                  <th className="text-left font-medium text-gray-400 px-3 py-3">Date</th>
-                  <th className="text-right font-medium text-gray-400 px-3 py-3">GSTR-2B Taxable</th>
-                  <th className="text-right font-medium text-gray-400 px-3 py-3">GSTR-2B Tax</th>
-                  <th className="text-right font-medium text-gray-400 px-3 py-3">PR Taxable</th>
-                  <th className="text-right font-medium text-gray-400 px-3 py-3">PR Tax</th>
-                  <th className="text-right font-medium text-gray-400 px-4 py-3">ITC (₹)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {displayRows.map((r) => {
-                  const gstr2bTax =
-                    r.gstr2bIgst !== null || r.gstr2bCgst !== null || r.gstr2bSgst !== null
-                      ? (r.gstr2bIgst ?? 0) + (r.gstr2bCgst ?? 0) + (r.gstr2bSgst ?? 0)
-                      : null;
-                  const prTax =
-                    r.prIgst !== null || r.prCgst !== null || r.prSgst !== null
-                      ? (r.prIgst ?? 0) + (r.prCgst ?? 0) + (r.prSgst ?? 0)
-                      : null;
-                  return (
-                    <tr key={r.key} className={`${STATUS_ROW[r.status]}`}>
-                      <td className="px-4 py-2.5">
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[r.status]}`}>
-                          {STATUS_LABEL[r.status]}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 font-mono text-gray-600">{r.supplierGstin}</td>
-                      <td className="px-3 py-2.5 text-gray-700 font-medium">{r.invoiceNo}</td>
-                      <td className="px-3 py-2.5 text-gray-500">{r.invoiceDate}</td>
-                      <td className="px-3 py-2.5 text-right text-gray-700">
-                        {r.gstr2bTaxable !== null ? fmtRupees(r.gstr2bTaxable) : "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-gray-700">
-                        {gstr2bTax !== null ? fmtRupees(gstr2bTax) : "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-gray-700">
-                        {r.prTaxable !== null ? fmtRupees(r.prTaxable) : "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-gray-700">
-                        {prTax !== null ? fmtRupees(prTax) : "—"}
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-medium text-gray-900">
-                        {r.status === "purchase_only" ? (
-                          <span className="text-red-500">—</span>
-                        ) : (
-                          fmtRupees(r.itcAmount)
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="px-5 py-3 border-t border-gray-50 bg-gray-50/30">
-            <p className="text-[10px] text-gray-400">
-              {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
-              Section 16(2)(aa) CGST Act — ITC claimable only for invoices reflected in GSTR-2B ·
-              CAflow does not auto-submit anything to the GST portal — CA must review and file manually.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Empty state — no reconciliation yet */}
-      {reconRows.length === 0 && !gstr2bError && !prError && (
+      {/* Empty state */}
+      {reconRows.length === 0 && !booksError && !gstr2aError && (
         <div className="bg-white rounded-xl border border-gray-100 px-6 py-16 text-center space-y-2">
           <div className="w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center mx-auto">
-            <FileText className="w-6 h-6 text-gray-300" />
+            <FileText className="w-6 h-6 text-gray-200" />
           </div>
-          <p className="text-sm font-medium text-gray-600">Upload both files to start reconciliation</p>
+          <p className="text-sm font-medium text-gray-500">
+            Upload both files to start reconciliation
+          </p>
           <p className="text-xs text-gray-400">
-            Upload GSTR-2B JSON and Purchase Register CSV above — results appear automatically.
+            Upload your purchase register CSV and GSTR-2A CSV above — results appear automatically.
           </p>
         </div>
       )}
