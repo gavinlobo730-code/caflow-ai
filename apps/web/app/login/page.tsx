@@ -4,6 +4,7 @@ import { useState, FormEvent } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { Sparkles, Shield, Zap, TrendingUp } from "lucide-react";
+import { LogoIcon } from "@/components/LogoIcon";
 
 const FEATURES = [
   { icon: Shield, text: "GST, ITR & TDS all in one place" },
@@ -36,9 +37,7 @@ export default function LoginPage() {
 
         {/* Logo */}
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center backdrop-blur-sm">
-            <span className="text-white font-bold text-sm">CA</span>
-          </div>
+          <LogoIcon size="md" />
           <div>
             <span className="text-white font-bold text-xl tracking-tight">PracticeSync</span>
             <span className="text-indigo-300 font-bold text-xl ml-1">AI</span>
@@ -80,9 +79,7 @@ export default function LoginPage() {
 
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center justify-center gap-2.5 mb-8">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow-md">
-              <span className="text-white font-bold text-sm">CA</span>
-            </div>
+            <LogoIcon size="md" />
             <span className="text-xl font-bold text-gray-900">
               PracticeSync<span className="text-indigo-600">AI</span>
             </span>

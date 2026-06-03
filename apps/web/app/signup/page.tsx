@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { LogoIcon } from "@/components/LogoIcon";
 
 export default function SignupPage() {
   const [firmName, setFirmName] = useState("");
@@ -48,9 +49,7 @@ export default function SignupPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center mx-auto mb-4">
-            <span className="text-white font-bold text-lg">CA</span>
-          </div>
+          <LogoIcon size="xl" />
           <h1 className="text-white text-2xl font-bold">PracticeSync AI</h1>
           <p className="text-indigo-300 text-sm mt-1">AI-powered operating system for modern accounting and advisory firms</p>
         </div>
