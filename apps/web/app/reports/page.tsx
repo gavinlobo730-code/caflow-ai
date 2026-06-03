@@ -858,6 +858,32 @@ export default function ReportsPage() {
           <p className="text-sm text-gray-500 mt-0.5">Generate and export practice reports</p>
         </div>
 
+        {/* Cash Flow Forecast link card */}
+        {!activeReport && (
+          <div className="print:hidden">
+            <Link
+              href="/reports/cash-flow"
+              className="group flex items-start gap-4 p-5 bg-white rounded-xl border border-gray-100 hover:border-blue-200 hover:shadow-sm transition-all text-left w-full"
+            >
+              <div className="p-2.5 bg-gray-50 rounded-lg group-hover:bg-blue-50 transition-colors shrink-0">
+                <TrendingUp size={18} className="text-gray-500 group-hover:text-blue-600 transition-colors" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">
+                  Cash Flow Forecast
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">
+                  6-month projection based on unpaid invoices, loan EMIs, and GST dues
+                </p>
+              </div>
+              <ChevronDown
+                size={14}
+                className="text-gray-300 group-hover:text-blue-400 transition-colors mt-1 shrink-0 -rotate-90"
+              />
+            </Link>
+          </div>
+        )}
+
         {/* Financial Statements link card */}
         {!activeReport && (
           <div className="print:hidden">

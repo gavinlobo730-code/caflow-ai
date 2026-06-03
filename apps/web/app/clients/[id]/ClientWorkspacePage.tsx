@@ -124,10 +124,10 @@ export default function ClientWorkspacePage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Version control state (wired in upload flow)
-  const [versionPromptDoc, setVersionPromptDoc] = useState<ClientDocument | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars
-  const [showVersionHistory, setShowVersionHistory] = useState<string | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars
-  const [versionHistory, setVersionHistory] = useState<ClientDocument[]>([]); // eslint-disable-line @typescript-eslint/no-unused-vars
+  // Version control state
+  const [versionPromptDoc, setVersionPromptDoc] = useState<ClientDocument | null>(null);
+  const [showVersionHistory, setShowVersionHistory] = useState<string | null>(null);
+  const [versionHistory, setVersionHistory] = useState<ClientDocument[]>([]);
 
   useEffect(() => {
     if (!id || id === "_placeholder") return;
@@ -859,7 +859,7 @@ export default function ClientWorkspacePage() {
                     Cancel
                   </button>
                   <button
-                    onClick={handleUploadDocument}
+                    onClick={() => handleUploadDocument()}
                     disabled={uploading || !uploadFile || !uploadLabel.trim()}
                     className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
                   >
@@ -887,7 +887,7 @@ export default function ClientWorkspacePage() {
                     Cancel
                   </button>
                   <button
-                    onClick={() => { const doc = versionPromptDoc; setVersionPromptDoc(null); handleUploadDocument(false, null); }}
+                    onClick={() => { setVersionPromptDoc(null); handleUploadDocument(false, null); }}
                     className="text-xs px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
                   >
                     Upload as New
