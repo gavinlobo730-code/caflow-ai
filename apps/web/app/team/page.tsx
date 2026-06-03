@@ -171,7 +171,9 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
             <Mail className="w-6 h-6 text-green-600" />
           </div>
           <h3 className="text-sm font-semibold text-gray-900">Invitation Sent</h3>
-          <p className="text-xs text-gray-500">{email} has been added to the team as {role}.</p>
+          <p className="text-xs text-gray-500">
+            Invite sent! {name} will receive a magic link at {email}. They&apos;ll be added as {role}.
+          </p>
           <button onClick={onClose} className="w-full bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700">
             Done
           </button>
@@ -693,6 +695,7 @@ export default function TeamPage() {
 
   async function handleInvite(name: string, email: string, role: Role) {
     const supabase = getSupabaseClient();
+    // Pre-create the user row so we can link auth_user_id on first login
     const { error: insertErr } = await supabase.from("users").insert({
       full_name: name,
       email,
@@ -702,6 +705,22 @@ export default function TeamPage() {
       status: "invited",
     });
     if (insertErr) throw new Error(insertErr.message);
+
+    // Send magic link so team member can self-onboard
+    const joinUrl =
+      (typeof window !== "undefined" ? window.location.origin : "") +
+      "/join?firm=" +
+      encodeURIComponent(firmId ?? "") +
+      "&role=" +
+      encodeURIComponent(role) +
+      "&name=" +
+      encodeURIComponent(name);
+    const { error: otpErr } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: joinUrl },
+    });
+    if (otpErr) throw new Error(otpErr.message);
+
     await loadTeam();
   }
 

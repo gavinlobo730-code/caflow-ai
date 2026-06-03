@@ -4,7 +4,11 @@ import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "./AuthContext";
 
-const PUBLIC_PATHS = ["/login", "/login/", "/portal", "/portal/"];
+const PUBLIC_PREFIXES = ["/login", "/signup", "/onboarding", "/join", "/auth", "/portal"];
+
+function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
+}
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
@@ -13,11 +17,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (loading) return;
-    const isPublic = PUBLIC_PATHS.includes(pathname);
+    const isPublic = isPublicPath(pathname);
     if (!session && !isPublic) {
       router.replace("/login");
     }
-    if (session && (pathname === "/login" || pathname === "/login/")) {
+    if (session && (pathname === "/login" || pathname.startsWith("/login/"))) {
       router.replace("/");
     }
   }, [session, loading, pathname, router]);
@@ -40,7 +44,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const isPublic = PUBLIC_PATHS.includes(pathname);
+  const isPublic = isPublicPath(pathname);
   if (!session && !isPublic) return null;
 
   return <>{children}</>;

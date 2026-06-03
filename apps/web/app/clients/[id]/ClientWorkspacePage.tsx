@@ -107,6 +107,10 @@ export default function ClientWorkspacePage() {
   const [portal, setPortal] = useState<PortalState | null>(null);
   const [showPortalModal, setShowPortalModal] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [showPortalInviteModal, setShowPortalInviteModal] = useState(false);
+  const [portalInviteEmail, setPortalInviteEmail] = useState("");
+  const [portalInviteSent, setPortalInviteSent] = useState(false);
+  const [portalInviteError, setPortalInviteError] = useState<string | null>(null);
 
   // Documents state
   const [documents, setDocuments] = useState<ClientDocument[]>([]);
@@ -166,18 +170,42 @@ export default function ClientWorkspacePage() {
     load();
   }, [id]);
 
-  async function handleInviteToPortal() {
-    if (!id) return;
+  function handleInviteToPortal() {
+    // Pre-fill email from client record if available
+    setPortalInviteEmail((client as (typeof client & { email?: string }) | null)?.email ?? "");
+    setPortalInviteSent(false);
+    setPortalInviteError(null);
+    setShowPortalInviteModal(true);
+  }
+
+  async function handleSendPortalInvite() {
+    if (!id || !portalInviteEmail.trim()) return;
     setPortalLoading(true);
+    setPortalInviteError(null);
     try {
       const { getSupabaseClient } = await import("@/lib/supabase/client");
       const supabase = getSupabaseClient();
+
+      // Send magic link with client ID in redirect URL
+      const portalUrl =
+        (typeof window !== "undefined" ? window.location.origin : "") +
+        "/portal?client=" +
+        encodeURIComponent(id);
+      const { error: otpErr } = await supabase.auth.signInWithOtp({
+        email: portalInviteEmail.trim(),
+        options: { emailRedirectTo: portalUrl },
+      });
+      if (otpErr) throw new Error(otpErr.message);
+
+      // Update client record
       await supabase
         .from("clients")
         .update({ portal_enabled: true, portal_invited_at: new Date().toISOString() })
         .eq("id", id);
       setPortal({ enabled: true, invitedAt: new Date().toISOString() });
-      setShowPortalModal(true);
+      setPortalInviteSent(true);
+    } catch (err) {
+      setPortalInviteError(err instanceof Error ? err.message : "Failed to send invite");
     } finally {
       setPortalLoading(false);
     }
@@ -856,6 +884,68 @@ export default function ClientWorkspacePage() {
             >
               Done
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Portal invite modal — sends magic link to client */}
+      {showPortalInviteModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900">
+                Invite {client?.client_name ?? "Client"} to Portal
+              </h3>
+              <button onClick={() => setShowPortalInviteModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {portalInviteSent ? (
+              <div className="text-center space-y-3 py-2">
+                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center mx-auto">
+                  <CheckCircle className="w-5 h-5 text-green-600" />
+                </div>
+                <p className="text-sm font-medium text-gray-900">Invite sent!</p>
+                <p className="text-xs text-gray-500">
+                  Magic link sent to <strong>{portalInviteEmail}</strong>
+                </p>
+                <button
+                  onClick={() => setShowPortalInviteModal(false)}
+                  className="w-full bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700"
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-gray-500">
+                  They&apos;ll receive a magic link to access their documents and filings.
+                </p>
+                {portalInviteError && (
+                  <div className="bg-red-50 border border-red-100 rounded-lg px-3 py-2 text-xs text-red-700">
+                    {portalInviteError}
+                  </div>
+                )}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">Client Email</label>
+                  <input
+                    type="email"
+                    value={portalInviteEmail}
+                    onChange={(e) => setPortalInviteEmail(e.target.value)}
+                    placeholder="client@example.com"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <button
+                  onClick={handleSendPortalInvite}
+                  disabled={portalLoading || !portalInviteEmail.trim()}
+                  className="w-full bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {portalLoading ? "Sending…" : "Send Invite"}
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
