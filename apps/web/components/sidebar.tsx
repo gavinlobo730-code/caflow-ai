@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { canAccessHref } from "@/lib/auth/permissions";
 import { SearchModal } from "@/components/SearchModal";
-import { LogoIcon } from "@/components/LogoIcon";
+import { LogoIcon, LogoWordmark } from "@/components/LogoIcon";
 
 const NAV_GROUPS = [
   {
@@ -94,15 +94,7 @@ function SidebarContent({
         "flex items-center border-b border-white/5 shrink-0",
         collapsed ? "justify-center px-0 py-4 h-14" : "justify-between px-4 py-4 h-14"
       )}>
-        {!collapsed && (
-          <div className="flex items-center gap-2.5">
-            <LogoIcon size="sm" />
-            <div>
-              <span className="text-white text-[13px] font-semibold tracking-tight">PracticeSync</span>
-              <span className="text-indigo-400 text-[13px] font-semibold ml-0.5">AI</span>
-            </div>
-          </div>
-        )}
+        {!collapsed && <LogoWordmark size="sm" />}
         {collapsed && (
           <LogoIcon size="sm" />
         )}
