@@ -8,7 +8,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ChevronLeft, Printer, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Printer, AlertTriangle, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -475,6 +476,41 @@ export default function ScheduleIIIPage() {
           className="flex items-center gap-2 px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
         >
           <Printer size={15} /> Print
+        </button>
+        <button
+          onClick={() => {
+            if (!data) return;
+            const rows: Record<string, string>[] = [];
+            rows.push({ Section: "BALANCE SHEET", Item: "", Amount: "" });
+            for (const sec of data.balanceSheet.equityAndLiabilities) {
+              rows.push({ Section: sec.heading, Item: "", Amount: "" });
+              for (const l of sec.lines) rows.push({ Section: "", Item: l.label, Amount: (l.paise / 100).toFixed(2) });
+              rows.push({ Section: "", Item: sec.totalLabel ?? "Total", Amount: (sec.total_paise / 100).toFixed(2) });
+            }
+            rows.push({ Section: "ASSETS", Item: "", Amount: "" });
+            for (const sec of data.balanceSheet.assets) {
+              rows.push({ Section: sec.heading, Item: "", Amount: "" });
+              for (const l of sec.lines) rows.push({ Section: "", Item: l.label, Amount: (l.paise / 100).toFixed(2) });
+              rows.push({ Section: "", Item: sec.totalLabel ?? "Total", Amount: (sec.total_paise / 100).toFixed(2) });
+            }
+            rows.push({ Section: "PROFIT & LOSS", Item: "", Amount: "" });
+            for (const sec of [...data.profitAndLoss.revenue, ...data.profitAndLoss.expenses]) {
+              rows.push({ Section: sec.heading, Item: "", Amount: "" });
+              for (const l of sec.lines) rows.push({ Section: "", Item: l.label, Amount: (l.paise / 100).toFixed(2) });
+              rows.push({ Section: "", Item: sec.totalLabel ?? "Total", Amount: (sec.total_paise / 100).toFixed(2) });
+            }
+            rows.push({ Section: "Summary", Item: "Profit Before Tax", Amount: (data.profitAndLoss.profitBeforeTax / 100).toFixed(2) });
+            rows.push({ Section: "Summary", Item: "Tax Expense", Amount: (data.profitAndLoss.taxExpense / 100).toFixed(2) });
+            rows.push({ Section: "Summary", Item: "Profit After Tax", Amount: (data.profitAndLoss.profitAfterTax / 100).toFixed(2) });
+            const ws = XLSX.utils.json_to_sheet(rows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Schedule III");
+            XLSX.writeFile(wb, `schedule_iii_${fy.label}.xlsx`);
+          }}
+          disabled={!data}
+          className="flex items-center gap-2 px-4 py-1.5 text-sm border border-gray-200 text-gray-700 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-40"
+        >
+          <Download size={15} /> Export Excel
         </button>
       </div>
 

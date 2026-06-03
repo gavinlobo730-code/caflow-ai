@@ -1,8 +1,6 @@
 "use client";
-"use client";
 
 import { useState, useEffect, useRef, ChangeEvent } from "react";
-import Link from "next/link";
 import {
   FileText,
   Upload,
@@ -12,7 +10,6 @@ import {
   X,
   AlertCircle,
   Loader2,
-  Brain,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -438,10 +435,6 @@ export default function DocumentsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/documents/intelligence" className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-            <Brain size={16} />
-            Doc Intelligence
-          </Link>
           <button
             onClick={() => setShowUploadModal(true)}
             className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"

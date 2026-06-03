@@ -3,423 +3,401 @@
 /**
  * MSME 43B(h) Tracker
  * IT Act Section 43B(h) — effective FY 2024-25
- * Payments to MSME vendors must be made within 45 days (15 days for verbal agreement).
- * Non-payment by due date triggers disallowance of the expense in the year of accrual.
+ * Payments to MSME vendors must be made within 45 days (written agreement)
+ * or 15 days (oral/no agreement). Non-payment by due date disallows the expense.
  *
  * Reference: Finance Act 2023 — insertion of clause (h) in Section 43B of IT Act.
- * MSME registration governed by MSMED Act 2006.
- *
- * All monetary amounts stored in paise (integer arithmetic).
+ * All monetary amounts in paise (integer arithmetic — no floating point).
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  Plus,
-  X,
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  AlertTriangle,
-  IndianRupee,
-} from "lucide-react";
+import { ChevronLeft, Plus, X, AlertTriangle, CheckCircle, Clock, Download } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { formatPaise } from "@/lib/services/formatting";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
+import { getClients } from "@/lib/data/clients";
+import * as XLSX from "xlsx";
+import type { Client } from "@/lib/types";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-interface MSMEVendor {
+interface MSMEPayment {
   id: string;
-  name: string;
-  gstin: string;
-  msmeRegNo: string;
-  paymentTermsDays: 15 | 45; // 15 = verbal agreement; 45 = written agreement
+  firm_id: string;
+  client_id: string;
+  supplier_name: string;
+  invoice_number: string | null;
+  invoice_date: string;
+  amount_paise: number;
+  agreement_type: "written" | "oral";
+  payment_date: string | null;
+  created_at: string;
 }
 
-interface MSMEInvoice {
-  id: string;
-  vendorId: string;
-  invoiceDate: string; // ISO date string
-  amountPaise: number;
-  paid: boolean;
-  paidDate?: string; // ISO date string
+type PaymentStatus = "paid_on_time" | "overdue" | "disallowed";
+
+interface PaymentRow extends MSMEPayment {
+  due_date: string;
+  due_days: number; // 45 or 15
+  status: PaymentStatus;
+  disallowed_paise: number;
 }
 
-type TrafficLight = "green" | "yellow" | "red";
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Compute due date for MSME payment. IT Act Section 43B(h). */
-function computeDueDate(invoiceDate: string, termsDays: 15 | 45): string {
-  const d = new Date(invoiceDate);
-  d.setDate(d.getDate() + termsDays);
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
-/** Days between two ISO date strings (positive = overdue) */
-function daysDiff(dueDateISO: string, todayISO: string): number {
-  const due = new Date(dueDateISO).getTime();
-  const today = new Date(todayISO).getTime();
-  return Math.floor((today - due) / (24 * 60 * 60 * 1000));
+const TODAY = new Date().toISOString().slice(0, 10);
+
+function computeStatus(row: MSMEPayment): Pick<PaymentRow, "due_date" | "due_days" | "status" | "disallowed_paise"> {
+  // IT Act Section 43B(h): 45 days if written agreement, 15 days if oral/no agreement
+  const due_days = row.agreement_type === "written" ? 45 : 15;
+  const due_date = addDays(row.invoice_date, due_days);
+
+  let status: PaymentStatus;
+  let disallowed_paise = 0;
+
+  if (row.payment_date) {
+    if (row.payment_date <= due_date) {
+      status = "paid_on_time";
+    } else {
+      // Payment made after due date — amount disallowed in year of accrual
+      status = "disallowed";
+      disallowed_paise = row.amount_paise;
+    }
+  } else {
+    // Not yet paid
+    if (TODAY > due_date) {
+      status = "disallowed";
+      disallowed_paise = row.amount_paise;
+    } else {
+      status = "overdue";
+    }
+  }
+
+  return { due_date, due_days, status, disallowed_paise };
 }
 
-function getTrafficLight(
-  paid: boolean,
-  dueDate: string,
-  todayISO: string
-): TrafficLight {
-  if (paid) return "green";
-  const days = daysDiff(dueDate, todayISO);
-  if (days > 0) return "red";
-  if (days >= -7) return "yellow";
-  return "green";
+function statusBadge(status: PaymentStatus) {
+  switch (status) {
+    case "paid_on_time":
+      return { icon: CheckCircle, cls: "text-green-700 bg-green-50", label: "Paid on Time" };
+    case "overdue":
+      return { icon: Clock, cls: "text-amber-700 bg-amber-50", label: "Overdue" };
+    case "disallowed":
+      return { icon: AlertTriangle, cls: "text-red-700 bg-red-50", label: "Disallowed" };
+  }
 }
 
-const TRAFFIC_STYLE: Record<TrafficLight, string> = {
-  green: "bg-green-100 text-green-700",
-  yellow: "bg-amber-100 text-amber-700",
-  red: "bg-red-100 text-red-700",
-};
+// ─── Add Payment Modal ────────────────────────────────────────────────────────
 
-const TRAFFIC_ICON: Record<TrafficLight, React.ReactNode> = {
-  green: <CheckCircle className="w-3.5 h-3.5 text-green-600" />,
-  yellow: <Clock className="w-3.5 h-3.5 text-amber-600" />,
-  red: <AlertTriangle className="w-3.5 h-3.5 text-red-600" />,
-};
-
-const TRAFFIC_LABEL: Record<TrafficLight, string> = {
-  green: "On Track",
-  yellow: "Due Soon",
-  red: "Overdue — Disallowance Risk",
-};
-
-/** Validate GSTIN format — 2-digit state + PAN (10) + 1 entity + Z + 1 check */
-function isValidGSTIN(gstin: string): boolean {
-  if (!gstin) return true; // optional
-  return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9Z][Z][0-9A-Z]$/.test(gstin);
+interface AddFormState {
+  clientId: string;
+  supplierName: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  amountRs: string;
+  agreementType: "written" | "oral";
+  paymentDate: string;
 }
 
-const TODAY_ISO = "2026-06-02";
-const STORAGE_KEY_VENDORS = "caflow_msme_vendors";
-const STORAGE_KEY_INVOICES = "caflow_msme_invoices";
+const BLANK: AddFormState = {
+  clientId: "",
+  supplierName: "",
+  invoiceNumber: "",
+  invoiceDate: "",
+  amountRs: "",
+  agreementType: "oral",
+  paymentDate: "",
+};
 
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
+function AddModal({ clients, onClose, onAdded }: {
+  clients: Client[];
+  onClose: () => void;
+  onAdded: () => void;
+}) {
+  const [form, setForm] = useState<AddFormState>({ ...BLANK, clientId: clients[0]?.id ?? "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function upd(patch: Partial<AddFormState>) { setForm(f => ({ ...f, ...patch })); }
+
+  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500";
+  const lbl = "text-xs font-medium text-gray-700 block mb-1";
+
+  async function handleSave() {
+    if (!form.clientId || !form.supplierName || !form.invoiceDate || !form.amountRs) {
+      setError("Supplier name, invoice date and amount are required");
+      return;
+    }
+    // All money in integer paise — no floating point
+    const amountPaise = Math.round(parseFloat(form.amountRs) * 100);
+    if (isNaN(amountPaise) || amountPaise <= 0) { setError("Invalid amount"); return; }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const firmId = await getFirmId();
+      const sb = getSupabaseClient();
+      const { error: err } = await sb.from("msme_payments").insert({
+        firm_id: firmId,
+        client_id: form.clientId,
+        supplier_name: form.supplierName,
+        invoice_number: form.invoiceNumber || null,
+        invoice_date: form.invoiceDate,
+        amount_paise: amountPaise,
+        agreement_type: form.agreementType,
+        payment_date: form.paymentDate || null,
+      });
+      if (err) throw new Error(err.message);
+      onAdded();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-900">Add MSME Payment</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+        </div>
+        <div className="px-6 py-4 space-y-4">
+          {error && <div className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</div>}
+
+          <div>
+            <label className={lbl}>Client *</label>
+            <select value={form.clientId} onChange={e => upd({ clientId: e.target.value })} className={inputCls}>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={lbl}>Supplier Name *</label>
+            <input type="text" value={form.supplierName} onChange={e => upd({ supplierName: e.target.value })} className={inputCls} placeholder="MSME supplier name" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Invoice Number</label>
+              <input type="text" value={form.invoiceNumber} onChange={e => upd({ invoiceNumber: e.target.value })} className={inputCls} placeholder="INV-001" />
+            </div>
+            <div>
+              <label className={lbl}>Invoice Date *</label>
+              <input type="date" value={form.invoiceDate} onChange={e => upd({ invoiceDate: e.target.value })} className={inputCls} />
+            </div>
+          </div>
+          <div>
+            <label className={lbl}>Invoice Amount (₹) *</label>
+            <input type="number" min="0" step="0.01" value={form.amountRs} onChange={e => upd({ amountRs: e.target.value })} className={inputCls} placeholder="0.00" />
+          </div>
+          <div>
+            <label className={lbl}>Agreement Type</label>
+            <div className="flex gap-3">
+              {(["written", "oral"] as const).map(t => (
+                <label key={t} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                  <input type="radio" name="agreement" value={t} checked={form.agreementType === t} onChange={() => upd({ agreementType: t })} />
+                  {t === "written" ? "Written (45 days)" : "Oral/None (15 days)"}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className={lbl}>Payment Date (if paid)</label>
+            <input type="date" value={form.paymentDate} onChange={e => upd({ paymentDate: e.target.value })} className={inputCls} />
+          </div>
+        </div>
+        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-gray-100 flex gap-2 justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Cancel</button>
+          <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
+            {saving ? "Saving…" : "Add Payment"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function MSMETrackerPage() {
-  const [vendors, setVendors] = useState<MSMEVendor[]>([]);
-  const [invoices, setInvoices] = useState<MSMEInvoice[]>([]);
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [clientFilter, setClientFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
 
-  // Modals
-  const [showAddVendor, setShowAddVendor] = useState(false);
-  const [showAddInvoice, setShowAddInvoice] = useState(false);
-
-  // Vendor form
-  const [vName, setVName] = useState("");
-  const [vGstin, setVGstin] = useState("");
-  const [vMsmeReg, setVMsmeReg] = useState("");
-  const [vTerms, setVTerms] = useState<15 | 45>(45);
-  const [vError, setVError] = useState<string | null>(null);
-
-  // Invoice form
-  const [iVendorId, setIVendorId] = useState("");
-  const [iDate, setIDate] = useState(TODAY_ISO);
-  const [iAmount, setIAmount] = useState("");
-  const [iError, setIError] = useState<string | null>(null);
-
-  // Load from localStorage
-  useEffect(() => {
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const sv = localStorage.getItem(STORAGE_KEY_VENDORS);
-      const si = localStorage.getItem(STORAGE_KEY_INVOICES);
-      if (sv) setVendors(JSON.parse(sv));
-      if (si) setInvoices(JSON.parse(si));
-    } catch {}
+      const [cls, firmId] = await Promise.all([getClients(), getFirmId()]);
+      setClients(cls);
+      const sb = getSupabaseClient();
+      const { data, error: err } = await sb
+        .from("msme_payments")
+        .select("*")
+        .eq("firm_id", firmId)
+        .order("invoice_date", { ascending: false });
+      if (err) throw new Error(err.message);
+      const rows: PaymentRow[] = ((data ?? []) as MSMEPayment[]).map(p => ({
+        ...p,
+        ...computeStatus(p),
+      }));
+      setPayments(rows);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Persist to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_VENDORS, JSON.stringify(vendors));
-    } catch {}
-  }, [vendors]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_INVOICES, JSON.stringify(invoices));
-    } catch {}
-  }, [invoices]);
+  const filtered = clientFilter === "all" ? payments : payments.filter(p => p.client_id === clientFilter);
 
-  function resetVendorForm() {
-    setVName("");
-    setVGstin("");
-    setVMsmeReg("");
-    setVTerms(45);
-    setVError(null);
+  // Total disallowed amount (affects tax computation — IT Act Section 43B(h))
+  const totalDisallowed = filtered.reduce((s, p) => s + p.disallowed_paise, 0);
+  const disallowedCount = filtered.filter(p => p.status === "disallowed").length;
+
+  function clientName(id: string) {
+    return clients.find(c => c.id === id)?.client_name ?? id;
   }
 
-  function resetInvoiceForm() {
-    setIVendorId("");
-    setIDate(TODAY_ISO);
-    setIAmount("");
-    setIError(null);
+  function exportExcel() {
+    const rows = filtered.map(p => ({
+      Client: clientName(p.client_id),
+      Supplier: p.supplier_name,
+      "Invoice No": p.invoice_number ?? "",
+      "Invoice Date": p.invoice_date,
+      "Amount (₹)": (p.amount_paise / 100).toFixed(2),
+      "Agreement Type": p.agreement_type,
+      "Due Days": p.due_days,
+      "Due Date": p.due_date,
+      "Payment Date": p.payment_date ?? "",
+      Status: p.status,
+      "Disallowed (₹)": (p.disallowed_paise / 100).toFixed(2),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "MSME 43B(h)");
+    XLSX.writeFile(wb, "msme_43bh_tracker.xlsx");
   }
-
-  function handleAddVendor() {
-    if (!vName.trim()) {
-      setVError("Vendor name is required");
-      return;
-    }
-    if (vGstin && !isValidGSTIN(vGstin.toUpperCase())) {
-      setVError("Invalid GSTIN format");
-      return;
-    }
-    const vendor: MSMEVendor = {
-      id: Date.now().toString(),
-      name: vName.trim(),
-      gstin: vGstin.trim().toUpperCase(),
-      msmeRegNo: vMsmeReg.trim(),
-      paymentTermsDays: vTerms,
-    };
-    setVendors((prev) => [...prev, vendor]);
-    setShowAddVendor(false);
-    resetVendorForm();
-  }
-
-  function handleAddInvoice() {
-    if (!iVendorId) {
-      setIError("Select a vendor");
-      return;
-    }
-    const amount = parseFloat(iAmount);
-    if (isNaN(amount) || amount <= 0) {
-      setIError("Enter a valid amount");
-      return;
-    }
-    if (!iDate) {
-      setIError("Invoice date is required");
-      return;
-    }
-    const invoice: MSMEInvoice = {
-      id: Date.now().toString(),
-      vendorId: iVendorId,
-      invoiceDate: iDate,
-      amountPaise: Math.round(amount * 100),
-      paid: false,
-    };
-    setInvoices((prev) => [...prev, invoice]);
-    setShowAddInvoice(false);
-    resetInvoiceForm();
-  }
-
-  function markPaid(invoiceId: string) {
-    setInvoices((prev) =>
-      prev.map((inv) =>
-        inv.id === invoiceId
-          ? { ...inv, paid: true, paidDate: TODAY_ISO }
-          : inv
-      )
-    );
-  }
-
-  // Build rows with computed fields
-  const rows = invoices.map((inv) => {
-    const vendor = vendors.find((v) => v.id === inv.vendorId);
-    const termsDays = vendor?.paymentTermsDays ?? 45;
-    const dueDate = computeDueDate(inv.invoiceDate, termsDays);
-    const overdueDays = inv.paid ? 0 : daysDiff(dueDate, TODAY_ISO);
-    const traffic = getTrafficLight(inv.paid, dueDate, TODAY_ISO);
-    return {
-      inv,
-      vendor,
-      dueDate,
-      overdueDays,
-      traffic,
-    };
-  });
-
-  // Disallowance: unpaid invoices where overdueDays > 0
-  const disallowedInvoices = rows.filter((r) => !r.inv.paid && r.overdueDays > 0);
-  const totalDisallowancePaise = disallowedInvoices.reduce(
-    (sum, r) => sum + r.inv.amountPaise,
-    0
-  );
-  const totalOutstandingPaise = rows
-    .filter((r) => !r.inv.paid)
-    .reduce((sum, r) => sum + r.inv.amountPaise, 0);
-
-  const inputCls =
-    "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500";
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-3">
-          <Link
-            href="/accounting"
-            className="text-gray-400 hover:text-gray-600 mt-0.5"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
+      <div className="flex items-center gap-3">
+        <Link href="/accounting" className="text-gray-400 hover:text-gray-600"><ChevronLeft size={18} /></Link>
+        <div className="flex-1">
+          <h1 className="text-xl font-semibold text-gray-900">MSME 43B(h) Tracker</h1>
+          <p className="text-sm text-gray-500 mt-0.5">IT Act Section 43B(h) — MSME payment compliance (FY 2024-25 onwards)</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={exportExcel} disabled={filtered.length === 0}>
+          <Download size={14} className="mr-1" /> Export
+        </Button>
+        <Button size="sm" onClick={() => setShowAdd(true)}>
+          <Plus size={14} className="mr-1" /> Add Payment
+        </Button>
+      </div>
+
+      {/* Disallowance summary — prominently shown (affects tax computation) */}
+      {totalDisallowed > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 flex items-start gap-3">
+          <AlertTriangle size={18} className="text-red-600 shrink-0 mt-0.5" />
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">
-              MSME 43B(h) Tracker
-            </h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              IT Act Section 43B(h) — MSME payment compliance — FY 2026-27
+            <p className="text-sm font-semibold text-red-800">
+              Total Disallowed under Section 43B(h): {formatPaise(totalDisallowed)}
+            </p>
+            <p className="text-xs text-red-600 mt-1">
+              {disallowedCount} payment{disallowedCount !== 1 ? "s" : ""} not made within the statutory period.
+              These amounts are disallowed as expenses and must be added back to taxable income.
+              CA Review Required before filing.
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowAddInvoice(true)}
-            disabled={vendors.length === 0}
-            className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Invoice
-          </button>
-          <button
-            onClick={() => setShowAddVendor(true)}
-            className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add MSME Vendor
-          </button>
-        </div>
-      </div>
-
-      {/* Info banner */}
-      <div className="bg-blue-50 border border-blue-100 rounded-xl px-5 py-4 flex gap-3">
-        <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-        <div>
-          <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide">
-            About Section 43B(h)
-          </p>
-          <p className="text-xs text-blue-700 mt-1">
-            Effective FY 2024-25, payments to MSME vendors must be made within
-            45 days (written agreement) or 15 days (verbal/no agreement). If not
-            paid by the due date, the expense is disallowed under Section 43B(h)
-            of the IT Act and can only be deducted in the year of actual payment.
-          </p>
-        </div>
-      </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-              <IndianRupee className="w-4 h-4 text-blue-600" />
-            </div>
-            <span className="text-xs text-gray-500">Total Outstanding</span>
-          </div>
-          <p className="text-lg font-semibold text-gray-900">
-            {formatPaise(totalOutstandingPaise)}
-          </p>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {rows.filter((r) => !r.inv.paid).length} unpaid invoice(s)
-          </p>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
-              <AlertTriangle className="w-4 h-4 text-red-600" />
-            </div>
-            <span className="text-xs text-gray-500">Disallowance Risk</span>
-          </div>
-          <p className="text-lg font-semibold text-red-600">
-            {formatPaise(totalDisallowancePaise)}
-          </p>
-          <p className="text-xs text-gray-400 mt-0.5">
-            s.43B(h) — overdue unpaid invoices
-          </p>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center">
-              <Plus className="w-4 h-4 text-purple-600" />
-            </div>
-            <span className="text-xs text-gray-500">MSME Vendors</span>
-          </div>
-          <p className="text-lg font-semibold text-gray-900">{vendors.length}</p>
-          <p className="text-xs text-gray-400 mt-0.5">Registered</p>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
-              <Clock className="w-4 h-4 text-amber-600" />
-            </div>
-            <span className="text-xs text-gray-500">Due Within 7 Days</span>
-          </div>
-          <p className="text-lg font-semibold text-gray-900">
-            {rows.filter((r) => r.traffic === "yellow").length}
-          </p>
-          <p className="text-xs text-gray-400 mt-0.5">Invoice(s)</p>
-        </div>
+        {[
+          { label: "Total", value: filtered.length, color: "text-gray-900" },
+          { label: "Paid on Time", value: filtered.filter(p => p.status === "paid_on_time").length, color: "text-green-700" },
+          { label: "Overdue (not yet disallowed)", value: filtered.filter(p => p.status === "overdue").length, color: "text-amber-700" },
+          { label: "Disallowed", value: disallowedCount, color: "text-red-700" },
+        ].map(s => (
+          <Card key={s.label}>
+            <CardContent className="pt-4 pb-3">
+              <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {/* Vendor List */}
-      {vendors.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50">
-            <h2 className="text-sm font-semibold text-gray-900">MSME Vendors</h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Vendors registered under MSMED Act 2006
-            </p>
-          </div>
+      {/* Filters */}
+      <div className="flex gap-3">
+        <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+          <option value="all">All Clients</option>
+          {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
+        </select>
+      </div>
+
+      {error && <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div>}
+
+      {/* Table */}
+      <Card>
+        {loading ? (
+          <div className="p-8 text-center text-gray-400 text-sm animate-pulse">Loading…</div>
+        ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[900px]">
               <thead>
-                <tr className="bg-gray-50 text-[10px] text-gray-400 uppercase tracking-wide">
-                  <th className="text-left px-5 py-2.5">Vendor Name</th>
-                  <th className="text-left px-4 py-2.5">GSTIN</th>
-                  <th className="text-left px-4 py-2.5">MSME Reg No</th>
-                  <th className="text-left px-4 py-2.5">Payment Terms</th>
-                  <th className="text-right px-4 py-2.5">Outstanding</th>
+                <tr className="border-b border-gray-100 text-xs text-gray-400">
+                  <th className="px-5 py-3 text-left">Client</th>
+                  <th className="px-3 py-3 text-left">Supplier</th>
+                  <th className="px-3 py-3 text-left">Invoice</th>
+                  <th className="px-3 py-3 text-left">Invoice Date</th>
+                  <th className="px-3 py-3 text-right">Amount</th>
+                  <th className="px-3 py-3 text-left">Agreement</th>
+                  <th className="px-3 py-3 text-left">Due Date</th>
+                  <th className="px-3 py-3 text-left">Payment Date</th>
+                  <th className="px-5 py-3 text-left">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {vendors.map((v) => {
-                  const outstanding = invoices
-                    .filter((inv) => inv.vendorId === v.id && !inv.paid)
-                    .reduce((s, inv) => s + inv.amountPaise, 0);
+                {filtered.length === 0 && (
+                  <tr><td colSpan={9} className="text-center text-gray-400 py-8 text-sm">No MSME payments found. Add one above.</td></tr>
+                )}
+                {filtered.map(p => {
+                  const badge = statusBadge(p.status);
+                  const Icon = badge.icon;
                   return (
-                    <tr key={v.id} className="hover:bg-gray-50/50">
-                      <td className="px-5 py-3 font-medium text-gray-900">
-                        {v.name}
+                    <tr key={p.id} className="hover:bg-gray-50">
+                      <td className="px-5 py-3 text-sm font-medium text-gray-900">{clientName(p.client_id)}</td>
+                      <td className="px-3 py-3 text-sm text-gray-700">{p.supplier_name}</td>
+                      <td className="px-3 py-3 text-xs font-mono text-gray-500">{p.invoice_number ?? "—"}</td>
+                      <td className="px-3 py-3 text-xs text-gray-600">{p.invoice_date}</td>
+                      <td className="px-3 py-3 text-sm tabular-nums text-right font-medium">{formatPaise(p.amount_paise)}</td>
+                      <td className="px-3 py-3 text-xs text-gray-600">
+                        {p.agreement_type === "written" ? "Written (45d)" : "Oral (15d)"}
                       </td>
-                      <td className="px-4 py-3">
-                        {v.gstin ? (
-                          <span className="text-xs font-mono text-gray-600 bg-gray-50 px-1.5 py-0.5 rounded">
-                            {v.gstin}
-                          </span>
-                        ) : (
-                          <span className="text-gray-300 text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-600">
-                        {v.msmeRegNo || <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded-full font-medium ${v.paymentTermsDays === 15 ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}
-                        >
-                          {v.paymentTermsDays} days
-                          {v.paymentTermsDays === 15 ? " (verbal)" : " (written)"}
+                      <td className="px-3 py-3 text-xs text-gray-600">{p.due_date}</td>
+                      <td className="px-3 py-3 text-xs text-gray-600">{p.payment_date ?? "—"}</td>
+                      <td className="px-5 py-3">
+                        <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ${badge.cls}`}>
+                          <Icon size={12} /> {badge.label}
                         </span>
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm font-medium text-gray-900">
-                        {formatPaise(outstanding)}
                       </td>
                     </tr>
                   );
@@ -427,506 +405,12 @@ export default function MSMETrackerPage() {
               </tbody>
             </table>
           </div>
-        </div>
-      )}
-
-      {/* Invoice Table */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">
-              Invoices — 43B(h) Compliance
-            </h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Track payment status to avoid disallowance under IT Act Section 43B(h)
-            </p>
-          </div>
-          {disallowedInvoices.length > 0 && (
-            <span className="flex items-center gap-1 text-xs text-red-600 font-medium">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              {disallowedInvoices.length} overdue — disallowance risk
-            </span>
-          )}
-        </div>
-
-        {invoices.length === 0 ? (
-          <div className="px-5 py-14 text-center space-y-3">
-            <IndianRupee className="w-10 h-10 text-gray-200 mx-auto" />
-            <p className="text-sm font-medium text-gray-600">
-              No invoices tracked yet
-            </p>
-            <p className="text-xs text-gray-400 max-w-sm mx-auto">
-              Add MSME vendors first, then add invoices to track 43B(h)
-              compliance. Overdue payments risk disallowance of the deduction.
-            </p>
-            {vendors.length === 0 ? (
-              <button
-                onClick={() => setShowAddVendor(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors mt-1"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Add first MSME vendor
-              </button>
-            ) : (
-              <button
-                onClick={() => setShowAddInvoice(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors mt-1"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Add first invoice
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 text-[10px] text-gray-400 uppercase tracking-wide">
-                  <th className="text-left px-5 py-2.5">Status</th>
-                  <th className="text-left px-4 py-2.5">Vendor</th>
-                  <th className="text-left px-4 py-2.5">Invoice Date</th>
-                  <th className="text-right px-4 py-2.5">Amount</th>
-                  <th className="text-left px-4 py-2.5">Due Date</th>
-                  <th className="text-right px-4 py-2.5">Days Overdue</th>
-                  <th className="text-left px-4 py-2.5">Disallowance</th>
-                  <th className="px-5 py-2.5"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {rows.map(({ inv, vendor, dueDate, overdueDays, traffic }) => (
-                  <tr key={inv.id} className="hover:bg-gray-50/50">
-                    <td className="px-5 py-3">
-                      <span
-                        className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${TRAFFIC_STYLE[traffic]}`}
-                      >
-                        {TRAFFIC_ICON[traffic]}
-                        {inv.paid ? "Paid" : TRAFFIC_LABEL[traffic]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-gray-900">
-                        {vendor?.name ?? "—"}
-                      </p>
-                      {vendor?.gstin && (
-                        <p className="text-[10px] font-mono text-gray-400">
-                          {vendor.gstin}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-600">
-                      {new Date(inv.invoiceDate).toLocaleDateString("en-IN", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium text-gray-900">
-                      {formatPaise(inv.amountPaise)}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-600">
-                      {new Date(dueDate).toLocaleDateString("en-IN", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                      <p className="text-[10px] text-gray-400 mt-0.5">
-                        {vendor?.paymentTermsDays ?? 45} day terms
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {inv.paid ? (
-                        <span className="text-xs text-gray-400">Paid</span>
-                      ) : overdueDays > 0 ? (
-                        <span className="text-xs font-medium text-red-600">
-                          {overdueDays} days
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400">
-                          {-overdueDays} days left
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {!inv.paid && overdueDays > 0 ? (
-                        <span className="text-xs text-red-600 font-medium">
-                          {formatPaise(inv.amountPaise)}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-300">—</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3">
-                      {!inv.paid && (
-                        <button
-                          onClick={() => markPaid(inv.id)}
-                          className="text-xs text-green-600 hover:text-green-800 font-medium whitespace-nowrap"
-                        >
-                          Mark Paid
-                        </button>
-                      )}
-                      {inv.paid && inv.paidDate && (
-                        <span className="text-[10px] text-gray-400">
-                          Paid{" "}
-                          {new Date(inv.paidDate).toLocaleDateString("en-IN", {
-                            day: "numeric",
-                            month: "short",
-                          })}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         )}
-      </div>
+      </Card>
 
-      {/* Disallowance Summary */}
-      {invoices.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">
-              Disallowance Summary — Section 43B(h)
-            </h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Total amount at risk of disallowance for FY 2026-27
-            </p>
-          </div>
-
-          <div className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-gray-500">Total MSME Invoices</span>
-              <span className="text-gray-700">
-                {formatPaise(
-                  invoices.reduce((s, i) => s + i.amountPaise, 0)
-                )}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Paid on time</span>
-              <span className="text-green-600">
-                {formatPaise(
-                  invoices
-                    .filter((i) => i.paid)
-                    .reduce((s, i) => s + i.amountPaise, 0)
-                )}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Overdue — disallowance risk</span>
-              <span className="text-red-600 font-medium">
-                {formatPaise(totalDisallowancePaise)}
-              </span>
-            </div>
-            <div className="flex justify-between border-t border-gray-100 pt-2 mt-2">
-              <span className="font-semibold text-gray-700">
-                Net Deductible under 43B(h)
-              </span>
-              <span className="font-bold text-gray-900">
-                {formatPaise(
-                  invoices
-                    .filter((i) => i.paid)
-                    .reduce((s, i) => s + i.amountPaise, 0)
-                )}
-              </span>
-            </div>
-          </div>
-
-          {totalDisallowancePaise > 0 && (
-            <div className="flex gap-3 bg-red-50 border border-red-100 rounded-lg px-4 py-3">
-              {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
-              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-              <p className="text-xs text-red-700">
-                <strong>
-                  {formatPaise(totalDisallowancePaise)}
-                </strong>{" "}
-                will be disallowed under Section 43B(h). Pay overdue MSME
-                invoices before 31 March 2027 to retain deduction in FY
-                2026-27.
-              </p>
-            </div>
-          )}
-
-          {totalDisallowancePaise === 0 && invoices.length > 0 && (
-            <p className="text-xs text-green-700 bg-green-50 rounded px-3 py-2">
-              All MSME invoices paid on time — no disallowance under Section
-              43B(h) for FY 2026-27.
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* ================================================================== */}
-      {/* MODAL: Add Vendor                                                   */}
-      {/* ================================================================== */}
-      {showAddVendor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">
-                Add MSME Vendor
-              </h3>
-              <button
-                onClick={() => {
-                  setShowAddVendor(false);
-                  resetVendorForm();
-                }}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="px-6 py-5 space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                  Vendor Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. ABC Enterprises"
-                  value={vName}
-                  onChange={(e) => setVName(e.target.value)}
-                  className={inputCls}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                  GSTIN
-                  <span className="ml-1 text-gray-400 font-normal">(optional)</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. 27AABCU9603R1ZM"
-                  value={vGstin}
-                  onChange={(e) => setVGstin(e.target.value.toUpperCase())}
-                  className={`${inputCls} font-mono`}
-                  maxLength={15}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                  MSME Registration Number
-                  <span className="ml-1 text-gray-400 font-normal">(Udyam/Udyog Aadhaar)</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. UDYAM-MH-12-0012345"
-                  value={vMsmeReg}
-                  onChange={(e) => setVMsmeReg(e.target.value)}
-                  className={inputCls}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-2">
-                  Payment Terms
-                </label>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setVTerms(45)}
-                    className={`flex-1 py-2 text-sm rounded-lg border transition-colors ${vTerms === 45 ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
-                  >
-                    45 days (written agreement)
-                  </button>
-                  <button
-                    onClick={() => setVTerms(15)}
-                    className={`flex-1 py-2 text-sm rounded-lg border transition-colors ${vTerms === 15 ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
-                  >
-                    15 days (verbal / none)
-                  </button>
-                </div>
-                <p className="text-[10px] text-gray-400 mt-1.5">
-                  MSMED Act 2006 Section 15 — 15 days if no written agreement
-                </p>
-              </div>
-
-              {vError && (
-                <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
-                  {vError}
-                </p>
-              )}
-            </div>
-
-            <div className="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end">
-              <button
-                onClick={() => {
-                  setShowAddVendor(false);
-                  resetVendorForm();
-                }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddVendor}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-              >
-                Add Vendor
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ================================================================== */}
-      {/* MODAL: Add Invoice                                                  */}
-      {/* ================================================================== */}
-      {showAddInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">
-                Add Invoice
-              </h3>
-              <button
-                onClick={() => {
-                  setShowAddInvoice(false);
-                  resetInvoiceForm();
-                }}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="px-6 py-5 space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                  Vendor <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={iVendorId}
-                  onChange={(e) => setIVendorId(e.target.value)}
-                  className={inputCls}
-                >
-                  <option value="">Select MSME vendor…</option>
-                  {vendors.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name} ({v.paymentTermsDays} days)
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                  Invoice Date <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  value={iDate}
-                  onChange={(e) => setIDate(e.target.value)}
-                  className={inputCls}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                  Invoice Amount (₹) <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={iAmount}
-                  onChange={(e) => setIAmount(e.target.value)}
-                  className={`${inputCls} text-right tabular-nums`}
-                />
-              </div>
-
-              {/* Auto-computed due date preview */}
-              {iVendorId && iDate && (
-                <div className="bg-gray-50 rounded-lg px-4 py-3 text-xs space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Payment Terms</span>
-                    <span className="font-medium text-gray-700">
-                      {vendors.find((v) => v.id === iVendorId)?.paymentTermsDays ?? 45} days
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Payment Due By</span>
-                    <span className="font-semibold text-gray-900">
-                      {new Date(
-                        computeDueDate(
-                          iDate,
-                          vendors.find((v) => v.id === iVendorId)
-                            ?.paymentTermsDays ?? 45
-                        )
-                      ).toLocaleDateString("en-IN", {
-                        day: "numeric",
-                        month: "long",
-                        year: "numeric",
-                      })}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Disallowance date (if unpaid)</span>
-                    <span className="text-red-600 font-medium">
-                      {new Date(
-                        computeDueDate(
-                          iDate,
-                          vendors.find((v) => v.id === iVendorId)
-                            ?.paymentTermsDays ?? 45
-                        )
-                      ).toLocaleDateString("en-IN", {
-                        day: "numeric",
-                        month: "long",
-                        year: "numeric",
-                      })}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {iError && (
-                <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
-                  {iError}
-                </p>
-              )}
-            </div>
-
-            <div className="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end">
-              <button
-                onClick={() => {
-                  setShowAddInvoice(false);
-                  resetInvoiceForm();
-                }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddInvoice}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-              >
-                Add Invoice
-              </button>
-            </div>
-          </div>
-        </div>
+      {showAdd && clients.length > 0 && (
+        <AddModal clients={clients} onClose={() => setShowAdd(false)} onAdded={loadData} />
       )}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Info icon (inline to avoid extra import)
-// ---------------------------------------------------------------------------
-function Info({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <circle cx="12" cy="12" r="10" strokeWidth={2} />
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4M12 8h.01" />
-    </svg>
   );
 }

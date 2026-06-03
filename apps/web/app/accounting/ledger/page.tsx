@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Download } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import * as XLSX from "xlsx";
 import type { Account } from "@/lib/types";
 
 interface LedgerLineRow {
@@ -115,6 +117,21 @@ export default function LedgerPage() {
 
   const selectedAccount = accounts.find((a) => a.id === accountId);
 
+  function exportToExcel() {
+    const rows = linesWithBalance.map((l) => ({
+      Date: l.date,
+      Reference: l.reference_no ?? "",
+      Narration: l.narration,
+      "Debit (₹)": (l.debit_paise / 100).toFixed(2),
+      "Credit (₹)": (l.credit_paise / 100).toFixed(2),
+      "Running Balance (₹)": (l.running_balance_paise / 100).toFixed(2),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Ledger");
+    XLSX.writeFile(wb, `ledger_${selectedAccount?.account_name ?? "account"}_${startDate || "all"}.xlsx`);
+  }
+
   if (loadingAccounts) return <LoadingSpinner />;
 
   if (error) {
@@ -156,6 +173,9 @@ export default function LedgerPage() {
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
             className="block mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
+        <Button variant="outline" size="sm" onClick={exportToExcel} disabled={linesWithBalance.length === 0} className="mt-5">
+          <Download size={14} className="mr-1" /> Export Excel
+        </Button>
       </div>
 
       {/* Ledger table */}

@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ChevronLeft, Pencil, Check, X } from "lucide-react";
+import { ChevronLeft, Pencil, Check, X, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -249,6 +250,34 @@ export default function BudgetPage() {
           <h1 className="text-xl font-semibold text-gray-900">Budget vs Actuals</h1>
           <p className="text-sm text-gray-500 mt-0.5">Compare budgeted amounts with posted journal entries</p>
         </div>
+        <button
+          onClick={() => {
+            const exportRows = rows.map(r => {
+              const ytd = r.actuals.q1 + r.actuals.q2 + r.actuals.q3 + r.actuals.q4;
+              const variance = ytd - r.budget_paise;
+              return {
+                Code: r.account_code,
+                Account: r.account_name,
+                Type: r.account_type,
+                "Budget (₹)": (r.budget_paise / 100).toFixed(2),
+                "Q1 Actual (₹)": (r.actuals.q1 / 100).toFixed(2),
+                "Q2 Actual (₹)": (r.actuals.q2 / 100).toFixed(2),
+                "Q3 Actual (₹)": (r.actuals.q3 / 100).toFixed(2),
+                "Q4 Actual (₹)": (r.actuals.q4 / 100).toFixed(2),
+                "YTD Actual (₹)": (ytd / 100).toFixed(2),
+                "Variance (₹)": (variance / 100).toFixed(2),
+              };
+            });
+            const ws = XLSX.utils.json_to_sheet(exportRows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Budget");
+            XLSX.writeFile(wb, `budget_vs_actuals_${fy}.xlsx`);
+          }}
+          disabled={rows.length === 0}
+          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-40"
+        >
+          <Download size={14} /> Export
+        </button>
         {/* FY Selector */}
         <select
           value={fy}
