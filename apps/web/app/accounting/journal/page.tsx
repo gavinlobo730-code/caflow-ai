@@ -163,6 +163,24 @@ export default function JournalPage() {
     if (!firmId) return;
     setSubmitting(true);
     const sb = getSupabaseClient();
+    // Check if the selected entry date falls in a locked financial year
+    if (formData.entry_date) {
+      const { data: firm } = await sb.from("firms").select("locked_financial_years").eq("id", firmId).single();
+      const locked: string[] = firm?.locked_financial_years ?? [];
+      if (locked.length > 0) {
+        const d = new Date(formData.entry_date);
+        const month = d.getMonth() + 1; // 1-based
+        const year = d.getFullYear();
+        const fyLabel = month >= 4
+          ? `${year}-${String(year + 1).slice(2)}`
+          : `${year - 1}-${String(year).slice(2)}`;
+        if (locked.includes(fyLabel)) {
+          setError(`FY ${fyLabel} is locked. Unlock it from Accounting → Lock Financial Year before making entries.`);
+          setSubmitting(false);
+          return;
+        }
+      }
+    }
     try {
       // All money uses integer paise — no floating point
       const totalDebitPaise = lines.reduce((s, l) => s + (Number(l.debit_paise) || 0), 0);

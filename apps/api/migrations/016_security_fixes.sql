@@ -66,7 +66,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public, pg_catalog
 AS $$
-  SELECT firm_id FROM public.users WHERE id = auth.uid() LIMIT 1;
+  SELECT firm_id FROM public.users WHERE auth_user_id = auth.uid() LIMIT 1;
 $$;
 
 -- Re-grant after recreating
