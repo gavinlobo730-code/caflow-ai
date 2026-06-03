@@ -2,12 +2,32 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { ChevronRight, Plus, Search, RefreshCw, Pencil, KanbanSquare } from "lucide-react";
+import { ChevronRight, Plus, Search, RefreshCw, Pencil, KanbanSquare, Upload } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ClientFormModal } from "@/components/ClientFormModal";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
+import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
+
+const CLIENT_IMPORT_COLUMNS = [
+  { key: "client_name",  label: "Client Name",    required: true,  hint: "e.g. ABC Pvt Ltd" },
+  { key: "entity_type",  label: "Entity Type",    required: true,  hint: "Proprietorship | Partnership | LLP | Private Limited | Public Limited | Trust | Society | Individual" },
+  { key: "pan",          label: "PAN",            required: true,  hint: "e.g. AABCU9603R — 10 chars" },
+  { key: "gstin",        label: "GSTIN",          required: false, hint: "e.g. 27AABCU9603R1ZX — 15 chars" },
+  { key: "mobile",       label: "Mobile",         required: false, hint: "e.g. 9876543210" },
+  { key: "email",        label: "Email",          required: false, hint: "e.g. client@example.com" },
+  { key: "city",         label: "City",           required: false, hint: "e.g. Mumbai" },
+  { key: "state",        label: "State",          required: false, hint: "e.g. Maharashtra" },
+  { key: "pincode",      label: "Pincode",        required: false, hint: "6-digit" },
+  { key: "gst_filing_frequency", label: "GST Frequency", required: false, hint: "monthly | quarterly" },
+];
+
+const VALID_ENTITY_TYPES = ["Proprietorship","Partnership","LLP","Private Limited","Public Limited","Trust","Society","Individual"];
+const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
 const ENTITY_LABELS: Record<string, string> = {
   Proprietorship: "Prop.", Partnership: "Partner.", LLP: "LLP",
@@ -23,6 +43,7 @@ export default function ClientsPage() {
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editClient, setEditClient] = useState<Client | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,6 +97,33 @@ export default function ClientsPage() {
     setModalOpen(true);
   }
 
+  async function handleClientImport(rows: ImportRow[]) {
+    const sb = getSupabaseClient();
+    const firmId = await getFirmId();
+    let imported = 0;
+    const errors: string[] = [];
+    for (const row of rows) {
+      const { error } = await sb.from("clients").insert({
+        firm_id: firmId,
+        client_name: row.client_name,
+        entity_type: row.entity_type,
+        pan: row.pan.toUpperCase(),
+        gstin: row.gstin?.toUpperCase() || null,
+        mobile: row.mobile || null,
+        email: row.email || null,
+        city: row.city || null,
+        state: row.state || null,
+        pincode: row.pincode || null,
+        gst_filing_frequency: row.gst_filing_frequency || "monthly",
+        status: "active",
+      });
+      if (error) errors.push(`${row.client_name}: ${error.message}`);
+      else imported++;
+    }
+    if (imported > 0) load();
+    return { imported, errors };
+  }
+
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-4">
       {/* Header */}
@@ -101,6 +149,13 @@ export default function ClientsPage() {
             <KanbanSquare size={15} />
             Pipeline
           </Link>
+          <button
+            onClick={() => setImportOpen(true)}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            <Upload size={15} />
+            Import CSV
+          </button>
           <button
             onClick={openCreate}
             className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
@@ -218,6 +273,23 @@ export default function ClientsPage() {
         onSaved={handleSaved}
         editClient={editClient}
       />
+
+      {importOpen && (
+        <CsvImportModal
+          title="Import Clients from CSV"
+          columns={CLIENT_IMPORT_COLUMNS}
+          templateFilename="caflow-clients-template.csv"
+          onClose={() => setImportOpen(false)}
+          onImport={handleClientImport}
+          validateRow={(row) => {
+            const errs: string[] = [];
+            if (!PAN_RE.test(row.pan?.toUpperCase() ?? "")) errs.push("Invalid PAN format (AABCU9603R)");
+            if (row.gstin && !GSTIN_RE.test(row.gstin.toUpperCase())) errs.push("Invalid GSTIN format");
+            if (row.entity_type && !VALID_ENTITY_TYPES.includes(row.entity_type)) errs.push(`Invalid entity type`);
+            return errs;
+          }}
+        />
+      )}
     </div>
   );
 }

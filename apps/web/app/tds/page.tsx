@@ -17,8 +17,23 @@
 
 import { useState, useEffect } from "react";
 import {
-  IndianRupee, Calendar, AlertCircle, Plus, X, FileText, Award,
+  IndianRupee, Calendar, AlertCircle, Plus, X, FileText, Award, Upload,
 } from "lucide-react";
+import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+
+const TDS_IMPORT_COLUMNS = [
+  { key: "party_name",      label: "Party Name",       required: true,  hint: "Name of deductee e.g. ABC Consulting" },
+  { key: "party_pan",       label: "Party PAN",        required: true,  hint: "e.g. AABCU9603R" },
+  { key: "section",         label: "TDS Section",      required: true,  hint: "e.g. 194C | 194J | 194A | 192" },
+  { key: "gross_amount_rs", label: "Gross Amount (₹)", required: true,  hint: "e.g. 100000 (in rupees)" },
+  { key: "tds_rate",        label: "TDS Rate %",       required: true,  hint: "e.g. 10 (for 10%)" },
+  { key: "payment_date",    label: "Payment Date",     required: true,  hint: "YYYY-MM-DD e.g. 2025-05-15" },
+  { key: "fy",              label: "Financial Year",   required: true,  hint: "e.g. 2025-26" },
+  { key: "quarter",         label: "Quarter",          required: true,  hint: "Q1 (Apr-Jun) | Q2 (Jul-Sep) | Q3 (Oct-Dec) | Q4 (Jan-Mar)" },
+  { key: "challan_no",      label: "Challan No",       required: false, hint: "BSR code + serial e.g. 0510001-12345" },
+];
+
+const PAN_RE_TDS = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { formatPaise } from "@/lib/services/formatting";
@@ -355,6 +370,7 @@ export default function TDSPage() {
   const [loading, setLoading] = useState(true);
   const [showAddDeduction, setShowAddDeduction] = useState(false);
   const [showAddChallan, setShowAddChallan] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [tableError, setTableError] = useState(false);
 
   useEffect(() => {
@@ -440,10 +456,16 @@ export default function TDSPage() {
               <h2 className="text-sm font-semibold text-gray-900">TDS Deductions</h2>
               <p className="text-xs text-gray-400 mt-0.5">IT Act Section 194 — deductions recorded</p>
             </div>
-            <button onClick={() => setShowAddDeduction(true)}
-              className="flex items-center gap-1.5 bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700">
-              <Plus className="w-3.5 h-3.5" /> Add Deduction
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setShowImport(true)}
+                className="flex items-center gap-1.5 border border-gray-200 text-gray-600 text-xs px-3 py-1.5 rounded-lg hover:bg-gray-50">
+                <Upload className="w-3.5 h-3.5" /> Import CSV
+              </button>
+              <button onClick={() => setShowAddDeduction(true)}
+                className="flex items-center gap-1.5 bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700">
+                <Plus className="w-3.5 h-3.5" /> Add Deduction
+              </button>
+            </div>
           </div>
           {loading ? <div className="px-5 py-10 text-center text-sm text-gray-400">Loading…</div>
             : deductions.length === 0 ? (
@@ -617,6 +639,54 @@ export default function TDSPage() {
       )}
       {showAddChallan && (
         <AddChallanModal onClose={() => setShowAddChallan(false)} onAdded={c => setChallans(prev => [c, ...prev])} />
+      )}
+
+      {showImport && firmId && (
+        <CsvImportModal
+          title="Import TDS Deductions from CSV"
+          columns={TDS_IMPORT_COLUMNS}
+          templateFilename="caflow-tds-template.csv"
+          onClose={() => setShowImport(false)}
+          onImport={async (rows: ImportRow[]) => {
+            const sb = getSupabaseClient();
+            let imported = 0;
+            const errors: string[] = [];
+            for (const row of rows) {
+              const grossPaise = Math.round(parseFloat(row.gross_amount_rs ?? "0") * 100);
+              const rate = parseFloat(row.tds_rate ?? "0");
+              const tdsPaise = Math.round(grossPaise * rate / 100);
+              const { error } = await sb.from("tds_deductions").insert({
+                firm_id: firmId,
+                client_id: null,
+                party_name: row.party_name,
+                party_pan: row.party_pan.toUpperCase(),
+                section: row.section,
+                gross_amount_paise: grossPaise,
+                tds_rate: rate,
+                tds_amount_paise: tdsPaise,
+                payment_date: row.payment_date,
+                challan_no: row.challan_no || null,
+                fy: row.fy,
+                quarter: row.quarter,
+              });
+              if (error) errors.push(`${row.party_name}: ${error.message}`);
+              else imported++;
+            }
+            if (imported > 0) {
+              const sb2 = getSupabaseClient();
+              const { data } = await sb2.from("tds_deductions").select("*").eq("firm_id", firmId).order("payment_date", { ascending: false });
+              if (data) setDeductions(data as TDSDeduction[]);
+            }
+            return { imported, errors };
+          }}
+          validateRow={(row) => {
+            const errs: string[] = [];
+            if (!PAN_RE_TDS.test(row.party_pan?.toUpperCase() ?? "")) errs.push("Invalid PAN format");
+            if (row.payment_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.payment_date)) errs.push("payment_date must be YYYY-MM-DD");
+            if (row.gross_amount_rs && isNaN(parseFloat(row.gross_amount_rs))) errs.push("gross_amount_rs must be a number");
+            return errs;
+          }}
+        />
       )}
     </div>
   );
