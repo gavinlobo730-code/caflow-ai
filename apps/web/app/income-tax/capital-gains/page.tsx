@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Capital Gains Calculator — IT Act 1961
+ * Capital Gains Calculator & Register — IT Act 1961
  * Section 2(29B): Short-term capital gains
  * Section 2(29A): Long-term capital gains
  * Section 45: Chargeability of capital gains
@@ -11,9 +11,13 @@
  * Finance Act 2023: Debt MF taxed as per slab (removed indexation benefit)
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { ChevronLeft, Calculator, Info } from "lucide-react";
+import { ChevronLeft, Calculator, Info, BookOpen, Plus, X, Trash2 } from "lucide-react";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
 
 // ─── Cost Inflation Index (CII) — IT Act Section 48, Proviso ────────────────
 // Base year: FY 2001-02 = 100
@@ -22,19 +26,28 @@ const CII: Record<string, number> = {
   "2006-07": 122, "2007-08": 129, "2008-09": 137, "2009-10": 148, "2010-11": 167,
   "2011-12": 184, "2012-13": 200, "2013-14": 220, "2014-15": 240, "2015-16": 254,
   "2016-17": 264, "2017-18": 272, "2018-19": 280, "2019-20": 289, "2020-21": 301,
-  "2021-22": 317, "2022-23": 331, "2023-24": 348, "2024-25": 363,
+  "2021-22": 317, "2022-23": 331, "2023-24": 348, "2024-25": 363, "2025-26": 380,
 };
 
 const CII_YEARS = Object.keys(CII).sort();
 
 // Asset types with their holding period thresholds and tax treatment
-const ASSET_TYPES = [
+const ASSET_TYPES_CALC = [
   { value: "equity",     label: "Listed Equity / Equity MF" },
   { value: "debt_mf",   label: "Debt MF / Bonds (post Apr 2023)" },
   { value: "property",  label: "Immovable Property" },
   { value: "unlisted",  label: "Unlisted Shares" },
   { value: "vda",       label: "Cryptocurrency / VDA" },
   { value: "gold",      label: "Gold / Jewellery" },
+];
+
+// Asset types for register (matches DB constraint)
+const ASSET_TYPES_REG = [
+  { value: "equity_shares", label: "Equity Shares" },
+  { value: "mutual_funds",  label: "Mutual Funds" },
+  { value: "property",      label: "Immovable Property" },
+  { value: "bonds",         label: "Bonds" },
+  { value: "other",         label: "Other" },
 ];
 
 function getHoldingMonths(purchaseDate: string, saleDate: string): number {
@@ -49,6 +62,15 @@ function getFYFromDate(date: string): string {
   const m = d.getMonth(); // 0=Jan
   if (m >= 3) return `${y}-${String(y + 1).slice(2)}`;
   return `${y - 1}-${String(y).slice(2)}`;
+}
+
+function getFYFull(date: string): string {
+  // returns e.g. "2023-24"
+  const d = new Date(date);
+  const y = d.getFullYear();
+  const m = d.getMonth();
+  if (m >= 3) return `${y}-${String(y + 1).slice(-2)}`;
+  return `${y - 1}-${String(y).slice(-2)}`;
 }
 
 interface CalcResult {
@@ -198,9 +220,74 @@ function computeGains(
   };
 }
 
-// ─── Main Page ───────────────────────────────────────────────────────────────
+// ─── Register Types ───────────────────────────────────────────────────────────
+
+interface Client { id: string; client_name: string; }
+
+interface CGRecord {
+  id: string;
+  client_id: string;
+  asset_description: string;
+  asset_type: string;
+  purchase_date: string;
+  sale_date: string;
+  purchase_cost_paise: number;
+  improvement_cost_paise: number;
+  sale_value_paise: number;
+  indexed_cost_paise: number | null;
+  gain_type: string | null;
+  tax_rate_percent: number | null;
+  created_at: string;
+}
+
+const BLANK_REG = {
+  asset_description: "",
+  asset_type: "equity_shares",
+  purchase_date: "",
+  sale_date: "",
+  purchase_cost_rs: "",
+  improvement_cost_rs: "",
+  sale_value_rs: "",
+};
+
+function rsToP(rs: string): number {
+  return Math.round(parseFloat(rs || "0") * 100);
+}
+
+function fmtRs(paise: number): string {
+  return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+}
+
+/**
+ * Determine STCG/LTCG for register asset types
+ * IT Act Section 2(42A) — holding period thresholds
+ */
+function getRegGainType(assetType: string, purchaseDate: string, saleDate: string): "STCG" | "LTCG" {
+  const months = getHoldingMonths(purchaseDate, saleDate);
+  if (assetType === "equity_shares" || assetType === "mutual_funds") {
+    return months >= 12 ? "LTCG" : "STCG";
+  }
+  // property, bonds, other — 24 months
+  return months >= 24 ? "LTCG" : "STCG";
+}
+
+/**
+ * Compute tax rate for register asset types
+ * IT Act Section 111A (STCG equity), Section 112A (LTCG equity), Section 112 (others)
+ */
+function getRegTaxRate(assetType: string, gainType: "STCG" | "LTCG"): number {
+  if (assetType === "equity_shares" || assetType === "mutual_funds") {
+    return gainType === "STCG" ? 20 : 12.5; // Budget 2024
+  }
+  return gainType === "STCG" ? 30 : 20; // slab / 20% with indexation
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function CapitalGainsPage() {
+  const [activeTab, setActiveTab] = useState<"calculator" | "register">("calculator");
+
+  // ── Calculator state ──
   const [assetType, setAssetType] = useState("equity");
   const [purchaseDate, setPurchaseDate] = useState("");
   const [purchaseRupees, setPurchaseRupees] = useState("");
@@ -209,7 +296,6 @@ export default function CapitalGainsPage() {
   const [improvementRupees, setImprovementRupees] = useState("");
   const [purchaseFY, setPurchaseFY] = useState("2020-21");
 
-  // Convert to paise — integer arithmetic, never float
   const purchasePaise = Math.round(parseFloat(purchaseRupees || "0") * 100);
   const salePaise = Math.round(parseFloat(saleRupees || "0") * 100);
   const improvementPaise = Math.round(parseFloat(improvementRupees || "0") * 100);
@@ -223,6 +309,97 @@ export default function CapitalGainsPage() {
   const showIndexation = assetType === "property" && result?.isLongTerm;
   const showCII = assetType === "property";
 
+  // ── Register state ──
+  const [firmId, setFirmId] = useState<string | null>(null);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>("");
+  const [records, setRecords] = useState<CGRecord[]>([]);
+  const [regLoading, setRegLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [regForm, setRegForm] = useState(BLANK_REG);
+  const [saving, setSaving] = useState(false);
+  const [regError, setRegError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const sb = getSupabaseClient();
+    getFirmId().then(async (fid) => {
+      setFirmId(fid);
+      const { data } = await sb.from("clients").select("id, client_name").eq("firm_id", fid).eq("is_active", true).order("client_name");
+      const cl = (data ?? []) as Client[];
+      setClients(cl);
+      if (cl.length > 0) setSelectedClientId(cl[0].id);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "register" && selectedClientId && firmId) loadRecords();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, selectedClientId, firmId]);
+
+  async function loadRecords() {
+    if (!firmId || !selectedClientId) return;
+    setRegLoading(true);
+    const sb = getSupabaseClient();
+    const { data } = await sb.from("capital_gains").select("*").eq("firm_id", firmId).eq("client_id", selectedClientId).order("sale_date", { ascending: false });
+    setRecords((data ?? []) as CGRecord[]);
+    setRegLoading(false);
+  }
+
+  async function handleSaveRecord() {
+    if (!firmId || !selectedClientId) return;
+    if (!regForm.asset_description.trim() || !regForm.purchase_date || !regForm.sale_date) {
+      setRegError("Asset description, purchase date, and sale date are required");
+      return;
+    }
+    setSaving(true);
+    setRegError(null);
+
+    const purchaseCostPaise = rsToP(regForm.purchase_cost_rs);
+    const improvementCostPaise = rsToP(regForm.improvement_cost_rs);
+    const saleValuePaise = rsToP(regForm.sale_value_rs);
+
+    // Cost Inflation Index per IT Act Section 48, IT Rule 54HA
+    // Base year 2001-02 = 100
+    // Apply CII: Indexed Cost = (Cost × CII of sale year) / CII of purchase year
+    const purchFY = getFYFull(regForm.purchase_date);
+    const salFY = getFYFull(regForm.sale_date);
+    const ciiP = CII[purchFY] ?? 100;
+    const ciiS = CII[salFY] ?? 363;
+    const indexedCostPaise = Math.round((purchaseCostPaise * ciiS) / ciiP) + improvementCostPaise;
+
+    const gainType = getRegGainType(regForm.asset_type, regForm.purchase_date, regForm.sale_date);
+    const taxRate = getRegTaxRate(regForm.asset_type, gainType);
+
+    const sb = getSupabaseClient();
+    const { error } = await sb.from("capital_gains").insert({
+      firm_id: firmId,
+      client_id: selectedClientId,
+      asset_description: regForm.asset_description.trim(),
+      asset_type: regForm.asset_type,
+      purchase_date: regForm.purchase_date,
+      sale_date: regForm.sale_date,
+      purchase_cost_paise: purchaseCostPaise,
+      improvement_cost_paise: improvementCostPaise,
+      sale_value_paise: saleValuePaise,
+      indexed_cost_paise: indexedCostPaise,
+      gain_type: gainType,
+      tax_rate_percent: taxRate,
+    });
+
+    setSaving(false);
+    if (error) { setRegError(error.message); return; }
+    setShowModal(false);
+    setRegForm(BLANK_REG);
+    await loadRecords();
+  }
+
+  async function deleteRecord(id: string) {
+    if (!confirm("Delete this record?")) return;
+    const sb = getSupabaseClient();
+    await sb.from("capital_gains").delete().eq("id", id);
+    await loadRecords();
+  }
+
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       {/* Header */}
@@ -231,210 +408,408 @@ export default function CapitalGainsPage() {
           <ChevronLeft className="w-4 h-4" />
         </Link>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Capital Gains Calculator</h1>
-          <p className="text-sm text-gray-500 mt-0.5">IT Act Section 45 — Capital Gains Tax Computation (Budget 2024 rates)</p>
+          <h1 className="text-xl font-semibold text-gray-900">Capital Gains</h1>
+          <p className="text-sm text-gray-500 mt-0.5">IT Act Section 45 — Capital Gains Tax (Budget 2024 rates)</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Input Form */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Calculator className="w-4 h-4 text-blue-600" />
-            <h2 className="text-sm font-semibold text-gray-900">Asset Details</h2>
-          </div>
+      {/* Tab switcher */}
+      <div className="flex border-b border-gray-200">
+        <button
+          onClick={() => setActiveTab("calculator")}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "calculator" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+        >
+          <Calculator className="w-4 h-4" /> Calculator
+        </button>
+        <button
+          onClick={() => setActiveTab("register")}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "register" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+        >
+          <BookOpen className="w-4 h-4" /> Register
+        </button>
+      </div>
 
-          <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Asset Type</label>
-            <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={assetType} onChange={e => setAssetType(e.target.value)}>
-              {ASSET_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">Purchase Date</label>
-              <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">Sale Date</label>
-              <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={saleDate} onChange={e => setSaleDate(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">Purchase Price (₹)</label>
-              <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseRupees} onChange={e => setPurchaseRupees(e.target.value)} placeholder="0.00" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">Sale Price (₹)</label>
-              <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={saleRupees} onChange={e => setSaleRupees(e.target.value)} placeholder="0.00" />
-            </div>
-          </div>
-
-          {(assetType === "property" || assetType === "gold") && (
-            <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">Improvement Costs (₹) — optional</label>
-              <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={improvementRupees} onChange={e => setImprovementRupees(e.target.value)} placeholder="0.00" />
-            </div>
-          )}
-
-          {showCII && (
-            <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">Purchase FY (for CII indexation)</label>
-              <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseFY} onChange={e => setPurchaseFY(e.target.value)}>
-                {CII_YEARS.map(y => <option key={y} value={y}>FY {y} (CII: {CII[y]})</option>)}
-              </select>
-              <p className="text-[10px] text-gray-400 mt-1">Sale FY: {saleFY} (CII: {CII[saleFY] ?? "—"})</p>
-            </div>
-          )}
-        </div>
-
-        {/* Result Panel */}
-        <div className="space-y-4">
-          {!result ? (
-            <div className="bg-white rounded-xl border border-gray-100 p-5 flex items-center justify-center h-full min-h-[200px]">
-              <div className="text-center">
-                <Calculator className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">Enter asset details to compute capital gains</p>
+      {/* ── Calculator Tab ── */}
+      {activeTab === "calculator" && (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Input Form */}
+            <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Calculator className="w-4 h-4 text-blue-600" />
+                <h2 className="text-sm font-semibold text-gray-900">Asset Details</h2>
               </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {/* Holding Period & Classification */}
-              <div className="bg-white rounded-xl border border-gray-100 p-4">
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Classification</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <p className="text-xs text-gray-400">Holding Period</p>
-                    <p className="text-sm font-semibold text-gray-900">{result.holdingMonths} months</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-400">Classification</p>
-                    <span className={`inline-flex text-xs font-semibold px-2 py-0.5 rounded-full ${result.isLongTerm ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
-                      {result.termLabel} Capital Gain
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-400">Capital Gain</p>
-                    <p className={`text-sm font-semibold ${result.gainPaise >= 0 ? "text-green-700" : "text-red-700"}`}>
-                      {result.gainPaise >= 0 ? "+" : ""}₹{(result.gainPaise / 100).toLocaleString("en-IN")}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-400">Applicable Rate</p>
-                    <p className="text-sm font-semibold text-gray-900">{result.taxRatePercent}%</p>
-                  </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-700 block mb-1">Asset Type</label>
+                <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={assetType} onChange={e => setAssetType(e.target.value)}>
+                  {ASSET_TYPES_CALC.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">Purchase Date</label>
+                  <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">Sale Date</label>
+                  <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={saleDate} onChange={e => setSaleDate(e.target.value)} />
                 </div>
               </div>
 
-              {/* Tax Computation */}
-              <div className="bg-white rounded-xl border border-gray-100 p-4">
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Tax Computation</h3>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Sale Price</span>
-                    <span className="font-medium">₹{(salePaise / 100).toLocaleString("en-IN")}</span>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">Purchase Price (₹)</label>
+                  <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseRupees} onChange={e => setPurchaseRupees(e.target.value)} placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">Sale Price (₹)</label>
+                  <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={saleRupees} onChange={e => setSaleRupees(e.target.value)} placeholder="0.00" />
+                </div>
+              </div>
+
+              {(assetType === "property" || assetType === "gold") && (
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">Improvement Costs (₹) — optional</label>
+                  <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={improvementRupees} onChange={e => setImprovementRupees(e.target.value)} placeholder="0.00" />
+                </div>
+              )}
+
+              {showCII && (
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">Purchase FY (for CII indexation)</label>
+                  <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseFY} onChange={e => setPurchaseFY(e.target.value)}>
+                    {CII_YEARS.map(y => <option key={y} value={y}>FY {y} (CII: {CII[y]})</option>)}
+                  </select>
+                  <p className="text-[10px] text-gray-400 mt-1">Sale FY: {saleFY} (CII: {CII[saleFY] ?? "—"})</p>
+                </div>
+              )}
+            </div>
+
+            {/* Result Panel */}
+            <div className="space-y-4">
+              {!result ? (
+                <div className="bg-white rounded-xl border border-gray-100 p-5 flex items-center justify-center h-full min-h-[200px]">
+                  <div className="text-center">
+                    <Calculator className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">Enter asset details to compute capital gains</p>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Cost of Acquisition</span>
-                    <span className="font-medium">₹{(purchasePaise / 100).toLocaleString("en-IN")}</span>
-                  </div>
-                  {improvementPaise > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Improvement Cost</span>
-                      <span className="font-medium">₹{(improvementPaise / 100).toLocaleString("en-IN")}</span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="bg-white rounded-xl border border-gray-100 p-4">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Classification</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs text-gray-400">Holding Period</p>
+                        <p className="text-sm font-semibold text-gray-900">{result.holdingMonths} months</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">Classification</p>
+                        <span className={`inline-flex text-xs font-semibold px-2 py-0.5 rounded-full ${result.isLongTerm ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                          {result.termLabel} Capital Gain
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">Capital Gain</p>
+                        <p className={`text-sm font-semibold ${result.gainPaise >= 0 ? "text-green-700" : "text-red-700"}`}>
+                          {result.gainPaise >= 0 ? "+" : ""}₹{(result.gainPaise / 100).toLocaleString("en-IN")}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">Applicable Rate</p>
+                        <p className="text-sm font-semibold text-gray-900">{result.taxRatePercent}%</p>
+                      </div>
                     </div>
-                  )}
-                  <div className="border-t border-gray-100 pt-2 flex justify-between text-sm font-semibold">
-                    <span className="text-gray-800">Capital Gain</span>
-                    <span className={result.gainPaise >= 0 ? "text-green-700" : "text-red-700"}>
-                      ₹{(result.gainPaise / 100).toLocaleString("en-IN")}
-                    </span>
                   </div>
 
-                  {showIndexation && (
-                    <>
-                      <div className="mt-3 border-t border-dashed border-gray-100 pt-3">
-                        <p className="text-xs font-medium text-gray-500 mb-2">With Indexation (20%)</p>
+                  <div className="bg-white rounded-xl border border-gray-100 p-4">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Tax Computation</h3>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Sale Price</span>
+                        <span className="font-medium">₹{(salePaise / 100).toLocaleString("en-IN")}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Cost of Acquisition</span>
+                        <span className="font-medium">₹{(purchasePaise / 100).toLocaleString("en-IN")}</span>
+                      </div>
+                      {improvementPaise > 0 && (
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">Indexed Cost (CII {CII[purchaseFY]} → {CII[saleFY] ?? "—"})</span>
-                          <span>₹{(result.indexedCostPaise / 100).toLocaleString("en-IN")}</span>
+                          <span className="text-gray-600">Improvement Cost</span>
+                          <span className="font-medium">₹{(improvementPaise / 100).toLocaleString("en-IN")}</span>
                         </div>
-                        <div className="flex justify-between text-sm font-semibold mt-1">
-                          <span className="text-gray-800">Gain (indexed)</span>
-                          <span className={result.gainWithIndexation >= 0 ? "text-green-700" : "text-red-700"}>
-                            ₹{(result.gainWithIndexation / 100).toLocaleString("en-IN")}
-                          </span>
+                      )}
+                      <div className="border-t border-gray-100 pt-2 flex justify-between text-sm font-semibold">
+                        <span className="text-gray-800">Capital Gain</span>
+                        <span className={result.gainPaise >= 0 ? "text-green-700" : "text-red-700"}>
+                          ₹{(result.gainPaise / 100).toLocaleString("en-IN")}
+                        </span>
+                      </div>
+
+                      {showIndexation && (
+                        <div className="mt-3 border-t border-dashed border-gray-100 pt-3">
+                          <p className="text-xs font-medium text-gray-500 mb-2">With Indexation (20%)</p>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600">Indexed Cost (CII {CII[purchaseFY]} → {CII[saleFY] ?? "—"})</span>
+                            <span>₹{(result.indexedCostPaise / 100).toLocaleString("en-IN")}</span>
+                          </div>
+                          <div className="flex justify-between text-sm font-semibold mt-1">
+                            <span className="text-gray-800">Gain (indexed)</span>
+                            <span className={result.gainWithIndexation >= 0 ? "text-green-700" : "text-red-700"}>
+                              ₹{(result.gainWithIndexation / 100).toLocaleString("en-IN")}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="bg-blue-50 rounded-xl border border-blue-100 p-4">
+                    <h3 className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-3">Estimated Tax Liability</h3>
+                    {showIndexation ? (
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Tax without indexation (12.5%)</span>
+                          <span className="font-medium">₹{(result.taxLiabilityPaise / 100).toLocaleString("en-IN")}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Tax with indexation (20%)</span>
+                          <span className="font-medium">₹{(result.taxWithIndexationPaise / 100).toLocaleString("en-IN")}</span>
+                        </div>
+                        <div className="border-t border-blue-200 pt-2 flex justify-between">
+                          <span className="text-sm font-semibold text-gray-800">Recommended (lower)</span>
+                          <span className="text-lg font-bold text-blue-700">₹{(result.finalTaxPaise / 100).toLocaleString("en-IN")}</span>
                         </div>
                       </div>
-                    </>
+                    ) : (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">Tax @ {result.taxRatePercent}%</span>
+                        <span className="text-2xl font-bold text-blue-700">₹{(result.finalTaxPaise / 100).toLocaleString("en-IN")}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-amber-50 rounded-lg p-3 flex gap-2">
+                    <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs text-amber-800 font-medium">{result.sectionRef}</p>
+                      <p className="text-xs text-amber-700 mt-0.5">{result.taxNote}</p>
+                      <p className="text-[10px] text-amber-600 mt-1">This is an estimate. Add to ITR filing and consult CA for final computation. Surcharge and cess apply.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* CII Table */}
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-50">
+              <h2 className="text-sm font-semibold text-gray-900">Cost Inflation Index (CII) Table</h2>
+              <p className="text-xs text-gray-400 mt-0.5">IT Act Section 48 — Base year FY 2001-02 = 100</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <tbody>
+                  <tr>
+                    {CII_YEARS.map(y => (
+                      <td key={y} className={`px-3 py-2 text-center border-r border-gray-50 ${purchaseFY === y || saleFY === y ? "bg-blue-50" : ""}`}>
+                        <p className="text-[10px] text-gray-400">FY {y}</p>
+                        <p className="text-xs font-semibold text-gray-900">{CII[y]}</p>
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Register Tab ── */}
+      {activeTab === "register" && (
+        <div className="space-y-4">
+          {/* Client selector + Add button */}
+          <div className="flex items-end gap-4 flex-wrap">
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1">Client</label>
+              <select className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
+              </select>
+            </div>
+            <Button size="sm" onClick={() => { setRegForm(BLANK_REG); setRegError(null); setShowModal(true); }} className="flex items-center gap-1">
+              <Plus className="w-4 h-4" /> Add Transaction
+            </Button>
+          </div>
+
+          {/* Records table */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-blue-600" />
+                Capital Gains Register ({records.length})
+              </CardTitle>
+            </CardHeader>
+            {regLoading ? (
+              <div className="px-5 py-8 text-sm text-gray-400 text-center animate-pulse">Loading…</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+                      <th className="px-4 py-3 text-left">Asset</th>
+                      <th className="px-4 py-3 text-left">Type</th>
+                      <th className="px-4 py-3 text-left">Purchase</th>
+                      <th className="px-4 py-3 text-left">Sale</th>
+                      <th className="px-4 py-3 text-right">Cost</th>
+                      <th className="px-4 py-3 text-right">Sale Value</th>
+                      <th className="px-4 py-3 text-right">Indexed Cost</th>
+                      <th className="px-4 py-3 text-center">Gain Type</th>
+                      <th className="px-4 py-3 text-right">Tax Rate</th>
+                      <th className="px-4 py-3"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {records.map(r => {
+                      const gain = r.sale_value_paise - r.purchase_cost_paise - r.improvement_cost_paise;
+                      return (
+                        <tr key={r.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-medium text-gray-900 max-w-[160px] truncate">{r.asset_description}</td>
+                          <td className="px-4 py-3 text-gray-600 text-xs">{ASSET_TYPES_REG.find(a => a.value === r.asset_type)?.label ?? r.asset_type}</td>
+                          <td className="px-4 py-3 text-gray-600">{r.purchase_date}</td>
+                          <td className="px-4 py-3 text-gray-600">{r.sale_date}</td>
+                          <td className="px-4 py-3 text-right text-gray-700">{fmtRs(r.purchase_cost_paise)}</td>
+                          <td className="px-4 py-3 text-right text-gray-700">{fmtRs(r.sale_value_paise)}</td>
+                          <td className="px-4 py-3 text-right text-gray-600 text-xs">{r.indexed_cost_paise != null ? fmtRs(r.indexed_cost_paise) : "—"}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.gain_type === "LTCG" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                              {r.gain_type ?? "—"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-700">{r.tax_rate_percent != null ? `${r.tax_rate_percent}%` : "—"}</td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex flex-col items-end gap-1">
+                              <span className={`text-xs font-semibold ${gain >= 0 ? "text-green-700" : "text-red-700"}`}>{gain >= 0 ? "+" : ""}{fmtRs(gain)}</span>
+                              <button onClick={() => deleteRecord(r.id)} className="text-gray-300 hover:text-red-500 transition-colors">
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {records.length === 0 && (
+                      <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400 text-sm">No capital gains transactions recorded yet.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          {/* Add Transaction Modal */}
+          {showModal && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between px-5 py-4 border-b">
+                  <h2 className="text-sm font-semibold text-gray-900">Add Capital Gains Transaction</h2>
+                  <button onClick={() => setShowModal(false)}><X className="w-4 h-4 text-gray-400" /></button>
+                </div>
+                <div className="px-5 py-4 space-y-4">
+                  {regError && <div className="bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg">{regError}</div>}
+
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">Asset Description *</label>
+                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.asset_description} onChange={e => setRegForm(f => ({ ...f, asset_description: e.target.value }))} placeholder="e.g. Reliance Industries Ltd — 100 shares" />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">Asset Type *</label>
+                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.asset_type} onChange={e => setRegForm(f => ({ ...f, asset_type: e.target.value }))}>
+                      {ASSET_TYPES_REG.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">Purchase Date *</label>
+                      <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.purchase_date} onChange={e => setRegForm(f => ({ ...f, purchase_date: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">Sale Date *</label>
+                      <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.sale_date} onChange={e => setRegForm(f => ({ ...f, sale_date: e.target.value }))} />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">Purchase Cost (₹)</label>
+                      <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.purchase_cost_rs} onChange={e => setRegForm(f => ({ ...f, purchase_cost_rs: e.target.value }))} placeholder="0" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">Sale Value (₹)</label>
+                      <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.sale_value_rs} onChange={e => setRegForm(f => ({ ...f, sale_value_rs: e.target.value }))} placeholder="0" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">Improvement Cost (₹) — optional</label>
+                    <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.improvement_cost_rs} onChange={e => setRegForm(f => ({ ...f, improvement_cost_rs: e.target.value }))} placeholder="0" />
+                  </div>
+
+                  {/* Preview STCG/LTCG */}
+                  {regForm.purchase_date && regForm.sale_date && (
+                    <div className="bg-blue-50 rounded-lg px-4 py-3 space-y-1">
+                      {(() => {
+                        const gt = getRegGainType(regForm.asset_type, regForm.purchase_date, regForm.sale_date);
+                        const months = getHoldingMonths(regForm.purchase_date, regForm.sale_date);
+                        const tr = getRegTaxRate(regForm.asset_type, gt);
+                        const pFY = getFYFull(regForm.purchase_date);
+                        const sFY = getFYFull(regForm.sale_date);
+                        const ciiP = CII[pFY] ?? 100;
+                        const ciiS = CII[sFY] ?? 363;
+                        const purchCostP = rsToP(regForm.purchase_cost_rs);
+                        // Cost Inflation Index per IT Act Section 48, IT Rule 54HA
+                        // Base year 2001-02 = 100
+                        // Apply CII: Indexed Cost = (Cost × CII of sale year) / CII of purchase year
+                        const indexedP = Math.round((purchCostP * ciiS) / ciiP) + rsToP(regForm.improvement_cost_rs);
+                        return (
+                          <>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-gray-600">Holding Period</span>
+                              <span className="font-medium text-gray-900">{months} months</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-gray-600">Classification</span>
+                              <span className={`font-semibold ${gt === "LTCG" ? "text-green-700" : "text-amber-700"}`}>{gt}</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-gray-600">Tax Rate</span>
+                              <span className="font-medium text-gray-900">{tr}%</span>
+                            </div>
+                            {regForm.asset_type === "property" && (
+                              <div className="flex justify-between text-xs">
+                                <span className="text-gray-600">Indexed Cost (CII {ciiP}→{ciiS})</span>
+                                <span className="font-medium text-gray-900">{fmtRs(indexedP)}</span>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
                   )}
                 </div>
-              </div>
-
-              {/* Final Tax */}
-              <div className="bg-blue-50 rounded-xl border border-blue-100 p-4">
-                <h3 className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-3">Estimated Tax Liability</h3>
-                {showIndexation ? (
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Tax without indexation (12.5%)</span>
-                      <span className="font-medium">₹{(result.taxLiabilityPaise / 100).toLocaleString("en-IN")}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Tax with indexation (20%)</span>
-                      <span className="font-medium">₹{(result.taxWithIndexationPaise / 100).toLocaleString("en-IN")}</span>
-                    </div>
-                    <div className="border-t border-blue-200 pt-2 flex justify-between">
-                      <span className="text-sm font-semibold text-gray-800">Recommended (lower)</span>
-                      <span className="text-lg font-bold text-blue-700">₹{(result.finalTaxPaise / 100).toLocaleString("en-IN")}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Tax @ {result.taxRatePercent}%</span>
-                    <span className="text-2xl font-bold text-blue-700">₹{(result.finalTaxPaise / 100).toLocaleString("en-IN")}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Note */}
-              <div className="bg-amber-50 rounded-lg p-3 flex gap-2">
-                <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-xs text-amber-800 font-medium">{result.sectionRef}</p>
-                  <p className="text-xs text-amber-700 mt-0.5">{result.taxNote}</p>
-                  <p className="text-[10px] text-amber-600 mt-1">This is an estimate. Add to ITR filing and consult CA for final computation. Surcharge and cess apply.</p>
+                <div className="flex justify-end gap-3 px-5 py-4 border-t">
+                  <Button variant="outline" size="sm" onClick={() => setShowModal(false)}>Cancel</Button>
+                  <Button size="sm" onClick={handleSaveRecord} disabled={saving}>{saving ? "Saving…" : "Save Transaction"}</Button>
                 </div>
               </div>
             </div>
           )}
         </div>
-      </div>
-
-      {/* CII Table */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50">
-          <h2 className="text-sm font-semibold text-gray-900">Cost Inflation Index (CII) Table</h2>
-          <p className="text-xs text-gray-400 mt-0.5">IT Act Section 48 — Base year FY 2001-02 = 100</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <tbody>
-              <tr>
-                {CII_YEARS.map(y => (
-                  <td key={y} className={`px-3 py-2 text-center border-r border-gray-50 ${purchaseFY === y || saleFY === y ? "bg-blue-50" : ""}`}>
-                    <p className="text-[10px] text-gray-400">FY {y}</p>
-                    <p className="text-xs font-semibold text-gray-900">{CII[y]}</p>
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
