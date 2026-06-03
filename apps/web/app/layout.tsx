@@ -24,7 +24,8 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#2563eb" />
+        <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+        <meta name="theme-color" content="#0B1635" />
         <script
           dangerouslySetInnerHTML={{
             __html: `if ('serviceWorker' in navigator) { window.addEventListener('load', function() { navigator.serviceWorker.register('/sw.js'); }); }`,
