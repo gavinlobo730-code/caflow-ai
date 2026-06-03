@@ -10,6 +10,7 @@
  */
 
 import { useState, useRef, useCallback } from "react";
+import * as XLSX from "xlsx";
 import Link from "next/link";
 import {
   Upload,
@@ -311,6 +312,27 @@ export default function AISPage() {
     URL.revokeObjectURL(url);
   }
 
+  function exportXLSX() {
+    const rows = comparisonRows.map((r) => {
+      const diff = r.status === "not_in_books" ? r.amountPaise : r.amountPaise - r.booksAmountPaise;
+      return {
+        Client: clientName,
+        "Transaction Type": r.type,
+        "Payer/Deductor": r.payer,
+        "AIS Amount (₹)": (r.amountPaise / 100).toFixed(2),
+        "TDS Deducted (₹)": (r.tdsDeductedPaise / 100).toFixed(2),
+        "Books Amount (₹)": r.status === "not_in_books" ? "Not entered" : (r.booksAmountPaise / 100).toFixed(2),
+        "Difference (₹)": (diff / 100).toFixed(2),
+        Status: r.status === "matched" ? "Matched" : r.status === "not_in_books" ? "Not in Books" : "Amount Mismatch",
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "AIS Discrepancy");
+    XLSX.writeFile(wb, `AIS_Discrepancy_${clientName || "Client"}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
+
   const statusBadge = (status: ComparisonRow["status"]) => {
     if (status === "matched")
       return (
@@ -354,13 +376,22 @@ export default function AISPage() {
           </p>
         </div>
         {transactions.length > 0 && (
-          <button
-            onClick={exportCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Export Discrepancy CSV
-          </button>
+          <>
+            <button
+              onClick={exportCSV}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Export CSV
+            </button>
+            <button
+              onClick={exportXLSX}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Export Excel
+            </button>
+          </>
         )}
       </div>
 

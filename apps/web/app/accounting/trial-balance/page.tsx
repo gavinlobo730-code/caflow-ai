@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ChevronLeft, CheckCircle, AlertTriangle } from "lucide-react";
+import { ChevronLeft, CheckCircle, AlertTriangle, Download } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import * as XLSX from "xlsx";
 import type { AccountType } from "@/lib/types";
 
 interface TrialBalanceLine {
@@ -108,6 +110,27 @@ export default function TrialBalancePage() {
   const difference: number = totalDebit - totalCredit;
   const isBalanced = difference === 0 && lines.length > 0;
 
+  function exportToExcel() {
+    const rows = lines.map((l) => ({
+      Code: l.account_code,
+      "Account Name": l.account_name,
+      Type: l.account_type,
+      "Debit (₹)": (l.total_debit_paise / 100).toFixed(2),
+      "Credit (₹)": (l.total_credit_paise / 100).toFixed(2),
+    }));
+    rows.push({
+      Code: "",
+      "Account Name": "TOTAL",
+      Type: "Asset" as AccountType,
+      "Debit (₹)": (totalDebit / 100).toFixed(2),
+      "Credit (₹)": (totalCredit / 100).toFixed(2),
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Trial Balance");
+    XLSX.writeFile(wb, `trial_balance_${asOfDate}.xlsx`);
+  }
+
   if (loading) return <LoadingSpinner />;
 
   if (error) {
@@ -131,10 +154,15 @@ export default function TrialBalancePage() {
       </div>
 
       {/* Controls */}
-      <div>
-        <label className="text-xs text-gray-500">As of Date</label>
-        <input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)}
-          className="block mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      <div className="flex flex-wrap gap-3 items-end">
+        <div>
+          <label className="text-xs text-gray-500">As of Date</label>
+          <input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)}
+            className="block mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <Button variant="outline" size="sm" onClick={exportToExcel} disabled={lines.length === 0}>
+          <Download size={14} className="mr-1" /> Export Excel
+        </Button>
       </div>
 
       {lines.length === 0 ? (
