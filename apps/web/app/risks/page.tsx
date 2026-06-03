@@ -10,6 +10,10 @@ import {
   Loader2,
   Download,
   RefreshCw,
+  KeyRound,
+  Landmark,
+  CalendarClock,
+  UserX,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -53,6 +57,44 @@ interface RiskRegisterRow {
   description: string;
   severity: "critical" | "high" | "medium" | "low";
   action: string;
+}
+
+interface AdvanceTaxRisk {
+  clientId: string;
+  clientName: string;
+  installment: string;
+  dueDate: string;
+  daysOverdue: number;
+}
+
+interface DscExpiryRisk {
+  clientId: string;
+  clientName: string;
+  dscHolder: string;
+  expiryDate: string;
+  daysLeft: number;
+}
+
+interface LoanOverdueRisk {
+  clientId: string;
+  clientName: string;
+  lenderName: string;
+  loanType: string;
+  outstandingPaise: number;
+}
+
+interface FdMaturityRisk {
+  clientId: string;
+  clientName: string;
+  bankName: string;
+  maturityDate: string;
+  daysLeft: number;
+  maturityAmountPaise: number;
+}
+
+interface MissingPanRisk {
+  clientId: string;
+  clientName: string;
 }
 
 // CGST Act, Section 25 — GSTIN format: 2-digit state code + PAN + entity number + Z + check digit
@@ -147,6 +189,11 @@ export default function RisksPage() {
   const [gstinRisks, setGstinRisks] = useState<InvalidGstinClient[]>([]);
   const [tdsRisks, setTdsRisks] = useState<OverdueRisk[]>([]);
   const [inactiveClients, setInactiveClients] = useState<InactiveClient[]>([]);
+  const [advanceTaxRisks, setAdvanceTaxRisks] = useState<AdvanceTaxRisk[]>([]);
+  const [dscExpiryRisks, setDscExpiryRisks] = useState<DscExpiryRisk[]>([]);
+  const [loanOverdueRisks, setLoanOverdueRisks] = useState<LoanOverdueRisk[]>([]);
+  const [fdMaturityRisks, setFdMaturityRisks] = useState<FdMaturityRisk[]>([]);
+  const [missingPanRisks, setMissingPanRisks] = useState<MissingPanRisk[]>([]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -203,6 +250,110 @@ export default function RisksPage() {
       const { data: recentData } = await sb.from("compliance_calendar").select("client_id").eq("firm_id", firmId).gte("due_date", ninetyAgo.toISOString().slice(0, 10));
       const activeIds = new Set((recentData ?? []).map((r: { client_id: string }) => r.client_id));
       setInactiveClients(clients.filter((c) => !activeIds.has(c.id)).map((c) => ({ clientId: c.id, clientName: c.client_name, daysInactive: 90 })));
+
+      // Missing PAN — blocks TDS deduction and ITR filing (IT Act Section 139A)
+      setMissingPanRisks(
+        clients
+          .filter((c) => !c.pan || c.pan.trim().length === 0)
+          .map((c) => ({ clientId: c.id, clientName: c.client_name }))
+      );
+
+      // Advance Tax Default — IT Act Section 208/234B/234C
+      // Due dates: 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)
+      const curYear = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1;
+      const advanceTaxInstallments = [
+        { label: "1st Installment (15%)", date: `${curYear}-06-15` },
+        { label: "2nd Installment (45%)", date: `${curYear}-09-15` },
+        { label: "3rd Installment (75%)", date: `${curYear}-12-15` },
+        { label: "4th Installment (100%)", date: `${curYear + 1}-03-15` },
+      ];
+      const { data: advTaxData } = await sb
+        .from("compliance_calendar")
+        .select("client_id, compliance_type, due_date, filing_status")
+        .eq("firm_id", firmId)
+        .eq("compliance_type", "ADVANCE_TAX")
+        .lt("due_date", todayStr);
+      const filedAdvTax = new Set(
+        ((advTaxData ?? []) as { client_id: string; due_date: string; filing_status: string }[])
+          .filter((e) => e.filing_status === "filed")
+          .map((e) => `${e.client_id}|${e.due_date}`)
+      );
+      const advRisks: AdvanceTaxRisk[] = [];
+      for (const client of clients) {
+        for (const inst of advanceTaxInstallments) {
+          if (inst.date < todayStr && !filedAdvTax.has(`${client.id}|${inst.date}`)) {
+            // Only flag if there's a compliance entry for this client (i.e. they're tracked for advance tax)
+            const tracked = (advTaxData ?? []) as { client_id: string }[];
+            if (tracked.some((e) => e.client_id === client.id)) {
+              advRisks.push({
+                clientId: client.id,
+                clientName: client.client_name,
+                installment: inst.label,
+                dueDate: inst.date,
+                daysOverdue: daysBetween(inst.date, today),
+              });
+            }
+          }
+        }
+      }
+      setAdvanceTaxRisks(advRisks);
+
+      // DSC Expiry — within 60 days (IT Act Rule 12 — digital signature for e-filing)
+      const sixtyAhead = new Date(today);
+      sixtyAhead.setDate(sixtyAhead.getDate() + 60);
+      const sixtyAheadStr = sixtyAhead.toISOString().slice(0, 10);
+      const { data: dscData } = await sb
+        .from("dsc_tracker")
+        .select("client_id, dsc_holder_name, expiry_date")
+        .eq("firm_id", firmId)
+        .lte("expiry_date", sixtyAheadStr)
+        .gte("expiry_date", todayStr);
+      setDscExpiryRisks(
+        ((dscData ?? []) as { client_id: string; dsc_holder_name: string; expiry_date: string }[]).map((d) => ({
+          clientId: d.client_id,
+          clientName: clientMap[d.client_id] ?? "Unknown",
+          dscHolder: d.dsc_holder_name,
+          expiryDate: d.expiry_date,
+          daysLeft: Math.ceil((new Date(d.expiry_date).getTime() - today.getTime()) / 86400000),
+        }))
+      );
+
+      // Loan Overdue
+      const { data: loanData } = await sb
+        .from("loans")
+        .select("client_id, lender_name, loan_type, outstanding_paise")
+        .eq("firm_id", firmId)
+        .eq("status", "overdue");
+      setLoanOverdueRisks(
+        ((loanData ?? []) as { client_id: string; lender_name: string; loan_type: string; outstanding_paise: number }[]).map((l) => ({
+          clientId: l.client_id,
+          clientName: clientMap[l.client_id] ?? "Unknown",
+          lenderName: l.lender_name,
+          loanType: l.loan_type,
+          outstandingPaise: l.outstanding_paise,
+        }))
+      );
+
+      // FD Maturity within 30 days — Section 194A TDS on interest
+      const thirtyAhead = new Date(today);
+      thirtyAhead.setDate(thirtyAhead.getDate() + 30);
+      const { data: fdData } = await sb
+        .from("fixed_deposits")
+        .select("client_id, bank_name, maturity_date, maturity_amount_paise")
+        .eq("firm_id", firmId)
+        .eq("status", "active")
+        .lte("maturity_date", thirtyAhead.toISOString().slice(0, 10))
+        .gte("maturity_date", todayStr);
+      setFdMaturityRisks(
+        ((fdData ?? []) as { client_id: string; bank_name: string; maturity_date: string; maturity_amount_paise: number }[]).map((f) => ({
+          clientId: f.client_id,
+          clientName: clientMap[f.client_id] ?? "Unknown",
+          bankName: f.bank_name,
+          maturityDate: f.maturity_date,
+          daysLeft: Math.ceil((new Date(f.maturity_date).getTime() - today.getTime()) / 86400000),
+          maturityAmountPaise: f.maturity_amount_paise,
+        }))
+      );
     } catch (err) {
       setPageError(err instanceof Error ? err.message : "Failed to load risk data");
     } finally {
@@ -217,6 +368,11 @@ export default function RisksPage() {
     ...tdsRisks.map((r) => ({ clientName: r.clientName, riskType: "TDS Default", description: `${r.filingType} overdue by ${r.daysOverdue} days — IT Act Section 200A interest applies`, severity: "high" as const, action: "File TDS return and compute interest u/s 201(1A)" })),
     ...gstinRisks.map((r) => ({ clientName: r.clientName, riskType: "GSTIN Mismatch", description: `GSTIN ${r.gstin} is invalid: ${r.reason}`, severity: "medium" as const, action: "Verify GSTIN on GST portal and update client record" })),
     ...inactiveClients.map((c) => ({ clientName: c.clientName, riskType: "Inactive Client", description: "No compliance entries in last 90 days", severity: "low" as const, action: "Confirm client status and add compliance calendar entries if active" })),
+    ...advanceTaxRisks.map((r) => ({ clientName: r.clientName, riskType: "Advance Tax Default", description: `${r.installment} not filed — due ${r.dueDate}, ${r.daysOverdue} days overdue`, severity: "high" as const, action: "Pay advance tax with interest u/s 234B/234C of IT Act" })),
+    ...dscExpiryRisks.map((r) => ({ clientName: r.clientName, riskType: "DSC Expiry", description: `DSC of ${r.dscHolder} expires on ${r.expiryDate} (${r.daysLeft} days left)`, severity: (r.daysLeft <= 15 ? "high" : "medium") as "high" | "medium", action: "Renew DSC before expiry — required for e-filing under IT Act Rule 12" })),
+    ...loanOverdueRisks.map((r) => ({ clientName: r.clientName, riskType: "Loan Overdue", description: `${r.loanType} from ${r.lenderName} is overdue — ₹${(r.outstandingPaise / 100).toLocaleString("en-IN")} outstanding`, severity: "high" as const, action: "Contact lender immediately — overdue may affect credit rating and attract penal interest" })),
+    ...fdMaturityRisks.map((r) => ({ clientName: r.clientName, riskType: "FD Maturing Soon", description: `FD at ${r.bankName} matures on ${r.maturityDate} (${r.daysLeft} days) — ₹${(r.maturityAmountPaise / 100).toLocaleString("en-IN")}`, severity: "low" as const, action: "Advise client on renewal or withdrawal — TDS applicable u/s 194A if interest > ₹40,000" })),
+    ...missingPanRisks.map((r) => ({ clientName: r.clientName, riskType: "Missing PAN", description: "Client has no PAN on record", severity: "medium" as const, action: "Obtain PAN — mandatory for TDS deduction and ITR filing u/s 139A of IT Act" })),
   ];
 
   const totalRisks = riskRegister.length;
@@ -370,6 +526,157 @@ export default function RisksPage() {
                 <div className="flex flex-wrap gap-2 px-4 py-3">
                   {inactiveClients.map((c) => (
                     <span key={c.clientId} className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-600">{c.clientName}</span>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Advance Tax Default */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CalendarClock size={16} className="text-red-500" />
+                Advance Tax Default Risk
+                {advanceTaxRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-red-100 text-red-700 px-2 py-0.5 rounded-full">{advanceTaxRisks.length} defaulted</span>}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {advanceTaxRisks.length === 0 ? (
+                <p className="px-6 py-4 text-sm text-gray-500">No advance tax defaults detected.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b border-gray-100 bg-gray-50 text-left"><th className="px-4 py-3 font-medium text-gray-500">Client</th><th className="px-4 py-3 font-medium text-gray-500">Installment</th><th className="px-4 py-3 font-medium text-gray-500">Due Date</th><th className="px-4 py-3 font-medium text-gray-500">Days Overdue</th></tr></thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {advanceTaxRisks.map((r, i) => (
+                        <tr key={i} className="hover:bg-gray-50 bg-red-50 transition-colors">
+                          <td className="px-4 py-3 font-medium text-gray-800">{r.clientName}</td>
+                          <td className="px-4 py-3 text-gray-600">{r.installment}</td>
+                          <td className="px-4 py-3 text-gray-600">{r.dueDate}</td>
+                          <td className="px-4 py-3 font-semibold text-red-700">{r.daysOverdue}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* DSC Expiry */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <KeyRound size={16} className="text-orange-500" />
+                DSC Expiry Risk
+                {dscExpiryRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">{dscExpiryRisks.length} expiring</span>}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {dscExpiryRisks.length === 0 ? (
+                <p className="px-6 py-4 text-sm text-gray-500">No DSCs expiring in the next 60 days.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b border-gray-100 bg-gray-50 text-left"><th className="px-4 py-3 font-medium text-gray-500">Client</th><th className="px-4 py-3 font-medium text-gray-500">DSC Holder</th><th className="px-4 py-3 font-medium text-gray-500">Expiry Date</th><th className="px-4 py-3 font-medium text-gray-500">Days Left</th></tr></thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {dscExpiryRisks.map((r, i) => (
+                        <tr key={i} className={`hover:bg-gray-50 transition-colors ${r.daysLeft <= 15 ? "bg-red-50" : "bg-orange-50"}`}>
+                          <td className="px-4 py-3 font-medium text-gray-800">{r.clientName}</td>
+                          <td className="px-4 py-3 text-gray-600">{r.dscHolder}</td>
+                          <td className="px-4 py-3 text-gray-600">{r.expiryDate}</td>
+                          <td className={`px-4 py-3 font-semibold ${r.daysLeft <= 15 ? "text-red-700" : "text-orange-700"}`}>{r.daysLeft}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Loan Overdue */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Landmark size={16} className="text-red-500" />
+                Loan Overdue Risk
+                {loanOverdueRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-red-100 text-red-700 px-2 py-0.5 rounded-full">{loanOverdueRisks.length} overdue</span>}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {loanOverdueRisks.length === 0 ? (
+                <p className="px-6 py-4 text-sm text-gray-500">No overdue loans detected.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b border-gray-100 bg-gray-50 text-left"><th className="px-4 py-3 font-medium text-gray-500">Client</th><th className="px-4 py-3 font-medium text-gray-500">Lender</th><th className="px-4 py-3 font-medium text-gray-500">Loan Type</th><th className="px-4 py-3 font-medium text-gray-500">Outstanding</th></tr></thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {loanOverdueRisks.map((r, i) => (
+                        <tr key={i} className="hover:bg-gray-50 bg-red-50 transition-colors">
+                          <td className="px-4 py-3 font-medium text-gray-800">{r.clientName}</td>
+                          <td className="px-4 py-3 text-gray-600">{r.lenderName}</td>
+                          <td className="px-4 py-3 text-gray-600 capitalize">{r.loanType.replace(/_/g, " ")}</td>
+                          <td className="px-4 py-3 font-semibold text-red-700">₹{(r.outstandingPaise / 100).toLocaleString("en-IN")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* FD Maturity */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Info size={16} className="text-blue-500" />
+                FD Maturing in 30 Days
+                {fdMaturityRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{fdMaturityRisks.length} maturing</span>}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {fdMaturityRisks.length === 0 ? (
+                <p className="px-6 py-4 text-sm text-gray-500">No FDs maturing in the next 30 days.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b border-gray-100 bg-gray-50 text-left"><th className="px-4 py-3 font-medium text-gray-500">Client</th><th className="px-4 py-3 font-medium text-gray-500">Bank</th><th className="px-4 py-3 font-medium text-gray-500">Maturity Date</th><th className="px-4 py-3 font-medium text-gray-500">Days Left</th><th className="px-4 py-3 font-medium text-gray-500">Amount</th></tr></thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {fdMaturityRisks.map((r, i) => (
+                        <tr key={i} className="hover:bg-gray-50 bg-blue-50 transition-colors">
+                          <td className="px-4 py-3 font-medium text-gray-800">{r.clientName}</td>
+                          <td className="px-4 py-3 text-gray-600">{r.bankName}</td>
+                          <td className="px-4 py-3 text-gray-600">{r.maturityDate}</td>
+                          <td className="px-4 py-3 font-semibold text-blue-700">{r.daysLeft}</td>
+                          <td className="px-4 py-3 text-gray-700">₹{(r.maturityAmountPaise / 100).toLocaleString("en-IN")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Missing PAN */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <UserX size={16} className="text-orange-500" />
+                Missing PAN
+                {missingPanRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">{missingPanRisks.length} missing</span>}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {missingPanRisks.length === 0 ? (
+                <p className="px-6 py-4 text-sm text-gray-500">All clients have PAN on record.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2 px-4 py-3">
+                  {missingPanRisks.map((c) => (
+                    <span key={c.clientId} className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-medium text-orange-700">{c.clientName}</span>
                   ))}
                 </div>
               )}
