@@ -1,0 +1,826 @@
+"use client";
+
+/**
+ * Financial Statements — Year-on-Year Comparison (P&L & Balance Sheet)
+ *
+ * Indian Financial Year: April 1 to March 31
+ * FY label format: "2024-25" means April 1 2024 to March 31 2025
+ *
+ * All monetary values stored and computed in integer paise (never floating point).
+ * Relevant law: CGST Act §2(69), Companies Act 2013 Schedule III
+ */
+
+import { useState, useCallback, useEffect } from "react";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
+import { formatPaise } from "@/lib/services/formatting";
+import { Download, Loader2, AlertCircle, BarChart3 } from "lucide-react";
+import * as XLSX from "xlsx";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Client {
+  id: string;
+  client_name: string;
+}
+
+interface AccountBalance {
+  accountId: string;
+  accountCode: string;
+  accountName: string;
+  accountType: "asset" | "liability" | "equity" | "revenue" | "expense";
+  /** net balance in paise (credit - debit for revenue/liability/equity; debit - credit for asset/expense) */
+  balancePaise: number;
+}
+
+interface PLData {
+  incomeAccounts: AccountBalance[];
+  expenseAccounts: AccountBalance[];
+  totalIncome: number;
+  totalExpenses: number;
+  profitBeforeTax: number;
+  taxExpense: number;
+  profitAfterTax: number;
+}
+
+interface BSData {
+  assetAccounts: AccountBalance[];
+  liabilityAccounts: AccountBalance[];
+  equityAccounts: AccountBalance[];
+  totalAssets: number;
+  totalLiabilities: number;
+  totalEquity: number;
+  totalLiabilitiesAndEquity: number;
+}
+
+// ─── FY helpers ───────────────────────────────────────────────────────────────
+
+/**
+ * Indian Financial Year: April 1 to March 31
+ * "2024-25" → { from: "2024-04-01", to: "2025-03-31" }
+ */
+function fyToDateRange(fy: string): { from: string; to: string } {
+  const startYear = parseInt(fy.split("-")[0], 10);
+  return {
+    from: `${startYear}-04-01`,
+    to: `${startYear + 1}-03-31`,
+  };
+}
+
+function currentFYLabel(): string {
+  const now = new Date();
+  const startYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  return `${startYear}-${String(startYear + 1).slice(2)}`;
+}
+
+function generateFYOptions(): string[] {
+  const current = currentFYLabel();
+  const [startYear] = current.split("-").map(Number);
+  const options: string[] = [];
+  for (let y = startYear; y >= startYear - 4; y--) {
+    options.push(`${y}-${String(y + 1).slice(2)}`);
+  }
+  return options;
+}
+
+// ─── Data fetching ────────────────────────────────────────────────────────────
+
+async function fetchClients(): Promise<Client[]> {
+  const sb = getSupabaseClient();
+  const firmId = await getFirmId();
+  const { data, error } = await sb
+    .from("clients")
+    .select("id, client_name")
+    .eq("firm_id", firmId)
+    .order("client_name");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Client[];
+}
+
+/**
+ * Fetch account balances for a given client and FY date range.
+ * Uses integer paise arithmetic throughout — never floating point.
+ */
+async function fetchAccountBalances(
+  clientId: string,
+  from: string,
+  to: string
+): Promise<AccountBalance[]> {
+  const sb = getSupabaseClient();
+  const firmId = await getFirmId();
+
+  // Fetch chart of accounts for this firm
+  const { data: accounts, error: acctErr } = await sb
+    .from("chart_of_accounts")
+    .select("id, firm_id, code, name, account_type")
+    .eq("firm_id", firmId);
+
+  if (acctErr) throw new Error(acctErr.message);
+  if (!accounts || accounts.length === 0) return [];
+
+  // Fetch journal entries in the FY range for the given client
+  const { data: entries, error: entryErr } = await sb
+    .from("journal_entries")
+    .select("id")
+    .eq("firm_id", firmId)
+    .eq("client_id", clientId)
+    .gte("entry_date", from)
+    .lte("entry_date", to);
+
+  if (entryErr) throw new Error(entryErr.message);
+  if (!entries || entries.length === 0) return [];
+
+  const entryIds = entries.map((e: { id: string }) => e.id);
+
+  // Fetch all journal lines for those entries
+  const { data: lines, error: lineErr } = await sb
+    .from("journal_lines")
+    .select("journal_entry_id, account_id, debit_paise, credit_paise")
+    .in("journal_entry_id", entryIds);
+
+  if (lineErr) throw new Error(lineErr.message);
+
+  // Aggregate per account using integer paise (no floats)
+  const debitMap = new Map<string, number>();
+  const creditMap = new Map<string, number>();
+
+  for (const line of lines ?? []) {
+    const aid = line.account_id as string;
+    debitMap.set(aid, (debitMap.get(aid) ?? 0) + (line.debit_paise as number));
+    creditMap.set(aid, (creditMap.get(aid) ?? 0) + (line.credit_paise as number));
+  }
+
+  return accounts.map(
+    (a: { id: string; code: string; name: string; account_type: string }) => {
+      const debit = debitMap.get(a.id) ?? 0;
+      const credit = creditMap.get(a.id) ?? 0;
+      const type = a.account_type as AccountBalance["accountType"];
+
+      // Normal balance convention:
+      // revenue/liability/equity → credit - debit (credit balance is positive)
+      // asset/expense → debit - credit (debit balance is positive)
+      const balancePaise =
+        type === "revenue" || type === "liability" || type === "equity"
+          ? credit - debit
+          : debit - credit;
+
+      return {
+        accountId: a.id,
+        accountCode: a.code as string,
+        accountName: a.name as string,
+        accountType: type,
+        balancePaise,
+      };
+    }
+  );
+}
+
+async function buildPLData(balances: AccountBalance[]): Promise<PLData> {
+  const incomeAccounts = balances
+    .filter((b) => b.accountType === "revenue" && b.balancePaise !== 0)
+    .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+
+  const expenseAccounts = balances
+    .filter((b) => b.accountType === "expense" && b.balancePaise !== 0)
+    .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+
+  // Integer paise arithmetic — no floating point
+  const totalIncome = incomeAccounts.reduce((s, a) => s + a.balancePaise, 0);
+  const totalExpenses = expenseAccounts.reduce((s, a) => s + a.balancePaise, 0);
+  const profitBeforeTax = totalIncome - totalExpenses;
+
+  // 30% tax provision — integer paise (truncated, no rounding float)
+  // IT Act §115JB / normal corporate tax rate
+  const taxExpense = profitBeforeTax > 0 ? Math.trunc(profitBeforeTax * 30) / 100 : 0;
+  const profitAfterTax = profitBeforeTax - taxExpense;
+
+  return {
+    incomeAccounts,
+    expenseAccounts,
+    totalIncome,
+    totalExpenses,
+    profitBeforeTax,
+    taxExpense,
+    profitAfterTax,
+  };
+}
+
+async function buildBSData(balances: AccountBalance[]): Promise<BSData> {
+  const assetAccounts = balances
+    .filter((b) => b.accountType === "asset" && b.balancePaise !== 0)
+    .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+  const liabilityAccounts = balances
+    .filter((b) => b.accountType === "liability" && b.balancePaise !== 0)
+    .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+  const equityAccounts = balances
+    .filter((b) => b.accountType === "equity" && b.balancePaise !== 0)
+    .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+
+  // Integer paise
+  const totalAssets = assetAccounts.reduce((s, a) => s + a.balancePaise, 0);
+  const totalLiabilities = liabilityAccounts.reduce((s, a) => s + a.balancePaise, 0);
+  const totalEquity = equityAccounts.reduce((s, a) => s + a.balancePaise, 0);
+
+  return {
+    assetAccounts,
+    liabilityAccounts,
+    equityAccounts,
+    totalAssets,
+    totalLiabilities,
+    totalEquity,
+    totalLiabilitiesAndEquity: totalLiabilities + totalEquity,
+  };
+}
+
+// ─── Variance helpers ─────────────────────────────────────────────────────────
+
+function variance(current: number, prior: number): number {
+  return current - prior;
+}
+
+function variancePct(current: number, prior: number): string {
+  if (prior === 0) return current === 0 ? "—" : "N/A";
+  const pct = ((current - prior) / Math.abs(prior)) * 100;
+  return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
+}
+
+function varianceClass(v: number, isIncome: boolean): string {
+  if (v === 0) return "text-gray-500";
+  // For income: positive variance = good = green; negative = bad = red
+  // For expense: positive variance = bad = red; negative = good = green
+  if (isIncome) return v > 0 ? "text-green-600" : "text-red-600";
+  return v > 0 ? "text-red-600" : "text-green-600";
+}
+
+// ─── Excel export ─────────────────────────────────────────────────────────────
+
+function exportToExcel(
+  currentFY: string,
+  priorFY: string,
+  currentPL: PLData,
+  priorPL: PLData,
+  currentBS: BSData,
+  priorBS: BSData
+): void {
+  const wb = XLSX.utils.book_new();
+
+  // Helper: paise to rupees string
+  const r = (paise: number) => (paise / 100).toFixed(2);
+
+  // P&L Sheet
+  const plRows: (string | number)[][] = [
+    ["Profit & Loss Statement — Year-on-Year Comparison"],
+    [`FY ${currentFY} vs FY ${priorFY}`],
+    [],
+    ["Particulars", `FY ${currentFY} (₹)`, `FY ${priorFY} (₹)`, "Variance (₹)", "Variance %"],
+    ["INCOME"],
+    ...currentPL.incomeAccounts.map((a) => {
+      const prior = priorPL.incomeAccounts.find((p) => p.accountId === a.accountId);
+      const priorVal = prior?.balancePaise ?? 0;
+      return [a.accountName, r(a.balancePaise), r(priorVal), r(a.balancePaise - priorVal), variancePct(a.balancePaise, priorVal)];
+    }),
+    ["TOTAL INCOME", r(currentPL.totalIncome), r(priorPL.totalIncome), r(currentPL.totalIncome - priorPL.totalIncome), variancePct(currentPL.totalIncome, priorPL.totalIncome)],
+    [],
+    ["EXPENSES"],
+    ...currentPL.expenseAccounts.map((a) => {
+      const prior = priorPL.expenseAccounts.find((p) => p.accountId === a.accountId);
+      const priorVal = prior?.balancePaise ?? 0;
+      return [a.accountName, r(a.balancePaise), r(priorVal), r(a.balancePaise - priorVal), variancePct(a.balancePaise, priorVal)];
+    }),
+    ["TOTAL EXPENSES", r(currentPL.totalExpenses), r(priorPL.totalExpenses), r(currentPL.totalExpenses - priorPL.totalExpenses), variancePct(currentPL.totalExpenses, priorPL.totalExpenses)],
+    [],
+    ["PROFIT BEFORE TAX", r(currentPL.profitBeforeTax), r(priorPL.profitBeforeTax), r(currentPL.profitBeforeTax - priorPL.profitBeforeTax), ""],
+    ["Less: Tax Expense (30%)", r(currentPL.taxExpense), r(priorPL.taxExpense), "", ""],
+    ["PROFIT AFTER TAX", r(currentPL.profitAfterTax), r(priorPL.profitAfterTax), r(currentPL.profitAfterTax - priorPL.profitAfterTax), ""],
+  ];
+  const wsP = XLSX.utils.aoa_to_sheet(plRows);
+  XLSX.utils.book_append_sheet(wb, wsP, "P&L");
+
+  // Balance Sheet
+  const bsRows: (string | number)[][] = [
+    ["Balance Sheet"],
+    [`As at 31 March — FY ${currentFY} vs FY ${priorFY}`],
+    [],
+    ["Particulars", `FY ${currentFY} (₹)`, `FY ${priorFY} (₹)`],
+    ["ASSETS"],
+    ...currentBS.assetAccounts.map((a) => {
+      const prior = priorBS.assetAccounts.find((p) => p.accountId === a.accountId);
+      return [a.accountName, r(a.balancePaise), r(prior?.balancePaise ?? 0)];
+    }),
+    ["TOTAL ASSETS", r(currentBS.totalAssets), r(priorBS.totalAssets)],
+    [],
+    ["EQUITY"],
+    ...currentBS.equityAccounts.map((a) => {
+      const prior = priorBS.equityAccounts.find((p) => p.accountId === a.accountId);
+      return [a.accountName, r(a.balancePaise), r(prior?.balancePaise ?? 0)];
+    }),
+    [],
+    ["LIABILITIES"],
+    ...currentBS.liabilityAccounts.map((a) => {
+      const prior = priorBS.liabilityAccounts.find((p) => p.accountId === a.accountId);
+      return [a.accountName, r(a.balancePaise), r(prior?.balancePaise ?? 0)];
+    }),
+    ["TOTAL LIABILITIES & EQUITY", r(currentBS.totalLiabilitiesAndEquity), r(priorBS.totalLiabilitiesAndEquity)],
+  ];
+  const wsB = XLSX.utils.aoa_to_sheet(bsRows);
+  XLSX.utils.book_append_sheet(wb, wsB, "Balance Sheet");
+
+  XLSX.writeFile(wb, `Financial_Statements_${currentFY}_vs_${priorFY}.xlsx`);
+}
+
+// ─── UI Components ────────────────────────────────────────────────────────────
+
+function AmountCell({ paise }: { paise: number }) {
+  return (
+    <td className="px-4 py-2 text-right tabular-nums text-gray-800">
+      {formatPaise(paise)}
+    </td>
+  );
+}
+
+function VarianceCell({
+  current,
+  prior,
+  isIncome,
+}: {
+  current: number;
+  prior: number;
+  isIncome: boolean;
+}) {
+  const v = variance(current, prior);
+  const cls = varianceClass(v, isIncome);
+  return (
+    <td className={`px-4 py-2 text-right tabular-nums text-xs ${cls}`}>
+      <div>{formatPaise(v)}</div>
+      <div className="text-gray-400">{variancePct(current, prior)}</div>
+    </td>
+  );
+}
+
+interface PLTableProps {
+  currentPL: PLData;
+  priorPL: PLData;
+  currentFY: string;
+  priorFY: string;
+}
+
+function PLTable({ currentPL, priorPL, currentFY, priorFY }: PLTableProps) {
+  const colHeader =
+    "px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide";
+  const thLeft = "px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide";
+
+  // Build a union of income/expense accounts
+  const incomeIdSet = new Set<string>();
+  currentPL.incomeAccounts.forEach((a) => incomeIdSet.add(a.accountId));
+  priorPL.incomeAccounts.forEach((a) => incomeIdSet.add(a.accountId));
+  const allIncomeIds = Array.from(incomeIdSet);
+
+  const expenseIdSet = new Set<string>();
+  currentPL.expenseAccounts.forEach((a) => expenseIdSet.add(a.accountId));
+  priorPL.expenseAccounts.forEach((a) => expenseIdSet.add(a.accountId));
+  const allExpenseIds = Array.from(expenseIdSet);
+
+  function accountName(id: string, cur: AccountBalance[], pri: AccountBalance[]): string {
+    return (cur.find((a) => a.accountId === id) ?? pri.find((a) => a.accountId === id))!.accountName;
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-gray-200">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th className={thLeft}>Particulars</th>
+            <th className={colHeader}>FY {currentFY}</th>
+            <th className={colHeader}>FY {priorFY}</th>
+            <th className={colHeader}>Variance / %</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {/* INCOME */}
+          <tr className="bg-blue-50">
+            <td colSpan={4} className="px-4 py-2 text-xs font-bold text-blue-700 uppercase tracking-wider">
+              INCOME
+            </td>
+          </tr>
+          {allIncomeIds.map((id) => {
+            const cur = currentPL.incomeAccounts.find((a) => a.accountId === id)?.balancePaise ?? 0;
+            const pri = priorPL.incomeAccounts.find((a) => a.accountId === id)?.balancePaise ?? 0;
+            return (
+              <tr key={id} className="hover:bg-gray-50">
+                <td className="px-4 py-2 pl-8 text-gray-700">{accountName(id, currentPL.incomeAccounts, priorPL.incomeAccounts)}</td>
+                <AmountCell paise={cur} />
+                <AmountCell paise={pri} />
+                <VarianceCell current={cur} prior={pri} isIncome={true} />
+              </tr>
+            );
+          })}
+          {allIncomeIds.length === 0 && (
+            <tr>
+              <td colSpan={4} className="px-4 py-3 pl-8 text-gray-400 text-xs italic">No income accounts</td>
+            </tr>
+          )}
+          <tr className="bg-blue-50 font-semibold">
+            <td className="px-4 py-2.5 text-blue-800 text-sm">TOTAL INCOME</td>
+            <AmountCell paise={currentPL.totalIncome} />
+            <AmountCell paise={priorPL.totalIncome} />
+            <VarianceCell current={currentPL.totalIncome} prior={priorPL.totalIncome} isIncome={true} />
+          </tr>
+
+          {/* EXPENSES */}
+          <tr className="bg-red-50">
+            <td colSpan={4} className="px-4 py-2 text-xs font-bold text-red-700 uppercase tracking-wider">
+              EXPENSES
+            </td>
+          </tr>
+          {allExpenseIds.map((id) => {
+            const cur = currentPL.expenseAccounts.find((a) => a.accountId === id)?.balancePaise ?? 0;
+            const pri = priorPL.expenseAccounts.find((a) => a.accountId === id)?.balancePaise ?? 0;
+            return (
+              <tr key={id} className="hover:bg-gray-50">
+                <td className="px-4 py-2 pl-8 text-gray-700">{accountName(id, currentPL.expenseAccounts, priorPL.expenseAccounts)}</td>
+                <AmountCell paise={cur} />
+                <AmountCell paise={pri} />
+                <VarianceCell current={cur} prior={pri} isIncome={false} />
+              </tr>
+            );
+          })}
+          {allExpenseIds.length === 0 && (
+            <tr>
+              <td colSpan={4} className="px-4 py-3 pl-8 text-gray-400 text-xs italic">No expense accounts</td>
+            </tr>
+          )}
+          <tr className="bg-red-50 font-semibold">
+            <td className="px-4 py-2.5 text-red-800 text-sm">TOTAL EXPENSES</td>
+            <AmountCell paise={currentPL.totalExpenses} />
+            <AmountCell paise={priorPL.totalExpenses} />
+            <VarianceCell current={currentPL.totalExpenses} prior={priorPL.totalExpenses} isIncome={false} />
+          </tr>
+
+          {/* PBT */}
+          <tr className="border-t-2 border-gray-300 font-semibold bg-gray-50">
+            <td className="px-4 py-3 text-gray-900">PROFIT BEFORE TAX</td>
+            <AmountCell paise={currentPL.profitBeforeTax} />
+            <AmountCell paise={priorPL.profitBeforeTax} />
+            <VarianceCell current={currentPL.profitBeforeTax} prior={priorPL.profitBeforeTax} isIncome={true} />
+          </tr>
+          <tr className="hover:bg-gray-50">
+            <td className="px-4 py-2 pl-8 text-gray-600 text-sm">Less: Tax Expense (30% provision)</td>
+            <AmountCell paise={currentPL.taxExpense} />
+            <AmountCell paise={priorPL.taxExpense} />
+            <td />
+          </tr>
+          <tr className="border-t-2 border-blue-300 font-bold bg-blue-50">
+            <td className="px-4 py-3 text-blue-900 text-base">PROFIT AFTER TAX</td>
+            <td className={`px-4 py-3 text-right tabular-nums text-base font-bold ${currentPL.profitAfterTax >= 0 ? "text-green-700" : "text-red-700"}`}>
+              {formatPaise(currentPL.profitAfterTax)}
+            </td>
+            <td className={`px-4 py-3 text-right tabular-nums text-base font-bold ${priorPL.profitAfterTax >= 0 ? "text-green-700" : "text-red-700"}`}>
+              {formatPaise(priorPL.profitAfterTax)}
+            </td>
+            <VarianceCell current={currentPL.profitAfterTax} prior={priorPL.profitAfterTax} isIncome={true} />
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+interface BSTableProps {
+  currentBS: BSData;
+  priorBS: BSData;
+  currentFY: string;
+  priorFY: string;
+}
+
+function BSTable({ currentBS, priorBS, currentFY, priorFY }: BSTableProps) {
+  const colHeader =
+    "px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide";
+  const thLeft = "px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide";
+
+  function SectionRows({
+    label,
+    curAccounts,
+    priAccounts,
+    colorClass,
+  }: {
+    label: string;
+    curAccounts: AccountBalance[];
+    priAccounts: AccountBalance[];
+    colorClass: string;
+  }) {
+    const idSet = new Set<string>();
+    curAccounts.forEach((a) => idSet.add(a.accountId));
+    priAccounts.forEach((a) => idSet.add(a.accountId));
+    const allIds = Array.from(idSet);
+
+    function name(id: string): string {
+      return (curAccounts.find((a) => a.accountId === id) ?? priAccounts.find((a) => a.accountId === id))!.accountName;
+    }
+
+    return (
+      <>
+        <tr className={colorClass}>
+          <td colSpan={3} className="px-4 py-2 text-xs font-bold uppercase tracking-wider">
+            {label}
+          </td>
+        </tr>
+        {allIds.map((id) => {
+          const cur = curAccounts.find((a) => a.accountId === id)?.balancePaise ?? 0;
+          const pri = priAccounts.find((a) => a.accountId === id)?.balancePaise ?? 0;
+          return (
+            <tr key={id} className="hover:bg-gray-50">
+              <td className="px-4 py-2 pl-8 text-gray-700">{name(id)}</td>
+              <AmountCell paise={cur} />
+              <AmountCell paise={pri} />
+            </tr>
+          );
+        })}
+        {allIds.length === 0 && (
+          <tr>
+            <td colSpan={3} className="px-4 py-3 pl-8 text-gray-400 text-xs italic">None</td>
+          </tr>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-gray-200">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th className={thLeft}>Particulars</th>
+            <th className={colHeader}>As at 31 Mar {currentFY.split("-")[0].slice(-2) === "99" ? "2099" : `20${currentFY.split("-")[1]}`}</th>
+            <th className={colHeader}>As at 31 Mar {priorFY.split("-")[0].slice(-2) === "99" ? "2099" : `20${priorFY.split("-")[1]}`}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          <SectionRows
+            label="ASSETS"
+            curAccounts={currentBS.assetAccounts}
+            priAccounts={priorBS.assetAccounts}
+            colorClass="bg-emerald-50 text-emerald-700"
+          />
+          <tr className="bg-emerald-50 font-semibold">
+            <td className="px-4 py-2.5 text-emerald-800">TOTAL ASSETS</td>
+            <AmountCell paise={currentBS.totalAssets} />
+            <AmountCell paise={priorBS.totalAssets} />
+          </tr>
+
+          <SectionRows
+            label="EQUITY"
+            curAccounts={currentBS.equityAccounts}
+            priAccounts={priorBS.equityAccounts}
+            colorClass="bg-purple-50 text-purple-700"
+          />
+
+          <SectionRows
+            label="LIABILITIES"
+            curAccounts={currentBS.liabilityAccounts}
+            priAccounts={priorBS.liabilityAccounts}
+            colorClass="bg-orange-50 text-orange-700"
+          />
+          <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
+            <td className="px-4 py-3 text-gray-900">TOTAL LIABILITIES &amp; EQUITY</td>
+            <AmountCell paise={currentBS.totalLiabilitiesAndEquity} />
+            <AmountCell paise={priorBS.totalLiabilitiesAndEquity} />
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+export default function FinancialStatementsPage() {
+  const fyOptions = generateFYOptions();
+  const [activeTab, setActiveTab] = useState<"pl" | "bs" | "cashflow">("pl");
+
+  // Controls
+  const [clients, setClients] = useState<Client[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>("");
+  const [currentFY, setCurrentFY] = useState<string>(fyOptions[0]);
+  const [priorFY, setPriorFY] = useState<string>(fyOptions[1]);
+
+  // Report state
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentPL, setCurrentPL] = useState<PLData | null>(null);
+  const [priorPL, setPriorPL] = useState<PLData | null>(null);
+  const [currentBS, setCurrentBS] = useState<BSData | null>(null);
+  const [priorBS, setPriorBS] = useState<BSData | null>(null);
+
+  // Load clients on mount
+  useEffect(() => {
+    fetchClients()
+      .then((list) => {
+        setClients(list);
+        if (list.length > 0) setSelectedClientId(list[0].id);
+      })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load clients"));
+  }, []);
+
+  const generate = useCallback(async () => {
+    if (!selectedClientId) {
+      setError("Please select a client.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setCurrentPL(null);
+    setPriorPL(null);
+    setCurrentBS(null);
+    setPriorBS(null);
+
+    try {
+      const curRange = fyToDateRange(currentFY);
+      const priRange = fyToDateRange(priorFY);
+
+      const [curBalances, priBalances] = await Promise.all([
+        fetchAccountBalances(selectedClientId, curRange.from, curRange.to),
+        fetchAccountBalances(selectedClientId, priRange.from, priRange.to),
+      ]);
+
+      const [cPL, pPL, cBS, pBS] = await Promise.all([
+        buildPLData(curBalances),
+        buildPLData(priBalances),
+        buildBSData(curBalances),
+        buildBSData(priBalances),
+      ]);
+
+      setCurrentPL(cPL);
+      setPriorPL(pPL);
+      setCurrentBS(cBS);
+      setPriorBS(pBS);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to generate report");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedClientId, currentFY, priorFY]);
+
+  const hasData = currentPL && priorPL && currentBS && priorBS;
+
+  const handleExport = useCallback(() => {
+    if (!hasData) return;
+    exportToExcel(currentFY, priorFY, currentPL, priorPL, currentBS, priorBS);
+  }, [hasData, currentFY, priorFY, currentPL, priorPL, currentBS, priorBS]);
+
+  return (
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+            <BarChart3 size={20} className="text-blue-600" />
+            Financial Statements
+          </h1>
+          <p className="text-sm text-gray-500 mt-0.5">Year-on-year comparison — P&L and Balance Sheet</p>
+        </div>
+        {hasData && (
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+          >
+            <Download size={14} />
+            Export Excel
+          </button>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+        {(["pl", "bs", "cashflow"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              activeTab === tab
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {tab === "pl" ? "P&L" : tab === "bs" ? "Balance Sheet" : "Cash Flow Summary"}
+          </button>
+        ))}
+      </div>
+
+      {/* Controls */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex flex-wrap gap-4 items-end">
+          {/* Client selector */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Client</label>
+            <select
+              value={selectedClientId}
+              onChange={(e) => setSelectedClientId(e.target.value)}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]"
+            >
+              {clients.length === 0 && <option value="">Loading clients…</option>}
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.client_name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Current FY */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Current FY</label>
+            <select
+              value={currentFY}
+              onChange={(e) => setCurrentFY(e.target.value)}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {fyOptions.map((fy) => (
+                <option key={fy} value={fy}>
+                  FY {fy}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Comparison FY */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Comparison FY</label>
+            <select
+              value={priorFY}
+              onChange={(e) => setPriorFY(e.target.value)}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {fyOptions.map((fy) => (
+                <option key={fy} value={fy}>
+                  FY {fy}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            onClick={generate}
+            disabled={loading || !selectedClientId}
+            className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? <Loader2 size={14} className="animate-spin" /> : null}
+            {loading ? "Generating…" : "Generate"}
+          </button>
+        </div>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="flex items-center gap-2 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-200">
+          <AlertCircle size={14} className="shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && !error && !hasData && (
+        <div className="text-center py-16 text-gray-400">
+          <BarChart3 size={40} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm">Select a client and FY range, then click Generate.</p>
+        </div>
+      )}
+
+      {/* Loading */}
+      {loading && (
+        <div className="flex items-center justify-center py-16 gap-3 text-gray-400">
+          <Loader2 size={22} className="animate-spin" />
+          <span className="text-sm">Fetching journal data…</span>
+        </div>
+      )}
+
+      {/* P&L Tab */}
+      {hasData && activeTab === "pl" && (
+        <PLTable
+          currentPL={currentPL}
+          priorPL={priorPL}
+          currentFY={currentFY}
+          priorFY={priorFY}
+        />
+      )}
+
+      {/* Balance Sheet Tab */}
+      {hasData && activeTab === "bs" && (
+        <BSTable
+          currentBS={currentBS}
+          priorBS={priorBS}
+          currentFY={currentFY}
+          priorFY={priorFY}
+        />
+      )}
+
+      {/* Cash Flow Summary Tab */}
+      {hasData && activeTab === "cashflow" && (
+        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
+          <BarChart3 size={32} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm">Cash Flow Statement requires direct cash account mapping.</p>
+          <p className="text-xs mt-1 text-gray-300">Coming in next phase — configure cash &amp; bank accounts in Chart of Accounts first.</p>
+        </div>
+      )}
+    </div>
+  );
+}

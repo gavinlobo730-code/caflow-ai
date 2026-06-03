@@ -6,6 +6,7 @@
  */
 
 import { useState, useCallback } from "react";
+import Link from "next/link";
 import {
   FileText,
   TrendingUp,
@@ -16,6 +17,7 @@ import {
   ChevronUp,
   Loader2,
   X,
+  BarChart3,
 } from "lucide-react";
 import { getClients } from "@/lib/data/clients";
 import { getTransactions } from "@/lib/data/transactions";
@@ -855,6 +857,32 @@ export default function ReportsPage() {
           <h1 className="text-xl font-semibold text-gray-900">Reports</h1>
           <p className="text-sm text-gray-500 mt-0.5">Generate and export practice reports</p>
         </div>
+
+        {/* Financial Statements link card */}
+        {!activeReport && (
+          <div className="print:hidden">
+            <Link
+              href="/reports/financial-statements"
+              className="group flex items-start gap-4 p-5 bg-white rounded-xl border border-gray-100 hover:border-blue-200 hover:shadow-sm transition-all text-left w-full"
+            >
+              <div className="p-2.5 bg-gray-50 rounded-lg group-hover:bg-blue-50 transition-colors shrink-0">
+                <BarChart3 size={18} className="text-gray-500 group-hover:text-blue-600 transition-colors" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">
+                  Financial Statements
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">
+                  Year-on-year P&L and Balance Sheet comparison with variance analysis and Excel export
+                </p>
+              </div>
+              <ChevronDown
+                size={14}
+                className="text-gray-300 group-hover:text-blue-400 transition-colors mt-1 shrink-0 -rotate-90"
+              />
+            </Link>
+          </div>
+        )}
 
         {/* Report cards grid */}
         {!activeReport && (
