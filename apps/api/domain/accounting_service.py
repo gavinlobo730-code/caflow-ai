@@ -224,8 +224,11 @@ class AccountingService:
         client_id: Optional[str] = None,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
+        firm_id: Optional[str] = None,
     ) -> list[dict]:
         entries = list(MOCK_JOURNAL_ENTRIES)
+        if firm_id:
+            entries = [e for e in entries if e.get("firm_id") == firm_id]
         if client_id:
             entries = [e for e in entries if e.get("client_id") == client_id]
         if start_date:
@@ -373,6 +376,7 @@ class AccountingService:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         client_id: Optional[str] = None,
+        firm_id: Optional[str] = None,
     ) -> dict:
         # Default: current FY April 1 to today
         today = date.today()
@@ -434,6 +438,7 @@ class AccountingService:
         self,
         as_of_date: Optional[str] = None,
         client_id: Optional[str] = None,
+        firm_id: Optional[str] = None,
     ) -> dict:
         _as_of = as_of_date or date.today().isoformat()
         balances: dict[str, int] = {}

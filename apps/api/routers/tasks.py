@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from core.auth import get_current_user
 from pydantic import BaseModel
 from typing import Optional
 from models.common import api_response
@@ -37,7 +38,7 @@ class TaskUpdate(BaseModel):
 
 
 @router.get("/summary/dashboard")
-def dashboard_summary():
+def dashboard_summary(current_user: dict = Depends(get_current_user)):
     from domain.task_service import task_domain_service
     return api_response(True, task_domain_service.get_dashboard_summary())
 
@@ -49,6 +50,7 @@ def list_tasks(
     assigned_to: Optional[str] = None,
     priority: Optional[str] = None,
     kanban: bool = False,
+    current_user: dict = Depends(get_current_user),
 ):
     tasks = list(TASK_STORE)
     if client_id:
@@ -74,7 +76,7 @@ def list_tasks(
 
 
 @router.post("")
-def create_task(body: TaskCreate):
+def create_task(body: TaskCreate, current_user: dict = Depends(get_current_user)):
     if body.client_id not in CLIENT_INDEX:
         raise HTTPException(status_code=404, detail="Client not found")
     now = datetime.now(timezone.utc).isoformat()
@@ -97,7 +99,7 @@ def create_task(body: TaskCreate):
 
 
 @router.patch("/{task_id}")
-def update_task(task_id: str, body: TaskUpdate):
+def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(get_current_user)):
     task = next((t for t in TASK_STORE if t["id"] == task_id), None)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")

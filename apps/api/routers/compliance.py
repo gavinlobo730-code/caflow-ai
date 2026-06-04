@@ -1,5 +1,6 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from models.common import api_response
+from core.auth import get_current_user
 from mock_data import MOCK_COMPLIANCE_TASKS, MOCK_CLIENTS, CLIENT_INDEX
 from services.compliance_engine import (
     gstr1_due_date, gstr3b_due_date, gstr9_due_date,
@@ -11,7 +12,7 @@ router = APIRouter(prefix="/api/compliance", tags=["compliance"])
 
 
 @router.get("/tasks")
-def list_compliance_tasks(client_id: str | None = None, status: str | None = None):
+def list_compliance_tasks(client_id: str | None = None, status: str | None = None, current_user: dict = Depends(get_current_user)):
     tasks = MOCK_COMPLIANCE_TASKS
     if client_id:
         tasks = [t for t in tasks if t["client_id"] == client_id]
@@ -21,7 +22,7 @@ def list_compliance_tasks(client_id: str | None = None, status: str | None = Non
 
 
 @router.get("/calendar")
-def compliance_calendar():
+def compliance_calendar(current_user: dict = Depends(get_current_user)):
     tasks = sorted(MOCK_COMPLIANCE_TASKS, key=lambda t: t["due_date"])
     client_map = {c["id"]: c["client_name"] for c in MOCK_CLIENTS}
     events = [
@@ -32,7 +33,7 @@ def compliance_calendar():
 
 
 @router.get("/due-dates/calculate")
-def calculate_due_dates(year: int, month: int):
+def calculate_due_dates(year: int, month: int, current_user: dict = Depends(get_current_user)):
     """
     Calculate all GST due dates for a given month.
     Ref: CGST Act 2017, Sections 37 and 39.
