@@ -1,0 +1,403 @@
+"""GST Engine API router.
+
+Endpoints for GSTR-1/3B computation, validation, CA approval, and JSON download.
+All computation is pure Python — no external dependencies.
+Data is passed in from frontend (which reads Supabase directly).
+
+# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to any government portal.
+"""
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from models.common import api_response
+from domain.gst.classifier import (
+    TransactionForClassification,
+    classify_transactions,
+    GSTInvoiceCategory,
+)
+from domain.gst.gstr3b_computer import (
+    SalesTransaction,
+    PurchaseTransaction,
+    GSTR2ARecord,
+    compute_gstr3b,
+)
+from domain.gst.gstr1_builder import (
+    InvoiceForGSTR1,
+    InvoiceLine,
+    build_gstr1,
+)
+from domain.gst.validator import GSTValidator, InvoiceToValidate
+
+router = APIRouter(prefix="/api/gst", tags=["gst"])
+
+_validator = GSTValidator()
+
+
+# ── Request / Response Models ─────────────────────────────────────────────────
+
+class TransactionClassifyRequest(BaseModel):
+    transactions: list[dict] = Field(
+        description="List of transaction records from Supabase transactions table"
+    )
+
+
+class ClassifyResponse(BaseModel):
+    results: dict[str, str]   # transaction_id → category
+    counts: dict[str, int]
+
+
+class GSTR3BRequest(BaseModel):
+    gstin: str
+    period: str  # MMYYYY
+    sales: list[dict] = Field(description="Posted sales invoices for the period")
+    purchases: list[dict] = Field(description="Posted purchase invoices for the period")
+    gstr2a_records: list[dict] = Field(default=[], description="GSTR-2A records for the period")
+
+
+class GSTR1Request(BaseModel):
+    gstin: str
+    period: str  # MMYYYY
+    invoices: list[dict] = Field(
+        description="Classified posted transactions for the period"
+    )
+    invoice_lines: dict[str, list[dict]] = Field(
+        default={},
+        description="Map of transaction_id → list of transaction_line records"
+    )
+    aggregate_turnover_paise: int = Field(
+        default=0,
+        description="Annual aggregate turnover for HSN digit requirement"
+    )
+
+
+class ValidateGSTR1Request(BaseModel):
+    gstin: str
+    period: str
+    invoices: list[dict]
+
+
+class ValidateGSTR3BRequest(BaseModel):
+    gstin: str
+    period: str
+    output_igst: int
+    output_cgst: int
+    output_sgst: int
+    itc_igst: int
+    itc_cgst: int
+    itc_sgst: int
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _parse_sales(rows: list[dict]) -> list[SalesTransaction]:
+    return [
+        SalesTransaction(
+            transaction_type=r.get("transaction_type", "sales_invoice"),
+            taxable_amount_paise=int(r.get("taxable_amount_paise", 0)),
+            cgst_paise=int(r.get("cgst_paise", 0)),
+            sgst_paise=int(r.get("sgst_paise", 0)),
+            igst_paise=int(r.get("igst_paise", 0)),
+            cess_paise=int(r.get("cess_paise", 0)),
+            supply_type=r.get("supply_type", "taxable"),
+            is_reverse_charge=bool(r.get("is_reverse_charge", False)),
+        )
+        for r in rows
+    ]
+
+
+def _parse_purchases(rows: list[dict]) -> list[PurchaseTransaction]:
+    return [
+        PurchaseTransaction(
+            taxable_amount_paise=int(r.get("taxable_amount_paise", 0)),
+            cgst_paise=int(r.get("cgst_paise", 0)),
+            sgst_paise=int(r.get("sgst_paise", 0)),
+            igst_paise=int(r.get("igst_paise", 0)),
+            cess_paise=int(r.get("cess_paise", 0)),
+            is_reverse_charge=bool(r.get("is_reverse_charge", False)),
+        )
+        for r in rows
+    ]
+
+
+def _parse_gstr2a(rows: list[dict]) -> list[GSTR2ARecord]:
+    return [
+        GSTR2ARecord(
+            cgst_paise=int(r.get("cgst_paise", 0)),
+            sgst_paise=int(r.get("sgst_paise", 0)),
+            igst_paise=int(r.get("igst_paise", 0)),
+        )
+        for r in rows
+    ]
+
+
+def _parse_invoice_line(r: dict) -> InvoiceLine:
+    return InvoiceLine(
+        hsn_sac_code=r.get("hsn_sac_code") or "",
+        description=r.get("description") or "",
+        quantity=float(r.get("quantity", 1)),
+        unit=r.get("unit") or "NOS",
+        rate_paise=int(r.get("rate_paise", 0)),
+        taxable_paise=int(r.get("taxable_paise", 0)),
+        gst_rate=float(r.get("gst_rate", 0)),
+        cgst_paise=int(r.get("cgst_paise", 0)),
+        sgst_paise=int(r.get("sgst_paise", 0)),
+        igst_paise=int(r.get("igst_paise", 0)),
+        cess_paise=int(r.get("cess_paise", 0)),
+    )
+
+
+def _parse_invoices_for_gstr1(
+    rows: list[dict],
+    lines_map: dict[str, list[dict]],
+) -> list[InvoiceForGSTR1]:
+    result = []
+    for r in rows:
+        txn_id = r.get("id", "")
+        raw_lines = lines_map.get(txn_id, [])
+        category_str = r.get("gst_invoice_category")
+        if not category_str:
+            # Auto-classify if not already set
+            txn_for_classify = TransactionForClassification(
+                id=txn_id,
+                transaction_type=r.get("transaction_type", "sales_invoice"),
+                party_gstin=r.get("party_gstin"),
+                is_interstate=bool(r.get("is_interstate", False)),
+                taxable_amount_paise=int(r.get("taxable_amount_paise", 0)),
+                supply_type=r.get("supply_type", "taxable"),
+                invoice_type=r.get("invoice_type", "Regular"),
+                place_of_supply=r.get("place_of_supply"),
+            )
+            from domain.gst.classifier import classify_transaction
+            category = classify_transaction(txn_for_classify)
+        else:
+            try:
+                category = GSTInvoiceCategory(category_str)
+            except ValueError:
+                category = GSTInvoiceCategory.B2CS
+
+        result.append(InvoiceForGSTR1(
+            id=txn_id,
+            transaction_type=r.get("transaction_type", "sales_invoice"),
+            reference_no=r.get("reference_no") or r.get("id", ""),
+            transaction_date=r.get("transaction_date", ""),
+            party_gstin=r.get("party_gstin"),
+            party_name=r.get("party_name") or "",
+            place_of_supply=r.get("place_of_supply") or "",
+            is_interstate=bool(r.get("is_interstate", False)),
+            taxable_amount_paise=int(r.get("taxable_amount_paise", 0)),
+            cgst_paise=int(r.get("cgst_paise", 0)),
+            sgst_paise=int(r.get("sgst_paise", 0)),
+            igst_paise=int(r.get("igst_paise", 0)),
+            cess_paise=int(r.get("cess_paise", 0)),
+            is_reverse_charge=bool(r.get("is_reverse_charge", False)),
+            invoice_type=r.get("invoice_type", "Regular"),
+            supply_type=r.get("supply_type", "taxable"),
+            gst_invoice_category=category,
+            original_invoice_ref=r.get("original_invoice_ref"),
+            original_invoice_date=r.get("original_invoice_date"),
+            lines=[_parse_invoice_line(l) for l in raw_lines],
+        ))
+    return result
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@router.post("/classify")
+def classify_invoices(req: TransactionClassifyRequest):
+    """Classify transactions into GSTN invoice categories.
+
+    Returns classification for each transaction_id.
+    Frontend should persist gst_invoice_category back to Supabase.
+    """
+    txns = [
+        TransactionForClassification(
+            id=r.get("id", ""),
+            transaction_type=r.get("transaction_type", "sales_invoice"),
+            party_gstin=r.get("party_gstin"),
+            is_interstate=bool(r.get("is_interstate", False)),
+            taxable_amount_paise=int(r.get("taxable_amount_paise", 0)),
+            supply_type=r.get("supply_type", "taxable"),
+            invoice_type=r.get("invoice_type", "Regular"),
+            place_of_supply=r.get("place_of_supply"),
+        )
+        for r in req.transactions
+    ]
+    results = classify_transactions(txns)
+    counts: dict[str, int] = {}
+    for cat in results.values():
+        counts[cat.value] = counts.get(cat.value, 0) + 1
+
+    return api_response(True, {
+        "results": {k: v.value for k, v in results.items()},
+        "counts": counts,
+        "total": len(results),
+    })
+
+
+@router.post("/gstr3b/compute")
+def compute_gstr3b_endpoint(req: GSTR3BRequest):
+    """Compute GSTR-3B figures from transaction data.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    Returns computed payload ready for GSTN portal upload after CA review.
+    """
+    validation_errors = _validator.validate_gstin(req.gstin)
+    validation_errors += _validator.validate_period(req.period)
+    if validation_errors:
+        raise HTTPException(
+            status_code=422,
+            detail={"validation_errors": [e.as_dict() for e in validation_errors]},
+        )
+
+    sales = _parse_sales(req.sales)
+    purchases = _parse_purchases(req.purchases)
+    gstr2a = _parse_gstr2a(req.gstr2a_records)
+
+    result = compute_gstr3b(sales, purchases, gstr2a)
+
+    gstr3b_validation = _validator.validate_gstr3b(
+        gstin=req.gstin,
+        period=req.period,
+        output_igst=result.outward_taxable_igst,
+        output_cgst=result.outward_taxable_cgst,
+        output_sgst=result.outward_taxable_sgst,
+        itc_igst=result.itc_igst,
+        itc_cgst=result.itc_cgst,
+        itc_sgst=result.itc_sgst,
+    )
+
+    return api_response(True, {
+        "payload": result.as_gstn_payload(req.gstin, req.period),
+        "working": {
+            "outward": {
+                "taxable_igst_paise": result.outward_taxable_igst,
+                "taxable_cgst_paise": result.outward_taxable_cgst,
+                "taxable_sgst_paise": result.outward_taxable_sgst,
+                "zero_rated_paise": result.outward_zero_rated,
+                "nil_exempt_paise": result.outward_nil_exempt,
+            },
+            "itc": {
+                "book_igst_paise": result.itc_book_igst,
+                "book_cgst_paise": result.itc_book_cgst,
+                "book_sgst_paise": result.itc_book_sgst,
+                "gstr2a_igst_paise": result.itc_2a_igst,
+                "gstr2a_cgst_paise": result.itc_2a_cgst,
+                "gstr2a_sgst_paise": result.itc_2a_sgst,
+                "eligible_igst_paise": result.itc_igst,
+                "eligible_cgst_paise": result.itc_cgst,
+                "eligible_sgst_paise": result.itc_sgst,
+                "rule_36_4_cap_applied": result.itc_capped_by_2a,
+            },
+            "net_payable": {
+                "igst_paise": result.net_igst,
+                "cgst_paise": result.net_cgst,
+                "sgst_paise": result.net_sgst,
+                "total_paise": result.net_igst + result.net_cgst + result.net_sgst,
+            },
+        },
+        "validation_warnings": [e.as_dict() for e in gstr3b_validation],
+        "period": req.period,
+        "gstin": req.gstin,
+        # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+        "ca_review_required": True,
+    })
+
+
+@router.post("/gstr1/build")
+def build_gstr1_endpoint(req: GSTR1Request):
+    """Build GSTR-1 JSON payload from classified transaction data.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    validation_errors = _validator.validate_gstin(req.gstin)
+    validation_errors += _validator.validate_period(req.period)
+    if validation_errors:
+        raise HTTPException(
+            status_code=422,
+            detail={"validation_errors": [e.as_dict() for e in validation_errors]},
+        )
+
+    invoices = _parse_invoices_for_gstr1(req.invoices, req.invoice_lines)
+
+    # Validate all invoices
+    invoices_to_validate = [
+        InvoiceToValidate(
+            reference_no=inv.reference_no,
+            transaction_date=inv.transaction_date,
+            party_gstin=inv.party_gstin,
+            place_of_supply=inv.place_of_supply,
+            taxable_amount_paise=inv.taxable_amount_paise,
+            cgst_paise=inv.cgst_paise,
+            sgst_paise=inv.sgst_paise,
+            igst_paise=inv.igst_paise,
+            is_interstate=inv.is_interstate,
+            gst_rate=None,
+        )
+        for inv in invoices
+    ]
+    validation_errors_inv = _validator.validate_gstr1(req.gstin, req.period, invoices_to_validate)
+
+    payload = build_gstr1(invoices, req.gstin, req.period, req.aggregate_turnover_paise)
+
+    return api_response(True, {
+        "payload": payload.payload,
+        "summary": payload.summary,
+        "invoice_count": payload.invoice_count,
+        "taxable_total_rupees": payload.taxable_total_paise / 100,
+        "tax_total_rupees": payload.tax_total_paise / 100,
+        "validation_errors": [e.as_dict() for e in validation_errors_inv if e.severity == "error"],
+        "validation_warnings": [e.as_dict() for e in validation_errors_inv if e.severity == "warning"],
+        "period": req.period,
+        "gstin": req.gstin,
+        # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+        "ca_review_required": True,
+    })
+
+
+@router.post("/validate/gstr1")
+def validate_gstr1_endpoint(req: ValidateGSTR1Request):
+    """Validate GSTR-1 invoice data without building the full payload."""
+    invoices_to_validate = [
+        InvoiceToValidate(
+            reference_no=r.get("reference_no") or "",
+            transaction_date=r.get("transaction_date", ""),
+            party_gstin=r.get("party_gstin"),
+            place_of_supply=r.get("place_of_supply"),
+            taxable_amount_paise=int(r.get("taxable_amount_paise", 0)),
+            cgst_paise=int(r.get("cgst_paise", 0)),
+            sgst_paise=int(r.get("sgst_paise", 0)),
+            igst_paise=int(r.get("igst_paise", 0)),
+            is_interstate=bool(r.get("is_interstate", False)),
+            gst_rate=r.get("gst_rate"),
+        )
+        for r in req.invoices
+    ]
+    errors = _validator.validate_gstr1(req.gstin, req.period, invoices_to_validate)
+    return api_response(True, {
+        "valid": not any(e.severity == "error" for e in errors),
+        "errors": [e.as_dict() for e in errors if e.severity == "error"],
+        "warnings": [e.as_dict() for e in errors if e.severity == "warning"],
+        "total_invoices": len(req.invoices),
+    })
+
+
+@router.post("/validate/gstr3b")
+def validate_gstr3b_endpoint(req: ValidateGSTR3BRequest):
+    """Validate GSTR-3B figures for internal consistency."""
+    errors = _validator.validate_gstr3b(
+        gstin=req.gstin,
+        period=req.period,
+        output_igst=req.output_igst,
+        output_cgst=req.output_cgst,
+        output_sgst=req.output_sgst,
+        itc_igst=req.itc_igst,
+        itc_cgst=req.itc_cgst,
+        itc_sgst=req.itc_sgst,
+    )
+    return api_response(True, {
+        "valid": not any(e.severity == "error" for e in errors),
+        "errors": [e.as_dict() for e in errors if e.severity == "error"],
+        "warnings": [e.as_dict() for e in errors if e.severity == "warning"],
+    })
