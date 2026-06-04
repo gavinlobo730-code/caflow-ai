@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0B1635"/><stop offset="100%" stop-color="#142256"/>
+    </linearGradient>
+    <linearGradient id="bar1" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#3B82F6"/><stop offset="100%" stop-color="#22D3EE"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#0EA5E9"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="40" fill="url(#bg)"/>
+  <!--
+    P deconstructed as modular bars:
+    Spine (left vertical) + 3 horizontal bars at different widths = P letterform
+    Also reads as stacked workspace layers
+  -->
+  <!-- Vertical spine of P -->
+  <rect x="52" y="54" width="16" height="92" rx="8" fill="white" fill-opacity="0.9"/>
+  <!-- Top bar (full width = P top + bowl top) -->
+  <rect x="52" y="54" width="82" height="16" rx="8" fill="url(#bar1)"/>
+  <!-- Mid bar (P bowl bottom) -->
+  <rect x="52" y="88" width="68" height="16" rx="8" fill="url(#bar2)"/>
+  <!-- Bottom bar (tail only — narrower, subtle) -->
+  <rect x="52" y="122" width="48" height="16" rx="8" fill="#1a3a7c"/>
+  <!-- Teal accent dot at P bowl right edge -->
+  <circle cx="136" cy="62" r="6" fill="#22D3EE" fill-opacity="0.7"/>
+</svg>

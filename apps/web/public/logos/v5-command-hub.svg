@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0B1635"/><stop offset="100%" stop-color="#142256"/>
+    </linearGradient>
+    <linearGradient id="cg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3B82F6"/><stop offset="100%" stop-color="#0EA5E9"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="40" fill="url(#bg)"/>
+  <!-- Spoke lines -->
+  <line x1="100" y1="70" x2="100" y2="50" stroke="#2563EB" stroke-opacity="0.4" stroke-width="2"/>
+  <line x1="100" y1="130" x2="100" y2="150" stroke="#2563EB" stroke-opacity="0.4" stroke-width="2"/>
+  <line x1="70" y1="100" x2="50" y2="100" stroke="#2563EB" stroke-opacity="0.4" stroke-width="2"/>
+  <line x1="130" y1="100" x2="150" y2="100" stroke="#2563EB" stroke-opacity="0.4" stroke-width="2"/>
+  <!-- Satellite modules -->
+  <rect x="82" y="30" width="36" height="26" rx="7" fill="#1a3a7c"/>
+  <rect x="82" y="144" width="36" height="26" rx="7" fill="#1a3a7c"/>
+  <rect x="30" y="87" width="26" height="26" rx="7" fill="#1a3a7c"/>
+  <rect x="144" y="87" width="26" height="26" rx="7" fill="#0EA5E9" fill-opacity="0.6"/>
+  <!-- Center hub -->
+  <rect x="70" y="70" width="60" height="60" rx="14" fill="url(#cg)"/>
+  <!-- Hub detail -->
+  <line x1="84" y1="95" x2="116" y2="95" stroke="white" stroke-opacity="0.5" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="84" y1="105" x2="108" y2="105" stroke="white" stroke-opacity="0.3" stroke-width="2" stroke-linecap="round"/>
+</svg>
