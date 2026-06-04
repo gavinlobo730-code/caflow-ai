@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from routers import clients, compliance, documents, assistant, insights, tasks, workflows, reminders, team
 from routers import accounting, compliance_records
 from routers import document_intelligence, risks, ai_insights, automation, notifications, ai_copilot
+from routers import gst
 
 load_dotenv()
 
@@ -38,6 +39,7 @@ app.include_router(ai_insights.router)
 app.include_router(automation.router)
 app.include_router(notifications.router)
 app.include_router(ai_copilot.router)
+app.include_router(gst.router)
 
 
 @app.get("/")
