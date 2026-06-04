@@ -13,12 +13,12 @@
 import { useState, useEffect } from "react";
 import {
   FileText, CheckCircle, AlertTriangle, Download,
-  Info, X, Users, IndianRupee,
+  Info, X,
 } from "lucide-react";
 import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
-  getTDSReturns, getTDSDeductions, getTDSChallans,
+  getTDSDeductions, getTDSChallans,
   compute26Q, compute24Q, approveTDSReturn, markTDSFiled,
   saveTDSReturn, downloadTDSJSON, currentFinancialYear, currentQuarter,
   type TDSReturnPayload, type TDSReturnStatus, type TDSQuarter, type TDSReturnType,
