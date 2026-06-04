@@ -37,6 +37,8 @@ const NAV_GROUPS = [
       { href: "/accounting/auto-journals", label: "Auto Journals", icon: Zap },
       { href: "/compliance", label: "Compliance", icon: Shield },
       { href: "/gst", label: "GST", icon: Receipt },
+      { href: "/gst/gstr3b", label: "GSTR-3B", icon: Receipt },
+      { href: "/gst/gstr1", label: "GSTR-1", icon: Receipt },
       { href: "/income-tax", label: "Income Tax", icon: Calculator },
       { href: "/tds", label: "TDS", icon: Landmark },
       { href: "/mca", label: "MCA", icon: Building2 },
