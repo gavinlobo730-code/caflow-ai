@@ -12,7 +12,6 @@
  */
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import {
   Calculator,
   CheckCircle,
@@ -33,7 +32,6 @@ import {
   downloadGSTR3BJSON,
   getGSTR3BReturn,
   toPeriod,
-  fromPeriod,
   type GSTR3BComputeResult,
   type GSTReturnStatus,
 } from "@/lib/data/gst";
@@ -77,7 +75,6 @@ export default function GSTR3BPage() {
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<GSTR3BComputeResult | null>(null);
-  const [savedReturn, setSavedReturn] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // CA Approve
@@ -102,13 +99,11 @@ export default function GSTR3BPage() {
     setLoading(true);
     setError(null);
     setResult(null);
-    setSavedReturn(null);
     try {
       const res = await computeGSTR3B(clientId, yearMonth);
       setResult(res);
       const period = toPeriod(yearMonth);
       const saved = await getGSTR3BReturn(clientId, period);
-      setSavedReturn(saved);
       setFilingStatus((saved?.status as GSTReturnStatus) ?? "draft");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Computation failed");

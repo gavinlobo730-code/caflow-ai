@@ -177,7 +177,7 @@ export async function fetchSalesTransactions(
     .order("transaction_date");
 
   if (error) throw new Error(`Failed to fetch sales transactions: ${error.message}`);
-  return (data ?? []) as GSTTransaction[];
+  return (data ?? []) as unknown as GSTTransaction[];
 }
 
 /** Fetch posted purchase transactions for ITC computation. */
@@ -206,7 +206,7 @@ export async function fetchPurchaseTransactions(
     .is("deleted_at", null);
 
   if (error) throw new Error(`Failed to fetch purchase transactions: ${error.message}`);
-  return (data ?? []) as GSTTransaction[];
+  return (data ?? []) as unknown as GSTTransaction[];
 }
 
 /** Fetch GSTR-2A records for the period. Period format: MMYYYY. */
