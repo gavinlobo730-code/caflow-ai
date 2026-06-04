@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="a" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3B82F6"/><stop offset="100%" stop-color="#22D3EE"/></linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="44" fill="#0B1635"/>
+  <rect x="28" y="28" width="144" height="144" rx="20" fill="#0e2050"/>
+  <!-- Slim header -->
+  <rect x="28" y="28" width="144" height="22" rx="20" fill="#1a3a7c"/>
+  <rect x="28" y="40" width="144" height="10" fill="#1a3a7c"/>
+  <!-- Header indicator dot -->
+  <circle cx="110" cy="39" r="4" fill="#22D3EE"/>
+  <!-- 3-column narrow panels -->
+  <rect x="38" y="60" width="38" height="98" rx="9" fill="url(#a)"/>
+  <rect x="84" y="60" width="38" height="98" rx="9" fill="#1a3a7c"/>
+  <rect x="130" y="60" width="34" height="98" rx="9" fill="#1a3a7c"/>
+  <!-- Accent lines in first column -->
+  <rect x="46" y="74" width="20" height="3" rx="1.5" fill="white" fill-opacity="0.5"/>
+  <rect x="46" y="82" width="14" height="3" rx="1.5" fill="white" fill-opacity="0.3"/>
+</svg>

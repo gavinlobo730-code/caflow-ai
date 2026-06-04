@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="l" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3B82F6"/><stop offset="100%" stop-color="#0EA5E9"/></linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="40" fill="#0B1635"/>
+  <rect x="34" y="34" width="132" height="132" rx="18" fill="#0d1e48"/>
+  <!-- Header full width -->
+  <rect x="34" y="34" width="132" height="28" rx="18" fill="url(#l)"/>
+  <rect x="34" y="50" width="132" height="12" fill="url(#l)"/>
+  <!-- Left column accent (connects to header = L shape) -->
+  <rect x="34" y="62" width="62" height="104" rx="10" fill="url(#l)" fill-opacity="0.6"/>
+  <!-- Fix left edge clip -->
+  <rect x="34" y="62" width="8" height="104" fill="url(#l)" fill-opacity="0.6"/>
+  <!-- Right panels -->
+  <rect x="106" y="74" width="50" height="40" rx="8" fill="#1a3a7c"/>
+  <rect x="106" y="122" width="50" height="38" rx="8" fill="#1a3a7c"/>
+</svg>
