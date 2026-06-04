@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0B1635"/><stop offset="100%" stop-color="#142256"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="40" fill="url(#bg)"/>
+  <!-- Outer ring — 270° arc, gap at bottom-right -->
+  <path d="M 100,26 A 74,74 0 1,1 26,100" stroke="#1a3a7c" stroke-width="9" fill="none" stroke-linecap="round"/>
+  <!-- Mid ring -->
+  <path d="M 100,44 A 56,56 0 1,1 44,100" stroke="#2563EB" stroke-width="9" fill="none" stroke-linecap="round"/>
+  <!-- Inner ring -->
+  <path d="M 100,62 A 38,38 0 1,1 62,100" stroke="#0EA5E9" stroke-width="9" fill="none" stroke-linecap="round"/>
+  <!-- Center core -->
+  <circle cx="100" cy="100" r="13" fill="#2563EB"/>
+  <circle cx="100" cy="100" r="6" fill="#22D3EE"/>
+  <!-- End cap dots -->
+  <circle cx="100" cy="26" r="5" fill="#1a3a7c"/>
+  <circle cx="26" cy="100" r="5" fill="#1a3a7c"/>
+</svg>

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0B1635"/><stop offset="100%" stop-color="#142256"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="40" fill="url(#bg)"/>
+  <!--
+    Two overlapping rounded squares — offset diagonally
+    Represent two connected workstreams synced together
+    One outlined (structure), one filled (active)
+  -->
+  <!-- Back square — outlined, dark -->
+  <rect x="68" y="58" width="76" height="76" rx="14" fill="#142256" stroke="#2563EB" stroke-opacity="0.5" stroke-width="3"/>
+  <!-- Front square — filled, bright, offset top-left -->
+  <rect x="46" y="66" width="76" height="76" rx="14" fill="#2563EB" fill-opacity="0.15" stroke="#2563EB" stroke-width="3"/>
+  <!-- Overlap highlight zone -->
+  <rect x="68" y="66" width="54" height="68" rx="10" fill="#2563EB" fill-opacity="0.12"/>
+  <!-- Teal accent corner on front square -->
+  <rect x="46" y="66" width="28" height="28" rx="10" fill="#0EA5E9" fill-opacity="0.6"/>
+  <!-- Connection dot at center of overlap -->
+  <circle cx="95" cy="100" r="6" fill="#22D3EE"/>
+  <circle cx="95" cy="100" r="3" fill="white"/>
+</svg>
