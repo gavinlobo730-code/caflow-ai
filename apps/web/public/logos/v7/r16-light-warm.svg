@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="a" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1e40af"/><stop offset="100%" stop-color="#0369a1"/></linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="40" fill="#F8F7FF"/>
+  <rect x="32" y="32" width="136" height="136" rx="20" fill="white" stroke="#E8E6F4" stroke-width="2"/>
+  <!-- Gradient header -->
+  <rect x="32" y="32" width="136" height="36" rx="20" fill="url(#a)"/>
+  <rect x="32" y="56" width="136" height="12" fill="url(#a)"/>
+  <!-- Header text sim -->
+  <rect x="50" y="46" width="40" height="6" rx="3" fill="white" fill-opacity="0.5"/>
+  <!-- 2x2 panels in soft colors -->
+  <rect x="42" y="76" width="54" height="42" rx="9" fill="#EEF2FF"/>
+  <rect x="104" y="76" width="52" height="42" rx="9" fill="#E0F2FE"/>
+  <rect x="42" y="126" width="54" height="34" rx="9" fill="#E0F2FE"/>
+  <rect x="104" y="126" width="52" height="34" rx="9" fill="#ECFDF5"/>
+</svg>

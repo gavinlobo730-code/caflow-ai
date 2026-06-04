@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1e3a8a"/><stop offset="50%" stop-color="#1d4ed8"/><stop offset="100%" stop-color="#0369a1"/>
+    </linearGradient>
+  </defs>
+  <!-- iOS rounded rect -->
+  <rect width="200" height="200" rx="46" fill="url(#bg)"/>
+  <!-- White workspace mark -->
+  <rect x="36" y="36" width="128" height="128" rx="18" fill="none" stroke="white" stroke-opacity="0.25" stroke-width="2"/>
+  <!-- White header bar -->
+  <rect x="36" y="36" width="128" height="30" rx="18" fill="white" fill-opacity="0.2"/>
+  <rect x="36" y="54" width="128" height="12" fill="white" fill-opacity="0.2"/>
+  <!-- Three white dots -->
+  <circle cx="54" cy="51" r="4" fill="white" fill-opacity="0.9"/>
+  <circle cx="67" cy="51" r="4" fill="white" fill-opacity="0.65"/>
+  <circle cx="80" cy="51" r="4" fill="white" fill-opacity="0.4"/>
+  <!-- White panels -->
+  <rect x="46" y="78" width="52" height="42" rx="9" fill="white" fill-opacity="0.2"/>
+  <rect x="106" y="78" width="42" height="42" rx="9" fill="white" fill-opacity="0.1"/>
+  <rect x="46" y="128" width="52" height="28" rx="8" fill="white" fill-opacity="0.1"/>
+  <rect x="106" y="128" width="42" height="28" rx="8" fill="white" fill-opacity="0.1"/>
+</svg>

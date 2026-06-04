@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1e3a8a"/><stop offset="100%" stop-color="#1d4ed8"/></linearGradient>
+    <linearGradient id="n" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#38BDF8"/><stop offset="100%" stop-color="#22D3EE"/></linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="40" fill="#0B1635"/>
+  <rect x="34" y="34" width="132" height="132" rx="20" fill="url(#g)"/>
+  <!-- Header divider -->
+  <rect x="34" y="34" width="132" height="36" rx="20" fill="#0B1635" fill-opacity="0.5"/>
+  <rect x="34" y="58" width="132" height="12" fill="#0B1635" fill-opacity="0.5"/>
+  <!-- Teal pill/notch in header -->
+  <rect x="72" y="44" width="56" height="16" rx="8" fill="url(#n)"/>
+  <!-- 2x2 panels -->
+  <rect x="44" y="82" width="50" height="44" rx="9" fill="white" fill-opacity="0.1"/>
+  <rect x="106" y="82" width="50" height="44" rx="9" fill="white" fill-opacity="0.06"/>
+  <rect x="44" y="134" width="50" height="24" rx="7" fill="white" fill-opacity="0.06"/>
+  <rect x="106" y="134" width="50" height="24" rx="7" fill="white" fill-opacity="0.06"/>
+</svg>

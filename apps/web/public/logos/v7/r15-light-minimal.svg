@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <rect width="200" height="200" rx="40" fill="white"/>
+  <!-- Outer frame -->
+  <rect x="34" y="34" width="132" height="132" rx="18" fill="none" stroke="#1e3a8a" stroke-width="5"/>
+  <!-- Header divider -->
+  <line x1="34" y1="68" x2="166" y2="68" stroke="#1e3a8a" stroke-width="3"/>
+  <!-- Center divider -->
+  <line x1="100" y1="68" x2="100" y2="166" stroke="#CBD5E1" stroke-width="2"/>
+  <!-- One accent cell — top left content -->
+  <rect x="38" y="72" width="58" height="56" rx="6" fill="#2563EB"/>
+  <!-- Minimal details -->
+  <line x1="50" y1="92" x2="80" y2="92" stroke="white" stroke-opacity="0.6" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="50" y1="102" x2="70" y2="102" stroke="white" stroke-opacity="0.4" stroke-width="2" stroke-linecap="round"/>
+</svg>
