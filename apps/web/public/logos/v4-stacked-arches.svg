@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0B1635"/><stop offset="100%" stop-color="#142256"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="40" fill="url(#bg)"/>
+  <!-- Three nested open arches (top curves) — workspace layers -->
+  <!-- Outer arch (bottom / darkest) -->
+  <path d="M 42,128 L 42,86 Q 42,54 100,54 Q 158,54 158,86 L 158,128" stroke="#1a3a6e" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Mid arch -->
+  <path d="M 57,128 L 57,90 Q 57,72 100,72 Q 143,72 143,90 L 143,128" stroke="#2563EB" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Inner arch (front / brightest) -->
+  <path d="M 72,128 L 72,94 Q 72,84 100,84 Q 128,84 128,94 L 128,128" stroke="#38BDF8" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Base line -->
+  <line x1="40" y1="134" x2="160" y2="134" stroke="white" stroke-opacity="0.1" stroke-width="2" stroke-linecap="round"/>
+</svg>
