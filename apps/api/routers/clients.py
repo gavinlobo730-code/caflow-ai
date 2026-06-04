@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path
+from core.auth import get_current_user
 from models.client import ClientCreate, ClientUpdate
 from models.common import api_response
 from mock_data import (
@@ -11,12 +12,12 @@ router = APIRouter(prefix="/api/clients", tags=["clients"])
 
 
 @router.get("")
-def list_clients():
+def list_clients(current_user: dict = Depends(get_current_user)):
     return api_response(True, {"clients": MOCK_CLIENTS, "total": len(MOCK_CLIENTS)})
 
 
 @router.get("/{client_id}")
-def get_client_workspace(client_id: str = Path(...)):
+def get_client_workspace(client_id: str = Path(...), current_user: dict = Depends(get_current_user)):
     client = CLIENT_INDEX.get(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -60,7 +61,7 @@ def get_client_workspace(client_id: str = Path(...)):
 
 
 @router.post("")
-def create_client(body: ClientCreate):
+def create_client(body: ClientCreate, current_user: dict = Depends(get_current_user)):
     # In production: INSERT into clients table
     import uuid
     new_client = {
@@ -73,7 +74,7 @@ def create_client(body: ClientCreate):
 
 
 @router.patch("/{client_id}")
-def update_client(client_id: str, body: ClientUpdate):
+def update_client(client_id: str, body: ClientUpdate, current_user: dict = Depends(get_current_user)):
     client = CLIENT_INDEX.get(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")

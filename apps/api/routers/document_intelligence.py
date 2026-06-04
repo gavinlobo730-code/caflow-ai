@@ -1,5 +1,6 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from models.common import api_response
+from core.auth import get_current_user
 from domain.document_intelligence_service import (
     list_documents_with_risk,
     get_firm_document_stats,
@@ -16,19 +17,19 @@ router = APIRouter(prefix="/api/document-intelligence", tags=["document-intellig
 
 
 @router.get("/documents")
-def list_documents(client_id: str = None):
+def list_documents(client_id: str = None, current_user: dict = Depends(get_current_user)):
     docs = list_documents_with_risk(client_id=client_id)
     return api_response(True, docs)
 
 
 @router.get("/stats")
-def get_stats():
+def get_stats(current_user: dict = Depends(get_current_user)):
     stats = get_firm_document_stats()
     return api_response(True, stats)
 
 
 @router.get("/{doc_id}/extraction")
-def get_doc_extraction(doc_id: str):
+def get_doc_extraction(doc_id: str, current_user: dict = Depends(get_current_user)):
     extraction = get_extraction(doc_id)
     if extraction is None:
         return api_response(False, None, "Extraction not found")
@@ -36,7 +37,7 @@ def get_doc_extraction(doc_id: str):
 
 
 @router.post("/{doc_id}/extract")
-def trigger_extraction(doc_id: str):
+def trigger_extraction(doc_id: str, current_user: dict = Depends(get_current_user)):
     from mock_data import MOCK_DOCUMENTS
     from domain.document_intelligence_service import MOCK_EXTRA_DOCUMENTS
     all_docs = MOCK_DOCUMENTS + MOCK_EXTRA_DOCUMENTS
@@ -49,13 +50,13 @@ def trigger_extraction(doc_id: str):
 
 
 @router.get("/{doc_id}/risks")
-def get_risks_for_document(doc_id: str):
+def get_risks_for_document(doc_id: str, current_user: dict = Depends(get_current_user)):
     risks = get_document_risks(doc_id)
     return api_response(True, risks)
 
 
 @router.post("/{doc_id}/risks/{risk_id}/resolve")
-def resolve_document_risk(doc_id: str, risk_id: str, resolution_status: str = "resolved"):
+def resolve_document_risk(doc_id: str, risk_id: str, resolution_status: str = "resolved", current_user: dict = Depends(get_current_user)):
     risk = resolve_risk(risk_id, resolution_status)
     if risk is None:
         return api_response(False, None, "Risk not found")
