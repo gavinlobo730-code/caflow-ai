@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from models.common import api_response
 from repositories.document_repository import document_repo
 from services.activity_service import log_activity
-from core.auth import get_current_user
+from core.permissions import rbac
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -55,7 +55,7 @@ BUCKET = "Documents"
 @router.get("")
 def list_documents(
     client_id: str | None = None,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(rbac("document", "read")),
 ):
     docs = document_repo.find_all(firm_id=current_user["firm_id"], client_id=client_id)
     return api_response(True, {"documents": docs, "total": len(docs)})
@@ -66,7 +66,7 @@ async def upload_document(
     file: UploadFile = File(...),
     document_type: str = Form(...),
     client_id: str = Form(...),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(rbac("document", "write")),
 ):
     """
     Upload a document to Supabase Storage and persist metadata.
@@ -135,7 +135,7 @@ async def upload_document(
 @router.get("/{doc_id}/download-url")
 def get_download_url(
     doc_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(rbac("document", "read")),
 ):
     """Generate a fresh signed download URL for a document."""
     doc = document_repo.get_or_raise(doc_id)
@@ -158,7 +158,7 @@ async def parse_document(
     file: UploadFile = File(...),
     document_type: str = Form(...),
     client_id: str = Form(None),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(rbac("document", "write")),
 ):
     allowed = {"form16": "FORM16", "gst_invoice": "GST_INVOICE",
                "FORM16": "FORM16", "GST_INVOICE": "GST_INVOICE"}

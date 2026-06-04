@@ -1,7 +1,8 @@
 """
 Compliance Records router.
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from core.permissions import rbac
 from typing import Optional
 from models.common import api_response
 from domain.compliance_record_service import compliance_record_service
@@ -15,6 +16,7 @@ def list_compliance_records(
     client_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     compliance_type: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("compliance_record", "read")),
 ):
     records = compliance_record_service.list_records(
         client_id=client_id,
@@ -25,7 +27,7 @@ def list_compliance_records(
 
 
 @router.post("")
-def create_compliance_record(data: dict):
+def create_compliance_record(data: dict, current_user: dict = Depends(rbac("compliance_record", "write"))):
     try:
         record = compliance_record_service.create_record(data)
         return api_response(True, record)
@@ -34,13 +36,13 @@ def create_compliance_record(data: dict):
 
 
 @router.get("/firm/summary")
-def get_firm_summary():
+def get_firm_summary(current_user: dict = Depends(rbac("compliance_record", "read"))):
     summary = compliance_record_service.get_firm_summary()
     return api_response(True, summary)
 
 
 @router.get("/client/{client_id}/health")
-def get_client_health(client_id: str):
+def get_client_health(client_id: str, current_user: dict = Depends(rbac("compliance_record", "read"))):
     try:
         health = compliance_record_service.get_client_health_score(client_id)
         return api_response(True, health)
@@ -49,7 +51,7 @@ def get_client_health(client_id: str):
 
 
 @router.get("/{record_id}")
-def get_compliance_record(record_id: str):
+def get_compliance_record(record_id: str, current_user: dict = Depends(rbac("compliance_record", "read"))):
     try:
         record = compliance_record_service.get_record(record_id)
         return api_response(True, record)
@@ -58,7 +60,7 @@ def get_compliance_record(record_id: str):
 
 
 @router.patch("/{record_id}")
-def update_compliance_record(record_id: str, data: dict):
+def update_compliance_record(record_id: str, data: dict, current_user: dict = Depends(rbac("compliance_record", "write"))):
     try:
         record = compliance_record_service.update_record(record_id, data)
         return api_response(True, record)

@@ -3,10 +3,11 @@ AI Copilot Router — Enhanced AI assistant with firm context.
 Different from /api/assistant (simple Q&A). Serves /api/ai-copilot.
 """
 import os
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Optional
 from models.common import api_response
+from core.permissions import rbac
 
 router = APIRouter(prefix="/api/ai-copilot", tags=["ai-copilot"])
 
@@ -39,8 +40,8 @@ class CopilotRequest(BaseModel):
     context: Optional[str] = "general"
 
 
-def _build_firm_context() -> str:
-    """Build context string from live service layer data."""
+def _build_firm_context(firm_id: str) -> str:
+    """Build context string from live service layer data scoped to firm."""
     try:
         from domain.task_service import TaskDomainService
         task_svc = TaskDomainService()
@@ -62,7 +63,8 @@ def _build_firm_context() -> str:
 
     try:
         from repositories.client_repository import client_repo
-        clients = client_repo.find_all()
+        # Pass firm_id to prevent cross-firm data leak
+        clients = client_repo.find_all(firm_id=firm_id)
         client_names = [c["client_name"] for c in clients]
     except Exception:
         client_names = []
@@ -84,7 +86,7 @@ def _build_firm_context() -> str:
 
 
 @router.post("/chat")
-def copilot_chat(body: CopilotRequest):
+def copilot_chat(body: CopilotRequest, current_user: dict = Depends(rbac("ai", "copilot"))):
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         return api_response(False, None, "ANTHROPIC_API_KEY not configured")
@@ -93,7 +95,7 @@ def copilot_chat(body: CopilotRequest):
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
 
-        firm_context = _build_firm_context()
+        firm_context = _build_firm_context(current_user["firm_id"])
         system_prompt = COPILOT_SYSTEM_PROMPT.format(firm_context=firm_context)
 
         messages = [

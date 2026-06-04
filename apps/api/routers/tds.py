@@ -9,7 +9,7 @@ All monetary amounts in integer paise.
 from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
-from core.auth import get_current_user
+from core.permissions import rbac
 from core.supabase_client import get_supabase
 from domain.tds import TDSComputer, TDSDeducteeRecord
 
@@ -81,7 +81,7 @@ class TDSAmountRequest(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/26q/compute")
-def compute_26q(req: Compute26QRequest, user: dict = Depends(get_current_user)):
+def compute_26q(req: Compute26QRequest, user: dict = Depends(rbac("tds", "compute"))):
     """
     Compute Form 26Q (non-salary TDS) return structure.
     IT Act Section 194 series.
@@ -160,7 +160,7 @@ def compute_26q(req: Compute26QRequest, user: dict = Depends(get_current_user)):
 
 
 @router.post("/24q/compute")
-def compute_24q(req: Compute24QRequest, user: dict = Depends(get_current_user)):
+def compute_24q(req: Compute24QRequest, user: dict = Depends(rbac("tds", "compute"))):
     """
     Compute Form 24Q (salary TDS) return structure.
     IT Act Section 192.
@@ -231,7 +231,7 @@ def compute_24q(req: Compute24QRequest, user: dict = Depends(get_current_user)):
 
 
 @router.post("/compute-amount")
-def compute_tds_amount(req: TDSAmountRequest, user: dict = Depends(get_current_user)):
+def compute_tds_amount(req: TDSAmountRequest, user: dict = Depends(rbac("tds", "compute"))):
     """
     Calculate TDS for a single payment given section and amount.
     Returns applicable rate and TDS amount in paise.
@@ -260,7 +260,7 @@ def compute_tds_amount(req: TDSAmountRequest, user: dict = Depends(get_current_u
 
 
 @router.get("/sections")
-def list_tds_sections(user: dict = Depends(get_current_user)):
+def list_tds_sections(user: dict = Depends(rbac("tds", "read"))):
     """List all TDS sections with thresholds and rates."""
     from domain.tds.tds_computer import SECTION_THRESHOLDS
     sections = [
@@ -276,7 +276,7 @@ def list_tds_sections(user: dict = Depends(get_current_user)):
 
 
 @router.get("/returns/{client_id}")
-def get_tds_returns(client_id: str, user: dict = Depends(get_current_user)):
+def get_tds_returns(client_id: str, user: dict = Depends(rbac("tds", "read"))):
     """Fetch all TDS returns for a client."""
     sb = get_supabase()
     firm_id = user["firm_id"]
@@ -296,7 +296,7 @@ def get_tds_deductions(
     client_id: str,
     financial_year: Optional[str] = None,
     quarter: Optional[str] = None,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(rbac("tds", "read")),
 ):
     """Fetch TDS deductions for a client, optionally filtered by FY/quarter."""
     sb = get_supabase()
