@@ -572,6 +572,53 @@ function triggerDownload(content: string, filename: string, mimeType: string): v
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Record that a return has been manually filed on the GST portal and capture the ARN.
+ * Called after the CA uploads the JSON to gst.gov.in and receives the ARN.
+ * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+ */
+export async function markGSTR3BFiled(
+  clientId: string,
+  period: string,
+  arn: string,
+): Promise<void> {
+  const sb = getSupabaseClient();
+  const firmId = await getFirmId();
+  const { error } = await sb
+    .from("gstr3b_returns")
+    .update({
+      status: "submitted",
+      arn,
+      submitted_at: new Date().toISOString(),
+    })
+    .eq("firm_id", firmId)
+    .eq("client_id", clientId)
+    .eq("period", period);
+
+  if (error) throw new Error(`Failed to mark GSTR-3B as filed: ${error.message}`);
+}
+
+export async function markGSTR1Filed(
+  clientId: string,
+  period: string,
+  arn: string,
+): Promise<void> {
+  const sb = getSupabaseClient();
+  const firmId = await getFirmId();
+  const { error } = await sb
+    .from("gstr1_returns")
+    .update({
+      status: "submitted",
+      arn,
+      submitted_at: new Date().toISOString(),
+    })
+    .eq("firm_id", firmId)
+    .eq("client_id", clientId)
+    .eq("period", period);
+
+  if (error) throw new Error(`Failed to mark GSTR-1 as filed: ${error.message}`);
+}
+
 // ── Update transactions.ts types (additive) ─────────────────────────────────
 
 /** Extended transaction interface with GST Engine fields. */
