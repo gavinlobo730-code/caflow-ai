@@ -190,17 +190,19 @@ def compute_gstr3b(
     result = GSTR3BResult()
 
     # ── Table 3.1: Outward supplies ──────────────────────────────────────────
+    # GSTR-3B instructions: report NET values — credit notes reduce output tax.
     for s in sales:
+        sign = -1 if s.transaction_type == "credit_note" else 1
         if s.supply_type in ("nil_rated", "exempt"):
-            result.outward_nil_exempt += s.taxable_amount_paise
+            result.outward_nil_exempt += sign * s.taxable_amount_paise
         elif s.supply_type == "zero_rated":
-            result.outward_zero_rated += s.taxable_amount_paise
+            result.outward_zero_rated += sign * s.taxable_amount_paise
         elif s.supply_type == "taxable":
             if not s.is_reverse_charge:
-                result.outward_taxable_igst += s.igst_paise
-                result.outward_taxable_cgst += s.cgst_paise
-                result.outward_taxable_sgst += s.sgst_paise
-                result.outward_taxable_cess += s.cess_paise
+                result.outward_taxable_igst += sign * s.igst_paise
+                result.outward_taxable_cgst += sign * s.cgst_paise
+                result.outward_taxable_sgst += sign * s.sgst_paise
+                result.outward_taxable_cess += sign * s.cess_paise
 
     # ── Table 3.2: Reverse charge inward supplies ────────────────────────────
     for s in sales:

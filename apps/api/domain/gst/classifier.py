@@ -69,8 +69,13 @@ def classify_transaction(txn: TransactionForClassification) -> GSTInvoiceCategor
     )
     if is_export:
         # With payment of IGST vs without (LUT/Bond) — CGST Act Section 16(3)
-        if txn.invoice_type == "SEZ_with_payment" or txn.supply_type == "zero_rated":
+        # SEZ_without_payment takes precedence — invoice_type is explicit; supply_type alone
+        # (zero_rated) is insufficient to infer payment, so default to WOPAY (conservative).
+        if txn.invoice_type == "SEZ_without_payment":
+            return GSTInvoiceCategory.EXP_WOP
+        if txn.invoice_type == "SEZ_with_payment":
             return GSTInvoiceCategory.EXP_WP
+        # Regular exports: zero_rated + place_of_supply=="96"; assume no IGST payment (LUT)
         return GSTInvoiceCategory.EXP_WOP
 
     # B2B: supply to any GST-registered person — CGST Act Section 37, Table 4A

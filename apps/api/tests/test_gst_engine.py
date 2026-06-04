@@ -185,12 +185,25 @@ class TestInvoiceClassifier:
         txn = make_txn_for_classify(supply_type="exempt")
         assert classify_transaction(txn) == GSTInvoiceCategory.NIL_EXEMPT
 
-    def test_export_zero_rated(self):
-        txn = make_txn_for_classify(supply_type="zero_rated", is_interstate=True, place_of_supply="96")
+    def test_export_sez_with_payment(self):
+        """SEZ_with_payment invoice_type → EXP_WP regardless of supply_type."""
+        txn = make_txn_for_classify(invoice_type="SEZ_with_payment", is_interstate=True)
         assert classify_transaction(txn) == GSTInvoiceCategory.EXP_WP
 
     def test_export_sez_without_payment(self):
-        txn = make_txn_for_classify(invoice_type="SEZ_without_payment", is_interstate=True)
+        """SEZ_without_payment takes precedence over zero_rated → EXP_WOP."""
+        txn = make_txn_for_classify(
+            supply_type="zero_rated", invoice_type="SEZ_without_payment", is_interstate=True
+        )
+        assert classify_transaction(txn) == GSTInvoiceCategory.EXP_WOP
+
+    def test_export_zero_rated_regular_defaults_to_wopay(self):
+        """Regular export (zero_rated, no explicit invoice_type) → EXP_WOP (conservative).
+
+        Without an explicit payment indicator we cannot assume IGST was paid.
+        Defaulting to EXP_WOP is safe — CA will correct if IGST was paid.
+        """
+        txn = make_txn_for_classify(supply_type="zero_rated", is_interstate=True, place_of_supply="96")
         assert classify_transaction(txn) == GSTInvoiceCategory.EXP_WOP
 
     def test_batch_classification(self):
@@ -308,6 +321,23 @@ class TestGSTR3BComputer:
         # Excess 27000 IGST covers 9000 CGST + 9000 SGST → both 0
         assert result.net_cgst == 0
         assert result.net_sgst == 0
+
+    def test_credit_note_reduces_output_tax(self):
+        """GSTR-3B Table 3.1 is NET — credit notes must reduce output tax.
+
+        GSTR-3B instructions (CBIC): report net taxable value after adjusting
+        for credit notes. A credit note SUBTRACTS from outward_taxable_cgst/sgst.
+        """
+        invoice = make_sale(taxable_paise=100_000_00, gst_rate=18.0)  # 9000 CGST
+        credit_note = SalesTransaction(
+            transaction_type="credit_note",
+            taxable_amount_paise=20_000_00,
+            cgst_paise=1_800_00, sgst_paise=1_800_00, igst_paise=0, cess_paise=0,
+            supply_type="taxable", is_reverse_charge=False,
+        )
+        result = compute_gstr3b([invoice, credit_note], [], [])
+        assert result.outward_taxable_cgst == 7_200_00   # 9000 - 1800
+        assert result.outward_taxable_sgst == 7_200_00
 
     def test_gstn_payload_structure(self):
         """Verify GSTN payload has required top-level keys."""
