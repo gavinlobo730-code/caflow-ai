@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1d4ed8"/><stop offset="100%" stop-color="#0369a1"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="40" fill="#0B1635"/>
+  <!-- Solid blue workspace -->
+  <rect x="36" y="36" width="128" height="128" rx="18" fill="url(#bg)"/>
+  <!-- White dividers -->
+  <line x1="100" y1="36" x2="100" y2="164" stroke="white" stroke-opacity="0.2" stroke-width="2"/>
+  <line x1="36" y1="72" x2="164" y2="72" stroke="white" stroke-opacity="0.35" stroke-width="2.5"/>
+  <line x1="36" y1="118" x2="164" y2="118" stroke="white" stroke-opacity="0.15" stroke-width="1.5"/>
+  <!-- Top-left cell highlight -->
+  <rect x="36" y="36" width="62" height="34" rx="18" fill="white" fill-opacity="0.15"/>
+  <!-- Three dots -->
+  <circle cx="52" cy="54" r="4" fill="white" fill-opacity="0.7"/>
+  <circle cx="64" cy="54" r="4" fill="white" fill-opacity="0.5"/>
+  <circle cx="76" cy="54" r="4" fill="white" fill-opacity="0.3"/>
+</svg>

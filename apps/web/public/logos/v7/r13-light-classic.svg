@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="h" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#1e40af"/><stop offset="100%" stop-color="#1d4ed8"/></linearGradient>
+    <linearGradient id="p" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3B82F6"/><stop offset="100%" stop-color="#0EA5E9"/></linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="40" fill="#F8FAFC"/>
+  <!-- Frame with subtle shadow suggestion -->
+  <rect x="30" y="30" width="140" height="140" rx="20" fill="white" stroke="#E2E8F0" stroke-width="2"/>
+  <!-- Navy header -->
+  <rect x="30" y="30" width="140" height="32" rx="20" fill="url(#h)"/>
+  <rect x="30" y="50" width="140" height="12" fill="url(#h)"/>
+  <!-- Header dots -->
+  <circle cx="50" cy="46" r="4" fill="white" fill-opacity="0.4"/>
+  <circle cx="63" cy="46" r="4" fill="white" fill-opacity="0.6"/>
+  <circle cx="76" cy="46" r="4" fill="white" fill-opacity="0.8"/>
+  <!-- Panels -->
+  <rect x="42" y="74" width="54" height="44" rx="9" fill="url(#p)"/>
+  <rect x="104" y="74" width="54" height="44" rx="9" fill="#EFF6FF"/>
+  <rect x="42" y="126" width="54" height="34" rx="9" fill="#EFF6FF"/>
+  <rect x="104" y="126" width="54" height="34" rx="9" fill="#EFF6FF"/>
+  <!-- Accent panel details -->
+  <line x1="54" y1="90" x2="84" y2="90" stroke="white" stroke-opacity="0.7" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="54" y1="100" x2="74" y2="100" stroke="white" stroke-opacity="0.5" stroke-width="2" stroke-linecap="round"/>
+</svg>

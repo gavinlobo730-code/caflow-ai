@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="c" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#38BDF8"/><stop offset="100%" stop-color="#2563EB"/></linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="40" fill="#0B1635"/>
+  <!-- Base frame -->
+  <rect x="38" y="38" width="124" height="124" rx="18" fill="#0d1e48"/>
+  <!-- Top-left quadrant — illuminated -->
+  <rect x="38" y="38" width="62" height="62" rx="18" fill="url(#c)"/>
+  <!-- Divider lines -->
+  <line x1="100" y1="38" x2="100" y2="162" stroke="#1a3a7c" stroke-width="2"/>
+  <line x1="38" y1="100" x2="162" y2="100" stroke="#1a3a7c" stroke-width="2"/>
+  <!-- Other quadrants subtle -->
+  <rect x="102" y="38" width="58" height="60" rx="0" fill="#1a3a7c" fill-opacity="0.4"/>
+  <rect x="38" y="102" width="60" height="58" rx="0" fill="#1a3a7c" fill-opacity="0.4"/>
+  <!-- Bottom-right: teal accent -->
+  <rect x="102" y="102" width="58" height="58" rx="18" fill="#0EA5E9" fill-opacity="0.2"/>
+</svg>
