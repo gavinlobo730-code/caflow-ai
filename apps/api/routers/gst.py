@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from models.common import api_response
-from core.auth import get_current_user
+from core.permissions import rbac
 from domain.gst.classifier import (
     TransactionForClassification,
     classify_transactions,
@@ -206,7 +206,7 @@ def _parse_invoices_for_gstr1(
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/classify")
-def classify_invoices(req: TransactionClassifyRequest, current_user: dict = Depends(get_current_user)):
+def classify_invoices(req: TransactionClassifyRequest, current_user: dict = Depends(rbac("gst", "compute"))):
     """Classify transactions into GSTN invoice categories.
 
     Returns classification for each transaction_id.
@@ -238,7 +238,7 @@ def classify_invoices(req: TransactionClassifyRequest, current_user: dict = Depe
 
 
 @router.post("/gstr3b/compute")
-def compute_gstr3b_endpoint(req: GSTR3BRequest, current_user: dict = Depends(get_current_user)):
+def compute_gstr3b_endpoint(req: GSTR3BRequest, current_user: dict = Depends(rbac("gst", "compute"))):
     """Compute GSTR-3B figures from transaction data.
 
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
@@ -307,7 +307,7 @@ def compute_gstr3b_endpoint(req: GSTR3BRequest, current_user: dict = Depends(get
 
 
 @router.post("/gstr1/build")
-def build_gstr1_endpoint(req: GSTR1Request, current_user: dict = Depends(get_current_user)):
+def build_gstr1_endpoint(req: GSTR1Request, current_user: dict = Depends(rbac("gst", "compute"))):
     """Build GSTR-1 JSON payload from classified transaction data.
 
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
@@ -358,7 +358,7 @@ def build_gstr1_endpoint(req: GSTR1Request, current_user: dict = Depends(get_cur
 
 
 @router.post("/validate/gstr1")
-def validate_gstr1_endpoint(req: ValidateGSTR1Request, current_user: dict = Depends(get_current_user)):
+def validate_gstr1_endpoint(req: ValidateGSTR1Request, current_user: dict = Depends(rbac("gst", "read"))):
     """Validate GSTR-1 invoice data without building the full payload."""
     invoices_to_validate = [
         InvoiceToValidate(
@@ -385,7 +385,7 @@ def validate_gstr1_endpoint(req: ValidateGSTR1Request, current_user: dict = Depe
 
 
 @router.post("/validate/gstr3b")
-def validate_gstr3b_endpoint(req: ValidateGSTR3BRequest, current_user: dict = Depends(get_current_user)):
+def validate_gstr3b_endpoint(req: ValidateGSTR3BRequest, current_user: dict = Depends(rbac("gst", "read"))):
     """Validate GSTR-3B figures for internal consistency."""
     errors = _validator.validate_gstr3b(
         gstin=req.gstin,

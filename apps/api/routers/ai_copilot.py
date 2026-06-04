@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Optional
 from models.common import api_response
-from core.auth import get_current_user
+from core.permissions import rbac
 
 router = APIRouter(prefix="/api/ai-copilot", tags=["ai-copilot"])
 
@@ -86,7 +86,7 @@ def _build_firm_context(firm_id: str) -> str:
 
 
 @router.post("/chat")
-def copilot_chat(body: CopilotRequest, current_user: dict = Depends(get_current_user)):
+def copilot_chat(body: CopilotRequest, current_user: dict = Depends(rbac("ai", "copilot"))):
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         return api_response(False, None, "ANTHROPIC_API_KEY not configured")
