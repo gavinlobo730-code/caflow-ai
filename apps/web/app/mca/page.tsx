@@ -157,18 +157,19 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
     try {
       const sb = getSupabaseClient();
       const selectedClient = clients.find(c => c.id === clientId);
-      // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+      // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to MCA portal
       const { data, error } = await sb.from("mca_filings").insert({
         firm_id: firmId,
         client_id: clientId,
         client_name: selectedClient?.client_name ?? "",
-        company_cin: cin.trim().toUpperCase(),
+        cin: cin.trim().toUpperCase(),           // DB column is 'cin'
+        company_cin: cin.trim().toUpperCase(),    // alias column added in migration 038
         form_type: formType,
         period,
         due_date: dueDate,
         filed_date: status === "Filed" ? TODAY.toISOString().slice(0, 10) : null,
         srn: srn.trim() || null,
-        status,
+        status: status.toLowerCase(),             // DB stores lowercase
         notes: notes.trim() || null,
       }).select().single();
       if (error) throw new Error(error.message);
@@ -294,7 +295,7 @@ export default function MCAPage() {
     if (!tableError && firmId) {
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
       const sb = getSupabaseClient();
-      await sb.from("mca_filings").update({ status: "Filed", filed_date: TODAY.toISOString().slice(0, 10) }).eq("id", id);
+      await sb.from("mca_filings").update({ status: "filed", filed_date: TODAY.toISOString().slice(0, 10) }).eq("id", id);
     }
   }
 

@@ -6,6 +6,7 @@ from routers import clients, compliance, documents, assistant, insights, tasks, 
 from routers import accounting, compliance_records
 from routers import document_intelligence, risks, ai_insights, automation, notifications, ai_copilot
 from routers import gst
+from routers import tds
 
 load_dotenv()
 
@@ -40,6 +41,7 @@ app.include_router(automation.router)
 app.include_router(notifications.router)
 app.include_router(ai_copilot.router)
 app.include_router(gst.router)
+app.include_router(tds.router)
 
 
 @app.get("/")

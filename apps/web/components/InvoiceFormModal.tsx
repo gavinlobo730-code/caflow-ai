@@ -4,9 +4,24 @@ import { useState, useEffect, FormEvent } from "react";
 import { X, Plus, Trash2 } from "lucide-react";
 import type { Client } from "@/lib/types";
 import { computeInvoiceTotals } from "@/lib/data/transactions";
-import type { TransactionLine, CreateInvoiceInput } from "@/lib/data/transactions";
+import type { TransactionLine, CreateInvoiceInput, SupplyType, InvoiceType } from "@/lib/data/transactions";
 
 const GST_RATES = [0, 5, 12, 18, 28];
+
+const SUPPLY_TYPES: { value: SupplyType; label: string }[] = [
+  { value: "taxable",    label: "Taxable" },
+  { value: "nil_rated",  label: "Nil Rated (0% — statutory)" },
+  { value: "exempt",     label: "Exempt (no GST)" },
+  { value: "zero_rated", label: "Zero Rated (exports / SEZ)" },
+  { value: "non_gst",    label: "Non-GST Supply" },
+];
+
+const INVOICE_TYPES: { value: InvoiceType; label: string }[] = [
+  { value: "Regular",              label: "Regular" },
+  { value: "SEZ_with_payment",     label: "SEZ with Payment of Tax" },
+  { value: "SEZ_without_payment",  label: "SEZ without Payment of Tax" },
+  { value: "Deemed_export",        label: "Deemed Export" },
+];
 const TDS_SECTIONS = [
   { section: "194C", label: "194C — Contractor (1%/2%)", rate: 2 },
   { section: "194J", label: "194J — Professional (10%)", rate: 10 },
@@ -54,6 +69,9 @@ export function InvoiceFormModal({ open, onClose, onSaved, clients, type }: Prop
   const [partyGstin, setPartyGstin] = useState("");
   const [placeOfSupply, setPlaceOfSupply] = useState("27");
   const [isInterstate, setIsInterstate] = useState(false);
+  const [supplyType, setSupplyType] = useState<SupplyType>("taxable");
+  const [invoiceType, setInvoiceType] = useState<InvoiceType>("Regular");
+  const [isReverseCharge, setIsReverseCharge] = useState(false);
   const [lines, setLines] = useState<TransactionLine[]>([{ ...EMPTY_LINE }]);
   const [tdsSection, setTdsSection] = useState("");
   const [tdsRate, setTdsRate] = useState(0);
@@ -65,7 +83,8 @@ export function InvoiceFormModal({ open, onClose, onSaved, clients, type }: Prop
     if (open) {
       setClientId(""); setDate(new Date().toISOString().split("T")[0]);
       setRefNo(""); setPartyName(""); setPartyGstin(""); setPlaceOfSupply("27");
-      setIsInterstate(false); setLines([{ ...EMPTY_LINE }]);
+      setIsInterstate(false); setSupplyType("taxable"); setInvoiceType("Regular");
+      setIsReverseCharge(false); setLines([{ ...EMPTY_LINE }]);
       setTdsSection(""); setTdsRate(0); setNotes(""); setError(null);
     }
   }, [open]);
@@ -108,6 +127,9 @@ export function InvoiceFormModal({ open, onClose, onSaved, clients, type }: Prop
         party_gstin: partyGstin,
         place_of_supply: placeOfSupply,
         is_interstate: isInterstate,
+        supply_type: supplyType,
+        invoice_type: invoiceType,
+        is_reverse_charge: isReverseCharge,
         lines: processedLines,
         tds_section: tdsSection || undefined,
         tds_rate: tdsRate || undefined,
@@ -188,6 +210,28 @@ export function InvoiceFormModal({ open, onClose, onSaved, clients, type }: Prop
           <div className="flex items-center gap-2">
             <input type="checkbox" id="interstate" checked={isInterstate} onChange={e => setIsInterstate(e.target.checked)} className="rounded" />
             <label htmlFor="interstate" className="text-sm text-gray-700">Interstate supply (IGST applies instead of CGST+SGST)</label>
+          </div>
+
+          {/* GST Classification — CGST Act Section 37 (GSTR-1 reporting) */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Supply Type *</label>
+              <select value={supplyType} onChange={e => setSupplyType(e.target.value as SupplyType)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
+                {SUPPLY_TYPES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Type</label>
+              <select value={invoiceType} onChange={e => setInvoiceType(e.target.value as InvoiceType)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
+                {INVOICE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="rcm" checked={isReverseCharge} onChange={e => setIsReverseCharge(e.target.checked)} className="rounded" />
+            <label htmlFor="rcm" className="text-sm text-gray-700">Reverse Charge Mechanism (RCM) applies — CGST Act Section 9(3)/9(4)</label>
           </div>
 
           {/* Line items */}
