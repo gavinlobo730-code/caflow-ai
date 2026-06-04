@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
 from models.common import api_response
-from core.auth import get_current_user
+from core.permissions import rbac
 from domain.income_tax.itr_engine import (
     ITREngine, ITRComputeRequest, Deductions80C, Deductions80D, Donation80G, HRADetails, itr_engine,
 )
@@ -85,7 +85,7 @@ class ComputeITRRequest(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/compute")
-def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(get_current_user)):
+def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("income_tax", "compute"))):
     """
     Compute ITR tax liability from income and deduction inputs.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
@@ -185,7 +185,7 @@ def compute_hra(
     hra_received_paise: int,
     rent_paid_paise: int,
     is_metro: bool = False,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(rbac("income_tax", "compute")),
 ):
     """Compute HRA exemption under IT Act Section 10(13A)."""
     hra = HRADetails(

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from core.auth import get_current_user
+from core.permissions import rbac
 from typing import Any
 from models.common import api_response
 from domain.automation_engine import (
@@ -20,13 +20,13 @@ class TriggerBody(BaseModel):
 
 
 @router.get("/rules")
-def list_rules(current_user: dict = Depends(get_current_user)):
+def list_rules(current_user: dict = Depends(rbac("automation", "read"))):
     rules = get_rules()
     return api_response(True, rules)
 
 
 @router.patch("/rules/{rule_id}/toggle")
-def toggle(rule_id: str, enabled: bool = True, current_user: dict = Depends(get_current_user)):
+def toggle(rule_id: str, enabled: bool = True, current_user: dict = Depends(rbac("automation", "write"))):
     rule = toggle_rule(rule_id, enabled)
     if rule is None:
         return api_response(False, None, "Rule not found")
@@ -34,18 +34,18 @@ def toggle(rule_id: str, enabled: bool = True, current_user: dict = Depends(get_
 
 
 @router.get("/executions")
-def executions(limit: int = 50, current_user: dict = Depends(get_current_user)):
+def executions(limit: int = 50, current_user: dict = Depends(rbac("automation", "read"))):
     log = get_execution_log(limit=limit)
     return api_response(True, log)
 
 
 @router.get("/stats")
-def stats(current_user: dict = Depends(get_current_user)):
+def stats(current_user: dict = Depends(rbac("automation", "read"))):
     s = get_automation_stats()
     return api_response(True, s)
 
 
 @router.post("/trigger")
-def manual_trigger(body: TriggerBody, current_user: dict = Depends(get_current_user)):
+def manual_trigger(body: TriggerBody, current_user: dict = Depends(rbac("automation", "write"))):
     executed = evaluate_rules(body.trigger_type, body.trigger_data)
     return api_response(True, {"executions": executed, "count": len(executed)})
