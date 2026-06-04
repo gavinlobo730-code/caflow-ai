@@ -554,3 +554,129 @@ class TestGSTValidator:
         date_warnings = [e for e in errors if e.field == "invoice_date"]
         assert len(date_warnings) == 1
         assert date_warnings[0].severity == "warning"
+
+
+# ── B2CS Regression Tests (Bug #1 fix) ───────────────────────────────────────
+
+def make_b2cs_invoice(
+    id: str,
+    reference_no: str,
+    is_interstate: bool,
+    place_of_supply: str,
+    taxable_paise: int = 100_000_00,
+    gst_rate: float = 18.0,
+) -> InvoiceForGSTR1:
+    tax = int(taxable_paise * gst_rate / 100)
+    if is_interstate:
+        cgst, sgst, igst = 0, 0, tax
+    else:
+        cgst = sgst = tax // 2
+        igst = 0
+    return InvoiceForGSTR1(
+        id=id,
+        transaction_type="sales_invoice",
+        reference_no=reference_no,
+        transaction_date="2025-05-10",
+        party_gstin=None,
+        party_name="Consumer",
+        place_of_supply=place_of_supply,
+        is_interstate=is_interstate,
+        taxable_amount_paise=taxable_paise,
+        cgst_paise=cgst,
+        sgst_paise=sgst,
+        igst_paise=igst,
+        cess_paise=0,
+        is_reverse_charge=False,
+        invoice_type="Regular",
+        supply_type="taxable",
+        gst_invoice_category=GSTInvoiceCategory.B2CS,
+        original_invoice_ref=None,
+        original_invoice_date=None,
+        lines=[],
+    )
+
+
+class TestB2CSRegressionBug1:
+    """Regression tests for Bug #1: B2CS grouping must separate INTER and INTRA.
+
+    CGST Rule 59(2): B2CS aggregated by rate + POS + supply type.
+    INTER and INTRA at the same rate and same POS are distinct supply types.
+    """
+
+    def test_inter_and_intra_same_pos_same_rate_produce_two_b2cs_rows(self):
+        """INTER and INTRA invoices at same POS and same rate must NOT be merged."""
+        inter = make_b2cs_invoice("i1", "INV001", is_interstate=True,  place_of_supply="27")
+        intra = make_b2cs_invoice("i2", "INV002", is_interstate=False, place_of_supply="27")
+        payload = build_gstr1([inter, intra], "27AABCU9603R1ZX", "052025")
+        b2cs = payload.payload.get("b2cs", [])
+        supply_types = {row["sply_tp"] for row in b2cs}
+        assert "INTER" in supply_types, "INTER row missing from B2CS"
+        assert "INTRA" in supply_types, "INTRA row missing from B2CS"
+        assert len(b2cs) == 2, f"Expected 2 B2CS rows, got {len(b2cs)}"
+
+    def test_inter_b2cs_taxable_value_correct(self):
+        """INTER row must only include interstate invoice amounts."""
+        inter = make_b2cs_invoice("i1", "INV001", is_interstate=True,  place_of_supply="29", taxable_paise=200_000_00)
+        intra = make_b2cs_invoice("i2", "INV002", is_interstate=False, place_of_supply="29", taxable_paise=300_000_00)
+        payload = build_gstr1([inter, intra], "27AABCU9603R1ZX", "052025")
+        b2cs = payload.payload.get("b2cs", [])
+        inter_row = next((r for r in b2cs if r["sply_tp"] == "INTER"), None)
+        intra_row = next((r for r in b2cs if r["sply_tp"] == "INTRA"), None)
+        assert inter_row is not None
+        assert intra_row is not None
+        assert inter_row["txval"] == pytest.approx(200_000_00 / 100, rel=1e-6)
+        assert intra_row["txval"] == pytest.approx(300_000_00 / 100, rel=1e-6)
+
+    def test_multiple_inter_same_pos_rate_are_aggregated(self):
+        """Multiple INTER invoices at same POS+rate must aggregate into one row."""
+        inv1 = make_b2cs_invoice("i1", "INV001", is_interstate=True, place_of_supply="27", taxable_paise=50_000_00)
+        inv2 = make_b2cs_invoice("i2", "INV002", is_interstate=True, place_of_supply="27", taxable_paise=80_000_00)
+        payload = build_gstr1([inv1, inv2], "27AABCU9603R1ZX", "052025")
+        b2cs = payload.payload.get("b2cs", [])
+        inter_rows = [r for r in b2cs if r["sply_tp"] == "INTER"]
+        assert len(inter_rows) == 1
+        assert inter_rows[0]["txval"] == pytest.approx(130_000_00 / 100, rel=1e-6)
+
+    def test_mixed_pos_produces_separate_rows_per_pos(self):
+        """Different POS values must remain separate even with same rate and supply type."""
+        inv_27 = make_b2cs_invoice("i1", "INV001", is_interstate=True, place_of_supply="27")
+        inv_29 = make_b2cs_invoice("i2", "INV002", is_interstate=True, place_of_supply="29")
+        payload = build_gstr1([inv_27, inv_29], "27AABCU9603R1ZX", "052025")
+        b2cs = payload.payload.get("b2cs", [])
+        pos_values = {row["pos"] for row in b2cs}
+        assert "27" in pos_values
+        assert "29" in pos_values
+        assert len(b2cs) == 2
+
+
+# ── HSN/SAC Seed Uniqueness Validation ───────────────────────────────────────
+
+import re as _re
+
+
+class TestHSNSeedUniqueness:
+    """Validates migration seed data has no duplicate HSN/SAC codes.
+
+    Prevents regression of Bug #2 (duplicate 998313 entries in 036_gst_engine.sql).
+    """
+
+    def _extract_hsn_codes_from_migration(self, sql_path: str) -> list[str]:
+        with open(sql_path) as f:
+            content = f.read()
+        # Match INSERT rows: ('CODE', ...
+        return _re.findall(r"\('(\d+)'", content)
+
+    def test_no_duplicate_hsn_codes_in_migration_036(self):
+        import os
+        sql_path = os.path.join(
+            os.path.dirname(__file__),
+            "..", "migrations", "036_gst_engine.sql"
+        )
+        codes = self._extract_hsn_codes_from_migration(sql_path)
+        seen: set[str] = set()
+        duplicates: list[str] = []
+        for code in codes:
+            if code in seen:
+                duplicates.append(code)
+            seen.add(code)
+        assert duplicates == [], f"Duplicate HSN/SAC codes in migration 036: {duplicates}"

@@ -182,11 +182,11 @@ INSERT INTO public.hsn_master (hsn_code, description, gst_rate_pct, hsn_type, uq
   ('998312', 'Legal documentation and certification',        18.00, 'services', 'OTH'),
   ('998313', 'Arbitration and conciliation services',        18.00, 'services', 'OTH'),
   ('998321', 'Company secretary services',                   18.00, 'services', 'OTH'),
-  -- IT Services (SAC 998)
-  ('998311', 'Software development services',                18.00, 'services', 'OTH'),
-  ('998312', 'IT consulting services',                       18.00, 'services', 'OTH'),
-  ('998314', 'IT infrastructure and network management',     18.00, 'services', 'OTH'),
-  ('998315', 'Data processing and hosting services',         18.00, 'services', 'OTH'),
+  -- IT Services (SAC 998) — correct unique codes per CBIC service classification
+  ('998331', 'Software development and production services', 18.00, 'services', 'OTH'),
+  ('998314', 'IT consulting and support services',           18.00, 'services', 'OTH'),
+  ('998315', 'IT infrastructure and network management',     18.00, 'services', 'OTH'),
+  ('998316', 'Data processing and hosting services',         18.00, 'services', 'OTH'),
   -- Banking & Finance (SAC 997)
   ('997111', 'Central banking services',                     NULL,  'services', 'OTH'),
   ('997119', 'Other banking services',                       18.00, 'services', 'OTH'),

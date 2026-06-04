@@ -281,15 +281,19 @@ def _infer_rate(inv: InvoiceForGSTR1) -> float:
 # ── Table 4B: B2CS ────────────────────────────────────────────────────────────
 
 def _build_b2cs(invoices: list[InvoiceForGSTR1]) -> list[dict]:
-    """Build B2CS table grouped by rate and place of supply.
+    """Build B2CS table grouped by rate, place of supply, AND supply type (INTER/INTRA).
 
     GSTN format: [{sply_tp, rt, pos, txval, iamt, camt, samt, csamt}]
     B2CS = unregistered buyer, intra-state OR inter-state ≤₹2.5L.
+
+    GSTN spec requires separate rows when sply_tp differs, even at identical rate+POS.
+    Key includes is_interstate so INTER and INTRA are never merged.
     """
+    # Key: (rate, place_of_supply, is_interstate) — all three determine a distinct GSTN row
     by_key: dict[tuple, dict] = {}
     for inv in invoices:
         rate = _infer_rate(inv)
-        key = (rate, inv.place_of_supply or "")
+        key = (rate, inv.place_of_supply or "", inv.is_interstate)
         if key not in by_key:
             by_key[key] = {"txval": 0, "iamt": 0, "camt": 0, "samt": 0, "csamt": 0}
         by_key[key]["txval"] += inv.taxable_amount_paise
@@ -300,7 +304,8 @@ def _build_b2cs(invoices: list[InvoiceForGSTR1]) -> list[dict]:
 
     return [
         {
-            "sply_tp": "INTER" if inv.is_interstate else "INTRA",
+            # sply_tp comes directly from the grouping key — no representative-invoice lookup
+            "sply_tp": "INTER" if is_interstate else "INTRA",
             "rt": rate,
             "pos": pos,
             "txval": _paise_to_rupees(totals["txval"]),
@@ -309,9 +314,7 @@ def _build_b2cs(invoices: list[InvoiceForGSTR1]) -> list[dict]:
             "samt": _paise_to_rupees(totals["samt"]),
             "csamt": _paise_to_rupees(totals["csamt"]),
         }
-        for (rate, pos), totals in by_key.items()
-        # Find a representative invoice for is_interstate flag
-        for inv in [next(i for i in invoices if i.place_of_supply == pos)]
+        for (rate, pos, is_interstate), totals in by_key.items()
     ]
 
 
