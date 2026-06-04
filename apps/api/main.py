@@ -7,6 +7,7 @@ from routers import accounting, compliance_records
 from routers import document_intelligence, risks, ai_insights, automation, notifications, ai_copilot
 from routers import gst
 from routers import tds
+from routers import income_tax
 
 load_dotenv()
 
@@ -42,6 +43,7 @@ app.include_router(notifications.router)
 app.include_router(ai_copilot.router)
 app.include_router(gst.router)
 app.include_router(tds.router)
+app.include_router(income_tax.router)
 
 
 @app.get("/")
