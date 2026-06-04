@@ -144,22 +144,26 @@ CREATE TABLE IF NOT EXISTS public.gst_challans (
 -- ─── 6. RLS Policies ─────────────────────────────────────────────────────────
 
 ALTER TABLE public.hsn_master ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_read_hsn" ON public.hsn_master;
 CREATE POLICY "public_read_hsn" ON public.hsn_master
   FOR SELECT TO authenticated USING (true);
 
 ALTER TABLE public.gstr1_returns ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "firm_staff_gstr1" ON public.gstr1_returns;
 CREATE POLICY "firm_staff_gstr1" ON public.gstr1_returns
   FOR ALL TO authenticated
   USING (firm_id = public.get_my_firm_id())
   WITH CHECK (firm_id = public.get_my_firm_id());
 
 ALTER TABLE public.gstr3b_returns ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "firm_staff_gstr3b" ON public.gstr3b_returns;
 CREATE POLICY "firm_staff_gstr3b" ON public.gstr3b_returns
   FOR ALL TO authenticated
   USING (firm_id = public.get_my_firm_id())
   WITH CHECK (firm_id = public.get_my_firm_id());
 
 ALTER TABLE public.gst_challans ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "firm_staff_gst_challans" ON public.gst_challans;
 CREATE POLICY "firm_staff_gst_challans" ON public.gst_challans
   FOR ALL TO authenticated
   USING (firm_id = public.get_my_firm_id())
