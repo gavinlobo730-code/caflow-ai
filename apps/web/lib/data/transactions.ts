@@ -21,9 +21,12 @@ export interface TransactionLine {
   total_paise: number;
 }
 
+export type SupplyType = "taxable" | "nil_rated" | "exempt" | "zero_rated" | "non_gst";
+export type InvoiceType = "Regular" | "SEZ_with_payment" | "SEZ_without_payment" | "Deemed_export";
+
 export interface CreateInvoiceInput {
   client_id: string;
-  transaction_type: "sales_invoice" | "purchase_invoice";
+  transaction_type: "sales_invoice" | "purchase_invoice" | "credit_note" | "debit_note";
   transaction_date: string;
   reference_no?: string;
   party_name: string;
@@ -31,6 +34,10 @@ export interface CreateInvoiceInput {
   party_pan?: string;
   place_of_supply: string;
   is_interstate: boolean;
+  supply_type: SupplyType;
+  invoice_type: InvoiceType;
+  is_reverse_charge: boolean;
+  original_invoice_id?: string;
   lines: TransactionLine[];
   tds_section?: string;
   tds_rate?: number;
@@ -108,7 +115,7 @@ export async function createInvoice(input: CreateInvoiceInput): Promise<Transact
     tdsPaise = Math.round(taxable * input.tds_rate / 100);
   }
 
-  // Insert transaction
+  // Insert transaction — CGST Act Section 31 (tax invoice requirements)
   const { data: txn, error: txnErr } = await sb.from("transactions").insert({
     firm_id: firmId,
     client_id: input.client_id,
@@ -120,6 +127,10 @@ export async function createInvoice(input: CreateInvoiceInput): Promise<Transact
     party_pan: input.party_pan,
     place_of_supply: input.place_of_supply,
     is_interstate: input.is_interstate,
+    supply_type: input.supply_type,
+    invoice_type: input.invoice_type,
+    is_reverse_charge: input.is_reverse_charge,
+    original_invoice_id: input.original_invoice_id ?? null,
     taxable_amount_paise: taxable,
     cgst_paise: cgst,
     sgst_paise: sgst,

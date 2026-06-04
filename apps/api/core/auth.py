@@ -27,8 +27,15 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
     """
     secret = _get_jwt_secret()
 
-    # Dev fallback — allows testing without real Supabase credentials
+    # Dev fallback — only allowed when APP_ENV=development AND secret is unset.
+    # In production this path is unreachable: SUPABASE_JWT_SECRET is always set.
     if not secret:
+        app_env = os.environ.get("APP_ENV", "production")
+        if app_env != "development":
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Server configuration error: SUPABASE_JWT_SECRET not set",
+            )
         return {
             "auth_user_id": "dev-user",
             "firm_id": "firm-001",
