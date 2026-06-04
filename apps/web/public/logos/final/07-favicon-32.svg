@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Three panels simplified for 32px sharpness -->
+  <!-- Panel: 18x12, offset 4px each -->
+  <rect x="10" y="14" width="18" height="12" rx="2" fill="#1E3A5F"/>
+  <rect x="7" y="10" width="18" height="12" rx="2" fill="#2563EB"/>
+  <rect x="4" y="6" width="18" height="12" rx="2" fill="#38BDF8"/>
+</svg>
