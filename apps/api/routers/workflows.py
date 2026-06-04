@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from core.permissions import rbac
 from pydantic import BaseModel
 from typing import Optional
 from models.common import api_response
@@ -10,13 +11,13 @@ router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
 
 @router.get("")
-def list_workflows():
+def list_workflows(current_user: dict = Depends(rbac("workflow", "read"))):
     templates = get_all_templates()
     return api_response(True, {"workflows": templates, "total": len(templates)})
 
 
 @router.get("/{workflow_id}")
-def get_workflow(workflow_id: str):
+def get_workflow(workflow_id: str, current_user: dict = Depends(rbac("workflow", "read"))):
     template = get_template_by_id(workflow_id)
     if not template:
         raise HTTPException(status_code=404, detail="Workflow not found")
@@ -30,7 +31,7 @@ class InstantiateRequest(BaseModel):
 
 
 @router.post("/{workflow_id}/instantiate")
-def instantiate_workflow(workflow_id: str, body: InstantiateRequest):
+def instantiate_workflow(workflow_id: str, body: InstantiateRequest, current_user: dict = Depends(rbac("workflow", "instantiate"))):
     tasks = instantiate_workflow_tasks(
         workflow_id, body.client_id, body.assigned_to, body.base_due_date
     )

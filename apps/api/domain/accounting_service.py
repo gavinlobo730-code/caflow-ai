@@ -224,8 +224,11 @@ class AccountingService:
         client_id: Optional[str] = None,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
+        firm_id: Optional[str] = None,
     ) -> list[dict]:
         entries = list(MOCK_JOURNAL_ENTRIES)
+        if firm_id:
+            entries = [e for e in entries if e.get("firm_id") == firm_id]
         if client_id:
             entries = [e for e in entries if e.get("client_id") == client_id]
         if start_date:
@@ -373,6 +376,7 @@ class AccountingService:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         client_id: Optional[str] = None,
+        firm_id: Optional[str] = None,
     ) -> dict:
         # Default: current FY April 1 to today
         today = date.today()
@@ -434,6 +438,7 @@ class AccountingService:
         self,
         as_of_date: Optional[str] = None,
         client_id: Optional[str] = None,
+        firm_id: Optional[str] = None,
     ) -> dict:
         _as_of = as_of_date or date.today().isoformat()
         balances: dict[str, int] = {}
@@ -471,11 +476,15 @@ class AccountingService:
         total_liab: int = sum(s["total_paise"] for s in liabilities)
 
         equity_lines = _lines_for_type("Equity")
-        # Add retained earnings from P&L
-        pl = self.get_profit_loss(end_date=_as_of)
-        net_profit = pl["net_profit_paise"]
+        # Compute all-time net profit from income/expense account balances up to as_of_date
+        # (avoids FY-scoped P&L which misses prior years in balance sheet context)
+        income_net = sum(-net for aid, net in balances.items()
+                         if ACCOUNT_INDEX.get(aid, {}).get("account_type") == "Income")
+        expense_net = sum(net for aid, net in balances.items()
+                          if ACCOUNT_INDEX.get(aid, {}).get("account_type") == "Expense")
+        net_profit = income_net - expense_net
         if net_profit != 0:
-            equity_lines.append({"account_name": "Net Profit (Current Year)", "balance_paise": net_profit})
+            equity_lines.append({"account_name": "Retained Earnings / Net Profit", "balance_paise": net_profit})
         equities = [_section("Equity", equity_lines)]
         total_equity: int = sum(s["total_paise"] for s in equities)
 

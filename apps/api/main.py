@@ -1,12 +1,15 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
+from core.exceptions import PermissionDeniedError
 
 from routers import clients, compliance, documents, assistant, insights, tasks, workflows, reminders, team
 from routers import accounting, compliance_records
 from routers import document_intelligence, risks, ai_insights, automation, notifications, ai_copilot
 from routers import gst
 from routers import tds
+from routers import income_tax
 
 load_dotenv()
 
@@ -14,6 +17,14 @@ app = FastAPI(title="CAflow AI API", version="2.0.0")
 
 import os
 _ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
+
+@app.exception_handler(PermissionDeniedError)
+async def permission_denied_handler(request: Request, exc: PermissionDeniedError):
+    return JSONResponse(
+        status_code=403,
+        content={"success": False, "data": None, "error": str(exc)},
+    )
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,6 +53,7 @@ app.include_router(notifications.router)
 app.include_router(ai_copilot.router)
 app.include_router(gst.router)
 app.include_router(tds.router)
+app.include_router(income_tax.router)
 
 
 @app.get("/")

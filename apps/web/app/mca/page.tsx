@@ -263,7 +263,7 @@ export default function MCAPage() {
   const [filings, setFilings] = useState<MCAFiling[]>(SEED_FILINGS);
   const [clients, setClients] = useState<Client[]>([]);
   const [companies] = useState<CompanyClient[]>(SEED_COMPANIES);
-  const [directors] = useState<Director[]>(SEED_DIRECTORS);
+  const [directors, setDirectors] = useState<Director[]>(SEED_DIRECTORS);
   const [loading, setLoading] = useState(true);
   const [tableError, setTableError] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -282,6 +282,19 @@ export default function MCAPage() {
         else {
           const rows = ((data ?? []) as MCAFiling[]).map(r => ({ ...r, status: computeStatus(r.due_date, r.filed_date) }));
           if (rows.length > 0) setFilings(rows);
+        }
+        // Load directors from mca_directors table (migration 038)
+        const { data: dirData } = await sb.from("mca_directors").select("*").eq("firm_id", fid).order("director_name");
+        if (dirData && dirData.length > 0) {
+          setDirectors(dirData.map((d: Record<string, unknown>) => ({
+            id: d.id as string,
+            name: d.director_name as string,
+            din: d.din as string,
+            pan: (d.pan ?? "") as string,
+            designation: (d.designation ?? "Director") as string,
+            appointment_date: (d.date_of_appointment ?? "") as string,
+            kyc_due_date: (d.kyc_due_date ?? "") as string,
+          })));
         }
       } finally {
         setLoading(false);

@@ -1,5 +1,6 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from core.permissions import rbac
 from typing import Optional
 from models.common import api_response
 from mock_data import MOCK_REMINDERS
@@ -19,7 +20,7 @@ class ReminderCreate(BaseModel):
 
 
 @router.get("")
-def list_reminders(client_id: Optional[str] = None, status: Optional[str] = None):
+def list_reminders(client_id: Optional[str] = None, status: Optional[str] = None, current_user: dict = Depends(rbac("reminder", "read"))):
     reminders = REMINDER_STORE
     if client_id:
         reminders = [r for r in reminders if r.get("client_id") == client_id]
@@ -29,7 +30,7 @@ def list_reminders(client_id: Optional[str] = None, status: Optional[str] = None
 
 
 @router.post("")
-def create_reminder_endpoint(body: ReminderCreate):
+def create_reminder_endpoint(body: ReminderCreate, current_user: dict = Depends(rbac("reminder", "write"))):
     reminder = create_reminder(
         client_id=body.client_id,
         reminder_type=body.reminder_type,
@@ -42,7 +43,7 @@ def create_reminder_endpoint(body: ReminderCreate):
 
 
 @router.patch("/{reminder_id}/sent")
-def mark_reminder_sent(reminder_id: str):
+def mark_reminder_sent(reminder_id: str, current_user: dict = Depends(rbac("reminder", "write"))):
     reminder = next((r for r in REMINDER_STORE if r["id"] == reminder_id), None)
     if not reminder:
         from fastapi import HTTPException

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
 from models.common import api_response
+from core.permissions import rbac
 import anthropic
 import os
 
@@ -28,7 +29,7 @@ class AssistantRequest(BaseModel):
 
 
 @router.post("")
-async def assistant(request: AssistantRequest):
+async def assistant(request: AssistantRequest, current_user: dict = Depends(rbac("ai", "read"))):
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured")
