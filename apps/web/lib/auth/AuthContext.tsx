@@ -26,7 +26,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [userRole] = useState<UserRole | null>("Partner");
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -37,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeout);
       setSession(session);
       setUser(session?.user ?? null);
+      setUserRole((session?.user?.user_metadata?.role as UserRole) ?? "Partner");
       setLoading(false);
     }).catch(() => {
       clearTimeout(timeout);
@@ -47,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
+        setUserRole((session?.user?.user_metadata?.role as UserRole) ?? "Partner");
       }
     );
 

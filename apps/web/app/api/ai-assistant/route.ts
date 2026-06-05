@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Required for Cloudflare Pages / @cloudflare/next-on-pages (Edge Runtime only)
+export const runtime = "edge";
+
 // CA-domain system prompt — cite CGST Act / IT Act sections per CLAUDE.md rules
 const SYSTEM_PROMPT = `You are an expert AI assistant for Indian Chartered Accountants using CAflow AI. You have deep knowledge of Indian taxation and compliance as of FY 2026-27.
 

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Bot, User, Sparkles } from "lucide-react";
 import Link from "next/link";
+import { api } from "@/lib/api";
 
 interface Message {
   role: "user" | "assistant";
@@ -39,22 +40,16 @@ export default function AIAssistantPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/ai-assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text.trim(),
-          history: messages,
-        }),
-      });
+      const json = await api.assistant.ask({
+        question: text.trim(),
+        conversation_history: messages.map((m) => ({ role: m.role, content: m.content })),
+      }) as { success: boolean; data: { reply: string } | null; error: string | null };
 
-      const json = await res.json();
-
-      if (!res.ok || !json.success) {
-        throw new Error(json.error ?? `Request failed (${res.status})`);
+      if (!json.success || !json.data) {
+        throw new Error(json.error ?? "Request failed");
       }
 
-      const reply: string = json?.data?.reply ?? "";
+      const reply: string = json.data.reply ?? "";
       if (!reply) throw new Error("Empty response from AI service");
 
       setMessages([...newHistory, { role: "assistant", content: reply }]);
