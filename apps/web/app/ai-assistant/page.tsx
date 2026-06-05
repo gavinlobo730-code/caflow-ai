@@ -44,17 +44,16 @@ export default function AIAssistantPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: text.trim(),
-          history: messages.map((m) => ({ role: m.role, content: m.content })),
+          history: messages,
         }),
       });
 
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson?.error ?? `Server error ${res.status}`);
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        throw new Error(json.error ?? `Request failed (${res.status})`);
       }
 
-      const json = await res.json();
-      if (!json.success) throw new Error(json.error ?? "AI service error");
       const reply: string = json?.data?.reply ?? "";
       if (!reply) throw new Error("Empty response from AI service");
 
