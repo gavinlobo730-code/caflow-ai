@@ -59,7 +59,27 @@ export default function ClientsPage() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // Wait for Supabase session to be restored before fetching.
+  // Without this, the query fires before auth.uid() is available,
+  // get_my_firm_id() returns NULL, and RLS filters out all rows.
+  useEffect(() => {
+    const sb = getSupabaseClient();
+    // getSession() resolves once the session is restored from storage.
+    sb.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        load();
+      } else {
+        // No session — clear loading state
+        setLoading(false);
+      }
+    });
+
+    // Also reload whenever the user signs in mid-session
+    const { data: { subscription } } = sb.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") load();
+    });
+    return () => subscription.unsubscribe();
+  }, [load]);
 
   useEffect(() => {
     const q = search.toLowerCase();
