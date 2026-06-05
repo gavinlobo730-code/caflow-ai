@@ -2,6 +2,7 @@
 
 import { useState, FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { Sparkles, Shield, Zap, TrendingUp } from "lucide-react";
 import { LogoIcon } from "@/components/LogoIcon";
@@ -14,6 +15,7 @@ const FEATURES = [
 
 export default function LoginPage() {
   const { signIn } = useAuth();
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -23,8 +25,18 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const { error } = await signIn(email, password);
-    if (error) { setError(error); setLoading(false); }
+    try {
+      const { error } = await signIn(email, password);
+      if (error) {
+        setError(error);
+        setLoading(false);
+      } else {
+        router.push("/");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Connection error. Please try again.");
+      setLoading(false);
+    }
   }
 
   return (
