@@ -1,8 +1,17 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from dotenv import load_dotenv
 from core.exceptions import PermissionDeniedError
+import logging
+import sys
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s %(name)s %(message)s",
+    stream=sys.stdout,
+)
 
 from routers import clients, compliance, documents, assistant, insights, tasks, workflows, reminders, team
 from routers import accounting, compliance_records
@@ -23,6 +32,21 @@ async def permission_denied_handler(request: Request, exc: PermissionDeniedError
     return JSONResponse(
         status_code=403,
         content={"success": False, "data": None, "error": str(exc)},
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"success": False, "data": None, "error": "Validation error", "details": exc.errors()},
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    logging.getLogger("caflow").error(f"Unhandled exception on {request.url}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"success": False, "data": None, "error": "Internal server error"},
     )
 
 
@@ -60,3 +84,7 @@ app.include_router(income_tax.router)
 def root():
     from models.common import api_response
     return api_response(True, {"message": "CAflow AI API v2.0", "docs": "/docs"})
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "version": "2.0.0"}
