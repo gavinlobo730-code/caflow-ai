@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from models.common import api_response
 from core.permissions import rbac
-import anthropic
+import httpx
 import os
 
 router = APIRouter(prefix="/api/assistant", tags=["assistant"])
@@ -15,6 +15,9 @@ SYSTEM_PROMPT = (
     "Source: [Act name], Section [number]. "
     "If unsure, say so — never guess on tax matters."
 )
+
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "llama-3.1-8b-instant"
 
 
 class Message(BaseModel):
@@ -30,22 +33,26 @@ class AssistantRequest(BaseModel):
 
 @router.post("")
 async def assistant(request: AssistantRequest, current_user: dict = Depends(rbac("ai", "read"))):
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured")
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
 
-    client = anthropic.Anthropic(api_key=api_key)
-    messages = [{"role": m.role, "content": m.content} for m in (request.conversation_history or [])]
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages += [{"role": m.role, "content": m.content} for m in (request.conversation_history or [])]
     messages.append({"role": "user", "content": request.question})
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        messages=messages,
-    )
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            GROQ_API_URL,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"model": GROQ_MODEL, "max_tokens": 1024, "messages": messages},
+            timeout=30.0,
+        )
 
-    full_answer = response.content[0].text
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail="AI service error. Please try again.")
+
+    full_answer: str = response.json()["choices"][0]["message"]["content"]
     source = ""
     if "Source:" in full_answer:
         parts = full_answer.rsplit("Source:", 1)

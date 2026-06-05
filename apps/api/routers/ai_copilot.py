@@ -3,6 +3,7 @@ AI Copilot Router — Enhanced AI assistant with firm context.
 Different from /api/assistant (simple Q&A). Serves /api/ai-copilot.
 """
 import os
+import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Optional
@@ -27,6 +28,9 @@ You can help with:
 Always be specific. Reference actual client names and data from the context when relevant.
 End tax law answers with: Source: [Act name], Section [number]
 """
+
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "llama-3.1-8b-instant"
 
 
 class ChatMessage(BaseModel):
@@ -87,33 +91,32 @@ def _build_firm_context(firm_id: str) -> str:
 
 @router.post("/chat")
 def copilot_chat(body: CopilotRequest, current_user: dict = Depends(rbac("ai", "copilot"))):
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        return api_response(False, None, "ANTHROPIC_API_KEY not configured")
+        return api_response(False, None, "GROQ_API_KEY not configured")
 
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-
         firm_context = _build_firm_context(current_user["firm_id"])
         system_prompt = COPILOT_SYSTEM_PROMPT.format(firm_context=firm_context)
 
-        messages = [
-            {"role": msg.role, "content": msg.content}
-            for msg in body.conversation_history
-        ]
+        messages = [{"role": "system", "content": system_prompt}]
+        messages += [{"role": msg.role, "content": msg.content} for msg in body.conversation_history]
         messages.append({"role": "user", "content": body.message})
 
-        response = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
-            system=system_prompt,
-            messages=messages,
-        )
+        with httpx.Client() as client:
+            response = client.post(
+                GROQ_API_URL,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": GROQ_MODEL, "max_tokens": 1024, "messages": messages},
+                timeout=30.0,
+            )
 
-        answer = response.content[0].text if response.content else ""
+        if response.status_code != 200:
+            return api_response(False, None, "AI service error. Please try again.")
 
-        # Extract suggested actions from response
+        answer: str = response.json()["choices"][0]["message"]["content"]
+
+        # Extract suggested actions from response keywords
         suggested_actions: list[str] = []
         lower = answer.lower()
         if "overdue" in lower:
