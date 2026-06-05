@@ -23,8 +23,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   clients: {
-    list: () => request<import("@/lib/types").ApiResponse<{ clients: import("@/lib/types").Client[]; total: number }>>("/api/clients"),
-    getWorkspace: (id: string) => request<import("@/lib/types").ApiResponse<import("@/lib/types").ClientWorkspace>>(`/api/clients/${id}`),
+    list: () => request("/api/clients"),
+    getWorkspace: (id: string) => request(`/api/clients/${id}`),
     create: (body: unknown) => request("/api/clients", { method: "POST", body: JSON.stringify(body) }),
     update: (id: string, body: unknown) => request(`/api/clients/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   },
@@ -140,7 +140,7 @@ export const api = {
     stats: () => request("/api/notifications/stats"),
   },
   copilot: {
-    chat: (body: { message: string; conversation_history: import("@/lib/types").CopilotMessage[]; context?: string }) =>
+    chat: (body: { message: string; conversation_history: unknown[]; context?: string }) =>
       request("/api/ai-copilot/chat", { method: "POST", body: JSON.stringify(body) }),
   },
 };
