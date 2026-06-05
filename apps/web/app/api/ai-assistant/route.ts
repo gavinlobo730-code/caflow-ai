@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
 
 // CA-domain system prompt — cite CGST Act / IT Act sections per CLAUDE.md rules
 const SYSTEM_PROMPT = `You are an expert AI assistant for Indian Chartered Accountants using CAflow AI. You have deep knowledge of Indian taxation and compliance as of FY 2026-27.
@@ -70,17 +69,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { success: false, data: null, error: "ANTHROPIC_API_KEY is not configured" },
+        { success: false, data: null, error: "GROQ_API_KEY is not configured" },
         { status: 500 }
       );
     }
 
-    const client = new Anthropic({ apiKey });
-
-    const messages: Anthropic.MessageParam[] = [
+    const messages = [
+      { role: "system", content: SYSTEM_PROMPT },
       ...(Array.isArray(history)
         ? history
             .filter(
@@ -89,23 +87,35 @@ export async function POST(req: NextRequest) {
                 (h.role === "user" || h.role === "assistant") &&
                 typeof h.content === "string"
             )
-            .map((h) => ({
-              role: h.role as "user" | "assistant",
-              content: h.content,
-            }))
+            .map((h) => ({ role: h.role, content: h.content }))
         : []),
       { role: "user", content: message.trim() },
     ];
 
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2048,
-      system: SYSTEM_PROMPT,
-      messages,
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "llama-3.1-8b-instant",
+        messages,
+        max_tokens: 2048,
+      }),
     });
 
-    const reply =
-      response.content[0]?.type === "text" ? response.content[0].text : "";
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("Groq API error:", errText);
+      return NextResponse.json(
+        { success: false, data: null, error: "AI service error. Please try again." },
+        { status: 502 }
+      );
+    }
+
+    const result = await response.json();
+    const reply: string = result?.choices?.[0]?.message?.content ?? "";
 
     if (!reply) {
       return NextResponse.json(
