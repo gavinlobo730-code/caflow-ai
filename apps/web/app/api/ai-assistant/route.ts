@@ -47,6 +47,9 @@ IMPORTANT RULES:
 - Never advise on tax evasion or aggressive avoidance
 - When unsure about a very recent change (post-March 2026), say so explicitly`;
 
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODEL = "llama-3.3-70b-versatile";
+
 interface HistoryItem {
   role: "user" | "assistant";
   content: string;
@@ -92,17 +95,13 @@ export async function POST(req: NextRequest) {
       { role: "user", content: message.trim() },
     ];
 
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const response = await fetch(GROQ_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        messages,
-        max_tokens: 2048,
-      }),
+      body: JSON.stringify({ model: GROQ_MODEL, messages, max_tokens: 2048 }),
     });
 
     if (!response.ok) {

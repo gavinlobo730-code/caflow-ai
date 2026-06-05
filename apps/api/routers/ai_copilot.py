@@ -3,6 +3,7 @@ AI Copilot Router — Enhanced AI assistant with firm context.
 Different from /api/assistant (simple Q&A). Serves /api/ai-copilot.
 """
 import os
+import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Optional
@@ -10,6 +11,9 @@ from models.common import api_response
 from core.permissions import rbac
 
 router = APIRouter(prefix="/api/ai-copilot", tags=["ai-copilot"])
+
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 COPILOT_SYSTEM_PROMPT = """You are CAflow AI Copilot — an intelligent assistant for Indian Chartered Accountants.
 
@@ -86,32 +90,31 @@ def _build_firm_context(firm_id: str) -> str:
 
 
 @router.post("/chat")
-def copilot_chat(body: CopilotRequest, current_user: dict = Depends(rbac("ai", "copilot"))):
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+async def copilot_chat(body: CopilotRequest, current_user: dict = Depends(rbac("ai", "copilot"))):
+    api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        return api_response(False, None, "ANTHROPIC_API_KEY not configured")
+        return api_response(False, None, "GROQ_API_KEY not configured")
 
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-
         firm_context = _build_firm_context(current_user["firm_id"])
         system_prompt = COPILOT_SYSTEM_PROMPT.format(firm_context=firm_context)
 
-        messages = [
-            {"role": msg.role, "content": msg.content}
-            for msg in body.conversation_history
-        ]
+        messages = [{"role": "system", "content": system_prompt}]
+        messages += [{"role": msg.role, "content": msg.content} for msg in body.conversation_history]
         messages.append({"role": "user", "content": body.message})
 
-        response = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
-            system=system_prompt,
-            messages=messages,
-        )
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                GROQ_API_URL,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": GROQ_MODEL, "messages": messages, "max_tokens": 1024},
+                timeout=30,
+            )
 
-        answer = response.content[0].text if response.content else ""
+        if response.status_code != 200:
+            return api_response(False, None, f"AI service error: {response.status_code}")
+
+        answer: str = response.json()["choices"][0]["message"]["content"]
 
         # Extract suggested actions from response
         suggested_actions: list[str] = []
