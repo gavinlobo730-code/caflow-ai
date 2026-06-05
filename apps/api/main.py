@@ -1,11 +1,10 @@
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
-from dotenv import load_dotenv
-from core.exceptions import PermissionDeniedError
+import os
 import logging
 import sys
+from dotenv import load_dotenv
+
+# load_dotenv first so env vars are available to everything below
+load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -13,20 +12,33 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 
-from routers import clients, compliance, documents, assistant, insights, tasks, workflows, reminders, team
-from routers import accounting, compliance_records
-from routers import document_intelligence, risks, ai_insights, automation, notifications, ai_copilot
-from routers import gst
-from routers import tds
-from routers import income_tax
-
-load_dotenv()
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from core.exceptions import PermissionDeniedError
 
 app = FastAPI(title="CAflow AI API", version="2.0.0")
 
-import os
-_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
+# CORS must be added before exception handlers and routers so it wraps
+# the entire request lifecycle — including error responses.
+_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    if o.strip()
+]
+logging.getLogger("caflow").info(f"CORS allowed origins: {_ALLOWED_ORIGINS}")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Exception handlers registered after middleware — CORS headers are still
+# added by the middleware layer above before the response reaches the client.
 @app.exception_handler(PermissionDeniedError)
 async def permission_denied_handler(request: Request, exc: PermissionDeniedError):
     return JSONResponse(
@@ -49,14 +61,10 @@ async def general_exception_handler(request: Request, exc: Exception):
         content={"success": False, "data": None, "error": "Internal server error"},
     )
 
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+from routers import clients, compliance, documents, assistant, insights, tasks, workflows, reminders, team
+from routers import accounting, compliance_records
+from routers import document_intelligence, risks, ai_insights, automation, notifications, ai_copilot
+from routers import gst, tds, income_tax
 
 app.include_router(clients.router)
 app.include_router(compliance.router)
