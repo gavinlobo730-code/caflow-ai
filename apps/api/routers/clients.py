@@ -2,10 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Path
 from models.client import ClientCreate, ClientUpdate
 from models.common import api_response
 from core.permissions import rbac
-from mock_data import (
-    MOCK_CLIENTS, MOCK_COMPLIANCE_TASKS, MOCK_DOCUMENTS,
-    MOCK_ACTIVITY_LOGS, MOCK_AI_INSIGHTS, CLIENT_INDEX, MOCK_TASKS,
-)
+from repositories.client_repository import client_repo
+from mock_data import MOCK_COMPLIANCE_TASKS, MOCK_DOCUMENTS, MOCK_ACTIVITY_LOGS, MOCK_AI_INSIGHTS, MOCK_TASKS
 from datetime import date
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
@@ -13,12 +11,14 @@ router = APIRouter(prefix="/api/clients", tags=["clients"])
 
 @router.get("")
 def list_clients(current_user: dict = Depends(rbac("client", "read"))):
-    return api_response(True, {"clients": MOCK_CLIENTS, "total": len(MOCK_CLIENTS)})
+    firm_id = current_user.get("firm_id")
+    clients = client_repo.find_all(firm_id=firm_id)
+    return api_response(True, {"clients": clients, "total": len(clients)})
 
 
 @router.get("/{client_id}")
 def get_client_workspace(client_id: str = Path(...), current_user: dict = Depends(rbac("client", "read"))):
-    client = CLIENT_INDEX.get(client_id)
+    client = client_repo.find_by_id(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
@@ -62,21 +62,21 @@ def get_client_workspace(client_id: str = Path(...), current_user: dict = Depend
 
 @router.post("")
 def create_client(body: ClientCreate, current_user: dict = Depends(rbac("client", "write"))):
-    import uuid
-    new_client = {
-        "id": str(uuid.uuid4()),
-        **body.model_dump(),
-        "created_at": date.today().isoformat(),
-        "updated_at": date.today().isoformat(),
-    }
-    return api_response(True, {"client": new_client})
+    firm_id = current_user.get("firm_id")
+    data = {**body.model_dump(), "firm_id": firm_id}
+    client = client_repo.create(data)
+    return api_response(True, {"client": client})
 
 
 @router.patch("/{client_id}")
 def update_client(client_id: str, body: ClientUpdate, current_user: dict = Depends(rbac("client", "write"))):
-    client = CLIENT_INDEX.get(client_id)
-    if not client:
+    firm_id = current_user.get("firm_id")
+    existing = client_repo.find_by_id(client_id)
+    if not existing:
         raise HTTPException(status_code=404, detail="Client not found")
+    # Ensure update is scoped to the current user's firm
+    if existing.get("firm_id") and existing.get("firm_id") != firm_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
-    updated = {**client, **updates, "updated_at": date.today().isoformat()}
+    updated = client_repo.update(client_id, updates)
     return api_response(True, {"client": updated})
