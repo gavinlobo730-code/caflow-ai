@@ -1,40 +1,48 @@
 """
 FastAPI JWT authentication dependency.
-Validates Supabase-issued JWTs using the project's JWT secret.
+Validates Supabase-issued JWTs via JWKS (supports ES256 / RS256 / HS256).
 Extracts user identity and resolves firm_id from the users table.
 """
 import os
 from typing import Optional
 from fastapi import Header, HTTPException, status
 import jwt
+from jwt import PyJWKClient
 from core.supabase_client import get_supabase
 
-_JWT_SECRET: Optional[str] = None
+_jwks_client: Optional[PyJWKClient] = None
 
 
-def _get_jwt_secret() -> str:
-    global _JWT_SECRET
-    if _JWT_SECRET is None:
-        _JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET", "")
-    return _JWT_SECRET
+def _get_jwks_client() -> PyJWKClient:
+    # Lazy singleton — fetches JWKS from Supabase on first call, cached thereafter.
+    global _jwks_client
+    if _jwks_client is None:
+        supabase_url = os.environ.get("SUPABASE_URL", "").rstrip("/")
+        if not supabase_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Server configuration error: SUPABASE_URL not set",
+            )
+        # JWKS endpoint documented at: https://supabase.com/docs/guides/auth/jwks
+        _jwks_client = PyJWKClient(f"{supabase_url}/auth/v1/.well-known/jwks.json")
+    return _jwks_client
 
 
 def get_current_user(authorization: Optional[str] = Header(default=None)) -> dict:
     """
     Dependency: validates Bearer JWT from Supabase Auth.
     Returns dict with: auth_user_id, firm_id, email, role
-    If SUPABASE_JWT_SECRET is not set, returns a dev fallback (firm-001).
+    Supports ES256 (ECC P-256), RS256, and HS256 signing keys automatically
+    via JWKS — no algorithm hardcoding required.
     """
-    secret = _get_jwt_secret()
-
-    # Dev fallback — only allowed when APP_ENV=development AND secret is unset.
-    # In production this path is unreachable: SUPABASE_JWT_SECRET is always set.
-    if not secret:
+    # Dev fallback — only allowed when APP_ENV=development AND no SUPABASE_URL.
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    if not supabase_url:
         app_env = os.environ.get("APP_ENV", "production")
         if app_env != "development":
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Server configuration error: SUPABASE_JWT_SECRET not set",
+                detail="Server configuration error: SUPABASE_URL not set",
             )
         return {
             "auth_user_id": "dev-user",
@@ -52,10 +60,14 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
     token = authorization.removeprefix("Bearer ").strip()
 
     try:
+        # PyJWKClient fetches the public key matching the token's kid header,
+        # then verifies the signature using the algorithm declared in the token.
+        # This handles ES256 (ECC P-256), RS256, and HS256 without hardcoding.
+        signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
         payload = jwt.decode(
             token,
-            secret,
-            algorithms=["HS256"],
+            signing_key.key,
+            algorithms=["ES256", "RS256", "HS256"],
             options={"verify_aud": False},
         )
     except jwt.ExpiredSignatureError:
