@@ -43,13 +43,14 @@ export default function AIAssistantPage() {
       const json = await api.assistant.ask({
         question: text.trim(),
         conversation_history: messages.map((m) => ({ role: m.role, content: m.content })),
-      }) as { success: boolean; data: { reply: string } | null; error: string | null };
+      }) as { success: boolean; data: { answer?: string; reply?: string } | null; error: string | null };
 
       if (!json.success || !json.data) {
         throw new Error(json.error ?? "Request failed");
       }
 
-      const reply: string = json.data.reply ?? "";
+      // FastAPI backend returns `answer`; fallback to `reply` for compatibility
+      const reply: string = json.data.answer ?? json.data.reply ?? "";
       if (!reply) throw new Error("Empty response from AI service");
 
       setMessages([...newHistory, { role: "assistant", content: reply }]);
