@@ -37,13 +37,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Exception handlers registered after middleware — CORS headers are still
-# added by the middleware layer above before the response reaches the client.
+
+def _cors_headers(request: Request) -> dict:
+    """Return CORS headers for the request origin if it is in the allowed list."""
+    origin = request.headers.get("origin", "")
+    if origin in _ALLOWED_ORIGINS or "*" in _ALLOWED_ORIGINS:
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+        }
+    return {}
+
+
+# Exception handlers explicitly inject CORS headers so that error responses
+# (401, 403, 422, 500) are never blocked by the browser, even if the
+# middleware layer short-circuits before adding them.
 @app.exception_handler(PermissionDeniedError)
 async def permission_denied_handler(request: Request, exc: PermissionDeniedError):
     return JSONResponse(
         status_code=403,
         content={"success": False, "data": None, "error": str(exc)},
+        headers=_cors_headers(request),
     )
 
 @app.exception_handler(RequestValidationError)
@@ -51,6 +65,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(
         status_code=422,
         content={"success": False, "data": None, "error": "Validation error", "details": exc.errors()},
+        headers=_cors_headers(request),
     )
 
 @app.exception_handler(Exception)
@@ -59,6 +74,7 @@ async def general_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={"success": False, "data": None, "error": "Internal server error"},
+        headers=_cors_headers(request),
     )
 
 from routers import clients, compliance, documents, assistant, insights, tasks, workflows, reminders, team
