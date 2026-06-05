@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SYSTEM_PROMPT = `You are an AI assistant for Indian Chartered Accountants using PracticeSync AI. You help with GST (CGST Act), Income Tax (IT Act), TDS, ROC/MCA filings, accounting, and practice management. Always cite relevant sections when giving tax advice. For compliance deadlines, be precise about Indian financial year (April-March). Never provide advice that could be construed as filing on behalf of the CA — always recommend CA review.`;
 
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODEL = "llama-3.3-70b-versatile";
+
 interface HistoryItem {
   role: "user" | "assistant";
   content: string;
@@ -24,16 +27,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { success: false, data: null, error: "GEMINI_API_KEY is not configured" },
+        { success: false, data: null, error: "GROQ_API_KEY is not configured" },
         { status: 500 }
       );
     }
 
-    // Build Gemini contents array from history + new message
-    const contents = [
+    const messages = [
+      { role: "system", content: SYSTEM_PROMPT },
       ...(Array.isArray(history)
         ? history
             .filter(
@@ -42,31 +45,23 @@ export async function POST(req: NextRequest) {
                 (h.role === "user" || h.role === "assistant") &&
                 typeof h.content === "string"
             )
-            .map((h) => ({
-              role: h.role === "assistant" ? "model" : "user",
-              parts: [{ text: h.content }],
-            }))
+            .map((h) => ({ role: h.role, content: h.content }))
         : []),
-      { role: "user", parts: [{ text: message.trim() }] },
+      { role: "user", content: message.trim() },
     ];
 
-    // Call Google Gemini API (gemini-1.5-flash — free tier)
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-          contents,
-          generationConfig: { maxOutputTokens: 2048 },
-        }),
-      }
-    );
+    const response = await fetch(GROQ_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ model: GROQ_MODEL, messages, max_tokens: 2048 }),
+    });
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error("Gemini API error:", errText);
+      console.error("Groq API error:", errText);
       return NextResponse.json(
         { success: false, data: null, error: "AI service error. Please try again." },
         { status: 502 }
@@ -74,8 +69,7 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await response.json();
-    const reply: string =
-      result?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    const reply: string = result?.choices?.[0]?.message?.content ?? "";
 
     if (!reply) {
       return NextResponse.json(
