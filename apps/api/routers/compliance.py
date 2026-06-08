@@ -39,7 +39,7 @@ def compliance_calendar(current_user: dict = Depends(rbac("compliance_record", "
 @router.post("/seed")
 def seed_compliance_calendar(
     client_id: str,
-    financial_year: int | None = None,
+    financial_year: str | None = None,
     current_user: dict = Depends(rbac("compliance_record", "write")),
 ):
     """
@@ -57,8 +57,22 @@ def seed_compliance_calendar(
 
     today = date.today()
     # Financial year is the April-start year; default to current FY
+    # Accepts: int 2025, str "2025", or str "2025-26" (frontend format)
+    fy_int: int
     if financial_year is None:
-        financial_year = today.year if today.month >= 4 else today.year - 1
+        fy_int = today.year if today.month >= 4 else today.year - 1
+    elif isinstance(financial_year, str) and "-" in financial_year:
+        # "2025-26" → extract start year
+        try:
+            fy_int = int(financial_year.split("-")[0])
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid financial_year format. Use 2025 or '2025-26'.")
+    else:
+        try:
+            fy_int = int(financial_year)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=422, detail="Invalid financial_year. Use 2025 or '2025-26'.")
+    financial_year = fy_int
 
     fy_end = financial_year + 1  # calendar year when March 31 falls
 
