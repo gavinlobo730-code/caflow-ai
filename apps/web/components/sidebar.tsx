@@ -5,12 +5,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, CheckSquare, UserCheck,
-  BookOpen, Receipt, Calculator, Building2,
+  Receipt, Calculator, Building2,
   Calendar, BarChart3, Settings,
   ChevronLeft, ChevronRight, Landmark, Shield,
   ShieldAlert, Sparkles, Bell, LogOut,
   ExternalLink, Menu, X, KanbanSquare, MessageSquare, KeyRound,
-  Search, Briefcase, Zap,
+  Search, Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -33,8 +33,6 @@ const NAV_GROUPS = [
   {
     label: "Tax & Compliance",
     items: [
-      { href: "/accounting", label: "Accounting", icon: BookOpen },
-      { href: "/accounting/auto-journals", label: "Auto Journals", icon: Zap },
       { href: "/compliance", label: "Compliance", icon: Shield },
       { href: "/gst", label: "GST", icon: Receipt },
       { href: "/gst/gstr3b", label: "GSTR-3B", icon: Receipt },
