@@ -21,6 +21,9 @@ def get_client_workspace(client_id: str = Path(...), current_user: dict = Depend
     client = client_repo.find_by_id(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
+    # Tenant isolation: reject cross-firm access — return 404 to avoid confirming UUID existence
+    if client.get("firm_id") and client["firm_id"] != current_user.get("firm_id"):
+        raise HTTPException(status_code=404, detail="Client not found")
 
     tasks = [t for t in MOCK_COMPLIANCE_TASKS if t["client_id"] == client_id]
     docs = [d for d in MOCK_DOCUMENTS if d["client_id"] == client_id]
