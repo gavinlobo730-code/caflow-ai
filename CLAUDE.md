@@ -5,7 +5,7 @@ Tech stack:
 - Frontend: Next.js 14, TypeScript, Tailwind CSS, shadcn/ui
 - Backend: FastAPI (Python 3.11)
 - Database: Supabase (Postgres)
-- AI: Anthropic Claude API (claude-sonnet-4-6)
+- AI: Groq API (llama-3.3-70b-versatile) — requires GROQ_API_KEY in both apps/api/.env and apps/web/.env.local
 - Package manager: pnpm for frontend, pip for backend
 
 Indian tax domain rules — never violate these:
