@@ -318,8 +318,9 @@ class TestDeleteBlockerLogic:
 
     def test_no_blockers_for_clean_client(self):
         from routers.clients import _check_delete_blockers
-        with patch("routers.clients.MOCK_COMPLIANCE_TASKS", []), \
+        with patch("routers.clients.compliance_repo") as mock_ctasks, \
              patch("routers.clients.compliance_records_repo") as mock_repo:
+            mock_ctasks.find_all.return_value = []
             mock_repo.find_all.return_value = []
             blockers = _check_delete_blockers("c-clean", FIRM_A)
         assert blockers == []
@@ -327,8 +328,9 @@ class TestDeleteBlockerLogic:
     def test_open_compliance_task_blocks_delete(self):
         from routers.clients import _check_delete_blockers
         open_task = {"client_id": "c-001", "firm_id": FIRM_A, "status": "pending", "compliance_type": "GSTR1"}
-        with patch("routers.clients.MOCK_COMPLIANCE_TASKS", [open_task]), \
+        with patch("routers.clients.compliance_repo") as mock_ctasks, \
              patch("routers.clients.compliance_records_repo") as mock_repo:
+            mock_ctasks.find_all.return_value = [open_task]
             mock_repo.find_all.return_value = []
             blockers = _check_delete_blockers("c-001", FIRM_A)
         assert len(blockers) == 1
@@ -337,8 +339,9 @@ class TestDeleteBlockerLogic:
     def test_filed_compliance_task_does_not_block(self):
         from routers.clients import _check_delete_blockers
         filed_task = {"client_id": "c-001", "firm_id": FIRM_A, "status": "filed", "compliance_type": "GSTR1"}
-        with patch("routers.clients.MOCK_COMPLIANCE_TASKS", [filed_task]), \
+        with patch("routers.clients.compliance_repo") as mock_ctasks, \
              patch("routers.clients.compliance_records_repo") as mock_repo:
+            mock_ctasks.find_all.return_value = [filed_task]
             mock_repo.find_all.return_value = []
             blockers = _check_delete_blockers("c-001", FIRM_A)
         assert blockers == []
@@ -346,8 +349,9 @@ class TestDeleteBlockerLogic:
     def test_active_compliance_record_blocks_delete(self):
         from routers.clients import _check_delete_blockers
         active_record = {"id": "cr-1", "firm_id": FIRM_A, "client_id": "c-001", "status": "In Progress"}
-        with patch("routers.clients.MOCK_COMPLIANCE_TASKS", []), \
+        with patch("routers.clients.compliance_repo") as mock_ctasks, \
              patch("routers.clients.compliance_records_repo") as mock_repo:
+            mock_ctasks.find_all.return_value = []
             mock_repo.find_all.return_value = [active_record]
             blockers = _check_delete_blockers("c-001", FIRM_A)
         assert len(blockers) == 1
@@ -356,17 +360,19 @@ class TestDeleteBlockerLogic:
     def test_filed_compliance_record_does_not_block(self):
         from routers.clients import _check_delete_blockers
         filed_record = {"id": "cr-1", "firm_id": FIRM_A, "client_id": "c-001", "status": "Filed"}
-        with patch("routers.clients.MOCK_COMPLIANCE_TASKS", []), \
+        with patch("routers.clients.compliance_repo") as mock_ctasks, \
              patch("routers.clients.compliance_records_repo") as mock_repo:
-            mock_repo.find_all.return_value = [filed_record]
+            mock_ctasks.find_all.return_value = []  # no open compliance tasks
+            mock_repo.find_all.return_value = [filed_record]  # only filed records
             blockers = _check_delete_blockers("c-001", FIRM_A)
         assert blockers == []
 
     def test_cross_firm_tasks_not_counted_as_blockers(self):
         from routers.clients import _check_delete_blockers
-        other_firm_task = {"client_id": "c-001", "firm_id": FIRM_B, "status": "pending", "compliance_type": "GSTR1"}
-        with patch("routers.clients.MOCK_COMPLIANCE_TASKS", [other_firm_task]), \
+        # compliance_repo.find_all already filters by firm_id — returns empty for cross-firm
+        with patch("routers.clients.compliance_repo") as mock_ctasks, \
              patch("routers.clients.compliance_records_repo") as mock_repo:
+            mock_ctasks.find_all.return_value = []
             mock_repo.find_all.return_value = []
             blockers = _check_delete_blockers("c-001", FIRM_A)
         assert blockers == []

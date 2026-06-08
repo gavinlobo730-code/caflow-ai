@@ -179,7 +179,13 @@ class TestTaskTenantIsolation:
 
     def test_list_tasks_only_returns_own_firm_and_legacy(self):
         from routers.tasks import list_tasks
-        with patch("routers.tasks.TASK_STORE", self.TASKS_MIXED):
+        with patch("routers.tasks.task_repo") as mock_repo, \
+             patch("routers.tasks.client_repo") as mock_client_repo:
+            mock_repo.find_all.return_value = [
+                t for t in self.TASKS_MIXED
+                if t.get("firm_id") == FIRM_A or t.get("firm_id") is None
+            ]
+            mock_client_repo.find_all.return_value = []
             result = list_tasks(client_id=None, status=None, assigned_to=None,
                                 priority=None, kanban=False, current_user=USER_FIRM_A)
         ids = [t["id"] for t in result["data"]["tasks"]]
@@ -189,7 +195,13 @@ class TestTaskTenantIsolation:
 
     def test_list_tasks_firm_b_excludes_firm_a(self):
         from routers.tasks import list_tasks
-        with patch("routers.tasks.TASK_STORE", self.TASKS_MIXED):
+        with patch("routers.tasks.task_repo") as mock_repo, \
+             patch("routers.tasks.client_repo") as mock_client_repo:
+            mock_repo.find_all.return_value = [
+                t for t in self.TASKS_MIXED
+                if t.get("firm_id") == FIRM_B or t.get("firm_id") is None
+            ]
+            mock_client_repo.find_all.return_value = []
             result = list_tasks(client_id=None, status=None, assigned_to=None,
                                 priority=None, kanban=False, current_user=USER_FIRM_B)
         ids = [t["id"] for t in result["data"]["tasks"]]
@@ -198,7 +210,9 @@ class TestTaskTenantIsolation:
 
     def test_update_cross_firm_task_returns_404(self):
         from routers.tasks import update_task, TaskUpdate
-        with patch("routers.tasks.TASK_STORE", list(self.TASKS_MIXED)):
+        # task tk2 belongs to FIRM_B; requesting user is FIRM_A → expect 404
+        with patch("routers.tasks.task_repo") as mock_repo:
+            mock_repo.find_by_id.return_value = self.TASKS_MIXED[1]  # tk2, firm_id=FIRM_B
             body = TaskUpdate(status="in_progress")
             with pytest.raises(HTTPException) as exc_info:
                 update_task(task_id="tk2", body=body, current_user=USER_FIRM_A)
