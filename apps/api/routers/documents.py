@@ -140,8 +140,9 @@ def get_download_url(
     """Generate a fresh signed download URL for a document."""
     doc = document_repo.get_or_raise(doc_id)
 
-    if doc.get("firm_id") and doc["firm_id"] != current_user["firm_id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Hard reject: missing firm_id is also a denial — do not allow NULL bypass
+    if doc.get("firm_id") != current_user["firm_id"]:
+        raise HTTPException(status_code=404, detail="Document not found")
 
     if _USE_MOCK or not doc.get("storage_path"):
         return api_response(True, {"download_url": None})
