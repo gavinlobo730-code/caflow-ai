@@ -398,3 +398,60 @@ class TestTenantIsolationPilotFeatures:
             result = unread_count(current_user=USER_A)
         assert result["data"]["unread"] == 3
         mock_repo.count_unread.assert_called_once_with(firm_id=FIRM_A)
+
+
+# ─── Compliance Seed API Contract ────────────────────────────────────────────
+
+class TestComplianceSeedContract:
+    def test_seed_with_int_year(self):
+        from routers.compliance import seed_compliance_calendar
+        with patch("routers.compliance.client_repo") as mock_repo:
+            mock_repo.find_by_id.return_value = {"id": "c-001", "firm_id": FIRM_A}
+            with patch("routers.compliance.compliance_repo") as mock_cr:
+                mock_cr.create.return_value = {"id": "t-1"}
+                result = seed_compliance_calendar(client_id="c-001", financial_year="2025", current_user=USER_A)
+        assert result["success"] is True
+        assert result["data"]["seeded"] == 30
+
+    def test_seed_with_fy_string_format(self):
+        """Frontend sends '2025-26' — must be accepted."""
+        from routers.compliance import seed_compliance_calendar
+        with patch("routers.compliance.client_repo") as mock_repo:
+            mock_repo.find_by_id.return_value = {"id": "c-001", "firm_id": FIRM_A}
+            with patch("routers.compliance.compliance_repo") as mock_cr:
+                mock_cr.create.return_value = {"id": "t-1"}
+                result = seed_compliance_calendar(client_id="c-001", financial_year="2025-26", current_user=USER_A)
+        assert result["success"] is True
+        assert result["data"]["seeded"] == 30
+
+    def test_seed_with_none_defaults_to_current_fy(self):
+        from routers.compliance import seed_compliance_calendar
+        with patch("routers.compliance.client_repo") as mock_repo:
+            mock_repo.find_by_id.return_value = {"id": "c-001", "firm_id": FIRM_A}
+            with patch("routers.compliance.compliance_repo") as mock_cr:
+                mock_cr.create.return_value = {"id": "t-1"}
+                result = seed_compliance_calendar(client_id="c-001", financial_year=None, current_user=USER_A)
+        assert result["success"] is True
+        assert result["data"]["seeded"] == 30
+
+    def test_seed_with_invalid_string_returns_422(self):
+        from fastapi import HTTPException
+        from routers.compliance import seed_compliance_calendar
+        with patch("routers.compliance.client_repo") as mock_repo:
+            mock_repo.find_by_id.return_value = {"id": "c-001", "firm_id": FIRM_A}
+            with pytest.raises(HTTPException) as exc_info:
+                seed_compliance_calendar(client_id="c-001", financial_year="bad-value", current_user=USER_A)
+        assert exc_info.value.status_code == 422
+
+    def test_seed_2025_and_2025_26_produce_same_tasks(self):
+        """Both formats must seed identical task counts."""
+        from routers.compliance import seed_compliance_calendar
+        results = []
+        for fy in ("2025", "2025-26"):
+            with patch("routers.compliance.client_repo") as mock_repo:
+                mock_repo.find_by_id.return_value = {"id": "c-001", "firm_id": FIRM_A}
+                with patch("routers.compliance.compliance_repo") as mock_cr:
+                    mock_cr.create.return_value = {"id": "t-1"}
+                    r = seed_compliance_calendar(client_id="c-001", financial_year=fy, current_user=USER_A)
+                    results.append(r["data"]["seeded"])
+        assert results[0] == results[1]
