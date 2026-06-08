@@ -18,19 +18,37 @@ class ClientRepository(BaseRepository[dict]):
 
     def find_by_id(self, id: str) -> Optional[dict]:
         if _USE_MOCK:
-            return CLIENT_INDEX.get(id)
+            c = CLIENT_INDEX.get(id)
+            # Exclude soft-deleted rows even in mock mode
+            return c if (c and not c.get("deleted_at")) else None
         result = _get_db().table("clients").select("*").eq("id", id).is_("deleted_at", None).maybe_single().execute()
         return result.data
 
-    def find_all(self, firm_id: Optional[str] = None, status: Optional[str] = None, **filters) -> list[dict]:
+    def find_all(
+        self,
+        firm_id: Optional[str] = None,
+        status: Optional[str] = None,
+        include_archived: bool = False,
+        include_test: bool = True,
+        **filters,
+    ) -> list[dict]:
         if _USE_MOCK:
-            clients = list(MOCK_CLIENTS)
+            clients = [c for c in MOCK_CLIENTS if not c.get("deleted_at")]
+            if not include_archived:
+                clients = [c for c in clients if c.get("status") != "archived"]
+            if not include_test:
+                clients = [c for c in clients if not c.get("is_test", False)]
             if status:
                 clients = [c for c in clients if c.get("status") == status]
             return clients
+
         query = _get_db().table("clients").select("*").is_("deleted_at", None)
         if firm_id:
             query = query.eq("firm_id", firm_id)
+        if not include_archived:
+            query = query.neq("status", "archived")
+        if not include_test:
+            query = query.eq("is_test", False)
         if status:
             query = query.eq("status", status)
         result = query.order("client_name").execute()
@@ -38,13 +56,13 @@ class ClientRepository(BaseRepository[dict]):
 
     def find_by_pan(self, pan: str) -> Optional[dict]:
         if _USE_MOCK:
-            return next((c for c in MOCK_CLIENTS if c["pan"] == pan), None)
+            return next((c for c in MOCK_CLIENTS if c["pan"] == pan and not c.get("deleted_at")), None)
         result = _get_db().table("clients").select("*").eq("pan", pan).is_("deleted_at", None).execute()
         return result.data[0] if result.data else None
 
     def find_by_gstin(self, gstin: str) -> Optional[dict]:
         if _USE_MOCK:
-            return next((c for c in MOCK_CLIENTS if c.get("gstin") == gstin), None)
+            return next((c for c in MOCK_CLIENTS if c.get("gstin") == gstin and not c.get("deleted_at")), None)
         result = _get_db().table("clients").select("*").eq("gstin", gstin).is_("deleted_at", None).execute()
         return result.data[0] if result.data else None
 
@@ -57,7 +75,14 @@ class ClientRepository(BaseRepository[dict]):
     def create(self, data: dict) -> dict:
         if _USE_MOCK:
             import uuid
-            record = {"id": str(uuid.uuid4()), **data, "created_at": self.now_iso(), "updated_at": self.now_iso()}
+            record = {
+                "id": str(uuid.uuid4()),
+                "is_test": False,
+                **data,
+                "created_at": self.now_iso(),
+                "updated_at": self.now_iso(),
+                "deleted_at": None,
+            }
             MOCK_CLIENTS.append(record)
             CLIENT_INDEX[record["id"]] = record
             return record
@@ -67,16 +92,27 @@ class ClientRepository(BaseRepository[dict]):
     def update(self, id: str, data: dict) -> Optional[dict]:
         if _USE_MOCK:
             client = CLIENT_INDEX.get(id)
-            if not client:
+            if not client or client.get("deleted_at"):
                 return None
             client.update({**data, "updated_at": self.now_iso()})
             return client
         result = _get_db().table("clients").update({**data, "updated_at": self.now_iso()}).eq("id", id).execute()
         return result.data[0] if result.data else None
 
+    def archive(self, id: str) -> Optional[dict]:
+        return self.update(id, {"status": "archived"})
+
+    def restore(self, id: str) -> Optional[dict]:
+        return self.update(id, {"status": "active"})
+
     def soft_delete(self, id: str) -> bool:
         if _USE_MOCK:
-            return False
+            client = CLIENT_INDEX.get(id)
+            if not client:
+                return False
+            client["deleted_at"] = self.now_iso()
+            client["updated_at"] = self.now_iso()
+            return True
         result = _get_db().table("clients").update({"deleted_at": self.now_iso()}).eq("id", id).execute()
         return bool(result.data)
 
