@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from models.common import api_response
 from core.permissions import rbac
-from mock_data import MOCK_COMPLIANCE_TASKS, MOCK_CLIENTS, CLIENT_INDEX
+from repositories.compliance_repository import compliance_repo
+from repositories.client_repository import client_repo
 from services.compliance_engine import (
     gstr1_due_date, gstr3b_due_date, gstr9_due_date,
     itr_due_date, advance_tax_due_dates, enrich_compliance_task
@@ -12,29 +13,136 @@ router = APIRouter(prefix="/api/compliance", tags=["compliance"])
 
 
 @router.get("/tasks")
-def list_compliance_tasks(client_id: str | None = None, status: str | None = None, current_user: dict = Depends(rbac("compliance_record", "read"))):
+def list_compliance_tasks(
+    client_id: str | None = None,
+    status: str | None = None,
+    current_user: dict = Depends(rbac("compliance_record", "read")),
+):
     firm_id = current_user.get("firm_id")
-    # Scope to current firm — never expose cross-firm compliance data
-    tasks = [t for t in MOCK_COMPLIANCE_TASKS if t.get("firm_id") == firm_id or t.get("firm_id") is None]
-    if client_id:
-        tasks = [t for t in tasks if t["client_id"] == client_id]
-    if status:
-        tasks = [t for t in tasks if t["status"] == status]
+    tasks = compliance_repo.find_all(firm_id=firm_id, client_id=client_id, status=status)
     return api_response(True, {"tasks": tasks, "total": len(tasks)})
 
 
 @router.get("/calendar")
 def compliance_calendar(current_user: dict = Depends(rbac("compliance_record", "read"))):
     firm_id = current_user.get("firm_id")
-    # Scope to current firm — never expose cross-firm compliance data
-    firm_tasks = [t for t in MOCK_COMPLIANCE_TASKS if t.get("firm_id") == firm_id or t.get("firm_id") is None]
-    tasks = sorted(firm_tasks, key=lambda t: t["due_date"])
-    client_map = {c["id"]: c["client_name"] for c in MOCK_CLIENTS}
-    events = [
-        {**t, "client_name": client_map.get(t["client_id"], "Unknown")}
-        for t in tasks
-    ]
+    tasks = compliance_repo.find_all(firm_id=firm_id)
+    tasks = sorted(tasks, key=lambda t: t.get("due_date", ""))
+
+    # Enrich with client_name from the client repo
+    clients = client_repo.find_all(firm_id=firm_id)
+    client_map = {c["id"]: c["client_name"] for c in clients}
+    events = [{**t, "client_name": client_map.get(t.get("client_id", ""), "Unknown")} for t in tasks]
     return api_response(True, {"events": events})
+
+
+@router.post("/seed")
+def seed_compliance_calendar(
+    client_id: str,
+    financial_year: int | None = None,
+    current_user: dict = Depends(rbac("compliance_record", "write")),
+):
+    """
+    Generate standard GST/ITR/TDS compliance tasks for a client for the given financial year.
+    Ref: CGST Act 2017 Sections 37, 39, 44; IT Act 1961 Section 139.
+    """
+    firm_id = current_user.get("firm_id")
+
+    # Verify client belongs to this firm
+    client = client_repo.find_by_id(client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if client.get("firm_id") and client["firm_id"] != firm_id:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    today = date.today()
+    # Financial year is the April-start year; default to current FY
+    if financial_year is None:
+        financial_year = today.year if today.month >= 4 else today.year - 1
+
+    fy_end = financial_year + 1  # calendar year when March 31 falls
+
+    tasks_to_seed = []
+
+    # Monthly GSTR-1 and GSTR-3B for each month of the financial year (Apr–Mar)
+    for month_offset in range(12):
+        period_month = ((3 + month_offset) % 12) + 1  # Apr=4 .. Mar=3
+        period_year = financial_year if period_month >= 4 else fy_end
+
+        period_start = date(period_year, period_month, 1)
+        import calendar as _cal
+        last_day = _cal.monthrange(period_year, period_month)[1]
+        period_end = date(period_year, period_month, last_day)
+
+        tasks_to_seed += [
+            {
+                "client_id": client_id,
+                "firm_id": firm_id,
+                "compliance_type": "GSTR1",
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "due_date": gstr1_due_date(period_year, period_month).isoformat(),
+                "status": "pending",
+            },
+            {
+                "client_id": client_id,
+                "firm_id": firm_id,
+                "compliance_type": "GSTR3B",
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "due_date": gstr3b_due_date(period_year, period_month).isoformat(),
+                "status": "pending",
+            },
+        ]
+
+    # Annual returns
+    tasks_to_seed += [
+        {
+            "client_id": client_id,
+            "firm_id": firm_id,
+            "compliance_type": "GSTR9",
+            "period_start": date(financial_year, 4, 1).isoformat(),
+            "period_end": date(fy_end, 3, 31).isoformat(),
+            "due_date": gstr9_due_date(fy_end).isoformat(),
+            "status": "pending",
+        },
+        {
+            "client_id": client_id,
+            "firm_id": firm_id,
+            "compliance_type": "ITR",
+            "period_start": date(financial_year, 4, 1).isoformat(),
+            "period_end": date(fy_end, 3, 31).isoformat(),
+            "due_date": itr_due_date(fy_end).isoformat(),
+            "status": "pending",
+        },
+    ]
+
+    # TDS quarterly returns
+    tds_quarters = [
+        ("Q1", date(financial_year, 4, 1),  date(financial_year, 6, 30)),
+        ("Q2", date(financial_year, 7, 1),  date(financial_year, 9, 30)),
+        ("Q3", date(financial_year, 10, 1), date(financial_year, 12, 31)),
+        ("Q4", date(fy_end, 1, 1),          date(fy_end, 3, 31)),
+    ]
+    from services.compliance_engine import tds_return_due_date
+    for quarter, p_start, p_end in tds_quarters:
+        tasks_to_seed.append({
+            "client_id": client_id,
+            "firm_id": firm_id,
+            "compliance_type": "TDS26Q",
+            "period_start": p_start.isoformat(),
+            "period_end": p_end.isoformat(),
+            "due_date": tds_return_due_date(quarter, fy_end).isoformat(),
+            "status": "pending",
+        })
+
+    seeded = []
+    for task_data in tasks_to_seed:
+        enriched = enrich_compliance_task(dict(task_data))
+        record = compliance_repo.create(enriched)
+        seeded.append(record)
+
+    return api_response(True, {"seeded": len(seeded), "tasks": seeded})
 
 
 @router.get("/due-dates/calculate")
@@ -43,7 +151,6 @@ def calculate_due_dates(year: int, month: int, current_user: dict = Depends(rbac
     Calculate all GST due dates for a given month.
     Ref: CGST Act 2017, Sections 37 and 39.
     """
-    today = date.today()
     fy_end = year if month <= 3 else year + 1
     return api_response(True, {
         "period": f"{year}-{month:02d}",
