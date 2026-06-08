@@ -5,7 +5,7 @@
 CREATE TABLE IF NOT EXISTS public.attendance (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   firm_id UUID NOT NULL REFERENCES public.firms(id) ON DELETE CASCADE,
-  employee_id UUID NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
+  employee_id UUID NOT NULL REFERENCES public.payroll_employees(id) ON DELETE CASCADE,
   month INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12),
   year INTEGER NOT NULL,
   working_days INTEGER NOT NULL DEFAULT 26,
@@ -28,7 +28,7 @@ CREATE POLICY "firm_staff_manage_attendance" ON public.attendance
 CREATE TABLE IF NOT EXISTS public.leave_balances (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   firm_id UUID NOT NULL REFERENCES public.firms(id) ON DELETE CASCADE,
-  employee_id UUID NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
+  employee_id UUID NOT NULL REFERENCES public.payroll_employees(id) ON DELETE CASCADE,
   year INTEGER NOT NULL,
   casual_leave_balance INTEGER NOT NULL DEFAULT 12,
   sick_leave_balance INTEGER NOT NULL DEFAULT 12,
