@@ -70,32 +70,45 @@ class TestComplianceTenantIsolation:
     """Compliance endpoints must only return data for the requesting firm."""
 
     TASKS_MIXED = [
-        {"id": "t1", "client_id": "c1", "firm_id": FIRM_A, "status": "pending", "due_date": "2026-07-11", "compliance_type": "GSTR-1"},
-        {"id": "t2", "client_id": "c2", "firm_id": FIRM_B, "status": "pending", "due_date": "2026-07-11", "compliance_type": "GSTR-1"},
-        {"id": "t3", "client_id": "c3", "firm_id": None,   "status": "filed",   "due_date": "2026-06-30", "compliance_type": "GSTR-9"},
+        {"id": "t1", "client_id": "c1", "firm_id": FIRM_A, "status": "pending", "due_date": "2026-07-11", "compliance_type": "GSTR1"},
+        {"id": "t2", "client_id": "c2", "firm_id": FIRM_B, "status": "pending", "due_date": "2026-07-11", "compliance_type": "GSTR1"},
+        {"id": "t3", "client_id": "c3", "firm_id": None,   "status": "filed",   "due_date": "2026-06-30", "compliance_type": "GSTR9"},
     ]
+
+    def _firm_a_tasks(self):
+        return [t for t in self.TASKS_MIXED if t.get("firm_id") == FIRM_A or t.get("firm_id") is None]
+
+    def _firm_b_tasks(self):
+        return [t for t in self.TASKS_MIXED if t.get("firm_id") == FIRM_B or t.get("firm_id") is None]
 
     def test_list_tasks_only_returns_own_firm_and_legacy(self):
         from routers.compliance import list_compliance_tasks
-        with patch("routers.compliance.MOCK_COMPLIANCE_TASKS", self.TASKS_MIXED):
+        with patch("routers.compliance.compliance_repo") as mock_repo:
+            mock_repo.find_all.return_value = self._firm_a_tasks()
             result = list_compliance_tasks(client_id=None, status=None, current_user=USER_FIRM_A)
         ids = [t["id"] for t in result["data"]["tasks"]]
         assert "t1" in ids     # own firm ✓
         assert "t3" in ids     # no firm_id (legacy) ✓
         assert "t2" not in ids # Firm B — must be excluded ✗
+        # Verify repo was called with the correct firm_id
+        mock_repo.find_all.assert_called_once_with(firm_id=FIRM_A, client_id=None, status=None)
 
     def test_list_tasks_firm_b_excluded_from_firm_a(self):
         from routers.compliance import list_compliance_tasks
-        with patch("routers.compliance.MOCK_COMPLIANCE_TASKS", self.TASKS_MIXED):
+        with patch("routers.compliance.compliance_repo") as mock_repo:
+            mock_repo.find_all.return_value = self._firm_b_tasks()
             result = list_compliance_tasks(client_id=None, status=None, current_user=USER_FIRM_B)
         ids = [t["id"] for t in result["data"]["tasks"]]
         assert "t2" in ids
         assert "t1" not in ids
+        mock_repo.find_all.assert_called_once_with(firm_id=FIRM_B, client_id=None, status=None)
 
     def test_calendar_only_returns_own_firm(self):
         from routers.compliance import compliance_calendar
-        with patch("routers.compliance.MOCK_COMPLIANCE_TASKS", self.TASKS_MIXED), \
-             patch("routers.compliance.MOCK_CLIENTS", []):
+        with patch("routers.compliance.compliance_repo") as mock_repo, \
+             patch("routers.compliance.client_repo") as mock_client_repo:
+            mock_repo.find_all.return_value = self._firm_a_tasks()
+            mock_client_repo.find_all.return_value = []
             result = compliance_calendar(current_user=USER_FIRM_A)
         ids = [e["id"] for e in result["data"]["events"]]
         assert "t1" in ids
@@ -103,12 +116,14 @@ class TestComplianceTenantIsolation:
 
     def test_status_filter_still_applies_within_firm(self):
         from routers.compliance import list_compliance_tasks
-        with patch("routers.compliance.MOCK_COMPLIANCE_TASKS", self.TASKS_MIXED):
+        filed_only = [t for t in self._firm_a_tasks() if t["status"] == "filed"]
+        with patch("routers.compliance.compliance_repo") as mock_repo:
+            mock_repo.find_all.return_value = filed_only
             result = list_compliance_tasks(client_id=None, status="filed", current_user=USER_FIRM_A)
-        # Only t3 has status=filed and is accessible (firm_id=None)
         ids = [t["id"] for t in result["data"]["tasks"]]
         assert "t3" in ids
-        assert "t1" not in ids  # pending, filtered out by status
+        assert "t1" not in ids  # pending, filtered out by the repo call
+        mock_repo.find_all.assert_called_once_with(firm_id=FIRM_A, client_id=None, status="filed")
 
 
 # ── Document download URL tenant isolation ────────────────────────────────────
@@ -188,3 +203,50 @@ class TestTaskTenantIsolation:
             with pytest.raises(HTTPException) as exc_info:
                 update_task(task_id="tk2", body=body, current_user=USER_FIRM_A)
         assert exc_info.value.status_code == 404
+
+
+# ── Compliance records tenant isolation ───────────────────────────────────────
+
+class TestComplianceRecordsTenantIsolation:
+    """GET /api/compliance-records and sub-resources must be firm-scoped."""
+
+    RECORDS_MIXED = [
+        {"id": "cr-a1", "firm_id": FIRM_A, "client_id": "c1", "compliance_type": "GST",
+         "status": "In Progress", "due_date": "2026-07-11", "priority": "high",
+         "period_label": "Jun 2026", "period_start": "2026-06-01", "period_end": "2026-06-30",
+         "filed_date": None, "acknowledgement_no": None, "notes": None, "assigned_to": None,
+         "created_at": "2026-06-01", "updated_at": "2026-06-01"},
+        {"id": "cr-b1", "firm_id": FIRM_B, "client_id": "c2", "compliance_type": "GST",
+         "status": "Filed", "due_date": "2026-07-11", "priority": "low",
+         "period_label": "Jun 2026", "period_start": "2026-06-01", "period_end": "2026-06-30",
+         "filed_date": "2026-07-10", "acknowledgement_no": "ARN123", "notes": None, "assigned_to": None,
+         "created_at": "2026-06-01", "updated_at": "2026-07-10"},
+    ]
+
+    def test_list_records_scoped_to_firm(self):
+        from routers.compliance_records import list_compliance_records
+        with patch("routers.compliance_records.compliance_record_service") as mock_svc:
+            mock_svc.list_records.return_value = [self.RECORDS_MIXED[0]]
+            result = list_compliance_records(client_id=None, status=None, compliance_type=None, current_user=USER_FIRM_A)
+        mock_svc.list_records.assert_called_once_with(firm_id=FIRM_A, client_id=None, status=None, compliance_type=None)
+        assert result["data"][0]["id"] == "cr-a1"
+
+    def test_get_cross_firm_record_returns_404(self):
+        from routers.compliance_records import get_compliance_record
+        from core.exceptions import NotFoundError
+        with patch("routers.compliance_records.compliance_record_service") as mock_svc:
+            mock_svc.get_record.side_effect = NotFoundError("ComplianceRecord", "cr-b1")
+            with pytest.raises(HTTPException) as exc_info:
+                get_compliance_record(record_id="cr-b1", current_user=USER_FIRM_A)
+        assert exc_info.value.status_code == 404
+
+    def test_create_record_uses_firm_from_user_not_body(self):
+        from routers.compliance_records import create_compliance_record
+        created = {**self.RECORDS_MIXED[0], "id": "cr-new"}
+        with patch("routers.compliance_records.compliance_record_service") as mock_svc:
+            mock_svc.create_record.return_value = created
+            body = {"client_id": "c1", "compliance_type": "GST", "due_date": "2026-07-11", "firm_id": FIRM_B}
+            create_compliance_record(data=body, current_user=USER_FIRM_A)
+        # firm_id must be USER_FIRM_A["firm_id"], regardless of what was in body
+        call_kwargs = mock_svc.create_record.call_args
+        assert call_kwargs.kwargs["firm_id"] == FIRM_A
