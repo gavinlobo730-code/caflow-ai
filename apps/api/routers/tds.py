@@ -10,8 +10,8 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
 from core.permissions import rbac
-from core.supabase_client import get_supabase
 from domain.tds import TDSComputer, TDSDeducteeRecord
+from repositories.tds_repository import tds_repo
 
 router = APIRouter(prefix="/api/tds", tags=["tds"])
 computer = TDSComputer()
@@ -278,17 +278,9 @@ def list_tds_sections(user: dict = Depends(rbac("tds", "read"))):
 @router.get("/returns/{client_id}")
 def get_tds_returns(client_id: str, user: dict = Depends(rbac("tds", "read"))):
     """Fetch all TDS returns for a client."""
-    sb = get_supabase()
     firm_id = user["firm_id"]
-    result = (
-        sb.table("tds_returns")
-        .select("*")
-        .eq("firm_id", firm_id)
-        .eq("client_id", client_id)
-        .order("financial_year", desc=True)
-        .execute()
-    )
-    return {"success": True, "data": result.data or [], "error": None}
+    data = tds_repo.get_returns(client_id=client_id, firm_id=firm_id)
+    return {"success": True, "data": data, "error": None}
 
 
 @router.get("/deductions/{client_id}")
@@ -299,17 +291,11 @@ def get_tds_deductions(
     user: dict = Depends(rbac("tds", "read")),
 ):
     """Fetch TDS deductions for a client, optionally filtered by FY/quarter."""
-    sb = get_supabase()
     firm_id = user["firm_id"]
-    q = (
-        sb.table("tds_deductions")
-        .select("*")
-        .eq("firm_id", firm_id)
-        .eq("client_id", client_id)
+    data = tds_repo.get_deductions(
+        client_id=client_id,
+        firm_id=firm_id,
+        financial_year=financial_year,
+        quarter=quarter,
     )
-    if financial_year:
-        q = q.eq("financial_year", financial_year)
-    if quarter:
-        q = q.eq("quarter", quarter)
-    result = q.order("transaction_date", desc=True).execute()
-    return {"success": True, "data": result.data or [], "error": None}
+    return {"success": True, "data": data, "error": None}
