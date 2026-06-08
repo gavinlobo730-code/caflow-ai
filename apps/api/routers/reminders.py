@@ -1,14 +1,12 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from core.permissions import rbac
 from typing import Optional
 from models.common import api_response
-from mock_data import MOCK_REMINDERS
-from services.reminder_service import create_reminder, mark_sent, mark_failed
+from repositories.reminders_repository import reminders_repo
+from services.reminder_service import create_reminder, mark_sent
 
 router = APIRouter(prefix="/api/reminders", tags=["reminders"])
-
-REMINDER_STORE = list(MOCK_REMINDERS)
 
 
 class ReminderCreate(BaseModel):
@@ -20,34 +18,38 @@ class ReminderCreate(BaseModel):
 
 
 @router.get("")
-def list_reminders(client_id: Optional[str] = None, status: Optional[str] = None, current_user: dict = Depends(rbac("reminder", "read"))):
-    reminders = REMINDER_STORE
-    if client_id:
-        reminders = [r for r in reminders if r.get("client_id") == client_id]
-    if status:
-        reminders = [r for r in reminders if r["status"] == status]
+def list_reminders(
+    client_id: Optional[str] = None,
+    status: Optional[str] = None,
+    current_user: dict = Depends(rbac("reminder", "read")),
+):
+    firm_id = current_user.get("firm_id")
+    reminders = reminders_repo.find_all(firm_id=firm_id, client_id=client_id, status=status)
     return api_response(True, {"reminders": reminders, "total": len(reminders)})
 
 
 @router.post("")
 def create_reminder_endpoint(body: ReminderCreate, current_user: dict = Depends(rbac("reminder", "write"))):
-    reminder = create_reminder(
+    firm_id = current_user.get("firm_id")
+    reminder_data = create_reminder(
         client_id=body.client_id,
         reminder_type=body.reminder_type,
         scheduled_for=body.scheduled_for,
         task_id=body.task_id,
         message=body.message,
     )
-    REMINDER_STORE.append(reminder)
+    reminder = reminders_repo.create({**reminder_data, "firm_id": firm_id})
     return api_response(True, {"reminder": reminder})
 
 
 @router.patch("/{reminder_id}/sent")
 def mark_reminder_sent(reminder_id: str, current_user: dict = Depends(rbac("reminder", "write"))):
-    reminder = next((r for r in REMINDER_STORE if r["id"] == reminder_id), None)
+    firm_id = current_user.get("firm_id")
+    reminder = reminders_repo.find_by_id(reminder_id)
     if not reminder:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Reminder not found")
-    updated = mark_sent(reminder)
-    reminder.update(updated)
-    return api_response(True, {"reminder": reminder})
+    if reminder.get("firm_id") and reminder["firm_id"] != firm_id:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    updates = mark_sent(reminder)
+    updated = reminders_repo.update(reminder_id, updates)
+    return api_response(True, {"reminder": updated})

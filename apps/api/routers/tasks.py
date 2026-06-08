@@ -3,17 +3,13 @@ from pydantic import BaseModel
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
-from mock_data import MOCK_TASKS, MOCK_CLIENTS, CLIENT_INDEX, TASK_INDEX
-from services.task_service import (
-    is_valid_transition, compute_task_urgency, group_tasks_by_status, compute_team_workload
-)
+from repositories.task_repository import task_repo
+from repositories.client_repository import client_repo
+from services.task_service import is_valid_transition, group_tasks_by_status
 from services.activity_service import log_activity
-from datetime import datetime, timezone, date
-import uuid
+from datetime import datetime, timezone
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
-
-TASK_STORE = list(MOCK_TASKS)  # in-memory store for mock mutations
 
 
 class TaskCreate(BaseModel):
@@ -40,7 +36,8 @@ class TaskUpdate(BaseModel):
 @router.get("/summary/dashboard")
 def dashboard_summary(current_user: dict = Depends(rbac("task", "read"))):
     from domain.task_service import task_domain_service
-    return api_response(True, task_domain_service.get_dashboard_summary())
+    firm_id = current_user.get("firm_id")
+    return api_response(True, task_domain_service.get_dashboard_summary(firm_id=firm_id))
 
 
 @router.get("")
@@ -53,22 +50,17 @@ def list_tasks(
     current_user: dict = Depends(rbac("task", "read")),
 ):
     firm_id = current_user.get("firm_id")
-    tasks = [t for t in TASK_STORE if t.get("firm_id") == firm_id or t.get("firm_id") is None]
-    if client_id:
-        tasks = [t for t in tasks if t["client_id"] == client_id]
-    if status:
-        tasks = [t for t in tasks if t["status"] == status]
-    if assigned_to:
-        tasks = [t for t in tasks if t.get("assigned_to") == assigned_to]
-    if priority:
-        tasks = [t for t in tasks if t["priority"] == priority]
+    tasks = task_repo.find_all(
+        firm_id=firm_id,
+        client_id=client_id,
+        status=status,
+        assigned_to=assigned_to,
+        priority=priority,
+    )
 
-    client_map = {c["id"]: c["client_name"] for c in MOCK_CLIENTS}
-    enriched = [
-        {**t, "client_name": client_map.get(t["client_id"], "Unknown"),
-         "urgency": compute_task_urgency(t.get("due_date"), t["status"])}
-        for t in tasks
-    ]
+    clients = client_repo.find_all(firm_id=firm_id)
+    client_map = {c["id"]: c["client_name"] for c in clients}
+    enriched = [{**t, "client_name": client_map.get(t.get("client_id", ""), "Unknown")} for t in tasks]
 
     if kanban:
         return api_response(True, {"kanban": group_tasks_by_status(enriched), "total": len(enriched)})
@@ -78,18 +70,17 @@ def list_tasks(
 
 @router.post("")
 def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "write"))):
-    if body.client_id not in CLIENT_INDEX:
+    client = client_repo.find_by_id(body.client_id)
+    if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     now = datetime.now(timezone.utc).isoformat()
-    task = {
-        "id": str(uuid.uuid4()),
+    task = task_repo.create({
         **body.model_dump(),
         "firm_id": current_user.get("firm_id"),
         "completed_at": None,
         "created_at": now,
         "updated_at": now,
-    }
-    TASK_STORE.append(task)
+    })
     activity = log_activity(
         action="compliance_task_created",
         description=f"Task created: {task['title']}",
@@ -103,7 +94,7 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
 @router.patch("/{task_id}")
 def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rbac("task", "write"))):
     firm_id = current_user.get("firm_id")
-    task = next((t for t in TASK_STORE if t["id"] == task_id), None)
+    task = task_repo.find_by_id(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     if task.get("firm_id") and task["firm_id"] != firm_id:
@@ -121,5 +112,5 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
             updates["completed_at"] = datetime.now(timezone.utc).isoformat()
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
-    task.update(updates)
-    return api_response(True, {"task": task})
+    updated = task_repo.update(task_id, updates)
+    return api_response(True, {"task": updated})
