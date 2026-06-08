@@ -52,7 +52,8 @@ def list_tasks(
     kanban: bool = False,
     current_user: dict = Depends(rbac("task", "read")),
 ):
-    tasks = list(TASK_STORE)
+    firm_id = current_user.get("firm_id")
+    tasks = [t for t in TASK_STORE if t.get("firm_id") == firm_id or t.get("firm_id") is None]
     if client_id:
         tasks = [t for t in tasks if t["client_id"] == client_id]
     if status:
@@ -83,6 +84,7 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
     task = {
         "id": str(uuid.uuid4()),
         **body.model_dump(),
+        "firm_id": current_user.get("firm_id"),
         "completed_at": None,
         "created_at": now,
         "updated_at": now,
@@ -100,8 +102,11 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
 
 @router.patch("/{task_id}")
 def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rbac("task", "write"))):
+    firm_id = current_user.get("firm_id")
     task = next((t for t in TASK_STORE if t["id"] == task_id), None)
     if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.get("firm_id") and task["firm_id"] != firm_id:
         raise HTTPException(status_code=404, detail="Task not found")
 
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
