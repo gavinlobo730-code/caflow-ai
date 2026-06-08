@@ -5,7 +5,7 @@ Insight categories: compliance, accounting, document, risk, performance
 Note: Uses MOCK_AI_INSIGHTS_V2 — separate from MOCK_AI_INSIGHTS in mock_data.py.
 Serves from /api/ai-insights (new router) — does not conflict with /api/insights.
 """
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from typing import Optional
 import uuid
 
@@ -137,83 +137,69 @@ MOCK_AI_INSIGHTS_V2: list[dict] = [
 _insight_index = {i["id"]: i for i in MOCK_AI_INSIGHTS_V2}
 
 
-def generate_insights_for_client(client_id: str) -> list[dict]:
-    """Analyze client records and generate insights."""
+def generate_insights_for_client(client_id: str, firm_id: Optional[str] = None) -> list[dict]:
+    """Analyze client records and generate insights, persisting via repo."""
+    from repositories.ai_insights_repository import ai_insights_repo
     from domain.compliance_record_service import compliance_record_service
     from domain.document_intelligence_service import MOCK_DOCUMENT_RISKS
-    from mock_data import MOCK_CLIENTS
-    client_map = {c["id"]: c["client_name"] for c in MOCK_CLIENTS}
+    from repositories.client_repository import client_repo
+
+    clients = client_repo.find_all(firm_id=firm_id)
+    client_map = {c["id"]: c["client_name"] for c in clients}
     client_name = client_map.get(client_id, "Unknown Client")
 
     new_insights: list[dict] = []
-    records = compliance_record_service.list_records(client_id=client_id)
+    records = compliance_record_service.list_records(client_id=client_id, firm_id=firm_id)
 
     for record in records:
-        # Overdue compliance
         if record["status"] == "Overdue":
-            iid = f"aiv2-gen-{str(uuid.uuid4())[:8]}"
-            insight = {
-                "id": iid,
+            insight = ai_insights_repo.create({
                 "client_id": client_id,
                 "client_name": client_name,
+                "firm_id": firm_id,
                 "category": "compliance",
                 "severity": "critical",
                 "title": f"Overdue Filing: {record['period_label']}",
                 "description": f"{record['compliance_type']} for {record['period_label']} is overdue. Penalties may apply.",
                 "recommendation": "File immediately to avoid further penalties.",
                 "status": "open",
-                "created_at": today.isoformat(),
-            }
-            MOCK_AI_INSIGHTS_V2.append(insight)
-            _insight_index[iid] = insight
+            })
             new_insights.append(insight)
 
-        # Due within 7 days
-        from datetime import datetime
         try:
             due = datetime.fromisoformat(record["due_date"]).date()
             days_left = (due - today).days
             if 0 <= days_left <= 7 and record["status"] not in ("Filed",):
-                iid = f"aiv2-gen-{str(uuid.uuid4())[:8]}"
-                insight = {
-                    "id": iid,
+                insight = ai_insights_repo.create({
                     "client_id": client_id,
                     "client_name": client_name,
+                    "firm_id": firm_id,
                     "category": "compliance",
                     "severity": "high",
                     "title": f"Deadline Approaching: {record['period_label']}",
                     "description": f"{record['compliance_type']} due in {days_left} day(s). Current status: {record['status']}.",
                     "recommendation": "Expedite filing process to avoid late fees.",
                     "status": "open",
-                    "created_at": today.isoformat(),
-                }
-                MOCK_AI_INSIGHTS_V2.append(insight)
-                _insight_index[iid] = insight
+                })
                 new_insights.append(insight)
         except Exception:
             pass
 
-    # Health score check
-    health = compliance_record_service.get_client_health_score(client_id)
+    health = compliance_record_service.get_client_health_score(client_id, firm_id=firm_id)
     if health["health_score"] < 50:
-        iid = f"aiv2-gen-{str(uuid.uuid4())[:8]}"
-        insight = {
-            "id": iid,
+        insight = ai_insights_repo.create({
             "client_id": client_id,
             "client_name": client_name,
+            "firm_id": firm_id,
             "category": "performance",
             "severity": "high",
             "title": "Low Health Score — Compliance Intervention Needed",
             "description": f"Health score {health['health_score']}/100. Multiple overdue items reducing score.",
             "recommendation": "Review and resolve overdue compliance records and pending tasks.",
             "status": "open",
-            "created_at": today.isoformat(),
-        }
-        MOCK_AI_INSIGHTS_V2.append(insight)
-        _insight_index[iid] = insight
+        })
         new_insights.append(insight)
 
-    # Old open document risks
     old_risks = [
         r for r in MOCK_DOCUMENT_RISKS
         if r["client_id"] == client_id
@@ -221,65 +207,48 @@ def generate_insights_for_client(client_id: str) -> list[dict]:
         and (today - date.fromisoformat(r["created_at"][:10])).days > 7
     ]
     if old_risks:
-        iid = f"aiv2-gen-{str(uuid.uuid4())[:8]}"
-        insight = {
-            "id": iid,
+        insight = ai_insights_repo.create({
             "client_id": client_id,
             "client_name": client_name,
+            "firm_id": firm_id,
             "category": "risk",
             "severity": "medium",
             "title": f"{len(old_risks)} Unresolved Document Risk(s) Over 7 Days",
             "description": f"{len(old_risks)} document risk(s) have been open for more than 7 days without resolution.",
             "recommendation": "Review and resolve or acknowledge outstanding document risks.",
             "status": "open",
-            "created_at": today.isoformat(),
-        }
-        MOCK_AI_INSIGHTS_V2.append(insight)
-        _insight_index[iid] = insight
+        })
         new_insights.append(insight)
 
     return new_insights
 
 
 def get_all_insights(
+    firm_id: Optional[str] = None,
     client_id: Optional[str] = None,
     status: Optional[str] = None,
     category: Optional[str] = None,
 ) -> list[dict]:
-    """Return insights with optional filters."""
-    insights = list(MOCK_AI_INSIGHTS_V2)
-    if client_id:
-        insights = [i for i in insights if i.get("client_id") == client_id]
-    if status:
-        insights = [i for i in insights if i["status"] == status]
-    if category:
-        insights = [i for i in insights if i["category"] == category]
-    return sorted(insights, key=lambda i: i["created_at"], reverse=True)
+    from repositories.ai_insights_repository import ai_insights_repo
+    return ai_insights_repo.find_all(firm_id=firm_id, client_id=client_id, status=status, category=category)
 
 
-def acknowledge_insight(insight_id: str) -> dict | None:
-    """Mark insight as acknowledged."""
-    insight = _insight_index.get(insight_id)
-    if insight:
-        insight["status"] = "acknowledged"
-    return insight
+def acknowledge_insight(insight_id: str, firm_id: Optional[str] = None) -> dict | None:
+    from repositories.ai_insights_repository import ai_insights_repo
+    return ai_insights_repo.update_status(insight_id, "acknowledged", firm_id=firm_id)
 
 
-def dismiss_insight(insight_id: str) -> dict | None:
-    """Mark insight as dismissed."""
-    insight = _insight_index.get(insight_id)
-    if insight:
-        insight["status"] = "dismissed"
-    return insight
+def dismiss_insight(insight_id: str, firm_id: Optional[str] = None) -> dict | None:
+    from repositories.ai_insights_repository import ai_insights_repo
+    return ai_insights_repo.update_status(insight_id, "dismissed", firm_id=firm_id)
 
 
-def get_insight_feed(limit: int = 20) -> list[dict]:
-    """Recent insights sorted by severity + recency."""
+def get_insight_feed(firm_id: Optional[str] = None, limit: int = 20) -> list[dict]:
+    from repositories.ai_insights_repository import ai_insights_repo
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
-    open_insights = [i for i in MOCK_AI_INSIGHTS_V2 if i["status"] == "open"]
+    open_insights = ai_insights_repo.find_all(firm_id=firm_id, status="open")
     sorted_insights = sorted(
         open_insights,
         key=lambda i: (severity_order.get(i["severity"], 5), i["created_at"]),
-        reverse=False,
     )
     return sorted_insights[:limit]

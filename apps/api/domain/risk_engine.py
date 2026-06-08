@@ -155,26 +155,94 @@ MOCK_RISKS: list[dict] = [
 ]
 
 
+def _derive_compliance_risks(firm_id: Optional[str], client_id: Optional[str]) -> list[dict]:
+    """Derive risks from real compliance tasks and records."""
+    import os
+    if os.environ.get("SUPABASE_URL"):
+        from repositories.compliance_repository import compliance_repo
+        from repositories.compliance_records_repository import compliance_records_repo
+        tasks = compliance_repo.find_all(firm_id=firm_id, client_id=client_id)
+        records = compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)
+    else:
+        from mock_data import MOCK_COMPLIANCE_TASKS
+        tasks = MOCK_COMPLIANCE_TASKS
+        if client_id:
+            tasks = [t for t in tasks if t.get("client_id") == client_id]
+        from mock_data import MOCK_COMPLIANCE_RECORDS
+        records = MOCK_COMPLIANCE_RECORDS
+        if client_id:
+            records = [r for r in records if r.get("client_id") == client_id]
+
+    derived: list[dict] = []
+    for t in tasks:
+        if t.get("status") == "overdue":
+            derived.append({
+                "id": f"risk-task-{t['id']}",
+                "source": "compliance",
+                "client_id": t["client_id"],
+                "severity": "critical",
+                "category": "OTHER",
+                "title": f"{t.get('compliance_type', 'Filing')} Overdue",
+                "description": f"{t.get('compliance_type')} overdue. Penalties may apply under CGST Act Section 47.",
+                "resolution_status": "open",
+                "created_at": t.get("due_date", today.isoformat()),
+            })
+
+    for r in records:
+        if r.get("status") == "Overdue":
+            derived.append({
+                "id": f"risk-rec-{r['id']}",
+                "source": "compliance",
+                "client_id": r["client_id"],
+                "severity": "critical",
+                "category": "OTHER",
+                "title": f"{r.get('compliance_type', 'Compliance')} Record Overdue",
+                "description": f"Compliance record overdue for period {r.get('period_label', '')}.",
+                "resolution_status": "open",
+                "created_at": r.get("due_date", today.isoformat()),
+            })
+
+    return derived
+
+
 def get_all_risks(
     firm_id: Optional[str] = None,
     client_id: Optional[str] = None,
     severity: Optional[str] = None,
     status: str = "open",
 ) -> list[dict]:
-    """Aggregate from document risks + derived from compliance records."""
-    from domain.document_intelligence_service import MOCK_DOCUMENT_RISKS
-    from mock_data import MOCK_CLIENTS
-    client_map = {c["id"]: c["client_name"] for c in MOCK_CLIENTS}
+    """Aggregate from document risks + derived from compliance data."""
+    import os
+    from repositories.client_repository import client_repo
+    clients = client_repo.find_all(firm_id=firm_id)
+    client_map = {c["id"]: c["client_name"] for c in clients}
 
-    # Combine engine risks + document risks (deduplicate by id)
-    combined: dict[str, dict] = {r["id"]: r for r in MOCK_RISKS}
-    for dr in MOCK_DOCUMENT_RISKS:
-        if dr["id"] not in combined:
-            combined[dr["id"]] = {
-                **dr,
-                "source": "document",
-                "client_name": client_map.get(dr["client_id"], "Unknown"),
-            }
+    # Start with static engine risks (mock or real document risks)
+    if os.environ.get("SUPABASE_URL"):
+        # In real mode: query document_risks table
+        db = __import__("core.supabase_client", fromlist=["get_supabase"]).get_supabase()
+        q = db.table("document_risks").select("*")
+        if firm_id:
+            q = q.eq("firm_id", firm_id)
+        if client_id:
+            q = q.eq("client_id", client_id)
+        result = q.execute()
+        doc_risks = result.data or []
+        for r in doc_risks:
+            r["source"] = "document"
+        compliance_risks = _derive_compliance_risks(firm_id, client_id)
+        combined: dict[str, dict] = {}
+        for r in doc_risks + compliance_risks:
+            combined[r["id"]] = r
+    else:
+        from domain.document_intelligence_service import MOCK_DOCUMENT_RISKS
+        combined: dict[str, dict] = {r["id"]: r for r in MOCK_RISKS}
+        for dr in MOCK_DOCUMENT_RISKS:
+            if dr["id"] not in combined:
+                combined[dr["id"]] = {**dr, "source": "document"}
+        for cr in _derive_compliance_risks(firm_id, client_id):
+            if cr["id"] not in combined:
+                combined[cr["id"]] = cr
 
     risks = list(combined.values())
 
@@ -183,9 +251,8 @@ def get_all_risks(
     if severity:
         risks = [r for r in risks if r["severity"] == severity]
     if status:
-        risks = [r for r in risks if r["resolution_status"] == status]
+        risks = [r for r in risks if r.get("resolution_status") == status]
 
-    # Enrich client names
     for r in risks:
         if "client_name" not in r:
             r["client_name"] = client_map.get(r["client_id"], "Unknown")
@@ -193,9 +260,9 @@ def get_all_risks(
     return sorted(risks, key=lambda r: _SEVERITY_SCORE.get(r["severity"], 0), reverse=True)
 
 
-def get_risk_dashboard_stats() -> dict:
+def get_risk_dashboard_stats(firm_id: Optional[str] = None) -> dict:
     """Return counts by severity."""
-    all_risks = get_all_risks(status="open")
+    all_risks = get_all_risks(firm_id=firm_id, status="open")
     resolved = len([r for r in MOCK_RISKS if r["resolution_status"] == "resolved"])
     return {
         "critical": len([r for r in all_risks if r["severity"] == "critical"]),
@@ -208,9 +275,9 @@ def get_risk_dashboard_stats() -> dict:
     }
 
 
-def get_client_risk_summary(client_id: str) -> dict:
+def get_client_risk_summary(client_id: str, firm_id: Optional[str] = None) -> dict:
     """Return risk_score, risks_by_severity, top_risks for a client."""
-    client_risks = get_all_risks(client_id=client_id, status="open")
+    client_risks = get_all_risks(firm_id=firm_id, client_id=client_id, status="open")
     risks_by_severity = {
         "critical": len([r for r in client_risks if r["severity"] == "critical"]),
         "high": len([r for r in client_risks if r["severity"] == "high"]),
@@ -228,29 +295,44 @@ def get_client_risk_summary(client_id: str) -> dict:
     }
 
 
-def compute_firm_risk_score() -> int:
+def compute_firm_risk_score(firm_id: Optional[str] = None) -> int:
     """Aggregate 0-100 score for the firm."""
-    open_risks = get_all_risks(status="open")
+    open_risks = get_all_risks(firm_id=firm_id, status="open")
     if not open_risks:
         return 0
     total_weight = sum(_SEVERITY_SCORE.get(r["severity"], 0) for r in open_risks)
     return min(100, total_weight // max(len(open_risks), 1))
 
 
-def update_risk(risk_id: str, resolution_status: str) -> dict | None:
+def update_risk(risk_id: str, resolution_status: str, firm_id: Optional[str] = None) -> dict | None:
     """Update a risk's resolution status."""
+    import os
     from datetime import datetime
+    now = datetime.utcnow().isoformat()
+
+    if os.environ.get("SUPABASE_URL"):
+        # Document risks are persisted; compliance-derived risks are not
+        db = __import__("core.supabase_client", fromlist=["get_supabase"]).get_supabase()
+        update = {"resolution_status": resolution_status}
+        if resolution_status == "resolved":
+            update["resolved_at"] = now
+        q = db.table("document_risks").update(update).eq("id", risk_id)
+        if firm_id:
+            q = q.eq("firm_id", firm_id)
+        result = q.execute()
+        return result.data[0] if result.data else None
+
     from domain.document_intelligence_service import MOCK_DOCUMENT_RISKS
     for risk in MOCK_RISKS:
         if risk["id"] == risk_id:
             risk["resolution_status"] = resolution_status
             if resolution_status == "resolved":
-                risk["resolved_at"] = datetime.utcnow().isoformat()
+                risk["resolved_at"] = now
             return risk
     for risk in MOCK_DOCUMENT_RISKS:
         if risk["id"] == risk_id:
             risk["resolution_status"] = resolution_status
             if resolution_status == "resolved":
-                risk["resolved_at"] = datetime.utcnow().isoformat()
+                risk["resolved_at"] = now
             return risk
     return None

@@ -7,6 +7,7 @@ from datetime import date, timedelta, datetime
 from typing import Optional
 import uuid
 
+
 today = date.today()
 
 MOCK_AUTOMATION_RULES: list[dict] = [
@@ -188,43 +189,36 @@ MOCK_AUTOMATION_EXECUTIONS: list[dict] = [
 _rule_index = {r["id"]: r for r in MOCK_AUTOMATION_RULES}
 
 
-def evaluate_rules(trigger_type: str, trigger_data: dict) -> list[dict]:
-    """Find matching enabled rules, execute actions, log executions."""
-    matching = [
-        r for r in MOCK_AUTOMATION_RULES
-        if r["is_enabled"] and r["trigger_type"] == trigger_type
-    ]
+def evaluate_rules(trigger_type: str, trigger_data: dict, firm_id: Optional[str] = None) -> list[dict]:
+    """Find matching enabled rules, execute actions, persist executions."""
+    from repositories.automation_repository import automation_repo
+    all_rules = automation_repo.get_rules(firm_id=firm_id)
+    matching = [r for r in all_rules if r["is_enabled"] and r["trigger_type"] == trigger_type]
     executed: list[dict] = []
     for rule in matching:
         cfg = rule["trigger_config"]
-        # Check severity filter
         if "severity" in cfg and trigger_data.get("severity") != cfg["severity"]:
             continue
-        # Check category filter
         if "category" in cfg and trigger_data.get("category") != cfg["category"]:
             continue
-        # Check days filter
         if "days_remaining" in cfg:
-            days = trigger_data.get("days_remaining", 999)
-            if days > cfg["days_remaining"]:
+            if trigger_data.get("days_remaining", 999) > cfg["days_remaining"]:
                 continue
         if "days" in cfg:
-            days = trigger_data.get("days_remaining", 999)
-            if days > cfg["days"]:
+            if trigger_data.get("days_remaining", 999) > cfg["days"]:
                 continue
 
-        exec_id = f"exec-{str(uuid.uuid4())[:8]}"
         execution = {
-            "id": exec_id,
+            "id": f"exec-{str(uuid.uuid4())[:8]}",
             "rule_id": rule["id"],
-            "rule_name": rule["name"],
+            "rule_name": rule.get("name", ""),
             "trigger_data": trigger_data,
             "status": "success",
             "result_data": {"action": rule["action_type"], "config": rule["action_config"]},
             "error_message": None,
             "executed_at": datetime.utcnow().isoformat(),
         }
-        MOCK_AUTOMATION_EXECUTIONS.append(execution)
+        automation_repo.log_execution(execution)
         executed.append(execution)
     return executed
 

@@ -89,6 +89,59 @@ def _build_firm_context(firm_id: str) -> str:
     return "\n".join(lines)
 
 
+@router.get("/firm-context")
+def get_firm_context(current_user: dict = Depends(rbac("ai", "copilot"))):
+    """Return structured firm-level context for the AI Copilot panel."""
+    firm_id = current_user.get("firm_id")
+
+    try:
+        from domain.task_service import TaskDomainService
+        dashboard = TaskDomainService().get_dashboard_summary()
+    except Exception:
+        dashboard = {}
+
+    try:
+        from domain.compliance_record_service import compliance_record_service
+        firm_summary = compliance_record_service.get_firm_summary(firm_id=firm_id)
+    except Exception:
+        firm_summary = {}
+
+    try:
+        from domain.risk_engine import get_risk_dashboard_stats
+        risk_stats = get_risk_dashboard_stats(firm_id=firm_id)
+    except Exception:
+        risk_stats = {}
+
+    try:
+        from repositories.client_repository import client_repo
+        clients = client_repo.find_all(firm_id=firm_id)
+        client_list = [{"id": c["id"], "name": c["client_name"], "status": c.get("status")} for c in clients]
+    except Exception:
+        client_list = []
+
+    return api_response(True, {
+        "active_clients": dashboard.get("active_clients", len(client_list)),
+        "clients": client_list,
+        "tasks": {
+            "overdue": dashboard.get("overdue_tasks", 0),
+            "due_today": dashboard.get("tasks_due_today", 0),
+            "due_this_week": dashboard.get("tasks_due_week", 0),
+        },
+        "compliance": {
+            "overdue": firm_summary.get("overdue", 0),
+            "due_this_week": dashboard.get("compliance_due_week", 0),
+            "ready_to_file": firm_summary.get("ready_to_file", 0),
+            "filed": firm_summary.get("filed", 0),
+        },
+        "risks": {
+            "critical": risk_stats.get("critical", 0),
+            "high": risk_stats.get("high", 0),
+            "medium": risk_stats.get("medium", 0),
+            "total_open": risk_stats.get("total_open", 0),
+        },
+    })
+
+
 @router.post("/chat")
 async def copilot_chat(body: CopilotRequest, current_user: dict = Depends(rbac("ai", "copilot"))):
     api_key = os.getenv("GROQ_API_KEY")
