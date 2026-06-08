@@ -18,6 +18,7 @@ class EntityType(str, Enum):
 class ClientStatus(str, Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
+    ARCHIVED = "archived"
 
 
 class GSTFilingFrequency(str, Enum):
@@ -59,6 +60,7 @@ class ClientCreate(BaseModel):
     state_code: Optional[str] = None
     gst_filing_frequency: Optional[GSTFilingFrequency] = GSTFilingFrequency.MONTHLY
     status: ClientStatus = ClientStatus.ACTIVE
+    is_test: bool = False
     notes: Optional[str] = None
 
     @field_validator("pan")
@@ -86,4 +88,5 @@ class ClientUpdate(BaseModel):
     pincode: Optional[str] = None
     gst_filing_frequency: Optional[GSTFilingFrequency] = None
     status: Optional[ClientStatus] = None
+    is_test: Optional[bool] = None
     notes: Optional[str] = None
