@@ -149,3 +149,42 @@ class TestDocumentDownloadTenantIsolation:
         with pytest.raises(HTTPException) as exc_info:
             self._call("d4", USER_FIRM_A, doc)
         assert exc_info.value.status_code == 404
+
+
+# ── Task tenant isolation ─────────────────────────────────────────────────────
+
+class TestTaskTenantIsolation:
+    """GET /api/tasks and PATCH /api/tasks/{id} must be scoped to the requesting firm."""
+
+    TASKS_MIXED = [
+        {"id": "tk1", "client_id": "c1", "firm_id": FIRM_A, "title": "File GSTR-1", "status": "todo", "priority": "high"},
+        {"id": "tk2", "client_id": "c2", "firm_id": FIRM_B, "title": "Firm B task",  "status": "todo", "priority": "low"},
+        {"id": "tk3", "client_id": "c3", "firm_id": None,   "title": "Legacy task",  "status": "todo", "priority": "medium"},
+    ]
+
+    def test_list_tasks_only_returns_own_firm_and_legacy(self):
+        from routers.tasks import list_tasks
+        with patch("routers.tasks.TASK_STORE", self.TASKS_MIXED):
+            result = list_tasks(client_id=None, status=None, assigned_to=None,
+                                priority=None, kanban=False, current_user=USER_FIRM_A)
+        ids = [t["id"] for t in result["data"]["tasks"]]
+        assert "tk1" in ids      # own firm ✓
+        assert "tk3" in ids      # legacy (no firm_id) ✓
+        assert "tk2" not in ids  # Firm B — excluded ✗
+
+    def test_list_tasks_firm_b_excludes_firm_a(self):
+        from routers.tasks import list_tasks
+        with patch("routers.tasks.TASK_STORE", self.TASKS_MIXED):
+            result = list_tasks(client_id=None, status=None, assigned_to=None,
+                                priority=None, kanban=False, current_user=USER_FIRM_B)
+        ids = [t["id"] for t in result["data"]["tasks"]]
+        assert "tk2" in ids
+        assert "tk1" not in ids
+
+    def test_update_cross_firm_task_returns_404(self):
+        from routers.tasks import update_task, TaskUpdate
+        with patch("routers.tasks.TASK_STORE", list(self.TASKS_MIXED)):
+            body = TaskUpdate(status="in_progress")
+            with pytest.raises(HTTPException) as exc_info:
+                update_task(task_id="tk2", body=body, current_user=USER_FIRM_A)
+        assert exc_info.value.status_code == 404
