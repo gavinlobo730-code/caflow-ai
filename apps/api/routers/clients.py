@@ -3,8 +3,12 @@ from models.client import ClientCreate, ClientUpdate
 from models.common import api_response
 from core.permissions import rbac
 from repositories.client_repository import client_repo
+from repositories.compliance_repository import compliance_repo
 from repositories.compliance_records_repository import compliance_records_repo
-from mock_data import MOCK_COMPLIANCE_TASKS, MOCK_DOCUMENTS, MOCK_ACTIVITY_LOGS, MOCK_AI_INSIGHTS, MOCK_TASKS
+from repositories.document_repository import document_repo
+from repositories.task_repository import task_repo
+from repositories.ai_insights_repository import ai_insights_repo
+from mock_data import MOCK_ACTIVITY_LOGS
 from datetime import date
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
@@ -18,17 +22,15 @@ def _assert_firm(client: dict, firm_id: str | None) -> None:
 
 def _check_delete_blockers(client_id: str, firm_id: str) -> list[str]:
     """
-    Return a list of human-readable blockers that prevent soft-deletion.
-    Deletion is safe only when all compliance obligations are filed and
-    no active compliance records exist.
+    Return human-readable blockers that prevent soft-deletion.
+    Deletion is safe only when all compliance obligations are filed.
+    IT Act Section 139 / CGST Act Section 37 — obligations persist until filed.
     """
     blockers: list[str] = []
 
-    # Open compliance tasks (mock path — real path goes via repo)
     open_tasks = [
-        t for t in MOCK_COMPLIANCE_TASKS
-        if t["client_id"] == client_id and t.get("status") not in ("filed", "not_applicable")
-        and (t.get("firm_id") == firm_id or t.get("firm_id") is None)
+        t for t in compliance_repo.find_all(firm_id=firm_id, client_id=client_id)
+        if t.get("status") not in ("filed", "not_applicable")
     ]
     if open_tasks:
         blockers.append(
@@ -37,7 +39,6 @@ def _check_delete_blockers(client_id: str, firm_id: str) -> list[str]:
             + (" and more" if len(open_tasks) > 3 else "")
         )
 
-    # Active compliance records
     active_records = [
         r for r in compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)
         if r.get("status") not in ("Filed",)
@@ -67,21 +68,27 @@ def list_clients(
 
 @router.get("/{client_id}")
 def get_client_workspace(client_id: str = Path(...), current_user: dict = Depends(rbac("client", "read"))):
+    firm_id = current_user.get("firm_id")
     client = client_repo.find_by_id(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-    _assert_firm(client, current_user.get("firm_id"))
+    _assert_firm(client, firm_id)
 
-    tasks = [t for t in MOCK_COMPLIANCE_TASKS if t["client_id"] == client_id]
-    docs = [d for d in MOCK_DOCUMENTS if d["client_id"] == client_id]
-    activity = [a for a in MOCK_ACTIVITY_LOGS if a["client_id"] == client_id]
-    insights = [i for i in MOCK_AI_INSIGHTS if i["client_id"] == client_id]
-    client_tasks = [t for t in MOCK_TASKS if t["client_id"] == client_id and t["status"] != "completed"]
-    completed_tasks = [t for t in MOCK_TASKS if t["client_id"] == client_id and t["status"] == "completed"]
+    tasks = compliance_repo.find_all(firm_id=firm_id, client_id=client_id)
+    docs = document_repo.find_all(firm_id=firm_id, client_id=client_id)
+    insights = ai_insights_repo.find_all(firm_id=firm_id, client_id=client_id)
+    client_tasks = task_repo.find_all(firm_id=firm_id, client_id=client_id)
+
+    # activity_logs: no dedicated repo yet — filter mock by client_id as read-only fallback
+    activity = [a for a in MOCK_ACTIVITY_LOGS if a.get("client_id") == client_id]
+
+    open_tasks = [t for t in client_tasks if t.get("status") != "completed"]
+    completed_tasks = [t for t in client_tasks if t.get("status") == "completed"]
+    today_iso = date.today().isoformat()
 
     upcoming = sorted(
-        [t for t in tasks if t["status"] in ("pending", "overdue")],
-        key=lambda t: t["due_date"]
+        [t for t in tasks if t.get("status") in ("pending", "overdue")],
+        key=lambda t: t.get("due_date", "")
     )[:5]
 
     return api_response(True, {
@@ -89,23 +96,23 @@ def get_client_workspace(client_id: str = Path(...), current_user: dict = Depend
         "compliance_tasks": tasks,
         "upcoming_deadlines": upcoming,
         "documents": docs,
-        "recent_activity": sorted(activity, key=lambda a: a["created_at"], reverse=True)[:10],
-        "ai_insights": [i for i in insights if i["status"] in ("open", "acknowledged")],
-        "open_tasks": client_tasks,
+        "recent_activity": sorted(activity, key=lambda a: a.get("created_at", ""), reverse=True)[:10],
+        "ai_insights": [i for i in insights if i.get("status") in ("open", "acknowledged")],
+        "open_tasks": open_tasks,
         "completed_tasks": completed_tasks[:5],
         "task_summary": {
-            "open": len(client_tasks),
+            "open": len(open_tasks),
             "completed": len(completed_tasks),
-            "overdue": len([t for t in client_tasks if t.get("due_date") and t["due_date"] < date.today().isoformat()]),
-            "review_required": len([t for t in client_tasks if t["status"] == "review_required"]),
+            "overdue": len([t for t in open_tasks if t.get("due_date") and t["due_date"] < today_iso]),
+            "review_required": len([t for t in open_tasks if t.get("status") == "review_required"]),
         },
         "summary": {
             "total_tasks": len(tasks),
-            "overdue_count": sum(1 for t in tasks if t["status"] == "overdue"),
-            "pending_count": sum(1 for t in tasks if t["status"] == "pending"),
-            "filed_count": sum(1 for t in tasks if t["status"] == "filed"),
+            "overdue_count": sum(1 for t in tasks if t.get("status") == "overdue"),
+            "pending_count": sum(1 for t in tasks if t.get("status") == "pending"),
+            "filed_count": sum(1 for t in tasks if t.get("status") == "filed"),
             "document_count": len(docs),
-            "open_insights": sum(1 for i in insights if i["status"] == "open"),
+            "open_insights": sum(1 for i in insights if i.get("status") == "open"),
         }
     })
 
@@ -125,7 +132,6 @@ def update_client(client_id: str, body: ClientUpdate, current_user: dict = Depen
     if not existing:
         raise HTTPException(status_code=404, detail="Client not found")
     _assert_firm(existing, firm_id)
-    # archived → active transition must use the restore endpoint
     if body.status and body.status.value == "archived":
         raise HTTPException(
             status_code=400,
@@ -138,10 +144,6 @@ def update_client(client_id: str, body: ClientUpdate, current_user: dict = Depen
 
 @router.post("/{client_id}/archive")
 def archive_client(client_id: str, current_user: dict = Depends(rbac("client", "write"))):
-    """
-    Archive a client. Archived clients are hidden from normal listings but
-    all historical data is preserved. Can be reversed with /restore.
-    """
     firm_id = current_user.get("firm_id")
     client = client_repo.find_by_id(client_id)
     if not client:
@@ -155,11 +157,7 @@ def archive_client(client_id: str, current_user: dict = Depends(rbac("client", "
 
 @router.post("/{client_id}/restore")
 def restore_client(client_id: str, current_user: dict = Depends(rbac("client", "write"))):
-    """
-    Restore an archived client back to active status.
-    """
     firm_id = current_user.get("firm_id")
-    # find_by_id skips deleted rows — archived rows are visible
     client = client_repo.find_by_id(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -173,8 +171,8 @@ def restore_client(client_id: str, current_user: dict = Depends(rbac("client", "
 @router.delete("/{client_id}")
 def delete_client(client_id: str, current_user: dict = Depends(rbac("client", "delete"))):
     """
-    Soft-delete a client (sets deleted_at). This is irreversible without DB admin access.
-    Requires Partner role. Blocked when open compliance obligations or active records exist.
+    Soft-delete a client (sets deleted_at). Blocked when open compliance
+    obligations or active records exist.
     Historical data is never removed — only the client row is hidden.
     """
     firm_id = current_user.get("firm_id")
