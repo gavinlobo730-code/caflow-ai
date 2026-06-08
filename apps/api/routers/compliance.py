@@ -13,7 +13,9 @@ router = APIRouter(prefix="/api/compliance", tags=["compliance"])
 
 @router.get("/tasks")
 def list_compliance_tasks(client_id: str | None = None, status: str | None = None, current_user: dict = Depends(rbac("compliance_record", "read"))):
-    tasks = MOCK_COMPLIANCE_TASKS
+    firm_id = current_user.get("firm_id")
+    # Scope to current firm — never expose cross-firm compliance data
+    tasks = [t for t in MOCK_COMPLIANCE_TASKS if t.get("firm_id") == firm_id or t.get("firm_id") is None]
     if client_id:
         tasks = [t for t in tasks if t["client_id"] == client_id]
     if status:
@@ -23,7 +25,10 @@ def list_compliance_tasks(client_id: str | None = None, status: str | None = Non
 
 @router.get("/calendar")
 def compliance_calendar(current_user: dict = Depends(rbac("compliance_record", "read"))):
-    tasks = sorted(MOCK_COMPLIANCE_TASKS, key=lambda t: t["due_date"])
+    firm_id = current_user.get("firm_id")
+    # Scope to current firm — never expose cross-firm compliance data
+    firm_tasks = [t for t in MOCK_COMPLIANCE_TASKS if t.get("firm_id") == firm_id or t.get("firm_id") is None]
+    tasks = sorted(firm_tasks, key=lambda t: t["due_date"])
     client_map = {c["id"]: c["client_name"] for c in MOCK_CLIENTS}
     events = [
         {**t, "client_name": client_map.get(t["client_id"], "Unknown")}
