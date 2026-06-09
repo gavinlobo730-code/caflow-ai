@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   Users, Clock, AlertTriangle, FileCheck,
-  BookOpen, Receipt, Bot, Calendar, TrendingUp,
-  ArrowUpRight, Sparkles, CheckCircle2, Circle,
+  Calendar, Sparkles, CheckCircle2, Circle,
   ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
@@ -97,12 +96,10 @@ function getGreeting(email: string): string {
   return `${greeting}, ${name}`;
 }
 
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn("skeleton-shimmer rounded-md", className)} />;
 }
 
-// ─── Deadline badge ───────────────────────────────────────────────────────────
 function DeadlineBadge({ daysLeft }: { daysLeft: number }) {
   if (daysLeft === 0) return (
     <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold ring-1 ring-red-200">Today</span>
@@ -121,7 +118,6 @@ function DeadlineBadge({ daysLeft }: { daysLeft: number }) {
   );
 }
 
-// ─── Status badge ─────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof Circle }> = {
   completed:       { label: "Done",        color: "text-emerald-600 bg-emerald-50", icon: CheckCircle2 },
   in_progress:     { label: "In Progress", color: "text-blue-600 bg-blue-50",       icon: Circle },
@@ -137,42 +133,6 @@ function StatusBadge({ status }: { status: string | null }) {
     <span className={cn("text-[11px] px-2 py-0.5 rounded-full font-medium", cfg.color)}>
       {cfg.label}
     </span>
-  );
-}
-
-// ─── KPI Card ─────────────────────────────────────────────────────────────────
-interface KpiCardProps {
-  label: string;
-  value: number;
-  icon: typeof Users;
-  gradient: string;
-  href: string;
-  loading: boolean;
-  alert?: boolean;
-}
-
-function KpiCard({ label, value, icon: Icon, gradient, href, loading, alert }: KpiCardProps) {
-  return (
-    <Link href={href} className="block">
-      <div className={cn(
-        "relative bg-white rounded-2xl p-5 shadow-sm border border-white/80 card-hover overflow-hidden",
-        alert && value > 0 ? "ring-1 ring-red-200" : ""
-      )}>
-        <div className={cn("absolute -top-4 -right-4 w-20 h-20 rounded-full opacity-10", gradient)} />
-        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center mb-4 shadow-sm", gradient)}>
-          <Icon size={18} className="text-white" />
-        </div>
-        {loading ? (
-          <Skeleton className="h-9 w-14 mb-1" />
-        ) : (
-          <p className={cn("text-3xl font-bold tracking-tight", alert && value > 0 ? "text-red-600" : "text-gray-900")}>
-            {value.toLocaleString()}
-          </p>
-        )}
-        <p className="text-xs text-gray-500 mt-1 font-medium leading-tight">{label}</p>
-        <ArrowUpRight size={14} className="absolute top-4 right-4 text-gray-300" />
-      </div>
-    </Link>
   );
 }
 
@@ -250,27 +210,13 @@ export default function DashboardContent() {
   const greeting = user?.email ? getGreeting(user.email) : "Good day";
   const dateLabel = today.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
-  const KPI_CARDS: KpiCardProps[] = [
-    { label: "Total Clients",         value: kpis?.totalClients ?? 0,         icon: Users,         gradient: "bg-gradient-to-br from-indigo-500 to-indigo-600",  href: "/clients",    loading, alert: false },
-    { label: "Pending Tasks",         value: kpis?.pendingTasks ?? 0,         icon: Clock,         gradient: "bg-gradient-to-br from-amber-400 to-orange-500",    href: "/tasks",      loading, alert: false },
-    { label: "Filings Due This Month",value: kpis?.filingsDueThisMonth ?? 0,  icon: FileCheck,     gradient: "bg-gradient-to-br from-violet-500 to-purple-600",   href: "/compliance", loading, alert: false },
-    { label: "Overdue Filings",       value: kpis?.overdueFilings ?? 0,       icon: AlertTriangle, gradient: "bg-gradient-to-br from-red-500 to-rose-600",        href: "/compliance", loading, alert: true  },
-  ];
-
-  const QUICK_ACTIONS = [
-    { label: "New Client",     href: "/clients",      gradient: "from-indigo-500 to-indigo-600",  icon: Users },
-    { label: "Journal Entry",  href: "/accounting/journal", gradient: "from-emerald-500 to-teal-600", icon: BookOpen },
-    { label: "GST Module",     href: "/gst",          gradient: "from-orange-500 to-amber-500",   icon: Receipt },
-    { label: "AI Assistant",   href: "/ai-assistant", gradient: "from-violet-500 to-purple-600",  icon: Sparkles },
-  ];
-
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-7">
+    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{greeting} 👋</h1>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{greeting}</h1>
           <p className="text-sm text-gray-500 mt-1">{dateLabel}</p>
         </div>
         <Link href="/ai-assistant">
@@ -281,93 +227,100 @@ export default function DashboardContent() {
         </Link>
       </div>
 
-      {/* ── KPI Cards ──────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        {KPI_CARDS.map((card) => <KpiCard key={card.label} {...card} />)}
+      {/* ── Compact Stats Strip ─────────────────────────────────────────── */}
+      <div className="flex items-center gap-6 py-3 px-5 bg-white rounded-xl border border-gray-100 shadow-sm flex-wrap">
+        <Link href="/clients" className="flex items-center gap-2.5 group">
+          <div className="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center">
+            <Users size={13} className="text-indigo-600" />
+          </div>
+          {loading ? <Skeleton className="h-5 w-10" /> : (
+            <div>
+              <span className="text-xl font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">{kpis?.totalClients ?? 0}</span>
+              <span className="text-xs text-gray-400 ml-1.5">Clients</span>
+            </div>
+          )}
+        </Link>
+        <div className="w-px h-8 bg-gray-100" />
+        <Link href="/work" className="flex items-center gap-2.5 group">
+          <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center">
+            <Clock size={13} className="text-amber-600" />
+          </div>
+          {loading ? <Skeleton className="h-5 w-10" /> : (
+            <div>
+              <span className="text-xl font-bold text-gray-900 group-hover:text-amber-600 transition-colors">{kpis?.pendingTasks ?? 0}</span>
+              <span className="text-xs text-gray-400 ml-1.5">Pending Tasks</span>
+            </div>
+          )}
+        </Link>
+        <div className="w-px h-8 bg-gray-100" />
+        <Link href="/deadlines" className="flex items-center gap-2.5 group">
+          <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center">
+            <FileCheck size={13} className="text-violet-600" />
+          </div>
+          {loading ? <Skeleton className="h-5 w-10" /> : (
+            <div>
+              <span className="text-xl font-bold text-gray-900 group-hover:text-violet-600 transition-colors">{kpis?.filingsDueThisMonth ?? 0}</span>
+              <span className="text-xs text-gray-400 ml-1.5">Filings This Month</span>
+            </div>
+          )}
+        </Link>
+        <div className="w-px h-8 bg-gray-100" />
+        <Link href="/deadlines" className="flex items-center gap-2.5 group">
+          <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center", (kpis?.overdueFilings ?? 0) > 0 ? "bg-red-100" : "bg-gray-100")}>
+            <AlertTriangle size={13} className={(kpis?.overdueFilings ?? 0) > 0 ? "text-red-600" : "text-gray-400"} />
+          </div>
+          {loading ? <Skeleton className="h-5 w-10" /> : (
+            <div>
+              <span className={cn("text-xl font-bold transition-colors", (kpis?.overdueFilings ?? 0) > 0 ? "text-red-600" : "text-gray-900")}>{kpis?.overdueFilings ?? 0}</span>
+              <span className="text-xs text-gray-400 ml-1.5">Overdue</span>
+            </div>
+          )}
+        </Link>
       </div>
 
-      {/* ── Middle row ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      {/* ── Three-column Briefing Grid ──────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-        {/* Upcoming Deadlines — 3 cols */}
-        <div className="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        {/* Column 1: Upcoming Deadlines */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
                 <Calendar size={14} className="text-white" />
               </div>
-              <h2 className="text-sm font-semibold text-gray-900">Upcoming Tax Deadlines</h2>
+              <h2 className="text-sm font-semibold text-gray-900">Upcoming Deadlines</h2>
             </div>
-            <Link href="/compliance" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1">
+            <Link href="/deadlines" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1">
               View all <ChevronRight size={12} />
             </Link>
           </div>
           <div className="divide-y divide-gray-50">
             {upcomingDeadlines.map((d) => (
-              <div key={d.name + d.date} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50/50 transition-colors">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className={cn(
-                    "w-1.5 h-1.5 rounded-full shrink-0",
-                    d.daysLeft === 0 ? "bg-red-500" :
-                    d.daysLeft <= 3 ? "bg-red-400" :
-                    d.daysLeft <= 7 ? "bg-amber-400" :
-                    "bg-emerald-400"
-                  )} />
-                  <div className="min-w-0">
-                    <p className="text-sm text-gray-800 font-medium truncate">{d.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {new Date(d.date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                    </p>
+              <Link key={d.name + d.date} href="/deadlines">
+                <div className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50/50 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={cn(
+                      "w-1.5 h-1.5 rounded-full shrink-0",
+                      d.daysLeft === 0 ? "bg-red-500" :
+                      d.daysLeft <= 3 ? "bg-red-400" :
+                      d.daysLeft <= 7 ? "bg-amber-400" :
+                      "bg-emerald-400"
+                    )} />
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-800 font-medium truncate">{d.name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {new Date(d.date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <DeadlineBadge daysLeft={d.daysLeft} />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Quick Actions — 2 cols */}
-        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
-              <TrendingUp size={14} className="text-white" />
-            </div>
-            <h2 className="text-sm font-semibold text-gray-900">Quick Actions</h2>
-          </div>
-          <div className="p-4 grid grid-cols-2 gap-3">
-            {QUICK_ACTIONS.map((action) => (
-              <Link key={action.label} href={action.href}>
-                <div className={cn(
-                  "flex flex-col items-center justify-center gap-2 p-4 rounded-xl bg-gradient-to-br text-white text-center cursor-pointer transition-all hover:scale-105 hover:shadow-md",
-                  action.gradient
-                )}>
-                  <action.icon size={20} className="opacity-90" />
-                  <span className="text-[12px] font-semibold leading-tight">{action.label}</span>
+                  <DeadlineBadge daysLeft={d.daysLeft} />
                 </div>
               </Link>
             ))}
           </div>
-          <div className="px-4 pb-4">
-            <Link href="/ai-assistant">
-              <div className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-gradient-to-r from-violet-50 to-indigo-50 border border-indigo-100 hover:border-indigo-200 transition-colors cursor-pointer">
-                <div className="flex items-center gap-2.5">
-                  <Bot size={16} className="text-indigo-600" />
-                  <div>
-                    <p className="text-xs font-semibold text-indigo-900">Ask AI Assistant</p>
-                    <p className="text-[10px] text-indigo-500">Tax, GST, ITR queries</p>
-                  </div>
-                </div>
-                <ChevronRight size={14} className="text-indigo-400" />
-              </div>
-            </Link>
-          </div>
         </div>
-      </div>
 
-      {/* ── Bottom row: Clients + Tasks ─────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* Recent Clients */}
+        {/* Column 2: Recent Clients */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
             <div className="flex items-center gap-2.5">
@@ -382,7 +335,7 @@ export default function DashboardContent() {
           </div>
           <div className="divide-y divide-gray-50">
             {loading ? (
-              Array.from({ length: 4 }).map((_, i) => (
+              Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-3 px-5 py-3.5">
                   <Skeleton className="h-8 w-8 rounded-full" />
                   <div className="flex-1 space-y-1.5">
@@ -393,7 +346,7 @@ export default function DashboardContent() {
               ))
             ) : recentClients && recentClients.length > 0 ? (
               recentClients.map((c) => (
-                <Link key={c.id} href="/clients">
+                <Link key={c.id} href={`/clients/${c.id}`}>
                   <div className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50/50 transition-colors">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-indigo-700 text-xs font-bold shrink-0">
                       {c.client_name.slice(0, 2).toUpperCase()}
@@ -420,22 +373,22 @@ export default function DashboardContent() {
           </div>
         </div>
 
-        {/* Recent Tasks */}
+        {/* Column 3: Pending Tasks */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-                <BookOpen size={14} className="text-white" />
+                <Clock size={14} className="text-white" />
               </div>
-              <h2 className="text-sm font-semibold text-gray-900">Recent Tasks</h2>
+              <h2 className="text-sm font-semibold text-gray-900">Pending Tasks</h2>
             </div>
-            <Link href="/tasks" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1">
+            <Link href="/work" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1">
               View all <ChevronRight size={12} />
             </Link>
           </div>
           <div className="divide-y divide-gray-50">
             {loading ? (
-              Array.from({ length: 4 }).map((_, i) => (
+              Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-3 px-5 py-3.5">
                   <Skeleton className="h-4 w-4 rounded-full" />
                   <div className="flex-1 space-y-1.5">
@@ -446,13 +399,13 @@ export default function DashboardContent() {
                 </div>
               ))
             ) : recentTasks && recentTasks.length > 0 ? (
-              recentTasks.map((t) => (
+              recentTasks.filter(t => t.status !== "completed").map((t) => (
                 <div key={t.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50/50 transition-colors">
                   <div className={cn(
                     "w-1.5 h-1.5 rounded-full shrink-0 mt-0.5",
-                    t.status === "completed" ? "bg-emerald-400" :
                     t.status === "in_progress" ? "bg-blue-400" :
                     t.status === "review_required" ? "bg-amber-400" :
+                    t.status === "waiting_client" ? "bg-purple-400" :
                     "bg-gray-300"
                   )} />
                   <div className="min-w-0 flex-1">
@@ -472,8 +425,8 @@ export default function DashboardContent() {
             ) : (
               <div className="px-5 py-10 text-center">
                 <CheckCircle2 size={24} className="text-gray-200 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">No tasks yet</p>
-                <Link href="/tasks" className="text-xs text-indigo-600 font-medium mt-1 inline-block">Create your first task →</Link>
+                <p className="text-sm text-gray-400">All caught up</p>
+                <Link href="/work" className="text-xs text-indigo-600 font-medium mt-1 inline-block">View work queue →</Link>
               </div>
             )}
           </div>

@@ -20,6 +20,8 @@ const ALWAYS_VISIBLE = ["/", "/notifications", "/ai-assistant", "/tasks", "/cale
 const ARTICLE_STAFF_HIDDEN_HREFS = new Set([
   "/accounting",
   "/compliance",
+  "/deadlines",
+  "/work",
   "/gst",
   "/income-tax",
   "/tds",
@@ -69,8 +71,8 @@ export function hasRole(role: UserRole | null, allowed: UserRole[]): boolean {
 
 /** Workspaces hidden from Article / Staff roles */
 const ARTICLE_STAFF_HIDDEN_WORKSPACES = new Set<WorkspaceId>([
-  "compliance",
-  "accounts",
+  "deadlines",
+  "work",
 ]);
 
 /**

@@ -3,8 +3,8 @@
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { HomePanel } from "@/components/panels/HomePanel";
 import { ClientsPanel } from "@/components/panels/ClientsPanel";
-import { CompliancePanel } from "@/components/panels/CompliancePanel";
-import { AccountsPanel } from "@/components/panels/AccountsPanel";
+import { DeadlinesPanel } from "@/components/panels/DeadlinesPanel";
+import { WorkPanel } from "@/components/panels/WorkPanel";
 import { TeamPanel } from "@/components/panels/TeamPanel";
 import { AIPanel } from "@/components/panels/AIPanel";
 
@@ -21,8 +21,8 @@ export function ContextPanel({ onOpenSearch }: ContextPanelProps) {
       {activeWorkspace === "clients" && (
         <ClientsPanel onOpenSearch={onOpenSearch} />
       )}
-      {activeWorkspace === "compliance" && <CompliancePanel />}
-      {activeWorkspace === "accounts" && <AccountsPanel />}
+      {activeWorkspace === "deadlines" && <DeadlinesPanel />}
+      {activeWorkspace === "work" && <WorkPanel />}
       {activeWorkspace === "team" && <TeamPanel />}
       {activeWorkspace === "ai" && <AIPanel />}
     </div>

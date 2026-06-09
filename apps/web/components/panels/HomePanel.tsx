@@ -5,15 +5,19 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Calendar,
+  CalendarDays,
   Bell,
   MessageSquare,
+  CheckSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const HOME_ITEMS = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/calendar", label: "Calendar", icon: Calendar },
+  { href: "/", label: "Morning Brief", icon: LayoutDashboard },
+  { href: "/deadlines", label: "Deadlines", icon: Calendar },
+  { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/notifications", label: "Notifications", icon: Bell },
+  { href: "/work", label: "Work Queue", icon: CheckSquare },
   { href: "/notifications/whatsapp", label: "WhatsApp", icon: MessageSquare },
 ];
 
