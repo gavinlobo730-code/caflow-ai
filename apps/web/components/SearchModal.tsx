@@ -120,13 +120,9 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
     }
   }, [open]);
 
-  // CMD+K handler
+  // Escape to close — open is controlled by parent via onOpenSearch
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        if (!open) return; // parent controls open
-      }
       if (e.key === "Escape" && open) onClose();
     }
     window.addEventListener("keydown", onKey);
@@ -178,25 +174,31 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
   let flatIndex = 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden"
+        className="bg-[#16161f] rounded-2xl shadow-[0_24px_60px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.03)] border border-white/[0.08] w-full max-w-2xl mx-4 overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Input */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b">
-          <Search size={18} className="text-gray-400 shrink-0" />
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.06]">
+          <Search size={18} className="text-white/30 shrink-0" />
           <input
             ref={inputRef}
             type="text"
-            className="flex-1 text-base outline-none text-gray-900 placeholder:text-gray-400"
+            className="flex-1 text-base outline-none text-white/90 placeholder:text-white/30 bg-transparent"
             placeholder="Search clients, tasks, filings, journals..."
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
           />
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100">
-            <X size={15} className="text-gray-400" />
+          <button
+            onClick={onClose}
+            className="p-1 rounded hover:bg-white/[0.05] transition-colors"
+          >
+            <X size={15} className="text-white/30" />
           </button>
         </div>
 
@@ -205,19 +207,19 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
           {loading && (
             <div className="p-4 space-y-2">
               {[1, 2, 3].map(i => (
-                <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />
+                <div key={i} className="h-12 bg-white/[0.06] rounded-lg animate-pulse" />
               ))}
             </div>
           )}
 
           {!loading && query && allResults.length === 0 && (
-            <div className="py-12 text-center text-gray-400">
+            <div className="py-12 text-center text-white/30">
               <p className="text-sm">No results for &quot;{query}&quot;</p>
             </div>
           )}
 
           {!loading && !query && (
-            <div className="py-12 text-center text-gray-400">
+            <div className="py-12 text-center text-white/30">
               <p className="text-sm">Search clients, tasks, filings, journals...</p>
             </div>
           )}
@@ -229,8 +231,9 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
                 return (
                   <div key={cat}>
                     <div className="px-4 py-1.5">
-                      <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 flex items-center gap-1">
-                        <Icon size={10} />{CATEGORY_LABELS[cat as keyof typeof CATEGORY_LABELS]}
+                      <span className="text-[10px] font-semibold uppercase tracking-widest text-white/30 flex items-center gap-1">
+                        <Icon size={10} />
+                        {CATEGORY_LABELS[cat as keyof typeof CATEGORY_LABELS]}
                       </span>
                     </div>
                     {items.map(item => {
@@ -238,11 +241,15 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
                       return (
                         <button
                           key={item.id}
-                          className={`w-full text-left px-4 py-2.5 hover:bg-indigo-50 transition-colors ${idx === selectedIndex ? "bg-indigo-50" : ""}`}
+                          className={`w-full text-left px-4 py-2.5 transition-colors ${
+                            idx === selectedIndex
+                              ? "bg-indigo-500/15"
+                              : "hover:bg-indigo-500/10"
+                          }`}
                           onClick={() => { router.push(item.href); onClose(); }}
                         >
-                          <p className="text-sm font-medium text-gray-900">{item.title}</p>
-                          <p className="text-xs text-gray-500">{item.subtitle}</p>
+                          <p className="text-sm font-medium text-white/90">{item.title}</p>
+                          <p className="text-xs text-white/35">{item.subtitle}</p>
                         </button>
                       );
                     })}
@@ -254,7 +261,7 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
         </div>
 
         {/* Footer */}
-        <div className="border-t px-4 py-2 flex items-center gap-4 text-xs text-gray-400">
+        <div className="border-t border-white/[0.06] px-4 py-2 flex items-center gap-4 text-xs text-white/30">
           <span><kbd className="font-mono">↑↓</kbd> navigate</span>
           <span><kbd className="font-mono">Enter</kbd> select</span>
           <span><kbd className="font-mono">Esc</kbd> close</span>

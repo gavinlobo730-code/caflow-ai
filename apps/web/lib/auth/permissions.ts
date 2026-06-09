@@ -9,6 +9,8 @@
  * Staff    — same as Article
  */
 
+import type { WorkspaceId } from "@/lib/workspace/workspaceConfig";
+
 export type UserRole = "Partner" | "Manager" | "Article" | "Staff";
 
 /** Routes that are always visible regardless of role */
@@ -63,6 +65,33 @@ export function canAccessHref(href: string, role: UserRole | null): boolean {
 export function hasRole(role: UserRole | null, allowed: UserRole[]): boolean {
   const effectiveRole: UserRole = role ?? "Partner";
   return allowed.includes(effectiveRole);
+}
+
+/** Workspaces hidden from Article / Staff roles */
+const ARTICLE_STAFF_HIDDEN_WORKSPACES = new Set<WorkspaceId>([
+  "compliance",
+  "accounts",
+]);
+
+/**
+ * Returns true if the given workspace should be visible for the given role.
+ * Mirrors the same role logic as canAccessHref but at workspace granularity.
+ */
+export function canAccessWorkspace(
+  workspaceId: WorkspaceId,
+  role: UserRole | null
+): boolean {
+  const effectiveRole: UserRole = role ?? "Partner";
+  switch (effectiveRole) {
+    case "Partner":
+    case "Manager":
+      return true;
+    case "Article":
+    case "Staff":
+      return !ARTICLE_STAFF_HIDDEN_WORKSPACES.has(workspaceId);
+    default:
+      return true;
+  }
 }
 
 export { ALWAYS_VISIBLE };
