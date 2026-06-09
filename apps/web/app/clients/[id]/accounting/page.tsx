@@ -1477,11 +1477,18 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
 
   useEffect(() => {
     if (!clientId || clientId === "_placeholder") return;
-    const supabase = getSupabaseClient();
-    supabase.from("shared_reports").select("id, report_type, report_label, financial_year, file_name, created_at")
-      .eq("client_id", clientId).order("created_at", { ascending: false }).limit(10)
-      .then(({ data }) => { setSharedReports(data ?? []); setLoadingShared(false); })
-      .catch(() => setLoadingShared(false));
+    async function load() {
+      try {
+        const supabase = getSupabaseClient();
+        const { data } = await supabase.from("shared_reports")
+          .select("id, report_type, report_label, financial_year, file_name, created_at")
+          .eq("client_id", clientId).order("created_at", { ascending: false }).limit(10);
+        setSharedReports(data ?? []);
+      } catch { /* skip */ } finally {
+        setLoadingShared(false);
+      }
+    }
+    load();
   }, [clientId]);
 
   const REPORT_LINKS: { id: string; label: string; description: string; icon: string }[] = [
