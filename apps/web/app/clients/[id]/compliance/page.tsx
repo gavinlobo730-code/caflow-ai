@@ -59,7 +59,7 @@ export default function CompliancePage() {
       await updateFilingStatus(markFiled.id, "filed", markFiled.arn || undefined);
       setCompliance((prev) =>
         prev.map((c) =>
-          c.id === markFiled.id ? { ...c, filing_status: "filed", arn_number: markFiled.arn || null } : c
+          c.id === markFiled.id ? { ...c, filing_status: "filed", arn_number: markFiled.arn || undefined } : c
         )
       );
       setMarkFiled(null);
