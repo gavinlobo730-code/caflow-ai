@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, Mail, Phone, MapPin, Calendar, TrendingUp, CheckSquare, Shield } from "lucide-react";
+import { Mail, Phone, MapPin, Calendar, TrendingUp, CheckSquare, Shield } from "lucide-react";
 import { getClient } from "@/lib/data/clients";
 import { getTasks } from "@/lib/data/tasks";
 import { getComplianceCalendar, seedComplianceCalendar } from "@/lib/data/compliance";

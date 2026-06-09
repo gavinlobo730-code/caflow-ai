@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { scoreToLabel, scoreToColor } from "@/lib/services/health-engine";
+import { scoreToLabel } from "@/lib/services/health-engine";
 
 interface HealthBadgeProps {
   score: number;
