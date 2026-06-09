@@ -18,6 +18,10 @@ const NO_SHELL_PREFIXES = [
   "/portal",
 ];
 
+// Matches /clients/[UUID] and any sub-path — client layout owns its own rails
+const CLIENT_UUID_RE =
+  /^\/clients\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(\/|$)/i;
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -26,6 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const showShell = !NO_SHELL_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(prefix + "/")
   );
+  const isClientWorkspace = CLIENT_UUID_RE.test(pathname);
 
   // Global ⌘K / Ctrl+K listener — opens the command palette from anywhere
   useEffect(() => {
@@ -91,14 +96,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Main layout */}
       <div className="flex h-screen overflow-hidden bg-[hsl(220,20%,97%)]">
-        {/* Desktop: ActivityRail + ContextPanel */}
-        <div className="hidden md:flex h-full">
-          <ActivityRail onOpenSearch={() => setSearchOpen(true)} />
-          <ContextPanel onOpenSearch={() => setSearchOpen(true)} />
-        </div>
+        {/* Desktop: ActivityRail + ContextPanel — hidden when inside client workspace */}
+        {!isClientWorkspace && (
+          <div className="hidden md:flex h-full">
+            <ActivityRail onOpenSearch={() => setSearchOpen(true)} />
+            <ContextPanel onOpenSearch={() => setSearchOpen(true)} />
+          </div>
+        )}
 
-        {/* Work area */}
-        <main className="flex-1 overflow-auto pt-12 md:pt-0 min-w-0">
+        {/* Work area — full height when in client workspace (client layout owns its rails) */}
+        <main className={cn(
+          "flex-1 min-w-0 overflow-hidden",
+          isClientWorkspace ? "h-screen" : "overflow-auto pt-12 md:pt-0"
+        )}>
           {children}
         </main>
       </div>
