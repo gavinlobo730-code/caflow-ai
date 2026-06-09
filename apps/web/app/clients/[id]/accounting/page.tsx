@@ -230,10 +230,10 @@ export default function AccountingPage() {
           <TrialBalance clientId={clientId} financialYear={financialYear} />
         )}
         {tab === "pl" && (
-          <ProfitAndLoss accounts={accounts} clientId={clientId} financialYear={financialYear} />
+          <ProfitAndLoss clientId={clientId} financialYear={financialYear} />
         )}
         {tab === "balance-sheet" && (
-          <BalanceSheet accounts={accounts} clientId={clientId} financialYear={financialYear} />
+          <BalanceSheet clientId={clientId} financialYear={financialYear} />
         )}
         {tab === "banks" && (
           <BankAccounts clientId={clientId} financialYear={financialYear} />
@@ -242,7 +242,7 @@ export default function AccountingPage() {
           <BankReconciliation accounts={accounts} clientId={clientId} financialYear={financialYear} />
         )}
         {tab === "reports" && (
-          <FinancialReports accounts={accounts} clientId={clientId} financialYear={financialYear} />
+          <FinancialReports clientId={clientId} financialYear={financialYear} />
         )}
       </div>
     </div>
@@ -829,7 +829,7 @@ function TrialBalance({ clientId, financialYear }: { clientId: string; financial
 // Computed from journal_lines for the FY. Accounts classified per
 // Companies Act 2013, Schedule III, Part II.
 
-function ProfitAndLoss({ accounts, clientId, financialYear }: { accounts: Account[]; clientId: string; financialYear: string }) {
+function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financialYear: string }) {
   const [balances, setBalances] = useState<AccountBalance[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -968,7 +968,7 @@ function PLSection({ label, items, total }: { label: string; items: AccountBalan
 // Cumulative balances up to FY end date.
 // Companies Act 2013, Schedule III, Part I.
 
-function BalanceSheet({ accounts, clientId, financialYear }: { accounts: Account[]; clientId: string; financialYear: string }) {
+function BalanceSheet({ clientId, financialYear }: { clientId: string; financialYear: string }) {
   const [balances, setBalances] = useState<AccountBalance[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -1469,7 +1469,7 @@ function BankReconciliation({ accounts, clientId, financialYear }: { accounts: A
 
 // ── Financial Reports ──────────────────────────────────────────────────────
 
-function FinancialReports({ accounts, clientId, financialYear }: { accounts: Account[]; clientId: string; financialYear: string }) {
+function FinancialReports({ clientId, financialYear }: { clientId: string; financialYear: string }) {
   const [sharedReports, setSharedReports] = useState<{
     id: string; report_type: string; report_label: string; financial_year: string; file_name: string; created_at: string;
   }[]>([]);
