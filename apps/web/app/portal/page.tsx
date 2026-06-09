@@ -4,7 +4,7 @@ import { LogoIcon } from "@/components/LogoIcon";
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   FileText, Calendar, FolderOpen, LogOut, AlertCircle, Upload,
-  CheckCircle, AlertTriangle, Download, BarChart3,
+  CheckCircle, AlertTriangle, Download, BarChart3, MessageSquare, Send,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
@@ -58,7 +58,16 @@ interface GSTDueDate {
   description: string;
 }
 
-type PortalTab = "requests" | "shared" | "reports" | "filings" | "dues";
+interface PortalMessage {
+  id: string;
+  sender_type: "ca" | "client";
+  sender_name: string | null;
+  body: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+type PortalTab = "requests" | "shared" | "reports" | "filings" | "dues" | "messages";
 
 
 function formatDate(iso: string): string {
@@ -137,6 +146,10 @@ export default function PortalPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<PortalTab>("requests");
+
+  const [messages, setMessages] = useState<PortalMessage[]>([]);
+  const [messageBody, setMessageBody] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
 
   // Upload state per request
   const [sharedReports, setSharedReports] = useState<SharedReport[]>([]);
@@ -234,6 +247,21 @@ export default function PortalPage() {
           .eq("client_id", clientRow.id)
           .order("created_at", { ascending: false });
         setSharedReports(reportRows ?? []);
+
+        // Load portal messages
+        const { data: msgRows } = await supabase
+          .from("portal_messages")
+          .select("id, sender_type, sender_name, body, is_read, created_at")
+          .eq("client_id", clientRow.id)
+          .order("created_at", { ascending: true });
+        setMessages((msgRows ?? []) as PortalMessage[]);
+
+        // Mark unread CA messages as read
+        await supabase.from("portal_messages")
+          .update({ is_read: true, read_at: new Date().toISOString() })
+          .eq("client_id", clientRow.id)
+          .eq("sender_type", "ca")
+          .eq("is_read", false);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load portal");
       } finally {
@@ -300,6 +328,28 @@ export default function PortalPage() {
     window.location.href = "/";
   }
 
+  async function sendMessage() {
+    if (!client || !messageBody.trim()) return;
+    setSendingMessage(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { data: newMsg, error } = await supabase.from("portal_messages").insert({
+        firm_id: client.firm_id,
+        client_id: client.id,
+        sender_type: "client",
+        sender_name: client.client_name,
+        body: messageBody.trim(),
+      }).select("id, sender_type, sender_name, body, is_read, created_at").single();
+      if (error) throw new Error(error.message);
+      setMessages((prev) => [...prev, newMsg as PortalMessage]);
+      setMessageBody("");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to send message");
+    } finally {
+      setSendingMessage(false);
+    }
+  }
+
   if (loading) return <LoadingScreen />;
 
   if (error) {
@@ -332,11 +382,14 @@ export default function PortalPage() {
   const pendingRequests = docRequests.filter((r) => r.status === "pending");
   const fulfilledRequests = docRequests.filter((r) => r.status === "fulfilled");
 
+  const unreadMessages = messages.filter((m) => m.sender_type === "ca" && !m.is_read).length;
+
   const TABS: { id: PortalTab; label: string; icon: React.ElementType; count?: number }[] = [
     { id: "requests", label: "Documents Requested", icon: FileText, count: pendingRequests.length || undefined },
     { id: "shared", label: "Shared by CA", icon: FolderOpen },
     { id: "reports", label: "Reports", icon: BarChart3 },
-    { id: "filings", label: "Recent Filings", icon: Calendar },
+    { id: "messages", label: "Messages", icon: MessageSquare, count: unreadMessages || undefined },
+    { id: "filings", label: "Due Dates", icon: Calendar },
     { id: "dues", label: "Outstanding Dues", icon: AlertCircle },
   ];
 
@@ -608,6 +661,64 @@ export default function PortalPage() {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Messages tab */}
+        {activeTab === "messages" && (
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden flex flex-col" style={{ minHeight: 400 }}>
+            <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-blue-600" />
+              <h2 className="text-sm font-semibold text-gray-900">Messages with Your CA</h2>
+            </div>
+            {/* Message list */}
+            <div className="flex-1 px-5 py-4 space-y-3 overflow-y-auto max-h-96">
+              {messages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-center space-y-2">
+                  <MessageSquare className="w-8 h-8 text-gray-200" />
+                  <p className="text-sm text-gray-400">No messages yet</p>
+                  <p className="text-xs text-gray-300">Send a message to your CA below</p>
+                </div>
+              ) : (
+                messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${msg.sender_type === "client" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[75%] rounded-xl px-4 py-2.5 ${
+                        msg.sender_type === "client"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-100 text-gray-800"
+                      }`}
+                    >
+                      <p className="text-sm leading-snug">{msg.body}</p>
+                      <p className={`text-[10px] mt-1 ${msg.sender_type === "client" ? "text-blue-200" : "text-gray-400"}`}>
+                        {msg.sender_type === "ca" ? (msg.sender_name ?? "Your CA") : "You"} · {formatDate(msg.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            {/* Compose */}
+            <div className="px-5 py-3 border-t border-gray-50 flex items-center gap-2">
+              <input
+                value={messageBody}
+                onChange={(e) => setMessageBody(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                placeholder="Type a message…"
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={sendMessage}
+                disabled={!messageBody.trim() || sendingMessage}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                <Send className="w-3.5 h-3.5" />
+                {sendingMessage ? "…" : "Send"}
+              </button>
+            </div>
           </div>
         )}
 

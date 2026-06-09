@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Mail, Phone, MapPin, Calendar, TrendingUp, CheckSquare, Shield } from "lucide-react";
+import { Mail, Phone, MapPin, Calendar, TrendingUp, CheckSquare, Shield, AlertTriangle, AlertCircle, Info } from "lucide-react";
 import { getClient } from "@/lib/data/clients";
 import { getTasks } from "@/lib/data/tasks";
 import { getComplianceCalendar, seedComplianceCalendar } from "@/lib/data/compliance";
 import { getFirmId } from "@/lib/data/getFirmId";
-import { snapshotHealthScore, getLatestHealthScore } from "@/lib/services/health-score-compute";
+import { snapshotHealthScore, getLatestHealthScore, deriveHealthAlerts, type HealthAlert } from "@/lib/services/health-score-compute";
 import { ClientTimeline } from "@/components/ClientTimeline";
 import { HealthBadge } from "@/components/HealthBadge";
 import type { Client } from "@/lib/types";
@@ -18,6 +18,9 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 interface HealthSnapshot {
   overall_score: number;
   compliance_score: number;
+  accounting_score: number;
+  document_score: number;
+  responsiveness_score: number;
   trend: "improving" | "stable" | "declining" | null;
 }
 
@@ -27,6 +30,7 @@ export default function OverviewPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [compliance, setCompliance] = useState<ComplianceEntry[]>([]);
   const [health, setHealth] = useState<HealthSnapshot | null>(null);
+  const [alerts, setAlerts] = useState<HealthAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,19 +64,29 @@ export default function OverviewPage() {
           const existing = await getLatestHealthScore(clientId);
           const currentPeriod = new Date().toISOString().slice(0, 7);
           if (existing && existing.snapshot_period === currentPeriod) {
-            setHealth({
+            const snap: HealthSnapshot = {
               overall_score: existing.overall_score,
               compliance_score: existing.compliance_score,
+              accounting_score: (existing as { accounting_score?: number }).accounting_score ?? 50,
+              document_score: (existing as { document_score?: number }).document_score ?? 50,
+              responsiveness_score: (existing as { responsiveness_score?: number }).responsiveness_score ?? 50,
               trend: null,
-            });
+            };
+            setHealth(snap);
+            setAlerts(deriveHealthAlerts(snap.compliance_score, snap.accounting_score, snap.document_score, comp));
           } else if (comp.length > 0) {
             const result = await snapshotHealthScore(clientId, firmId, comp);
             if (!cancelled) {
-              setHealth({
+              const snap: HealthSnapshot = {
                 overall_score: result.overall_score,
                 compliance_score: result.compliance_score,
+                accounting_score: result.accounting_score,
+                document_score: result.document_score,
+                responsiveness_score: result.responsiveness_score,
                 trend: result.trend,
-              });
+              };
+              setHealth(snap);
+              setAlerts(deriveHealthAlerts(snap.compliance_score, snap.accounting_score, snap.document_score, comp));
             }
           }
         }
@@ -135,6 +149,30 @@ export default function OverviewPage() {
 
       {/* ── Right sidebar ───────────────────────────────────── */}
       <div className="w-[240px] shrink-0 border-l border-white/[0.05] overflow-y-auto p-4 space-y-4 hidden lg:block">
+        {/* Health Alerts */}
+        {alerts.length > 0 && (
+          <div className="space-y-1">
+            {alerts.map((alert, i) => {
+              const Icon = alert.severity === "critical" ? AlertCircle
+                : alert.severity === "warning" ? AlertTriangle : Info;
+              const colors = alert.severity === "critical"
+                ? "bg-red-500/10 border-red-500/20 text-red-300"
+                : alert.severity === "warning"
+                ? "bg-amber-500/10 border-amber-500/20 text-amber-300"
+                : "bg-blue-500/10 border-blue-500/20 text-blue-300";
+              return (
+                <div key={i} className={`rounded-lg border px-2.5 py-2 flex items-start gap-2 ${colors}`}>
+                  <Icon size={11} className="shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-[10px] font-semibold">{alert.dimension}</p>
+                    <p className="text-[10px] opacity-80 leading-snug">{alert.message}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {/* Health score */}
         {health && (
           <div className="bg-[#0f0f18] rounded-xl border border-white/[0.05] p-3 space-y-2">
@@ -146,12 +184,10 @@ export default function OverviewPage() {
             </div>
             <div className="space-y-1.5 mt-1">
               <ScoreRow label="Compliance" value={health.compliance_score} />
-              <ScoreRow label="Accounting" value={50} muted />
-              <ScoreRow label="Responsiveness" value={50} muted />
+              <ScoreRow label="Accounting" value={health.accounting_score} />
+              <ScoreRow label="Documents" value={health.document_score} />
+              <ScoreRow label="Responsiveness" value={health.responsiveness_score} />
             </div>
-            <p className="text-[9px] text-white/15 mt-1">
-              Other dimensions activate in Phase 1.1
-            </p>
           </div>
         )}
 
