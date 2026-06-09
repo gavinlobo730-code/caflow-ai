@@ -8,6 +8,8 @@ import { getComplianceCalendar, updateFilingStatus, seedComplianceCalendar } fro
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { formatDate } from "@/lib/services/formatting";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { writeTimelineEvent } from "@/lib/services/timeline";
+import { getFirmId } from "@/lib/data/getFirmId";
 
 type ComplianceSubTab = "all" | "gst" | "tds" | "income_tax" | "mca";
 
@@ -25,7 +27,7 @@ interface MarkFiledForm {
 }
 
 export default function CompliancePage() {
-  const { clientId } = useClientNav();
+  const { clientId, financialYear } = useClientNav();
   const [compliance, setCompliance] = useState<ComplianceEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [subTab, setSubTab] = useState<ComplianceSubTab>("all");
@@ -56,6 +58,7 @@ export default function CompliancePage() {
     if (!markFiled) return;
     setFilingLoading(true);
     try {
+      const entry = compliance.find((c) => c.id === markFiled.id);
       await updateFilingStatus(markFiled.id, "filed", markFiled.arn || undefined);
       setCompliance((prev) =>
         prev.map((c) =>
@@ -63,6 +66,24 @@ export default function CompliancePage() {
         )
       );
       setMarkFiled(null);
+
+      // Emit timeline event
+      try {
+        const firmId = await getFirmId();
+        await writeTimelineEvent({
+          client_id: clientId,
+          firm_id: firmId,
+          financial_year: financialYear,
+          category: "compliance",
+          event_type: "filing_marked_filed",
+          severity: "success",
+          title: `${entry?.compliance_type ?? "Filing"} marked as filed`,
+          description: markFiled.arn ? `ARN: ${markFiled.arn}` : undefined,
+          entity_type: "compliance_calendar",
+          entity_id: markFiled.id,
+          actor_type: "user",
+        });
+      } catch { /* timeline is non-blocking */ }
     } finally {
       setFilingLoading(false);
     }

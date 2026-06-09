@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { writeTimelineEvent } from "@/lib/services/timeline";
 
 interface ClientDocument {
   id: string;
@@ -27,7 +28,7 @@ function formatFileSize(bytes: number | null): string {
 }
 
 export default function DocumentsPage() {
-  const { clientId } = useClientNav();
+  const { clientId, financialYear } = useClientNav();
   const [documents, setDocuments] = useState<ClientDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -108,6 +109,23 @@ export default function DocumentsPage() {
       setUploadFile(null);
       setUploadLabel("");
       await loadDocuments();
+
+      // Emit timeline event
+      try {
+        await writeTimelineEvent({
+          client_id: clientId,
+          firm_id: firmId,
+          financial_year: financialYear,
+          category: "document",
+          event_type: asNewVersion ? "document_version_uploaded" : "document_uploaded",
+          severity: "info",
+          title: asNewVersion
+            ? `New version uploaded: ${uploadLabel.trim()}`
+            : `Document uploaded: ${uploadLabel.trim()}`,
+          description: `${uploadFile.name} (${formatFileSize(uploadFile.size)})`,
+          actor_type: "user",
+        });
+      } catch { /* timeline is non-blocking */ }
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -129,6 +147,21 @@ export default function DocumentsPage() {
       await supabase.storage.from("Documents").remove([doc.storage_path]);
       await supabase.from("client_documents").delete().eq("id", doc.id);
       setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+
+      // Emit timeline event
+      try {
+        const firmId = await getFirmId();
+        await writeTimelineEvent({
+          client_id: clientId,
+          firm_id: firmId,
+          financial_year: financialYear,
+          category: "document",
+          event_type: "document_deleted",
+          severity: "warning",
+          title: `Document deleted: ${doc.label}`,
+          actor_type: "user",
+        });
+      } catch { /* timeline is non-blocking */ }
     } finally {
       setDeletingDocId(null);
     }
