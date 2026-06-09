@@ -11,6 +11,8 @@ import type { Client } from "@/lib/types";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { getLatestHealthScore } from "@/lib/services/health-score-compute";
+import { HealthBadgeLight } from "@/components/HealthBadge";
 
 const CLIENT_IMPORT_COLUMNS = [
   { key: "client_name",  label: "Client Name",    required: true,  hint: "e.g. ABC Pvt Ltd" },
@@ -38,6 +40,7 @@ const ENTITY_LABELS: Record<string, string> = {
 export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [filtered, setFiltered] = useState<Client[]>([]);
+  const [healthScores, setHealthScores] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -52,6 +55,12 @@ export default function ClientsPage() {
       const data = await getClients();
       setClients(data);
       setFiltered(data);
+      // Load health scores in background — non-blocking
+      Promise.all(data.map((c) => getLatestHealthScore(c.id).catch(() => null))).then((scores) => {
+        const map: Record<string, number> = {};
+        scores.forEach((s, i) => { if (s) map[data[i].id] = s.overall_score; });
+        setHealthScores(map);
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load clients");
     } finally {
@@ -269,6 +278,9 @@ export default function ClientsPage() {
                   <p className="text-xs text-gray-500">{ENTITY_LABELS[c.entity_type] ?? c.entity_type}</p>
                   <p className="text-xs font-mono text-gray-600">{c.pan}</p>
                 </div>
+                {healthScores[c.id] !== undefined && (
+                  <HealthBadgeLight score={healthScores[c.id]} />
+                )}
                 <Badge variant="secondary" className="bg-green-100 text-green-700 text-xs">
                   {c.status}
                 </Badge>

@@ -5,6 +5,8 @@ import { ChevronDown, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { getLatestHealthScore } from "@/lib/services/health-score-compute";
+import { HealthBadge } from "@/components/HealthBadge";
 
 interface ClientData {
   id: string;
@@ -33,6 +35,7 @@ export function ClientHeader({ clientId }: ClientHeaderProps) {
   const { financialYear, setFinancialYear } = useClientNav();
   const [client, setClient] = useState<ClientData | null>(null);
   const [fyOpen, setFyOpen] = useState(false);
+  const [health, setHealth] = useState<{ overall_score: number; trend: "improving" | "stable" | "declining" | null } | null>(null);
 
   useEffect(() => {
     const supabase = getSupabaseClient();
@@ -44,6 +47,9 @@ export function ClientHeader({ clientId }: ClientHeaderProps) {
       .then(({ data }) => {
         if (data) setClient(data as ClientData);
       });
+    getLatestHealthScore(clientId).then((h) => {
+      if (h) setHealth({ overall_score: h.overall_score, trend: null });
+    }).catch(() => undefined);
   }, [clientId]);
 
   const fyOptions = getFYOptions();
@@ -67,6 +73,11 @@ export function ClientHeader({ clientId }: ClientHeaderProps) {
           </span>
         )}
       </div>
+
+      {/* Health badge */}
+      {health && (
+        <HealthBadge score={health.overall_score} size="sm" trend={health.trend} />
+      )}
 
       {/* FY Selector */}
       <div className="relative shrink-0">
