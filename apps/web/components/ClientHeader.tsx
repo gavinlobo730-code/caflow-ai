@@ -1,0 +1,105 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { ChevronDown, Building2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
+import { getSupabaseClient } from "@/lib/supabase/client";
+
+interface ClientData {
+  id: string;
+  client_name: string;
+  entity_type?: string;
+  gstin?: string;
+}
+
+function getFYOptions(): string[] {
+  const current = getCurrentFinancialYear();
+  const [startStr] = current.split("-");
+  const start = parseInt(startStr, 10);
+  return [
+    `${start + 1}-${String(start + 2).slice(-2)}`,
+    current,
+    `${start - 1}-${String(start).slice(-2)}`,
+    `${start - 2}-${String(start - 1).slice(-2)}`,
+  ];
+}
+
+interface ClientHeaderProps {
+  clientId: string;
+}
+
+export function ClientHeader({ clientId }: ClientHeaderProps) {
+  const { financialYear, setFinancialYear } = useClientNav();
+  const [client, setClient] = useState<ClientData | null>(null);
+  const [fyOpen, setFyOpen] = useState(false);
+
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    supabase
+      .from("clients")
+      .select("id, client_name, entity_type, gstin")
+      .eq("id", clientId)
+      .single()
+      .then(({ data }) => {
+        if (data) setClient(data as ClientData);
+      });
+  }, [clientId]);
+
+  const fyOptions = getFYOptions();
+
+  return (
+    <header className="flex items-center gap-4 h-12 px-4 bg-[#0d0d15] border-b border-white/[0.06] shrink-0">
+      <Building2 size={15} className="text-violet-400 shrink-0" />
+
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        <span className="text-[13px] font-semibold text-white/90 truncate">
+          {client?.client_name ?? "Loading…"}
+        </span>
+        {client?.entity_type && (
+          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white/5 text-white/35 shrink-0">
+            {client.entity_type}
+          </span>
+        )}
+        {client?.gstin && (
+          <span className="text-[10px] font-mono text-white/25 shrink-0 hidden lg:inline">
+            {client.gstin}
+          </span>
+        )}
+      </div>
+
+      {/* FY Selector */}
+      <div className="relative shrink-0">
+        <button
+          onClick={() => setFyOpen((o) => !o)}
+          className="flex items-center gap-1.5 text-[11px] font-medium text-white/40 hover:text-white/70 bg-white/5 hover:bg-white/8 px-2.5 py-1.5 rounded-lg transition-colors"
+        >
+          FY {financialYear}
+          <ChevronDown size={11} className={cn("transition-transform", fyOpen && "rotate-180")} />
+        </button>
+
+        {fyOpen && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setFyOpen(false)} />
+            <div className="absolute right-0 top-full mt-1 z-20 bg-[#1a1a24] border border-white/10 rounded-lg shadow-xl py-1 min-w-[120px]">
+              {fyOptions.map((fy) => (
+                <button
+                  key={fy}
+                  onClick={() => { setFinancialYear(fy); setFyOpen(false); }}
+                  className={cn(
+                    "w-full text-left px-3 py-1.5 text-[11px] transition-colors",
+                    fy === financialYear
+                      ? "text-violet-300 bg-violet-600/10"
+                      : "text-white/50 hover:text-white/80 hover:bg-white/5"
+                  )}
+                >
+                  FY {fy}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </header>
+  );
+}
