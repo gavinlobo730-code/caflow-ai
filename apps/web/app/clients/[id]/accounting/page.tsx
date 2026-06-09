@@ -1480,8 +1480,8 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
     const supabase = getSupabaseClient();
     supabase.from("shared_reports").select("id, report_type, report_label, financial_year, file_name, created_at")
       .eq("client_id", clientId).order("created_at", { ascending: false }).limit(10)
-      .then(({ data }) => setSharedReports(data ?? []))
-      .finally(() => setLoadingShared(false));
+      .then(({ data }) => { setSharedReports(data ?? []); setLoadingShared(false); })
+      .catch(() => setLoadingShared(false));
   }, [clientId]);
 
   const REPORT_LINKS: { id: string; label: string; description: string; icon: string }[] = [
