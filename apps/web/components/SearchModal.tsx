@@ -29,70 +29,59 @@ const CATEGORY_LABELS = {
 };
 
 async function runSearch(query: string, firmId: string): Promise<SearchResult[]> {
-  if (!query.trim()) return [];
+  if (!query.trim() || query.length < 2) return [];
   const sb = getSupabaseClient();
-  const q = query.trim().toLowerCase();
+  const like = `%${query.trim()}%`;
   const results: SearchResult[] = [];
 
-  const [clientsRes, tasksRes, complianceRes, journalsRes] = await Promise.all([
-    sb.from("clients").select("id, client_name, entity_type, pan, gstin").eq("firm_id", firmId).limit(5),
-    sb.from("tasks").select("id, title, status, due_date").eq("firm_id", firmId).limit(5),
-    sb.from("compliance_items").select("id, compliance_type, due_date, clients(client_name)").eq("firm_id", firmId).limit(5),
-    sb.from("journal_entries").select("id, narration, entry_date, reference_no").eq("firm_id", firmId).limit(5),
+  const [clientsRes, accountsRes, journalsRes] = await Promise.all([
+    // Server-side filtered search — works at scale
+    sb.from("clients")
+      .select("id, client_name, entity_type, pan, gstin")
+      .eq("firm_id", firmId)
+      .or(`client_name.ilike.${like},pan.ilike.${like},gstin.ilike.${like}`)
+      .limit(5),
+    sb.from("chart_of_accounts")
+      .select("id, account_code, account_name, account_type, client_id")
+      .eq("firm_id", firmId)
+      .or(`account_name.ilike.${like},account_code.ilike.${like}`)
+      .limit(4),
+    sb.from("journal_entries")
+      .select("id, narration, entry_date, reference_no, client_id")
+      .eq("firm_id", firmId)
+      .ilike("narration", like)
+      .order("entry_date", { ascending: false })
+      .limit(4),
   ]);
 
   for (const c of (clientsRes.data ?? [])) {
-    if (
-      c.client_name?.toLowerCase().includes(q) ||
-      c.pan?.toLowerCase().includes(q) ||
-      c.gstin?.toLowerCase().includes(q)
-    ) {
-      results.push({
-        id: c.id,
-        category: "clients",
-        title: c.client_name,
-        subtitle: `${c.entity_type ?? "Client"} ${c.gstin ? `• ${c.gstin}` : ""}`,
-        href: `/clients/${c.id}`,
-      });
-    }
+    results.push({
+      id: c.id,
+      category: "clients",
+      title: c.client_name,
+      subtitle: `${c.entity_type ?? "Client"} ${c.gstin ? `• ${c.gstin}` : `• ${c.pan}`}`,
+      href: `/clients/${c.id}/overview`,
+    });
   }
 
-  for (const t of (tasksRes.data ?? [])) {
-    if (t.title?.toLowerCase().includes(q)) {
-      results.push({
-        id: t.id,
-        category: "tasks",
-        title: t.title,
-        subtitle: `${t.status ?? "todo"} ${t.due_date ? `• Due ${t.due_date}` : ""}`,
-        href: `/tasks`,
-      });
-    }
-  }
-
-  for (const comp of (complianceRes.data ?? [])) {
-    const clientName = (comp as { clients?: { client_name?: string } }).clients?.client_name ?? "";
-    if (comp.compliance_type?.toLowerCase().includes(q) || clientName.toLowerCase().includes(q)) {
-      results.push({
-        id: comp.id,
-        category: "compliance",
-        title: comp.compliance_type,
-        subtitle: `${clientName} ${comp.due_date ? `• Due ${comp.due_date}` : ""}`,
-        href: `/compliance`,
-      });
-    }
+  for (const a of (accountsRes.data ?? [])) {
+    results.push({
+      id: a.id,
+      category: "journals",
+      title: `${a.account_code} — ${a.account_name}`,
+      subtitle: `Account · ${a.account_type}`,
+      href: a.client_id ? `/clients/${a.client_id}/accounting` : `/settings/accounts`,
+    });
   }
 
   for (const j of (journalsRes.data ?? [])) {
-    const ref = (j as { reference_no?: string }).reference_no;
-    if (j.narration?.toLowerCase().includes(q) || ref?.toLowerCase().includes(q)) {
-      results.push({
-        id: j.id,
-        category: "journals",
-        title: j.narration ?? "Journal Entry",
-        subtitle: j.entry_date ?? "",
-        href: `/accounting/journal`,
-      });
-    }
+    results.push({
+      id: j.id,
+      category: "journals",
+      title: j.narration ?? "Journal Entry",
+      subtitle: j.entry_date ? new Date(j.entry_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "",
+      href: j.client_id ? `/clients/${j.client_id}/accounting` : `/accounting/journal`,
+    });
   }
 
   return results;

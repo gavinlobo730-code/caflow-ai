@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Plus, RefreshCw, Upload, CheckCircle, X, Printer, FileText } from "lucide-react";
+import { Plus, RefreshCw, Upload, CheckCircle, X, Printer, FileText, Download, Share2 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
@@ -528,7 +528,15 @@ function JournalEntryForm({
     setSaving(true); setError(null);
     try {
       const supabase = getSupabaseClient();
+      // Enforce FY lock — prevent posting to a locked financial year
       const firmId = await getFirmId();
+      const { data: firmRow } = await supabase.from("firms").select("locked_financial_years").eq("id", firmId).maybeSingle();
+      const lockedYears: string[] = (firmRow as { locked_financial_years?: string[] } | null)?.locked_financial_years ?? [];
+      if (lockedYears.includes(financialYear)) {
+        setSaving(false);
+        setError(`FY ${financialYear} is locked. New entries cannot be posted. To make corrections, unlock the FY or use a reversal entry in the next period.`);
+        return;
+      }
       const { data: entry, error: entryErr } = await supabase
         .from("journal_entries")
         .insert({ firm_id: firmId, client_id: clientId, entry_date: entryDate, reference_no: referenceNo.trim() || null, narration: narration.trim(), entry_type: entryType, is_posted: post, posted_at: post ? new Date().toISOString() : null })
@@ -1469,41 +1477,297 @@ function BankReconciliation({ accounts, clientId, financialYear }: { accounts: A
 
 // ── Financial Reports ──────────────────────────────────────────────────────
 
-function FinancialReports({ clientId, financialYear }: { clientId: string; financialYear: string }) {
-  const [sharedReports, setSharedReports] = useState<{
-    id: string; report_type: string; report_label: string; financial_year: string; file_name: string; created_at: string;
-  }[]>([]);
-  const [loadingShared, setLoadingShared] = useState(true);
+function YearEndClose({ financialYear }: { financialYear: string }) {
+  const [locked, setLocked] = useState<boolean | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!clientId || clientId === "_placeholder") return;
-    async function load() {
+    async function check() {
       try {
         const supabase = getSupabaseClient();
-        const { data } = await supabase.from("shared_reports")
-          .select("id, report_type, report_label, financial_year, file_name, created_at")
-          .eq("client_id", clientId).order("created_at", { ascending: false }).limit(10);
-        setSharedReports(data ?? []);
-      } catch { /* skip */ } finally {
-        setLoadingShared(false);
-      }
+        const firmId = await getFirmId();
+        const { data } = await supabase.from("firms").select("locked_financial_years").eq("id", firmId).maybeSingle();
+        const years: string[] = (data as { locked_financial_years?: string[] } | null)?.locked_financial_years ?? [];
+        setLocked(years.includes(financialYear));
+      } catch { setLocked(false); } finally { setLoading(false); }
     }
-    load();
+    check();
+  }, [financialYear]);
+
+  async function toggleLock() {
+    setSaving(true);
+    try {
+      const supabase = getSupabaseClient();
+      const firmId = await getFirmId();
+      const { data } = await supabase.from("firms").select("locked_financial_years").eq("id", firmId).maybeSingle();
+      const years: string[] = (data as { locked_financial_years?: string[] } | null)?.locked_financial_years ?? [];
+      const updated = locked
+        ? years.filter((y) => y !== financialYear)
+        : Array.from(new Set([...years, financialYear]));
+      await supabase.from("firms").update({ locked_financial_years: updated }).eq("id", firmId);
+      setLocked(!locked);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to update lock");
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-50">
+        <p className="text-xs font-semibold text-gray-700">Year-End Close — FY {financialYear}</p>
+        <p className="text-[10px] text-gray-400 mt-0.5">
+          Lock the financial year to prevent new journal entries. Locked years remain viewable.
+        </p>
+      </div>
+      <div className="px-5 py-4 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className={`w-3 h-3 rounded-full ${loading ? "bg-gray-200" : locked ? "bg-red-400" : "bg-green-400"}`} />
+          <span className="text-sm text-gray-700">
+            {loading ? "Checking…" : locked ? `FY ${financialYear} is locked` : `FY ${financialYear} is open`}
+          </span>
+        </div>
+        <button
+          onClick={toggleLock}
+          disabled={loading || saving}
+          className={`flex items-center gap-2 text-xs px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 ${
+            locked
+              ? "bg-green-600 text-white hover:bg-green-700"
+              : "bg-red-600 text-white hover:bg-red-700"
+          }`}
+        >
+          {saving ? "Saving…" : locked ? "🔓 Unlock FY" : "🔒 Lock FY (Year-End Close)"}
+        </button>
+      </div>
+      {locked && (
+        <div className="mx-5 mb-4 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+          <p className="text-xs text-red-700">
+            <strong>Locked:</strong> No new journal entries can be posted to FY {financialYear}.
+            Corrections require unlocking or reversal entries in the next period.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Financial Reports ──────────────────────────────────────────────────────
+
+function FinancialReports({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+  const [sharedReports, setSharedReports] = useState<{
+    id: string; report_type: string; report_label: string; financial_year: string; file_name: string; created_at: string; storage_path: string;
+  }[]>([]);
+  const [loadingShared, setLoadingShared] = useState(true);
+  const [exporting, setExporting] = useState<string | null>(null);
+  const [sharing, setSharing] = useState<string | null>(null);
+  const [shareSuccess, setShareSuccess] = useState<string | null>(null);
+
+  const loadShared = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
+    try {
+      const supabase = getSupabaseClient();
+      const { data } = await supabase.from("shared_reports")
+        .select("id, report_type, report_label, financial_year, file_name, created_at, storage_path")
+        .eq("client_id", clientId).order("created_at", { ascending: false }).limit(20);
+      setSharedReports(data ?? []);
+    } catch { /* skip */ } finally {
+      setLoadingShared(false);
+    }
   }, [clientId]);
 
-  const REPORT_LINKS: { id: string; label: string; description: string; icon: string }[] = [
-    { id: "pl", label: "Profit & Loss", description: "Statement of P&L for FY — Schedule III Part II", icon: "📈" },
-    { id: "bs", label: "Balance Sheet", description: "Balance Sheet as at FY end — Schedule III Part I", icon: "⚖️" },
-    { id: "trial", label: "Trial Balance", description: "Unadjusted trial balance for FY", icon: "📋" },
+  useEffect(() => { loadShared(); }, [loadShared]);
+
+  async function exportXLSX(reportType: "pl" | "bs" | "trial") {
+    setExporting(reportType);
+    try {
+      const XLSX = (await import("xlsx")).default;
+      const supabase = getSupabaseClient();
+      const { start, end } = fyDateRange(financialYear);
+
+      if (reportType === "trial") {
+        const { data: lines } = await supabase
+          .from("journal_lines")
+          .select("debit_paise, credit_paise, chart_of_accounts!inner(account_code, account_name, account_type), journal_entries!inner(entry_date, is_posted, client_id, deleted_at)")
+          .eq("journal_entries.client_id", clientId)
+          .eq("journal_entries.is_posted", true)
+          .is("journal_entries.deleted_at", null)
+          .gte("journal_entries.entry_date", start)
+          .lte("journal_entries.entry_date", end);
+
+        const map: Record<string, { code: string; name: string; type: string; debit: number; credit: number }> = {};
+        for (const row of (lines ?? []) as unknown as Array<{
+          debit_paise: number; credit_paise: number;
+          chart_of_accounts: { account_code: string; account_name: string; account_type: string };
+        }>) {
+          const acc = row.chart_of_accounts;
+          const key = acc.account_code;
+          if (!map[key]) map[key] = { code: acc.account_code, name: acc.account_name, type: acc.account_type, debit: 0, credit: 0 };
+          map[key].debit += row.debit_paise;
+          map[key].credit += row.credit_paise;
+        }
+        const rows = Object.values(map).sort((a, b) => a.code.localeCompare(b.code));
+        const ws = XLSX.utils.json_to_sheet([
+          { "Account Code": "", "Account Name": "", "Type": "", "Debit (₹)": "", "Credit (₹)": "" },
+          ...rows.map((r) => ({
+            "Account Code": r.code,
+            "Account Name": r.name,
+            "Type": r.type,
+            "Debit (₹)": (r.debit / 100).toFixed(2),
+            "Credit (₹)": (r.credit / 100).toFixed(2),
+          })),
+          {
+            "Account Code": "TOTAL",
+            "Account Name": "",
+            "Type": "",
+            "Debit (₹)": (rows.reduce((s, r) => s + r.debit, 0) / 100).toFixed(2),
+            "Credit (₹)": (rows.reduce((s, r) => s + r.credit, 0) / 100).toFixed(2),
+          },
+        ], { skipHeader: true });
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, `Trial Balance FY${financialYear}`);
+        XLSX.writeFile(wb, `Trial-Balance-FY${financialYear}.xlsx`);
+
+      } else {
+        // P&L or Balance Sheet
+        const accountTypes = reportType === "pl" ? ["Revenue", "Expense"] : ["Asset", "Liability", "Equity"];
+        const { data: lines } = await supabase
+          .from("journal_lines")
+          .select("debit_paise, credit_paise, chart_of_accounts!inner(id, account_code, account_name, account_type, account_subtype), journal_entries!inner(entry_date, is_posted, client_id, deleted_at)")
+          .eq("journal_entries.client_id", clientId)
+          .eq("journal_entries.is_posted", true)
+          .is("journal_entries.deleted_at", null)
+          .gte("journal_entries.entry_date", start)
+          .lte("journal_entries.entry_date", end)
+          .in("chart_of_accounts.account_type", accountTypes);
+
+        const map: Record<string, { code: string; name: string; type: string; subtype: string | null; net: number }> = {};
+        for (const row of (lines ?? []) as unknown as Array<{
+          debit_paise: number; credit_paise: number;
+          chart_of_accounts: { id: string; account_code: string; account_name: string; account_type: string; account_subtype: string | null };
+        }>) {
+          const acc = row.chart_of_accounts;
+          if (!map[acc.id]) map[acc.id] = { code: acc.account_code, name: acc.account_name, type: acc.account_type, subtype: acc.account_subtype, net: 0 };
+          if (acc.account_type === "Revenue" || acc.account_type === "Asset")
+            map[acc.id].net += row.credit_paise - row.debit_paise;
+          else
+            map[acc.id].net += row.debit_paise - row.credit_paise;
+        }
+        const rows = Object.values(map).filter((r) => r.net !== 0).sort((a, b) => a.code.localeCompare(b.code));
+        const bucketFn = reportType === "pl" ? plBucket : bsBucket;
+        const sheetRows = rows.map((r) => ({
+          "Schedule III Category": bucketFn(r.type, r.subtype),
+          "Account Code": r.code,
+          "Account Name": r.name,
+          "Type": r.type,
+          "Amount (₹)": (r.net / 100).toFixed(2),
+        }));
+        const ws = XLSX.utils.json_to_sheet(sheetRows);
+        const wb = XLSX.utils.book_new();
+        const sheetName = reportType === "pl" ? `P&L FY${financialYear}` : `Balance Sheet FY${financialYear}`;
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        const fileName = reportType === "pl" ? `PL-FY${financialYear}.xlsx` : `BalanceSheet-FY${financialYear}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  async function shareToPortal(reportType: "pl" | "bs" | "trial") {
+    setSharing(reportType);
+    try {
+      const XLSX = (await import("xlsx")).default;
+      const supabase = getSupabaseClient();
+      const firmId = await getFirmId();
+      const { start, end } = fyDateRange(financialYear);
+      const labelMap = { pl: "Profit & Loss", bs: "Balance Sheet", trial: "Trial Balance" };
+      const label = `${labelMap[reportType]} — FY ${financialYear}`;
+      const fileName = `${reportType}-FY${financialYear}-${Date.now()}.xlsx`;
+
+      // Generate XLSX in memory and upload to Supabase Storage
+      const accountTypes =
+        reportType === "pl" ? ["Revenue", "Expense"] :
+        reportType === "bs" ? ["Asset", "Liability", "Equity"] :
+        ["Revenue", "Expense", "Asset", "Liability", "Equity"];
+
+      const { data: lines } = await supabase
+        .from("journal_lines")
+        .select("debit_paise, credit_paise, chart_of_accounts!inner(id, account_code, account_name, account_type, account_subtype), journal_entries!inner(entry_date, is_posted, client_id, deleted_at)")
+        .eq("journal_entries.client_id", clientId)
+        .eq("journal_entries.is_posted", true)
+        .is("journal_entries.deleted_at", null)
+        .gte("journal_entries.entry_date", start)
+        .lte("journal_entries.entry_date", end)
+        .in("chart_of_accounts.account_type", accountTypes);
+
+      const map: Record<string, { code: string; name: string; type: string; subtype: string | null; debit: number; credit: number }> = {};
+      for (const row of (lines ?? []) as unknown as Array<{
+        debit_paise: number; credit_paise: number;
+        chart_of_accounts: { id: string; account_code: string; account_name: string; account_type: string; account_subtype: string | null };
+      }>) {
+        const acc = row.chart_of_accounts;
+        if (!map[acc.id]) map[acc.id] = { code: acc.account_code, name: acc.account_name, type: acc.account_type, subtype: acc.account_subtype, debit: 0, credit: 0 };
+        map[acc.id].debit += row.debit_paise;
+        map[acc.id].credit += row.credit_paise;
+      }
+
+      const rows = Object.values(map).sort((a, b) => a.code.localeCompare(b.code));
+      const sheetRows = rows.map((r) => ({
+        "Account Code": r.code,
+        "Account Name": r.name,
+        "Type": r.type,
+        "Debit (₹)": (r.debit / 100).toFixed(2),
+        "Credit (₹)": (r.credit / 100).toFixed(2),
+      }));
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetRows), label.slice(0, 31));
+      const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+      const file = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+
+      const storagePath = `shared_reports/${clientId}/${fileName}`;
+      const { error: uploadErr } = await supabase.storage
+        .from("Documents")
+        .upload(storagePath, file, { contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      if (uploadErr) throw new Error(uploadErr.message);
+
+      const { error: dbErr } = await supabase.from("shared_reports").insert({
+        firm_id: firmId,
+        client_id: clientId,
+        report_type: reportType === "bs" ? "balance_sheet" : reportType,
+        report_label: label,
+        financial_year: financialYear,
+        storage_path: storagePath,
+        file_name: fileName,
+        file_size_bytes: file.size,
+      });
+      if (dbErr) throw new Error(dbErr.message);
+
+      setShareSuccess(reportType);
+      setTimeout(() => setShareSuccess(null), 3000);
+      await loadShared();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Share failed");
+    } finally {
+      setSharing(null);
+    }
+  }
+
+  const REPORT_LINKS: { id: "pl" | "bs" | "trial"; label: string; description: string; icon: string }[] = [
+    { id: "pl",    label: "Profit & Loss",  description: "Statement of P&L for FY — Schedule III Part II", icon: "📈" },
+    { id: "bs",    label: "Balance Sheet",  description: "Balance Sheet as at FY end — Schedule III Part I", icon: "⚖️" },
+    { id: "trial", label: "Trial Balance",  description: "Unadjusted trial balance for FY", icon: "📋" },
   ];
 
   return (
     <div className="space-y-5 max-w-3xl">
-      {/* Generate reports */}
+      {/* Generate / export reports */}
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
           <p className="text-xs font-semibold text-gray-700">Generate Reports — FY {financialYear}</p>
-          <p className="text-[10px] text-gray-400 mt-0.5">Reports are computed live from posted journal entries. Use Print to save as PDF.</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">Export to XLSX or share directly to the client portal.</p>
         </div>
         <div className="divide-y divide-gray-50">
           {REPORT_LINKS.map((r) => (
@@ -1513,27 +1777,49 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
                 <p className="text-sm font-medium text-gray-800">{r.label}</p>
                 <p className="text-[10px] text-gray-400 mt-0.5">{r.description}</p>
               </div>
-              <button
-                onClick={() => {
-                  // Open a print-friendly window with the report content
-                  window.print();
-                }}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
-              >
-                <Printer size={12} /> Print / PDF
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
+                  title="Print as PDF"
+                >
+                  <Printer size={12} />
+                </button>
+                <button
+                  onClick={() => exportXLSX(r.id)}
+                  disabled={exporting === r.id}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-50"
+                >
+                  <Download size={12} />
+                  {exporting === r.id ? "…" : "XLSX"}
+                </button>
+                <button
+                  onClick={() => shareToPortal(r.id)}
+                  disabled={sharing === r.id}
+                  className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 ${
+                    shareSuccess === r.id
+                      ? "bg-green-100 text-green-700 border border-green-200"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                  }`}
+                >
+                  <Share2 size={12} />
+                  {sharing === r.id ? "Sharing…" : shareSuccess === r.id ? "Shared ✓" : "Share"}
+                </button>
+              </div>
             </div>
           ))}
         </div>
       </div>
+
+      {/* Year-End Close */}
+      <YearEndClose financialYear={financialYear} />
 
       {/* Schedule III note */}
       <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
         <p className="text-xs font-semibold text-blue-800">Schedule III Compliance</p>
         <p className="text-[11px] text-blue-600 mt-1">
           P&L and Balance Sheet are structured per <strong>Companies Act 2013, Schedule III</strong> (as amended).
-          Account classification follows account_subtype mapping. For companies, ensure accounts are correctly subtypes
-          for proper Schedule III bucket placement.
+          Account classification follows account_subtype mapping.
         </p>
       </div>
 
@@ -1541,7 +1827,7 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
           <p className="text-xs font-semibold text-gray-700">Shared Reports</p>
-          <p className="text-[10px] text-gray-400 mt-0.5">Reports previously shared with this client.</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">Reports previously shared with this client via portal.</p>
         </div>
         {loadingShared ? (
           <div className="px-5 py-6"><div className="h-12 bg-gray-50 rounded animate-pulse" /></div>
@@ -1549,14 +1835,26 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
           <div className="text-center py-8 text-gray-400 text-sm">No reports shared yet.</div>
         ) : (
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-gray-100 text-gray-400"><th className="px-5 py-2 text-left font-semibold">Report</th><th className="px-3 py-2 text-left font-semibold">FY</th><th className="px-3 py-2 text-left font-semibold">File</th><th className="px-4 py-2 text-left font-semibold">Shared On</th></tr></thead>
+            <thead><tr className="border-b border-gray-100 text-gray-400"><th className="px-5 py-2 text-left font-semibold">Report</th><th className="px-3 py-2 text-left font-semibold">FY</th><th className="px-3 py-2 text-left font-semibold">File</th><th className="px-4 py-2 text-left font-semibold">Shared On</th><th className="px-3 py-2"></th></tr></thead>
             <tbody className="divide-y divide-gray-50">
               {sharedReports.map((r) => (
                 <tr key={r.id} className="hover:bg-gray-50">
                   <td className="px-5 py-2.5 font-medium text-gray-800">{r.report_label}</td>
                   <td className="px-3 py-2.5 text-gray-500">FY {r.financial_year}</td>
-                  <td className="px-3 py-2.5 text-gray-500 font-mono text-[10px] truncate max-w-[150px]">{r.file_name}</td>
+                  <td className="px-3 py-2.5 text-gray-500 font-mono text-[10px] truncate max-w-[130px]">{r.file_name}</td>
                   <td className="px-4 py-2.5 text-gray-400">{new Date(r.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</td>
+                  <td className="px-3 py-2.5">
+                    <button
+                      onClick={async () => {
+                        const supabase = getSupabaseClient();
+                        const { data } = await supabase.storage.from("Documents").createSignedUrl(r.storage_path, 3600);
+                        if (data) window.open(data.signedUrl, "_blank");
+                      }}
+                      className="text-[10px] text-blue-600 hover:underline flex items-center gap-1"
+                    >
+                      <Download size={10} /> Download
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
