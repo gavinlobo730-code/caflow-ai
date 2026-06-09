@@ -5,6 +5,8 @@ import { Globe, Copy, X } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getClient } from "@/lib/data/clients";
+import { getFirmId } from "@/lib/data/getFirmId";
+import { writeTimelineEvent } from "@/lib/services/timeline";
 import type { Client } from "@/lib/types";
 
 interface PortalState {
@@ -13,7 +15,7 @@ interface PortalState {
 }
 
 export default function PortalPage() {
-  const { clientId } = useClientNav();
+  const { clientId, financialYear } = useClientNav();
   const [client, setClient] = useState<Client | null>(null);
   const [portal, setPortal] = useState<PortalState | null>(null);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -67,6 +69,22 @@ export default function PortalPage() {
         .eq("id", clientId);
       setPortal({ enabled: true, invitedAt: new Date().toISOString() });
       setInviteSent(true);
+
+      // Emit timeline event
+      try {
+        const firmId = await getFirmId();
+        await writeTimelineEvent({
+          client_id: clientId,
+          firm_id: firmId,
+          financial_year: financialYear,
+          category: "portal",
+          event_type: "portal_invite_sent",
+          severity: "info",
+          title: "Portal invite sent",
+          description: `Magic link sent to ${inviteEmail.trim()}`,
+          actor_type: "user",
+        });
+      } catch { /* timeline is non-blocking */ }
     } catch (err) {
       setInviteError(err instanceof Error ? err.message : "Failed to send invite");
     } finally {
