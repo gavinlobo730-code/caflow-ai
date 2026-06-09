@@ -77,7 +77,7 @@ export default function OverviewPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Building2 size={16} />
-            {client.name}
+            {client.client_name}
             {client.entity_type && (
               <Badge variant="outline" className="text-xs">
                 {ENTITY_TYPE_LABELS[client.entity_type] ?? client.entity_type}

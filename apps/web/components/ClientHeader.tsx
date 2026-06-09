@@ -8,7 +8,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 
 interface ClientData {
   id: string;
-  name: string;
+  client_name: string;
   entity_type?: string;
   gstin?: string;
 }
@@ -38,7 +38,7 @@ export function ClientHeader({ clientId }: ClientHeaderProps) {
     const supabase = getSupabaseClient();
     supabase
       .from("clients")
-      .select("id, name, entity_type, gstin")
+      .select("id, client_name, entity_type, gstin")
       .eq("id", clientId)
       .single()
       .then(({ data }) => {
@@ -54,7 +54,7 @@ export function ClientHeader({ clientId }: ClientHeaderProps) {
 
       <div className="flex items-center gap-3 min-w-0 flex-1">
         <span className="text-[13px] font-semibold text-white/90 truncate">
-          {client?.name ?? "Loading…"}
+          {client?.client_name ?? "Loading…"}
         </span>
         {client?.entity_type && (
           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white/5 text-white/35 shrink-0">
