@@ -1,0 +1,107 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  BookOpen,
+  Briefcase,
+  Receipt,
+  BarChart3,
+  Scale,
+  CreditCard,
+  FileSpreadsheet,
+  Wallet,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const ACCOUNTS_SECTIONS = [
+  {
+    label: "Accounting",
+    items: [
+      { href: "/accounting", label: "Overview", icon: BookOpen },
+      {
+        href: "/accounting/journal",
+        label: "Journal Entries",
+        icon: FileSpreadsheet,
+      },
+      { href: "/accounting/ledger", label: "Ledger", icon: Scale },
+      {
+        href: "/accounting/bank-reconciliation",
+        label: "Bank Reconciliation",
+        icon: CreditCard,
+      },
+    ],
+  },
+  {
+    label: "Payroll & Billing",
+    items: [
+      { href: "/payroll", label: "Payroll", icon: Briefcase },
+      { href: "/billing", label: "Fee Billing", icon: Receipt },
+    ],
+  },
+  {
+    label: "Reports",
+    items: [
+      {
+        href: "/reports/financial-statements",
+        label: "Financial Statements",
+        icon: BarChart3,
+      },
+      { href: "/accounting/cash-flow", label: "Cash Flow", icon: Wallet },
+    ],
+  },
+];
+
+export function AccountsPanel() {
+  const pathname = usePathname();
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-white/[0.06] shrink-0">
+        <p className="text-[13px] font-semibold text-white/90">Accounts</p>
+        <p className="text-[11px] text-white/30 mt-0.5">Accounting & payroll</p>
+      </div>
+
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-4">
+        {ACCOUNTS_SECTIONS.map((section) => (
+          <div key={section.label}>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-white/30 px-2 mb-1.5">
+              {section.label}
+            </p>
+            <div className="space-y-0.5">
+              {section.items.map(({ href, label, icon: Icon }) => {
+                const active =
+                  href === "/accounting"
+                    ? pathname === "/accounting"
+                    : pathname === href || pathname.startsWith(href + "/");
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn(
+                      "flex items-center gap-2.5 px-2.5 py-2 rounded-[7px] text-[12.5px] font-medium transition-all duration-75",
+                      active
+                        ? "bg-indigo-500/15 text-white/90"
+                        : "text-white/50 hover:text-white/80 hover:bg-white/[0.04]"
+                    )}
+                  >
+                    <Icon
+                      size={15}
+                      className={cn(
+                        "shrink-0",
+                        active ? "text-indigo-400" : "text-white/30"
+                      )}
+                    />
+                    <span className="truncate">{label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
+    </div>
+  );
+}
