@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   Building2, Mail, Phone, MapPin, Calendar, FileText, Clock,
   ChevronRight, CheckCircle, AlertTriangle, Globe, Copy, X,
-  Upload, Download, Trash2, FolderOpen,
+  Upload, Download, Trash2, FolderOpen, Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,15 +26,17 @@ interface PortalState {
   invitedAt: string | null;
 }
 
-type TabId = "overview" | "tasks" | "compliance" | "invoices" | "bank" | "documents";
+type TabId = "overview" | "compliance" | "accounts" | "documents" | "tasks" | "ai_insights";
+type ComplianceSubTab = "all" | "gst" | "tds" | "income_tax" | "mca";
+type AccountsSubTab = "transactions" | "bank_statements";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "Overview" },
-  { id: "tasks", label: "Tasks" },
   { id: "compliance", label: "Compliance" },
-  { id: "invoices", label: "Invoices" },
-  { id: "bank", label: "Bank Statements" },
+  { id: "accounts", label: "Accounts" },
   { id: "documents", label: "Documents" },
+  { id: "tasks", label: "Tasks" },
+  { id: "ai_insights", label: "AI Insights" },
 ];
 
 interface ClientDocument {
@@ -104,6 +106,8 @@ export default function ClientWorkspacePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const [complianceSubTab, setComplianceSubTab] = useState<ComplianceSubTab>("all");
+  const [accountsSubTab, setAccountsSubTab] = useState<AccountsSubTab>("transactions");
   const [markFiled, setMarkFiled] = useState<MarkFiledForm | null>(null);
   const [filingLoading, setFilingLoading] = useState(false);
   const [portal, setPortal] = useState<PortalState | null>(null);
@@ -590,6 +594,31 @@ export default function ClientWorkspacePage() {
       {/* Compliance tab */}
       {activeTab === "compliance" && (
         <div className="space-y-4">
+          {/* Compliance sub-tabs */}
+          <div className="flex gap-0.5 bg-gray-50 rounded-lg p-1 w-fit">
+            {(
+              [
+                { id: "all", label: "All" },
+                { id: "gst", label: "GST" },
+                { id: "tds", label: "TDS" },
+                { id: "income_tax", label: "Income Tax" },
+                { id: "mca", label: "MCA" },
+              ] as { id: ComplianceSubTab; label: string }[]
+            ).map((sub) => (
+              <button
+                key={sub.id}
+                onClick={() => setComplianceSubTab(sub.id)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  complianceSubTab === sub.id
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {sub.label}
+              </button>
+            ))}
+          </div>
+
           {/* Mark as Filed inline form */}
           {markFiled && (
             <Card className="border-blue-200 bg-blue-50">
@@ -637,7 +666,14 @@ export default function ClientWorkspacePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {compliance.map(c => (
+                  {compliance.filter(c => {
+                    if (complianceSubTab === "all") return true;
+                    if (complianceSubTab === "gst") return /GSTR/i.test(c.compliance_type);
+                    if (complianceSubTab === "tds") return /TDS|24Q|26Q/i.test(c.compliance_type);
+                    if (complianceSubTab === "income_tax") return /ITR|ADVANCE_TAX/i.test(c.compliance_type);
+                    if (complianceSubTab === "mca") return /MCA|ROC|DIR/i.test(c.compliance_type);
+                    return true;
+                  }).map(c => (
                     <tr key={c.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3 text-sm font-medium text-gray-900">{c.compliance_type}</td>
                       <td className="px-3 py-3 text-xs text-gray-500">
@@ -679,48 +715,118 @@ export default function ClientWorkspacePage() {
         </div>
       )}
 
-      {/* Invoices tab */}
-      {activeTab === "invoices" && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <FileText size={15} /> Transactions ({transactions.length})
-            </CardTitle>
-          </CardHeader>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 text-xs text-gray-400">
-                  <th className="px-5 py-3 text-left font-semibold">Date</th>
-                  <th className="px-3 py-3 text-left font-semibold">Type</th>
-                  <th className="px-3 py-3 text-left font-semibold">Party</th>
-                  <th className="px-3 py-3 text-left font-semibold">Ref</th>
-                  <th className="px-3 py-3 text-right font-semibold">Amount</th>
-                  <th className="px-5 py-3 text-left font-semibold">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {transactions.map(t => (
-                  <tr key={t.id} className="hover:bg-gray-50">
-                    <td className="px-5 py-3 text-xs text-gray-600 whitespace-nowrap">{formatDate(t.transaction_date)}</td>
-                    <td className="px-3 py-3 text-xs text-gray-600">{t.transaction_type.replace(/_/g, " ")}</td>
-                    <td className="px-3 py-3 text-sm font-medium text-gray-900">{t.party_name}</td>
-                    <td className="px-3 py-3 text-xs text-gray-500 font-mono">{t.reference_no ?? "—"}</td>
-                    <td className="px-3 py-3 text-sm text-right tabular-nums text-gray-700">{formatPaise(t.total_paise)}</td>
-                    <td className="px-5 py-3">
-                      <Badge className={`text-xs ${t.status === "posted" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
-                        {t.status}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {transactions.length === 0 && (
-              <div className="text-center py-8 text-sm text-gray-400">No transactions found</div>
-            )}
+      {/* Accounts tab */}
+      {activeTab === "accounts" && (
+        <div className="space-y-4">
+          <div className="flex gap-0.5 bg-gray-50 rounded-lg p-1 w-fit">
+            {(
+              [
+                { id: "transactions", label: "Transactions" },
+                { id: "bank_statements", label: "Bank Statements" },
+              ] as { id: AccountsSubTab; label: string }[]
+            ).map((sub) => (
+              <button
+                key={sub.id}
+                onClick={() => setAccountsSubTab(sub.id)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  accountsSubTab === sub.id
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {sub.label}
+              </button>
+            ))}
           </div>
-        </Card>
+
+          {accountsSubTab === "transactions" && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <FileText size={15} /> Transactions ({transactions.length})
+                </CardTitle>
+              </CardHeader>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-xs text-gray-400">
+                      <th className="px-5 py-3 text-left font-semibold">Date</th>
+                      <th className="px-3 py-3 text-left font-semibold">Type</th>
+                      <th className="px-3 py-3 text-left font-semibold">Party</th>
+                      <th className="px-3 py-3 text-left font-semibold">Ref</th>
+                      <th className="px-3 py-3 text-right font-semibold">Amount</th>
+                      <th className="px-5 py-3 text-left font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {transactions.map(t => (
+                      <tr key={t.id} className="hover:bg-gray-50">
+                        <td className="px-5 py-3 text-xs text-gray-600 whitespace-nowrap">{formatDate(t.transaction_date)}</td>
+                        <td className="px-3 py-3 text-xs text-gray-600">{t.transaction_type.replace(/_/g, " ")}</td>
+                        <td className="px-3 py-3 text-sm font-medium text-gray-900">{t.party_name}</td>
+                        <td className="px-3 py-3 text-xs text-gray-500 font-mono">{t.reference_no ?? "—"}</td>
+                        <td className="px-3 py-3 text-sm text-right tabular-nums text-gray-700">{formatPaise(t.total_paise)}</td>
+                        <td className="px-5 py-3">
+                          <Badge className={`text-xs ${t.status === "posted" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                            {t.status}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {transactions.length === 0 && (
+                  <div className="text-center py-8 text-sm text-gray-400">No transactions found</div>
+                )}
+              </div>
+            </Card>
+          )}
+
+          {accountsSubTab === "bank_statements" && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Bank Statements ({bankStatements.length})</CardTitle>
+              </CardHeader>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-xs text-gray-400">
+                      <th className="px-5 py-3 text-left font-semibold">Bank</th>
+                      <th className="px-3 py-3 text-left font-semibold">Account</th>
+                      <th className="px-3 py-3 text-left font-semibold">Period</th>
+                      <th className="px-3 py-3 text-right font-semibold">Debits</th>
+                      <th className="px-3 py-3 text-right font-semibold">Credits</th>
+                      <th className="px-3 py-3 text-center font-semibold">Rows</th>
+                      <th className="px-5 py-3 text-left font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {bankStatements.map(bs => (
+                      <tr key={bs.id} className="hover:bg-gray-50">
+                        <td className="px-5 py-3 text-sm font-medium text-gray-900">{bs.bank_name}</td>
+                        <td className="px-3 py-3 text-xs text-gray-500 font-mono">{bs.account_number ?? "—"}</td>
+                        <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">
+                          {formatDate(bs.statement_from)} – {formatDate(bs.statement_to)}
+                        </td>
+                        <td className="px-3 py-3 text-sm text-right tabular-nums text-red-600">{formatPaise(bs.total_debits_paise)}</td>
+                        <td className="px-3 py-3 text-sm text-right tabular-nums text-green-600">{formatPaise(bs.total_credits_paise)}</td>
+                        <td className="px-3 py-3 text-xs text-center text-gray-500">{bs.row_count}</td>
+                        <td className="px-5 py-3">
+                          <Badge className={`text-xs ${bs.import_status === "posted" ? "bg-green-100 text-green-700" : bs.import_status === "reviewed" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}>
+                            {bs.import_status}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {bankStatements.length === 0 && (
+                  <div className="text-center py-8 text-sm text-gray-400">No bank statements imported</div>
+                )}
+              </div>
+            </Card>
+          )}
+        </div>
       )}
 
       {/* Documents tab */}
@@ -1065,50 +1171,21 @@ export default function ClientWorkspacePage() {
         </div>
       )}
 
-      {/* Bank Statements tab */}
-      {activeTab === "bank" && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Bank Statements ({bankStatements.length})</CardTitle>
-          </CardHeader>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 text-xs text-gray-400">
-                  <th className="px-5 py-3 text-left font-semibold">Bank</th>
-                  <th className="px-3 py-3 text-left font-semibold">Account</th>
-                  <th className="px-3 py-3 text-left font-semibold">Period</th>
-                  <th className="px-3 py-3 text-right font-semibold">Debits</th>
-                  <th className="px-3 py-3 text-right font-semibold">Credits</th>
-                  <th className="px-3 py-3 text-center font-semibold">Rows</th>
-                  <th className="px-5 py-3 text-left font-semibold">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {bankStatements.map(bs => (
-                  <tr key={bs.id} className="hover:bg-gray-50">
-                    <td className="px-5 py-3 text-sm font-medium text-gray-900">{bs.bank_name}</td>
-                    <td className="px-3 py-3 text-xs text-gray-500 font-mono">{bs.account_number ?? "—"}</td>
-                    <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">
-                      {formatDate(bs.statement_from)} – {formatDate(bs.statement_to)}
-                    </td>
-                    <td className="px-3 py-3 text-sm text-right tabular-nums text-red-600">{formatPaise(bs.total_debits_paise)}</td>
-                    <td className="px-3 py-3 text-sm text-right tabular-nums text-green-600">{formatPaise(bs.total_credits_paise)}</td>
-                    <td className="px-3 py-3 text-xs text-center text-gray-500">{bs.row_count}</td>
-                    <td className="px-5 py-3">
-                      <Badge className={`text-xs ${bs.import_status === "posted" ? "bg-green-100 text-green-700" : bs.import_status === "reviewed" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}>
-                        {bs.import_status}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {bankStatements.length === 0 && (
-              <div className="text-center py-8 text-sm text-gray-400">No bank statements imported</div>
-            )}
+      {/* AI Insights tab */}
+      {activeTab === "ai_insights" && (
+        <div className="space-y-4">
+          <div className="bg-gradient-to-br from-indigo-50 to-violet-50 rounded-xl border border-indigo-100 p-8 text-center space-y-3">
+            <div className="w-12 h-12 rounded-xl bg-indigo-100 flex items-center justify-center mx-auto">
+              <Sparkles className="w-6 h-6 text-indigo-600" />
+            </div>
+            <h3 className="text-sm font-semibold text-gray-900">AI Insights</h3>
+            <p className="text-xs text-gray-500 max-w-sm mx-auto">
+              AI-powered analysis for {client.client_name} — anomaly detection,
+              missed deductions, advance tax projections, and compliance risk signals.
+            </p>
+            <p className="text-xs text-indigo-500 font-medium">Coming soon</p>
           </div>
-        </Card>
+        </div>
       )}
     </div>
   );

@@ -1,14 +1,14 @@
 import {
   LayoutDashboard,
   Users,
-  Shield,
-  Calculator,
+  Calendar,
+  CheckSquare,
   UserCheck,
   Sparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type WorkspaceId = "home" | "clients" | "compliance" | "accounts" | "team" | "ai";
+export type WorkspaceId = "home" | "clients" | "deadlines" | "work" | "team" | "ai";
 
 export interface WorkspaceConfig {
   id: WorkspaceId;
@@ -34,18 +34,18 @@ export const WORKSPACE_CONFIGS: WorkspaceConfig[] = [
     icon: Users,
   },
   {
-    id: "compliance",
-    label: "Comply",
-    description: "Filing deadlines (read-only)",
-    defaultRoute: "/compliance",
-    icon: Shield,
+    id: "deadlines",
+    label: "Deadlines",
+    description: "Filing deadlines across clients",
+    defaultRoute: "/deadlines",
+    icon: Calendar,
   },
   {
-    id: "accounts",
-    label: "Accounts",
-    description: "Accounting & payroll",
-    defaultRoute: "/accounting",
-    icon: Calculator,
+    id: "work",
+    label: "Work",
+    description: "Firm-wide work queue",
+    defaultRoute: "/work",
+    icon: CheckSquare,
   },
   {
     id: "team",
@@ -66,8 +66,8 @@ export const WORKSPACE_CONFIGS: WorkspaceConfig[] = [
 export const DEFAULT_WORKSPACE_ROUTES: Record<WorkspaceId, string> = {
   home: "/",
   clients: "/clients",
-  compliance: "/compliance",
-  accounts: "/accounting",
+  deadlines: "/deadlines",
+  work: "/work",
   team: "/team",
   ai: "/ai-assistant",
 };
@@ -94,19 +94,22 @@ export function getWorkspaceForPathname(pathname: string): WorkspaceId {
 
   if (
     pathname.startsWith("/compliance") ||
+    pathname.startsWith("/deadlines") ||
     pathname.startsWith("/gst") ||
     pathname.startsWith("/income-tax") ||
     pathname.startsWith("/tds") ||
     pathname.startsWith("/mca")
   )
-    return "compliance";
+    return "deadlines";
 
   if (
     pathname.startsWith("/accounting") ||
     pathname.startsWith("/billing") ||
-    pathname.startsWith("/payroll")
+    pathname.startsWith("/payroll") ||
+    pathname.startsWith("/work") ||
+    pathname.startsWith("/tasks")
   )
-    return "accounts";
+    return "work";
 
   if (pathname.startsWith("/team") || pathname.startsWith("/tasks"))
     return "team";
