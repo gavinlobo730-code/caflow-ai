@@ -335,7 +335,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
       });
       if (resp.success) setResult(resp.data);
       else setError(resp.error ?? "Upload failed");
-    } catch (e) {
+    } catch {
       setError("Invalid JSON. Please paste valid GSTR-2B JSON.");
     } finally {
       setLoading(false);
@@ -365,7 +365,6 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
           {(() => {
             const recon = result.reconciliation_result as Record<string, unknown>;
             const summary = recon?.summary as Record<string, number>;
-            const matched = recon?.matched as unknown[];
             const mismatched = recon?.mismatched as unknown[];
             const missing = recon?.missing_in_2b as unknown[];
             return (
