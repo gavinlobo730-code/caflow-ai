@@ -1,4 +1,21 @@
 # SPA fallback — serve pre-rendered _placeholder shell for all dynamic client routes
+# Section-specific rules must come before the catch-all
+/clients/*/overview/ /clients/_placeholder/overview/ 200
+/clients/*/accounting/ /clients/_placeholder/accounting/ 200
+/clients/*/sales/ /clients/_placeholder/sales/ 200
+/clients/*/purchases/ /clients/_placeholder/purchases/ 200
+/clients/*/compliance/gst/ /clients/_placeholder/compliance/gst/ 200
+/clients/*/compliance/tds/ /clients/_placeholder/compliance/tds/ 200
+/clients/*/compliance/mca/ /clients/_placeholder/compliance/mca/ 200
+/clients/*/compliance/ /clients/_placeholder/compliance/ 200
+/clients/*/payroll/ /clients/_placeholder/payroll/ 200
+/clients/*/tax/ /clients/_placeholder/tax/ 200
+/clients/*/documents/ /clients/_placeholder/documents/ 200
+/clients/*/tasks/ /clients/_placeholder/tasks/ 200
+/clients/*/reports/ /clients/_placeholder/reports/ 200
+/clients/*/portal/ /clients/_placeholder/portal/ 200
+/clients/*/ai-insights/ /clients/_placeholder/ai-insights/ 200
+/clients/*/year-end/ /clients/_placeholder/year-end/ 200
 /clients/* /clients/_placeholder/ 200
 
 # Accounting bank-statement detail routes
