@@ -4,9 +4,10 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useState,
 } from "react";
-import { useParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 export type ClientSection =
   | "overview"
@@ -81,8 +82,19 @@ export function ClientNavProvider({
   initialSection = "overview",
   children,
 }: ClientNavProviderProps) {
-  const params = useParams<{ id: string }>();
-  const clientId = params?.id || "";
+  // window.location.pathname is always the real browser URL, even when
+  // Cloudflare's 200-rewrite serves _placeholder HTML for a real client ID.
+  // useParams() would return "_placeholder" (from pre-rendered HTML data).
+  const [clientId, setClientId] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    const m = window.location.pathname.match(/^\/clients\/([^/]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+  });
+  const pathname = usePathname();
+  useEffect(() => {
+    const m = pathname.match(/^\/clients\/([^/]+)/);
+    setClientId(m ? decodeURIComponent(m[1]) : "");
+  }, [pathname]);
   const [activeSection, setActiveSection] = useState<ClientSection>(initialSection);
   const [financialYear, setFinancialYear] = useState(getCurrentFinancialYear());
 
