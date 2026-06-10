@@ -7,8 +7,10 @@ import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Optional
+from fastapi import Request
 from models.common import api_response
 from core.permissions import rbac
+from middleware.rate_limit import check_rate_limit
 
 router = APIRouter(prefix="/api/ai-copilot", tags=["ai-copilot"])
 
@@ -236,7 +238,8 @@ async def client_copilot_chat(
 
 
 @router.post("/chat")
-async def copilot_chat(body: CopilotRequest, current_user: dict = Depends(rbac("ai", "copilot"))):
+async def copilot_chat(request: Request, body: CopilotRequest, current_user: dict = Depends(rbac("ai", "copilot"))):
+    check_rate_limit(request, current_user["firm_id"])
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         return api_response(False, None, "GROQ_API_KEY not configured")
