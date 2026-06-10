@@ -220,6 +220,19 @@ def trigger_escalations(current_user: dict = Depends(rbac("task", "write"))):
     return api_response(True, result)
 
 
+@router.post("/trigger-scheduler-run")
+def trigger_scheduler_run(force: bool = False, current_user: dict = Depends(rbac("task", "write"))):
+    """
+    Run all daily automation jobs for this firm now: recurring generation,
+    escalations, and invoice overdue transitions. Idempotent per day unless
+    force=true. Intended for external cron services and manual catch-up.
+    """
+    from jobs.scheduler import run_daily_jobs
+    firm_id = current_user.get("firm_id")
+    result = run_daily_jobs(firm_id=firm_id, force=force)
+    return api_response(True, result)
+
+
 @router.post("/trigger-recurring-generation")
 def trigger_recurring_generation(current_user: dict = Depends(rbac("task", "write"))):
     from jobs.recurring_task_job import run_recurring_generation_job
