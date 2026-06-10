@@ -40,7 +40,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 
 function fmt(date?: string) {
   if (!date) return "—";
-  const [y, m, d] = date.split("-");
+  const [, m, d] = date.split("-");
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   return `${d} ${months[parseInt(m) - 1]}`;
 }
@@ -100,7 +100,7 @@ export default function WorkPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isManager, setIsManager] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [, setUserId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);

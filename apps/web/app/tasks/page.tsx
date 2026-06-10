@@ -10,6 +10,7 @@ import { TaskFormModal } from "@/components/TaskFormModal";
 import {
   getTasks, updateTaskStatus, deleteTask, updateTask, getTeamMembers,
 } from "@/lib/data/tasks";
+import { api } from "@/lib/api";
 import { getClients } from "@/lib/data/clients";
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -66,17 +67,137 @@ function SummaryCard({ label, value, color }: { label: string; value: number; co
   );
 }
 
+// ── Dependencies Section ──────────────────────────────────────────────────
+
+interface TaskDependency {
+  id: string;
+  depends_on_task_id: string;
+  depends_on_title?: string;
+}
+
+interface ApiResponse<T> {
+  success: boolean;
+  data: T | null;
+  error: string | null;
+}
+
+function DependenciesSection({ taskId, allTasks }: { taskId: string; allTasks: Task[] }) {
+  const [deps, setDeps] = useState<TaskDependency[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addId, setAddId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const titleMap = new Map(allTasks.map(t => [t.id, t.title]));
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const json = await api.taskExtras.dependencies(taskId) as ApiResponse<{ dependencies: TaskDependency[] }>;
+      setDeps(json.data?.dependencies ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load dependencies");
+    } finally {
+      setLoading(false);
+    }
+  }, [taskId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleAdd() {
+    if (!addId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.taskExtras.addDependency(taskId, addId);
+      setAddId("");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add dependency");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRemove(depId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.taskExtras.removeDependency(taskId, depId);
+      setDeps(prev => prev.filter(d => d.id !== depId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove dependency");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const existingDepIds = new Set(deps.map(d => d.depends_on_task_id));
+  const candidates = allTasks.filter(t => t.id !== taskId && !existingDepIds.has(t.id));
+
+  return (
+    <div className="space-y-2">
+      <h5 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Blocked By</h5>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      {loading ? (
+        <p className="text-xs text-gray-400">Loading dependencies…</p>
+      ) : deps.length === 0 ? (
+        <p className="text-xs text-gray-400">No dependencies</p>
+      ) : (
+        <div className="space-y-1.5">
+          {deps.map(d => (
+            <div key={d.id} className="flex items-center justify-between gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+              <span className="text-xs text-gray-700 line-clamp-1">
+                {d.depends_on_title ?? titleMap.get(d.depends_on_task_id) ?? d.depends_on_task_id}
+              </span>
+              <button
+                onClick={() => handleRemove(d.id)}
+                disabled={busy}
+                className="p-0.5 rounded text-gray-400 hover:text-red-500 shrink-0"
+                title="Remove dependency"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <select
+          value={addId}
+          onChange={e => setAddId(e.target.value)}
+          className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-500"
+        >
+          <option value="">Add a blocking task…</option>
+          {candidates.map(t => (
+            <option key={t.id} value={t.id}>{t.title}</option>
+          ))}
+        </select>
+        <button
+          onClick={handleAdd}
+          disabled={!addId || busy}
+          className="px-3 py-1.5 text-xs bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium disabled:opacity-50"
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Detail Side Panel ─────────────────────────────────────────────────────
 
 interface DetailPanelProps {
   task: Task | null;
   clients: Client[];
   teamMembers: FirmUser[];
+  allTasks: Task[];
   onClose: () => void;
   onUpdated: (task: Task) => void;
 }
 
-function DetailPanel({ task, clients, teamMembers, onClose, onUpdated }: DetailPanelProps) {
+function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated }: DetailPanelProps) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Partial<Task>>({});
   const [saving, setSaving] = useState(false);
@@ -256,6 +377,8 @@ function DetailPanel({ task, clients, teamMembers, onClose, onUpdated }: DetailP
                 <Row label="Due Date" value={fmt(task.due_date)} highlight={overdue} />
                 <Row label="Created" value={fmt(task.created_at.split("T")[0])} />
               </div>
+
+              <DependenciesSection taskId={task.id} allTasks={allTasks} />
             </>
           )}
         </div>
@@ -679,6 +802,7 @@ export default function TasksPage() {
         task={detailTask}
         clients={clients}
         teamMembers={teamMembers}
+        allTasks={tasks}
         onClose={() => setDetailTask(null)}
         onUpdated={handleUpdated}
       />

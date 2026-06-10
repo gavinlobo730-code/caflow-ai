@@ -7,7 +7,8 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, RefreshCw, X, MessageCircle, IndianRupee } from "lucide-react";
+import { Plus, RefreshCw, X, MessageCircle, IndianRupee, Download, Clock } from "lucide-react";
+import { api } from "@/lib/api";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
@@ -324,6 +325,8 @@ export default function BillingPage() {
   const [showEngModal, setShowEngModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [raisingInvoice, setRaisingInvoice] = useState(false);
+  const [runningOverdueCheck, setRunningOverdueCheck] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -434,6 +437,29 @@ export default function BillingPage() {
       setError(e instanceof Error ? e.message : "Failed to raise invoices");
     } finally {
       setRaisingInvoice(false);
+    }
+  }
+
+  async function handleRunOverdueCheck() {
+    setRunningOverdueCheck(true);
+    try {
+      await api.invoices.runOverdueCheck();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to run overdue check");
+    } finally {
+      setRunningOverdueCheck(false);
+    }
+  }
+
+  async function handleDownloadPdf(invoiceId: string) {
+    setDownloadingId(invoiceId);
+    try {
+      await api.invoices.downloadPdf(invoiceId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to download PDF");
+    } finally {
+      setDownloadingId(null);
     }
   }
 
@@ -619,10 +645,16 @@ export default function BillingPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-xs text-gray-500">GST @ 18% applied on CA services — SAC 998211</p>
-            <button onClick={handleRaiseInvoice} disabled={raisingInvoice}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-60">
-              <IndianRupee size={15} /> {raisingInvoice ? "Raising…" : "Raise Invoice"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={handleRunOverdueCheck} disabled={runningOverdueCheck}
+                className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-60">
+                <Clock size={15} /> {runningOverdueCheck ? "Checking…" : "Run Overdue Check"}
+              </button>
+              <button onClick={handleRaiseInvoice} disabled={raisingInvoice}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-60">
+                <IndianRupee size={15} /> {raisingInvoice ? "Raising…" : "Raise Invoice"}
+              </button>
+            </div>
           </div>
           <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
             <table className="w-full text-sm min-w-[800px]">
@@ -635,16 +667,17 @@ export default function BillingPage() {
                   <th className="text-right px-4 py-3 font-medium text-gray-600">GST 18%</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600">Total</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
+                  <th className="px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {loading && [...Array(3)].map((_, i) => (
-                  <tr key={i}>{[...Array(7)].map((__, j) => (
+                  <tr key={i}>{[...Array(8)].map((__, j) => (
                     <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded animate-pulse" /></td>
                   ))}</tr>
                 ))}
                 {!loading && invoices.length === 0 && (
-                  <tr><td colSpan={7} className="text-center py-8 text-gray-400">No invoices yet — click &quot;Raise Invoice&quot; to generate</td></tr>
+                  <tr><td colSpan={8} className="text-center py-8 text-gray-400">No invoices yet — click &quot;Raise Invoice&quot; to generate</td></tr>
                 )}
                 {!loading && invoices.map(inv => (
                   <tr key={inv.id} className="hover:bg-gray-50">
@@ -658,6 +691,13 @@ export default function BillingPage() {
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[inv.status]}`}>
                         {inv.status}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <button onClick={() => handleDownloadPdf(inv.id)} disabled={downloadingId === inv.id}
+                        title="Download PDF"
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium disabled:opacity-50">
+                        <Download size={13} /> {downloadingId === inv.id ? "Downloading…" : "PDF"}
+                      </button>
                     </td>
                   </tr>
                 ))}

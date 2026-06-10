@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Bell, CheckCheck, Archive, AlertCircle, Loader2,
-  ChevronDown, Clock, CheckCircle2, AlertTriangle, Info,
-  ExternalLink, X, Filter,
+  Clock, AlertTriangle, Info,
+  ExternalLink, Filter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
