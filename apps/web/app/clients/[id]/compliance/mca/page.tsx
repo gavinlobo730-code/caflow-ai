@@ -129,12 +129,12 @@ function CompaniesTab({ clientId }: { clientId: string }) {
                 <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{c.company_type as string}</span>
               </div>
               <p className="text-xs text-gray-500 font-mono">{c.cin as string}</p>
-              {c.incorporation_date && <p className="text-xs text-gray-500">Incorporated: {c.incorporation_date as string}</p>}
+              {!!c.incorporation_date && <p className="text-xs text-gray-500">Incorporated: {c.incorporation_date as string}</p>}
               <div className="flex gap-6 text-xs text-gray-600 mt-2">
                 <span>Auth. Capital: {crore((c.authorized_capital_paise as number) ?? 0)}</span>
                 <span>Paid-up: {crore((c.paid_up_capital_paise as number) ?? 0)}</span>
               </div>
-              {c.registered_address && <p className="text-xs text-gray-500 mt-1">{c.registered_address as string}</p>}
+              {!!c.registered_address && <p className="text-xs text-gray-500 mt-1">{c.registered_address as string}</p>}
             </div>
           ))}
           {rows.length === 0 && <p className="text-center text-gray-400 text-sm py-4">No companies registered.</p>}
