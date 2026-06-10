@@ -212,6 +212,30 @@ def extract_notice(
             severity="warning",
         )
 
+        # Notify partners about new government notice — reuse existing notification infrastructure
+        notice_id = record["id"]
+        try:
+            if not _USE_MOCK:
+                from core.supabase_client import get_supabase
+                _db = get_supabase()
+                # Get all partners for this firm
+                partners = _db.table("team_members").select("user_id,email").eq("firm_id", firm_id).eq("role", "partner").execute()
+                for partner in (partners.data or []):
+                    _db.table("notifications").insert({
+                        "firm_id": firm_id,
+                        "user_id": partner["user_id"],
+                        "title": f"New Government Notice: {extracted.get('authority', 'Unknown')}",
+                        "message": f"Reference: {extracted.get('reference_no', 'N/A')}. Response due: {extracted.get('response_due_date', 'Unknown')}",
+                        "type": "compliance_alert",
+                        "severity": "high",
+                        "entity_type": "government_notice",
+                        "entity_id": notice_id,
+                        "is_read": False,
+                        "created_at": datetime.utcnow().isoformat(),
+                    }).execute()
+        except Exception as _notif_err:
+            _logger.warning("Partner notification failed (non-fatal): %s", _notif_err)
+
         return api_response(True, {
             **record,
             "ca_review_required": True,
@@ -226,6 +250,8 @@ def extract_notice(
 def list_notices(
     client_id: str = Query(...),
     status: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("compliance", "read")),
 ):
     """List government notices for a client."""
@@ -235,12 +261,13 @@ def list_notices(
             rows = [n for n in _MOCK_NOTICES.values() if n["client_id"] == client_id]
             if status:
                 rows = [n for n in rows if n.get("status") == status]
+            rows = rows[offset:offset + limit]
         else:
             from core.supabase_client import get_supabase
             q = get_supabase().table("government_notices").select("*").eq("firm_id", firm_id).eq("client_id", client_id)
             if status:
                 q = q.eq("status", status)
-            rows = q.execute().data or []
+            rows = q.range(offset, offset + limit - 1).execute().data or []
         return api_response(True, rows)
     except Exception as e:
         return api_response(False, None, str(e))
@@ -331,6 +358,20 @@ def approve_notice(
 
         log_event(firm_id, "government_notice", notice_id, "ca_approved",
                   actor_id=current_user.get("id"), new_data=updates)
+        timeline_service.log_timeline_event(
+            client_id=rec.get("client_id", ""),
+            firm_id=firm_id,
+            financial_year="",
+            category="compliance",
+            event_type="notice_approved",
+            title=f"Notice {rec.get('reference_no', '')} approved by CA",
+            description="Government notice reviewed and approved by CA.",
+            severity="success",
+            entity_type="government_notice",
+            entity_id=notice_id,
+            actor_id=current_user.get("id"),
+            actor_name=current_user.get("email"),
+        )
         return api_response(True, {**rec, "message": "Notice approved by CA. Now actionable."})
     except Exception as e:
         return api_response(False, None, str(e))

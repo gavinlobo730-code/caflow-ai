@@ -11,10 +11,10 @@ from __future__ import annotations
 import os
 import uuid
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from models.common import api_response
@@ -131,6 +131,8 @@ def gst_dashboard(
 @router.get("/returns")
 def list_returns(
     client_id: str = Query(...),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("gst", "read")),
 ):
     """List all GST returns (GSTR-1 + GSTR-3B) for a client."""
@@ -139,11 +141,13 @@ def list_returns(
         if _USE_MOCK:
             g1 = [r for r in _MOCK_GSTR1.values() if r["client_id"] == client_id]
             g3b = [r for r in _MOCK_GSTR3B.values() if r["client_id"] == client_id]
+            g1 = g1[offset:offset + limit]
+            g3b = g3b[offset:offset + limit]
         else:
             from core.supabase_client import get_supabase
             sb = get_supabase()
-            g1 = sb.table("gstr1_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
-            g3b = sb.table("gstr3b_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
+            g1 = sb.table("gstr1_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).range(offset, offset + limit - 1).execute().data or []
+            g3b = sb.table("gstr3b_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).range(offset, offset + limit - 1).execute().data or []
 
         return api_response(True, {"gstr1": g1, "gstr3b": g3b})
     except Exception as e:
@@ -369,6 +373,8 @@ def update_gstr3b_status(
 @router.get("/filing-history")
 def filing_history(
     client_id: str = Query(...),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("gst", "read")),
 ):
     """List filed returns (status=submitted) with ARN and filing date."""
@@ -379,11 +385,13 @@ def filing_history(
                   if r["client_id"] == client_id and r.get("status") == "submitted"]
             g3b = [r for r in _MOCK_GSTR3B.values()
                    if r["client_id"] == client_id and r.get("status") == "submitted"]
+            g1 = g1[offset:offset + limit]
+            g3b = g3b[offset:offset + limit]
         else:
             from core.supabase_client import get_supabase
             sb = get_supabase()
-            g1 = sb.table("gstr1_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "submitted").execute().data or []
-            g3b = sb.table("gstr3b_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "submitted").execute().data or []
+            g1 = sb.table("gstr1_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "submitted").range(offset, offset + limit - 1).execute().data or []
+            g3b = sb.table("gstr3b_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "submitted").range(offset, offset + limit - 1).execute().data or []
 
         return api_response(True, {"gstr1_filed": g1, "gstr3b_filed": g3b})
     except Exception as e:
@@ -468,6 +476,77 @@ def upload_gstr2b(
             )
         return api_response(True, record)
     except Exception as e:
+        return api_response(False, None, str(e))
+
+
+@router.post("/gstr9")
+def save_gstr9(
+    data: dict,
+    current_user: dict = Depends(rbac("gst", "compute")),
+):
+    """
+    Save GSTR-9 annual return draft.
+    CGST Act §44: Annual return to be filed by 31st December following FY end.
+    All amounts in integer paise.
+    """
+    try:
+        required = ["client_id", "financial_year"]
+        for field in required:
+            if not data.get(field):
+                raise HTTPException(status_code=422, detail=f"{field} is required")
+
+        firm_id   = current_user.get("firm_id")
+        client_id = data["client_id"]
+        fy        = data["financial_year"]  # e.g. "2025-26"
+
+        # CGST Act §44 — GSTR-9 is annual; use April 1 of the FY for period validation
+        fy_start_year = int(fy.split("-")[0]) if fy else datetime.now(timezone.utc).year
+        period_validation_service.validate_posting_date(firm_id or "", f"{fy_start_year}-04-01")
+
+        payload = {
+            "firm_id":              firm_id,
+            "client_id":            client_id,
+            "financial_year":       fy,
+            "period":               f"FY{fy}",
+            "return_type":          "gstr9",
+            "status":               "draft",
+            "payload_json":         data.get("payload_json", {}),
+            "summary_json":         data.get("summary_json", {}),
+            "total_taxable_paise":  int(data.get("total_taxable_paise", 0)),
+            "total_igst_paise":     int(data.get("total_igst_paise", 0)),
+            "total_cgst_paise":     int(data.get("total_cgst_paise", 0)),
+            "total_sgst_paise":     int(data.get("total_sgst_paise", 0)),
+            "total_tax_paise":      int(data.get("total_tax_paise", 0)),
+            "created_at":           datetime.utcnow().isoformat(),
+        }
+
+        if _USE_MOCK:
+            rec = {**payload, "id": str(uuid.uuid4())}
+            _MOCK_GSTR1[rec["id"]] = rec  # reuse same mock store
+            return api_response(True, rec)
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        # CGST Act §44: GSTR-9 unique per client per FY
+        existing = db.table("gstr1_returns").select("id").eq("client_id", client_id).eq("financial_year", fy).eq("return_type", "gstr9").limit(1).execute()
+        if existing.data:
+            # Update existing draft
+            upd = db.table("gstr1_returns").update(payload).eq("id", existing.data[0]["id"]).execute()
+            rec = upd.data[0] if upd.data else {**payload, "id": existing.data[0]["id"]}
+        else:
+            ins = db.table("gstr1_returns").insert(payload).execute()
+            rec = ins.data[0] if ins.data else payload
+
+        log_event(
+            firm_id or "", "gstr9_return", rec.get("id", ""),
+            "create", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"), new_data=rec,
+        )
+        return api_response(True, rec)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("save_gstr9: %s", e)
         return api_response(False, None, str(e))
 
 

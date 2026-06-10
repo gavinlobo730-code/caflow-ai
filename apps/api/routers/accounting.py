@@ -3,11 +3,20 @@ Accounting router — Chart of Accounts, Journal Entries, Ledger, Trial Balance,
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
+from datetime import datetime, timezone
 from models.common import api_response
 from domain.accounting_service import accounting_service
 from core.exceptions import NotFoundError, ValidationError
 from core.permissions import rbac
 from services.audit_service import log_event
+from services.timeline_service import timeline_service
+
+
+def _current_fy_long() -> str:
+    """Return full financial year string like '2025-26'. Indian FY: April 1 – March 31."""
+    now = datetime.now(timezone.utc)
+    start = now.year if now.month >= 4 else now.year - 1
+    return f"{start}-{str(start + 1)[2:]}"
 
 router = APIRouter(prefix="/api/accounting", tags=["accounting"])
 
@@ -72,6 +81,20 @@ def post_journal_entry(entry_id: str, current_user: dict = Depends(rbac("account
         log_event(current_user["firm_id"], "journal_entry", entry_id, "approve",
                   actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
                   new_data={"status": "posted"})
+        timeline_service.log_timeline_event(
+            client_id=entry.get("client_id", ""),
+            firm_id=current_user.get("firm_id", ""),
+            financial_year=_current_fy_long(),
+            category="accounting",
+            event_type="journal_posted",
+            title=f"Journal {entry.get('reference_no', '')} posted",
+            description="Manual journal entry posted to ledger.",
+            severity="info",
+            entity_type="journal_entry",
+            entity_id=entry_id,
+            actor_id=current_user.get("auth_user_id"),
+            actor_name=current_user.get("email"),
+        )
         return api_response(True, entry)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))

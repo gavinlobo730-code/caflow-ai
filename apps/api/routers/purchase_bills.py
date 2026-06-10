@@ -76,6 +76,10 @@ def list_purchase_bills(
     client_id: str = Query(..., description="CA client ID — required"),
     vendor_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
+    from_date: Optional[str] = Query(None, description="Filter by bill_date >= from_date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, description="Filter by bill_date <= to_date (YYYY-MM-DD)"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """List purchase bills with optional filters."""
@@ -86,6 +90,11 @@ def list_purchase_bills(
                 result = [b for b in result if b.get("vendor_id") == vendor_id]
             if status:
                 result = [b for b in result if b.get("status") == status]
+            if from_date:
+                result = [b for b in result if b.get("bill_date", "") >= from_date]
+            if to_date:
+                result = [b for b in result if b.get("bill_date", "") <= to_date]
+            result = result[offset:offset + limit]
             return api_response(True, result)
 
         from core.supabase_client import get_supabase
@@ -95,7 +104,11 @@ def list_purchase_bills(
             q = q.eq("vendor_id", vendor_id)
         if status:
             q = q.eq("status", status)
-        resp = q.order("bill_date", desc=True).execute()
+        if from_date:
+            q = q.gte("bill_date", from_date)
+        if to_date:
+            q = q.lte("bill_date", to_date)
+        resp = q.order("bill_date", desc=True).range(offset, offset + limit - 1).execute()
         return api_response(True, resp.data or [])
     except Exception as e:
         _logger.error("list_purchase_bills: %s", e)

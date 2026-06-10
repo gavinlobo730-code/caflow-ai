@@ -145,16 +145,29 @@ def list_invoices(
     status: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
+    from_date: Optional[str] = Query(None, description="Alias for date_from"),
+    to_date: Optional[str] = Query(None, description="Alias for date_to"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """List sales invoices with optional filters."""
     try:
+        # Support both date_from/date_to and from_date/to_date aliases
+        effective_from = date_from or from_date
+        effective_to = date_to or to_date
+
         if _USE_MOCK:
             result = [inv for inv in MOCK_SALES_INVOICES if inv["client_id"] == client_id]
             if customer_id:
                 result = [inv for inv in result if inv.get("customer_id") == customer_id]
             if status:
                 result = [inv for inv in result if inv.get("status") == status]
+            if effective_from:
+                result = [inv for inv in result if inv.get("invoice_date", "") >= effective_from]
+            if effective_to:
+                result = [inv for inv in result if inv.get("invoice_date", "") <= effective_to]
+            result = result[offset:offset + limit]
             # Attach lines
             for inv in result:
                 inv["lines"] = [
@@ -169,11 +182,11 @@ def list_invoices(
             q = q.eq("customer_id", customer_id)
         if status:
             q = q.eq("status", status)
-        if date_from:
-            q = q.gte("invoice_date", date_from)
-        if date_to:
-            q = q.lte("invoice_date", date_to)
-        resp = q.order("invoice_date", desc=True).execute()
+        if effective_from:
+            q = q.gte("invoice_date", effective_from)
+        if effective_to:
+            q = q.lte("invoice_date", effective_to)
+        resp = q.order("invoice_date", desc=True).range(offset, offset + limit - 1).execute()
         invoices = resp.data or []
 
         # Attach lines to each invoice

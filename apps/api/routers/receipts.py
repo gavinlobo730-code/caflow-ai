@@ -67,14 +67,23 @@ def _next_receipt_seq(db, firm_id: str, client_id: str, fy: str) -> int:
 def list_receipts(
     client_id: str = Query(..., description="CA client ID — required"),
     customer_id: Optional[str] = Query(None),
+    from_date: Optional[str] = Query(None, description="Filter by receipt_date >= from_date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, description="Filter by receipt_date <= to_date (YYYY-MM-DD)"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
-    """List receipts, optionally filtered by customer."""
+    """List receipts, optionally filtered by customer and date range."""
     try:
         if _USE_MOCK:
             result = [r for r in MOCK_RECEIPTS if r["client_id"] == client_id]
             if customer_id:
                 result = [r for r in result if r.get("customer_id") == customer_id]
+            if from_date:
+                result = [r for r in result if r.get("receipt_date", "") >= from_date]
+            if to_date:
+                result = [r for r in result if r.get("receipt_date", "") <= to_date]
+            result = result[offset:offset + limit]
             return api_response(True, result)
 
         from core.supabase_client import get_supabase
@@ -82,7 +91,11 @@ def list_receipts(
         q = db.table("receipts").select("*").eq("client_id", client_id)
         if customer_id:
             q = q.eq("customer_id", customer_id)
-        resp = q.order("receipt_date", desc=True).execute()
+        if from_date:
+            q = q.gte("receipt_date", from_date)
+        if to_date:
+            q = q.lte("receipt_date", to_date)
+        resp = q.order("receipt_date", desc=True).range(offset, offset + limit - 1).execute()
         return api_response(True, resp.data or [])
     except Exception as e:
         _logger.error("list_receipts: %s", e)
