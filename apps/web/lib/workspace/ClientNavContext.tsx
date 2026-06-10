@@ -10,6 +10,8 @@ import React, {
 export type ClientSection =
   | "overview"
   | "accounting"
+  | "sales"
+  | "purchases"
   | "compliance"
   | "payroll"
   | "year-end"
@@ -29,6 +31,8 @@ export interface ClientSectionConfig {
 export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   { id: "overview",     label: "Overview",      href: (id) => `/clients/${id}/overview` },
   { id: "accounting",   label: "Accounting",    href: (id) => `/clients/${id}/accounting` },
+  { id: "sales",        label: "Sales",         href: (id) => `/clients/${id}/sales` },
+  { id: "purchases",    label: "Purchases",     href: (id) => `/clients/${id}/purchases` },
   { id: "compliance",   label: "Compliance",    href: (id) => `/clients/${id}/compliance` },
   { id: "payroll",      label: "Payroll",       href: (id) => `/clients/${id}/payroll` },
   { id: "year-end",     label: "Year End",      href: (id) => `/clients/${id}/year-end` },
