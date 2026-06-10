@@ -87,6 +87,8 @@ from routers import intelligence
 from routers import scheduler_status, audit, onboarding
 from routers import customers, vendors, sales_invoices, receipts, credit_notes
 from routers import purchase_bills, purchase_payments, document_intelligence_v1
+# Phase 3 — GST/TDS/MCA Workspace + Document Intelligence v2
+from routers import gst_workspace, tds_workspace, mca_workspace, document_intelligence_v2
 
 app.include_router(clients.router)
 app.include_router(compliance.router)
@@ -129,6 +131,11 @@ app.include_router(credit_notes.router)
 app.include_router(purchase_bills.router)
 app.include_router(purchase_payments.router)
 app.include_router(document_intelligence_v1.router)
+# Phase 3
+app.include_router(gst_workspace.router)
+app.include_router(tds_workspace.router)
+app.include_router(mca_workspace.router)
+app.include_router(document_intelligence_v2.router)
 
 
 @app.get("/")

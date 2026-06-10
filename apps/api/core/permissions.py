@@ -164,6 +164,16 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "read":  _AT_LEAST_MANAGER,
         "write": _PARTNER_ONLY,
     },
+    # ── MCA (Companies Act filings) ────────────────────────────────────────────
+    "mca": {
+        "read":  _ALL_STAFF,
+        "write": _AT_LEAST_EXECUTIVE,
+    },
+    # ── Compliance (calendar, notices, general compliance actions) ─────────────
+    "compliance": {
+        "read":  _ALL_STAFF,
+        "write": _AT_LEAST_EXECUTIVE,
+    },
 }
 
 

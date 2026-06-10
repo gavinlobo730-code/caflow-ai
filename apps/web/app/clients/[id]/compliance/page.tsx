@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { CheckCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getComplianceCalendar, updateFilingStatus, seedComplianceCalendar } from "@/lib/data/compliance";
@@ -10,6 +11,23 @@ import { formatDate } from "@/lib/services/formatting";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { getSupabaseClient } from "@/lib/supabase/client";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+async function apiFetch(path: string, opts?: RequestInit) {
+  const { data: { session } } = await getSupabaseClient().auth.getSession();
+  const token = session?.access_token ?? "";
+  const res = await fetch(`${API}${path}`, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(opts?.headers ?? {}),
+    },
+  });
+  return res.json();
+}
 
 type ComplianceSubTab = "all" | "gst" | "tds" | "income_tax" | "mca";
 
@@ -26,7 +44,120 @@ interface MarkFiledForm {
   arn: string;
 }
 
+// ── Notices Section ────────────────────────────────────────────────────────
+
+function NoticesSection({ clientId }: { clientId: string }) {
+  const [notices, setNotices] = useState<Record<string, unknown>[]>([]);
+  const [showExtract, setShowExtract] = useState(false);
+  const [noticeText, setNoticeText] = useState("");
+  const [extracting, setExtracting] = useState(false);
+
+  const loadNotices = useCallback(() => {
+    apiFetch(`/api/document-intelligence-v2/notices?client_id=${clientId}`)
+      .then((r) => setNotices(r.success ? r.data : []));
+  }, [clientId]);
+
+  useEffect(() => { loadNotices(); }, [loadNotices]);
+
+  async function extract() {
+    setExtracting(true);
+    await apiFetch("/api/document-intelligence-v2/notices/extract", {
+      method: "POST",
+      body: JSON.stringify({ client_id: clientId, document_text: noticeText }),
+    });
+    setShowExtract(false);
+    setNoticeText("");
+    setExtracting(false);
+    loadNotices();
+  }
+
+  async function approveNotice(id: string) {
+    await apiFetch(`/api/document-intelligence-v2/notices/${id}/approve`, { method: "POST" });
+    loadNotices();
+  }
+
+  const STATUS_COLORS: Record<string, string> = {
+    open: "bg-red-100 text-red-700",
+    in_progress: "bg-blue-100 text-blue-700",
+    responded: "bg-green-100 text-green-700",
+    closed: "bg-gray-100 text-gray-500",
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-sm">Government Notices ({notices.length})</CardTitle>
+          <button onClick={() => setShowExtract(!showExtract)}
+            className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+            + Extract Notice
+          </button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {showExtract && (
+          <div className="border rounded p-4 bg-gray-50 space-y-3">
+            <p className="text-xs font-medium text-amber-700">⚠ CA Review Required — AI extraction only. CA must approve before action.</p>
+            <textarea placeholder="Paste government notice text here…"
+              value={noticeText} onChange={(e) => setNoticeText(e.target.value)}
+              rows={6} className="w-full border rounded px-3 py-2 text-sm" />
+            <div className="flex gap-2">
+              <button onClick={extract} disabled={extracting || !noticeText}
+                className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
+                {extracting ? "Extracting…" : "Extract"}
+              </button>
+              <button onClick={() => setShowExtract(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
+            </div>
+          </div>
+        )}
+        {notices.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4">No government notices extracted yet.</p>
+        ) : (
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="bg-gray-50 text-left text-xs">
+                <th className="px-3 py-2 border-b">Authority</th>
+                <th className="px-3 py-2 border-b">Type</th>
+                <th className="px-3 py-2 border-b">Reference</th>
+                <th className="px-3 py-2 border-b">Response Due</th>
+                <th className="px-3 py-2 border-b">Status</th>
+                <th className="px-3 py-2 border-b">CA Approved</th>
+              </tr>
+            </thead>
+            <tbody>
+              {notices.map((n) => (
+                <tr key={n.id as string} className="border-b hover:bg-gray-50">
+                  <td className="px-3 py-2 font-medium text-xs">{n.authority as string}</td>
+                  <td className="px-3 py-2 text-xs">{(n.notice_type as string)?.replace(/_/g, " ")}</td>
+                  <td className="px-3 py-2 text-xs font-mono">{n.reference_no as string ?? "—"}</td>
+                  <td className="px-3 py-2 text-xs">{n.response_due_date as string ?? "—"}</td>
+                  <td className="px-3 py-2">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[n.status as string] ?? ""}`}>
+                      {n.status as string}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    {n.ca_approved ? (
+                      <span className="text-xs text-green-700">✓ Approved</span>
+                    ) : (
+                      <button onClick={() => approveNotice(n.id as string)}
+                        className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700">
+                        CA Approve
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function CompliancePage() {
+  const router = useRouter();
   const { clientId, financialYear } = useClientNav();
   const [compliance, setCompliance] = useState<ComplianceEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,6 +231,25 @@ export default function CompliancePage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4">
+      {/* Workspace Navigation Cards */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: "GST Workspace", desc: "GSTR-1, GSTR-3B, 2B Reconciliation", path: "gst", color: "bg-green-50 border-green-200 hover:bg-green-100" },
+          { label: "TDS Workspace", desc: "Challans, Returns, 26AS Reconciliation", path: "tds", color: "bg-blue-50 border-blue-200 hover:bg-blue-100" },
+          { label: "MCA Workspace", desc: "Company Master, Directors, Filings", path: "mca", color: "bg-purple-50 border-purple-200 hover:bg-purple-100" },
+        ].map(({ label, desc, path, color }) => (
+          <button key={path}
+            onClick={() => router.push(`/clients/${clientId}/compliance/${path}`)}
+            className={`border rounded-lg p-4 text-left transition-colors ${color}`}>
+            <p className="font-semibold text-sm">{label}</p>
+            <p className="text-xs text-gray-500 mt-1">{desc}</p>
+          </button>
+        ))}
+      </div>
+
+      {/* Government Notices */}
+      {clientId && clientId !== "_placeholder" && <NoticesSection clientId={clientId} />}
+
       {/* Sub-tab filter */}
       <div className="flex gap-0.5 bg-gray-50 rounded-lg p-1 w-fit">
         {(["all", "gst", "tds", "income_tax", "mca"] as ComplianceSubTab[]).map((id) => (
