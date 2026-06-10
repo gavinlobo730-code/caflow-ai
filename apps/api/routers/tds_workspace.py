@@ -21,6 +21,7 @@ from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
+from services.period_validation_service import period_validation_service
 
 router = APIRouter(prefix="/api/tds-workspace", tags=["tds_workspace"])
 _logger = logging.getLogger("caflow.tds_workspace")
@@ -132,6 +133,8 @@ def tds_dashboard(
 def list_deductions(
     client_id: str = Query(...),
     quarter: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("tds", "read")),
 ):
     """List TDS deductions for client. IT Act §192-194Q."""
@@ -141,13 +144,14 @@ def list_deductions(
             rows = [d for d in _MOCK_DEDUCTIONS.values() if d["client_id"] == client_id]
             if quarter:
                 rows = [d for d in rows if d.get("quarter") == quarter]
+            rows = rows[offset:offset + limit]
         else:
             from core.supabase_client import get_supabase
             sb = get_supabase()
             q = sb.table("tds_deductions").select("*").eq("firm_id", firm_id).eq("client_id", client_id)
             if quarter:
                 q = q.eq("quarter", quarter)
-            rows = q.execute().data or []
+            rows = q.range(offset, offset + limit - 1).execute().data or []
 
         return api_response(True, rows)
     except Exception as e:
@@ -157,6 +161,10 @@ def list_deductions(
 @router.get("/challans")
 def list_challans(
     client_id: str = Query(...),
+    from_date: Optional[str] = Query(None, description="Filter by challan_date >= from_date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, description="Filter by challan_date <= to_date (YYYY-MM-DD)"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("tds", "read")),
 ):
     """List TDS challans for client."""
@@ -164,9 +172,19 @@ def list_challans(
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
             rows = [c for c in _MOCK_CHALLANS.values() if c["client_id"] == client_id]
+            if from_date:
+                rows = [r for r in rows if r.get("challan_date", "") >= from_date]
+            if to_date:
+                rows = [r for r in rows if r.get("challan_date", "") <= to_date]
+            rows = rows[offset:offset + limit]
         else:
             from core.supabase_client import get_supabase
-            rows = get_supabase().table("tds_challans").select("*").eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
+            q = get_supabase().table("tds_challans").select("*").eq("firm_id", firm_id).eq("client_id", client_id)
+            if from_date:
+                q = q.gte("challan_date", from_date)
+            if to_date:
+                q = q.lte("challan_date", to_date)
+            rows = q.range(offset, offset + limit - 1).execute().data or []
         return api_response(True, rows)
     except Exception as e:
         return api_response(False, None, str(e))
@@ -180,6 +198,8 @@ def create_challan(
     """Create TDS challan record. IT Act §200."""
     try:
         firm_id = current_user["firm_id"]
+        # Period validation — prevent posting to locked financial years (migration 020)
+        period_validation_service.validate_posting_date(firm_id or "", body.challan_date)
         record = {
             "id": str(uuid.uuid4()),
             "firm_id": firm_id,
@@ -237,6 +257,8 @@ def get_challan(challan_id: str, current_user: dict = Depends(rbac("tds", "read"
 @router.get("/returns")
 def list_returns(
     client_id: str = Query(...),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("tds", "read")),
 ):
     """List TDS returns for client."""
@@ -244,9 +266,10 @@ def list_returns(
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
             rows = [r for r in _MOCK_RETURNS.values() if r["client_id"] == client_id]
+            rows = rows[offset:offset + limit]
         else:
             from core.supabase_client import get_supabase
-            rows = get_supabase().table("tds_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
+            rows = get_supabase().table("tds_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).range(offset, offset + limit - 1).execute().data or []
         return api_response(True, rows)
     except Exception as e:
         return api_response(False, None, str(e))
@@ -260,6 +283,12 @@ def create_return(
     """Create/save TDS return (24Q/26Q). IT Act §200."""
     try:
         firm_id = current_user["firm_id"]
+        # Validate that the FY is not locked — use April 1 of the FY start year
+        fy_str = body.financial_year or ""
+        if fy_str and len(fy_str) >= 4:
+            fy_start_year = int(fy_str[:4])
+            fy_start_date = f"{fy_start_year}-04-01"
+            period_validation_service.validate_posting_date(firm_id or "", fy_start_date)
         record = {
             "id": str(uuid.uuid4()),
             "firm_id": firm_id,
@@ -334,6 +363,8 @@ def update_return_status(
 @router.get("/certificates")
 def list_certificates(
     client_id: str = Query(...),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("tds", "read")),
 ):
     """List TDS certificates (Form 16/16A) for client. IT Act §203."""
@@ -341,9 +372,10 @@ def list_certificates(
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
             rows = [c for c in _MOCK_CERTIFICATES.values() if c["client_id"] == client_id]
+            rows = rows[offset:offset + limit]
         else:
             from core.supabase_client import get_supabase
-            rows = get_supabase().table("tds_certificates").select("*").eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
+            rows = get_supabase().table("tds_certificates").select("*").eq("firm_id", firm_id).eq("client_id", client_id).range(offset, offset + limit - 1).execute().data or []
         return api_response(True, rows)
     except Exception as e:
         return api_response(False, None, str(e))

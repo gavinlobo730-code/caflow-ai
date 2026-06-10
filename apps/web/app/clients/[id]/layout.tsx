@@ -6,12 +6,13 @@ export function generateStaticParams() {
 
 interface ClientLayoutProps {
   children: React.ReactNode;
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export default function ClientLayout({ children, params }: ClientLayoutProps) {
+export default async function ClientLayout({ children, params }: ClientLayoutProps) {
+  const { id } = await params;
   return (
-    <ClientWorkspaceShell clientId={params.id}>
+    <ClientWorkspaceShell clientId={id}>
       {children}
     </ClientWorkspaceShell>
   );

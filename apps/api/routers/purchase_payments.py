@@ -71,6 +71,10 @@ def list_purchase_payments(
     client_id: str = Query(...),
     vendor_id: Optional[str] = Query(None),
     purchase_bill_id: Optional[str] = Query(None),
+    from_date: Optional[str] = Query(None, description="Filter by payment_date >= from_date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, description="Filter by payment_date <= to_date (YYYY-MM-DD)"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     firm_id = current_user["firm_id"]
@@ -81,6 +85,11 @@ def list_purchase_payments(
             results = [p for p in results if p.get("vendor_id") == vendor_id]
         if purchase_bill_id:
             results = [p for p in results if p.get("purchase_bill_id") == purchase_bill_id]
+        if from_date:
+            results = [p for p in results if p.get("payment_date", "") >= from_date]
+        if to_date:
+            results = [p for p in results if p.get("payment_date", "") <= to_date]
+        results = results[offset:offset + limit]
         return api_response(True, results)
 
     try:
@@ -96,7 +105,11 @@ def list_purchase_payments(
             query = query.eq("vendor_id", vendor_id)
         if purchase_bill_id:
             query = query.eq("purchase_bill_id", purchase_bill_id)
-        resp = query.execute()
+        if from_date:
+            query = query.gte("payment_date", from_date)
+        if to_date:
+            query = query.lte("payment_date", to_date)
+        resp = query.range(offset, offset + limit - 1).execute()
         return api_response(True, resp.data or [])
     except Exception as e:
         _logger.error("list_purchase_payments error: %s", e)
