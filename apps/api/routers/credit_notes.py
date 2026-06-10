@@ -13,9 +13,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
+from services.period_validation_service import period_validation_service
+from services.timeline_service import timeline_service
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.credit_notes")
+
+
+def _current_fy_long() -> str:
+    """Return full financial year string like '2025-26' for display/timeline use.
+    Indian FY runs April 1 – March 31.
+    """
+    now = datetime.now(timezone.utc)
+    start = now.year if now.month >= 4 else now.year - 1
+    return f"{start}-{str(start + 1)[2:]}"
 
 router = APIRouter(prefix="/api/credit-notes", tags=["credit_notes"])
 
@@ -187,6 +198,10 @@ def create_credit_note(
             })
 
         total_paise = total_taxable + total_cgst + total_sgst + total_igst
+
+        # Validate posting date is not in a locked financial year (migration 020)
+        period_validation_service.validate_posting_date(firm_id or "", data["credit_note_date"])
+
         fy = _current_fy()
 
         if _USE_MOCK:
@@ -362,6 +377,23 @@ def issue_credit_note(
             actor_email=current_user.get("email"),
             new_data={"status": "issued", "journal_entry_id": journal_id},
         )
+        # Record timeline event for issued credit note
+        timeline_service.log_timeline_event(
+            client_id=updated_cn.get("client_id", ""),
+            firm_id=current_user.get("firm_id", ""),
+            financial_year=_current_fy_long(),
+            category="accounting",
+            event_type="credit_note_issued",
+            title=f"Credit Note {updated_cn.get('credit_note_no', '')} issued",
+            description=f"Credit note for ₹{updated_cn.get('total_paise', 0) // 100:,} issued.",
+            severity="success",
+            entity_type="credit_note",
+            entity_id=cn_id,
+            amount_paise=updated_cn.get("total_paise"),
+            actor_id=current_user.get("auth_user_id"),
+            actor_name=current_user.get("email"),
+        )
+
         updated_cn["journal_entry_id"] = journal_id
         return api_response(True, updated_cn)
     except HTTPException:

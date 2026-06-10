@@ -7,23 +7,12 @@ CGST Act Section 8: Intra-state supply → CGST + SGST; Inter-state → IGST.
 IT Act Section 194C/194I/194J: TDS deducted at source on applicable payments.
 """
 import os
-import uuid
 import logging
 from datetime import datetime, timezone
 from typing import Optional
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.phase2_journal")
-
-# Fallback hardcoded account IDs (seeded in chart_of_accounts)
-_ACC_TRADE_RECEIVABLES  = "acc-003"
-_ACC_TRADE_PAYABLES     = "acc-008"
-_ACC_GST_OUTPUT         = "acc-009"
-_ACC_GST_INPUT          = "acc-004"
-_ACC_BANK               = "acc-002"
-_ACC_TDS_PAYABLE        = "acc-010"
-_ACC_SALES_REVENUE      = "acc-015"
-_ACC_PURCHASES          = "acc-019"
 
 
 class Phase2JournalService:
@@ -51,9 +40,9 @@ class Phase2JournalService:
             from core.supabase_client import get_supabase
             db = get_supabase()
 
-            receivables_id = self._find_account(db, firm_id, client_id, "%Trade Receivable%", _ACC_TRADE_RECEIVABLES)
-            sales_id       = self._find_account(db, firm_id, client_id, "%Sales%", _ACC_SALES_REVENUE)
-            gst_output_id  = self._find_account(db, firm_id, client_id, "%GST Output%", _ACC_GST_OUTPUT)
+            receivables_id = self._find_account(db, firm_id, client_id, "%Trade Receivable%")
+            sales_id       = self._find_account(db, firm_id, client_id, "%Sales%")
+            gst_output_id  = self._find_account(db, firm_id, client_id, "%GST Output%")
 
             lines = [
                 {
@@ -102,6 +91,9 @@ class Phase2JournalService:
                 entry_type="Sales",
                 lines=lines,
             )
+        except ValueError:
+            # Re-raise account resolution and balance errors so the router returns 422
+            raise
         except Exception as e:
             _logger.error("journal_for_sales_invoice error: %s", e)
             return None
@@ -121,8 +113,8 @@ class Phase2JournalService:
             from core.supabase_client import get_supabase
             db = get_supabase()
 
-            bank_id        = self._find_account(db, firm_id, client_id, "%Bank%", _ACC_BANK)
-            receivables_id = self._find_account(db, firm_id, client_id, "%Trade Receivable%", _ACC_TRADE_RECEIVABLES)
+            bank_id        = self._find_account(db, firm_id, client_id, "%Bank%")
+            receivables_id = self._find_account(db, firm_id, client_id, "%Trade Receivable%")
 
             lines = [
                 {
@@ -149,6 +141,8 @@ class Phase2JournalService:
                 entry_type="Receipt",
                 lines=lines,
             )
+        except ValueError:
+            raise
         except Exception as e:
             _logger.error("journal_for_receipt error: %s", e)
             return None
@@ -170,9 +164,9 @@ class Phase2JournalService:
             from core.supabase_client import get_supabase
             db = get_supabase()
 
-            sales_id       = self._find_account(db, firm_id, client_id, "%Sales%", _ACC_SALES_REVENUE)
-            gst_output_id  = self._find_account(db, firm_id, client_id, "%GST Output%", _ACC_GST_OUTPUT)
-            receivables_id = self._find_account(db, firm_id, client_id, "%Trade Receivable%", _ACC_TRADE_RECEIVABLES)
+            sales_id       = self._find_account(db, firm_id, client_id, "%Sales%")
+            gst_output_id  = self._find_account(db, firm_id, client_id, "%GST Output%")
+            receivables_id = self._find_account(db, firm_id, client_id, "%Trade Receivable%")
 
             lines = [
                 {
@@ -222,6 +216,8 @@ class Phase2JournalService:
                 entry_type="Journal",
                 lines=lines,
             )
+        except ValueError:
+            raise
         except Exception as e:
             _logger.error("journal_for_credit_note error: %s", e)
             return None
@@ -244,19 +240,19 @@ class Phase2JournalService:
             from core.supabase_client import get_supabase
             db = get_supabase()
 
-            # Expense / purchases account
+            # Expense / purchases account — prefer explicit account, else resolve by name
             if bill.get("expense_account_id"):
                 purchases_id = bill["expense_account_id"]
             else:
-                purchases_id = self._find_account(
-                    db, firm_id, client_id, "%Purchase%", None
-                ) or self._find_account(
-                    db, firm_id, client_id, "%Expense%", _ACC_PURCHASES
-                )
+                # Try Purchase account first, then Professional Fees / Expense as fallback
+                try:
+                    purchases_id = self._find_account(db, firm_id, client_id, "%Purchase%")
+                except ValueError:
+                    purchases_id = self._find_account(db, firm_id, client_id, "%Expense%")
 
-            gst_input_id  = self._find_account(db, firm_id, client_id, "%GST Input%", _ACC_GST_INPUT)
-            payables_id   = self._find_account(db, firm_id, client_id, "%Trade Payable%", _ACC_TRADE_PAYABLES)
-            tds_pay_id    = self._find_account(db, firm_id, client_id, "%TDS Payable%", _ACC_TDS_PAYABLE)
+            gst_input_id = self._find_account(db, firm_id, client_id, "%GST Input%")
+            payables_id  = self._find_account(db, firm_id, client_id, "%Trade Payable%")
+            tds_pay_id   = self._find_account(db, firm_id, client_id, "%TDS Payable%")
 
             lines = [
                 {
@@ -323,6 +319,8 @@ class Phase2JournalService:
                 entry_type="Purchase",
                 lines=lines,
             )
+        except ValueError:
+            raise
         except Exception as e:
             _logger.error("journal_for_purchase_bill error: %s", e)
             return None
@@ -342,8 +340,8 @@ class Phase2JournalService:
             from core.supabase_client import get_supabase
             db = get_supabase()
 
-            payables_id = self._find_account(db, firm_id, client_id, "%Trade Payable%", _ACC_TRADE_PAYABLES)
-            bank_id     = self._find_account(db, firm_id, client_id, "%Bank%", _ACC_BANK)
+            payables_id = self._find_account(db, firm_id, client_id, "%Trade Payable%")
+            bank_id     = self._find_account(db, firm_id, client_id, "%Bank%")
 
             lines = [
                 {
@@ -370,6 +368,8 @@ class Phase2JournalService:
                 entry_type="Payment",
                 lines=lines,
             )
+        except ValueError:
+            raise
         except Exception as e:
             _logger.error("journal_for_purchase_payment error: %s", e)
             return None
@@ -384,17 +384,21 @@ class Phase2JournalService:
         firm_id: str,
         client_id: str,
         name_pattern: str,
-        fallback_id: Optional[str],
-    ) -> Optional[str]:
+    ) -> str:
         """
-        Search chart_of_accounts for a matching active account scoped to this
-        firm or client, falling back to the supplied hardcoded ID if not found.
+        Search chart_of_accounts by account_name ILIKE for an active account
+        scoped to this firm (client_id may be NULL for firm-wide accounts).
+
+        Raises:
+            ValueError: If no matching active account is found.
+                        Callers must set up Chart of Accounts before posting.
         """
         try:
             resp = (
                 db.table("chart_of_accounts")
                 .select("id")
-                .or_(f"firm_id.eq.{firm_id},client_id.eq.{client_id}")
+                .eq("firm_id", firm_id)
+                .or_(f"client_id.eq.{client_id},client_id.is.null")
                 .ilike("account_name", name_pattern)
                 .eq("is_active", True)
                 .limit(1)
@@ -404,7 +408,11 @@ class Phase2JournalService:
                 return resp.data[0]["id"]
         except Exception as e:
             _logger.warning("_find_account lookup failed (%s): %s", name_pattern, e)
-        return fallback_id
+
+        raise ValueError(
+            f"Required account not found: {name_pattern}. "
+            "Please set up Chart of Accounts before posting."
+        )
 
     def _create_journal(
         self,
@@ -420,6 +428,7 @@ class Phase2JournalService:
         """
         Insert a balanced double-entry journal entry and its lines.
         Validates that total debits == total credits before insert.
+        All monetary values are integer paise (BIGINT) — never float.
         Returns the journal_entry_id.
         """
         total_debit  = sum(l["debit_paise"]  for l in lines)
@@ -432,14 +441,14 @@ class Phase2JournalService:
 
         now_iso = datetime.now(timezone.utc).isoformat()
         entry_payload = {
-            "firm_id":     firm_id,
-            "client_id":   client_id,
-            "entry_date":  entry_date,
+            "firm_id":      firm_id,
+            "client_id":    client_id,
+            "entry_date":   entry_date,
             "reference_no": reference_no,
-            "narration":   narration,
-            "entry_type":  entry_type,
-            "is_posted":   True,
-            "posted_at":   now_iso,
+            "narration":    narration,
+            "entry_type":   entry_type,
+            "is_posted":    True,
+            "posted_at":    now_iso,
         }
 
         entry_resp = db.table("journal_entries").insert(entry_payload).execute()
