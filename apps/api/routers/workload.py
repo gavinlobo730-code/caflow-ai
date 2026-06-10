@@ -1,6 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
+from repositories.capacity_repository import capacity_repo, DEFAULT_WEEKLY_HOURS, DEFAULT_MAX_TASKS
+
 from datetime import date, timedelta
 
 router = APIRouter(prefix="/api/workload", tags=["workload"])
@@ -9,6 +13,55 @@ router = APIRouter(prefix="/api/workload", tags=["workload"])
 def _get_db():
     from core.supabase_client import get_supabase
     return get_supabase()
+
+
+class CapacityUpdate(BaseModel):
+    user_id: str
+    weekly_capacity_hours: int = Field(DEFAULT_WEEKLY_HOURS, ge=1, le=100)
+    max_concurrent_tasks: int = Field(DEFAULT_MAX_TASKS, ge=1, le=100)
+
+
+@router.get("/capacity")
+def list_capacity(current_user: dict = Depends(rbac("workload", "read"))):
+    """List configured capacity for all firm users (defaults applied client-side)."""
+    firm_id = current_user.get("firm_id")
+    rows = capacity_repo.find_all(firm_id=firm_id)
+    return api_response(True, {
+        "capacities": rows,
+        "defaults": {
+            "weekly_capacity_hours": DEFAULT_WEEKLY_HOURS,
+            "max_concurrent_tasks": DEFAULT_MAX_TASKS,
+        },
+    })
+
+
+@router.put("/capacity")
+def set_capacity(body: CapacityUpdate, current_user: dict = Depends(rbac("workload", "write"))):
+    """Set a user's weekly capacity (Manager+)."""
+    firm_id = current_user.get("firm_id")
+    record = capacity_repo.upsert(firm_id, body.user_id, {
+        "weekly_capacity_hours": body.weekly_capacity_hours,
+        "max_concurrent_tasks": body.max_concurrent_tasks,
+        "updated_by": current_user.get("id"),
+    })
+    return api_response(True, {"capacity": record})
+
+
+def _minutes_logged_this_week(db, firm_id: str) -> dict[str, int]:
+    """Minutes logged per user since Monday of the current week."""
+    week_start = (date.today() - timedelta(days=date.today().weekday())).isoformat()
+    try:
+        result = (
+            db.table("time_entries").select("user_id, duration_minutes")
+            .eq("firm_id", firm_id).gte("started_at", week_start).execute()
+        )
+        minutes: dict[str, int] = {}
+        for e in result.data or []:
+            if e.get("duration_minutes"):
+                minutes[e["user_id"]] = minutes.get(e["user_id"], 0) + e["duration_minutes"]
+        return minutes
+    except Exception:
+        return {}
 
 
 @router.get("")
@@ -47,6 +100,10 @@ def get_team_workload(current_user: dict = Depends(rbac("workload", "read"))):
         if uid in user_completed:
             user_completed[uid] += 1
 
+    # Capacity configuration + actual time logged this week
+    capacity_map = capacity_repo.capacity_map(firm_id)
+    minutes_logged = _minutes_logged_this_week(db, firm_id)
+
     members = []
     overloaded = []
     underutilised = []
@@ -58,7 +115,21 @@ def get_team_workload(current_user: dict = Depends(rbac("workload", "read"))):
         overdue = sum(1 for t in utasks if t.get("due_date") and t["due_date"] < today)
         due_week = sum(1 for t in utasks if t.get("due_date") and today <= t["due_date"] <= week_end)
         completed_month = user_completed.get(uid, 0)
-        utilisation = min(100, round((active / 20) * 100))
+
+        cap = capacity_map.get(uid, {})
+        weekly_hours = cap.get("weekly_capacity_hours", DEFAULT_WEEKLY_HOURS)
+        max_tasks = cap.get("max_concurrent_tasks", DEFAULT_MAX_TASKS)
+        logged_min = minutes_logged.get(uid, 0)
+
+        # Utilisation = time logged this week vs configured weekly capacity.
+        # Falls back to task-count utilisation when no time has been logged.
+        if logged_min > 0:
+            utilisation = round((logged_min / (weekly_hours * 60)) * 100)
+        else:
+            utilisation = min(100, round((active / max(max_tasks, 1)) * 100))
+
+        is_overloaded = utilisation > 100 or active > max_tasks or overdue > 3
+        is_underutilised = utilisation < 40 and active < 3
 
         member = {
             "user_id": uid,
@@ -69,9 +140,12 @@ def get_team_workload(current_user: dict = Depends(rbac("workload", "read"))):
             "overdue_tasks": overdue,
             "due_this_week": due_week,
             "completed_this_week": completed_month,
+            "weekly_capacity_hours": weekly_hours,
+            "max_concurrent_tasks": max_tasks,
+            "minutes_logged_this_week": logged_min,
             "utilisation_pct": utilisation,
-            "is_overloaded": active > 15 or overdue > 3,
-            "is_underutilised": active < 3,
+            "is_overloaded": is_overloaded,
+            "is_underutilised": is_underutilised,
         }
         members.append(member)
         if member["is_overloaded"]:
