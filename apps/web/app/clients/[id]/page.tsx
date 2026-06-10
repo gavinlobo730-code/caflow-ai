@@ -1,17 +1,16 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 export default function ClientRootPage() {
   const router = useRouter();
-  const params = useParams<{ id: string }>();
 
   useEffect(() => {
-    if (params?.id) {
-      router.replace(`/clients/${params.id}/overview`);
-    }
-  }, [params?.id, router]);
+    const m = window.location.pathname.match(/^\/clients\/([^/]+)/);
+    const id = m ? decodeURIComponent(m[1]) : null;
+    if (id) router.replace(`/clients/${id}/overview`);
+  }, [router]);
 
   return null;
 }
