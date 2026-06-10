@@ -10,6 +10,7 @@ from repositories.task_repository import task_repo
 from repositories.ai_insights_repository import ai_insights_repo
 from mock_data import MOCK_ACTIVITY_LOGS
 from datetime import date
+from services.audit_service import log_event
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
@@ -122,6 +123,9 @@ def create_client(body: ClientCreate, current_user: dict = Depends(rbac("client"
     firm_id = current_user.get("firm_id")
     data = {**body.model_dump(), "firm_id": firm_id}
     client = client_repo.create(data)
+    log_event(firm_id, "client", client.get("id",""), "create",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              new_data=client)
     return api_response(True, {"client": client})
 
 
@@ -139,6 +143,9 @@ def update_client(client_id: str, body: ClientUpdate, current_user: dict = Depen
         )
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     updated = client_repo.update(client_id, updates)
+    log_event(firm_id, "client", client_id, "update",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              old_data={k: existing.get(k) for k in updates}, new_data=updates)
     return api_response(True, {"client": updated})
 
 
