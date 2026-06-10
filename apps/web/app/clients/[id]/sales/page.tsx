@@ -4,9 +4,37 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, RefreshCw, X, FileText, CheckCircle } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { getFirmId } from "@/lib/data/getFirmId";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+// ── API helpers ────────────────────────────────────────────────────────────
+
+async function apiCall(
+  endpoint: string,
+  method: "POST" | "PATCH" | "DELETE",
+  body?: unknown,
+  token?: string
+): Promise<{ success: boolean; data: unknown; error: string | null }> {
+  const res = await fetch(`${API}${endpoint}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok && res.status !== 200) {
+    const text = await res.text().catch(() => "Request failed");
+    return { success: false, data: null, error: text };
+  }
+  return res.json();
+}
+
+async function getAuthToken(): Promise<string> {
+  const supabase = getSupabaseClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token ?? "";
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -334,8 +362,9 @@ function SalesInvoices({
   async function issueInvoice(id: string) {
     try {
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-      const res = await fetch(`${API}/api/sales-invoices/${id}/issue`, { method: "PATCH" });
-      if (!res.ok) throw new Error("Failed to issue invoice");
+      const token = await getAuthToken();
+      const result = await apiCall(`/api/sales-invoices/${id}/issue`, "POST", undefined, token);
+      if (!result.success) throw new Error(result.error ?? "Failed to issue invoice");
       showToast("Invoice issued successfully", "success");
       load();
     } catch (err) {
@@ -499,61 +528,27 @@ function InvoiceForm({
 
     setSaving(true); setError(null);
     try {
-      const supabase = getSupabaseClient();
-      const firmId = await getFirmId();
-
-      // Auto-generate invoice number (simple sequence)
-      const { count } = await supabase
-        .from("client_sales_invoices")
-        .select("id", { count: "exact", head: true })
-        .eq("client_id", clientId);
-      const invoiceNo = `INV-${String((count ?? 0) + 1).padStart(4, "0")}`;
-
-      const { data: inv, error: invErr } = await supabase
-        .from("client_sales_invoices")
-        .insert({
-          firm_id: firmId,
+      const token = await getAuthToken();
+      const result = await apiCall(
+        "/api/sales-invoices/",
+        "POST",
+        {
           client_id: clientId,
           customer_id: customerId,
-          invoice_no: invoiceNo,
           invoice_date: invoiceDate,
-          due_date: dueDate || null,
-          supply_state_code: supplyStateCode || null,
-          is_interstate: isInterstate,
-          taxable_paise: gst.taxable_paise,
-          cgst_paise: gst.cgst_paise,
-          sgst_paise: gst.sgst_paise,
-          igst_paise: gst.igst_paise,
-          gst_paise: gst.cgst_paise + gst.sgst_paise + gst.igst_paise,
-          total_paise: gst.total_paise,
-          status: "draft",
-        })
-        .select("id")
-        .single();
-      if (invErr || !inv) throw new Error(invErr?.message ?? "Failed to create invoice");
-
-      // Insert lines
-      const { error: linesErr } = await supabase.from("client_sales_invoice_lines").insert(
-        validLines.map((l) => {
-          const lineTaxable = Math.round(parseFloat(l.qty) * parseFloat(l.rate) * 100);
-          const lineGst = isInterstate
-            ? Math.round((lineTaxable * l.gst_rate) / 100)
-            : Math.round((lineTaxable * l.gst_rate) / 100);
-          return {
-            sales_invoice_id: inv.id,
+          due_date: dueDate || undefined,
+          supply_state_code: supplyStateCode || undefined,
+          lines: validLines.map((l) => ({
             description: l.description.trim(),
-            hsn_sac: l.hsn_sac.trim() || null,
-            qty: parseFloat(l.qty),
+            hsn_sac: l.hsn_sac.trim() || undefined,
+            quantity: parseFloat(l.qty),
             rate_paise: Math.round(parseFloat(l.rate) * 100),
             gst_rate_bps: l.gst_rate * 100,
-            taxable_paise: lineTaxable,
-            gst_paise: lineGst,
-            total_paise: lineTaxable + lineGst,
-          };
-        })
+          })),
+        },
+        token
       );
-      if (linesErr) throw new Error(linesErr.message);
-
+      if (!result.success) throw new Error(result.error ?? "Failed to create invoice");
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save invoice");
@@ -953,36 +948,51 @@ function CustomerForm({
 
     setSaving(true); setError(null);
     try {
-      const supabase = getSupabaseClient();
-      const firmId = await getFirmId();
       // All amounts in integer paise — user enters rupees, multiply by 100
       const openingBalancePaise = Math.round(parseFloat(openingBalance || "0") * 100);
-
-      const payload = {
-        firm_id: firmId,
-        client_id: clientId,
-        name: name.trim(),
-        gstin: gstin.trim() || null,
-        state_code: stateCode || null,
-        pan: pan.trim() || null,
-        email: email.trim() || null,
-        phone: phone.trim() || null,
-        city: city.trim() || null,
-        state: state.trim() || null,
-        opening_balance_paise: openingBalancePaise,
-        credit_days: parseInt(creditDays) || 30,
-        is_active: true,
-      };
+      const token = await getAuthToken();
 
       if (existing) {
+        // UPDATE: still use Supabase directly (no dedicated PATCH endpoint for customers)
+        const supabase = getSupabaseClient();
         const { error: updErr } = await supabase
           .from("customers")
-          .update(payload)
+          .update({
+            client_id: clientId,
+            name: name.trim(),
+            gstin: gstin.trim() || null,
+            state_code: stateCode || null,
+            pan: pan.trim() || null,
+            email: email.trim() || null,
+            phone: phone.trim() || null,
+            city: city.trim() || null,
+            state: state.trim() || null,
+            opening_balance_paise: openingBalancePaise,
+            credit_days: parseInt(creditDays) || 30,
+            is_active: true,
+          })
           .eq("id", existing.id);
         if (updErr) throw new Error(updErr.message);
       } else {
-        const { error: insErr } = await supabase.from("customers").insert(payload);
-        if (insErr) throw new Error(insErr.message);
+        const result = await apiCall(
+          "/api/customers/",
+          "POST",
+          {
+            client_id: clientId,
+            name: name.trim(),
+            gstin: gstin.trim() || undefined,
+            state_code: stateCode || undefined,
+            pan: pan.trim() || undefined,
+            email: email.trim() || undefined,
+            phone: phone.trim() || undefined,
+            city: city.trim() || undefined,
+            state: state.trim() || undefined,
+            opening_balance_paise: openingBalancePaise,
+            credit_days: parseInt(creditDays) || 30,
+          },
+          token
+        );
+        if (!result.success) throw new Error(result.error ?? "Failed to save customer");
       }
       onSaved();
     } catch (err) {
@@ -1318,44 +1328,31 @@ function ReceiptForm({
 
     setSaving(true); setError(null);
     try {
-      const supabase = getSupabaseClient();
-      const firmId = await getFirmId();
+      const token = await getAuthToken();
 
-      const { count } = await supabase
-        .from("receipts")
-        .select("id", { count: "exact", head: true })
-        .eq("client_id", clientId);
-      const receiptNo = `REC-${String((count ?? 0) + 1).padStart(4, "0")}`;
-
-      const { data: rec, error: recErr } = await supabase
-        .from("receipts")
-        .insert({
-          firm_id: firmId,
-          client_id: clientId,
-          customer_id: customerId,
-          receipt_no: receiptNo,
-          receipt_date: receiptDate,
-          amount_paise: amountPaise,
-          payment_mode: paymentMode,
-          reference_no: referenceNo.trim() || null,
-          allocated_paise: totalAllocated,
-        })
-        .select("id")
-        .single();
-      if (recErr || !rec) throw new Error(recErr?.message ?? "Failed to record receipt");
-
-      // Insert allocations
-      const allocationRows = Object.entries(allocations)
+      // Build allocations array for the API
+      const allocationsList = Object.entries(allocations)
         .filter(([, v]) => parseFloat(v || "0") > 0)
         .map(([invoiceId, v]) => ({
-          receipt_id: rec.id,
           sales_invoice_id: invoiceId,
           allocated_paise: Math.round(parseFloat(v) * 100),
         }));
 
-      if (allocationRows.length > 0) {
-        await supabase.from("receipt_allocations").insert(allocationRows);
-      }
+      const result = await apiCall(
+        "/api/receipts/",
+        "POST",
+        {
+          client_id: clientId,
+          customer_id: customerId,
+          receipt_date: receiptDate,
+          amount_paise: amountPaise,
+          payment_mode: paymentMode,
+          reference_no: referenceNo.trim() || undefined,
+          allocations: allocationsList.length > 0 ? allocationsList : undefined,
+        },
+        token
+      );
+      if (!result.success) throw new Error(result.error ?? "Failed to record receipt");
 
       onSaved();
     } catch (err) {
@@ -1536,12 +1533,9 @@ function CreditNotes({
 
   async function issueCreditNote(id: string) {
     try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase
-        .from("credit_notes")
-        .update({ status: "issued" })
-        .eq("id", id);
-      if (error) throw new Error(error.message);
+      const token = await getAuthToken();
+      const result = await apiCall(`/api/credit-notes/${id}/issue`, "POST", undefined, token);
+      if (!result.success) throw new Error(result.error ?? "Failed to issue credit note");
       showToast("Credit note issued", "success");
       load();
     } catch (err) {
@@ -1701,56 +1695,27 @@ function CreditNoteForm({
 
     setSaving(true); setError(null);
     try {
-      const supabase = getSupabaseClient();
-      const firmId = await getFirmId();
-
-      const { count } = await supabase
-        .from("credit_notes")
-        .select("id", { count: "exact", head: true })
-        .eq("client_id", clientId);
-      const cnNo = `CN-${String((count ?? 0) + 1).padStart(4, "0")}`;
-
-      const { data: cn, error: cnErr } = await supabase
-        .from("credit_notes")
-        .insert({
-          firm_id: firmId,
+      const token = await getAuthToken();
+      const result = await apiCall(
+        "/api/credit-notes/",
+        "POST",
+        {
           client_id: clientId,
           customer_id: customerId,
-          cn_no: cnNo,
-          cn_date: cnDate,
+          credit_note_date: cnDate,
           reason: reason.trim(),
-          original_invoice_id: originalInvoiceId || null,
-          is_interstate: isInterstate,
-          taxable_paise: gst.taxable_paise,
-          cgst_paise: gst.cgst_paise,
-          sgst_paise: gst.sgst_paise,
-          igst_paise: gst.igst_paise,
-          gst_paise: gst.cgst_paise + gst.sgst_paise + gst.igst_paise,
-          total_paise: gst.total_paise,
-          status: "draft",
-        })
-        .select("id")
-        .single();
-      if (cnErr || !cn) throw new Error(cnErr?.message ?? "Failed to create credit note");
-
-      // Insert lines
-      await supabase.from("credit_note_lines").insert(
-        validLines.map((l) => {
-          const lineTaxable = Math.round(parseFloat(l.qty) * parseFloat(l.rate) * 100);
-          const lineGst = Math.round((lineTaxable * l.gst_rate) / 100);
-          return {
-            credit_note_id: cn.id,
+          sales_invoice_id: originalInvoiceId || undefined,
+          lines: validLines.map((l) => ({
             description: l.description.trim(),
-            hsn_sac: l.hsn_sac.trim() || null,
-            qty: parseFloat(l.qty),
+            hsn_sac: l.hsn_sac.trim() || undefined,
+            quantity: parseFloat(l.qty),
             rate_paise: Math.round(parseFloat(l.rate) * 100),
             gst_rate_bps: l.gst_rate * 100,
-            taxable_paise: lineTaxable,
-            gst_paise: lineGst,
-            total_paise: lineTaxable + lineGst,
-          };
-        })
+          })),
+        },
+        token
       );
+      if (!result.success) throw new Error(result.error ?? "Failed to create credit note");
 
       onSaved();
     } catch (err) {

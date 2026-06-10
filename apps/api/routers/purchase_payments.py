@@ -12,9 +12,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
+from services.period_validation_service import period_validation_service
+from services.timeline_service import timeline_service
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_payments")
+
+
+def _current_fy_long() -> str:
+    """Return full financial year string like '2025-26' for display/timeline use.
+    Indian FY runs April 1 – March 31.
+    """
+    now = datetime.now(timezone.utc)
+    start = now.year if now.month >= 4 else now.year - 1
+    return f"{start}-{str(start + 1)[2:]}"
 
 router = APIRouter(prefix="/api/purchase-payments", tags=["purchase_payments"])
 
@@ -162,6 +173,9 @@ def create_purchase_payment(
     payment_date = data.get("payment_date", str(datetime.now(timezone.utc).date()))
     purchase_bill_id = data.get("purchase_bill_id")
 
+    # Validate posting date is not in a locked financial year (migration 020)
+    period_validation_service.validate_posting_date(firm_id, payment_date)
+
     if _USE_MOCK:
         fy = _current_fy()
         payment = {
@@ -230,6 +244,24 @@ def create_purchase_payment(
             actor_email=current_user.get("email"),
             new_data={"amount_paise": amount_paise, "vendor_id": vendor_id},
         )
+
+        # Record timeline event for vendor payment
+        timeline_service.log_timeline_event(
+            client_id=client_id,
+            firm_id=firm_id,
+            financial_year=_current_fy_long(),
+            category="accounting",
+            event_type="payment_recorded",
+            title=f"Vendor Payment {payment_no} recorded",
+            description=f"Payment of ₹{amount_paise // 100:,} made to vendor.",
+            severity="success",
+            entity_type="purchase_payment",
+            entity_id=payment["id"],
+            amount_paise=amount_paise,
+            actor_id=current_user.get("auth_user_id"),
+            actor_name=current_user.get("email"),
+        )
+
         return api_response(True, payment)
 
     except HTTPException:
