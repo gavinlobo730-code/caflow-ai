@@ -769,7 +769,6 @@ function InvoiceForm({
 
 function Customers({
   clientId,
-  financialYear: _financialYear,
 }: {
   clientId: string;
   financialYear: string;

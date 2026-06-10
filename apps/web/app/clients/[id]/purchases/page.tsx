@@ -218,12 +218,11 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   // Compute GST for a line (integer basis points)
   function lineGst(line: BillLine) {
     const taxable = Math.round(line.quantity * line.rate * 100); // paise
-    const gst = (taxable * line.gst_rate_bps) // ÷ 10000 but keep integer
-      ;
+    const gst_paise = Math.floor((taxable * line.gst_rate_bps) / 10000);
     return {
       taxable_paise: taxable,
-      gst_paise: Math.floor((taxable * line.gst_rate_bps) / 10000),
-      line_total: taxable + Math.floor((taxable * line.gst_rate_bps) / 10000),
+      gst_paise,
+      line_total: taxable + gst_paise,
     };
   }
 
@@ -660,7 +659,7 @@ interface VendorRow {
 
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 
-function Vendors({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+function Vendors({ clientId }: { clientId: string; financialYear: string }) {
   const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
