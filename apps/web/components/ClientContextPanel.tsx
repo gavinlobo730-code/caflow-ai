@@ -3,11 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { CLIENT_SECTIONS } from "@/lib/workspace/ClientNavContext";
-
-interface ClientContextPanelProps {
-  clientId: string;
-}
+import { CLIENT_SECTIONS, useClientNav } from "@/lib/workspace/ClientNavContext";
 
 const SECTION_DESCRIPTIONS: Record<string, string> = {
   overview:     "Client summary & health",
@@ -23,8 +19,9 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   "ai-insights":"AI analysis & drafts",
 };
 
-export function ClientContextPanel({ clientId }: ClientContextPanelProps) {
+export function ClientContextPanel() {
   const pathname = usePathname();
+  const { clientId } = useClientNav();
 
   return (
     <div className="flex flex-col h-full w-[200px] shrink-0 bg-[#0f0f16] border-r border-white/[0.06]">

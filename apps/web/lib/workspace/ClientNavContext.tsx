@@ -6,6 +6,7 @@ import React, {
   useContext,
   useState,
 } from "react";
+import { useParams } from "next/navigation";
 
 export type ClientSection =
   | "overview"
@@ -72,16 +73,16 @@ export interface ClientNavContextValue {
 const ClientNavContext = createContext<ClientNavContextValue | null>(null);
 
 interface ClientNavProviderProps {
-  clientId: string;
   initialSection?: ClientSection;
   children: React.ReactNode;
 }
 
 export function ClientNavProvider({
-  clientId,
   initialSection = "overview",
   children,
 }: ClientNavProviderProps) {
+  const params = useParams<{ id: string }>();
+  const clientId = params?.id || "";
   const [activeSection, setActiveSection] = useState<ClientSection>(initialSection);
   const [financialYear, setFinancialYear] = useState(getCurrentFinancialYear());
 

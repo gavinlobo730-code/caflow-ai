@@ -27,12 +27,8 @@ function getFYOptions(): string[] {
   ];
 }
 
-interface ClientHeaderProps {
-  clientId: string;
-}
-
-export function ClientHeader({ clientId }: ClientHeaderProps) {
-  const { financialYear, setFinancialYear } = useClientNav();
+export function ClientHeader() {
+  const { clientId, financialYear, setFinancialYear } = useClientNav();
   const [client, setClient] = useState<ClientData | null>(null);
   const [fyOpen, setFyOpen] = useState(false);
   const [health, setHealth] = useState<{ overall_score: number; trend: "improving" | "stable" | "declining" | null } | null>(null);

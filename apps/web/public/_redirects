@@ -1,2 +1,5 @@
-/clients/:id  /clients/_placeholder/  200
-/accounting/bank-statements/:id  /accounting/bank-statements/_placeholder/  200
+# SPA fallback — serve pre-rendered _placeholder shell for all dynamic client routes
+/clients/* /clients/_placeholder/ 200
+
+# Accounting bank-statement detail routes
+/accounting/bank-statements/* /accounting/bank-statements/_placeholder/ 200
