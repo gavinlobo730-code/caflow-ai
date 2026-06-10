@@ -735,6 +735,9 @@ export interface WorkloadMember {
   overdue_tasks: number;
   due_this_week: number;
   completed_this_week: number;
+  weekly_capacity_hours: number;
+  max_concurrent_tasks: number;
+  minutes_logged_this_week: number;
   utilisation_pct: number;
   is_overloaded: boolean;
   is_underutilised: boolean;

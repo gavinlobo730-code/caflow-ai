@@ -190,6 +190,60 @@ def generate_from_time_entries(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GET /api/invoices/{invoice_id}/pdf — Download GST tax invoice PDF
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/{invoice_id}/pdf")
+def download_invoice_pdf(
+    invoice_id: str,
+    current_user: dict = Depends(rbac("invoice", "read")),
+):
+    """
+    Render and download the GST-compliant tax invoice PDF.
+    Includes firm details, client details, SAC code and CGST/SGST/IGST breakdown.
+    """
+    from fastapi.responses import Response
+    from services.invoice_pdf_service import get_invoice_pdf
+
+    firm_id = current_user.get("firm_id")
+
+    try:
+        invoice = invoice_repo.find_by_id_or_raise(invoice_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    if invoice.get("firm_id") != firm_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    pdf_bytes, filename = get_invoice_pdf(invoice_id)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/invoices/run-overdue-check — Transition Issued past due to Overdue
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/run-overdue-check")
+def run_overdue_check_endpoint(
+    current_user: dict = Depends(rbac("invoice", "write")),
+):
+    """
+    Run the invoice lifecycle check for this firm: any Issued invoice past
+    its due date (invoice_date + 30 days if no explicit due_date) is marked
+    Overdue. Also runs automatically via the daily scheduler.
+    """
+    from services.invoice_lifecycle_service import run_overdue_check
+
+    firm_id = current_user.get("firm_id")
+    result = run_overdue_check(firm_id=firm_id)
+    return api_response(True, result)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PATCH /api/invoices/{invoice_id}/status — Transition status
 # ─────────────────────────────────────────────────────────────────────────────
 

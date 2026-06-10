@@ -77,6 +77,38 @@ def list_entries(
     })
 
 
+@router.get("/export")
+def export_entries(
+    fmt: str = "csv",
+    user_id: Optional[str] = None,
+    client_id: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    current_user: dict = Depends(rbac("time_entry", "report")),
+):
+    """Export time entries as CSV or XLSX with user/client/date filters."""
+    from fastapi.responses import Response
+    from services.time_export_service import export_time_entries
+
+    if fmt not in ("csv", "xlsx"):
+        raise HTTPException(status_code=400, detail="fmt must be 'csv' or 'xlsx'")
+
+    firm_id = current_user.get("firm_id")
+    content, filename, media_type = export_time_entries(
+        firm_id=firm_id,
+        fmt=fmt,
+        user_id=user_id,
+        client_id=client_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/start")
 def start_timer(body: StartTimerBody, current_user: dict = Depends(rbac("time_entry", "write"))):
     firm_id = current_user.get("firm_id")
