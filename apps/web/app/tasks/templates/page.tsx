@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Plus, Trash2, Edit2, CheckSquare, Tag, Clock, User,
-  ChevronDown, X, AlertCircle, Loader2, Copy,
+  X, AlertCircle, Loader2, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

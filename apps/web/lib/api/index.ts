@@ -21,6 +21,36 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+/** Fetch a binary endpoint with auth and trigger a browser blob download. */
+async function downloadFile(path: string, fallbackFilename: string): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`API error ${res.status}: ${err}`);
+  }
+
+  // Prefer the filename from Content-Disposition, fall back to the provided one
+  let filename = fallbackFilename;
+  const disposition = res.headers.get("Content-Disposition");
+  const match = disposition?.match(/filename="?([^";]+)"?/);
+  if (match?.[1]) filename = match[1];
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   clients: {
     list: () => request("/api/clients"),
@@ -142,5 +172,41 @@ export const api = {
   copilot: {
     chat: (body: { message: string; conversation_history: unknown[]; context?: string }) =>
       request("/api/ai-copilot/chat", { method: "POST", body: JSON.stringify(body) }),
+    clientChat: (clientId: string, body: { message: string; conversation_history: unknown[] }) =>
+      request(`/api/ai-copilot/client/${clientId}/chat`, { method: "POST", body: JSON.stringify(body) }),
+  },
+  invoices: {
+    downloadPdf: (id: string) => downloadFile(`/api/invoices/${id}/pdf`, `invoice-${id}.pdf`),
+    runOverdueCheck: () => request("/api/invoices/run-overdue-check", { method: "POST" }),
+  },
+  timeEntries: {
+    exportEntries: (params: { fmt: "csv" | "xlsx"; user_id?: string; client_id?: string; date_from?: string; date_to?: string }) => {
+      const q = new URLSearchParams(
+        Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== "")) as Record<string, string>
+      ).toString();
+      return downloadFile(`/api/time-entries/export?${q}`, `time-entries.${params.fmt}`);
+    },
+  },
+  workload: {
+    capacityList: () => request("/api/workload/capacity"),
+    setCapacity: (body: { user_id: string; weekly_capacity_hours: number; max_concurrent_tasks: number }) =>
+      request("/api/workload/capacity", { method: "PUT", body: JSON.stringify(body) }),
+  },
+  intelligence: {
+    complianceRisk: () => request("/api/intelligence/compliance-risk"),
+    relationshipHealth: () => request("/api/intelligence/relationship-health"),
+    recommendations: () => request("/api/intelligence/recommendations"),
+    workloadInsights: () => request("/api/intelligence/workload-insights"),
+    journalSuggestions: (client_id?: string) =>
+      request(`/api/intelligence/journal-suggestions${client_id ? `?client_id=${client_id}` : ""}`),
+    approveJournalSuggestion: (body: unknown) =>
+      request("/api/intelligence/journal-suggestions/approve", { method: "POST", body: JSON.stringify(body) }),
+  },
+  taskExtras: {
+    dependencies: (taskId: string) => request(`/api/tasks/${taskId}/dependencies`),
+    addDependency: (taskId: string, dependsOnTaskId: string) =>
+      request(`/api/tasks/${taskId}/dependencies`, { method: "POST", body: JSON.stringify({ depends_on_task_id: dependsOnTaskId }) }),
+    removeDependency: (taskId: string, dependencyId: string) =>
+      request(`/api/tasks/${taskId}/dependencies/${dependencyId}`, { method: "DELETE" }),
   },
 };
