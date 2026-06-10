@@ -416,10 +416,12 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
   if (loading) return <p className="text-sm text-gray-500">Loading…</p>;
   if (!data) return <p className="text-sm text-red-500">Failed to load filing history.</p>;
 
-  const all = [
+  const all = ([
     ...(data.gstr1_filed ?? []).map((r) => ({ ...r, type: "GSTR-1" })),
     ...(data.gstr3b_filed ?? []).map((r) => ({ ...r, type: "GSTR-3B" })),
-  ].sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
+  ] as Record<string, unknown>[]).sort((a, b) =>
+    String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""))
+  );
 
   return (
     <div className="space-y-4">
