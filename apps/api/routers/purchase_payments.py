@@ -1,0 +1,275 @@
+"""Purchase payments — vendor payment recording with auto journal.
+Outstanding tracking against purchase bills.
+IT Act Section 194C/194I/194J: TDS already deducted at bill stage; payment is net amount.
+"""
+import os
+import uuid
+import logging
+from datetime import datetime, timezone
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from models.common import api_response
+from core.permissions import rbac
+from services.audit_service import log_event
+
+_USE_MOCK = not os.environ.get("SUPABASE_URL")
+_logger = logging.getLogger("caflow.purchase_payments")
+
+router = APIRouter(prefix="/api/purchase-payments", tags=["purchase_payments"])
+
+MOCK_PURCHASE_PAYMENTS: list[dict] = []
+
+
+def _current_fy() -> str:
+    now = datetime.now(timezone.utc)
+    if now.month >= 4:
+        return f"{str(now.year)[2:]}{str(now.year + 1)[2:]}"
+    return f"{str(now.year - 1)[2:]}{str(now.year)[2:]}"
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _get_db():
+    from core.supabase_client import get_supabase
+    return get_supabase()
+
+
+def _next_payment_seq(db, firm_id: str, fy: str) -> int:
+    try:
+        resp = (
+            db.table("purchase_payments")
+            .select("id", count="exact")
+            .eq("firm_id", firm_id)
+            .like("payment_no", f"VPMT-{fy}-%")
+            .execute()
+        )
+        return (resp.count or 0) + 1
+    except Exception:
+        return 1
+
+
+# ---------------------------------------------------------------------------
+# List
+# ---------------------------------------------------------------------------
+
+@router.get("")
+def list_purchase_payments(
+    client_id: str = Query(...),
+    vendor_id: Optional[str] = Query(None),
+    purchase_bill_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    firm_id = current_user["firm_id"]
+
+    if _USE_MOCK:
+        results = [p for p in MOCK_PURCHASE_PAYMENTS if p.get("client_id") == client_id and p.get("firm_id") == firm_id]
+        if vendor_id:
+            results = [p for p in results if p.get("vendor_id") == vendor_id]
+        if purchase_bill_id:
+            results = [p for p in results if p.get("purchase_bill_id") == purchase_bill_id]
+        return api_response(True, results)
+
+    try:
+        db = _get_db()
+        query = (
+            db.table("purchase_payments")
+            .select("*, vendors(name)")
+            .eq("firm_id", firm_id)
+            .eq("client_id", client_id)
+            .order("payment_date", desc=True)
+        )
+        if vendor_id:
+            query = query.eq("vendor_id", vendor_id)
+        if purchase_bill_id:
+            query = query.eq("purchase_bill_id", purchase_bill_id)
+        resp = query.execute()
+        return api_response(True, resp.data or [])
+    except Exception as e:
+        _logger.error("list_purchase_payments error: %s", e)
+        return api_response(False, None, str(e))
+
+
+# ---------------------------------------------------------------------------
+# Get single
+# ---------------------------------------------------------------------------
+
+@router.get("/{payment_id}")
+def get_purchase_payment(
+    payment_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    firm_id = current_user["firm_id"]
+
+    if _USE_MOCK:
+        payment = next((p for p in MOCK_PURCHASE_PAYMENTS if p["id"] == payment_id and p.get("firm_id") == firm_id), None)
+        if not payment:
+            raise HTTPException(status_code=404, detail="Payment not found")
+        return api_response(True, payment)
+
+    try:
+        db = _get_db()
+        resp = (
+            db.table("purchase_payments")
+            .select("*, vendors(name)")
+            .eq("id", payment_id)
+            .eq("firm_id", firm_id)
+            .maybe_single()
+            .execute()
+        )
+        if not resp.data:
+            raise HTTPException(status_code=404, detail="Payment not found")
+        return api_response(True, resp.data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("get_purchase_payment error: %s", e)
+        return api_response(False, None, str(e))
+
+
+# ---------------------------------------------------------------------------
+# Create
+# ---------------------------------------------------------------------------
+
+@router.post("")
+def create_purchase_payment(
+    data: dict,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """
+    Record a vendor payment. Auto-creates journal entry:
+      Dr Trade Payables = amount_paise
+      Cr Bank Account   = amount_paise
+
+    TDS was already deducted at the purchase bill stage, so payment is net.
+    """
+    firm_id = current_user["firm_id"]
+    client_id = data.get("client_id")
+    if not client_id:
+        raise HTTPException(status_code=422, detail="client_id is required")
+
+    vendor_id = data.get("vendor_id")
+    if not vendor_id:
+        raise HTTPException(status_code=422, detail="vendor_id is required")
+
+    amount_paise = int(data.get("amount_paise", 0))
+    if amount_paise <= 0:
+        raise HTTPException(status_code=422, detail="amount_paise must be positive")
+
+    payment_mode = data.get("payment_mode", "bank")
+    payment_date = data.get("payment_date", str(datetime.now(timezone.utc).date()))
+    purchase_bill_id = data.get("purchase_bill_id")
+
+    if _USE_MOCK:
+        fy = _current_fy()
+        payment = {
+            "id": str(uuid.uuid4()),
+            "firm_id": firm_id,
+            "client_id": client_id,
+            "vendor_id": vendor_id,
+            "purchase_bill_id": purchase_bill_id,
+            "payment_no": f"VPMT-{fy}-{len(MOCK_PURCHASE_PAYMENTS) + 1:04d}",
+            "payment_date": payment_date,
+            "amount_paise": amount_paise,
+            "payment_mode": payment_mode,
+            "reference_no": data.get("reference_no"),
+            "notes": data.get("notes"),
+            "journal_entry_id": None,
+            "created_at": _now_iso(),
+            "updated_at": _now_iso(),
+        }
+        MOCK_PURCHASE_PAYMENTS.append(payment)
+        return api_response(True, payment)
+
+    try:
+        db = _get_db()
+        fy = _current_fy()
+        seq = _next_payment_seq(db, firm_id, fy)
+        payment_no = f"VPMT-{fy}-{seq:04d}"
+
+        # Auto-journal
+        from services.phase2_journal_service import phase2_journal_service
+        payment_dict = {
+            "payment_no": payment_no,
+            "payment_date": payment_date,
+            "amount_paise": amount_paise,
+        }
+        journal_entry_id = phase2_journal_service.journal_for_purchase_payment(
+            payment_dict, firm_id, client_id
+        )
+
+        payload = {
+            "firm_id": firm_id,
+            "client_id": client_id,
+            "vendor_id": vendor_id,
+            "purchase_bill_id": purchase_bill_id,
+            "payment_no": payment_no,
+            "payment_date": payment_date,
+            "amount_paise": amount_paise,
+            "payment_mode": payment_mode,
+            "reference_no": data.get("reference_no"),
+            "notes": data.get("notes"),
+            "journal_entry_id": journal_entry_id,
+            "created_at": _now_iso(),
+            "updated_at": _now_iso(),
+        }
+        resp = db.table("purchase_payments").insert(payload).execute()
+        if not resp.data:
+            raise RuntimeError("Insert returned no data")
+        payment = resp.data[0]
+
+        # Update purchase bill status if linked
+        if purchase_bill_id:
+            _update_bill_payment_status(db, purchase_bill_id, amount_paise)
+
+        log_event(
+            firm_id, "purchase_payment", payment["id"], "create",
+            actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            new_data={"amount_paise": amount_paise, "vendor_id": vendor_id},
+        )
+        return api_response(True, payment)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("create_purchase_payment error: %s", e)
+        return api_response(False, None, str(e))
+
+
+def _update_bill_payment_status(db, bill_id: str, paid_paise: int) -> None:
+    """Update purchase_bill status based on total payments recorded."""
+    try:
+        bill_resp = (
+            db.table("purchase_bills")
+            .select("net_payable_paise, status")
+            .eq("id", bill_id)
+            .maybe_single()
+            .execute()
+        )
+        if not bill_resp.data:
+            return
+        bill = bill_resp.data
+
+        payments_resp = (
+            db.table("purchase_payments")
+            .select("amount_paise")
+            .eq("purchase_bill_id", bill_id)
+            .execute()
+        )
+        total_paid = sum(int(p["amount_paise"]) for p in (payments_resp.data or []))
+        total_paid += paid_paise  # include the current payment
+
+        net_payable = int(bill["net_payable_paise"])
+        if total_paid >= net_payable:
+            new_status = "paid"
+        elif total_paid > 0:
+            new_status = "partially_paid"
+        else:
+            return
+
+        db.table("purchase_bills").update({"status": new_status, "updated_at": _now_iso()}).eq("id", bill_id).execute()
+    except Exception as e:
+        _logger.warning("_update_bill_payment_status error: %s", e)
