@@ -102,3 +102,40 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
         "role": result.data.get("role", "Executive"),
         "full_name": result.data.get("full_name", ""),
     }
+
+
+def get_jwt_user(authorization: Optional[str] = Header(default=None)) -> dict:
+    """
+    Lightweight JWT-only dependency — validates the Supabase JWT but does NOT
+    require a row in the users table. Used for firm onboarding where the caller
+    has just completed Supabase Auth sign-up and has no users record yet.
+    Returns: { auth_user_id, email }
+    """
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    if not supabase_url:
+        app_env = os.environ.get("APP_ENV", "production")
+        if app_env != "development":
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                                detail="Server configuration error: SUPABASE_URL not set")
+        return {"auth_user_id": "dev-user", "email": "dev@caflow.ai"}
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Missing or invalid Authorization header")
+
+    token = authorization.removeprefix("Bearer ").strip()
+    try:
+        signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
+        payload = jwt.decode(token, signing_key.key,
+                             algorithms=["ES256", "RS256", "HS256"],
+                             options={"verify_aud": False})
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}")
+
+    auth_user_id = payload.get("sub", "")
+    if not auth_user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing sub claim")
+
+    return {"auth_user_id": auth_user_id, "email": payload.get("email", "")}
