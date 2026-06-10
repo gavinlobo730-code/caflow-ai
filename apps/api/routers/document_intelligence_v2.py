@@ -1,0 +1,336 @@
+"""
+Document Intelligence v2 — Government notice extraction and management.
+
+Extracts notice details from uploaded text/documents using AI (Groq).
+Creates government_notices record + compliance task.
+
+# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to any government portal.
+Human approval (POST /notices/{id}/approve) MUST be called before
+a notice is considered actionable.
+"""
+from __future__ import annotations
+
+import json
+import os
+import uuid
+import logging
+from datetime import datetime
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
+
+from models.common import api_response
+from core.permissions import rbac
+from services.audit_service import log_event
+from services.timeline_service import timeline_service
+
+router = APIRouter(prefix="/api/document-intelligence-v2", tags=["document_intelligence_v2"])
+_logger = logging.getLogger("caflow.doc_intel_v2")
+
+_USE_MOCK = not os.environ.get("SUPABASE_URL")
+_GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
+
+# ── Mock stores ───────────────────────────────────────────────────────────────
+_MOCK_NOTICES: dict[str, dict] = {}
+
+# ── AI prompt ─────────────────────────────────────────────────────────────────
+_NOTICE_EXTRACTION_PROMPT = """You are a government notice analyser for Indian CAs.
+Extract structured data from the notice text below. Return ONLY valid JSON with these fields:
+{
+  "authority": "issuing authority name e.g. GSTN / Income Tax Department / MCA21 / EPFO",
+  "notice_type": "one of: gst_scrutiny / income_tax_demand / income_tax_notice / mca_show_cause / tds_default / customs / other",
+  "reference_no": "notice/case reference number",
+  "issue_date": "YYYY-MM-DD or null",
+  "response_due_date": "YYYY-MM-DD or null",
+  "description": "one-sentence summary of what the notice requires"
+}
+
+Notice text:
+"""
+
+
+# ── Request Models ─────────────────────────────────────────────────────────────
+
+class ExtractNoticeRequest(BaseModel):
+    client_id: str
+    document_text: str = Field(..., description="Raw text content of the government notice")
+    document_type: Optional[str] = Field(None, description="Optional hint: gst / income_tax / mca / tds")
+    source_document_url: Optional[str] = None
+
+
+class UpdateNoticeStatusRequest(BaseModel):
+    status: str  # open, in_progress, responded, closed
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _extract_with_groq(document_text: str) -> dict:
+    """Call Groq llama-3.3-70b-versatile to extract notice fields."""
+    from groq import Groq
+
+    client = Groq(api_key=_GROQ_KEY)
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": _NOTICE_EXTRACTION_PROMPT + document_text[:6000]}],
+        temperature=0.0,
+        max_tokens=512,
+    )
+    raw = response.choices[0].message.content.strip()
+    # Strip markdown code fences if present
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    return json.loads(raw)
+
+
+def _mock_extract(document_text: str) -> dict:
+    """Fallback mock extraction when no GROQ_API_KEY."""
+    text_lower = document_text.lower()
+    if "gst" in text_lower or "gstin" in text_lower:
+        notice_type = "gst_scrutiny"
+        authority = "GSTN"
+    elif "income tax" in text_lower or "itr" in text_lower:
+        notice_type = "income_tax_notice"
+        authority = "Income Tax Department"
+    elif "mca" in text_lower or "cin" in text_lower:
+        notice_type = "mca_show_cause"
+        authority = "MCA21"
+    elif "tds" in text_lower or "traces" in text_lower:
+        notice_type = "tds_default"
+        authority = "TRACES"
+    else:
+        notice_type = "other"
+        authority = "Government Authority"
+
+    return {
+        "authority": authority,
+        "notice_type": notice_type,
+        "reference_no": "REF-MOCK-001",
+        "issue_date": None,
+        "response_due_date": None,
+        "description": "Mock extraction — GROQ_API_KEY not set. Please review manually.",
+    }
+
+
+def _create_task_for_notice(firm_id: str, client_id: str, notice: dict, db=None) -> Optional[str]:
+    """Create a compliance task linked to the notice. Returns task_id."""
+    try:
+        task = {
+            "id": str(uuid.uuid4()),
+            "firm_id": firm_id,
+            "client_id": client_id,
+            "title": f"Respond to {notice['notice_type']} notice from {notice['authority']}",
+            "description": (
+                f"Reference: {notice.get('reference_no', 'N/A')}. "
+                f"Due: {notice.get('response_due_date', 'Unknown')}. "
+                f"{notice.get('description', '')}"
+            ),
+            "due_date": notice.get("response_due_date"),
+            "priority": "high",
+            "status": "pending",
+            "category": "compliance",
+            "created_at": datetime.utcnow().isoformat(),
+        }
+
+        if _USE_MOCK or db is None:
+            return task["id"]  # mock — no DB write
+
+        db.table("tasks").insert(task).execute()
+        return task["id"]
+    except Exception as e:
+        _logger.warning("Failed to create task for notice: %s", e)
+        return None
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@router.post("/notices/extract")
+def extract_notice(
+    body: ExtractNoticeRequest,
+    current_user: dict = Depends(rbac("compliance", "write")),
+):
+    """
+    Extract government notice details from text using AI.
+    Creates government_notices record + compliance task.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
+    Call POST /notices/{id}/approve after CA reviews extracted data.
+    """
+    try:
+        firm_id = current_user["firm_id"]
+
+        # AI extraction — fallback to mock if no API key
+        if _GROQ_KEY:
+            try:
+                extracted = _extract_with_groq(body.document_text)
+            except Exception as e:
+                _logger.warning("Groq extraction failed, using mock: %s", e)
+                extracted = _mock_extract(body.document_text)
+        else:
+            extracted = _mock_extract(body.document_text)
+
+        db = None
+        if not _USE_MOCK:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+
+        task_id = _create_task_for_notice(firm_id, body.client_id, extracted, db)
+
+        record = {
+            "id": str(uuid.uuid4()),
+            "firm_id": firm_id,
+            "client_id": body.client_id,
+            "notice_type": extracted.get("notice_type", "other"),
+            "authority": extracted.get("authority", ""),
+            "reference_no": extracted.get("reference_no"),
+            "issue_date": extracted.get("issue_date"),
+            "response_due_date": extracted.get("response_due_date"),
+            "description": extracted.get("description", ""),
+            "source_document_url": body.source_document_url,
+            "extracted_data": extracted,
+            "status": "open",
+            "ca_approved": False,
+            "task_id": task_id,
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+
+        if _USE_MOCK:
+            _MOCK_NOTICES[record["id"]] = record
+        else:
+            db.table("government_notices").insert(record).execute()
+
+        log_event(firm_id, "government_notice", record["id"], "create",
+                  actor_id=current_user.get("id"), new_data=record)
+        timeline_service.log_timeline_event(
+            client_id=body.client_id, firm_id=firm_id,
+            financial_year="", category="compliance",
+            event_type="government_notice_received",
+            title=f"Government notice extracted: {extracted.get('notice_type')} from {extracted.get('authority')}",
+            severity="warning",
+        )
+
+        return api_response(True, {
+            **record,
+            "ca_review_required": True,
+            "message": "Notice extracted. CA must review and approve via POST /notices/{id}/approve before taking action.",
+        })
+    except Exception as e:
+        _logger.exception("extract_notice error")
+        return api_response(False, None, str(e))
+
+
+@router.get("/notices")
+def list_notices(
+    client_id: str = Query(...),
+    status: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("compliance", "read")),
+):
+    """List government notices for a client."""
+    try:
+        firm_id = current_user["firm_id"]
+        if _USE_MOCK:
+            rows = [n for n in _MOCK_NOTICES.values() if n["client_id"] == client_id]
+            if status:
+                rows = [n for n in rows if n.get("status") == status]
+        else:
+            from core.supabase_client import get_supabase
+            q = get_supabase().table("government_notices").select("*").eq("firm_id", firm_id).eq("client_id", client_id)
+            if status:
+                q = q.eq("status", status)
+            rows = q.execute().data or []
+        return api_response(True, rows)
+    except Exception as e:
+        return api_response(False, None, str(e))
+
+
+@router.get("/notices/{notice_id}")
+def get_notice(notice_id: str, current_user: dict = Depends(rbac("compliance", "read"))):
+    """Get a government notice with its linked task ID."""
+    try:
+        firm_id = current_user["firm_id"]
+        if _USE_MOCK:
+            rec = _MOCK_NOTICES.get(notice_id)
+            if not rec:
+                return api_response(False, None, "Notice not found")
+        else:
+            from core.supabase_client import get_supabase
+            rows = get_supabase().table("government_notices").select("*").eq("id", notice_id).eq("firm_id", firm_id).execute().data
+            rec = rows[0] if rows else None
+            if not rec:
+                return api_response(False, None, "Notice not found")
+        return api_response(True, rec)
+    except Exception as e:
+        return api_response(False, None, str(e))
+
+
+@router.patch("/notices/{notice_id}/status")
+def update_notice_status(
+    notice_id: str,
+    body: UpdateNoticeStatusRequest,
+    current_user: dict = Depends(rbac("compliance", "write")),
+):
+    """Update notice status: open → in_progress → responded → closed."""
+    try:
+        firm_id = current_user["firm_id"]
+        allowed = {"open", "in_progress", "responded", "closed"}
+        if body.status not in allowed:
+            return api_response(False, None, f"Invalid status. Allowed: {allowed}")
+
+        updates = {"status": body.status, "updated_at": datetime.utcnow().isoformat()}
+
+        if _USE_MOCK:
+            if notice_id not in _MOCK_NOTICES:
+                return api_response(False, None, "Notice not found")
+            _MOCK_NOTICES[notice_id].update(updates)
+            rec = _MOCK_NOTICES[notice_id]
+        else:
+            from core.supabase_client import get_supabase
+            rows = get_supabase().table("government_notices").update(updates).eq("id", notice_id).eq("firm_id", firm_id).execute().data
+            rec = rows[0] if rows else {}
+
+        log_event(firm_id, "government_notice", notice_id, "status_change",
+                  actor_id=current_user.get("id"), new_data=updates)
+        return api_response(True, rec)
+    except Exception as e:
+        return api_response(False, None, str(e))
+
+
+@router.post("/notices/{notice_id}/approve")
+def approve_notice(
+    notice_id: str,
+    current_user: dict = Depends(rbac("compliance", "write")),
+):
+    """
+    CA explicitly approves the AI-extracted notice data.
+    This is the required human-in-the-loop step.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
+    Only after CA approval is the notice considered verified and actionable.
+    """
+    try:
+        firm_id = current_user["firm_id"]
+        updates = {
+            "ca_approved": True,
+            "ca_approved_by": current_user.get("id"),
+            "ca_approved_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+
+        if _USE_MOCK:
+            if notice_id not in _MOCK_NOTICES:
+                return api_response(False, None, "Notice not found")
+            _MOCK_NOTICES[notice_id].update(updates)
+            rec = _MOCK_NOTICES[notice_id]
+        else:
+            from core.supabase_client import get_supabase
+            rows = get_supabase().table("government_notices").update(updates).eq("id", notice_id).eq("firm_id", firm_id).execute().data
+            rec = rows[0] if rows else {}
+
+        log_event(firm_id, "government_notice", notice_id, "ca_approved",
+                  actor_id=current_user.get("id"), new_data=updates)
+        return api_response(True, {**rec, "message": "Notice approved by CA. Now actionable."})
+    except Exception as e:
+        return api_response(False, None, str(e))
