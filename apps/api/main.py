@@ -85,6 +85,8 @@ from routers import task_templates, task_extras, task_recurring
 from routers import time_tracking, workload, analytics, engagements, invoices
 from routers import intelligence
 from routers import scheduler_status, audit, onboarding
+from routers import customers, vendors, sales_invoices, receipts, credit_notes
+from routers import purchase_bills, purchase_payments, document_intelligence_v1
 
 app.include_router(clients.router)
 app.include_router(compliance.router)
@@ -118,6 +120,15 @@ app.include_router(intelligence.router)
 app.include_router(scheduler_status.router)
 app.include_router(audit.router)
 app.include_router(onboarding.router)
+# Phase 2 — Sales, Purchases, Double-Entry Cycle
+app.include_router(customers.router)
+app.include_router(vendors.router)
+app.include_router(sales_invoices.router)
+app.include_router(receipts.router)
+app.include_router(credit_notes.router)
+app.include_router(purchase_bills.router)
+app.include_router(purchase_payments.router)
+app.include_router(document_intelligence_v1.router)
 
 
 @app.get("/")
