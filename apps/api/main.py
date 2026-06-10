@@ -84,6 +84,7 @@ from routers import gst, tds, income_tax
 from routers import task_templates, task_extras, task_recurring
 from routers import time_tracking, workload, analytics, engagements, invoices
 from routers import intelligence
+from routers import scheduler_status, audit, onboarding
 
 app.include_router(clients.router)
 app.include_router(compliance.router)
@@ -114,6 +115,9 @@ app.include_router(analytics.router)
 app.include_router(engagements.router)
 app.include_router(invoices.router)
 app.include_router(intelligence.router)
+app.include_router(scheduler_status.router)
+app.include_router(audit.router)
+app.include_router(onboarding.router)
 
 
 @app.get("/")

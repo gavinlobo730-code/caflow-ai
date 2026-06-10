@@ -18,6 +18,7 @@ from models.common import api_response
 from core.permissions import rbac
 from repositories.invoice_repository import invoice_repo
 from core.exceptions import NotFoundError
+from services.audit_service import log_event
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
 
@@ -279,6 +280,9 @@ def change_invoice_status(
         )
 
     updated = invoice_repo.change_status(invoice_id, body.new_status)
+    log_event(firm_id, "invoice", invoice_id, "status_change",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              old_data={"status": invoice.get("status")}, new_data={"status": body.new_status})
     return api_response(True, {"invoice": updated})
 
 

@@ -7,6 +7,7 @@ from models.common import api_response
 from domain.accounting_service import accounting_service
 from core.exceptions import NotFoundError, ValidationError
 from core.permissions import rbac
+from services.audit_service import log_event
 
 router = APIRouter(prefix="/api/accounting", tags=["accounting"])
 
@@ -55,6 +56,9 @@ def create_journal_entry(data: dict, current_user: dict = Depends(rbac("accounti
     try:
         data["firm_id"] = current_user["firm_id"]
         entry = accounting_service.create_journal_entry(data)
+        log_event(current_user["firm_id"], "journal_entry", entry.get("id",""), "create",
+                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                  new_data=entry)
         return api_response(True, entry)
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -65,6 +69,9 @@ def post_journal_entry(entry_id: str, current_user: dict = Depends(rbac("account
     """Post (approve) a journal entry — Partner only."""
     try:
         entry = accounting_service.post_journal_entry(entry_id)
+        log_event(current_user["firm_id"], "journal_entry", entry_id, "approve",
+                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                  new_data={"status": "posted"})
         return api_response(True, entry)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
