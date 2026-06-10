@@ -17,7 +17,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from models.common import api_response
@@ -262,6 +262,8 @@ def list_filings(
     company_id: Optional[str] = Query(None),
     form_type: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("mca", "read")),
 ):
     """List MCA filings. Filter by company, form type, or status."""
@@ -275,6 +277,7 @@ def list_filings(
                 rows = [f for f in rows if f.get("form_type") == form_type]
             if status:
                 rows = [f for f in rows if f.get("status") == status]
+            rows = rows[offset:offset + limit]
         else:
             from core.supabase_client import get_supabase
             sb = get_supabase()
@@ -285,7 +288,7 @@ def list_filings(
                 q = q.eq("form_type", form_type)
             if status:
                 q = q.eq("status", status)
-            rows = q.execute().data or []
+            rows = q.range(offset, offset + limit - 1).execute().data or []
 
         return api_response(True, rows)
     except Exception as e:
@@ -362,6 +365,14 @@ def update_filing_status(
             return api_response(False, None,
                 "Explicit ca_approved=true required for filed status. CA must confirm.")
 
+        # # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+        # Companies Act §92/137/139: Only Manager+ can mark filing as filed
+        if body.status == "filed":
+            from core.permissions import can
+            role = current_user.get("role", "executive")
+            if not can(role, "mca", "approve"):
+                raise HTTPException(status_code=403, detail="Only Manager or above can mark filings as filed")
+
         updates: dict = {"status": body.status}
         if body.srn:
             updates["srn"] = body.srn
@@ -417,6 +428,8 @@ def get_filing(filing_id: str, current_user: dict = Depends(rbac("mca", "read"))
 @router.get("/filing-history")
 def filing_history(
     client_id: str = Query(...),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("mca", "read")),
 ):
     """List filed MCA records with SRN and acknowledgement."""
@@ -425,9 +438,10 @@ def filing_history(
         if _USE_MOCK:
             rows = [f for f in _MOCK_FILINGS.values()
                     if f["client_id"] == client_id and f.get("status") == "filed"]
+            rows = rows[offset:offset + limit]
         else:
             from core.supabase_client import get_supabase
-            rows = get_supabase().table("mca_filings").select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "filed").execute().data or []
+            rows = get_supabase().table("mca_filings").select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "filed").range(offset, offset + limit - 1).execute().data or []
         return api_response(True, rows)
     except Exception as e:
         return api_response(False, None, str(e))
