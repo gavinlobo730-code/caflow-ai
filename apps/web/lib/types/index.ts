@@ -589,8 +589,11 @@ export interface Notification {
   body: string;
   severity: InsightSeverity;
   is_read: boolean;
+  is_archived?: boolean;
+  user_id?: string;
   client_id?: string;
   action_url?: string;
+  metadata?: Record<string, unknown>;
   created_at: string;
 }
 
@@ -606,4 +609,202 @@ export interface CopilotMessage {
   role: "user" | "assistant";
   content: string;
   suggested_actions?: string[];
+}
+
+// ─── PHASE 1.2 — TASK MANAGEMENT EXTENSIONS ──────────────────────────────
+
+export interface TaskTemplate {
+  id: string;
+  firm_id?: string;
+  name: string;
+  description?: string;
+  default_priority: TaskPriority;
+  estimated_hours?: number;
+  tags: string[];
+  default_assignee_role?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskTag {
+  id: string;
+  firm_id?: string;
+  task_id: string;
+  tag: string;
+  created_at: string;
+}
+
+export interface TaskDependency {
+  id: string;
+  task_id: string;
+  depends_on_task_id: string;
+  created_at: string;
+}
+
+export type TaskTimelineEventType =
+  | "created"
+  | "assigned"
+  | "reassigned"
+  | "status_changed"
+  | "priority_changed"
+  | "due_date_changed"
+  | "comment_added"
+  | "completed"
+  | "reopened"
+  | "recurring_generated";
+
+export interface TaskTimelineEvent {
+  id: string;
+  task_id: string;
+  firm_id?: string;
+  event_type: TaskTimelineEventType;
+  actor_id?: string;
+  actor_name?: string;
+  old_value?: Record<string, unknown>;
+  new_value?: Record<string, unknown>;
+  created_at: string;
+}
+
+export type RecurringFrequency = "daily" | "weekly" | "monthly" | "quarterly" | "annual";
+
+export interface RecurringTaskConfig {
+  id: string;
+  firm_id: string;
+  client_id?: string;
+  template_id?: string;
+  assignee_id?: string;
+  title?: string;
+  description?: string;
+  priority: TaskPriority;
+  frequency: RecurringFrequency;
+  next_due_date: string;
+  last_generated_at?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── PHASE 1.2 — TIME TRACKING TYPES ─────────────────────────────────────
+
+export interface TimeEntry {
+  id: string;
+  firm_id?: string;
+  user_id: string;
+  task_id?: string;
+  client_id?: string;
+  engagement_id?: string;
+  description?: string;
+  started_at: string;
+  ended_at?: string;
+  duration_minutes?: number;
+  is_billable: boolean;
+  hourly_rate_paise?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TimerState {
+  is_running: boolean;
+  entry?: TimeEntry;
+  elapsed_seconds: number;
+}
+
+export interface TimeSummaryEntry {
+  dimension: string;
+  total_minutes: number;
+  billable_minutes: number;
+  entry_count: number;
+}
+
+export interface TimeSummary {
+  by_client: TimeSummaryEntry[];
+  by_task: TimeSummaryEntry[];
+  total_minutes: number;
+  billable_minutes: number;
+  entry_count: number;
+}
+
+// ─── PHASE 1.2 — WORKLOAD TYPES ──────────────────────────────────────────
+
+export interface WorkloadMember {
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  role: string;
+  active_tasks: number;
+  overdue_tasks: number;
+  due_this_week: number;
+  completed_this_week: number;
+  utilisation_pct: number;
+  is_overloaded: boolean;
+  is_underutilised: boolean;
+}
+
+export interface TeamWorkload {
+  members: WorkloadMember[];
+  total_active_tasks: number;
+  total_overdue_tasks: number;
+  overloaded_count: number;
+  underutilised_count: number;
+  avg_utilisation_pct: number;
+}
+
+export interface MyWorkloadSummary {
+  my_tasks: number;
+  due_today: number;
+  due_this_week: number;
+  overdue: number;
+  completed_this_week: number;
+  utilisation_pct: number;
+}
+
+// ─── PHASE 1.2 — ANALYTICS TYPES ─────────────────────────────────────────
+
+export interface TeamMemberAnalytics {
+  user_id: string;
+  user_name: string;
+  total_minutes: number;
+  billable_minutes: number;
+  tasks_completed: number;
+  tasks_active: number;
+  utilisation_pct: number;
+}
+
+export interface TeamAnalyticsReport {
+  period: string;
+  members: TeamMemberAnalytics[];
+  total_minutes: number;
+  billable_minutes: number;
+  avg_utilisation_pct: number;
+}
+
+export interface ClientAnalyticsEntry {
+  client_id: string;
+  client_name: string;
+  total_minutes: number;
+  billable_minutes: number;
+  tasks_completed: number;
+  tasks_active: number;
+  revenue_paise: number;
+}
+
+export interface ClientAnalyticsReport {
+  period: string;
+  clients: ClientAnalyticsEntry[];
+  total_minutes: number;
+  total_revenue_paise: number;
+}
+
+export interface FirmAnalyticsReport {
+  period: string;
+  total_minutes: number;
+  billable_minutes: number;
+  utilisation_pct: number;
+  tasks_completed: number;
+  tasks_active: number;
+  tasks_overdue: number;
+  revenue_paise: number;
+  outstanding_paise: number;
+  invoices_issued: number;
+  invoices_paid: number;
 }

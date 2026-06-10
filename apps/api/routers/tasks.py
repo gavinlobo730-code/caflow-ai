@@ -88,6 +88,39 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
         entity_type="task",
         entity_id=task["id"],
     )
+    try:
+        from repositories.task_extras_repository import task_extras_repo
+        task_extras_repo.log_event(
+            task_id=task["id"],
+            event_type="created",
+            firm_id=current_user.get("firm_id"),
+            actor_id=current_user.get("id"),
+            actor_name=current_user.get("full_name") or current_user.get("email"),
+            new_value={"title": task["title"], "status": task.get("status"), "priority": task.get("priority")},
+        )
+        if body.assigned_to:
+            task_extras_repo.log_event(
+                task_id=task["id"],
+                event_type="assigned",
+                firm_id=current_user.get("firm_id"),
+                actor_id=current_user.get("id"),
+                actor_name=current_user.get("full_name") or current_user.get("email"),
+                new_value={"assigned_to": body.assigned_to},
+            )
+    except Exception:
+        pass
+
+    # Send notification if task is assigned
+    if body.assigned_to:
+        try:
+            from services.notification_service import notification_service
+            from repositories.user_repository import user_repo
+            assignee = user_repo.find_by_id(body.assigned_to)
+            if assignee:
+                notification_service.notify_task_assigned(task, assignee, current_user)
+        except Exception:
+            pass
+
     return api_response(True, {"task": task, "activity": activity})
 
 
@@ -113,4 +146,85 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     updated = task_repo.update(task_id, updates)
+
+    try:
+        from repositories.task_extras_repository import task_extras_repo
+        actor_id = current_user.get("id")
+        actor_name = current_user.get("full_name") or current_user.get("email")
+        if "status" in updates:
+            task_extras_repo.log_event(
+                task_id=task_id,
+                event_type="status_changed",
+                firm_id=firm_id,
+                actor_id=actor_id,
+                actor_name=actor_name,
+                old_value={"status": task.get("status")},
+                new_value={"status": updates["status"]},
+            )
+        if "assigned_to" in updates and updates["assigned_to"] != task.get("assigned_to"):
+            event_type = "assigned" if not task.get("assigned_to") else "reassigned"
+            task_extras_repo.log_event(
+                task_id=task_id,
+                event_type=event_type,
+                firm_id=firm_id,
+                actor_id=actor_id,
+                actor_name=actor_name,
+                old_value={"assigned_to": task.get("assigned_to")},
+                new_value={"assigned_to": updates["assigned_to"]},
+            )
+        if "priority" in updates and updates["priority"] != task.get("priority"):
+            task_extras_repo.log_event(
+                task_id=task_id,
+                event_type="priority_changed",
+                firm_id=firm_id,
+                actor_id=actor_id,
+                actor_name=actor_name,
+                old_value={"priority": task.get("priority")},
+                new_value={"priority": updates["priority"]},
+            )
+    except Exception:
+        pass
+
+    # Send notifications if task is reassigned (or newly assigned)
+    if "assigned_to" in updates and updates["assigned_to"] != task.get("assigned_to"):
+        try:
+            from services.notification_service import notification_service
+            from repositories.user_repository import user_repo
+
+            new_assignee_id = updates["assigned_to"]
+            old_assignee_id = task.get("assigned_to")
+
+            if new_assignee_id:
+                new_assignee = user_repo.find_by_id(new_assignee_id)
+                if new_assignee:
+                    if old_assignee_id:
+                        # This is a reassignment
+                        old_assignee = user_repo.find_by_id(old_assignee_id)
+                        if old_assignee:
+                            reason = "Task load rebalancing"
+                            notification_service.notify_task_reassigned(updated, old_assignee, new_assignee, reason)
+                    else:
+                        # This is a new assignment
+                        notification_service.notify_task_assigned(updated, new_assignee, current_user)
+        except Exception:
+            pass
+
     return api_response(True, {"task": updated})
+
+
+@router.post("/trigger-escalations")
+def trigger_escalations(current_user: dict = Depends(rbac("task", "write"))):
+    from services.escalation_service import escalation_service
+    firm_id = current_user.get("firm_id")
+    result = escalation_service.run_all_escalations(firm_id)
+    return api_response(True, result)
+
+
+@router.post("/trigger-recurring-generation")
+def trigger_recurring_generation(current_user: dict = Depends(rbac("task", "write"))):
+    from jobs.recurring_task_job import run_recurring_generation_job
+    firm_id = current_user.get("firm_id")
+    result = run_recurring_generation_job(firm_id=firm_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Unknown error"))
+    return api_response(True, {"generated": result.get("count"), "tasks": result.get("tasks")})

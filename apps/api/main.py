@@ -81,6 +81,8 @@ from routers import clients, compliance, documents, assistant, insights, tasks, 
 from routers import accounting, compliance_records
 from routers import document_intelligence, risks, ai_insights, automation, notifications, ai_copilot
 from routers import gst, tds, income_tax
+from routers import task_templates, task_extras, task_recurring
+from routers import time_tracking, workload, analytics, engagements, invoices
 
 app.include_router(clients.router)
 app.include_router(compliance.router)
@@ -88,6 +90,9 @@ app.include_router(documents.router)
 app.include_router(assistant.router)
 app.include_router(insights.router)
 app.include_router(tasks.router)
+app.include_router(task_templates.router)
+app.include_router(task_extras.router)
+app.include_router(task_recurring.router)
 app.include_router(workflows.router)
 app.include_router(reminders.router)
 app.include_router(team.router)
@@ -102,6 +107,11 @@ app.include_router(ai_copilot.router)
 app.include_router(gst.router)
 app.include_router(tds.router)
 app.include_router(income_tax.router)
+app.include_router(time_tracking.router)
+app.include_router(workload.router)
+app.include_router(analytics.router)
+app.include_router(engagements.router)
+app.include_router(invoices.router)
 
 
 @app.get("/")
