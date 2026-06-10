@@ -401,6 +401,8 @@ def update_filing_status(
                 title=f"MCA {rec.get('form_type', '')} filed — SRN: {body.srn or 'N/A'}",
             )
         return api_response(True, rec)
+    except HTTPException:
+        raise
     except Exception as e:
         return api_response(False, None, str(e))
 
