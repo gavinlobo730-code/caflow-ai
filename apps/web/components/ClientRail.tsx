@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ClientSection } from "@/lib/workspace/ClientNavContext";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
 interface RailItem {
   section: ClientSection | "__back__";
@@ -44,12 +45,9 @@ const RAIL_ITEMS: RailItem[] = [
   { section: "ai-insights", label: "AI Insights", icon: Sparkles,      href: (id) => `/clients/${id}/ai-insights` },
 ];
 
-interface ClientRailProps {
-  clientId: string;
-}
-
-export function ClientRail({ clientId }: ClientRailProps) {
+export function ClientRail() {
   const pathname = usePathname();
+  const { clientId } = useClientNav();
 
   return (
     <div className="flex flex-col h-full w-[52px] shrink-0 bg-[#0a0a10] border-r border-white/5">

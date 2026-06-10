@@ -1,17 +1,9 @@
 import { ClientWorkspaceShell } from "@/components/ClientWorkspaceShell";
 
-export const runtime = 'edge';
-
-interface ClientLayoutProps {
-  children: React.ReactNode;
-  params: Promise<{ id: string }>;
+export function generateStaticParams() {
+  return [{ id: "_placeholder" }];
 }
 
-export default async function ClientLayout({ children, params }: ClientLayoutProps) {
-  const { id } = await params;
-  return (
-    <ClientWorkspaceShell clientId={id}>
-      {children}
-    </ClientWorkspaceShell>
-  );
+export default function ClientLayout({ children }: { children: React.ReactNode }) {
+  return <ClientWorkspaceShell>{children}</ClientWorkspaceShell>;
 }

@@ -1,1 +1,5 @@
-# Cloudflare Pages routing — Next.js edge worker handles all routes
+# SPA fallback — serve pre-rendered _placeholder shell for all dynamic client routes
+/clients/* /clients/_placeholder/ 200
+
+# Accounting bank-statement detail routes
+/accounting/bank-statements/* /accounting/bank-statements/_placeholder/ 200
