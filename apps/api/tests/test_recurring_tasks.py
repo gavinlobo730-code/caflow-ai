@@ -60,8 +60,8 @@ class TestRecurringTaskService:
             # Mock the insert for new task
             insert_mock = MagicMock()
             insert_mock.execute.return_value.data = [{
-                "id": "task-1",
                 **config,
+                "id": "task-1",
                 "status": "todo",
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }]
@@ -247,28 +247,40 @@ class TestRecurringTaskService:
             query_mock.execute.return_value.data = [config]
             query_mock.eq.return_value = query_mock
             query_mock.lte.return_value = query_mock
-            mock_db_instance.table.return_value.select.return_value = query_mock
 
             # Mock template lookup
             template_query = MagicMock()
-            template_query.maybe_single.return_value.execute.return_value.data = {
+            template_query.eq.return_value.maybe_single.return_value.execute.return_value.data = {
                 "id": "template-1",
                 "name": "GST Template",
                 "description": "Annual GST filing",
                 "default_priority": "high",
             }
-            mock_db_instance.table.return_value.select.return_value = template_query
 
             insert_mock = MagicMock()
             insert_mock.execute.return_value.data = [{
                 "id": "task-1",
                 "title": "GST Template",
             }]
-            mock_db_instance.table.return_value.insert.return_value = insert_mock
 
             update_mock = MagicMock()
             update_mock.eq.return_value.execute.return_value.data = [config]
-            mock_db_instance.table.return_value.update.return_value = update_mock
+
+            # Route per table so the config, template, task and update queries
+            # each get the right mock
+            config_table = MagicMock()
+            config_table.select.return_value = query_mock
+            config_table.update.return_value = update_mock
+            template_table = MagicMock()
+            template_table.select.return_value = template_query
+            tasks_table = MagicMock()
+            tasks_table.insert.return_value = insert_mock
+            tables = {
+                "task_recurring_configs": config_table,
+                "task_templates": template_table,
+                "tasks": tasks_table,
+            }
+            mock_db_instance.table.side_effect = lambda name: tables.get(name, MagicMock())
 
             tasks = generate_due_recurring_tasks(firm_id=FIRM_ID)
 
