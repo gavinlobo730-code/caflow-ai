@@ -9,9 +9,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
+from services.period_validation_service import period_validation_service
+from services.timeline_service import timeline_service
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.receipts")
+
+
+def _current_fy_long() -> str:
+    """Return full financial year string like '2025-26' for display/timeline use.
+    Indian FY runs April 1 – March 31.
+    """
+    now = datetime.now(timezone.utc)
+    start = now.year if now.month >= 4 else now.year - 1
+    return f"{start}-{str(start + 1)[2:]}"
 
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])
 
@@ -111,6 +122,9 @@ def create_receipt(
             )
         unallocated_paise = amount_paise - total_allocated
 
+        # Validate posting date is not in a locked financial year (migration 020)
+        period_validation_service.validate_posting_date(firm_id or "", data["receipt_date"])
+
         fy = _current_fy()
 
         if _USE_MOCK:
@@ -205,6 +219,24 @@ def create_receipt(
             "create", actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"), new_data=receipt,
         )
+
+        # Record timeline event for received payment
+        timeline_service.log_timeline_event(
+            client_id=client_id,
+            firm_id=firm_id or "",
+            financial_year=_current_fy_long(),
+            category="accounting",
+            event_type="receipt_recorded",
+            title=f"Receipt {receipt.get('receipt_no', '')} recorded",
+            description=f"Payment of ₹{amount_paise // 100:,} received from customer.",
+            severity="success",
+            entity_type="receipt",
+            entity_id=receipt_id,
+            amount_paise=amount_paise,
+            actor_id=current_user.get("auth_user_id"),
+            actor_name=current_user.get("email"),
+        )
+
         receipt["journal_entry_id"] = journal_id
         receipt["allocations"]      = alloc_payloads
         return api_response(True, receipt)
