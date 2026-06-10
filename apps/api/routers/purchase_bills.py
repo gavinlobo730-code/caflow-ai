@@ -15,9 +15,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
+from services.period_validation_service import period_validation_service
+from services.timeline_service import timeline_service
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_bills")
+
+
+def _current_fy_long() -> str:
+    """Return full financial year string like '2025-26' for display/timeline use.
+    Indian FY runs April 1 – March 31.
+    """
+    now = datetime.now(timezone.utc)
+    start = now.year if now.month >= 4 else now.year - 1
+    return f"{start}-{str(start + 1)[2:]}"
 
 router = APIRouter(prefix="/api/purchase-bills", tags=["purchase_bills"])
 
@@ -180,6 +191,9 @@ def create_purchase_bill(
             tds_paise = (total_taxable * tds_rate_bps) // 10000
 
         net_payable_paise = total_paise - tds_paise
+
+        # Validate posting date is not in a locked financial year (migration 020)
+        period_validation_service.validate_posting_date(firm_id or "", data["bill_date"])
 
         if _USE_MOCK:
             bill_id = str(uuid.uuid4())
@@ -397,6 +411,23 @@ def receive_purchase_bill(
             actor_email=current_user.get("email"),
             new_data={"status": "received", "journal_entry_id": journal_id},
         )
+        # Record timeline event for received/posted bill
+        timeline_service.log_timeline_event(
+            client_id=updated_bill.get("client_id", ""),
+            firm_id=current_user.get("firm_id", ""),
+            financial_year=_current_fy_long(),
+            category="accounting",
+            event_type="bill_posted",
+            title=f"Purchase Bill {updated_bill.get('bill_no', bill_id)} posted",
+            description=f"Vendor bill for ₹{updated_bill.get('total_paise', 0) // 100:,} received.",
+            severity="success",
+            entity_type="purchase_bill",
+            entity_id=bill_id,
+            amount_paise=updated_bill.get("total_paise"),
+            actor_id=current_user.get("auth_user_id"),
+            actor_name=current_user.get("email"),
+        )
+
         updated_bill["journal_entry_id"] = journal_id
         return api_response(True, updated_bill)
     except HTTPException:
@@ -570,6 +601,17 @@ def create_bill_from_document(
             actor_email=current_user.get("email"),
             new_data=bill,
             metadata={"source": "ai_extraction", "requires_review": True},
+        )
+        # Separate audit event for document_extraction action — tracks AI extraction usage
+        log_event(
+            firm_id or "", "purchase_bill", bill.get("id", bill_id),
+            "document_extraction", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            metadata={
+                "vendor_gstin": extracted_data.get("vendor_gstin"),
+                "invoice_no":   extracted_data.get("invoice_no"),
+                "requires_review": True,
+            },
         )
         return api_response(True, {**bill, "requires_review": True})
     except HTTPException:

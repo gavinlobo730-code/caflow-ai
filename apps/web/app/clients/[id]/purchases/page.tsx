@@ -4,9 +4,37 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, RefreshCw, Upload, AlertCircle, CheckCircle, X } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { getFirmId } from "@/lib/data/getFirmId";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+// ── API helpers ────────────────────────────────────────────────────────────
+
+async function apiCall(
+  endpoint: string,
+  method: "POST" | "PATCH" | "DELETE",
+  body?: unknown,
+  token?: string
+): Promise<{ success: boolean; data: unknown; error: string | null }> {
+  const res = await fetch(`${API}${endpoint}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok && res.status !== 200) {
+    const text = await res.text().catch(() => "Request failed");
+    return { success: false, data: null, error: text };
+  }
+  return res.json();
+}
+
+async function getAuthToken(): Promise<string> {
+  const supabase = getSupabaseClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token ?? "";
+}
 
 type PurchaseTab = "bills" | "vendors" | "payments";
 const TABS: { id: PurchaseTab; label: string }[] = [
@@ -26,20 +54,8 @@ function fyRange(fy: string): { start: string; end: string } {
   return { start: `${yr}-04-01`, end: `${yr + 1}-03-31` };
 }
 
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
 function toDate(): string {
   return new Date().toISOString().split("T")[0];
-}
-
-function currentFy(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth() + 1;
-  if (m >= 4) return `${String(y).slice(2)}${String(y + 1).slice(2)}`;
-  return `${String(y - 1).slice(2)}${String(y).slice(2)}`;
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────────
@@ -297,75 +313,28 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
     setSaving(true);
     setMsg(null);
     try {
-      const supabase = getSupabaseClient();
-      const firmId = await getFirmId();
-      const fy = currentFy();
-
-      // Count existing bills for seq number
-      const { count } = await supabase
-        .from("purchase_bills")
-        .select("id", { count: "exact", head: true })
-        .eq("firm_id", firmId)
-        .like("our_reference", `PB-${fy}-%`);
-
-      const ourRef = `PB-${fy}-${((count ?? 0) + 1).toString().padStart(4, "0")}`;
-
-      const billLines = lines.map((l, i) => {
-        const g = lineGst(l);
-        // Determine CGST/SGST vs IGST — simplified: assume intra-state (CGST+SGST)
-        const cgst = Math.floor(g.gst_paise / 2);
-        const sgst = g.gst_paise - cgst;
-        return {
-          description: l.description,
-          hsn_sac: l.hsn_sac || null,
-          expense_account_id: l.expense_account_id || null,
-          quantity: l.quantity,
-          rate_paise: Math.round(l.rate * 100),
-          taxable_amount_paise: g.taxable_paise,
-          gst_rate_bps: l.gst_rate_bps,
-          cgst_paise: cgst,
-          sgst_paise: sgst,
-          igst_paise: 0,
-          line_total_paise: g.line_total,
-          sort_order: i,
-        };
-      });
-
-      const cgst_total = billLines.reduce((s, l) => s + l.cgst_paise, 0);
-      const sgst_total = billLines.reduce((s, l) => s + l.sgst_paise, 0);
-
-      const { data: bill, error: billErr } = await supabase
-        .from("purchase_bills")
-        .insert({
-          firm_id: firmId,
+      const token = await getAuthToken();
+      const result = await apiCall(
+        "/api/purchase-bills/",
+        "POST",
+        {
           client_id: clientId,
           vendor_id: vendorId,
-          bill_no: billNo || null,
-          our_reference: ourRef,
           bill_date: billDate,
-          due_date: dueDate || null,
-          taxable_amount_paise: totals.taxable,
-          cgst_paise: cgst_total,
-          sgst_paise: sgst_total,
-          igst_paise: 0,
-          total_gst_paise: totals.gst,
-          tds_paise,
-          tds_section: selectedVendor?.tds_section || null,
-          tds_rate_bps: selectedVendor?.tds_rate_bps ?? 0,
-          net_payable_paise: net_payable,
-          total_paise: totals.total,
-          status: "draft",
-          is_ai_extracted: !!aiExtracted,
-          ai_extraction_data: aiExtracted || null,
-        })
-        .select("id")
-        .single();
-
-      if (billErr || !bill) throw new Error(billErr?.message ?? "Failed to create bill");
-
-      await supabase.from("purchase_bill_lines").insert(
-        billLines.map((l) => ({ ...l, purchase_bill_id: bill.id }))
+          due_date: dueDate || undefined,
+          bill_no: billNo || undefined,
+          lines: lines.map((l) => ({
+            description: l.description,
+            hsn_sac: l.hsn_sac || undefined,
+            quantity: l.quantity,
+            rate_paise: Math.round(l.rate * 100),
+            gst_rate_bps: l.gst_rate_bps,
+            expense_account_id: l.expense_account_id || undefined,
+          })),
+        },
+        token
       );
+      if (!result.success) throw new Error(result.error ?? "Failed to create bill");
 
       setMsg({ type: "ok", text: "Purchase bill saved as draft." });
       setShowForm(false);
@@ -381,8 +350,9 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
 
   async function handleReceive(billId: string) {
     try {
-      const supabase = getSupabaseClient();
-      await supabase.from("purchase_bills").update({ status: "received", updated_at: nowIso() }).eq("id", billId);
+      const token = await getAuthToken();
+      // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+      await apiCall(`/api/purchase-bills/${billId}/receive`, "POST", undefined, token);
       load();
     } catch { /* skip */ }
   }
@@ -697,28 +667,30 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
     setSaving(true);
     setMsg(null);
     try {
-      const supabase = getSupabaseClient();
-      const firmId = await getFirmId();
-      const cleanGstin = gstin.trim().toUpperCase() || null;
-      const stateCode = cleanGstin ? cleanGstin.slice(0, 2) : null;
+      const token = await getAuthToken();
+      const cleanGstin = gstin.trim().toUpperCase() || undefined;
+      const stateCode = cleanGstin ? cleanGstin.slice(0, 2) : undefined;
       const rateBps = tdsApplicable ? Math.round(parseFloat(tdsRate) * 100) : 0;
 
-      const { error } = await supabase.from("vendors").insert({
-        firm_id: firmId,
-        client_id: clientId,
-        name: name.trim(),
-        gstin: cleanGstin,
-        state_code: stateCode,
-        pan: pan.trim().toUpperCase() || null,
-        email: email.trim() || null,
-        phone: phone.trim() || null,
-        tds_applicable: tdsApplicable,
-        tds_section: tdsApplicable ? tdsSection : null,
-        tds_rate_bps: rateBps,
-        opening_balance_paise: Math.round(parseFloat(openingBalance || "0") * 100),
-        is_active: true,
-      });
-      if (error) throw new Error(error.message);
+      const result = await apiCall(
+        "/api/vendors/",
+        "POST",
+        {
+          client_id: clientId,
+          name: name.trim(),
+          gstin: cleanGstin,
+          state_code: stateCode,
+          pan: pan.trim().toUpperCase() || undefined,
+          email: email.trim() || undefined,
+          phone: phone.trim() || undefined,
+          tds_applicable: tdsApplicable,
+          tds_section: tdsApplicable ? tdsSection : undefined,
+          tds_rate_bps: rateBps,
+          opening_balance_paise: Math.round(parseFloat(openingBalance || "0") * 100),
+        },
+        token
+      );
+      if (!result.success) throw new Error(result.error ?? "Failed to add vendor");
       setMsg({ type: "ok", text: "Vendor added." });
       setShowForm(false);
       setName(""); setGstin(""); setPan(""); setEmail(""); setPhone("");
@@ -908,35 +880,22 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
     if (amtPaise <= 0) { setMsg({ type: "err", text: "Amount must be positive" }); return; }
     setSaving(true); setMsg(null);
     try {
-      const supabase = getSupabaseClient();
-      const firmId = await getFirmId();
-      const fy = currentFy();
-      const { count } = await supabase.from("purchase_payments").select("id", { count: "exact", head: true }).eq("firm_id", firmId).like("payment_no", `VPMT-${fy}-%`);
-      const payNo = `VPMT-${fy}-${((count ?? 0) + 1).toString().padStart(4, "0")}`;
-
-      const { error } = await supabase.from("purchase_payments").insert({
-        firm_id: firmId,
-        client_id: clientId,
-        vendor_id: vendorId,
-        purchase_bill_id: billId || null,
-        payment_no: payNo,
-        payment_date: payDate,
-        amount_paise: amtPaise,
-        payment_mode: mode,
-        reference_no: refNo || null,
-      });
-      if (error) throw new Error(error.message);
-
-      // Update bill status if linked
-      if (billId) {
-        const { data: bill } = await supabase.from("purchase_bills").select("net_payable_paise, status").eq("id", billId).single();
-        if (bill) {
-          const { data: prevPmts } = await supabase.from("purchase_payments").select("amount_paise").eq("purchase_bill_id", billId);
-          const totalPaid = (prevPmts ?? []).reduce((s: number, p: { amount_paise: number }) => s + p.amount_paise, 0) + amtPaise;
-          const newStatus = totalPaid >= bill.net_payable_paise ? "paid" : "partially_paid";
-          await supabase.from("purchase_bills").update({ status: newStatus, updated_at: nowIso() }).eq("id", billId);
-        }
-      }
+      const token = await getAuthToken();
+      const result = await apiCall(
+        "/api/purchase-payments",
+        "POST",
+        {
+          client_id: clientId,
+          vendor_id: vendorId,
+          payment_date: payDate,
+          amount_paise: amtPaise,
+          payment_mode: mode,
+          reference_no: refNo || undefined,
+          purchase_bill_id: billId || undefined,
+        },
+        token
+      );
+      if (!result.success) throw new Error(result.error ?? "Failed to record payment");
 
       setMsg({ type: "ok", text: "Payment recorded." });
       setShowForm(false);
