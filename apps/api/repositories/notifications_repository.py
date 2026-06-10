@@ -22,29 +22,40 @@ class NotificationsRepository(BaseRepository[dict]):
         firm_id: Optional[str] = None,
         user_id: Optional[str] = None,
         unread_only: bool = False,
+        archived: bool = False,
+        notification_type: Optional[str] = None,
+        limit: int = 50,
     ) -> list[dict]:
         if _USE_MOCK:
             results = list(MOCK_NOTIFICATIONS)
             if unread_only:
                 results = [n for n in results if not n["is_read"]]
-            return sorted(results, key=lambda n: n["created_at"], reverse=True)
+            return sorted(results, key=lambda n: n["created_at"], reverse=True)[:limit]
 
         query = _get_db().table("notifications").select("*")
         if firm_id:
             query = query.eq("firm_id", firm_id)
         if user_id:
-            query = query.eq("user_id", user_id)
+            query = query.or_(f"user_id.eq.{user_id},user_id.is.null")
         if unread_only:
             query = query.eq("is_read", False)
-        result = query.order("created_at", desc=True).execute()
+        if not archived:
+            query = query.eq("is_archived", False)
+        else:
+            query = query.eq("is_archived", True)
+        if notification_type:
+            query = query.eq("type", notification_type)
+        result = query.order("created_at", desc=True).limit(limit).execute()
         return result.data or []
 
-    def count_unread(self, firm_id: Optional[str] = None) -> int:
+    def count_unread(self, firm_id: Optional[str] = None, user_id: Optional[str] = None) -> int:
         if _USE_MOCK:
             return len([n for n in MOCK_NOTIFICATIONS if not n["is_read"]])
-        query = _get_db().table("notifications").select("id", count="exact").eq("is_read", False)
+        query = _get_db().table("notifications").select("id", count="exact").eq("is_read", False).eq("is_archived", False)
         if firm_id:
             query = query.eq("firm_id", firm_id)
+        if user_id:
+            query = query.or_(f"user_id.eq.{user_id},user_id.is.null")
         result = query.execute()
         return result.count or 0
 
@@ -95,6 +106,19 @@ class NotificationsRepository(BaseRepository[dict]):
             query = query.eq("user_id", user_id)
         result = query.execute()
         return len(result.data) if result.data else 0
+
+    def archive(self, notification_id: str, firm_id: Optional[str] = None) -> Optional[dict]:
+        if _USE_MOCK:
+            notif = _notif_index.get(notification_id)
+            if notif:
+                notif["is_archived"] = True
+            return notif
+
+        query = _get_db().table("notifications").update({"is_archived": True, "is_read": True}).eq("id", notification_id)
+        if firm_id:
+            query = query.eq("firm_id", firm_id)
+        result = query.execute()
+        return result.data[0] if result.data else None
 
     def get_stats(self, firm_id: Optional[str] = None) -> dict:
         notifications = self.find_all(firm_id=firm_id)

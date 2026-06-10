@@ -69,7 +69,7 @@ interface OutstandingRow {
   phone?: string;
 }
 
-type Tab = "engagements" | "invoices" | "outstanding" | "receipts";
+type Tab = "dashboard" | "engagements" | "invoices" | "outstanding" | "receipts";
 
 const SERVICE_TYPES: ServiceType[] = ["GST Filing", "ITR Filing", "Accounting", "Payroll", "MCA", "Audit", "Advisory"];
 const BILLING_CYCLES: BillingCycle[] = ["Monthly", "Quarterly", "Annual"];
@@ -313,7 +313,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function BillingPage() {
-  const [tab, setTab] = useState<Tab>("engagements");
+  const [tab, setTab] = useState<Tab>("dashboard");
   const [clients, setClients] = useState<Client[]>([]);
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -437,7 +437,32 @@ export default function BillingPage() {
     }
   }
 
+  const _paidInvoices = invoices.filter(i => i.status === "Paid");
+  const _sentInvoices = invoices.filter(i => i.status === "Sent");
+  const _overdueInvoices = invoices.filter(i => i.status === "Overdue");
+  const _draftInvoices = invoices.filter(i => i.status === "Draft");
+  const _activeEngs = engagements.filter(e => e.status === "Active");
+  const _mPaise = _activeEngs.filter(e => e.billing_cycle === "Monthly").reduce((s, e) => s + e.fee_paise, 0);
+  const _qPaise = _activeEngs.filter(e => e.billing_cycle === "Quarterly").reduce((s, e) => s + e.fee_paise, 0);
+  const _aPaise = _activeEngs.filter(e => e.billing_cycle === "Annual").reduce((s, e) => s + e.fee_paise, 0);
+  const dash = {
+    totalRevenuePaise: _paidInvoices.reduce((s, i) => s + i.total_paise, 0),
+    outstandingPaise: _sentInvoices.reduce((s, i) => s + i.total_paise, 0),
+    overduePaise: _overdueInvoices.reduce((s, i) => s + i.total_paise, 0),
+    draftPaise: _draftInvoices.reduce((s, i) => s + i.total_paise, 0),
+    monthlyPaise: _mPaise,
+    quarterlyPaise: _qPaise,
+    annualPaise: _aPaise,
+    annualisedPaise: _mPaise * 12 + _qPaise * 4 + _aPaise,
+    paidCount: _paidInvoices.length,
+    sentCount: _sentInvoices.length,
+    overdueCount: _overdueInvoices.length,
+    draftCount: _draftInvoices.length,
+    activeEngCount: _activeEngs.length,
+  };
+
   const TABS: { id: Tab; label: string }[] = [
+    { id: "dashboard", label: "Dashboard" },
     { id: "engagements", label: "Engagements" },
     { id: "invoices", label: "Invoices" },
     { id: "outstanding", label: "Outstanding" },
@@ -470,6 +495,74 @@ export default function BillingPage() {
           </button>
         ))}
       </div>
+
+      {/* Dashboard */}
+      {tab === "dashboard" && (
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white border rounded-xl p-4">
+              <p className="text-xs text-gray-500">Revenue Collected</p>
+              <p className="text-xl font-bold text-gray-900 mt-1">{fmtPaise(dash.totalRevenuePaise)}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">{dash.paidCount} paid invoices</p>
+            </div>
+            <div className="bg-white border rounded-xl p-4">
+              <p className="text-xs text-gray-500">Outstanding</p>
+              <p className={`text-xl font-bold mt-1 ${dash.outstandingPaise > 0 ? "text-amber-700" : "text-gray-900"}`}>{fmtPaise(dash.outstandingPaise)}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">{dash.sentCount} sent invoices</p>
+            </div>
+            <div className={`bg-white border rounded-xl p-4 ${dash.overduePaise > 0 ? "border-red-200" : ""}`}>
+              <p className="text-xs text-gray-500">Overdue</p>
+              <p className={`text-xl font-bold mt-1 ${dash.overduePaise > 0 ? "text-red-600" : "text-gray-900"}`}>{fmtPaise(dash.overduePaise)}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">{dash.overdueCount} invoices</p>
+            </div>
+            <div className="bg-white border rounded-xl p-4">
+              <p className="text-xs text-gray-500">ARR (Annualised)</p>
+              <p className="text-xl font-bold text-indigo-700 mt-1">{fmtPaise(dash.annualisedPaise)}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">{dash.activeEngCount} active engagements</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white border rounded-xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-gray-700">Revenue Pipeline</p>
+              <div className="space-y-2">
+                {[
+                  { label: "Draft", paise: dash.draftPaise, count: dash.draftCount, color: "bg-gray-200" },
+                  { label: "Sent / Issued", paise: dash.outstandingPaise, count: dash.sentCount, color: "bg-blue-400" },
+                  { label: "Overdue", paise: dash.overduePaise, count: dash.overdueCount, color: "bg-red-400" },
+                  { label: "Paid", paise: dash.totalRevenuePaise, count: dash.paidCount, color: "bg-green-500" },
+                ].map(row => (
+                  <div key={row.label} className="flex items-center gap-3">
+                    <div className={`w-2.5 h-2.5 rounded-full ${row.color} shrink-0`} />
+                    <span className="text-sm text-gray-700 flex-1">{row.label}</span>
+                    <span className="text-xs text-gray-500">{row.count} inv</span>
+                    <span className="text-sm font-semibold text-gray-900">{fmtPaise(row.paise)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="bg-white border rounded-xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-gray-700">Recurring Revenue Breakdown</p>
+              <div className="space-y-2">
+                {[
+                  { label: "Monthly", paise: dash.monthlyPaise, count: _activeEngs.filter(e => e.billing_cycle === "Monthly").length },
+                  { label: "Quarterly", paise: dash.quarterlyPaise, count: _activeEngs.filter(e => e.billing_cycle === "Quarterly").length },
+                  { label: "Annual", paise: dash.annualPaise, count: _activeEngs.filter(e => e.billing_cycle === "Annual").length },
+                ].map(row => (
+                  <div key={row.label} className="flex items-center gap-3">
+                    <span className="text-sm text-gray-700 flex-1">{row.label}</span>
+                    <span className="text-xs text-gray-500">{row.count} clients</span>
+                    <span className="text-sm font-semibold text-gray-900">{fmtPaise(row.paise)}</span>
+                  </div>
+                ))}
+                <div className="border-t pt-2 flex items-center gap-3">
+                  <span className="text-sm font-semibold text-gray-700 flex-1">ARR</span>
+                  <span className="text-sm font-bold text-indigo-700">{fmtPaise(dash.annualisedPaise)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Engagements */}
       {tab === "engagements" && (

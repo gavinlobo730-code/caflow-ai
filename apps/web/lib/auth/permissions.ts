@@ -21,23 +21,24 @@ const ARTICLE_STAFF_HIDDEN_HREFS = new Set([
   "/accounting",
   "/compliance",
   "/deadlines",
-  "/work",
   "/gst",
   "/income-tax",
   "/tds",
   "/mca",
   "/reports",
+  "/reports/analytics",
   "/settings",
   "/team",
+  "/team/workload",
   "/parser",
   "/documents",
   "/risks",
+  "/billing",
 ]);
 
 /** Routes hidden from Manager */
 const MANAGER_HIDDEN_HREFS = new Set([
   "/settings",
-  "/reports",
 ]);
 
 /**

@@ -137,6 +137,33 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "read":  _ALL_STAFF,
         "write": _AT_LEAST_EXECUTIVE,
     },
+    # ── Time tracking ─────────────────────────────────────────────────────────
+    "time_entry": {
+        "read":   _ALL_STAFF,
+        "write":  _ALL_STAFF,
+        "delete": _AT_LEAST_MANAGER,
+        "report": _AT_LEAST_MANAGER,
+    },
+    # ── Workload visibility ───────────────────────────────────────────────────
+    "workload": {
+        "read":  _AT_LEAST_MANAGER,
+        "write": _AT_LEAST_MANAGER,
+    },
+    # ── Productivity analytics ────────────────────────────────────────────────
+    "analytics": {
+        "read":   _AT_LEAST_MANAGER,
+        "export": _AT_LEAST_MANAGER,
+    },
+    # ── Fee engagements ────────────────────────────────────────────────────────
+    "engagement": {
+        "read":  _AT_LEAST_MANAGER,
+        "write": _PARTNER_ONLY,
+    },
+    # ── Fee invoices ───────────────────────────────────────────────────────────
+    "invoice": {
+        "read":  _AT_LEAST_MANAGER,
+        "write": _PARTNER_ONLY,
+    },
 }
 
 

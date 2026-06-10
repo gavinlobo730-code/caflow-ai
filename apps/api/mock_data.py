@@ -509,3 +509,166 @@ def _seed_compliance_records() -> list[dict]:
 
 
 MOCK_COMPLIANCE_RECORDS: list[dict] = _seed_compliance_records()
+
+MOCK_ENGAGEMENTS = [
+    {
+        "id": "eng-001",
+        "firm_id": "firm-001",
+        "client_id": "c-001",
+        "service_type": "Monthly Bookkeeping",
+        "fee_paise": 500000,  # ₹5,000
+        "billing_cycle": "Monthly",
+        "start_date": (today - timedelta(days=180)).isoformat(),
+        "end_date": None,
+        "status": "Active",
+        "notes": "Core bookkeeping services for Sharma Enterprises",
+        "created_at": (today - timedelta(days=180)).isoformat(),
+        "updated_at": (today - timedelta(days=1)).isoformat(),
+    },
+    {
+        "id": "eng-002",
+        "firm_id": "firm-001",
+        "client_id": "c-001",
+        "service_type": "GST Compliance",
+        "fee_paise": 300000,  # ₹3,000
+        "billing_cycle": "Monthly",
+        "start_date": (today - timedelta(days=180)).isoformat(),
+        "end_date": None,
+        "status": "Active",
+        "notes": "Monthly GSTR-1 and GSTR-3B filing",
+        "created_at": (today - timedelta(days=180)).isoformat(),
+        "updated_at": (today - timedelta(days=1)).isoformat(),
+    },
+    {
+        "id": "eng-003",
+        "firm_id": "firm-001",
+        "client_id": "c-002",
+        "service_type": "Annual Accounts Preparation",
+        "fee_paise": 2000000,  # ₹20,000
+        "billing_cycle": "Annually",
+        "start_date": (today - timedelta(days=90)).isoformat(),
+        "end_date": None,
+        "status": "Active",
+        "notes": "Year-end financial statements and audit support",
+        "created_at": (today - timedelta(days=90)).isoformat(),
+        "updated_at": (today - timedelta(days=1)).isoformat(),
+    },
+    {
+        "id": "eng-004",
+        "firm_id": "firm-001",
+        "client_id": "c-003",
+        "service_type": "TDS Return Filing",
+        "fee_paise": 250000,  # ₹2,500
+        "billing_cycle": "Quarterly",
+        "start_date": (today - timedelta(days=60)).isoformat(),
+        "end_date": None,
+        "status": "Inactive",
+        "notes": "Quarterly TDS return filing (24Q/26Q)",
+        "created_at": (today - timedelta(days=60)).isoformat(),
+        "updated_at": (today - timedelta(days=30)).isoformat(),
+    },
+]
+
+ENGAGEMENT_INDEX = {e["id"]: e for e in MOCK_ENGAGEMENTS}
+
+MOCK_INVOICES = [
+    {
+        "id": "inv-001",
+        "firm_id": "firm-001",
+        "client_id": "c-001",
+        "engagement_id": "eng-001",
+        "invoice_no": "CF-2025-001",
+        "invoice_date": (today - timedelta(days=10)).isoformat(),
+        "amount_paise": 500000,  # ₹5,000
+        "gst_paise": 90000,  # ₹900
+        "total_paise": 590000,  # ₹5,900
+        "status": "Issued",
+        "created_at": (today - timedelta(days=10)).isoformat(),
+        "updated_at": (today - timedelta(days=10)).isoformat(),
+    },
+    {
+        "id": "inv-002",
+        "firm_id": "firm-001",
+        "client_id": "c-001",
+        "engagement_id": "eng-002",
+        "invoice_no": "CF-2025-002",
+        "invoice_date": (today - timedelta(days=5)).isoformat(),
+        "amount_paise": 300000,  # ₹3,000
+        "gst_paise": 54000,  # ₹540
+        "total_paise": 354000,  # ₹3,540
+        "status": "Draft",
+        "created_at": (today - timedelta(days=5)).isoformat(),
+        "updated_at": (today - timedelta(days=5)).isoformat(),
+    },
+]
+
+INVOICE_INDEX = {i["id"]: i for i in MOCK_INVOICES}
+
+MOCK_TIME_ENTRIES = [
+    {
+        "id": "te-001",
+        "firm_id": "firm-001",
+        "user_id": "tm-001",
+        "client_id": "c-001",
+        "engagement_id": "eng-001",
+        "task_id": None,
+        "description": "Monthly bookkeeping for Sharma Enterprises",
+        "started_at": (today - timedelta(days=8)).isoformat(),
+        "ended_at": (today - timedelta(days=8, hours=-2)).isoformat(),
+        "duration_minutes": 120,
+        "is_billable": True,
+        "hourly_rate_paise": 250000,  # ₹2,500 per hour
+        "created_at": (today - timedelta(days=8)).isoformat(),
+        "updated_at": (today - timedelta(days=8)).isoformat(),
+    },
+    {
+        "id": "te-002",
+        "firm_id": "firm-001",
+        "user_id": "tm-001",
+        "client_id": "c-001",
+        "engagement_id": "eng-002",
+        "task_id": None,
+        "description": "GSTR-1 filing for June",
+        "started_at": (today - timedelta(days=5)).isoformat(),
+        "ended_at": (today - timedelta(days=5, hours=-1, minutes=-30)).isoformat(),
+        "duration_minutes": 90,
+        "is_billable": True,
+        "hourly_rate_paise": 250000,
+        "created_at": (today - timedelta(days=5)).isoformat(),
+        "updated_at": (today - timedelta(days=5)).isoformat(),
+    },
+    {
+        "id": "te-003",
+        "firm_id": "firm-001",
+        "user_id": "tm-001",
+        "client_id": "c-002",
+        "engagement_id": "eng-003",
+        "task_id": None,
+        "description": "Annual accounts preparation",
+        "started_at": (today - timedelta(days=3)).isoformat(),
+        "ended_at": (today - timedelta(days=3, hours=-4)).isoformat(),
+        "duration_minutes": 240,
+        "is_billable": True,
+        "hourly_rate_paise": 250000,
+        "created_at": (today - timedelta(days=3)).isoformat(),
+        "updated_at": (today - timedelta(days=3)).isoformat(),
+    },
+    {
+        "id": "te-004",
+        "firm_id": "firm-001",
+        "user_id": "tm-001",
+        "client_id": "c-003",
+        "engagement_id": None,
+        "task_id": None,
+        "description": "Client consultation - non-billable",
+        "started_at": (today - timedelta(days=2)).isoformat(),
+        "ended_at": (today - timedelta(days=2, hours=-1)).isoformat(),
+        "duration_minutes": 60,
+        "is_billable": False,
+        "hourly_rate_paise": 250000,
+        "created_at": (today - timedelta(days=2)).isoformat(),
+        "updated_at": (today - timedelta(days=2)).isoformat(),
+    },
+]
+
+TIME_ENTRIES_INDEX = {te["id"]: te for te in MOCK_TIME_ENTRIES}

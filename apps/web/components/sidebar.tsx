@@ -10,7 +10,7 @@ import {
   ChevronLeft, ChevronRight, Landmark, Shield,
   ShieldAlert, Sparkles, Bell, LogOut,
   ExternalLink, Menu, X, KanbanSquare, MessageSquare, KeyRound,
-  Search, Briefcase,
+  Search, Briefcase, Clock, LayoutList, Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -23,11 +23,15 @@ const NAV_GROUPS = [
     label: "Operations",
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/work", label: "My Work", icon: LayoutList },
       { href: "/clients", label: "Clients", icon: Users },
       { href: "/pipeline", label: "Pipeline", icon: KanbanSquare },
       { href: "/client-portal", label: "Client Portal", icon: ExternalLink },
       { href: "/tasks", label: "Tasks", icon: CheckSquare },
+      { href: "/tasks/templates", label: "Task Templates", icon: CheckSquare },
+      { href: "/time", label: "Time Tracking", icon: Clock },
       { href: "/team", label: "Team", icon: UserCheck },
+      { href: "/team/workload", label: "Workload", icon: Activity },
     ],
   },
   {
@@ -57,6 +61,7 @@ const NAV_GROUPS = [
       { href: "/risks", label: "Risk Intelligence", icon: ShieldAlert },
       { href: "/calendar", label: "Calendar", icon: Calendar },
       { href: "/reports", label: "Reports", icon: BarChart3 },
+      { href: "/reports/analytics", label: "Analytics", icon: BarChart3 },
       { href: "/notifications/whatsapp", label: "WhatsApp", icon: MessageSquare },
       { href: "/notifications", label: "Notifications", icon: Bell },
       { href: "/settings", label: "Settings", icon: Settings },
