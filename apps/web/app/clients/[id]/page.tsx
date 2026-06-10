@@ -1,13 +1,14 @@
 import { redirect } from "next/navigation";
 
 interface Props {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export function generateStaticParams() {
   return [{ id: "_placeholder" }];
 }
 
-export default function ClientRootPage({ params }: Props) {
-  redirect(`/clients/${params.id}/overview`);
+export default async function ClientRootPage({ params }: Props) {
+  const { id } = await params;
+  redirect(`/clients/${id}/overview`);
 }
