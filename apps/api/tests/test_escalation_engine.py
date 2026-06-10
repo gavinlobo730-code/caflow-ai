@@ -185,7 +185,7 @@ class TestEscalationLogic:
     def test_due_soon_notification_logic(self):
         """Test logic for creating due-soon notifications"""
         # Task due in 3 days with rule threshold of 3
-        task_due_date = (date.today() + timedelta(days=3)).date()
+        task_due_date = (date.today() + timedelta(days=3))
         today = date.today()
         days_until_due = (task_due_date - today).days
         rule_threshold = 3
@@ -196,7 +196,7 @@ class TestEscalationLogic:
     def test_overdue_reassignment_logic(self):
         """Test logic for overdue task reassignment"""
         # Task overdue by 2 days with rule threshold of 2
-        task_due_date = (date.today() - timedelta(days=2)).date()
+        task_due_date = (date.today() - timedelta(days=2))
         today = date.today()
         days_overdue = (today - task_due_date).days
         rule_threshold = 2
@@ -207,7 +207,7 @@ class TestEscalationLogic:
     def test_overdue_threshold_boundary(self):
         """Test that escalation threshold boundaries work correctly"""
         # Task overdue by exactly 2 days with threshold of 2 should match
-        task_due_date = (date.today() - timedelta(days=2)).date()
+        task_due_date = (date.today() - timedelta(days=2))
         today = date.today()
         days_overdue = (today - task_due_date).days
         rule_threshold = 2
@@ -216,7 +216,7 @@ class TestEscalationLogic:
         assert should_escalate is True
 
         # Task overdue by 1 day with threshold of 2 should NOT match
-        task_due_date = (date.today() - timedelta(days=1)).date()
+        task_due_date = (date.today() - timedelta(days=1))
         days_overdue = (today - task_due_date).days
         should_escalate = days_overdue >= rule_threshold
         assert should_escalate is False

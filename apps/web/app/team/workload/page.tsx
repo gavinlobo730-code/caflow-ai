@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   AlertTriangle, TrendingDown, Activity, Users,
-  Loader2, AlertCircle, RefreshCw,
+  Loader2, AlertCircle, RefreshCw, Pencil, X,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { api } from "@/lib/api";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getTeamWorkload } from "@/lib/data/analytics";
@@ -28,7 +29,91 @@ function UtilisationBar({ pct }: { pct: number }) {
   );
 }
 
-function MemberCard({ member }: { member: WorkloadMember }) {
+function fmtHours(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function CapacityModal({ member, onClose, onSaved }: {
+  member: WorkloadMember;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [weeklyHours, setWeeklyHours] = useState(String(member.weekly_capacity_hours));
+  const [maxTasks, setMaxTasks] = useState(String(member.max_concurrent_tasks));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSave() {
+    const hours = parseInt(weeklyHours);
+    const tasks = parseInt(maxTasks);
+    if (!hours || hours < 1 || !tasks || tasks < 1) {
+      setError("Enter valid values (minimum 1)");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await api.workload.setCapacity({
+        user_id: member.user_id,
+        weekly_capacity_hours: hours,
+        max_concurrent_tasks: tasks,
+      });
+      onSaved();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to save capacity");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-gray-900">Edit Capacity — {member.user_name}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X size={18} />
+          </button>
+        </div>
+        {error && (
+          <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <AlertCircle size={13} /> {error}
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Weekly Hours</label>
+            <input
+              type="number" min="1" max="100"
+              value={weeklyHours}
+              onChange={e => setWeeklyHours(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Max Concurrent Tasks</label>
+            <input
+              type="number" min="1" max="100"
+              value={maxTasks}
+              onChange={e => setMaxTasks(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end pt-1">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="animate-spin mr-1" size={13} /> : null}
+            Save
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEditCapacity: (m: WorkloadMember) => void }) {
   const initials = member.user_name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
   return (
     <Card className={`transition-shadow hover:shadow-md ${
@@ -58,10 +143,21 @@ function MemberCard({ member }: { member: WorkloadMember }) {
                 <TrendingDown size={9} /> Underutilised
               </Badge>
             )}
+            <button
+              onClick={() => onEditCapacity(member)}
+              title="Edit capacity"
+              className="p-1 rounded text-gray-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+            >
+              <Pencil size={12} />
+            </button>
           </div>
         </div>
 
         <UtilisationBar pct={member.utilisation_pct} />
+        <p className="text-[11px] text-gray-500">
+          {fmtHours(member.minutes_logged_this_week)} logged of {member.weekly_capacity_hours}h weekly capacity
+          · max {member.max_concurrent_tasks} tasks
+        </p>
 
         <div className="grid grid-cols-4 gap-2 text-center">
           <div>
@@ -92,6 +188,7 @@ export default function WorkloadPage() {
   const [workload, setWorkload] = useState<TeamWorkload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editingMember, setEditingMember] = useState<WorkloadMember | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -205,7 +302,7 @@ export default function WorkloadPage() {
                 <AlertTriangle size={13} /> Overloaded ({overloaded.length})
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {overloaded.map(m => <MemberCard key={m.user_id} member={m} />)}
+                {overloaded.map(m => <MemberCard key={m.user_id} member={m} onEditCapacity={setEditingMember} />)}
               </div>
             </div>
           )}
@@ -216,7 +313,7 @@ export default function WorkloadPage() {
                 <Activity size={13} /> Healthy Workload ({healthy.length})
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {healthy.map(m => <MemberCard key={m.user_id} member={m} />)}
+                {healthy.map(m => <MemberCard key={m.user_id} member={m} onEditCapacity={setEditingMember} />)}
               </div>
             </div>
           )}
@@ -227,7 +324,7 @@ export default function WorkloadPage() {
                 <TrendingDown size={13} /> Underutilised ({underutilised.length})
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {underutilised.map(m => <MemberCard key={m.user_id} member={m} />)}
+                {underutilised.map(m => <MemberCard key={m.user_id} member={m} onEditCapacity={setEditingMember} />)}
               </div>
             </div>
           )}
@@ -242,6 +339,14 @@ export default function WorkloadPage() {
           )}
         </>
       ) : null}
+
+      {editingMember && (
+        <CapacityModal
+          member={editingMember}
+          onClose={() => setEditingMember(null)}
+          onSaved={() => { setEditingMember(null); load(); }}
+        />
+      )}
     </div>
   );
 }

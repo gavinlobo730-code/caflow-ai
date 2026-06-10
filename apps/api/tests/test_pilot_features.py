@@ -78,7 +78,7 @@ class TestNotificationsRepo:
         from routers.notifications import list_notifications
         result = list_notifications(current_user=USER_A)
         assert result["success"] is True
-        assert isinstance(result["data"], list)
+        assert isinstance(result["data"]["notifications"], list)
 
     def test_unread_count_returns_integer(self):
         from routers.notifications import unread_count
@@ -88,7 +88,7 @@ class TestNotificationsRepo:
 
     def test_unread_only_filter(self):
         from routers.notifications import list_notifications
-        unread = list_notifications(unread_only=True, current_user=USER_A)["data"]
+        unread = list_notifications(unread_only=True, current_user=USER_A)["data"]["notifications"]
         assert all(not n["is_read"] for n in unread)
 
     def test_mark_one_read(self):
@@ -397,7 +397,7 @@ class TestTenantIsolationPilotFeatures:
         with patch("routers.notifications.notifications_repo", mock_repo):
             result = unread_count(current_user=USER_A)
         assert result["data"]["unread"] == 3
-        mock_repo.count_unread.assert_called_once_with(firm_id=FIRM_A)
+        mock_repo.count_unread.assert_called_once_with(firm_id=FIRM_A, user_id=None)
 
 
 # ─── Compliance Seed API Contract ────────────────────────────────────────────

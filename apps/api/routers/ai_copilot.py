@@ -142,6 +142,99 @@ def get_firm_context(current_user: dict = Depends(rbac("ai", "copilot"))):
     })
 
 
+def _build_client_context(firm_id: str, client_id: str) -> str:
+    """Build context for a single client: profile, tasks, compliance, intelligence scores."""
+    lines = []
+    try:
+        from repositories.client_repository import client_repo
+        client = client_repo.find_by_id(client_id)
+        if not client or client.get("firm_id") != firm_id:
+            return ""
+        lines.append(f"Client: {client.get('client_name')}")
+        lines.append(f"Entity Type: {client.get('entity_type', 'N/A')}")
+        lines.append(f"GSTIN: {client.get('gstin', 'N/A')}, PAN: {client.get('pan', 'N/A')}")
+        lines.append(f"Status: {client.get('status', 'N/A')}")
+    except Exception:
+        return ""
+
+    try:
+        from repositories.task_repository import task_repo
+        tasks = [t for t in task_repo.find_all(firm_id=firm_id) if t.get("client_id") == client_id]
+        open_tasks = [t for t in tasks if t.get("status") != "completed"]
+        lines.append(f"Open Tasks: {len(open_tasks)}")
+        for t in open_tasks[:10]:
+            lines.append(f"  - {t.get('title')} (due {t.get('due_date', 'n/a')}, {t.get('status')})")
+    except Exception:
+        pass
+
+    try:
+        from repositories.compliance_records_repository import compliance_records_repo
+        records = [r for r in compliance_records_repo.find_all(firm_id=firm_id)
+                   if r.get("client_id") == client_id]
+        lines.append(f"Compliance Records: {len(records)}")
+        for r in records[:10]:
+            lines.append(
+                f"  - {r.get('compliance_type') or r.get('type')} "
+                f"(due {r.get('due_date', 'n/a')}, {r.get('status')})"
+            )
+    except Exception:
+        pass
+
+    try:
+        from services.intelligence_service import compute_compliance_risk, compute_relationship_health
+        risk = next((c for c in compute_compliance_risk(firm_id)["clients"]
+                     if c["client_id"] == client_id), None)
+        if risk:
+            lines.append(f"Compliance Risk Score: {risk['risk_score']}/100 ({risk['risk_level']})")
+        health = next((c for c in compute_relationship_health(firm_id)["clients"]
+                       if c["client_id"] == client_id), None)
+        if health:
+            lines.append(f"Relationship Health: {health['health_score']}/100 ({health['health_level']})")
+            lines.append(f"Outstanding Receivables: ₹{health['outstanding_paise'] // 100:,}")
+    except Exception:
+        pass
+
+    return "\n".join(lines)
+
+
+@router.post("/client/{client_id}/chat")
+async def client_copilot_chat(
+    client_id: str,
+    body: CopilotRequest,
+    current_user: dict = Depends(rbac("ai", "copilot")),
+):
+    """Client-level copilot: same model, context scoped to a single client."""
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        return api_response(False, None, "GROQ_API_KEY not configured")
+
+    client_context = _build_client_context(current_user["firm_id"], client_id)
+    if not client_context:
+        return api_response(False, None, "Client not found")
+
+    try:
+        system_prompt = COPILOT_SYSTEM_PROMPT.format(firm_context=client_context)
+        messages = [{"role": "system", "content": system_prompt}]
+        messages += [{"role": msg.role, "content": msg.content} for msg in body.conversation_history]
+        messages.append({"role": "user", "content": body.message})
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                GROQ_API_URL,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": GROQ_MODEL, "messages": messages, "max_tokens": 1024},
+                timeout=30,
+            )
+
+        if response.status_code != 200:
+            return api_response(False, None, f"AI service error: {response.status_code}")
+
+        answer: str = response.json()["choices"][0]["message"]["content"]
+        return api_response(True, {"answer": answer, "client_id": client_id})
+    except Exception as e:
+        return api_response(False, None, f"AI Copilot error: {str(e)}")
+
+
 @router.post("/chat")
 async def copilot_chat(body: CopilotRequest, current_user: dict = Depends(rbac("ai", "copilot"))):
     api_key = os.getenv("GROQ_API_KEY")

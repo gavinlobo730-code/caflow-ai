@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Play, Square, Plus, Trash2, Clock, AlertCircle,
-  Loader2, X, IndianRupee,
+  Loader2, X, IndianRupee, Download,
 } from "lucide-react";
+import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,6 +60,12 @@ export default function TimeTrackingPage() {
   const [manualBillable, setManualBillable] = useState(true);
   const [manualHourlyRate, setManualHourlyRate] = useState("");
   const [manualSaving, setManualSaving] = useState(false);
+
+  // Export
+  const [exportClientId, setExportClientId] = useState("");
+  const [exportDateFrom, setExportDateFrom] = useState("");
+  const [exportDateTo, setExportDateTo] = useState("");
+  const [exporting, setExporting] = useState<"csv" | "xlsx" | null>(null);
 
   const clientMap = new Map(clients.map(c => [c.id, c.client_name]));
 
@@ -177,6 +184,22 @@ export default function TimeTrackingPage() {
     }
   };
 
+  const handleExport = async (fmt: "csv" | "xlsx") => {
+    setExporting(fmt);
+    try {
+      await api.timeEntries.exportEntries({
+        fmt,
+        client_id: exportClientId || undefined,
+        date_from: exportDateFrom || undefined,
+        date_to: exportDateTo || undefined,
+      });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to export");
+    } finally {
+      setExporting(null);
+    }
+  };
+
   const totalMinutes = entries.reduce((s, e) => s + (e.duration_minutes ?? 0), 0);
   const billableMinutes = entries.filter(e => e.is_billable).reduce((s, e) => s + (e.duration_minutes ?? 0), 0);
 
@@ -263,6 +286,49 @@ export default function TimeTrackingPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Export */}
+      <Card>
+        <CardContent className="py-3 flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Client</label>
+            <select
+              value={exportClientId}
+              onChange={e => setExportClientId(e.target.value)}
+              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">All clients</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">From</label>
+            <input
+              type="date"
+              value={exportDateFrom}
+              onChange={e => setExportDateFrom(e.target.value)}
+              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">To</label>
+            <input
+              type="date"
+              value={exportDateTo}
+              onChange={e => setExportDateTo(e.target.value)}
+              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div className="flex gap-2 ml-auto">
+            <Button variant="outline" size="sm" onClick={() => handleExport("csv")} disabled={exporting !== null} className="gap-1.5">
+              {exporting === "csv" ? <Loader2 className="animate-spin" size={13} /> : <Download size={13} />} Export CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleExport("xlsx")} disabled={exporting !== null} className="gap-1.5">
+              {exporting === "xlsx" ? <Loader2 className="animate-spin" size={13} /> : <Download size={13} />} Export XLSX
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Entries List */}
       <Card>

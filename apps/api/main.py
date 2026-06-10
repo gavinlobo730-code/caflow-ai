@@ -83,6 +83,7 @@ from routers import document_intelligence, risks, ai_insights, automation, notif
 from routers import gst, tds, income_tax
 from routers import task_templates, task_extras, task_recurring
 from routers import time_tracking, workload, analytics, engagements, invoices
+from routers import intelligence
 
 app.include_router(clients.router)
 app.include_router(compliance.router)
@@ -112,6 +113,7 @@ app.include_router(workload.router)
 app.include_router(analytics.router)
 app.include_router(engagements.router)
 app.include_router(invoices.router)
+app.include_router(intelligence.router)
 
 
 @app.get("/")
@@ -122,3 +124,17 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok", "version": "2.0.0"}
+
+
+# Daily automation scheduler (recurring tasks, escalations, invoice lifecycle).
+# Only runs when ENABLE_SCHEDULER=true — see jobs/scheduler.py.
+@app.on_event("startup")
+def _start_scheduler():
+    from jobs.scheduler import start_scheduler
+    start_scheduler()
+
+
+@app.on_event("shutdown")
+def _stop_scheduler():
+    from jobs.scheduler import stop_scheduler
+    stop_scheduler()

@@ -6,9 +6,18 @@ SAC 998211 — Professional, technical, consultancy and like services
 
 All monetary calculations in paise (integer), never floating point.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 from dateutil.relativedelta import relativedelta
+
+# Standard credit period applied to all generated invoices
+CREDIT_PERIOD_DAYS = 30
+
+
+def _due_date_for(invoice_date: str) -> str:
+    """Payment due date = invoice date + standard credit period."""
+    d = datetime.fromisoformat(invoice_date[:10])
+    return (d + timedelta(days=CREDIT_PERIOD_DAYS)).date().isoformat()
 
 
 def _get_db():
@@ -69,6 +78,7 @@ def generate_invoice_from_engagement(
         "engagement_id": engagement_id,
         "invoice_no": invoice_no,
         "invoice_date": invoice_month,
+        "due_date": _due_date_for(invoice_month),
         "amount_paise": amount_paise,
         "gst_paise": gst_paise,
         "total_paise": total_paise,
@@ -165,6 +175,7 @@ def generate_invoice_from_time_entries(
         "engagement_id": engagement_id,
         "invoice_no": invoice_no,
         "invoice_date": invoice_month,
+        "due_date": _due_date_for(invoice_month),
         "amount_paise": amount_paise,
         "gst_paise": gst_paise,
         "total_paise": total_paise,
