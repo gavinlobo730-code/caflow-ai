@@ -14,6 +14,14 @@ from models.common import api_response
 from core.permissions import rbac
 from core.exceptions import NotFoundError
 from services.audit_service import log_event
+from services.timeline_service import timeline_service
+
+
+def _current_fy_long() -> str:
+    """Return full financial year string like '2025-26'. Indian FY: April 1 – March 31."""
+    now = datetime.now(timezone.utc)
+    start = now.year if now.month >= 4 else now.year - 1
+    return f"{start}-{str(start + 1)[2:]}"
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.customers")
@@ -109,10 +117,25 @@ def create_customer(
         db = get_supabase()
         resp = db.table("customers").insert(data).execute()
         customer = resp.data[0] if resp.data else data
+        customer_id = customer.get("id", "")
         log_event(
-            data["firm_id"], "customer", customer.get("id", ""),
+            data["firm_id"], "customer", customer_id,
             "create", actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"), new_data=customer,
+        )
+        timeline_service.log_timeline_event(
+            client_id=data.get("client_id", ""),
+            firm_id=data.get("firm_id", ""),
+            financial_year=_current_fy_long(),
+            category="accounting",
+            event_type="customer_created",
+            title=f"Customer {data.get('name', '')} added",
+            description="New customer added to the system.",
+            severity="info",
+            entity_type="customer",
+            entity_id=customer_id,
+            actor_id=current_user.get("auth_user_id"),
+            actor_name=current_user.get("email"),
         )
         return api_response(True, customer)
     except HTTPException:

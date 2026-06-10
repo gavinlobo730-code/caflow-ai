@@ -439,6 +439,19 @@ class Phase2JournalService:
                 f"for ref={reference_no}"
             )
 
+        # Prevent duplicate journal entries: same reference_no + entry_date + client_id
+        if not _USE_MOCK:
+            try:
+                existing = db.table("journal_entries").select("id").eq("client_id", client_id).eq("reference_no", reference_no).eq("entry_date", entry_date).limit(1).execute()
+                if existing.data:
+                    _logger.warning(
+                        "Duplicate journal detected for ref=%s date=%s client=%s — skipping",
+                        reference_no, entry_date, client_id,
+                    )
+                    return existing.data[0]["id"]
+            except Exception:
+                pass
+
         now_iso = datetime.now(timezone.utc).isoformat()
         entry_payload = {
             "firm_id":      firm_id,

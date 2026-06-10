@@ -14,6 +14,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
+from services.timeline_service import timeline_service
+
+
+def _current_fy_long() -> str:
+    """Return full financial year string like '2025-26'. Indian FY: April 1 – March 31."""
+    now = datetime.now(timezone.utc)
+    start = now.year if now.month >= 4 else now.year - 1
+    return f"{start}-{str(start + 1)[2:]}"
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.vendors")
@@ -123,10 +131,25 @@ def create_vendor(
         db = get_supabase()
         resp = db.table("vendors").insert(data).execute()
         vendor = resp.data[0] if resp.data else data
+        vendor_id = vendor.get("id", "")
         log_event(
-            data["firm_id"], "vendor", vendor.get("id", ""),
+            data["firm_id"], "vendor", vendor_id,
             "create", actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"), new_data=vendor,
+        )
+        timeline_service.log_timeline_event(
+            client_id=data.get("client_id", ""),
+            firm_id=data.get("firm_id", ""),
+            financial_year=_current_fy_long(),
+            category="accounting",
+            event_type="vendor_created",
+            title=f"Vendor {data.get('name', '')} added",
+            description="New vendor added to the system.",
+            severity="info",
+            entity_type="vendor",
+            entity_id=vendor_id,
+            actor_id=current_user.get("auth_user_id"),
+            actor_name=current_user.get("email"),
         )
         return api_response(True, vendor)
     except HTTPException:

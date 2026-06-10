@@ -166,8 +166,9 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
     },
     # ── MCA (Companies Act filings) ────────────────────────────────────────────
     "mca": {
-        "read":  _ALL_STAFF,
-        "write": _AT_LEAST_EXECUTIVE,
+        "read":    _ALL_STAFF,
+        "write":   _AT_LEAST_EXECUTIVE,
+        "approve": _AT_LEAST_MANAGER,  # Companies Act §92/137/139 — CA must approve filing
     },
     # ── Compliance (calendar, notices, general compliance actions) ─────────────
     "compliance": {
@@ -182,7 +183,7 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
 def can(role: str, resource: str, action: str) -> bool:
     """Return True if role is allowed to perform action on resource."""
     try:
-        r = Role(role)
+        r = Role(role.capitalize())
     except ValueError:
         return False
     resource_perms = PERMISSIONS.get(resource, {})
