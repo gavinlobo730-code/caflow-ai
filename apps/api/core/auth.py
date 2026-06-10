@@ -28,12 +28,18 @@ def _get_jwks_client() -> PyJWKClient:
     return _jwks_client
 
 
-def get_current_user(authorization: Optional[str] = Header(default=None)) -> dict:
+def get_current_user(
+    authorization: Optional[str] = Header(default=None),
+    x_user_role: Optional[str] = Header(default=None),
+    x_firm_id: Optional[str] = Header(default=None),
+    x_user_id: Optional[str] = Header(default=None),
+) -> dict:
     """
     Dependency: validates Bearer JWT from Supabase Auth.
     Returns dict with: auth_user_id, firm_id, email, role
     Supports ES256 (ECC P-256), RS256, and HS256 signing keys automatically
     via JWKS — no algorithm hardcoding required.
+    In dev/test mode (no SUPABASE_URL), reads X-User-Role / X-Firm-Id headers.
     """
     # Dev fallback — only allowed when APP_ENV=development AND no SUPABASE_URL.
     supabase_url = os.environ.get("SUPABASE_URL", "")
@@ -44,11 +50,12 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Server configuration error: SUPABASE_URL not set",
             )
+        role = (x_user_role or "partner").strip().capitalize()
         return {
-            "auth_user_id": "dev-user",
-            "firm_id": "firm-001",
+            "auth_user_id": x_user_id or "dev-user",
+            "firm_id": x_firm_id or "firm-001",
             "email": "dev@caflow.ai",
-            "role": "Partner",
+            "role": role,
         }
 
     if not authorization or not authorization.startswith("Bearer "):

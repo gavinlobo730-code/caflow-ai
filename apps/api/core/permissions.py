@@ -183,7 +183,7 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
 def can(role: str, resource: str, action: str) -> bool:
     """Return True if role is allowed to perform action on resource."""
     try:
-        r = Role(role)
+        r = Role(role.capitalize())
     except ValueError:
         return False
     resource_perms = PERMISSIONS.get(resource, {})
