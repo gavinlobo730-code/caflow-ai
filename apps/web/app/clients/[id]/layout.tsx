@@ -1,8 +1,6 @@
 import { ClientWorkspaceShell } from "@/components/ClientWorkspaceShell";
 
-export function generateStaticParams() {
-  return [{ id: "_placeholder" }];
-}
+export const runtime = 'edge';
 
 interface ClientLayoutProps {
   children: React.ReactNode;
