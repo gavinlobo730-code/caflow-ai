@@ -154,20 +154,20 @@ export function InvoiceFormModal({ open, onClose, onSaved, clients, type }: Prop
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 max-h-[92vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 border-b sticky top-0 bg-white z-10">
+      <div className="relative bg-[#131620] rounded-2xl shadow-2xl w-full max-w-3xl mx-4 max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b sticky top-0 bg-[#131620] z-10">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Auto-creates journal entry + GST feed</p>
+            <h2 className="text-base font-semibold text-white/85">{title}</h2>
+            <p className="text-xs text-white/40 mt-0.5">Auto-creates journal entry + GST feed</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"><X size={16} /></button>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-white/30"><X size={16} /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Header fields */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Client *</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">Client *</label>
               <select value={clientId} onChange={e => setClientId(e.target.value)} required
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
                 <option value="">Select client…</option>
@@ -175,30 +175,30 @@ export function InvoiceFormModal({ open, onClose, onSaved, clients, type }: Prop
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Date *</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">Invoice Date *</label>
               <input type="date" value={date} onChange={e => setDate(e.target.value)} required
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">{partyLabel} *</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">{partyLabel} *</label>
               <input value={partyName} onChange={e => setPartyName(e.target.value)} required
                 placeholder={type === "sales_invoice" ? "Customer name" : "Vendor name"}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Reference / Invoice No</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">Reference / Invoice No</label>
               <input value={refNo} onChange={e => setRefNo(e.target.value)}
                 placeholder="INV/2025-26/001"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Party GSTIN</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">Party GSTIN</label>
               <input value={partyGstin} onChange={e => setPartyGstin(e.target.value.toUpperCase())}
                 placeholder="27ABCDE1234F1ZB" maxLength={15}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Place of Supply</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">Place of Supply</label>
               <select value={placeOfSupply}
                 onChange={e => { setPlaceOfSupply(e.target.value); setIsInterstate(e.target.value !== "27"); }}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
@@ -209,20 +209,20 @@ export function InvoiceFormModal({ open, onClose, onSaved, clients, type }: Prop
 
           <div className="flex items-center gap-2">
             <input type="checkbox" id="interstate" checked={isInterstate} onChange={e => setIsInterstate(e.target.checked)} className="rounded" />
-            <label htmlFor="interstate" className="text-sm text-gray-700">Interstate supply (IGST applies instead of CGST+SGST)</label>
+            <label htmlFor="interstate" className="text-sm text-white/65">Interstate supply (IGST applies instead of CGST+SGST)</label>
           </div>
 
           {/* GST Classification — CGST Act Section 37 (GSTR-1 reporting) */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Supply Type *</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">Supply Type *</label>
               <select value={supplyType} onChange={e => setSupplyType(e.target.value as SupplyType)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
                 {SUPPLY_TYPES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Type</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">Invoice Type</label>
               <select value={invoiceType} onChange={e => setInvoiceType(e.target.value as InvoiceType)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
                 {INVOICE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -231,37 +231,37 @@ export function InvoiceFormModal({ open, onClose, onSaved, clients, type }: Prop
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" id="rcm" checked={isReverseCharge} onChange={e => setIsReverseCharge(e.target.checked)} className="rounded" />
-            <label htmlFor="rcm" className="text-sm text-gray-700">Reverse Charge Mechanism (RCM) applies — CGST Act Section 9(3)/9(4)</label>
+            <label htmlFor="rcm" className="text-sm text-white/65">Reverse Charge Mechanism (RCM) applies — CGST Act Section 9(3)/9(4)</label>
           </div>
 
           {/* Line items */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Line Items</label>
+              <label className="text-xs font-semibold text-white/65 uppercase tracking-wide">Line Items</label>
               <button type="button" onClick={addLine} className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700">
                 <Plus size={12} /> Add Line
               </button>
             </div>
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="border border-white/[0.07] rounded-lg overflow-hidden">
               <table className="w-full text-xs">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-[#0e1017] border-b border-white/[0.07]">
                   <tr>
-                    <th className="text-left px-3 py-2 text-gray-600 font-medium">Description</th>
-                    <th className="text-left px-3 py-2 text-gray-600 font-medium w-20">HSN/SAC</th>
-                    <th className="text-right px-3 py-2 text-gray-600 font-medium w-16">Qty</th>
-                    <th className="text-right px-3 py-2 text-gray-600 font-medium w-28">Rate (₹)</th>
-                    <th className="text-right px-3 py-2 text-gray-600 font-medium w-16">GST%</th>
-                    <th className="text-right px-3 py-2 text-gray-600 font-medium w-24">Total</th>
+                    <th className="text-left px-3 py-2 text-white/55 font-medium">Description</th>
+                    <th className="text-left px-3 py-2 text-white/55 font-medium w-20">HSN/SAC</th>
+                    <th className="text-right px-3 py-2 text-white/55 font-medium w-16">Qty</th>
+                    <th className="text-right px-3 py-2 text-white/55 font-medium w-28">Rate (₹)</th>
+                    <th className="text-right px-3 py-2 text-white/55 font-medium w-16">GST%</th>
+                    <th className="text-right px-3 py-2 text-white/55 font-medium w-24">Total</th>
                     <th className="w-8" />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-white/[0.05]">
                   {lines.map((line, idx) => {
                     const taxable = Math.round(line.quantity * line.rate_paise);
                     const gst = Math.round(taxable * line.gst_rate / 100);
                     const total = taxable + gst;
                     return (
-                      <tr key={idx} className="bg-white">
+                      <tr key={idx} className="bg-[#131620]">
                         <td className="px-2 py-1.5">
                           <input value={line.description} onChange={e => updateLine(idx, "description", e.target.value)}
                             placeholder="Service / Item description" required
@@ -288,12 +288,12 @@ export function InvoiceFormModal({ open, onClose, onSaved, clients, type }: Prop
                             {GST_RATES.map(r => <option key={r} value={r}>{r}%</option>)}
                           </select>
                         </td>
-                        <td className="px-2 py-1.5 text-right font-mono text-gray-700">
+                        <td className="px-2 py-1.5 text-right font-mono text-white/65">
                           {formatPaise(total)}
                         </td>
                         <td className="px-2 py-1.5">
                           {lines.length > 1 && (
-                            <button type="button" onClick={() => removeLine(idx)} className="text-gray-400 hover:text-red-500">
+                            <button type="button" onClick={() => removeLine(idx)} className="text-white/30 hover:text-red-500">
                               <Trash2 size={12} />
                             </button>
                           )}
@@ -307,29 +307,29 @@ export function InvoiceFormModal({ open, onClose, onSaved, clients, type }: Prop
           </div>
 
           {/* Totals */}
-          <div className="bg-gray-50 rounded-xl p-4 space-y-1.5 text-sm">
-            <div className="flex justify-between text-gray-600">
+          <div className="bg-[#0e1017] rounded-xl p-4 space-y-1.5 text-sm">
+            <div className="flex justify-between text-white/55">
               <span>Taxable Amount</span>
               <span className="font-mono">{formatPaise(totals.taxable)}</span>
             </div>
             {!isInterstate ? (
               <>
-                <div className="flex justify-between text-gray-600">
+                <div className="flex justify-between text-white/55">
                   <span>CGST</span>
                   <span className="font-mono">{formatPaise(totals.cgst)}</span>
                 </div>
-                <div className="flex justify-between text-gray-600">
+                <div className="flex justify-between text-white/55">
                   <span>SGST</span>
                   <span className="font-mono">{formatPaise(totals.sgst)}</span>
                 </div>
               </>
             ) : (
-              <div className="flex justify-between text-gray-600">
+              <div className="flex justify-between text-white/55">
                 <span>IGST</span>
                 <span className="font-mono">{formatPaise(totals.igst)}</span>
               </div>
             )}
-            <div className="flex justify-between font-semibold text-gray-900 border-t border-gray-200 pt-1.5">
+            <div className="flex justify-between font-semibold text-white/85 border-t border-white/[0.07] pt-1.5">
               <span>Total</span>
               <span className="font-mono">{formatPaise(totals.total)}</span>
             </div>
@@ -339,7 +339,7 @@ export function InvoiceFormModal({ open, onClose, onSaved, clients, type }: Prop
           {type === "purchase_invoice" && (
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">TDS Section (IT Act)</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">TDS Section (IT Act)</label>
                 <select value={tdsSection}
                   onChange={e => {
                     const found = TDS_SECTIONS.find(t => t.section === e.target.value);
@@ -353,8 +353,8 @@ export function InvoiceFormModal({ open, onClose, onSaved, clients, type }: Prop
               </div>
               {tdsSection && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">TDS Amount</label>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-mono text-gray-700">
+                  <label className="block text-xs font-medium text-white/65 mb-1">TDS Amount</label>
+                  <div className="rounded-lg border border-white/[0.07] bg-[#0e1017] px-3 py-2 text-sm font-mono text-white/65">
                     {formatPaise(Math.round(totals.taxable * tdsRate / 100))} ({tdsRate}%)
                   </div>
                 </div>
@@ -363,7 +363,7 @@ export function InvoiceFormModal({ open, onClose, onSaved, clients, type }: Prop
           )}
 
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+            <label className="block text-xs font-medium text-white/65 mb-1">Notes</label>
             <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional notes"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500" />
           </div>
@@ -372,9 +372,9 @@ export function InvoiceFormModal({ open, onClose, onSaved, clients, type }: Prop
             <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
           )}
 
-          <div className="flex gap-3 pt-1 sticky bottom-0 bg-white pb-2">
+          <div className="flex gap-3 pt-1 sticky bottom-0 bg-[#131620] pb-2">
             <button type="button" onClick={onClose}
-              className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+              className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-white/65 hover:bg-[#0e1017]">
               Cancel
             </button>
             <button type="submit" disabled={saving}

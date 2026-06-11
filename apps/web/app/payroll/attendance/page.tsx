@@ -226,11 +226,11 @@ export default function AttendancePage() {
   ];
 
   if (loading) {
-    return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><p className="text-gray-500">Loading...</p></div>;
+    return <div className="min-h-screen bg-[#0e1017] flex items-center justify-center"><p className="text-white/40">Loading...</p></div>;
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-[#0e1017] p-8">
       <div className="max-w-6xl mx-auto">
         <div className="mb-6 flex items-center gap-3">
           <Link href="/payroll">
@@ -239,8 +239,8 @@ export default function AttendancePage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Attendance &amp; Leave</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Track monthly attendance and leave balances</p>
+            <h1 className="text-2xl font-bold text-white/85">Attendance &amp; Leave</h1>
+            <p className="text-sm text-white/40 mt-0.5">Track monthly attendance and leave balances</p>
           </div>
         </div>
 
@@ -257,7 +257,7 @@ export default function AttendancePage() {
                 <div className="flex flex-wrap gap-4 items-end justify-between">
                   <div className="flex gap-4 items-end">
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Month</label>
+                      <label className="block text-xs font-medium text-white/65 mb-1">Month</label>
                       <select
                         className="border rounded-lg px-3 py-2 text-sm"
                         value={attMonth}
@@ -267,7 +267,7 @@ export default function AttendancePage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Year</label>
+                      <label className="block text-xs font-medium text-white/65 mb-1">Year</label>
                       <input
                         type="number"
                         className="border rounded-lg px-3 py-2 text-sm w-24"
@@ -296,14 +296,14 @@ export default function AttendancePage() {
             </Card>
 
             {employees.length === 0 ? (
-              <Card><CardContent className="py-12 text-center text-gray-400">No employees found. Add employees in Payroll first.</CardContent></Card>
+              <Card><CardContent className="py-12 text-center text-white/30">No employees found. Add employees in Payroll first.</CardContent></Card>
             ) : (
               <Card>
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        <tr className="border-b text-xs font-medium text-white/40 uppercase tracking-wide">
                           <th className="text-left py-3 px-4">Employee</th>
                           <th className="text-center py-3 px-3">Working Days</th>
                           <th className="text-center py-3 px-3">Days Present</th>
@@ -324,10 +324,10 @@ export default function AttendancePage() {
                           const lop = calcLOP(row);
                           const netDays = calcNetPayDays(row);
                           return (
-                            <tr key={emp.id} className="border-b hover:bg-gray-50">
+                            <tr key={emp.id} className="border-b hover:bg-[#0e1017]">
                               <td className="py-3 px-4">
-                                <div className="font-medium text-gray-900">{emp.name}</div>
-                                {emp.designation && <div className="text-xs text-gray-500">{emp.designation}</div>}
+                                <div className="font-medium text-white/85">{emp.name}</div>
+                                {emp.designation && <div className="text-xs text-white/40">{emp.designation}</div>}
                               </td>
                               {(["working_days", "days_present", "casual_leaves", "sick_leaves", "earned_leaves"] as const).map(field => (
                                 <td key={field} className="py-2 px-3 text-center">
@@ -342,7 +342,7 @@ export default function AttendancePage() {
                                 </td>
                               ))}
                               <td className="py-3 px-3 text-center">
-                                <span className={`font-semibold ${lop > 0 ? "text-red-600" : "text-gray-400"}`}>{lop}</span>
+                                <span className={`font-semibold ${lop > 0 ? "text-red-600" : "text-white/30"}`}>{lop}</span>
                               </td>
                               <td className="py-3 px-3 text-center">
                                 <span className="font-semibold text-green-700">{netDays}</span>
@@ -364,7 +364,7 @@ export default function AttendancePage() {
               <CardContent className="pt-5">
                 <div className="flex gap-4 items-end">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Year</label>
+                    <label className="block text-xs font-medium text-white/65 mb-1">Year</label>
                     <input
                       type="number"
                       className="border rounded-lg px-3 py-2 text-sm w-24"
@@ -381,7 +381,7 @@ export default function AttendancePage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Leave Balances — {leaveYear}</CardTitle>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="text-xs text-white/40 mt-0.5">
                   Used leave is aggregated from attendance records. Edit the annual allocation per employee.
                 </p>
               </CardHeader>
@@ -389,14 +389,14 @@ export default function AttendancePage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      <tr className="border-b text-xs font-medium text-white/40 uppercase tracking-wide">
                         <th className="text-left py-3 px-4">Employee</th>
                         <th className="text-center py-3 px-3" colSpan={3}>Casual Leave</th>
                         <th className="text-center py-3 px-3" colSpan={3}>Sick Leave</th>
                         <th className="text-center py-3 px-3" colSpan={3}>Earned Leave</th>
                         <th className="py-3 px-4"></th>
                       </tr>
-                      <tr className="border-b text-xs text-gray-400">
+                      <tr className="border-b text-xs text-white/30">
                         <th className="py-2 px-4"></th>
                         <th className="py-2 px-2 text-center font-normal">Allotted</th>
                         <th className="py-2 px-2 text-center font-normal">Used</th>
@@ -419,7 +419,7 @@ export default function AttendancePage() {
                         const slRem = (form.sick_leave_balance ?? lb.sick_leave_balance) - (lb.sick_used ?? 0);
                         const elRem = (form.earned_leave_balance ?? lb.earned_leave_balance) - (lb.earned_used ?? 0);
                         return (
-                          <tr key={lb.employee_id} className="border-b hover:bg-gray-50">
+                          <tr key={lb.employee_id} className="border-b hover:bg-[#0e1017]">
                             <td className="py-3 px-4 font-medium">{emp?.name ?? lb.employee_id}</td>
                             {/* CL */}
                             <td className="py-2 px-2 text-center">
@@ -432,7 +432,7 @@ export default function AttendancePage() {
                                 />
                               ) : <span>{lb.casual_leave_balance}</span>}
                             </td>
-                            <td className="py-2 px-2 text-center text-gray-500">{lb.casual_used ?? 0}</td>
+                            <td className="py-2 px-2 text-center text-white/40">{lb.casual_used ?? 0}</td>
                             <td className="py-2 px-2 text-center">
                               <span className={clRem < 0 ? "text-red-600 font-semibold" : "text-green-700 font-semibold"}>{clRem}</span>
                             </td>
@@ -447,7 +447,7 @@ export default function AttendancePage() {
                                 />
                               ) : <span>{lb.sick_leave_balance}</span>}
                             </td>
-                            <td className="py-2 px-2 text-center text-gray-500">{lb.sick_used ?? 0}</td>
+                            <td className="py-2 px-2 text-center text-white/40">{lb.sick_used ?? 0}</td>
                             <td className="py-2 px-2 text-center">
                               <span className={slRem < 0 ? "text-red-600 font-semibold" : "text-green-700 font-semibold"}>{slRem}</span>
                             </td>
@@ -462,7 +462,7 @@ export default function AttendancePage() {
                                 />
                               ) : <span>{lb.earned_leave_balance}</span>}
                             </td>
-                            <td className="py-2 px-2 text-center text-gray-500">{lb.earned_used ?? 0}</td>
+                            <td className="py-2 px-2 text-center text-white/40">{lb.earned_used ?? 0}</td>
                             <td className="py-2 px-2 text-center">
                               <span className={elRem < 0 ? "text-red-600 font-semibold" : "text-green-700 font-semibold"}>{elRem}</span>
                             </td>

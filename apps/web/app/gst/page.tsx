@@ -227,10 +227,10 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900">Add GST Filing</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <h3 className="text-sm font-semibold text-white/85">Add GST Filing</h3>
+          <button onClick={onClose} className="text-white/30 hover:text-white/55">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -241,11 +241,11 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
 
         {/* Client */}
         <div>
-          <label className="text-xs font-medium text-gray-700 block mb-1">Client</label>
+          <label className="text-xs font-medium text-white/65 block mb-1">Client</label>
           <select
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {clients.map((c) => (
               <option key={c.id} value={c.id}>
@@ -258,11 +258,11 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
 
         {/* Return Type */}
         <div>
-          <label className="text-xs font-medium text-gray-700 block mb-1">Return Type</label>
+          <label className="text-xs font-medium text-white/65 block mb-1">Return Type</label>
           <select
             value={returnType}
             onChange={(e) => setReturnType(e.target.value as ReturnType)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {RETURN_TYPES.map((r) => (
               <option key={r} value={r}>{r}</option>
@@ -272,11 +272,11 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
 
         {/* Period */}
         <div>
-          <label className="text-xs font-medium text-gray-700 block mb-1">Period</label>
+          <label className="text-xs font-medium text-white/65 block mb-1">Period</label>
           <select
             value={period}
             onChange={(e) => setPeriod(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {MONTH_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -286,17 +286,17 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
 
         {/* Due Date — auto-filled, editable */}
         <div>
-          <label className="text-xs font-medium text-gray-700 block mb-1">
+          <label className="text-xs font-medium text-white/65 block mb-1">
             Due Date
-            <span className="text-gray-400 font-normal ml-1">(auto-filled, editable)</span>
+            <span className="text-white/30 font-normal ml-1">(auto-filled, editable)</span>
           </label>
           <input
             type="date"
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <p className="text-[10px] text-gray-400 mt-1">
+          <p className="text-[10px] text-white/30 mt-1">
             {returnType === "GSTR-1" && "CGST Act Section 37 — 11th of following month"}
             {returnType === "GSTR-3B" && "CGST Act Section 39 — 20th of following month"}
             {returnType === "GSTR-9" && "CGST Act Section 44 — 31st December"}
@@ -305,11 +305,11 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
 
         {/* Status */}
         <div>
-          <label className="text-xs font-medium text-gray-700 block mb-1">Status</label>
+          <label className="text-xs font-medium text-white/65 block mb-1">Status</label>
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value as FilingStatus)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="Pending">Pending</option>
             <option value="Filed">Filed</option>
@@ -320,7 +320,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
         <div className="flex gap-2 pt-2">
           <button
             onClick={onClose}
-            className="flex-1 border border-gray-200 text-gray-600 text-sm py-2 rounded-lg hover:bg-gray-50"
+            className="flex-1 border border-white/[0.07] text-white/55 text-sm py-2 rounded-lg hover:bg-[#0e1017]"
           >
             Cancel
           </button>
@@ -474,15 +474,15 @@ export default function GSTPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">GST</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-xl font-semibold text-white/85">GST</h1>
+          <p className="text-sm text-white/40 mt-0.5">
             GSTR Filing Tracker — CGST Act Sections 37, 39, 44
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Link
             href="/gst/reconciliation"
-            className="flex items-center gap-1.5 text-xs bg-white border border-gray-200 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50"
+            className="flex items-center gap-1.5 text-xs bg-[#131620] border border-white/[0.07] text-white/65 px-3 py-2 rounded-lg hover:bg-[#0e1017]"
           >
             <GitMerge className="w-3.5 h-3.5" />
             GSTR-2B Reconciliation
@@ -506,10 +506,10 @@ export default function GSTPage() {
       )}
 
       {/* Key Deadlines Banner — CGST Act Sections 37, 39, 44 */}
-      <div className="bg-white rounded-xl border border-gray-100 p-4">
+      <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
         <div className="flex items-center gap-2 mb-3">
-          <Calendar className="w-4 h-4 text-gray-500" />
-          <span className="text-xs font-semibold text-gray-700">
+          <Calendar className="w-4 h-4 text-white/40" />
+          <span className="text-xs font-semibold text-white/65">
             Key GST Deadlines — {currentMonth} {currentYear}
           </span>
         </div>
@@ -529,66 +529,66 @@ export default function GSTPage() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
               <Users className="w-4 h-4 text-blue-600" />
             </div>
-            <span className="text-xs text-gray-500">Total GST Clients</span>
+            <span className="text-xs text-white/40">Total GST Clients</span>
           </div>
-          <p className="text-lg font-semibold text-gray-900">{loading ? "—" : totalClients}</p>
-          <p className="text-xs text-gray-400 mt-0.5">With GST filings tracked</p>
+          <p className="text-lg font-semibold text-white/85">{loading ? "—" : totalClients}</p>
+          <p className="text-xs text-white/30 mt-0.5">With GST filings tracked</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
               <CheckCircle className="w-4 h-4 text-green-600" />
             </div>
-            <span className="text-xs text-gray-500">Filed This Month</span>
+            <span className="text-xs text-white/40">Filed This Month</span>
           </div>
-          <p className="text-lg font-semibold text-gray-900">{loading ? "—" : filedThisMonth}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{currentPeriod}</p>
+          <p className="text-lg font-semibold text-white/85">{loading ? "—" : filedThisMonth}</p>
+          <p className="text-xs text-white/30 mt-0.5">{currentPeriod}</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
               <Clock className="w-4 h-4 text-amber-600" />
             </div>
-            <span className="text-xs text-gray-500">Pending This Month</span>
+            <span className="text-xs text-white/40">Pending This Month</span>
           </div>
-          <p className="text-lg font-semibold text-gray-900">{loading ? "—" : pendingThisMonth}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{currentPeriod}</p>
+          <p className="text-lg font-semibold text-white/85">{loading ? "—" : pendingThisMonth}</p>
+          <p className="text-xs text-white/30 mt-0.5">{currentPeriod}</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
               <AlertCircle className="w-4 h-4 text-red-600" />
             </div>
-            <span className="text-xs text-gray-500">Overdue</span>
+            <span className="text-xs text-white/40">Overdue</span>
           </div>
-          <p className="text-lg font-semibold text-gray-900">{loading ? "—" : overdueCount}</p>
-          <p className="text-xs text-gray-400 mt-0.5">All periods</p>
+          <p className="text-lg font-semibold text-white/85">{loading ? "—" : overdueCount}</p>
+          <p className="text-xs text-white/30 mt-0.5">All periods</p>
         </div>
       </div>
 
       {/* Month Filter + Table */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">Filing Status</h2>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <h2 className="text-sm font-semibold text-white/85">Filing Status</h2>
+            <p className="text-xs text-white/30 mt-0.5">
               Per client · per return type · per period
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-500">Period:</label>
+            <label className="text-xs text-white/40">Period:</label>
             <select
               value={filterPeriod}
               onChange={(e) => setFilterPeriod(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border border-white/[0.07] rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Periods</option>
               {uniquePeriods.map((p) => (
@@ -599,12 +599,12 @@ export default function GSTPage() {
         </div>
 
         {loading ? (
-          <div className="px-5 py-10 text-center text-sm text-gray-400">Loading…</div>
+          <div className="px-5 py-10 text-center text-sm text-white/30">Loading…</div>
         ) : filteredFilings.length === 0 ? (
           <div className="px-5 py-12 text-center space-y-2">
             <FileText className="w-8 h-8 mx-auto text-gray-200" />
-            <p className="text-sm text-gray-500 font-medium">No GST filings found</p>
-            <p className="text-xs text-gray-400">
+            <p className="text-sm text-white/40 font-medium">No GST filings found</p>
+            <p className="text-xs text-white/30">
               {filings.length === 0
                 ? "Add your first GST filing to start tracking GSTR-1, GSTR-3B and GSTR-9 deadlines."
                 : "No filings match the selected period filter."}
@@ -623,34 +623,34 @@ export default function GSTPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-50">
-                  <th className="text-left text-xs font-medium text-gray-400 px-5 py-3">Client</th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">GSTIN</th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">Return Type</th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">Period</th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">Due Date</th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-3 py-3">Status</th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-5 py-3">Action</th>
+                  <th className="text-left text-xs font-medium text-white/30 px-5 py-3">Client</th>
+                  <th className="text-left text-xs font-medium text-white/30 px-3 py-3">GSTIN</th>
+                  <th className="text-left text-xs font-medium text-white/30 px-3 py-3">Return Type</th>
+                  <th className="text-left text-xs font-medium text-white/30 px-3 py-3">Period</th>
+                  <th className="text-left text-xs font-medium text-white/30 px-3 py-3">Due Date</th>
+                  <th className="text-left text-xs font-medium text-white/30 px-3 py-3">Status</th>
+                  <th className="text-left text-xs font-medium text-white/30 px-5 py-3">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-white/[0.03]">
                 {filteredFilings.map((f) => (
-                  <tr key={f.id} className="hover:bg-gray-50/50">
+                  <tr key={f.id} className="hover:bg-[#0e1017]/50">
                     <td className="px-5 py-3">
-                      <p className="text-sm font-medium text-gray-900">{f.client_name}</p>
+                      <p className="text-sm font-medium text-white/85">{f.client_name}</p>
                     </td>
                     <td className="px-3 py-3">
-                      <span className="text-xs font-mono text-gray-500">{f.gstin ?? "—"}</span>
+                      <span className="text-xs font-mono text-white/40">{f.gstin ?? "—"}</span>
                     </td>
                     <td className="px-3 py-3">
                       <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
                         {f.return_type}
                       </span>
                     </td>
-                    <td className="px-3 py-3 text-sm text-gray-700">{f.period}</td>
+                    <td className="px-3 py-3 text-sm text-white/65">{f.period}</td>
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-1.5">
-                        <Clock className="w-3 h-3 text-gray-300" />
-                        <span className="text-xs text-gray-600">{fmtDate(f.due_date)}</span>
+                        <Clock className="w-3 h-3 text-white/20" />
+                        <span className="text-xs text-white/55">{fmtDate(f.due_date)}</span>
                       </div>
                     </td>
                     <td className="px-3 py-3">
@@ -685,8 +685,8 @@ export default function GSTPage() {
         )}
 
         {filteredFilings.length > 0 && (
-          <div className="px-5 py-3 border-t border-gray-50 bg-gray-50/30">
-            <p className="text-[10px] text-gray-400">
+          <div className="px-5 py-3 border-t border-gray-50 bg-[#0e1017]/30">
+            <p className="text-[10px] text-white/30">
               {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
               GSTR-1 (Section 37): 11th · GSTR-3B (Section 39): 20th · GSTR-9 (Section 44): 31 Dec ·
               PracticeSync does not auto-submit to the GST portal — always file manually after CA review.
@@ -707,14 +707,14 @@ export default function GSTPage() {
 
       {showAddModal && clients.length === 0 && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4 text-center">
-            <p className="text-sm text-gray-700 font-medium">No clients found</p>
-            <p className="text-xs text-gray-500">
+          <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4 text-center">
+            <p className="text-sm text-white/65 font-medium">No clients found</p>
+            <p className="text-xs text-white/40">
               Add clients in the Clients section before adding GST filings.
             </p>
             <button
               onClick={() => setShowAddModal(false)}
-              className="w-full border border-gray-200 text-gray-600 text-sm py-2 rounded-lg hover:bg-gray-50"
+              className="w-full border border-white/[0.07] text-white/55 text-sm py-2 rounded-lg hover:bg-[#0e1017]"
             >
               Close
             </button>

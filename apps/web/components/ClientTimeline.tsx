@@ -26,7 +26,7 @@ const CATEGORY_ICONS: Record<EventCategory, React.ElementType> = {
 };
 
 const SEVERITY_STYLES = {
-  info:     "border-l-white/10 bg-white/[0.02]",
+  info:     "border-l-white/10 bg-[#131620]/[0.02]",
   success:  "border-l-emerald-500/40 bg-emerald-500/[0.04]",
   warning:  "border-l-amber-500/40 bg-amber-500/[0.04]",
   critical: "border-l-red-500/40 bg-red-500/[0.04]",
@@ -146,7 +146,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
     return (
       <div className="space-y-2">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-14 rounded-lg bg-white/[0.03] animate-pulse" />
+          <div key={i} className="h-14 rounded-lg bg-[#131620]/[0.03] animate-pulse" />
         ))}
       </div>
     );
@@ -161,14 +161,14 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search events…"
-          className="flex-1 min-w-[120px] bg-white/[0.04] border border-white/[0.07] rounded-lg px-2.5 py-1 text-[11px] text-white/60 placeholder:text-white/20 outline-none focus:border-white/15"
+          className="flex-1 min-w-[120px] bg-[#131620]/[0.04] border border-white/[0.07] rounded-lg px-2.5 py-1 text-[11px] text-white/60 placeholder:text-white/20 outline-none focus:border-white/15"
         />
         {/* Category filter */}
         <div className="relative">
           <select
             value={catFilter}
             onChange={(e) => setCatFilter(e.target.value as EventCategory | "all")}
-            className="appearance-none bg-white/[0.04] border border-white/[0.07] rounded-lg pl-2.5 pr-6 py-1 text-[11px] text-white/50 outline-none focus:border-white/15 cursor-pointer"
+            className="appearance-none bg-[#131620]/[0.04] border border-white/[0.07] rounded-lg pl-2.5 pr-6 py-1 text-[11px] text-white/50 outline-none focus:border-white/15 cursor-pointer"
           >
             {CATEGORY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -181,7 +181,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           <select
             value={sevFilter}
             onChange={(e) => setSevFilter(e.target.value)}
-            className="appearance-none bg-white/[0.04] border border-white/[0.07] rounded-lg pl-2.5 pr-6 py-1 text-[11px] text-white/50 outline-none focus:border-white/15 cursor-pointer"
+            className="appearance-none bg-[#131620]/[0.04] border border-white/[0.07] rounded-lg pl-2.5 pr-6 py-1 text-[11px] text-white/50 outline-none focus:border-white/15 cursor-pointer"
           >
             {SEVERITY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -276,7 +276,7 @@ function TimelineEventRow({
   return (
     <div
       className={cn(
-        "group flex items-start gap-3 px-3 py-2.5 rounded-lg border-l-2 transition-colors hover:bg-white/[0.03]",
+        "group flex items-start gap-3 px-3 py-2.5 rounded-lg border-l-2 transition-colors hover:bg-[#131620]/[0.03]",
         SEVERITY_STYLES[event.severity ?? "info"]
       )}
       onMouseEnter={() => setHover(true)}

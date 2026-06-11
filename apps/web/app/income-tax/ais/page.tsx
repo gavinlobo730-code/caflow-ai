@@ -364,14 +364,14 @@ export default function AISPage() {
         <div>
           <Link
             href="/income-tax"
-            className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 mb-2 transition-colors"
+            className="inline-flex items-center gap-1 text-xs text-white/30 hover:text-white/55 mb-2 transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Income Tax
           </Link>
-          <h1 className="text-xl font-semibold text-gray-900">
+          <h1 className="text-xl font-semibold text-white/85">
             AIS Ingestion Tool
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <p className="text-sm text-white/40 mt-0.5">
             Annual Information Statement — IT Act Section 285BB
           </p>
         </div>
@@ -396,8 +396,8 @@ export default function AISPage() {
       </div>
 
       {/* Client selector */}
-      <div className="bg-white rounded-xl border border-gray-100 px-5 py-4">
-        <label className="block text-xs font-medium text-gray-700 mb-1.5">
+      <div className="bg-[#131620] rounded-xl border border-white/[0.05] px-5 py-4">
+        <label className="block text-xs font-medium text-white/65 mb-1.5">
           Client Name
         </label>
         <input
@@ -405,17 +405,17 @@ export default function AISPage() {
           placeholder="Enter client name for this AIS review…"
           value={clientName}
           onChange={(e) => setClientName(e.target.value)}
-          className="w-full max-w-sm border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full max-w-sm border border-white/[0.07] rounded-lg px-3 py-2 text-sm text-white/85 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
 
       {/* Upload AIS JSON */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
-          <h2 className="text-sm font-semibold text-gray-900">
+          <h2 className="text-sm font-semibold text-white/85">
             Step 1 — Upload AIS JSON
           </h2>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <p className="text-xs text-white/30 mt-0.5">
             Download from{" "}
             <span className="font-mono">incometax.gov.in</span> → AIS → Download JSON
           </p>
@@ -440,13 +440,13 @@ export default function AISPage() {
               const file = e.dataTransfer.files[0];
               if (file) handleFileUpload(file);
             }}
-            className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-colors"
+            className="border-2 border-dashed border-white/[0.07] rounded-xl p-8 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-colors"
           >
-            <Upload className="w-8 h-8 text-gray-300 mx-auto mb-3" />
-            <p className="text-sm font-medium text-gray-600">
+            <Upload className="w-8 h-8 text-white/20 mx-auto mb-3" />
+            <p className="text-sm font-medium text-white/55">
               Click to upload or drag & drop AIS JSON
             </p>
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-white/30 mt-1">
               Supports the AnnualInformationStatement JSON format from the IT portal
             </p>
           </div>
@@ -470,19 +470,19 @@ export default function AISPage() {
 
       {/* Manual entry form */}
       {showManual && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50">
-            <h2 className="text-sm font-semibold text-gray-900">
+            <h2 className="text-sm font-semibold text-white/85">
               Manual Transaction Entry
             </h2>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-xs text-white/30 mt-0.5">
               Add transactions manually when JSON is unavailable or incomplete
             </p>
           </div>
           <div className="px-5 py-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-medium text-white/65 mb-1.5">
                   Transaction Type
                 </label>
                 <select
@@ -490,7 +490,7 @@ export default function AISPage() {
                   onChange={(e) =>
                     setManualForm((p) => ({ ...p, type: e.target.value as TransactionType }))
                   }
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm text-white/85 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {TRANSACTION_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -500,7 +500,7 @@ export default function AISPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-medium text-white/65 mb-1.5">
                   Payer / Deductor Name
                 </label>
                 <input
@@ -510,11 +510,11 @@ export default function AISPage() {
                   onChange={(e) =>
                     setManualForm((p) => ({ ...p, payer: e.target.value }))
                   }
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm text-white/85 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-medium text-white/65 mb-1.5">
                   Amount (₹)
                 </label>
                 <input
@@ -525,11 +525,11 @@ export default function AISPage() {
                   onChange={(e) =>
                     setManualForm((p) => ({ ...p, amount: e.target.value }))
                   }
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm text-white/85 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-medium text-white/65 mb-1.5">
                   TDS Deducted (₹)
                 </label>
                 <input
@@ -540,7 +540,7 @@ export default function AISPage() {
                   onChange={(e) =>
                     setManualForm((p) => ({ ...p, tds: e.target.value }))
                   }
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm text-white/85 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -559,24 +559,24 @@ export default function AISPage() {
       {/* Transactions loaded */}
       {transactions.length > 0 && (
         <>
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-gray-900">
+                <h2 className="text-sm font-semibold text-white/85">
                   Step 2 — Comparison Table
                 </h2>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <p className="text-xs text-white/30 mt-0.5">
                   Enter &ldquo;Amount in Books&rdquo; for each AIS transaction to identify discrepancies
                 </p>
               </div>
-              <span className="text-xs text-gray-500 font-medium">
+              <span className="text-xs text-white/40 font-medium">
                 {transactions.length} transaction{transactions.length !== 1 ? "s" : ""} · Total AIS: {formatRupees(totalAISPaise)}
               </span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 text-xs text-gray-500 font-medium uppercase tracking-wider">
+                  <tr className="bg-[#0e1017] text-xs text-white/40 font-medium uppercase tracking-wider">
                     <th className="px-5 py-2.5 text-left">Transaction Type</th>
                     <th className="px-4 py-2.5 text-left">Payer / Deductor</th>
                     <th className="px-4 py-2.5 text-left">Source</th>
@@ -588,18 +588,18 @@ export default function AISPage() {
                     <th className="px-4 py-2.5 text-left"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-white/[0.03]">
                   {comparisonRows.map((row) => {
                     const diff =
                       row.status === "not_in_books"
                         ? row.amountPaise
                         : row.amountPaise - row.booksAmountPaise;
                     return (
-                      <tr key={row.id} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-5 py-3 font-medium text-gray-900">
+                      <tr key={row.id} className="hover:bg-[#0e1017]/50 transition-colors">
+                        <td className="px-5 py-3 font-medium text-white/85">
                           {row.type}
                         </td>
-                        <td className="px-4 py-3 text-gray-600 text-xs max-w-xs truncate">
+                        <td className="px-4 py-3 text-white/55 text-xs max-w-xs truncate">
                           {row.payer}
                         </td>
                         <td className="px-4 py-3">
@@ -607,19 +607,19 @@ export default function AISPage() {
                             className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                               row.source === "json"
                                 ? "bg-purple-50 text-purple-700"
-                                : "bg-gray-100 text-gray-600"
+                                : "bg-white/[0.06] text-white/55"
                             }`}
                           >
                             {row.source === "json" ? "AIS JSON" : "Manual"}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-900 font-medium text-xs">
+                        <td className="px-4 py-3 text-right text-white/85 font-medium text-xs">
                           {formatRupees(row.amountPaise)}
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-600 text-xs">
+                        <td className="px-4 py-3 text-right text-white/55 text-xs">
                           {row.tdsDeductedPaise > 0
                             ? formatRupees(row.tdsDeductedPaise)
-                            : <span className="text-gray-300">—</span>}
+                            : <span className="text-white/20">—</span>}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <input
@@ -633,7 +633,7 @@ export default function AISPage() {
                                 [row.id]: e.target.value,
                               }))
                             }
-                            className="w-32 border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-32 border border-white/[0.07] rounded-lg px-2 py-1 text-xs text-white/85 text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
                           />
                         </td>
                         <td className="px-4 py-3 text-right text-xs font-medium">
@@ -653,7 +653,7 @@ export default function AISPage() {
                         <td className="px-4 py-3">
                           <button
                             onClick={() => handleDeleteTransaction(row.id)}
-                            className="text-gray-300 hover:text-red-500 transition-colors"
+                            className="text-white/20 hover:text-red-500 transition-colors"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -667,21 +667,21 @@ export default function AISPage() {
           </div>
 
           {/* Discrepancy Summary */}
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50">
-              <h2 className="text-sm font-semibold text-gray-900">
+              <h2 className="text-sm font-semibold text-white/85">
                 Step 3 — Discrepancy Summary
               </h2>
-              <p className="text-xs text-gray-400 mt-0.5">
+              <p className="text-xs text-white/30 mt-0.5">
                 Estimated tax impact at 30% slab rate — conservative estimate
               </p>
             </div>
             <div className="px-5 py-5 grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-gray-50 rounded-xl p-4">
-                <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">
+              <div className="bg-[#0e1017] rounded-xl p-4">
+                <p className="text-xs text-white/40 font-medium uppercase tracking-wide mb-1">
                   Total AIS Income
                 </p>
-                <p className="text-lg font-semibold text-gray-900">
+                <p className="text-lg font-semibold text-white/85">
                   {formatRupees(totalAISPaise)}
                 </p>
               </div>
@@ -753,12 +753,12 @@ export default function AISPage() {
 
       {/* Empty state */}
       {transactions.length === 0 && !parseError && (
-        <div className="bg-white rounded-xl border border-gray-100 px-5 py-14 text-center space-y-3">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.05] px-5 py-14 text-center space-y-3">
           <FileText className="w-10 h-10 text-gray-200 mx-auto" />
-          <p className="text-sm font-medium text-gray-600">
+          <p className="text-sm font-medium text-white/55">
             No AIS data loaded yet
           </p>
-          <p className="text-xs text-gray-400 max-w-sm mx-auto">
+          <p className="text-xs text-white/30 max-w-sm mx-auto">
             Upload the AIS JSON downloaded from the Income Tax portal, or use manual entry to add transactions.
           </p>
         </div>

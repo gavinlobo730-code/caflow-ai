@@ -227,34 +227,34 @@ export default function AdvanceTaxPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/income-tax" className="text-gray-400 hover:text-gray-600"><ChevronLeft size={18} /></Link>
+        <Link href="/income-tax" className="text-white/30 hover:text-white/55"><ChevronLeft size={18} /></Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-gray-900">Advance Tax Tracker</h1>
-          <p className="text-sm text-gray-500 mt-0.5">IT Act Section 207/208 — 4 installments per FY</p>
+          <h1 className="text-xl font-semibold text-white/85">Advance Tax Tracker</h1>
+          <p className="text-sm text-white/40 mt-0.5">IT Act Section 207/208 — 4 installments per FY</p>
         </div>
       </div>
 
       {/* Controls */}
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <label className="text-xs text-gray-500">Client</label>
+          <label className="text-xs text-white/40">Client</label>
           <select value={clientId} onChange={e => setClientId(e.target.value)}
-            className="block mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 min-w-[200px]">
+            className="block mt-1 border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 min-w-[200px]">
             {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-xs text-gray-500">Financial Year</label>
+          <label className="text-xs text-white/40">Financial Year</label>
           <select value={fy} onChange={e => setFy(e.target.value)}
-            className="block mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+            className="block mt-1 border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
             {FY_OPTIONS.map(f => <option key={f} value={f}>FY {f}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-xs text-gray-500">Estimated Annual Tax (₹)</label>
+          <label className="text-xs text-white/40">Estimated Annual Tax (₹)</label>
           <input type="number" min="0" step="0.01" value={estimatedTaxRs}
             onChange={e => setEstimatedTaxRs(e.target.value)}
-            className="block mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 w-48"
+            className="block mt-1 border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 w-48"
             placeholder="Enter tax amount" />
         </div>
         <Button onClick={handleSave} disabled={saving || !clientId}>
@@ -274,8 +274,8 @@ export default function AdvanceTaxPage() {
         ].map(s => (
           <Card key={s.label}>
             <CardContent className="pt-4 pb-3">
-              <p className={`text-lg font-bold tabular-nums ${s.red ? "text-red-600" : "text-gray-900"}`}>{s.value}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+              <p className={`text-lg font-bold tabular-nums ${s.red ? "text-red-600" : "text-white/85"}`}>{s.value}</p>
+              <p className="text-xs text-white/40 mt-0.5">{s.label}</p>
             </CardContent>
           </Card>
         ))}
@@ -284,12 +284,12 @@ export default function AdvanceTaxPage() {
       {/* Installment table */}
       <Card>
         {loading ? (
-          <div className="p-8 text-center text-gray-400 text-sm animate-pulse">Loading…</div>
+          <div className="p-8 text-center text-white/30 text-sm animate-pulse">Loading…</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-100 text-xs text-gray-400">
+                <tr className="border-b border-white/[0.05] text-xs text-white/30">
                   <th className="px-5 py-3 text-left">Installment</th>
                   <th className="px-3 py-3 text-left">Due Date</th>
                   <th className="px-3 py-3 text-right">Required %</th>
@@ -301,7 +301,7 @@ export default function AdvanceTaxPage() {
                   <th className="px-5 py-3 text-left">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-white/[0.03]">
                 {schedule.map((inst, idx) => {
                   const cumRequired = Math.round((estimatedTaxPaise * inst.percent) / 100);
                   const cumPaid = schedule.filter(i => i.number <= inst.number).reduce(
@@ -316,34 +316,34 @@ export default function AdvanceTaxPage() {
                     ? <span className="inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded-full"><CheckCircle size={11} /> Paid</span>
                     : status === "overdue"
                     ? <span className="inline-flex items-center gap-1 text-xs text-red-700 bg-red-50 px-2 py-0.5 rounded-full"><AlertTriangle size={11} /> Overdue</span>
-                    : <span className="inline-flex items-center gap-1 text-xs text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full"><Clock size={11} /> Upcoming</span>;
+                    : <span className="inline-flex items-center gap-1 text-xs text-white/55 bg-white/[0.06] px-2 py-0.5 rounded-full"><Clock size={11} /> Upcoming</span>;
 
                   return (
-                    <tr key={inst.number} className="hover:bg-gray-50">
+                    <tr key={inst.number} className="hover:bg-[#0e1017]">
                       <td className="px-5 py-3 text-sm font-medium">{inst.label}</td>
-                      <td className="px-3 py-3 text-xs text-gray-600">{inst.dueDate}</td>
+                      <td className="px-3 py-3 text-xs text-white/55">{inst.dueDate}</td>
                       <td className="px-3 py-3 text-sm text-right tabular-nums">{inst.percent}%</td>
                       <td className="px-3 py-3 text-sm text-right tabular-nums font-medium">{formatPaise(cumRequired)}</td>
                       <td className="px-3 py-3">
                         <input type="number" min="0" step="0.01"
                           value={editPaidRs[inst.number] ?? ""}
                           onChange={e => setEditPaidRs(prev => ({ ...prev, [inst.number]: e.target.value }))}
-                          className="w-28 border border-gray-200 rounded px-2 py-1 text-sm text-right outline-none focus:border-blue-500" />
+                          className="w-28 border border-white/[0.07] rounded px-2 py-1 text-sm text-right outline-none focus:border-blue-500" />
                       </td>
                       <td className="px-3 py-3">
                         <input type="date"
                           value={editPaidDate[inst.number] ?? ""}
                           onChange={e => setEditPaidDate(prev => ({ ...prev, [inst.number]: e.target.value }))}
-                          className="border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500" />
+                          className="border border-white/[0.07] rounded px-2 py-1 text-xs outline-none focus:border-blue-500" />
                       </td>
                       <td className="px-3 py-3">
                         <input type="text"
                           value={editChallan[inst.number] ?? ""}
                           onChange={e => setEditChallan(prev => ({ ...prev, [inst.number]: e.target.value }))}
                           placeholder="BSR/challan"
-                          className="w-32 border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500" />
+                          className="w-32 border border-white/[0.07] rounded px-2 py-1 text-xs outline-none focus:border-blue-500" />
                       </td>
-                      <td className={`px-3 py-3 text-sm text-right tabular-nums ${interest > 0 ? "text-red-600 font-semibold" : "text-gray-400"}`}>
+                      <td className={`px-3 py-3 text-sm text-right tabular-nums ${interest > 0 ? "text-red-600 font-semibold" : "text-white/30"}`}>
                         {interest > 0 ? formatPaise(interest) : "—"}
                       </td>
                       <td className="px-5 py-3">{statusEl}</td>
@@ -356,7 +356,7 @@ export default function AdvanceTaxPage() {
         )}
       </Card>
 
-      <p className="text-xs text-gray-400 text-center">
+      <p className="text-xs text-white/30 text-center">
         Interest computed under IT Act Section 234C @ 1% per month simple interest on shortfall.
         CA Review Required before filing.
       </p>

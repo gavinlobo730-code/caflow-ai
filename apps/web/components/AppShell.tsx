@@ -95,7 +95,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Main layout */}
-      <div className="flex h-screen overflow-hidden bg-[hsl(220,20%,97%)]">
+      <div className="flex h-screen overflow-hidden bg-[hsl(220,30%,6%)]">
         {/* Desktop: ActivityRail + ContextPanel — hidden when inside client workspace */}
         {!isClientWorkspace && (
           <div className="hidden md:flex h-full">

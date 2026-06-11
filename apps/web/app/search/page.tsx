@@ -144,16 +144,16 @@ function SearchContent() {
   }, {});
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-[#0e1017] p-8">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">Search</h1>
+        <h1 className="text-2xl font-bold text-white/85 mb-6">Search</h1>
         <form onSubmit={handleSubmit} className="mb-8">
           <div className="relative">
-            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
             <input
               autoFocus
               type="text"
-              className="w-full pl-11 pr-4 py-3 border rounded-xl text-base bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full pl-11 pr-4 py-3 border rounded-xl text-base bg-[#131620] shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               placeholder="Search clients, tasks, filings, journals..."
               value={query}
               onChange={e => setQuery(e.target.value)}
@@ -164,14 +164,14 @@ function SearchContent() {
         {loading && (
           <div className="space-y-3">
             {[1, 2, 3].map(i => (
-              <div key={i} className="h-14 bg-gray-200 rounded-lg animate-pulse" />
+              <div key={i} className="h-14 bg-white/[0.08] rounded-lg animate-pulse" />
             ))}
           </div>
         )}
 
         {!loading && query && results.length === 0 && (
           <Card>
-            <CardContent className="py-12 text-center text-gray-400">
+            <CardContent className="py-12 text-center text-white/30">
               <Search size={32} className="mx-auto mb-3 opacity-30" />
               <p>No results for &quot;{query}&quot;</p>
             </CardContent>
@@ -179,22 +179,22 @@ function SearchContent() {
         )}
 
         {!loading && !query && (
-          <p className="text-gray-400 text-center mt-12">Search clients, tasks, filings, journals...</p>
+          <p className="text-white/30 text-center mt-12">Search clients, tasks, filings, journals...</p>
         )}
 
         {Object.entries(grouped).map(([cat, items]) => {
           const Icon = CATEGORY_ICONS[cat as keyof typeof CATEGORY_ICONS] ?? FileText;
           return (
             <div key={cat} className="mb-6">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2 flex items-center gap-1.5">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-white/40 mb-2 flex items-center gap-1.5">
                 <Icon size={12} />{CATEGORY_LABELS[cat as keyof typeof CATEGORY_LABELS]}
               </h2>
               <div className="space-y-1.5">
                 {items.map(item => (
                   <Link key={item.id} href={item.href}>
-                    <div className="bg-white border rounded-lg px-4 py-3 hover:bg-indigo-50 hover:border-indigo-200 transition-colors cursor-pointer">
-                      <p className="font-medium text-gray-900 text-sm">{item.title}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{item.subtitle}</p>
+                    <div className="bg-[#131620] border rounded-lg px-4 py-3 hover:bg-blue-500/[0.08] hover:border-blue-500/20 transition-colors cursor-pointer">
+                      <p className="font-medium text-white/85 text-sm">{item.title}</p>
+                      <p className="text-xs text-white/40 mt-0.5">{item.subtitle}</p>
                     </div>
                   </Link>
                 ))}
@@ -209,7 +209,7 @@ function SearchContent() {
 
 export default function SearchPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center"><p className="text-gray-500">Loading...</p></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-[#0e1017] flex items-center justify-center"><p className="text-white/40">Loading...</p></div>}>
       <SearchContent />
     </Suspense>
   );

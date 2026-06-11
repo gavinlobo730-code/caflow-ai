@@ -103,12 +103,12 @@ export default function BankImportPage() {
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Bank Statement Import</h1>
-          <p className="text-sm text-gray-500 mt-1">Import CSV bank statements from any Indian bank</p>
+          <h1 className="text-2xl font-bold text-white/85">Bank Statement Import</h1>
+          <p className="text-sm text-white/40 mt-1">Import CSV bank statements from any Indian bank</p>
         </div>
         <button
           onClick={downloadTemplate}
-          className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+          className="flex items-center gap-2 rounded-lg border border-white/[0.07] px-4 py-2 text-sm font-medium text-white/55 hover:bg-[#0e1017] transition-colors"
         >
           <Download size={15} />
           Download Template
@@ -119,11 +119,11 @@ export default function BankImportPage() {
       <div className="flex items-center gap-2 text-sm">
         {(["upload", "review", "done"] as Step[]).map((s, i) => (
           <div key={s} className="flex items-center gap-2">
-            {i > 0 && <ArrowRight size={14} className="text-gray-300" />}
+            {i > 0 && <ArrowRight size={14} className="text-white/20" />}
             <span className={`px-3 py-1 rounded-full text-xs font-medium ${
               step === s ? "bg-blue-600 text-white" :
               (["upload","review","done"].indexOf(step) > i) ? "bg-green-100 text-green-700" :
-              "bg-gray-100 text-gray-500"
+              "bg-white/[0.06] text-white/40"
             }`}>
               {i + 1}. {s.charAt(0).toUpperCase() + s.slice(1)}
             </span>
@@ -136,7 +136,7 @@ export default function BankImportPage() {
           {/* Client + Bank selection */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Client *</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">Client *</label>
               <select value={clientId} onChange={e => setClientId(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
                 <option value="">Select client…</option>
@@ -144,14 +144,14 @@ export default function BankImportPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Bank</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">Bank</label>
               <select value={bankName} onChange={e => setBankName(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
                 {BANKS.map(b => <option key={b}>{b}</option>)}
               </select>
             </div>
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-700 mb-1">Account Number (optional)</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">Account Number (optional)</label>
               <input value={accountNo} onChange={e => setAccountNo(e.target.value)}
                 placeholder="XXXX XXXX XXXX 1234"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500" />
@@ -160,9 +160,9 @@ export default function BankImportPage() {
 
           {/* Supported banks */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-500">Supported formats:</span>
+            <span className="text-xs text-white/40">Supported formats:</span>
             {["HDFC", "SBI", "ICICI", "Axis", "Kotak", "Generic CSV"].map(b => (
-              <span key={b} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{b}</span>
+              <span key={b} className="text-xs bg-white/[0.06] text-white/55 px-2 py-0.5 rounded">{b}</span>
             ))}
           </div>
 
@@ -173,15 +173,15 @@ export default function BankImportPage() {
             onDrop={handleDrop}
             onClick={() => fileRef.current?.click()}
             className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-12 cursor-pointer transition-colors ${
-              dragOver ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
+              dragOver ? "border-blue-400 bg-blue-50" : "border-white/[0.07] hover:border-blue-300 hover:bg-[#0e1017]"
             }`}
           >
             <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f); }} />
-            <Upload className="h-10 w-10 text-gray-400" />
+            <Upload className="h-10 w-10 text-white/30" />
             <div className="text-center">
-              <p className="text-sm font-medium text-gray-700">Drop CSV statement here or click to browse</p>
-              <p className="text-xs text-gray-400 mt-1">Download from your bank&apos;s net banking → Statements → Export as CSV</p>
+              <p className="text-sm font-medium text-white/65">Drop CSV statement here or click to browse</p>
+              <p className="text-xs text-white/30 mt-1">Download from your bank&apos;s net banking → Statements → Export as CSV</p>
             </div>
           </div>
 
@@ -195,13 +195,13 @@ export default function BankImportPage() {
         <div className="space-y-4">
           {/* Summary */}
           <div className="grid grid-cols-4 gap-4">
-            <div className="bg-gray-50 rounded-xl p-4">
-              <p className="text-xs text-gray-500 mb-1">File</p>
-              <p className="text-sm font-semibold text-gray-900 truncate">{fileName}</p>
+            <div className="bg-[#0e1017] rounded-xl p-4">
+              <p className="text-xs text-white/40 mb-1">File</p>
+              <p className="text-sm font-semibold text-white/85 truncate">{fileName}</p>
             </div>
-            <div className="bg-gray-50 rounded-xl p-4">
-              <p className="text-xs text-gray-500 mb-1">Transactions</p>
-              <p className="text-sm font-semibold text-gray-900">{parsed.length}</p>
+            <div className="bg-[#0e1017] rounded-xl p-4">
+              <p className="text-xs text-white/40 mb-1">Transactions</p>
+              <p className="text-sm font-semibold text-white/85">{parsed.length}</p>
             </div>
             <div className="bg-red-50 rounded-xl p-4">
               <p className="text-xs text-red-500 mb-1">Total Debits</p>
@@ -214,30 +214,30 @@ export default function BankImportPage() {
           </div>
 
           {/* Transaction table */}
-          <div className="border border-gray-200 rounded-xl overflow-hidden">
+          <div className="border border-white/[0.07] rounded-xl overflow-hidden">
             <div className="max-h-96 overflow-y-auto">
               <table className="w-full text-xs">
-                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                <thead className="bg-[#0e1017] border-b border-white/[0.07] sticky top-0">
                   <tr>
-                    <th className="text-left px-4 py-2.5 text-gray-600 font-medium">Date</th>
-                    <th className="text-left px-4 py-2.5 text-gray-600 font-medium">Description</th>
-                    <th className="text-right px-4 py-2.5 text-gray-600 font-medium">Debit</th>
-                    <th className="text-right px-4 py-2.5 text-gray-600 font-medium">Credit</th>
-                    <th className="text-right px-4 py-2.5 text-gray-600 font-medium">Balance</th>
+                    <th className="text-left px-4 py-2.5 text-white/55 font-medium">Date</th>
+                    <th className="text-left px-4 py-2.5 text-white/55 font-medium">Description</th>
+                    <th className="text-right px-4 py-2.5 text-white/55 font-medium">Debit</th>
+                    <th className="text-right px-4 py-2.5 text-white/55 font-medium">Credit</th>
+                    <th className="text-right px-4 py-2.5 text-white/55 font-medium">Balance</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-white/[0.05]">
                   {parsed.slice(0, 200).map((t, i) => (
-                    <tr key={i} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 font-mono text-gray-600">{t.date}</td>
-                      <td className="px-4 py-2 text-gray-800 max-w-xs truncate">{t.description}</td>
+                    <tr key={i} className="hover:bg-[#0e1017]">
+                      <td className="px-4 py-2 font-mono text-white/55">{t.date}</td>
+                      <td className="px-4 py-2 text-white/75 max-w-xs truncate">{t.description}</td>
                       <td className="px-4 py-2 text-right font-mono text-red-600">
                         {t.debit_paise > 0 ? formatPaise(t.debit_paise) : "—"}
                       </td>
                       <td className="px-4 py-2 text-right font-mono text-green-600">
                         {t.credit_paise > 0 ? formatPaise(t.credit_paise) : "—"}
                       </td>
-                      <td className="px-4 py-2 text-right font-mono text-gray-600">
+                      <td className="px-4 py-2 text-right font-mono text-white/55">
                         {t.balance_paise > 0 ? formatPaise(t.balance_paise) : "—"}
                       </td>
                     </tr>
@@ -258,7 +258,7 @@ export default function BankImportPage() {
 
           <div className="flex gap-3">
             <button onClick={() => { setStep("upload"); setParsed([]); }}
-              className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+              className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-white/65 hover:bg-[#0e1017]">
               Back
             </button>
             <button onClick={handleImport} disabled={importing}
@@ -274,15 +274,15 @@ export default function BankImportPage() {
           <div className="w-16 h-16 rounded-2xl bg-green-50 flex items-center justify-center mx-auto mb-4">
             <CheckCircle className="h-8 w-8 text-green-500" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          <h3 className="text-lg font-semibold text-white/85 mb-2">
             {parsed.length} transactions imported
           </h3>
-          <p className="text-sm text-gray-500 mb-6">
+          <p className="text-sm text-white/40 mb-6">
             Transactions are saved. Review and map them to accounts in the Ledger.
           </p>
           <div className="flex gap-3 justify-center">
             <button onClick={() => { setStep("upload"); setParsed([]); setFileName(""); }}
-              className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+              className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-white/65 hover:bg-[#0e1017]">
               <FileText size={15} /> Import Another
             </button>
             <a href="/accounting"

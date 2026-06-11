@@ -406,8 +406,8 @@ export default function CalendarPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Compliance Calendar</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-xl font-semibold text-white/85">Compliance Calendar</h1>
+          <p className="text-sm text-white/40 mt-0.5">
             Indian tax & regulatory deadlines across all clients
           </p>
         </div>
@@ -416,23 +416,23 @@ export default function CalendarPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={goToday}
-            className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
+            className="px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg text-white/55 hover:bg-[#0e1017]"
           >
             Today
           </button>
           <button
             onClick={prevMonth}
-            className="p-1.5 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50"
+            className="p-1.5 border border-white/[0.07] rounded-lg text-white/40 hover:bg-[#0e1017]"
             aria-label="Previous month"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-sm font-semibold text-gray-900 w-36 text-center">
+          <span className="text-sm font-semibold text-white/85 w-36 text-center">
             {MONTH_NAMES[viewMonth]} {viewYear}
           </span>
           <button
             onClick={nextMonth}
-            className="p-1.5 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50"
+            className="p-1.5 border border-white/[0.07] rounded-lg text-white/40 hover:bg-[#0e1017]"
             aria-label="Next month"
           >
             <ChevronRight className="w-4 h-4" />
@@ -445,21 +445,21 @@ export default function CalendarPage() {
         {(Object.keys(CATEGORY_STYLES) as DeadlineCategory[]).map(cat => (
           <div key={cat} className="flex items-center gap-1.5">
             <span className={`w-2.5 h-2.5 rounded-full ${CATEGORY_STYLES[cat].badge}`} />
-            <span className="text-xs text-gray-500">{CATEGORY_LABELS[cat]}</span>
+            <span className="text-xs text-white/40">{CATEGORY_LABELS[cat]}</span>
           </div>
         ))}
-        {loading && <span className="text-xs text-gray-400 ml-2">Loading clients…</span>}
+        {loading && <span className="text-xs text-white/30 ml-2">Loading clients…</span>}
       </div>
 
       {/* Main layout: Calendar + Side panel */}
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-6">
 
         {/* Calendar grid */}
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
           {/* Day headers */}
-          <div className="grid grid-cols-7 border-b border-gray-100">
+          <div className="grid grid-cols-7 border-b border-white/[0.05]">
             {DAY_LABELS.map(d => (
-              <div key={d} className="py-2 text-center text-xs font-medium text-gray-400">
+              <div key={d} className="py-2 text-center text-xs font-medium text-white/30">
                 {d}
               </div>
             ))}
@@ -469,7 +469,7 @@ export default function CalendarPage() {
           <div className="grid grid-cols-7">
             {gridCells.map((cell, idx) => {
               if (cell.day === null) {
-                return <div key={`empty-${idx}`} className="min-h-[90px] border-b border-r border-gray-50 bg-gray-50/30" />;
+                return <div key={`empty-${idx}`} className="min-h-[90px] border-b border-r border-gray-50 bg-[#0e1017]/30" />;
               }
 
               const cellDate = new Date(viewYear, viewMonth, cell.day);
@@ -481,12 +481,12 @@ export default function CalendarPage() {
                 <div
                   key={cell.day}
                   onClick={() => setSelectedDay(isSelected ? null : cellDate)}
-                  className={`min-h-[90px] border-b border-r border-gray-100 p-1.5 cursor-pointer transition-colors
-                    ${isSelected ? "bg-blue-50" : "hover:bg-gray-50/60"}`}
+                  className={`min-h-[90px] border-b border-r border-white/[0.05] p-1.5 cursor-pointer transition-colors
+                    ${isSelected ? "bg-blue-50" : "hover:bg-[#0e1017]/60"}`}
                 >
                   {/* Day number */}
                   <div className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium mb-1
-                    ${isToday ? "bg-blue-600 text-white" : "text-gray-700"}`}>
+                    ${isToday ? "bg-blue-600 text-white" : "text-white/65"}`}>
                     {cell.day}
                   </div>
 
@@ -502,7 +502,7 @@ export default function CalendarPage() {
                       />
                     ))}
                     {chips.length > 3 && (
-                      <div className="text-[10px] text-gray-400 pl-1">+{chips.length - 3} more</div>
+                      <div className="text-[10px] text-white/30 pl-1">+{chips.length - 3} more</div>
                     )}
                   </div>
                 </div>
@@ -516,17 +516,17 @@ export default function CalendarPage() {
 
           {/* Selected day panel */}
           {selectedDay && (
-            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-blue-600" />
-                <h2 className="text-sm font-semibold text-gray-900">
+                <h2 className="text-sm font-semibold text-white/85">
                   {selectedDay.getDate()} {MONTH_NAMES[selectedDay.getMonth()]} {selectedDay.getFullYear()}
                 </h2>
               </div>
               {selectedDayDeadlines.length === 0 ? (
-                <p className="px-4 py-6 text-xs text-gray-400 text-center">No deadlines this day</p>
+                <p className="px-4 py-6 text-xs text-white/30 text-center">No deadlines this day</p>
               ) : (
-                <div className="divide-y divide-gray-50">
+                <div className="divide-y divide-white/[0.03]">
                   {selectedDayDeadlines.map(dl => {
                     const style = CATEGORY_STYLES[dl.category];
                     const clientCount = dl.clientIds.length;
@@ -538,7 +538,7 @@ export default function CalendarPage() {
                       <div key={dl.id} className="px-4 py-3 flex items-start gap-3">
                         <button
                           onClick={() => toggleDone(dl.id)}
-                          className={`mt-0.5 shrink-0 ${dl.done ? "text-green-500" : "text-gray-300 hover:text-gray-500"}`}
+                          className={`mt-0.5 shrink-0 ${dl.done ? "text-green-500" : "text-white/20 hover:text-white/40"}`}
                           aria-label={dl.done ? "Mark pending" : "Mark done"}
                         >
                           {dl.done
@@ -551,13 +551,13 @@ export default function CalendarPage() {
                             <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${style.chip}`}>
                               {CATEGORY_LABELS[dl.category]}
                             </span>
-                            <span className={`text-sm font-medium ${dl.done ? "line-through text-gray-400" : "text-gray-900"}`}>
+                            <span className={`text-sm font-medium ${dl.done ? "line-through text-white/30" : "text-white/85"}`}>
                               {dl.label}
                             </span>
                           </div>
-                          <p className="text-xs text-gray-500 mt-0.5">{dl.description}</p>
+                          <p className="text-xs text-white/40 mt-0.5">{dl.description}</p>
                           {clientLabel && (
-                            <p className="text-[10px] text-gray-400 mt-0.5">{clientLabel}</p>
+                            <p className="text-[10px] text-white/30 mt-0.5">{clientLabel}</p>
                           )}
                         </div>
                       </div>
@@ -569,26 +569,26 @@ export default function CalendarPage() {
           )}
 
           {/* Upcoming deadlines */}
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-50">
-              <h2 className="text-sm font-semibold text-gray-900">Upcoming Deadlines</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Next 10 pending</p>
+              <h2 className="text-sm font-semibold text-white/85">Upcoming Deadlines</h2>
+              <p className="text-xs text-white/30 mt-0.5">Next 10 pending</p>
             </div>
             {upcomingDeadlines.length === 0 ? (
-              <p className="px-4 py-6 text-xs text-gray-400 text-center">All caught up!</p>
+              <p className="px-4 py-6 text-xs text-white/30 text-center">All caught up!</p>
             ) : (
-              <div className="divide-y divide-gray-50">
+              <div className="divide-y divide-white/[0.03]">
                 {upcomingDeadlines.map(dl => {
                   const style = CATEGORY_STYLES[dl.category];
                   const daysAway = Math.ceil((dl.date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                  const urgentClass = daysAway <= 3 ? "text-red-600 font-semibold" : daysAway <= 7 ? "text-amber-600" : "text-gray-400";
+                  const urgentClass = daysAway <= 3 ? "text-red-600 font-semibold" : daysAway <= 7 ? "text-amber-600" : "text-white/30";
 
                   return (
                     <div key={dl.id} className="px-4 py-3 flex items-center gap-3">
                       <span className={`w-2 h-2 rounded-full shrink-0 ${style.badge}`} />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-gray-900 truncate">{dl.label}</p>
-                        <p className="text-[10px] text-gray-400">
+                        <p className="text-xs font-medium text-white/85 truncate">{dl.label}</p>
+                        <p className="text-[10px] text-white/30">
                           {dl.date.getDate()} {MONTH_NAMES[dl.date.getMonth()]}
                         </p>
                       </div>
@@ -597,7 +597,7 @@ export default function CalendarPage() {
                       </span>
                       <button
                         onClick={() => toggleDone(dl.id)}
-                        className="text-gray-300 hover:text-gray-500 shrink-0"
+                        className="text-white/20 hover:text-white/40 shrink-0"
                         aria-label="Mark done"
                       >
                         <Circle className="w-3.5 h-3.5" />

@@ -68,15 +68,15 @@ export function CompliancePanel() {
                 className={cn(
                   "flex items-center gap-2.5 px-2.5 py-2 rounded-[7px] text-[12.5px] font-medium transition-all duration-75",
                   active
-                    ? "bg-indigo-500/15 text-white/90"
-                    : "text-white/50 hover:text-white/80 hover:bg-white/[0.04]"
+                    ? "bg-blue-500/15 text-white/90"
+                    : "text-white/50 hover:text-white/80 hover:bg-[#131620]/[0.04]"
                 )}
               >
                 <Icon
                   size={15}
                   className={cn(
                     "shrink-0",
-                    active ? "text-indigo-400" : "text-white/30"
+                    active ? "text-blue-400" : "text-white/30"
                   )}
                 />
                 <span className="truncate">{label}</span>
@@ -95,8 +95,8 @@ export function CompliancePanel() {
             className={cn(
               "flex items-center gap-2.5 px-2.5 py-2 rounded-[7px] text-[12.5px] font-medium transition-all duration-75",
               pathname.startsWith("/settings/dsc-tracker")
-                ? "bg-indigo-500/15 text-white/90"
-                : "text-white/50 hover:text-white/80 hover:bg-white/[0.04]"
+                ? "bg-blue-500/15 text-white/90"
+                : "text-white/50 hover:text-white/80 hover:bg-[#131620]/[0.04]"
             )}
           >
             <KeyRound
@@ -104,7 +104,7 @@ export function CompliancePanel() {
               className={cn(
                 "shrink-0",
                 pathname.startsWith("/settings/dsc-tracker")
-                  ? "text-indigo-400"
+                  ? "text-blue-400"
                   : "text-white/30"
               )}
             />

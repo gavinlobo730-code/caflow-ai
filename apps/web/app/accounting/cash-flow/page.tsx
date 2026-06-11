@@ -128,9 +128,9 @@ function computeCashFlow(lines: JournalLine[]): {
 function CashFlowSectionBlock({ section }: { section: CashFlowSection }) {
   const isPositive = section.total_paise >= 0;
   return (
-    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+    <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
       <div className={`px-5 py-3 border-b border-gray-50 flex items-center justify-between ${isPositive ? "bg-green-50/50" : "bg-red-50/50"}`}>
-        <h3 className="text-sm font-semibold text-gray-900">{section.title}</h3>
+        <h3 className="text-sm font-semibold text-white/85">{section.title}</h3>
         <div className="flex items-center gap-1.5">
           {isPositive ? <TrendingUp className="w-4 h-4 text-green-600" /> : <TrendingDown className="w-4 h-4 text-red-600" />}
           <span className={`text-sm font-bold ${isPositive ? "text-green-700" : "text-red-700"}`}>
@@ -139,13 +139,13 @@ function CashFlowSectionBlock({ section }: { section: CashFlowSection }) {
         </div>
       </div>
       {section.items.length === 0 ? (
-        <div className="px-5 py-4 text-xs text-gray-400">No transactions in this category for selected period</div>
+        <div className="px-5 py-4 text-xs text-white/30">No transactions in this category for selected period</div>
       ) : (
         <table className="w-full text-sm">
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-white/[0.03]">
             {section.items.map((item, i) => (
-              <tr key={i} className="hover:bg-gray-50/30">
-                <td className="px-5 py-2.5 text-xs text-gray-700">{item.label}</td>
+              <tr key={i} className="hover:bg-[#0e1017]/30">
+                <td className="px-5 py-2.5 text-xs text-white/65">{item.label}</td>
                 <td className={`px-5 py-2.5 text-xs font-medium text-right ${item.amount_paise >= 0 ? "text-green-700" : "text-red-700"}`}>
                   {item.amount_paise >= 0 ? "+" : ""}{formatPaise(item.amount_paise)}
                 </td>
@@ -153,8 +153,8 @@ function CashFlowSectionBlock({ section }: { section: CashFlowSection }) {
             ))}
           </tbody>
           <tfoot>
-            <tr className="border-t border-gray-200 bg-gray-50">
-              <td className="px-5 py-2.5 text-xs font-semibold text-gray-700">Net Cash</td>
+            <tr className="border-t border-white/[0.07] bg-[#0e1017]">
+              <td className="px-5 py-2.5 text-xs font-semibold text-white/65">Net Cash</td>
               <td className={`px-5 py-2.5 text-sm font-bold text-right ${isPositive ? "text-green-700" : "text-red-700"}`}>
                 {formatPaise(section.total_paise)}
               </td>
@@ -237,16 +237,16 @@ export default function CashFlowPage() {
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-gray-400 hover:text-gray-600">
+        <Link href="/accounting" className="text-white/30 hover:text-white/55">
           <ChevronLeft className="w-4 h-4" />
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-gray-900">Cash Flow Statement</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Indirect method — AS-3, Companies Act 2013 Schedule III</p>
+          <h1 className="text-xl font-semibold text-white/85">Cash Flow Statement</h1>
+          <p className="text-sm text-white/40 mt-0.5">Indirect method — AS-3, Companies Act 2013 Schedule III</p>
         </div>
         <div className="flex items-center gap-2">
           <select
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border border-white/[0.07] rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={selectedFY}
             onChange={e => setSelectedFY(Number(e.target.value))}
           >
@@ -271,7 +271,7 @@ export default function CashFlowPage() {
               a.download = `cash-flow-${fy.label.replace(/\s/g, "-")}.csv`;
               a.click();
             }}
-            className="flex items-center gap-1.5 border border-gray-200 text-gray-600 text-sm px-3 py-1.5 rounded-lg hover:bg-gray-50"
+            className="flex items-center gap-1.5 border border-white/[0.07] text-white/55 text-sm px-3 py-1.5 rounded-lg hover:bg-[#0e1017]"
           >
             <Download className="w-3.5 h-3.5" /> Export
           </button>
@@ -284,12 +284,12 @@ export default function CashFlowPage() {
 
       {loading ? (
         <div className="space-y-4">
-          {[1, 2, 3].map(i => <div key={i} className="h-32 bg-gray-100 rounded-xl animate-pulse" />)}
+          {[1, 2, 3].map(i => <div key={i} className="h-32 bg-white/[0.06] rounded-xl animate-pulse" />)}
         </div>
       ) : (
         <>
           {/* Summary bar */}
-          <div className="bg-white rounded-xl border border-gray-100 p-4">
+          <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
             <div className="grid grid-cols-4 gap-4">
               {[
                 { label: "Operating Activities", paise: cf.operating.total_paise, color: "text-blue-700" },
@@ -298,7 +298,7 @@ export default function CashFlowPage() {
                 { label: "Net Cash Change", paise: netChange, color: netChange >= 0 ? "text-green-700" : "text-red-700" },
               ].map(s => (
                 <div key={s.label} className="text-center">
-                  <p className="text-xs text-gray-400 mb-1">{s.label}</p>
+                  <p className="text-xs text-white/30 mb-1">{s.label}</p>
                   <p className={`text-sm font-bold ${s.color}`}>{formatPaise(s.paise)}</p>
                 </div>
               ))}
@@ -306,24 +306,24 @@ export default function CashFlowPage() {
           </div>
 
           {/* Opening / Closing Cash */}
-          <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center justify-between">
+          <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4 flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div>
-                <p className="text-xs text-gray-400">Opening Cash Balance</p>
-                <p className="text-sm font-semibold text-gray-900">{formatPaise(cf.openingCash)}</p>
+                <p className="text-xs text-white/30">Opening Cash Balance</p>
+                <p className="text-sm font-semibold text-white/85">{formatPaise(cf.openingCash)}</p>
               </div>
-              <Minus className="w-4 h-4 text-gray-300" />
+              <Minus className="w-4 h-4 text-white/20" />
               <div>
-                <p className="text-xs text-gray-400">Net Change</p>
+                <p className="text-xs text-white/30">Net Change</p>
                 <p className={`text-sm font-semibold ${netChange >= 0 ? "text-green-700" : "text-red-700"}`}>{netChange >= 0 ? "+" : ""}{formatPaise(netChange)}</p>
               </div>
-              <Minus className="w-4 h-4 text-gray-300" />
+              <Minus className="w-4 h-4 text-white/20" />
               <div>
-                <p className="text-xs text-gray-400">Closing Cash Balance</p>
-                <p className="text-sm font-semibold text-gray-900">{formatPaise(cf.closingCash)}</p>
+                <p className="text-xs text-white/30">Closing Cash Balance</p>
+                <p className="text-sm font-semibold text-white/85">{formatPaise(cf.closingCash)}</p>
               </div>
             </div>
-            <p className="text-[10px] text-gray-400">FY: Apr {fy.start.slice(0, 4)} — Mar {fy.end.slice(0, 4)}</p>
+            <p className="text-[10px] text-white/30">FY: Apr {fy.start.slice(0, 4)} — Mar {fy.end.slice(0, 4)}</p>
           </div>
 
           {/* Three sections */}
@@ -331,7 +331,7 @@ export default function CashFlowPage() {
           <CashFlowSectionBlock section={cf.investing} />
           <CashFlowSectionBlock section={cf.financing} />
 
-          <p className="text-[10px] text-gray-400 text-center">
+          <p className="text-[10px] text-white/30 text-center">
             Prepared using indirect method per AS-3 (Accounting Standard on Cash Flow Statements) and Companies Act 2013 Schedule III.
           </p>
         </>
