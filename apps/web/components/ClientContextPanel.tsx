@@ -24,9 +24,9 @@ export function ClientContextPanel() {
   const { clientId } = useClientNav();
 
   return (
-    <div className="flex flex-col h-full w-[200px] shrink-0 bg-[#0f0f16] border-r border-white/[0.06]">
-      <div className="px-3 py-3 border-b border-white/5">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25">
+    <div className="flex flex-col h-full w-[200px] shrink-0 bg-[#0f0f16] border-r border-[#E2E8F0]">
+      <div className="px-3 py-3 border-b border-[#E2E8F0]">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">
           Client Workspace
         </p>
       </div>
@@ -43,13 +43,13 @@ export function ClientContextPanel() {
                 "flex flex-col rounded-lg px-2.5 py-2 transition-all duration-100",
                 active
                   ? "bg-violet-600/15 border border-violet-500/20"
-                  : "hover:bg-white/5 border border-transparent"
+                  : "hover:bg-[#F1F5F9] border border-transparent"
               )}
             >
               <span
                 className={cn(
                   "text-[12.5px] font-medium",
-                  active ? "text-violet-300" : "text-white/55 group-hover:text-white/80"
+                  active ? "text-violet-300" : "text-[#64748B] group-hover:text-[#1E293B]"
                 )}
               >
                 {label}

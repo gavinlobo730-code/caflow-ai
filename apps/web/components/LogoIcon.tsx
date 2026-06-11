@@ -11,7 +11,7 @@ export function LogoIcon({ size = "md" }: { size?: "sm" | "md" | "lg" | "xl" }) 
   const { cls, rx } = SIZES[size];
 
   return (
-    <div className={`${cls} shrink-0 overflow-hidden bg-[#0F172A]`} style={{ borderRadius: rx }}>
+    <div className={`${cls} shrink-0 overflow-hidden bg-white`} style={{ borderRadius: rx }}>
       <svg
         viewBox="0 0 200 200"
         fill="none"
