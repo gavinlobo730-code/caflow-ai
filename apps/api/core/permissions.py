@@ -107,12 +107,6 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "compute": _AT_LEAST_EXECUTIVE,
         "approve": _AT_LEAST_MANAGER,
     },
-    # ── Payroll ───────────────────────────────────────────────────────────────
-    "payroll": {
-        "read":     _AT_LEAST_EXECUTIVE,
-        "write":    _AT_LEAST_MANAGER,
-        "finalize": _PARTNER_ONLY,
-    },
     # ── Notifications (every authenticated staff member can read/mark own) ───
     "notification": {
         "read":  _ALL_STAFF,
@@ -143,43 +137,12 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "read":  _ALL_STAFF,
         "write": _AT_LEAST_EXECUTIVE,
     },
-    # ── Time tracking ─────────────────────────────────────────────────────────
-    "time_entry": {
-        "read":   _ALL_STAFF,
-        "write":  _ALL_STAFF,
-        "delete": _AT_LEAST_MANAGER,
-        "report": _AT_LEAST_MANAGER,
-    },
-    # ── Workload visibility ───────────────────────────────────────────────────
-    "workload": {
-        "read":  _AT_LEAST_MANAGER,
-        "write": _AT_LEAST_MANAGER,
-    },
-    # ── Productivity analytics ────────────────────────────────────────────────
-    "analytics": {
-        "read":   _AT_LEAST_MANAGER,
-        "export": _AT_LEAST_MANAGER,
-    },
-    # ── Fee engagements ────────────────────────────────────────────────────────
-    "engagement": {
-        "read":  _AT_LEAST_MANAGER,
-        "write": _PARTNER_ONLY,
-    },
-    # ── Fee invoices ───────────────────────────────────────────────────────────
-    "invoice": {
-        "read":  _AT_LEAST_MANAGER,
-        "write": _PARTNER_ONLY,
-    },
-    # ── MCA (Companies Act filings) ────────────────────────────────────────────
-    "mca": {
-        "read":    _ALL_STAFF,
-        "write":   _AT_LEAST_EXECUTIVE,
-        "approve": _AT_LEAST_MANAGER,  # Companies Act §92/137/139 — CA must approve filing
-    },
-    # ── Compliance (calendar, notices, general compliance actions) ─────────────
-    "compliance": {
-        "read":  _ALL_STAFF,
-        "write": _AT_LEAST_EXECUTIVE,
+    # ── Year End Engagements (Schedule III, audit pack, adjustments) ───────────
+    "year_end": {
+        "read":          _AT_LEAST_EXECUTIVE,
+        "write":         _AT_LEAST_EXECUTIVE,
+        "approve":       _AT_LEAST_MANAGER,   # approve adjustments, lock notes
+        "final_approve": _PARTNER_ONLY,       # Partner-only: lock engagement
     },
 }
 
@@ -189,7 +152,7 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
 def can(role: str, resource: str, action: str) -> bool:
     """Return True if role is allowed to perform action on resource."""
     try:
-        r = Role(role.capitalize())
+        r = Role(role)
     except ValueError:
         return False
     resource_perms = PERMISSIONS.get(resource, {})
