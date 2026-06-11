@@ -1,5 +1,9 @@
 "use client";
 
+export function generateStaticParams() {
+  return [{ id: "_placeholder", engagementId: "_placeholder" }];
+}
+
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
