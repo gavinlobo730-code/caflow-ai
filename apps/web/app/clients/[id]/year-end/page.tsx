@@ -55,7 +55,7 @@ export default function YearEndPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch(`/year-end/engagements?client_id=${clientId}`);
+      const res = await apiFetch(`/api/year-end/engagements?client_id=${clientId}`);
       if (!res.success) throw new Error(res.error ?? "Failed to load");
       setEngagements(res.data ?? []);
     } catch (err) {
@@ -71,7 +71,7 @@ export default function YearEndPage() {
     setCreating(true);
     setCreateError(null);
     try {
-      const res = await apiFetch("/year-end/engagements", {
+      const res = await apiFetch("/api/year-end/engagements", {
         method: "POST",
         body: JSON.stringify({ client_id: clientId, financial_year: selectedFY }),
       });
