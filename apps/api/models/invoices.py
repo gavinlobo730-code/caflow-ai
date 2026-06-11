@@ -35,6 +35,11 @@ class SalesInvoiceIn(BaseModel):
     reference_no: Optional[str] = None
     notes: Optional[str] = None
     is_inter_state: bool = False
+    # Optional display/override fields (CGST Rule 46 mandatory fields on tax invoice)
+    customer_name: Optional[str] = None
+    customer_gstin: Optional[str] = None
+    place_of_supply: Optional[str] = None  # 2-digit state code
+    supply_state_code: Optional[str] = None
 
     @field_validator("lines")
     @classmethod
