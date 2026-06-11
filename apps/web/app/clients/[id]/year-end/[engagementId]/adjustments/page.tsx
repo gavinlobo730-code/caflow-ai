@@ -217,7 +217,7 @@ export default function AdjustmentsPage() {
       ) : !showForm ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-14">
           <p className="text-sm text-[#64748B]">No adjustments yet</p>
-          <p className="text-xs text-[#94A3B8] mt-1">Click "+ New Adjustment" to create one</p>
+          <p className="text-xs text-[#94A3B8] mt-1">Click &quot;+ New Adjustment&quot; to create one</p>
         </div>
       ) : null}
 

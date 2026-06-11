@@ -3,8 +3,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { RefreshCw } from "lucide-react";
-import { yearEndApi } from "@/lib/api/yearEnd";
-
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
   if (paise === 0) return "—";

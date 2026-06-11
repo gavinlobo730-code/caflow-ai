@@ -137,7 +137,7 @@ export default function NotesPage() {
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-14">
           <Sparkles size={28} className="text-gray-200 mx-auto mb-3" />
           <p className="text-sm text-[#64748B]">No notes yet</p>
-          <p className="text-xs text-[#94A3B8] mt-1">Click "Auto-Generate All Notes" to create standard notes.</p>
+          <p className="text-xs text-[#94A3B8] mt-1">Click &quot;Auto-Generate All Notes&quot; to create standard notes.</p>
         </div>
       )}
 
