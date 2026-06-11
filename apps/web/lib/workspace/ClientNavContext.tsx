@@ -31,19 +31,19 @@ export interface ClientSectionConfig {
 }
 
 export const CLIENT_SECTIONS: ClientSectionConfig[] = [
-  { id: "overview",     label: "Overview",      href: (id) => `/clients/${id}/overview` },
-  { id: "accounting",   label: "Accounting",    href: (id) => `/clients/${id}/accounting` },
-  { id: "sales",        label: "Sales",         href: (id) => `/clients/${id}/sales` },
-  { id: "purchases",    label: "Purchases",     href: (id) => `/clients/${id}/purchases` },
-  { id: "compliance",   label: "Compliance",    href: (id) => `/clients/${id}/compliance` },
-  { id: "payroll",      label: "Payroll",       href: (id) => `/clients/${id}/payroll` },
-  { id: "year-end",     label: "Year End",      href: (id) => `/clients/${id}/year-end` },
-  { id: "tax",          label: "Tax",           href: (id) => `/clients/${id}/tax` },
-  { id: "documents",    label: "Documents",     href: (id) => `/clients/${id}/documents` },
-  { id: "tasks",        label: "Tasks",         href: (id) => `/clients/${id}/tasks` },
-  { id: "reports",      label: "Reports",       href: (id) => `/clients/${id}/reports` },
-  { id: "portal",       label: "Portal",        href: (id) => `/clients/${id}/portal` },
-  { id: "ai-insights",  label: "AI Insights",   href: (id) => `/clients/${id}/ai-insights` },
+  { id: "overview",     label: "Overview",      href: (id) => `/clients/${id}/overview/` },
+  { id: "accounting",   label: "Accounting",    href: (id) => `/clients/${id}/accounting/` },
+  { id: "sales",        label: "Sales",         href: (id) => `/clients/${id}/sales/` },
+  { id: "purchases",    label: "Purchases",     href: (id) => `/clients/${id}/purchases/` },
+  { id: "compliance",   label: "Compliance",    href: (id) => `/clients/${id}/compliance/` },
+  { id: "payroll",      label: "Payroll",       href: (id) => `/clients/${id}/payroll/` },
+  { id: "year-end",     label: "Year End",      href: (id) => `/clients/${id}/year-end/` },
+  { id: "tax",          label: "Tax",           href: (id) => `/clients/${id}/tax/` },
+  { id: "documents",    label: "Documents",     href: (id) => `/clients/${id}/documents/` },
+  { id: "tasks",        label: "Tasks",         href: (id) => `/clients/${id}/tasks/` },
+  { id: "reports",      label: "Reports",       href: (id) => `/clients/${id}/reports/` },
+  { id: "portal",       label: "Portal",        href: (id) => `/clients/${id}/portal/` },
+  { id: "ai-insights",  label: "AI Insights",   href: (id) => `/clients/${id}/ai-insights/` },
 ];
 
 export function getCurrentFinancialYear(): string {
