@@ -96,11 +96,14 @@ export interface FinancialStatementVersion {
 export interface NoteToAccount {
   id: string;
   engagement_id: string;
-  note_number: number;
-  type: "auto" | "manual";
+  sequence_no: number;
+  note_number: number; // alias for sequence_no, set by router
+  note_type: string;
+  type: "auto" | "manual"; // derived from is_auto_generated
   title: string;
   content: string | null;
   is_locked: boolean;
+  is_auto_generated: boolean;
   updated_at: string;
 }
 
@@ -129,11 +132,15 @@ export interface ExportRecord {
   id: string;
   engagement_id: string;
   export_type: "financial_statements" | "notes" | "complete_pack";
-  version_number: number;
-  generated_by: string;
-  generated_at: string;
+  version_number?: number;
+  generated_by?: string;
+  generated_at?: string;
+  created_by: string;
+  created_at: string;
   download_url: string | null;
-  is_draft: boolean;
+  is_draft?: boolean;
+  storage_path?: string;
+  financial_year?: string;
 }
 
 export interface YearEndEvent {
