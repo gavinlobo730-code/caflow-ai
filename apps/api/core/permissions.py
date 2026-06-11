@@ -53,6 +53,13 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "approve": _AT_LEAST_MANAGER,
         "delete": _PARTNER_ONLY,
     },
+    # ── Compliance (generic alias used by document_intelligence_v2 and notices) ─
+    "compliance": {
+        "read":   _ALL_STAFF,
+        "write":  _AT_LEAST_EXECUTIVE,
+        "approve": _AT_LEAST_MANAGER,
+        "delete": _PARTNER_ONLY,
+    },
     # ── Tasks ────────────────────────────────────────────────────────────────
     "task": {
         "read":   _ALL_STAFF,
@@ -107,12 +114,6 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "compute": _AT_LEAST_EXECUTIVE,
         "approve": _AT_LEAST_MANAGER,
     },
-    # ── Payroll ───────────────────────────────────────────────────────────────
-    "payroll": {
-        "read":     _AT_LEAST_EXECUTIVE,
-        "write":    _AT_LEAST_MANAGER,
-        "finalize": _PARTNER_ONLY,
-    },
     # ── Notifications (every authenticated staff member can read/mark own) ───
     "notification": {
         "read":  _ALL_STAFF,
@@ -143,53 +144,39 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "read":  _ALL_STAFF,
         "write": _AT_LEAST_EXECUTIVE,
     },
-    # ── Time tracking ─────────────────────────────────────────────────────────
-    "time_entry": {
-        "read":   _ALL_STAFF,
-        "write":  _ALL_STAFF,
-        "delete": _AT_LEAST_MANAGER,
-        "report": _AT_LEAST_MANAGER,
-    },
-    # ── Workload visibility ───────────────────────────────────────────────────
-    "workload": {
-        "read":  _AT_LEAST_MANAGER,
-        "write": _AT_LEAST_MANAGER,
-    },
-    # ── Productivity analytics ────────────────────────────────────────────────
-    "analytics": {
-        "read":   _AT_LEAST_MANAGER,
-        "export": _AT_LEAST_MANAGER,
-    },
-    # ── Fee engagements ────────────────────────────────────────────────────────
-    "engagement": {
-        "read":  _AT_LEAST_MANAGER,
-        "write": _PARTNER_ONLY,
-    },
-    # ── Fee invoices ───────────────────────────────────────────────────────────
-    "invoice": {
-        "read":  _AT_LEAST_MANAGER,
-        "write": _PARTNER_ONLY,
-    },
-    # ── MCA (Companies Act filings) ────────────────────────────────────────────
+    # ── MCA / ROC filings ────────────────────────────────────────────────────
     "mca": {
         "read":    _ALL_STAFF,
         "write":   _AT_LEAST_EXECUTIVE,
-        "approve": _AT_LEAST_MANAGER,  # Companies Act §92/137/139 — CA must approve filing
+        "approve": _AT_LEAST_MANAGER,   # CGST/CA rules: Partner or Manager can approve MCA filings
     },
-    # ── Compliance (calendar, notices, general compliance actions) ─────────────
-    "compliance": {
-        "read":  _ALL_STAFF,
-        "write": _AT_LEAST_EXECUTIVE,
+    # ── Year End Engagements (Schedule III, audit pack, adjustments) ───────────
+    "year_end": {
+        "read":          _AT_LEAST_EXECUTIVE,
+        "write":         _AT_LEAST_EXECUTIVE,
+        "approve":       _AT_LEAST_MANAGER,   # approve adjustments, lock notes
+        "final_approve": _PARTNER_ONLY,       # Partner-only: lock engagement
     },
 }
 
 
 # ── Core helpers ─────────────────────────────────────────────────────────────
 
+def _to_role(role: str) -> Role:
+    """Normalize role string to Role enum, accepting any case (e.g. 'partner' → Role.PARTNER)."""
+    # Try as-is first, then title-cased (handles 'Partner', 'partner', 'PARTNER')
+    for candidate in (role, role.title(), role.capitalize()):
+        try:
+            return Role(candidate)
+        except ValueError:
+            continue
+    raise ValueError(f"Unknown role: {role!r}")
+
+
 def can(role: str, resource: str, action: str) -> bool:
     """Return True if role is allowed to perform action on resource."""
     try:
-        r = Role(role.capitalize())
+        r = _to_role(role)
     except ValueError:
         return False
     resource_perms = PERMISSIONS.get(resource, {})
@@ -206,7 +193,7 @@ def require_permission(role: str, resource: str, action: str) -> None:
 def is_at_least(role: str, minimum: str) -> bool:
     """Return True if role is at or above minimum in the hierarchy."""
     try:
-        return ROLE_HIERARCHY.index(Role(role)) >= ROLE_HIERARCHY.index(Role(minimum))
+        return ROLE_HIERARCHY.index(_to_role(role)) >= ROLE_HIERARCHY.index(_to_role(minimum))
     except ValueError:
         return False
 

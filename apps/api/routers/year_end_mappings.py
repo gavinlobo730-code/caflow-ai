@@ -1,0 +1,344 @@
+"""
+Year End Account Group Mappings router — Phase 6.
+Maps Chart of Accounts → Schedule III line codes for financial statement generation.
+Reference: Companies Act 2013, Schedule III.
+
+Default mappings are auto-initialized per account_type when none exist for a firm.
+All monetary values: integer paise (BIGINT). Never float.
+"""
+import os
+import uuid
+from datetime import datetime, timezone
+from typing import Optional, List
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+
+from models.common import api_response
+from core.permissions import rbac
+from services.audit_service import log_event
+
+_USE_MOCK = not os.environ.get("SUPABASE_URL")
+
+router = APIRouter(prefix="/year-end", tags=["year-end-mappings"])
+
+# ── Default mapping rules ─────────────────────────────────────────────────────
+# account_type → schedule_line
+# Companies Act 2013, Schedule III
+
+_DEFAULT_ACCOUNT_TYPE_MAP = {
+    "bank":        "cash_and_bank",
+    "receivable":  "trade_receivables",
+    "payable":     "trade_payables",
+    "fixed_asset": "tangible_assets",
+    "equity":      "share_capital",
+    "income":      "revenue_from_operations",
+    "expense":     "other_expenses",
+    # tax assets → current asset; tax liabilities → current liability
+    "tax_asset":   "short_term_loans_and_advances",
+    "tax_liability":"other_current_liabilities",
+}
+
+# Normal balance per schedule line (debit or credit)
+_LINE_NORMAL_BALANCE = {
+    # Assets / Expenses → debit normal
+    "tangible_assets":               "debit",
+    "intangible_assets":             "debit",
+    "capital_wip":                   "debit",
+    "long_term_investments":         "debit",
+    "deferred_tax_assets":           "debit",
+    "long_term_loans_and_advances":  "debit",
+    "other_non_current_assets":      "debit",
+    "current_investments":           "debit",
+    "inventories":                   "debit",
+    "trade_receivables":             "debit",
+    "cash_and_bank":                 "debit",
+    "short_term_loans_and_advances": "debit",
+    "other_current_assets":          "debit",
+    "cost_of_materials_consumed":    "debit",
+    "purchases_of_stock_in_trade":   "debit",
+    "changes_in_inventories":        "debit",
+    "employee_benefit_expense":      "debit",
+    "finance_costs":                 "debit",
+    "depreciation_and_amortisation": "debit",
+    "other_expenses":                "debit",
+    # Liabilities / Income / Equity → credit normal
+    "share_capital":                 "credit",
+    "reserves_and_surplus":          "credit",
+    "long_term_borrowings":          "credit",
+    "deferred_tax_liabilities":      "credit",
+    "other_long_term_liabilities":   "credit",
+    "long_term_provisions":          "credit",
+    "short_term_borrowings":         "credit",
+    "trade_payables":                "credit",
+    "other_current_liabilities":     "credit",
+    "short_term_provisions":         "credit",
+    "revenue_from_operations":       "credit",
+    "other_income":                  "credit",
+}
+
+# Mock store: firm_id → list of mapping records
+_MOCK_MAPPINGS: dict[str, list[dict]] = {}
+
+
+# ── Request models ────────────────────────────────────────────────────────────
+
+class MappingIn(BaseModel):
+    account_id:   str
+    schedule_line: str
+    account_type: Optional[str] = None
+
+
+class BulkMappingIn(BaseModel):
+    mappings: List[MappingIn]
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@router.get("/mappings")
+def get_mappings(
+    firm_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("year_end", "read")),
+):
+    """Get all account group mappings for a firm (defaults to current user's firm)."""
+    resolved_firm_id = firm_id or current_user["firm_id"]
+
+    if _USE_MOCK:
+        existing = _MOCK_MAPPINGS.get(resolved_firm_id, [])
+        return api_response(True, existing)
+
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    rows = (
+        db.table("account_group_mappings")
+        .select("*")
+        .eq("firm_id", resolved_firm_id)
+        .order("account_id")
+        .execute()
+        .data
+    )
+    return api_response(True, rows)
+
+
+@router.post("/mappings")
+def create_or_update_mapping(
+    data: MappingIn,
+    current_user: dict = Depends(rbac("year_end", "write")),
+):
+    """Create or update a single account → schedule_line mapping (upsert)."""
+    firm_id = current_user["firm_id"]
+    now     = datetime.now(timezone.utc).isoformat()
+
+    normal_balance = _LINE_NORMAL_BALANCE.get(data.schedule_line, "debit")
+
+    record = {
+        "firm_id":        firm_id,
+        "account_id":     data.account_id,
+        "schedule_line":  data.schedule_line,
+        "account_type":   data.account_type,
+        "normal_balance": normal_balance,
+        "updated_at":     now,
+    }
+
+    if _USE_MOCK:
+        existing = _MOCK_MAPPINGS.setdefault(firm_id, [])
+        old = next((m for m in existing if m["account_id"] == data.account_id), None)
+        if old:
+            old.update(record)
+            old["updated_at"] = now
+            return api_response(True, old)
+        new_record = {"id": str(uuid.uuid4()), "created_at": now, **record}
+        existing.append(new_record)
+        return api_response(True, new_record)
+
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+
+    # Check if mapping already exists for this firm+account_id
+    existing = (
+        db.table("account_group_mappings")
+        .select("id")
+        .eq("firm_id", firm_id)
+        .eq("account_id", data.account_id)
+        .execute()
+        .data
+    )
+    if existing:
+        # Update
+        updated = (
+            db.table("account_group_mappings")
+            .update({k: v for k, v in record.items() if k not in ("firm_id",)})
+            .eq("firm_id", firm_id)
+            .eq("account_id", data.account_id)
+            .execute()
+            .data[0]
+        )
+        return api_response(True, updated)
+
+    # Insert
+    new_record = {"id": str(uuid.uuid4()), "created_at": now, **record}
+    inserted = db.table("account_group_mappings").insert(new_record).execute().data[0]
+    log_event(
+        firm_id, "account_group_mapping", inserted["id"], "create",
+        actor_id=current_user.get("auth_user_id"),
+        actor_email=current_user.get("email"),
+        new_data=inserted,
+    )
+    return api_response(True, inserted)
+
+
+@router.put("/mappings/bulk")
+def bulk_update_mappings(
+    data: BulkMappingIn,
+    current_user: dict = Depends(rbac("year_end", "write")),
+):
+    """Bulk create/update an array of account → schedule_line mappings."""
+    firm_id = current_user["firm_id"]
+    now     = datetime.now(timezone.utc).isoformat()
+
+    if not data.mappings:
+        raise HTTPException(status_code=422, detail="mappings array cannot be empty")
+
+    records = []
+    for m in data.mappings:
+        records.append({
+            "id":             str(uuid.uuid4()),
+            "firm_id":        firm_id,
+            "account_id":     m.account_id,
+            "schedule_line":  m.schedule_line,
+            "account_type":   m.account_type,
+            "normal_balance": _LINE_NORMAL_BALANCE.get(m.schedule_line, "debit"),
+            "created_at":     now,
+            "updated_at":     now,
+        })
+
+    if _USE_MOCK:
+        existing = _MOCK_MAPPINGS.setdefault(firm_id, [])
+        existing_map = {m["account_id"]: m for m in existing}
+        for r in records:
+            if r["account_id"] in existing_map:
+                existing_map[r["account_id"]].update(r)
+            else:
+                existing.append(r)
+                existing_map[r["account_id"]] = r
+        return api_response(True, {"updated_count": len(records)})
+
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+
+    # Upsert all mappings
+    for record in records:
+        existing = (
+            db.table("account_group_mappings")
+            .select("id")
+            .eq("firm_id", firm_id)
+            .eq("account_id", record["account_id"])
+            .execute()
+            .data
+        )
+        if existing:
+            db.table("account_group_mappings").update({
+                "schedule_line":  record["schedule_line"],
+                "account_type":   record["account_type"],
+                "normal_balance": record["normal_balance"],
+                "updated_at":     now,
+            }).eq("firm_id", firm_id).eq("account_id", record["account_id"]).execute()
+        else:
+            db.table("account_group_mappings").insert(record).execute()
+
+    log_event(
+        firm_id, "account_group_mapping", firm_id, "bulk_update",
+        actor_id=current_user.get("auth_user_id"),
+        actor_email=current_user.get("email"),
+        new_data={"count": len(records)},
+    )
+    return api_response(True, {"updated_count": len(records)})
+
+
+@router.get("/mappings/defaults")
+def get_default_mappings(
+    current_user: dict = Depends(rbac("year_end", "read")),
+):
+    """
+    Return default mapping suggestions based on account_type.
+    If no mappings exist for the firm, auto-initializes from defaults.
+    Companies Act 2013, Schedule III mapping recommendations.
+    """
+    firm_id = current_user["firm_id"]
+
+    defaults = []
+    for account_type, schedule_line in _DEFAULT_ACCOUNT_TYPE_MAP.items():
+        defaults.append({
+            "account_type":   account_type,
+            "schedule_line":  schedule_line,
+            "normal_balance": _LINE_NORMAL_BALANCE.get(schedule_line, "debit"),
+            "description":    f"Default: {account_type} accounts → {schedule_line}",
+        })
+
+    if _USE_MOCK:
+        existing = _MOCK_MAPPINGS.get(firm_id, [])
+        if not existing:
+            # Auto-initialize hint (no accounts to map without real DB)
+            return api_response(True, {
+                "defaults":       defaults,
+                "firm_has_mappings": False,
+                "note": "No mappings found for this firm. Use POST /api/year-end/mappings to create mappings.",
+            })
+        return api_response(True, {
+            "defaults":          defaults,
+            "firm_has_mappings": True,
+            "existing_count":    len(existing),
+        })
+
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+
+    existing_count_res = (
+        db.table("account_group_mappings")
+        .select("id", count="exact")
+        .eq("firm_id", firm_id)
+        .execute()
+    )
+    existing_count = existing_count_res.count or 0
+
+    if existing_count == 0:
+        # Auto-initialize mappings from the firm's chart of accounts
+        accounts_res = (
+            db.table("accounts")
+            .select("id, account_type, account_name")
+            .eq("firm_id", firm_id)
+            .execute()
+        )
+        accounts = accounts_res.data or []
+        now = datetime.now(timezone.utc).isoformat()
+
+        auto_records = []
+        for acct in accounts:
+            acct_type    = (acct.get("account_type") or "").lower()
+            schedule_line = _DEFAULT_ACCOUNT_TYPE_MAP.get(acct_type, "other_current_assets")
+            auto_records.append({
+                "id":             str(uuid.uuid4()),
+                "firm_id":        firm_id,
+                "account_id":     acct["id"],
+                "schedule_line":  schedule_line,
+                "account_type":   acct_type,
+                "normal_balance": _LINE_NORMAL_BALANCE.get(schedule_line, "debit"),
+                "created_at":     now,
+                "updated_at":     now,
+            })
+
+        if auto_records:
+            db.table("account_group_mappings").insert(auto_records).execute()
+            existing_count = len(auto_records)
+            log_event(
+                firm_id, "account_group_mapping", firm_id, "auto_initialize",
+                actor_id=current_user.get("auth_user_id"),
+                actor_email=current_user.get("email"),
+                new_data={"count": len(auto_records)},
+            )
+
+    return api_response(True, {
+        "defaults":          defaults,
+        "firm_has_mappings": existing_count > 0,
+        "existing_count":    existing_count,
+    })

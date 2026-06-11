@@ -24,8 +24,23 @@ async function apiCall(
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok && res.status !== 200) {
+    // Try to parse as JSON first (FastAPI returns structured errors)
     const text = await res.text().catch(() => "Request failed");
-    return { success: false, data: null, error: text };
+    let errorMsg = text;
+    try {
+      const json = JSON.parse(text);
+      // FastAPI validation error: { detail: [{msg, loc, type}] }
+      if (json.detail && Array.isArray(json.detail)) {
+        errorMsg = json.detail.map((e: { msg?: string }) => e.msg ?? String(e)).join("; ");
+      } else if (typeof json.detail === "string") {
+        errorMsg = json.detail;
+      } else if (json.error) {
+        errorMsg = json.error;
+      }
+    } catch {
+      // text is not JSON — use as-is
+    }
+    return { success: false, data: null, error: errorMsg };
   }
   return res.json();
 }
