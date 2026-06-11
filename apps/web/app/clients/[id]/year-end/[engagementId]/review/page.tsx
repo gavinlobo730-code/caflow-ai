@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { CheckCircle2, Clock, Circle, User, Loader2 } from "lucide-react";
+import { CheckCircle2, Circle, User, Loader2 } from "lucide-react";
 import { yearEndApi, type ReviewStep, type ReviewHistory, type ReviewStatus } from "@/lib/api/yearEnd";
 
 function timeAgo(iso: string): string {
@@ -152,7 +152,7 @@ export default function ReviewPage() {
                       )}
                       {step.comment && (
                         <p className="text-[10px] text-[#64748B] mt-1 italic max-w-[100px] mx-auto truncate" title={step.comment}>
-                          "{step.comment}"
+                          &quot;{step.comment}&quot;
                         </p>
                       )}
                     </>
@@ -253,7 +253,7 @@ export default function ReviewPage() {
                     <span className="text-[10px] text-[#94A3B8]">{timeAgo(h.performed_at)}</span>
                   </div>
                   {h.comment && (
-                    <p className="text-[10px] text-[#64748B] mt-0.5 italic">"{h.comment}"</p>
+                    <p className="text-[10px] text-[#64748B] mt-0.5 italic">&quot;{h.comment}&quot;</p>
                   )}
                   {h.from_status && (
                     <p className="text-[10px] text-[#CBD5E1] mt-0.5">
