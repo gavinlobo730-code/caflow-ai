@@ -90,9 +90,11 @@ export function ClientNavProvider({
     const m = window.location.pathname.match(/^\/clients\/([^/]+)/);
     return m ? decodeURIComponent(m[1]) : "";
   });
+  // usePathname() returns _placeholder during hydration (the pre-rendered segment),
+  // so we use it only as a trigger and always read the real UUID from window.location.
   const pathname = usePathname();
   useEffect(() => {
-    const m = pathname.match(/^\/clients\/([^/]+)/);
+    const m = window.location.pathname.match(/^\/clients\/([^/]+)/);
     setClientId(m ? decodeURIComponent(m[1]) : "");
   }, [pathname]);
   const [activeSection, setActiveSection] = useState<ClientSection>(initialSection);
