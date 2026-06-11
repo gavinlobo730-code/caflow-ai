@@ -53,6 +53,13 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "approve": _AT_LEAST_MANAGER,
         "delete": _PARTNER_ONLY,
     },
+    # ── Compliance (generic alias used by document_intelligence_v2 and notices) ─
+    "compliance": {
+        "read":   _ALL_STAFF,
+        "write":  _AT_LEAST_EXECUTIVE,
+        "approve": _AT_LEAST_MANAGER,
+        "delete": _PARTNER_ONLY,
+    },
     # ── Tasks ────────────────────────────────────────────────────────────────
     "task": {
         "read":   _ALL_STAFF,
