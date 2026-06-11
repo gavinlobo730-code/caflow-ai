@@ -404,26 +404,26 @@ export default function CapitalGainsPage() {
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/income-tax" className="text-gray-400 hover:text-gray-600">
+        <Link href="/income-tax" className="text-white/30 hover:text-white/55">
           <ChevronLeft className="w-4 h-4" />
         </Link>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Capital Gains</h1>
-          <p className="text-sm text-gray-500 mt-0.5">IT Act Section 45 — Capital Gains Tax (Budget 2024 rates)</p>
+          <h1 className="text-xl font-semibold text-white/85">Capital Gains</h1>
+          <p className="text-sm text-white/40 mt-0.5">IT Act Section 45 — Capital Gains Tax (Budget 2024 rates)</p>
         </div>
       </div>
 
       {/* Tab switcher */}
-      <div className="flex border-b border-gray-200">
+      <div className="flex border-b border-white/[0.07]">
         <button
           onClick={() => setActiveTab("calculator")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "calculator" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "calculator" ? "border-blue-600 text-blue-600" : "border-transparent text-white/40 hover:text-white/65"}`}
         >
           <Calculator className="w-4 h-4" /> Calculator
         </button>
         <button
           onClick={() => setActiveTab("register")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "register" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "register" ? "border-blue-600 text-blue-600" : "border-transparent text-white/40 hover:text-white/65"}`}
         >
           <BookOpen className="w-4 h-4" /> Register
         </button>
@@ -434,55 +434,55 @@ export default function CapitalGainsPage() {
         <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Input Form */}
-            <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+            <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-5 space-y-4">
               <div className="flex items-center gap-2 mb-2">
                 <Calculator className="w-4 h-4 text-blue-600" />
-                <h2 className="text-sm font-semibold text-gray-900">Asset Details</h2>
+                <h2 className="text-sm font-semibold text-white/85">Asset Details</h2>
               </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-700 block mb-1">Asset Type</label>
-                <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={assetType} onChange={e => setAssetType(e.target.value)}>
+                <label className="text-xs font-medium text-white/65 block mb-1">Asset Type</label>
+                <select className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={assetType} onChange={e => setAssetType(e.target.value)}>
                   {ASSET_TYPES_CALC.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                 </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Purchase Date</label>
-                  <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} />
+                  <label className="text-xs font-medium text-white/65 block mb-1">Purchase Date</label>
+                  <input type="date" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Sale Date</label>
-                  <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={saleDate} onChange={e => setSaleDate(e.target.value)} />
+                  <label className="text-xs font-medium text-white/65 block mb-1">Sale Date</label>
+                  <input type="date" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={saleDate} onChange={e => setSaleDate(e.target.value)} />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Purchase Price (₹)</label>
-                  <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseRupees} onChange={e => setPurchaseRupees(e.target.value)} placeholder="0.00" />
+                  <label className="text-xs font-medium text-white/65 block mb-1">Purchase Price (₹)</label>
+                  <input type="number" min="0" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseRupees} onChange={e => setPurchaseRupees(e.target.value)} placeholder="0.00" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Sale Price (₹)</label>
-                  <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={saleRupees} onChange={e => setSaleRupees(e.target.value)} placeholder="0.00" />
+                  <label className="text-xs font-medium text-white/65 block mb-1">Sale Price (₹)</label>
+                  <input type="number" min="0" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={saleRupees} onChange={e => setSaleRupees(e.target.value)} placeholder="0.00" />
                 </div>
               </div>
 
               {(assetType === "property" || assetType === "gold") && (
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Improvement Costs (₹) — optional</label>
-                  <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={improvementRupees} onChange={e => setImprovementRupees(e.target.value)} placeholder="0.00" />
+                  <label className="text-xs font-medium text-white/65 block mb-1">Improvement Costs (₹) — optional</label>
+                  <input type="number" min="0" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={improvementRupees} onChange={e => setImprovementRupees(e.target.value)} placeholder="0.00" />
                 </div>
               )}
 
               {showCII && (
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Purchase FY (for CII indexation)</label>
-                  <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseFY} onChange={e => setPurchaseFY(e.target.value)}>
+                  <label className="text-xs font-medium text-white/65 block mb-1">Purchase FY (for CII indexation)</label>
+                  <select className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseFY} onChange={e => setPurchaseFY(e.target.value)}>
                     {CII_YEARS.map(y => <option key={y} value={y}>FY {y} (CII: {CII[y]})</option>)}
                   </select>
-                  <p className="text-[10px] text-gray-400 mt-1">Sale FY: {saleFY} (CII: {CII[saleFY] ?? "—"})</p>
+                  <p className="text-[10px] text-white/30 mt-1">Sale FY: {saleFY} (CII: {CII[saleFY] ?? "—"})</p>
                 </div>
               )}
             </div>
@@ -490,73 +490,73 @@ export default function CapitalGainsPage() {
             {/* Result Panel */}
             <div className="space-y-4">
               {!result ? (
-                <div className="bg-white rounded-xl border border-gray-100 p-5 flex items-center justify-center h-full min-h-[200px]">
+                <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-5 flex items-center justify-center h-full min-h-[200px]">
                   <div className="text-center">
                     <Calculator className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                    <p className="text-sm text-gray-400">Enter asset details to compute capital gains</p>
+                    <p className="text-sm text-white/30">Enter asset details to compute capital gains</p>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="bg-white rounded-xl border border-gray-100 p-4">
-                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Classification</h3>
+                  <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
+                    <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wide mb-3">Classification</h3>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <p className="text-xs text-gray-400">Holding Period</p>
-                        <p className="text-sm font-semibold text-gray-900">{result.holdingMonths} months</p>
+                        <p className="text-xs text-white/30">Holding Period</p>
+                        <p className="text-sm font-semibold text-white/85">{result.holdingMonths} months</p>
                       </div>
                       <div>
-                        <p className="text-xs text-gray-400">Classification</p>
+                        <p className="text-xs text-white/30">Classification</p>
                         <span className={`inline-flex text-xs font-semibold px-2 py-0.5 rounded-full ${result.isLongTerm ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
                           {result.termLabel} Capital Gain
                         </span>
                       </div>
                       <div>
-                        <p className="text-xs text-gray-400">Capital Gain</p>
+                        <p className="text-xs text-white/30">Capital Gain</p>
                         <p className={`text-sm font-semibold ${result.gainPaise >= 0 ? "text-green-700" : "text-red-700"}`}>
                           {result.gainPaise >= 0 ? "+" : ""}₹{(result.gainPaise / 100).toLocaleString("en-IN")}
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs text-gray-400">Applicable Rate</p>
-                        <p className="text-sm font-semibold text-gray-900">{result.taxRatePercent}%</p>
+                        <p className="text-xs text-white/30">Applicable Rate</p>
+                        <p className="text-sm font-semibold text-white/85">{result.taxRatePercent}%</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-white rounded-xl border border-gray-100 p-4">
-                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Tax Computation</h3>
+                  <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
+                    <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wide mb-3">Tax Computation</h3>
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Sale Price</span>
+                        <span className="text-white/55">Sale Price</span>
                         <span className="font-medium">₹{(salePaise / 100).toLocaleString("en-IN")}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Cost of Acquisition</span>
+                        <span className="text-white/55">Cost of Acquisition</span>
                         <span className="font-medium">₹{(purchasePaise / 100).toLocaleString("en-IN")}</span>
                       </div>
                       {improvementPaise > 0 && (
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">Improvement Cost</span>
+                          <span className="text-white/55">Improvement Cost</span>
                           <span className="font-medium">₹{(improvementPaise / 100).toLocaleString("en-IN")}</span>
                         </div>
                       )}
-                      <div className="border-t border-gray-100 pt-2 flex justify-between text-sm font-semibold">
-                        <span className="text-gray-800">Capital Gain</span>
+                      <div className="border-t border-white/[0.05] pt-2 flex justify-between text-sm font-semibold">
+                        <span className="text-white/75">Capital Gain</span>
                         <span className={result.gainPaise >= 0 ? "text-green-700" : "text-red-700"}>
                           ₹{(result.gainPaise / 100).toLocaleString("en-IN")}
                         </span>
                       </div>
 
                       {showIndexation && (
-                        <div className="mt-3 border-t border-dashed border-gray-100 pt-3">
-                          <p className="text-xs font-medium text-gray-500 mb-2">With Indexation (20%)</p>
+                        <div className="mt-3 border-t border-dashed border-white/[0.05] pt-3">
+                          <p className="text-xs font-medium text-white/40 mb-2">With Indexation (20%)</p>
                           <div className="flex justify-between text-sm">
-                            <span className="text-gray-600">Indexed Cost (CII {CII[purchaseFY]} → {CII[saleFY] ?? "—"})</span>
+                            <span className="text-white/55">Indexed Cost (CII {CII[purchaseFY]} → {CII[saleFY] ?? "—"})</span>
                             <span>₹{(result.indexedCostPaise / 100).toLocaleString("en-IN")}</span>
                           </div>
                           <div className="flex justify-between text-sm font-semibold mt-1">
-                            <span className="text-gray-800">Gain (indexed)</span>
+                            <span className="text-white/75">Gain (indexed)</span>
                             <span className={result.gainWithIndexation >= 0 ? "text-green-700" : "text-red-700"}>
                               ₹{(result.gainWithIndexation / 100).toLocaleString("en-IN")}
                             </span>
@@ -571,21 +571,21 @@ export default function CapitalGainsPage() {
                     {showIndexation ? (
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">Tax without indexation (12.5%)</span>
+                          <span className="text-white/55">Tax without indexation (12.5%)</span>
                           <span className="font-medium">₹{(result.taxLiabilityPaise / 100).toLocaleString("en-IN")}</span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">Tax with indexation (20%)</span>
+                          <span className="text-white/55">Tax with indexation (20%)</span>
                           <span className="font-medium">₹{(result.taxWithIndexationPaise / 100).toLocaleString("en-IN")}</span>
                         </div>
                         <div className="border-t border-blue-200 pt-2 flex justify-between">
-                          <span className="text-sm font-semibold text-gray-800">Recommended (lower)</span>
+                          <span className="text-sm font-semibold text-white/75">Recommended (lower)</span>
                           <span className="text-lg font-bold text-blue-700">₹{(result.finalTaxPaise / 100).toLocaleString("en-IN")}</span>
                         </div>
                       </div>
                     ) : (
                       <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-600">Tax @ {result.taxRatePercent}%</span>
+                        <span className="text-sm text-white/55">Tax @ {result.taxRatePercent}%</span>
                         <span className="text-2xl font-bold text-blue-700">₹{(result.finalTaxPaise / 100).toLocaleString("en-IN")}</span>
                       </div>
                     )}
@@ -605,10 +605,10 @@ export default function CapitalGainsPage() {
           </div>
 
           {/* CII Table */}
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50">
-              <h2 className="text-sm font-semibold text-gray-900">Cost Inflation Index (CII) Table</h2>
-              <p className="text-xs text-gray-400 mt-0.5">IT Act Section 48 — Base year FY 2001-02 = 100</p>
+              <h2 className="text-sm font-semibold text-white/85">Cost Inflation Index (CII) Table</h2>
+              <p className="text-xs text-white/30 mt-0.5">IT Act Section 48 — Base year FY 2001-02 = 100</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -616,8 +616,8 @@ export default function CapitalGainsPage() {
                   <tr>
                     {CII_YEARS.map(y => (
                       <td key={y} className={`px-3 py-2 text-center border-r border-gray-50 ${purchaseFY === y || saleFY === y ? "bg-blue-50" : ""}`}>
-                        <p className="text-[10px] text-gray-400">FY {y}</p>
-                        <p className="text-xs font-semibold text-gray-900">{CII[y]}</p>
+                        <p className="text-[10px] text-white/30">FY {y}</p>
+                        <p className="text-xs font-semibold text-white/85">{CII[y]}</p>
                       </td>
                     ))}
                   </tr>
@@ -634,8 +634,8 @@ export default function CapitalGainsPage() {
           {/* Client selector + Add button */}
           <div className="flex items-end gap-4 flex-wrap">
             <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">Client</label>
-              <select className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}>
+              <label className="text-xs font-medium text-white/65 block mb-1">Client</label>
+              <select className="border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}>
                 {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
               </select>
             </div>
@@ -653,12 +653,12 @@ export default function CapitalGainsPage() {
               </CardTitle>
             </CardHeader>
             {regLoading ? (
-              <div className="px-5 py-8 text-sm text-gray-400 text-center animate-pulse">Loading…</div>
+              <div className="px-5 py-8 text-sm text-white/30 text-center animate-pulse">Loading…</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+                    <tr className="bg-[#0e1017] text-xs text-white/40 uppercase tracking-wide">
                       <th className="px-4 py-3 text-left">Asset</th>
                       <th className="px-4 py-3 text-left">Type</th>
                       <th className="px-4 py-3 text-left">Purchase</th>
@@ -671,28 +671,28 @@ export default function CapitalGainsPage() {
                       <th className="px-4 py-3"></th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-white/[0.03]">
                     {records.map(r => {
                       const gain = r.sale_value_paise - r.purchase_cost_paise - r.improvement_cost_paise;
                       return (
-                        <tr key={r.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 font-medium text-gray-900 max-w-[160px] truncate">{r.asset_description}</td>
-                          <td className="px-4 py-3 text-gray-600 text-xs">{ASSET_TYPES_REG.find(a => a.value === r.asset_type)?.label ?? r.asset_type}</td>
-                          <td className="px-4 py-3 text-gray-600">{r.purchase_date}</td>
-                          <td className="px-4 py-3 text-gray-600">{r.sale_date}</td>
-                          <td className="px-4 py-3 text-right text-gray-700">{fmtRs(r.purchase_cost_paise)}</td>
-                          <td className="px-4 py-3 text-right text-gray-700">{fmtRs(r.sale_value_paise)}</td>
-                          <td className="px-4 py-3 text-right text-gray-600 text-xs">{r.indexed_cost_paise != null ? fmtRs(r.indexed_cost_paise) : "—"}</td>
+                        <tr key={r.id} className="hover:bg-[#0e1017]">
+                          <td className="px-4 py-3 font-medium text-white/85 max-w-[160px] truncate">{r.asset_description}</td>
+                          <td className="px-4 py-3 text-white/55 text-xs">{ASSET_TYPES_REG.find(a => a.value === r.asset_type)?.label ?? r.asset_type}</td>
+                          <td className="px-4 py-3 text-white/55">{r.purchase_date}</td>
+                          <td className="px-4 py-3 text-white/55">{r.sale_date}</td>
+                          <td className="px-4 py-3 text-right text-white/65">{fmtRs(r.purchase_cost_paise)}</td>
+                          <td className="px-4 py-3 text-right text-white/65">{fmtRs(r.sale_value_paise)}</td>
+                          <td className="px-4 py-3 text-right text-white/55 text-xs">{r.indexed_cost_paise != null ? fmtRs(r.indexed_cost_paise) : "—"}</td>
                           <td className="px-4 py-3 text-center">
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.gain_type === "LTCG" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
                               {r.gain_type ?? "—"}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-right text-gray-700">{r.tax_rate_percent != null ? `${r.tax_rate_percent}%` : "—"}</td>
+                          <td className="px-4 py-3 text-right text-white/65">{r.tax_rate_percent != null ? `${r.tax_rate_percent}%` : "—"}</td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex flex-col items-end gap-1">
                               <span className={`text-xs font-semibold ${gain >= 0 ? "text-green-700" : "text-red-700"}`}>{gain >= 0 ? "+" : ""}{fmtRs(gain)}</span>
-                              <button onClick={() => deleteRecord(r.id)} className="text-gray-300 hover:text-red-500 transition-colors">
+                              <button onClick={() => deleteRecord(r.id)} className="text-white/20 hover:text-red-500 transition-colors">
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             </div>
@@ -701,7 +701,7 @@ export default function CapitalGainsPage() {
                       );
                     })}
                     {records.length === 0 && (
-                      <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400 text-sm">No capital gains transactions recorded yet.</td></tr>
+                      <tr><td colSpan={10} className="px-4 py-8 text-center text-white/30 text-sm">No capital gains transactions recorded yet.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -712,51 +712,51 @@ export default function CapitalGainsPage() {
           {/* Add Transaction Modal */}
           {showModal && (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+              <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between px-5 py-4 border-b">
-                  <h2 className="text-sm font-semibold text-gray-900">Add Capital Gains Transaction</h2>
-                  <button onClick={() => setShowModal(false)}><X className="w-4 h-4 text-gray-400" /></button>
+                  <h2 className="text-sm font-semibold text-white/85">Add Capital Gains Transaction</h2>
+                  <button onClick={() => setShowModal(false)}><X className="w-4 h-4 text-white/30" /></button>
                 </div>
                 <div className="px-5 py-4 space-y-4">
                   {regError && <div className="bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg">{regError}</div>}
 
                   <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1">Asset Description *</label>
-                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.asset_description} onChange={e => setRegForm(f => ({ ...f, asset_description: e.target.value }))} placeholder="e.g. Reliance Industries Ltd — 100 shares" />
+                    <label className="text-xs font-medium text-white/65 block mb-1">Asset Description *</label>
+                    <input className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.asset_description} onChange={e => setRegForm(f => ({ ...f, asset_description: e.target.value }))} placeholder="e.g. Reliance Industries Ltd — 100 shares" />
                   </div>
 
                   <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1">Asset Type *</label>
-                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.asset_type} onChange={e => setRegForm(f => ({ ...f, asset_type: e.target.value }))}>
+                    <label className="text-xs font-medium text-white/65 block mb-1">Asset Type *</label>
+                    <select className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.asset_type} onChange={e => setRegForm(f => ({ ...f, asset_type: e.target.value }))}>
                       {ASSET_TYPES_REG.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                     </select>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-1">Purchase Date *</label>
-                      <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.purchase_date} onChange={e => setRegForm(f => ({ ...f, purchase_date: e.target.value }))} />
+                      <label className="text-xs font-medium text-white/65 block mb-1">Purchase Date *</label>
+                      <input type="date" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.purchase_date} onChange={e => setRegForm(f => ({ ...f, purchase_date: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-1">Sale Date *</label>
-                      <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.sale_date} onChange={e => setRegForm(f => ({ ...f, sale_date: e.target.value }))} />
+                      <label className="text-xs font-medium text-white/65 block mb-1">Sale Date *</label>
+                      <input type="date" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.sale_date} onChange={e => setRegForm(f => ({ ...f, sale_date: e.target.value }))} />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-1">Purchase Cost (₹)</label>
-                      <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.purchase_cost_rs} onChange={e => setRegForm(f => ({ ...f, purchase_cost_rs: e.target.value }))} placeholder="0" />
+                      <label className="text-xs font-medium text-white/65 block mb-1">Purchase Cost (₹)</label>
+                      <input type="number" min="0" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.purchase_cost_rs} onChange={e => setRegForm(f => ({ ...f, purchase_cost_rs: e.target.value }))} placeholder="0" />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-1">Sale Value (₹)</label>
-                      <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.sale_value_rs} onChange={e => setRegForm(f => ({ ...f, sale_value_rs: e.target.value }))} placeholder="0" />
+                      <label className="text-xs font-medium text-white/65 block mb-1">Sale Value (₹)</label>
+                      <input type="number" min="0" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.sale_value_rs} onChange={e => setRegForm(f => ({ ...f, sale_value_rs: e.target.value }))} placeholder="0" />
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1">Improvement Cost (₹) — optional</label>
-                    <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.improvement_cost_rs} onChange={e => setRegForm(f => ({ ...f, improvement_cost_rs: e.target.value }))} placeholder="0" />
+                    <label className="text-xs font-medium text-white/65 block mb-1">Improvement Cost (₹) — optional</label>
+                    <input type="number" min="0" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.improvement_cost_rs} onChange={e => setRegForm(f => ({ ...f, improvement_cost_rs: e.target.value }))} placeholder="0" />
                   </div>
 
                   {/* Preview STCG/LTCG */}
@@ -778,21 +778,21 @@ export default function CapitalGainsPage() {
                         return (
                           <>
                             <div className="flex justify-between text-xs">
-                              <span className="text-gray-600">Holding Period</span>
-                              <span className="font-medium text-gray-900">{months} months</span>
+                              <span className="text-white/55">Holding Period</span>
+                              <span className="font-medium text-white/85">{months} months</span>
                             </div>
                             <div className="flex justify-between text-xs">
-                              <span className="text-gray-600">Classification</span>
+                              <span className="text-white/55">Classification</span>
                               <span className={`font-semibold ${gt === "LTCG" ? "text-green-700" : "text-amber-700"}`}>{gt}</span>
                             </div>
                             <div className="flex justify-between text-xs">
-                              <span className="text-gray-600">Tax Rate</span>
-                              <span className="font-medium text-gray-900">{tr}%</span>
+                              <span className="text-white/55">Tax Rate</span>
+                              <span className="font-medium text-white/85">{tr}%</span>
                             </div>
                             {regForm.asset_type === "property" && (
                               <div className="flex justify-between text-xs">
-                                <span className="text-gray-600">Indexed Cost (CII {ciiP}→{ciiS})</span>
-                                <span className="font-medium text-gray-900">{fmtRs(indexedP)}</span>
+                                <span className="text-white/55">Indexed Cost (CII {ciiP}→{ciiS})</span>
+                                <span className="font-medium text-white/85">{fmtRs(indexedP)}</span>
                               </div>
                             )}
                           </>

@@ -155,7 +155,7 @@ function formatDate(isoDate: string): string {
 }
 
 const inputCls =
-  "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white";
+  "w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm text-white/85 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#131620]";
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -433,12 +433,12 @@ export default function LoansAndFDPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-3">
-          <Link href="/accounting" className="text-gray-400 hover:text-gray-600 mt-0.5">
+          <Link href="/accounting" className="text-white/30 hover:text-white/55 mt-0.5">
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Loans & Fixed Deposits</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Track client borrowings and FD investments</p>
+            <h1 className="text-xl font-semibold text-white/85">Loans & Fixed Deposits</h1>
+            <p className="text-sm text-white/40 mt-0.5">Track client borrowings and FD investments</p>
           </div>
         </div>
         <button
@@ -458,16 +458,16 @@ export default function LoansAndFDPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+      <div className="flex gap-1 bg-white/[0.06] rounded-xl p-1 w-fit">
         <button
           onClick={() => setTab("loans")}
-          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === "loans" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === "loans" ? "bg-[#131620] text-white/85 shadow-sm" : "text-white/40 hover:text-white/65"}`}
         >
           Loans
         </button>
         <button
           onClick={() => setTab("fd")}
-          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === "fd" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === "fd" ? "bg-[#131620] text-white/85 shadow-sm" : "text-white/40 hover:text-white/65"}`}
         >
           Fixed Deposits
         </button>
@@ -511,16 +511,16 @@ export default function LoansAndFDPage() {
           </div>
 
           {/* Loans table */}
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50">
-              <h2 className="text-sm font-semibold text-gray-900">Loan Register</h2>
+              <h2 className="text-sm font-semibold text-white/85">Loan Register</h2>
             </div>
             {loading ? (
-              <div className="px-5 py-12 text-center text-sm text-gray-400 animate-pulse">Loading…</div>
+              <div className="px-5 py-12 text-center text-sm text-white/30 animate-pulse">Loading…</div>
             ) : loans.length === 0 ? (
               <div className="px-5 py-12 text-center space-y-2">
                 <TrendingDown className="w-10 h-10 text-gray-200 mx-auto" />
-                <p className="text-sm text-gray-500">No loans recorded yet</p>
+                <p className="text-sm text-white/40">No loans recorded yet</p>
                 <button
                   onClick={() => setShowAddLoan(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors"
@@ -532,7 +532,7 @@ export default function LoansAndFDPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-gray-50 text-[10px] text-gray-400 uppercase tracking-wide">
+                    <tr className="bg-[#0e1017] text-[10px] text-white/30 uppercase tracking-wide">
                       <th className="text-left px-5 py-2.5">Lender</th>
                       <th className="text-left px-4 py-2.5">Client</th>
                       <th className="text-left px-4 py-2.5">Type</th>
@@ -544,16 +544,16 @@ export default function LoansAndFDPage() {
                       <th className="text-left px-4 py-2.5">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-white/[0.03]">
                     {loans.map((loan) => (
-                      <tr key={loan.id} className="hover:bg-gray-50/50">
+                      <tr key={loan.id} className="hover:bg-[#0e1017]/50">
                         <td className="px-5 py-3">
-                          <p className="font-medium text-gray-900">{loan.lender_name}</p>
+                          <p className="font-medium text-white/85">{loan.lender_name}</p>
                           {loan.account_number && (
-                            <p className="text-[10px] font-mono text-gray-400">{loan.account_number}</p>
+                            <p className="text-[10px] font-mono text-white/30">{loan.account_number}</p>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-600">
+                        <td className="px-4 py-3 text-xs text-white/55">
                           {loan.clients?.name ?? "—"}
                         </td>
                         <td className="px-4 py-3">
@@ -561,19 +561,19 @@ export default function LoansAndFDPage() {
                             {LOAN_TYPE_LABELS[loan.loan_type]}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-right text-xs tabular-nums text-gray-700">
+                        <td className="px-4 py-3 text-right text-xs tabular-nums text-white/65">
                           {formatPaise(loan.principal_paise)}
                         </td>
-                        <td className="px-4 py-3 text-right text-xs tabular-nums font-medium text-gray-900">
+                        <td className="px-4 py-3 text-right text-xs tabular-nums font-medium text-white/85">
                           {formatPaise(loan.outstanding_paise)}
                         </td>
-                        <td className="px-4 py-3 text-right text-xs text-gray-600">
+                        <td className="px-4 py-3 text-right text-xs text-white/55">
                           {loan.interest_rate_percent}%
                         </td>
-                        <td className="px-4 py-3 text-right text-xs tabular-nums text-gray-700">
+                        <td className="px-4 py-3 text-right text-xs tabular-nums text-white/65">
                           {loan.emi_paise ? formatPaise(loan.emi_paise) : "—"}
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-600">
+                        <td className="px-4 py-3 text-xs text-white/55">
                           {loan.maturity_date ? formatDate(loan.maturity_date) : "—"}
                         </td>
                         <td className="px-4 py-3">
@@ -588,17 +588,17 @@ export default function LoansAndFDPage() {
           </div>
 
           {/* EMI Calculator */}
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
+          <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-5">
             <div className="flex items-center gap-2 mb-4">
               <Calculator className="w-5 h-5 text-blue-600" />
-              <h2 className="text-sm font-semibold text-gray-900">EMI Calculator</h2>
+              <h2 className="text-sm font-semibold text-white/85">EMI Calculator</h2>
             </div>
-            <p className="text-xs text-gray-400 mb-4">
+            <p className="text-xs text-white/30 mb-4">
               Formula: EMI = P × r × (1+r)^n / ((1+r)^n − 1) where r = monthly rate (annual rate ÷ 12 ÷ 100)
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Principal (₹)</label>
+                <label className="block text-xs font-medium text-white/65 mb-1.5">Principal (₹)</label>
                 <input
                   type="number"
                   min="0"
@@ -610,7 +610,7 @@ export default function LoansAndFDPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Interest Rate (% p.a.)</label>
+                <label className="block text-xs font-medium text-white/65 mb-1.5">Interest Rate (% p.a.)</label>
                 <input
                   type="number"
                   min="0"
@@ -622,7 +622,7 @@ export default function LoansAndFDPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Tenure (months)</label>
+                <label className="block text-xs font-medium text-white/65 mb-1.5">Tenure (months)</label>
                 <input
                   type="number"
                   min="1"
@@ -710,20 +710,20 @@ export default function LoansAndFDPage() {
           </div>
 
           {/* FD table */}
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50">
-              <h2 className="text-sm font-semibold text-gray-900">FD Register</h2>
-              <p className="text-xs text-gray-400 mt-0.5">
+              <h2 className="text-sm font-semibold text-white/85">FD Register</h2>
+              <p className="text-xs text-white/30 mt-0.5">
                 {/* TDS on FD interest per IT Act Section 194A — threshold ₹40,000 p.a. (₹50,000 for senior citizens) */}
                 TDS applicable per IT Act Section 194A — ₹40,000 threshold p.a.
               </p>
             </div>
             {loading ? (
-              <div className="px-5 py-12 text-center text-sm text-gray-400 animate-pulse">Loading…</div>
+              <div className="px-5 py-12 text-center text-sm text-white/30 animate-pulse">Loading…</div>
             ) : fds.length === 0 ? (
               <div className="px-5 py-12 text-center space-y-2">
                 <Landmark className="w-10 h-10 text-gray-200 mx-auto" />
-                <p className="text-sm text-gray-500">No fixed deposits recorded yet</p>
+                <p className="text-sm text-white/40">No fixed deposits recorded yet</p>
                 <button
                   onClick={() => setShowAddFD(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors"
@@ -735,7 +735,7 @@ export default function LoansAndFDPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-gray-50 text-[10px] text-gray-400 uppercase tracking-wide">
+                    <tr className="bg-[#0e1017] text-[10px] text-white/30 uppercase tracking-wide">
                       <th className="text-left px-5 py-2.5">Bank</th>
                       <th className="text-left px-4 py-2.5">Client</th>
                       <th className="text-left px-4 py-2.5">FD No.</th>
@@ -749,33 +749,33 @@ export default function LoansAndFDPage() {
                       <th className="text-left px-4 py-2.5">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-white/[0.03]">
                     {fds.map((fd) => {
                       const days = daysToDate(fd.maturity_date);
                       const isMaturingSoon = fd.status === "active" && days >= 0 && days <= 30;
                       return (
-                        <tr key={fd.id} className={`hover:bg-gray-50/50 ${isMaturingSoon ? "bg-amber-50/30" : ""}`}>
-                          <td className="px-5 py-3 font-medium text-gray-900">{fd.bank_name}</td>
-                          <td className="px-4 py-3 text-xs text-gray-600">{fd.clients?.name ?? "—"}</td>
-                          <td className="px-4 py-3 text-xs font-mono text-gray-600">{fd.fd_number ?? "—"}</td>
-                          <td className="px-4 py-3 text-right text-xs tabular-nums text-gray-700">
+                        <tr key={fd.id} className={`hover:bg-[#0e1017]/50 ${isMaturingSoon ? "bg-amber-50/30" : ""}`}>
+                          <td className="px-5 py-3 font-medium text-white/85">{fd.bank_name}</td>
+                          <td className="px-4 py-3 text-xs text-white/55">{fd.clients?.name ?? "—"}</td>
+                          <td className="px-4 py-3 text-xs font-mono text-white/55">{fd.fd_number ?? "—"}</td>
+                          <td className="px-4 py-3 text-right text-xs tabular-nums text-white/65">
                             {formatPaise(fd.principal_paise)}
                           </td>
-                          <td className="px-4 py-3 text-right text-xs text-gray-600">
+                          <td className="px-4 py-3 text-right text-xs text-white/55">
                             {fd.interest_rate_percent}%
                           </td>
-                          <td className="px-4 py-3 text-xs text-gray-600">{formatDate(fd.start_date)}</td>
-                          <td className="px-4 py-3 text-xs text-gray-600">{formatDate(fd.maturity_date)}</td>
-                          <td className="px-4 py-3 text-right text-xs tabular-nums font-medium text-gray-900">
+                          <td className="px-4 py-3 text-xs text-white/55">{formatDate(fd.start_date)}</td>
+                          <td className="px-4 py-3 text-xs text-white/55">{formatDate(fd.maturity_date)}</td>
+                          <td className="px-4 py-3 text-right text-xs tabular-nums font-medium text-white/85">
                             {formatPaise(fd.maturity_amount_paise)}
                           </td>
                           <td className="px-4 py-3 text-right text-xs tabular-nums">
                             {fd.status !== "active" ? (
-                              <span className="text-gray-400">—</span>
+                              <span className="text-white/30">—</span>
                             ) : days < 0 ? (
                               <span className="text-red-500">Matured</span>
                             ) : (
-                              <span className={isMaturingSoon ? "text-amber-600 font-medium" : "text-gray-600"}>
+                              <span className={isMaturingSoon ? "text-amber-600 font-medium" : "text-white/55"}>
                                 {days}d
                               </span>
                             )}
@@ -784,7 +784,7 @@ export default function LoansAndFDPage() {
                             {fd.tds_applicable ? (
                               <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-medium">s.194A</span>
                             ) : (
-                              <span className="text-gray-400">No</span>
+                              <span className="text-white/30">No</span>
                             )}
                           </td>
                           <td className="px-4 py-3">
@@ -806,10 +806,10 @@ export default function LoansAndFDPage() {
       {/* ================================================================== */}
       {showAddLoan && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">Add Loan</h3>
-              <button onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="text-gray-400 hover:text-gray-600">
+          <div className="bg-[#131620] rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.05]">
+              <h3 className="text-base font-semibold text-white/85">Add Loan</h3>
+              <button onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="text-white/30 hover:text-white/55">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -860,8 +860,8 @@ export default function LoansAndFDPage() {
               </FormField>
               {loanError && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{loanError}</p>}
             </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end">
-              <button onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Cancel</button>
+            <div className="px-6 py-4 border-t border-white/[0.05] flex gap-3 justify-end">
+              <button onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="px-4 py-2 text-sm font-medium text-white/65 bg-white/[0.06] rounded-lg hover:bg-white/[0.08]">Cancel</button>
               <button onClick={handleAddLoan} disabled={loanSaving} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
                 {loanSaving ? "Saving…" : "Add Loan"}
               </button>
@@ -875,10 +875,10 @@ export default function LoansAndFDPage() {
       {/* ================================================================== */}
       {showAddFD && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">Add Fixed Deposit</h3>
-              <button onClick={() => { setShowAddFD(false); resetFDForm(); }} className="text-gray-400 hover:text-gray-600">
+          <div className="bg-[#131620] rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.05]">
+              <h3 className="text-base font-semibold text-white/85">Add Fixed Deposit</h3>
+              <button onClick={() => { setShowAddFD(false); resetFDForm(); }} className="text-white/30 hover:text-white/55">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -929,7 +929,7 @@ export default function LoansAndFDPage() {
                     onChange={(e) => setFDForm({ ...fdForm, is_auto_renewed: e.target.checked })}
                     className="rounded"
                   />
-                  <span className="text-xs font-medium text-gray-700">Auto Renewal</span>
+                  <span className="text-xs font-medium text-white/65">Auto Renewal</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -938,7 +938,7 @@ export default function LoansAndFDPage() {
                     onChange={(e) => setFDForm({ ...fdForm, tds_applicable: e.target.checked })}
                     className="rounded"
                   />
-                  <span className="text-xs font-medium text-gray-700">TDS Applicable (s.194A)</span>
+                  <span className="text-xs font-medium text-white/65">TDS Applicable (s.194A)</span>
                 </label>
               </div>
               {fdForm.tds_applicable && (
@@ -952,8 +952,8 @@ export default function LoansAndFDPage() {
               </FormField>
               {fdError && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{fdError}</p>}
             </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end">
-              <button onClick={() => { setShowAddFD(false); resetFDForm(); }} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Cancel</button>
+            <div className="px-6 py-4 border-t border-white/[0.05] flex gap-3 justify-end">
+              <button onClick={() => { setShowAddFD(false); resetFDForm(); }} className="px-4 py-2 text-sm font-medium text-white/65 bg-white/[0.06] rounded-lg hover:bg-white/[0.08]">Cancel</button>
               <button onClick={handleAddFD} disabled={fdSaving} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
                 {fdSaving ? "Saving…" : "Add FD"}
               </button>
@@ -981,13 +981,13 @@ function SummaryCard({
   sub: string;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-100 p-4">
+    <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
       <div className="flex items-center gap-2 mb-3">
         <div className={`w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center`}>{icon}</div>
-        <span className="text-xs text-gray-500">{label}</span>
+        <span className="text-xs text-white/40">{label}</span>
       </div>
-      <p className="text-lg font-semibold text-gray-900">{value}</p>
-      <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+      <p className="text-lg font-semibold text-white/85">{value}</p>
+      <p className="text-xs text-white/30 mt-0.5">{sub}</p>
     </div>
   );
 }
@@ -996,7 +996,7 @@ function LoanStatusBadge({ status }: { status: LoanStatus }) {
   const styles: Record<LoanStatus, string> = {
     active: "bg-green-100 text-green-700",
     overdue: "bg-red-100 text-red-700",
-    closed: "bg-gray-100 text-gray-500",
+    closed: "bg-white/[0.06] text-white/40",
   };
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${styles[status]}`}>
@@ -1031,10 +1031,10 @@ function FormField({
 }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-700 mb-1.5">
+      <label className="block text-xs font-medium text-white/65 mb-1.5">
         {label}
         {required && <span className="text-red-500 ml-0.5">*</span>}
-        {optional && <span className="text-gray-400 font-normal ml-1">(optional)</span>}
+        {optional && <span className="text-white/30 font-normal ml-1">(optional)</span>}
       </label>
       {children}
     </div>

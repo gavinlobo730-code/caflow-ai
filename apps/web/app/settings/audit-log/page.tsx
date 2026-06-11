@@ -32,7 +32,7 @@ function actionBadgeClass(action: ActionType): string {
     case "Update": return "bg-blue-100 text-blue-700";
     case "Delete": return "bg-red-100 text-red-700";
     case "Post":   return "bg-purple-100 text-purple-700";
-    default:       return "bg-gray-100 text-gray-600";
+    default:       return "bg-white/[0.06] text-white/55";
   }
 }
 
@@ -239,43 +239,43 @@ function AuditLogContent() {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/settings" className="text-gray-400 hover:text-gray-600">
+        <Link href="/settings" className="text-white/30 hover:text-white/55">
           <ChevronLeft size={18} />
         </Link>
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <ShieldCheck size={16} className="text-blue-600" />
-            <h1 className="text-xl font-semibold text-gray-900">Audit Log</h1>
+            <h1 className="text-xl font-semibold text-white/85">Audit Log</h1>
           </div>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <p className="text-sm text-white/40 mt-0.5">
             Partner-only view — timeline of all changes across clients, journals, compliance and accounts.
           </p>
         </div>
         <button
           onClick={handleExport}
           disabled={filtered.length === 0}
-          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 px-3 py-1.5 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center gap-1.5 text-xs border border-white/[0.07] text-white/55 px-3 py-1.5 rounded-md hover:bg-[#0e1017] disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Download size={13} /> Export CSV
         </button>
       </div>
 
       {/* Filters */}
-      <div className="bg-white border border-gray-100 rounded-xl px-5 py-4 grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="bg-[#131620] border border-white/[0.05] rounded-xl px-5 py-4 grid grid-cols-2 md:grid-cols-5 gap-3">
         <div>
-          <label className="text-xs text-gray-500">From Date</label>
+          <label className="text-xs text-white/40">From Date</label>
           <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
-            className="block w-full mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="block w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
-          <label className="text-xs text-gray-500">To Date</label>
+          <label className="text-xs text-white/40">To Date</label>
           <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
-            className="block w-full mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="block w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
-          <label className="text-xs text-gray-500">Action</label>
+          <label className="text-xs text-white/40">Action</label>
           <select value={filterAction} onChange={(e) => setFilterAction(e.target.value as ActionType | "")}
-            className="block w-full mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            className="block w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="">All Actions</option>
             {(["Create", "Update", "Delete", "Post"] as ActionType[]).map((a) => (
               <option key={a} value={a}>{a}</option>
@@ -283,9 +283,9 @@ function AuditLogContent() {
           </select>
         </div>
         <div>
-          <label className="text-xs text-gray-500">Entity Type</label>
+          <label className="text-xs text-white/40">Entity Type</label>
           <select value={filterEntity} onChange={(e) => setFilterEntity(e.target.value as EntityType | "")}
-            className="block w-full mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            className="block w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="">All Entities</option>
             {(["Client", "Journal Entry", "Compliance", "Account"] as EntityType[]).map((t) => (
               <option key={t} value={t}>{t}</option>
@@ -293,17 +293,17 @@ function AuditLogContent() {
           </select>
         </div>
         <div>
-          <label className="text-xs text-gray-500">User (email)</label>
+          <label className="text-xs text-white/40">User (email)</label>
           <input value={filterUser} onChange={(e) => setFilterUser(e.target.value)}
             placeholder="Search…"
-            className="block w-full mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="block w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
       </div>
 
       {/* Table */}
-      <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+      <div className="bg-[#131620] border border-white/[0.05] rounded-xl overflow-hidden">
         {/* Column headers */}
-        <div className="grid grid-cols-12 gap-2 px-5 py-2 text-xs font-semibold text-gray-400 border-b border-gray-100 bg-gray-50">
+        <div className="grid grid-cols-12 gap-2 px-5 py-2 text-xs font-semibold text-white/30 border-b border-white/[0.05] bg-[#0e1017]">
           <span className="col-span-2">Timestamp</span>
           <span className="col-span-2">User</span>
           <span className="col-span-1">Action</span>
@@ -314,50 +314,50 @@ function AuditLogContent() {
         </div>
 
         {loading && (
-          <div className="px-5 py-12 text-center text-sm text-gray-400 animate-pulse">Loading audit log…</div>
+          <div className="px-5 py-12 text-center text-sm text-white/30 animate-pulse">Loading audit log…</div>
         )}
         {!loading && error && (
           <div className="px-5 py-6 text-center text-sm text-red-600">{error}</div>
         )}
         {!loading && !error && filtered.length === 0 && (
-          <div className="px-5 py-12 text-center text-sm text-gray-400">
+          <div className="px-5 py-12 text-center text-sm text-white/30">
             No audit events found for the selected filters.
           </div>
         )}
 
-        <div className="divide-y divide-gray-50">
+        <div className="divide-y divide-white/[0.03]">
           {filtered.map((row) => (
-            <div key={row.id} className="grid grid-cols-12 gap-2 px-5 py-3 hover:bg-gray-50 transition-colors items-start text-xs">
-              <span className="col-span-2 text-gray-500 tabular-nums">
+            <div key={row.id} className="grid grid-cols-12 gap-2 px-5 py-3 hover:bg-[#0e1017] transition-colors items-start text-xs">
+              <span className="col-span-2 text-white/40 tabular-nums">
                 {formatDate(row.timestamp.slice(0, 10))}
-                <span className="block text-gray-400 font-mono">{row.timestamp.slice(11, 19)}</span>
+                <span className="block text-white/30 font-mono">{row.timestamp.slice(11, 19)}</span>
               </span>
-              <span className="col-span-2 text-gray-700 truncate" title={row.user}>{row.user}</span>
+              <span className="col-span-2 text-white/65 truncate" title={row.user}>{row.user}</span>
               <span className="col-span-1">
                 <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${actionBadgeClass(row.action)}`}>
                   {row.action}
                 </span>
               </span>
-              <span className="col-span-2 text-gray-600">{row.entity_type}</span>
-              <span className="col-span-3 text-gray-900 truncate font-medium" title={row.entity_name}>
+              <span className="col-span-2 text-white/55">{row.entity_type}</span>
+              <span className="col-span-3 text-white/85 truncate font-medium" title={row.entity_name}>
                 {row.entity_name}
-                <span className="block font-mono text-gray-400 text-[10px] truncate">{row.entity_id}</span>
+                <span className="block font-mono text-white/30 text-[10px] truncate">{row.entity_id}</span>
               </span>
-              <span className="col-span-1 text-gray-400 font-mono">{row.ip_address}</span>
-              <span className="col-span-1 text-gray-500 truncate" title={row.detail}>{row.detail}</span>
+              <span className="col-span-1 text-white/30 font-mono">{row.ip_address}</span>
+              <span className="col-span-1 text-white/40 truncate" title={row.detail}>{row.detail}</span>
             </div>
           ))}
         </div>
 
         {!loading && filtered.length > 0 && (
-          <div className="px-5 py-3 border-t border-gray-50 text-xs text-gray-400">
+          <div className="px-5 py-3 border-t border-gray-50 text-xs text-white/30">
             Showing {filtered.length} event{filtered.length !== 1 ? "s" : ""}
             {filtered.length !== rows.length ? ` (filtered from ${rows.length} total)` : ""}
           </div>
         )}
       </div>
 
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-white/30">
         Note: Audit events are reconstructed from table timestamps. IP address tracking requires a dedicated
         audit_log table with server-side logging. User attribution is available only where email is stored on the record.
       </p>

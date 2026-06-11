@@ -45,7 +45,7 @@ const FILING_STATUS_COLORS: Record<string, string> = {
   in_progress: "bg-blue-100 text-blue-700",
   filed: "bg-green-100 text-green-700",
   overdue: "bg-red-100 text-red-700",
-  na: "bg-gray-100 text-gray-500",
+  na: "bg-white/[0.06] text-white/40",
 };
 
 interface DocumentRequest {
@@ -297,8 +297,8 @@ export default function ClientPortalPage() {
       {/* Page Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Client Portal Preview</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-2xl font-bold text-white/85">Client Portal Preview</h1>
+          <p className="text-sm text-white/40 mt-1">
             Manage document requests and shared files for your clients
           </p>
         </div>
@@ -326,16 +326,16 @@ export default function ClientPortalPage() {
       <Card>
         <CardContent className="pt-5 pb-4">
           <div className="flex items-center gap-3">
-            <ExternalLink size={16} className="text-gray-400 shrink-0" />
+            <ExternalLink size={16} className="text-white/30 shrink-0" />
             <div className="flex-1">
-              <label htmlFor="client-select" className="block text-xs font-medium text-gray-500 mb-1">
+              <label htmlFor="client-select" className="block text-xs font-medium text-white/40 mb-1">
                 Select a client to manage their portal
               </label>
               <select
                 id="client-select"
                 value={selectedClientId}
                 onChange={(e) => setSelectedClientId(e.target.value)}
-                className="w-full max-w-sm px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full max-w-sm px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#131620]"
                 disabled={clientsLoading}
               >
                 <option value="">
@@ -354,7 +354,7 @@ export default function ClientPortalPage() {
 
       {/* Empty state */}
       {!selectedClient && !loading && (
-        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+        <div className="flex flex-col items-center justify-center py-20 text-white/30">
           <ExternalLink size={40} className="mb-3 opacity-30" />
           <p className="text-base font-medium">Select a client to manage their portal</p>
           <p className="text-sm mt-1 opacity-70">
@@ -367,29 +367,29 @@ export default function ClientPortalPage() {
       {selectedClient && (
         <div className="space-y-5">
           {/* Client info banner */}
-          <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-indigo-50 p-5">
+          <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-blue-500 p-5">
             <div>
               <p className="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-1">
                 Portal Management
               </p>
-              <h2 className="text-xl font-bold text-gray-900">{selectedClient.client_name}</h2>
-              <p className="text-sm text-gray-500 mt-1">Manage documents and requests for this client</p>
+              <h2 className="text-xl font-bold text-white/85">{selectedClient.client_name}</h2>
+              <p className="text-sm text-white/40 mt-1">Manage documents and requests for this client</p>
             </div>
             <div className="mt-4 flex flex-wrap gap-4 text-sm">
               {selectedClient.gstin && (
                 <div>
-                  <span className="text-xs text-gray-400 block">GSTIN</span>
-                  <span className="font-mono font-semibold text-gray-800">{selectedClient.gstin}</span>
+                  <span className="text-xs text-white/30 block">GSTIN</span>
+                  <span className="font-mono font-semibold text-white/75">{selectedClient.gstin}</span>
                 </div>
               )}
               <div>
-                <span className="text-xs text-gray-400 block">PAN</span>
-                <span className="font-mono font-semibold text-gray-800">{selectedClient.pan}</span>
+                <span className="text-xs text-white/30 block">PAN</span>
+                <span className="font-mono font-semibold text-white/75">{selectedClient.pan}</span>
               </div>
               {selectedClient.entity_type && (
                 <div>
-                  <span className="text-xs text-gray-400 block">Entity Type</span>
-                  <span className="font-semibold text-gray-800 capitalize">
+                  <span className="text-xs text-white/30 block">Entity Type</span>
+                  <span className="font-semibold text-white/75 capitalize">
                     {selectedClient.entity_type.replace(/_/g, " ")}
                   </span>
                 </div>
@@ -398,7 +398,7 @@ export default function ClientPortalPage() {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 border-b border-gray-100 overflow-x-auto">
+          <div className="flex gap-1 border-b border-white/[0.05] overflow-x-auto">
             {PORTAL_TABS.map((tab) => (
               <button
                 key={tab.id}
@@ -406,7 +406,7 @@ export default function ClientPortalPage() {
                 className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                   activeTab === tab.id
                     ? "border-blue-600 text-blue-700"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
+                    : "border-transparent text-white/40 hover:text-white/65"
                 }`}
               >
                 <tab.icon size={14} />
@@ -416,7 +416,7 @@ export default function ClientPortalPage() {
           </div>
 
           {loading && (
-            <div className="text-center py-8 text-sm text-gray-400 animate-pulse">
+            <div className="text-center py-8 text-sm text-white/30 animate-pulse">
               Loading client data…
             </div>
           )}
@@ -439,11 +439,11 @@ export default function ClientPortalPage() {
                   </CardHeader>
                   <CardContent>
                     {requestsLoading ? (
-                      <div className="text-center py-6 text-sm text-gray-400 animate-pulse">Loading…</div>
+                      <div className="text-center py-6 text-sm text-white/30 animate-pulse">Loading…</div>
                     ) : docRequests.length === 0 ? (
                       <div className="text-center py-10 space-y-2">
                         <FileText size={32} className="text-gray-200 mx-auto" />
-                        <p className="text-sm text-gray-400">
+                        <p className="text-sm text-white/30">
                           No document requests yet — click New Request to ask your client for files
                         </p>
                       </div>
@@ -452,17 +452,17 @@ export default function ClientPortalPage() {
                         {docRequests.map((req) => (
                           <div
                             key={req.id}
-                            className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50"
+                            className="flex items-start gap-3 p-3 rounded-lg border border-white/[0.05] hover:bg-[#0e1017]"
                           >
                             <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 mt-0.5">
                               <FileText size={14} />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900">{req.title}</p>
+                              <p className="text-sm font-medium text-white/85">{req.title}</p>
                               {req.description && (
-                                <p className="text-xs text-gray-500 mt-0.5">{req.description}</p>
+                                <p className="text-xs text-white/40 mt-0.5">{req.description}</p>
                               )}
-                              <p className="text-xs text-gray-400 mt-1">{formatDate(req.created_at)}</p>
+                              <p className="text-xs text-white/30 mt-1">{formatDate(req.created_at)}</p>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               {req.is_urgent && (
@@ -474,14 +474,14 @@ export default function ClientPortalPage() {
                                 className={`text-xs ${
                                   req.status === "fulfilled"
                                     ? "bg-green-100 text-green-700"
-                                    : "bg-gray-100 text-gray-600"
+                                    : "bg-white/[0.06] text-white/55"
                                 }`}
                               >
                                 {req.status === "fulfilled" ? "Fulfilled" : "Pending"}
                               </Badge>
                               <button
                                 onClick={() => handleDeleteRequest(req.id)}
-                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                className="p-1.5 text-white/30 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
                                 title="Delete request"
                               >
                                 <Trash2 size={13} />
@@ -501,7 +501,7 @@ export default function ClientPortalPage() {
                   <CardHeader className="pb-3 flex flex-row items-center justify-between">
                     <CardTitle className="text-sm flex items-center gap-2">
                       <FolderOpen size={15} /> Shared Documents
-                      <span className="text-xs text-gray-400 font-normal ml-1">(CA → Client)</span>
+                      <span className="text-xs text-white/30 font-normal ml-1">(CA → Client)</span>
                     </CardTitle>
                     <div className="flex items-center gap-2">
                       <input
@@ -509,7 +509,7 @@ export default function ClientPortalPage() {
                         placeholder="Label (optional)"
                         value={uploadLabel}
                         onChange={(e) => setUploadLabel(e.target.value)}
-                        className="text-xs px-2 py-1.5 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                        className="text-xs px-2 py-1.5 border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-36"
                       />
                       <input
                         type="file"
@@ -533,11 +533,11 @@ export default function ClientPortalPage() {
                   </CardHeader>
                   <CardContent>
                     {sharedLoading ? (
-                      <div className="text-center py-6 text-sm text-gray-400 animate-pulse">Loading…</div>
+                      <div className="text-center py-6 text-sm text-white/30 animate-pulse">Loading…</div>
                     ) : sharedDocs.length === 0 ? (
                       <div className="text-center py-10 space-y-2">
                         <FolderOpen size={32} className="text-gray-200 mx-auto" />
-                        <p className="text-sm text-gray-400">
+                        <p className="text-sm text-white/30">
                           No documents shared yet — upload returns, notices, and certificates for this client
                         </p>
                       </div>
@@ -546,14 +546,14 @@ export default function ClientPortalPage() {
                         {sharedDocs.map((doc) => (
                           <div
                             key={doc.id}
-                            className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50"
+                            className="flex items-center gap-3 p-3 rounded-lg border border-white/[0.05] hover:bg-[#0e1017]"
                           >
-                            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                            <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
                               <FolderOpen size={14} />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">{doc.label}</p>
-                              <p className="text-xs text-gray-400 mt-0.5">
+                              <p className="text-sm font-medium text-white/85 truncate">{doc.label}</p>
+                              <p className="text-xs text-white/30 mt-0.5">
                                 {doc.file_name}
                                 {doc.file_size_bytes ? ` · ${formatFileSize(doc.file_size_bytes)}` : ""}
                                 {" · "}{formatDate(doc.created_at)}
@@ -562,14 +562,14 @@ export default function ClientPortalPage() {
                             <div className="flex items-center gap-1.5 shrink-0">
                               <button
                                 onClick={() => handleDownloadSharedDoc(doc)}
-                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                className="p-1.5 text-white/30 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                                 title="Download"
                               >
                                 <Download size={13} />
                               </button>
                               <button
                                 onClick={() => handleDeleteSharedDoc(doc)}
-                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                className="p-1.5 text-white/30 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
                                 title="Delete"
                               >
                                 <Trash2 size={13} />
@@ -594,18 +594,18 @@ export default function ClientPortalPage() {
                   </CardHeader>
                   <CardContent className="p-0">
                     {sharedReports.length === 0 ? (
-                      <div className="px-6 py-10 text-center text-sm text-gray-400">
+                      <div className="px-6 py-10 text-center text-sm text-white/30">
                         <BarChart3 size={28} className="mx-auto mb-2 opacity-20" />
                         <p>No reports shared yet.</p>
-                        <p className="text-xs mt-1 text-gray-300">Go to Reports → Financial Statements → Generate → Share with Client</p>
+                        <p className="text-xs mt-1 text-white/20">Go to Reports → Financial Statements → Generate → Share with Client</p>
                       </div>
                     ) : (
-                      <div className="divide-y divide-gray-50">
+                      <div className="divide-y divide-white/[0.03]">
                         {sharedReports.map((r) => (
                           <div key={r.id} className="px-4 py-3 flex items-center justify-between gap-4">
                             <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">{r.report_label}</p>
-                              <p className="text-xs text-gray-400 mt-0.5">
+                              <p className="text-sm font-medium text-white/85 truncate">{r.report_label}</p>
+                              <p className="text-xs text-white/30 mt-0.5">
                                 FY {r.financial_year}
                                 {r.file_size_bytes ? ` · ${formatFileSize(r.file_size_bytes)}` : ""}
                                 {" · "}{formatDate(r.created_at)}
@@ -653,7 +653,7 @@ export default function ClientPortalPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b border-gray-100 text-xs text-gray-400">
+                        <tr className="border-b border-white/[0.05] text-xs text-white/30">
                           <th className="px-5 py-3 text-left font-semibold">Form</th>
                           <th className="px-3 py-3 text-left font-semibold">Period</th>
                           <th className="px-3 py-3 text-left font-semibold">Status</th>
@@ -661,32 +661,32 @@ export default function ClientPortalPage() {
                           <th className="px-5 py-3 text-left font-semibold">ARN</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-50">
+                      <tbody className="divide-y divide-white/[0.03]">
                         {recentFilings.length > 0
                           ? recentFilings.map((c) => (
-                              <tr key={c.id} className="hover:bg-gray-50">
-                                <td className="px-5 py-3 text-sm font-medium text-gray-900">
+                              <tr key={c.id} className="hover:bg-[#0e1017]">
+                                <td className="px-5 py-3 text-sm font-medium text-white/85">
                                   {c.compliance_type}
                                 </td>
-                                <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">
+                                <td className="px-3 py-3 text-xs text-white/40 whitespace-nowrap">
                                   {formatDate(c.period_start)} – {formatDate(c.period_end)}
                                 </td>
                                 <td className="px-3 py-3">
-                                  <Badge className={`text-xs ${FILING_STATUS_COLORS[c.filing_status] ?? "bg-gray-100 text-gray-600"}`}>
+                                  <Badge className={`text-xs ${FILING_STATUS_COLORS[c.filing_status] ?? "bg-white/[0.06] text-white/55"}`}>
                                     {c.filing_status}
                                   </Badge>
                                 </td>
-                                <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">
+                                <td className="px-3 py-3 text-xs text-white/40 whitespace-nowrap">
                                   {c.filed_date ? formatDate(c.filed_date) : "—"}
                                 </td>
-                                <td className="px-5 py-3 text-xs font-mono text-gray-400">
+                                <td className="px-5 py-3 text-xs font-mono text-white/30">
                                   {c.arn_number ?? "—"}
                                 </td>
                               </tr>
                             ))
                           : (
                             <tr>
-                              <td colSpan={5} className="text-center text-xs text-gray-400 py-8">
+                              <td colSpan={5} className="text-center text-xs text-white/30 py-8">
                                 No filed entries in compliance calendar for this client
                               </td>
                             </tr>
@@ -710,16 +710,16 @@ export default function ClientPortalPage() {
                       unpaidInvoices.map((t) => (
                         <div
                           key={t.id}
-                          className="flex items-center gap-4 p-3 rounded-lg border border-gray-100 hover:bg-gray-50"
+                          className="flex items-center gap-4 p-3 rounded-lg border border-white/[0.05] hover:bg-[#0e1017]"
                         >
                           <div className="flex-1">
-                            <p className="text-sm font-medium text-gray-900">{t.party_name}</p>
-                            <p className="text-xs text-gray-500 mt-0.5">
+                            <p className="text-sm font-medium text-white/85">{t.party_name}</p>
+                            <p className="text-xs text-white/40 mt-0.5">
                               {formatDate(t.transaction_date)}
                               {t.reference_no ? ` · Ref: ${t.reference_no}` : ""}
                             </p>
                           </div>
-                          <span className="text-sm font-semibold text-gray-800">
+                          <span className="text-sm font-semibold text-white/75">
                             {formatPaise(t.total_paise)}
                           </span>
                           <Badge className="text-xs bg-amber-100 text-amber-700">{t.status}</Badge>
@@ -729,13 +729,13 @@ export default function ClientPortalPage() {
                       MOCK_DUES.map((due) => (
                         <div
                           key={due.id}
-                          className="flex items-center gap-4 p-3 rounded-lg border border-gray-100 hover:bg-gray-50"
+                          className="flex items-center gap-4 p-3 rounded-lg border border-white/[0.05] hover:bg-[#0e1017]"
                         >
                           <div className="flex-1">
-                            <p className="text-sm font-medium text-gray-900">{due.description}</p>
-                            <p className="text-xs text-gray-500 mt-0.5">Due: {due.due}</p>
+                            <p className="text-sm font-medium text-white/85">{due.description}</p>
+                            <p className="text-xs text-white/40 mt-0.5">Due: {due.due}</p>
                           </div>
-                          <span className="text-sm font-semibold text-gray-800">{due.amount}</span>
+                          <span className="text-sm font-semibold text-white/75">{due.amount}</span>
                           <Badge
                             className={`text-xs ${
                               due.status === "Overdue" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
@@ -764,14 +764,14 @@ export default function ClientPortalPage() {
                         <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
                           CA
                         </div>
-                        <div className="flex-1 bg-gray-50 rounded-lg px-4 py-3">
-                          <p className="text-sm text-gray-800">{msg.text}</p>
-                          <p className="text-xs text-gray-400 mt-1">{msg.time}</p>
+                        <div className="flex-1 bg-[#0e1017] rounded-lg px-4 py-3">
+                          <p className="text-sm text-white/75">{msg.text}</p>
+                          <p className="text-xs text-white/30 mt-1">{msg.time}</p>
                         </div>
                       </div>
                     ))}
-                    <div className="pt-2 border-t border-gray-100">
-                      <p className="text-xs text-gray-400 text-center">
+                    <div className="pt-2 border-t border-white/[0.05]">
+                      <p className="text-xs text-white/30 text-center">
                         To reply or send documents, contact your CA directly via phone or email.
                       </p>
                     </div>
@@ -786,27 +786,27 @@ export default function ClientPortalPage() {
       {/* New Request Modal */}
       {showNewRequestModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <h3 className="text-base font-semibold text-gray-900">New Document Request</h3>
+          <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <h3 className="text-base font-semibold text-white/85">New Document Request</h3>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Title *</label>
+                <label className="block text-xs font-medium text-white/55 mb-1">Title *</label>
                 <input
                   type="text"
                   placeholder="e.g. Upload Q4 Bank Statement"
                   value={newRequest.title}
                   onChange={(e) => setNewRequest((p) => ({ ...p, title: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   autoFocus
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+                <label className="block text-xs font-medium text-white/55 mb-1">Description</label>
                 <textarea
                   placeholder="e.g. For the period Jan–Mar 2026"
                   value={newRequest.description}
                   onChange={(e) => setNewRequest((p) => ({ ...p, description: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  className="w-full px-3 py-2 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                   rows={3}
                 />
               </div>
@@ -817,7 +817,7 @@ export default function ClientPortalPage() {
                   onChange={(e) => setNewRequest((p) => ({ ...p, is_urgent: e.target.checked }))}
                   className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-sm text-gray-700">Mark as Urgent</span>
+                <span className="text-sm text-white/65">Mark as Urgent</span>
                 <AlertTriangle size={14} className="text-amber-500" />
               </label>
             </div>
@@ -827,7 +827,7 @@ export default function ClientPortalPage() {
                   setShowNewRequestModal(false);
                   setNewRequest({ title: "", description: "", is_urgent: false });
                 }}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+                className="px-4 py-2 text-sm text-white/55 border border-white/[0.07] rounded-lg hover:bg-[#0e1017]"
               >
                 Cancel
               </button>

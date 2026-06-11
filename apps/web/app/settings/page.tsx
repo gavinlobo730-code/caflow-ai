@@ -299,7 +299,7 @@ export default function SettingsPage() {
   }) {
     return (
       <div>
-        <label className="text-xs font-medium text-gray-500 block mb-1">
+        <label className="text-xs font-medium text-white/40 block mb-1">
           {label}
           {required && <span className="text-red-500 ml-0.5">*</span>}
         </label>
@@ -308,12 +308,12 @@ export default function SettingsPage() {
           value={form[field]}
           onChange={(e) => handleChange(field, e.target.value)}
           placeholder={placeholder}
-          className={`w-full text-sm text-gray-900 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 ${
-            errors[field] ? "border-red-400 bg-red-50" : "border-gray-200"
+          className={`w-full text-sm text-white/85 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#0e1017] ${
+            errors[field] ? "border-red-400 bg-red-50" : "border-white/[0.07]"
           }`}
         />
         {hint && !errors[field] && (
-          <p className="text-xs text-gray-400 mt-1">{hint}</p>
+          <p className="text-xs text-white/30 mt-1">{hint}</p>
         )}
         {errors[field] && (
           <p className="text-xs text-red-500 mt-1">{errors[field]}</p>
@@ -333,21 +333,21 @@ export default function SettingsPage() {
       )}
 
       <div>
-        <h1 className="text-xl font-semibold text-gray-900">Settings</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Firm configuration and preferences</p>
+        <h1 className="text-xl font-semibold text-white/85">Settings</h1>
+        <p className="text-sm text-white/40 mt-0.5">Firm configuration and preferences</p>
       </div>
 
       {/* ── Firm Profile — Partner only (firm financials) ────────────────── */}
       <RoleGuard allowed={["Partner"]} redirect={false}>
       {/* ── Firm Profile ─────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-          <Building2 size={15} className="text-gray-500" />
-          <h2 className="text-sm font-semibold text-gray-900">Firm Profile</h2>
+          <Building2 size={15} className="text-white/40" />
+          <h2 className="text-sm font-semibold text-white/85">Firm Profile</h2>
         </div>
 
         {loading ? (
-          <div className="px-5 py-10 text-center text-sm text-gray-400">Loading…</div>
+          <div className="px-5 py-10 text-center text-sm text-white/30">Loading…</div>
         ) : (
           <div className="px-5 py-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -391,11 +391,11 @@ export default function SettingsPage() {
               <Field label="City" field="city" placeholder="e.g. Mumbai" />
 
               <div>
-                <label className="text-xs font-medium text-gray-500 block mb-1">State</label>
+                <label className="text-xs font-medium text-white/40 block mb-1">State</label>
                 <select
                   value={form.state}
                   onChange={(e) => handleChange("state", e.target.value)}
-                  className="w-full text-sm text-gray-900 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                  className="w-full text-sm text-white/85 border border-white/[0.07] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#0e1017]"
                 >
                   <option value="">Select state…</option>
                   {INDIAN_STATES.map((s) => (
@@ -425,17 +425,17 @@ export default function SettingsPage() {
       </RoleGuard>
 
       {/* ── Financial Year (display only) ────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-          <Calendar size={15} className="text-gray-500" />
-          <h2 className="text-sm font-semibold text-gray-900">Financial Year</h2>
+          <Calendar size={15} className="text-white/40" />
+          <h2 className="text-sm font-semibold text-white/85">Financial Year</h2>
         </div>
         <div className="px-5 py-4 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">Current Financial Year</span>
-            <span className="text-sm font-semibold text-gray-900">{fy.label}</span>
+            <span className="text-sm text-white/55">Current Financial Year</span>
+            <span className="text-sm font-semibold text-white/85">{fy.label}</span>
           </div>
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-white/30">
             Indian financial year runs April 1 to March 31. This is computed automatically from the current date.
           </p>
         </div>
@@ -443,15 +443,15 @@ export default function SettingsPage() {
 
       {/* ── Audit Log — Partner only ─────────────────────────────────────── */}
       <RoleGuard allowed={["Partner"]} redirect={false}>
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
           <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
             <ShieldCheck size={15} className="text-blue-600" />
-            <h2 className="text-sm font-semibold text-gray-900">Audit Log</h2>
+            <h2 className="text-sm font-semibold text-white/85">Audit Log</h2>
           </div>
           <div className="px-5 py-4 flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-700">View a timeline of all changes made across clients, journals, compliance and accounts.</p>
-              <p className="text-xs text-gray-400 mt-0.5">Partner access only.</p>
+              <p className="text-sm text-white/65">View a timeline of all changes made across clients, journals, compliance and accounts.</p>
+              <p className="text-xs text-white/30 mt-0.5">Partner access only.</p>
             </div>
             <Link
               href="/settings/audit-log"
@@ -464,19 +464,19 @@ export default function SettingsPage() {
       </RoleGuard>
 
       {/* ── Scheduled Reports ───────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-          <Calendar size={15} className="text-indigo-500" />
-          <h2 className="text-sm font-semibold text-gray-900">Scheduled Reports</h2>
+          <Calendar size={15} className="text-blue-400" />
+          <h2 className="text-sm font-semibold text-white/85">Scheduled Reports</h2>
         </div>
         <div className="px-5 py-4 flex items-center justify-between">
           <div>
-            <p className="text-sm text-gray-700">Automatically email P&L, GST, TDS, and payroll reports to clients on a schedule.</p>
-            <p className="text-xs text-gray-400 mt-0.5">Configure frequency, recipients, and delivery day.</p>
+            <p className="text-sm text-white/65">Automatically email P&L, GST, TDS, and payroll reports to clients on a schedule.</p>
+            <p className="text-xs text-white/30 mt-0.5">Configure frequency, recipients, and delivery day.</p>
           </div>
           <Link
             href="/settings/scheduled-reports"
-            className="px-4 py-1.5 border border-indigo-300 text-indigo-700 text-sm font-medium rounded-lg hover:bg-indigo-50 transition-colors whitespace-nowrap"
+            className="px-4 py-1.5 border border-blue-500/20 text-blue-400 text-sm font-medium rounded-lg hover:bg-blue-500/[0.08] transition-colors whitespace-nowrap"
           >
             Manage Schedules →
           </Link>
@@ -484,15 +484,15 @@ export default function SettingsPage() {
       </div>
 
       {/* ── Danger Zone ──────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-red-100 overflow-hidden">
+      <div className="bg-[#131620] rounded-xl border border-red-100 overflow-hidden">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-red-50">
           <AlertTriangle size={15} className="text-red-500" />
           <h2 className="text-sm font-semibold text-red-700">Danger Zone</h2>
         </div>
         <div className="px-5 py-4 flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-900">Sign Out</p>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-sm font-medium text-white/85">Sign Out</p>
+            <p className="text-xs text-white/30 mt-0.5">
               You will be redirected to the login page.
             </p>
           </div>

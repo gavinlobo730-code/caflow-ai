@@ -175,11 +175,11 @@ function PrintInvoice({
   const grandTotal = taxable + cgstTotal * 2 + igstTotal;
 
   return (
-    <div className="hidden print:block p-8 text-sm font-sans text-gray-900">
+    <div className="hidden print:block p-8 text-sm font-sans text-white/85">
       <div className="text-center mb-4 border-b pb-4">
         <h1 className="text-2xl font-bold">{firmName}</h1>
         <h2 className="text-lg font-semibold mt-1 uppercase tracking-widest">TAX INVOICE</h2>
-        <p className="text-xs text-gray-500 mt-1">CGST Act Section 31</p>
+        <p className="text-xs text-white/40 mt-1">CGST Act Section 31</p>
       </div>
       <div className="grid grid-cols-2 gap-4 mb-4 text-xs">
         <div>
@@ -196,7 +196,7 @@ function PrintInvoice({
       </div>
       <table className="w-full border-collapse text-xs mb-4">
         <thead>
-          <tr className="bg-gray-100">
+          <tr className="bg-white/[0.06]">
             <th className="border px-2 py-1 text-left">Description</th>
             <th className="border px-2 py-1">HSN/SAC</th>
             <th className="border px-2 py-1">Qty</th>
@@ -246,11 +246,11 @@ function PrintInvoice({
           </tbody>
         </table>
       </div>
-      <div className="mt-3 p-2 bg-gray-50 rounded text-xs">
+      <div className="mt-3 p-2 bg-[#0e1017] rounded text-xs">
         <b>Amount in Words:</b> {amountInWords(grandTotal)}
       </div>
-      <div className="mt-3 text-xs text-gray-500">Bank Details: [Your bank details here]</div>
-      <div className="mt-3 text-xs text-gray-400 italic">
+      <div className="mt-3 text-xs text-white/40">Bank Details: [Your bank details here]</div>
+      <div className="mt-3 text-xs text-white/30 italic">
         We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.
       </div>
     </div>
@@ -376,7 +376,7 @@ function NewInvoiceForm({
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-50">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#0e1017]">
       <PrintInvoice
         invoice={{ ...form, taxable_amount_paise: taxable, cgst_paise: cgstTotal, sgst_paise: cgstTotal, igst_paise: igstTotal, total_paise: finalTotal }}
         lines={lines}
@@ -384,7 +384,7 @@ function NewInvoiceForm({
       />
       <div className="max-w-5xl mx-auto p-6 print:hidden">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-gray-900">New Tax Invoice — CGST Act Sec 31</h2>
+          <h2 className="text-xl font-bold text-white/85">New Tax Invoice — CGST Act Sec 31</h2>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => window.print()} className="flex items-center gap-1.5">
               <Printer size={14} />Print
@@ -398,37 +398,37 @@ function NewInvoiceForm({
           <CardContent className="pt-5">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Invoice No</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Invoice No</label>
                 <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.invoice_no} onChange={e => setForm(f => ({ ...f, invoice_no: e.target.value }))} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Date</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Invoice Date</label>
                 <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.invoice_date} onChange={e => setForm(f => ({ ...f, invoice_date: e.target.value }))} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Client</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Client</label>
                 <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.client_id} onChange={e => selectClient(e.target.value)}>
                   <option value="">- Select Client -</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Party Name</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Party Name</label>
                 <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.party_name} onChange={e => setForm(f => ({ ...f, party_name: e.target.value }))} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Party GSTIN</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Party GSTIN</label>
                 <input className="w-full border rounded-lg px-3 py-2 text-sm uppercase font-mono" value={form.party_gstin} onChange={e => setForm(f => ({ ...f, party_gstin: e.target.value.toUpperCase() }))} maxLength={15} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Place of Supply</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Place of Supply</label>
                 <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.place_of_supply} onChange={e => setForm(f => ({ ...f, place_of_supply: e.target.value }))}>
                   {INDIAN_STATES.map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="interstate" checked={form.is_interstate} onChange={e => setForm(f => ({ ...f, is_interstate: e.target.checked }))} />
-                <label htmlFor="interstate" className="text-sm text-gray-700">Inter-State Supply (IGST)</label>
+                <label htmlFor="interstate" className="text-sm text-white/65">Inter-State Supply (IGST)</label>
               </div>
             </div>
           </CardContent>
@@ -443,7 +443,7 @@ function NewInvoiceForm({
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-gray-50 text-xs font-medium text-gray-500 uppercase">
+                  <tr className="border-b bg-[#0e1017] text-xs font-medium text-white/40 uppercase">
                     <th className="text-left px-3 py-2">Description</th>
                     <th className="px-3 py-2">HSN/SAC</th>
                     <th className="px-3 py-2 w-16">Qty</th>
@@ -489,7 +489,7 @@ function NewInvoiceForm({
                         <td className="px-3 py-1.5 text-right font-mono text-xs">{fmtRs(gstAmt)}</td>
                         <td className="px-3 py-1.5 text-right font-mono text-xs font-semibold">{fmtRs(lineT + gstAmt)}</td>
                         <td className="px-3 py-1.5">
-                          <button onClick={() => removeLine(i)} className="text-gray-300 hover:text-red-500"><X size={12} /></button>
+                          <button onClick={() => removeLine(i)} className="text-white/20 hover:text-red-500"><X size={12} /></button>
                         </td>
                       </tr>
                     );
@@ -502,29 +502,29 @@ function NewInvoiceForm({
 
         <div className="flex justify-end mb-6">
           <div className="w-72 space-y-1 text-sm">
-            <div className="flex justify-between"><span className="text-gray-600">Subtotal (Taxable)</span><span className="font-mono">Rs {fmtRs(taxable)}</span></div>
+            <div className="flex justify-between"><span className="text-white/55">Subtotal (Taxable)</span><span className="font-mono">Rs {fmtRs(taxable)}</span></div>
             {!form.is_interstate && (
               <>
-                <div className="flex justify-between"><span className="text-gray-600">CGST</span><span className="font-mono">Rs {fmtRs(cgstTotal)}</span></div>
-                <div className="flex justify-between"><span className="text-gray-600">SGST</span><span className="font-mono">Rs {fmtRs(cgstTotal)}</span></div>
+                <div className="flex justify-between"><span className="text-white/55">CGST</span><span className="font-mono">Rs {fmtRs(cgstTotal)}</span></div>
+                <div className="flex justify-between"><span className="text-white/55">SGST</span><span className="font-mono">Rs {fmtRs(cgstTotal)}</span></div>
               </>
             )}
             {form.is_interstate && (
-              <div className="flex justify-between"><span className="text-gray-600">IGST</span><span className="font-mono">Rs {fmtRs(igstTotal)}</span></div>
+              <div className="flex justify-between"><span className="text-white/55">IGST</span><span className="font-mono">Rs {fmtRs(igstTotal)}</span></div>
             )}
             {roundOff !== 0 && (
-              <div className="flex justify-between"><span className="text-gray-600">Round Off</span><span className="font-mono">Rs {fmtRs(roundOff)}</span></div>
+              <div className="flex justify-between"><span className="text-white/55">Round Off</span><span className="font-mono">Rs {fmtRs(roundOff)}</span></div>
             )}
             <div className="flex justify-between border-t pt-1 font-bold text-base">
               <span>Grand Total</span>
               <span className="font-mono">Rs {fmtRs(finalTotal)}</span>
             </div>
-            <div className="text-xs text-gray-500 italic">{amountInWords(finalTotal)}</div>
+            <div className="text-xs text-white/40 italic">{amountInWords(finalTotal)}</div>
           </div>
         </div>
 
         <div className="mb-4">
-          <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+          <label className="block text-xs font-medium text-white/65 mb-1">Notes</label>
           <textarea className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
         </div>
 
@@ -640,11 +640,11 @@ export default function InvoicesPage() {
     return true;
   });
 
-  if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><p className="text-gray-500">Loading invoices...</p></div>;
+  if (loading) return <div className="min-h-screen bg-[#0e1017] flex items-center justify-center"><p className="text-white/40">Loading invoices...</p></div>;
 
   if (tablesError) {
     return (
-      <div className="min-h-screen bg-gray-50 p-8">
+      <div className="min-h-screen bg-[#0e1017] p-8">
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -652,7 +652,7 @@ export default function InvoicesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-gray-600 mb-4">The sales invoice tables do not exist yet. Run this SQL:</p>
+            <p className="text-sm text-white/55 mb-4">The sales invoice tables do not exist yet. Run this SQL:</p>
             <pre className="bg-gray-900 text-green-400 p-4 rounded-lg text-xs overflow-auto whitespace-pre-wrap">{INSTALL_SQL}</pre>
           </CardContent>
         </Card>
@@ -661,7 +661,7 @@ export default function InvoicesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-[#0e1017] p-8">
       {showNew && firmId && (
         <NewInvoiceForm
           clients={clients}
@@ -675,8 +675,8 @@ export default function InvoicesPage() {
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Sales Invoices</h1>
-            <p className="text-sm text-gray-500 mt-0.5">CGST Act Section 31 - Tax Invoice</p>
+            <h1 className="text-2xl font-bold text-white/85">Sales Invoices</h1>
+            <p className="text-sm text-white/40 mt-0.5">CGST Act Section 31 - Tax Invoice</p>
           </div>
           <Button variant="outline" onClick={() => setShowImport(true)} className="flex items-center gap-1.5">
             <Upload size={14} />Import CSV
@@ -690,14 +690,14 @@ export default function InvoicesPage() {
           <CardContent className="pt-4">
             <div className="flex flex-wrap gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Client</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Client</label>
                 <select className="border rounded-lg px-3 py-2 text-sm" value={filterClient} onChange={e => setFilterClient(e.target.value)}>
                   <option value="">All Clients</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Status</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Status</label>
                 <select className="border rounded-lg px-3 py-2 text-sm" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
                   <option value="">All Status</option>
                   <option value="draft">Draft</option>
@@ -706,11 +706,11 @@ export default function InvoicesPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">From</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">From</label>
                 <input type="date" className="border rounded-lg px-3 py-2 text-sm" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">To</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">To</label>
                 <input type="date" className="border rounded-lg px-3 py-2 text-sm" value={filterTo} onChange={e => setFilterTo(e.target.value)} />
               </div>
             </div>
@@ -720,7 +720,7 @@ export default function InvoicesPage() {
         <Card>
           <CardContent className="p-0">
             {filtered.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">
+              <div className="text-center py-12 text-white/30">
                 <FileText size={32} className="mx-auto mb-3 opacity-30" />
                 <p>No invoices yet. Click &quot;New Invoice&quot; to create one.</p>
               </div>
@@ -728,7 +728,7 @@ export default function InvoicesPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    <tr className="border-b text-xs font-medium text-white/40 uppercase tracking-wide">
                       <th className="text-left py-3 px-4">Invoice No</th>
                       <th className="text-left py-3 px-4">Date</th>
                       <th className="text-left py-3 px-4">Party</th>
@@ -744,16 +744,16 @@ export default function InvoicesPage() {
                       const gst = inv.cgst_paise + inv.sgst_paise + inv.igst_paise;
                       const client = clients.find(c => c.id === inv.client_id);
                       return (
-                        <tr key={inv.id} className="border-b hover:bg-gray-50">
+                        <tr key={inv.id} className="border-b hover:bg-[#0e1017]">
                           <td className="py-3 px-4 font-mono text-xs font-medium">{inv.invoice_no}</td>
-                          <td className="py-3 px-4 text-gray-600">{inv.invoice_date}</td>
+                          <td className="py-3 px-4 text-white/55">{inv.invoice_date}</td>
                           <td className="py-3 px-4 font-medium">{inv.party_name || client?.client_name || "—"}</td>
                           <td className="py-3 px-4 font-mono text-xs">{inv.party_gstin || "—"}</td>
                           <td className="py-3 px-4 text-right font-mono">Rs {fmtRs(inv.taxable_amount_paise)}</td>
                           <td className="py-3 px-4 text-right font-mono">Rs {fmtRs(gst)}</td>
                           <td className="py-3 px-4 text-right font-mono font-semibold">Rs {fmtRs(inv.total_paise)}</td>
                           <td className="py-3 px-4 text-center">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[inv.status] ?? "bg-gray-100 text-gray-600"}`}>
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[inv.status] ?? "bg-white/[0.06] text-white/55"}`}>
                               {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
                             </span>
                           </td>

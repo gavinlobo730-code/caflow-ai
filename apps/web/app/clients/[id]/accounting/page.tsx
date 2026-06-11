@@ -198,13 +198,13 @@ export default function AccountingPage() {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Sub-tab bar */}
       <div className="flex-shrink-0 overflow-x-auto px-6 pt-5 pb-0">
-        <div className="flex gap-0.5 bg-gray-50 rounded-lg p-1 w-fit">
+        <div className="flex gap-0.5 bg-[#0e1017] rounded-lg p-1 w-fit">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
-                tab === t.id ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                tab === t.id ? "bg-[#131620] text-white/85 shadow-sm" : "text-white/40 hover:text-white/65"
               }`}
             >
               {t.label}
@@ -332,7 +332,7 @@ function AccountingDashboard({
 
   const netPL = stats.revenue_paise - stats.expenses_paise;
 
-  if (loading) return <div className="space-y-4 max-w-4xl">{[...Array(3)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-gray-50 animate-pulse" />)}</div>;
+  if (loading) return <div className="space-y-4 max-w-4xl">{[...Array(3)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-[#0e1017] animate-pulse" />)}</div>;
 
   return (
     <div className="space-y-5 max-w-4xl">
@@ -357,20 +357,20 @@ function AccountingDashboard({
 
       {/* Recent journal entries */}
       {recentEntries.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
-            <p className="text-xs font-semibold text-gray-700">Recent Entries</p>
+            <p className="text-xs font-semibold text-white/65">Recent Entries</p>
             <button onClick={() => onNavigate("journal")} className="text-xs text-blue-600 hover:underline">View all</button>
           </div>
           <table className="w-full text-xs">
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-white/[0.03]">
               {recentEntries.map((e) => (
-                <tr key={e.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap w-24">{e.entry_date}</td>
-                  <td className="px-3 py-2.5 text-gray-700 truncate max-w-xs">{e.narration}</td>
-                  <td className="px-3 py-2.5 text-gray-400">{e.entry_type}</td>
+                <tr key={e.id} className="hover:bg-[#0e1017]">
+                  <td className="px-4 py-2.5 text-white/40 whitespace-nowrap w-24">{e.entry_date}</td>
+                  <td className="px-3 py-2.5 text-white/65 truncate max-w-xs">{e.narration}</td>
+                  <td className="px-3 py-2.5 text-white/30">{e.entry_type}</td>
                   <td className="px-4 py-2.5">
-                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${e.is_posted ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${e.is_posted ? "bg-green-100 text-green-700" : "bg-white/[0.06] text-white/40"}`}>
                       {e.is_posted ? "Posted" : "Draft"}
                     </span>
                   </td>
@@ -389,19 +389,19 @@ function DashCard({ label, value, accent, action }: { label: string; value: stri
     green: "bg-green-50 border-green-100", red: "bg-red-50 border-red-100",
     emerald: "bg-emerald-50 border-emerald-100", orange: "bg-orange-50 border-orange-100",
     blue: "bg-blue-50 border-blue-100", amber: "bg-amber-50 border-amber-100",
-    gray: "bg-white border-gray-100",
+    gray: "bg-[#131620] border-white/[0.05]",
   };
   const textColors: Record<string, string> = {
     green: "text-green-800", red: "text-red-800", emerald: "text-emerald-800",
-    orange: "text-orange-800", blue: "text-blue-800", amber: "text-amber-800", gray: "text-gray-800",
+    orange: "text-orange-800", blue: "text-blue-800", amber: "text-amber-800", gray: "text-white/75",
   };
   return (
     <button
       onClick={action}
       className={`rounded-xl border p-4 text-left transition-shadow hover:shadow-sm ${colors[accent] ?? colors.gray}`}
     >
-      <p className="text-[10px] font-medium text-gray-500 mb-1">{label}</p>
-      <p className={`text-lg font-bold tabular-nums ${textColors[accent] ?? "text-gray-800"}`}>{value}</p>
+      <p className="text-[10px] font-medium text-white/40 mb-1">{label}</p>
+      <p className={`text-lg font-bold tabular-nums ${textColors[accent] ?? "text-white/75"}`}>{value}</p>
     </button>
   );
 }
@@ -423,31 +423,31 @@ function ChartOfAccounts({ accounts, loading, onRefresh }: { accounts: Account[]
   return (
     <div className="space-y-4 max-w-3xl">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-500">{accounts.length} accounts</p>
-        <button onClick={onRefresh} className="p-1.5 rounded border border-gray-200 hover:bg-gray-50 text-gray-500">
+        <p className="text-xs text-white/40">{accounts.length} accounts</p>
+        <button onClick={onRefresh} className="p-1.5 rounded border border-white/[0.07] hover:bg-[#0e1017] text-white/40">
           <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
         </button>
       </div>
 
       {loading ? (
-        <div className="space-y-3">{[...Array(3)].map((_, i) => <div key={i} className="h-24 rounded-lg bg-gray-50 animate-pulse" />)}</div>
+        <div className="space-y-3">{[...Array(3)].map((_, i) => <div key={i} className="h-24 rounded-lg bg-[#0e1017] animate-pulse" />)}</div>
       ) : (
         TYPE_ORDER.map((type) =>
           grouped[type].length > 0 ? (
-            <div key={type} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <div key={type} className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
               <div className="px-4 py-2.5 border-b border-gray-50 flex items-center gap-2">
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${TYPE_COLORS[type]}`}>{type}</span>
-                <span className="text-xs text-gray-400">{grouped[type].length} accounts</span>
+                <span className="text-xs text-white/30">{grouped[type].length} accounts</span>
               </div>
               <table className="w-full text-xs">
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-white/[0.03]">
                   {grouped[type].map((a) => (
-                    <tr key={a.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 font-mono text-gray-500 w-20">{a.account_code}</td>
-                      <td className="px-3 py-2 font-medium text-gray-800">{a.account_name}</td>
-                      <td className="px-3 py-2 text-gray-400">{a.account_subtype ?? ""}</td>
+                    <tr key={a.id} className="hover:bg-[#0e1017]">
+                      <td className="px-4 py-2 font-mono text-white/40 w-20">{a.account_code}</td>
+                      <td className="px-3 py-2 font-medium text-white/75">{a.account_name}</td>
+                      <td className="px-3 py-2 text-white/30">{a.account_subtype ?? ""}</td>
                       <td className="px-4 py-2 text-right">
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-50 text-gray-400">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#0e1017] text-white/30">
                           {a.client_id ? "Client" : "Firm"}
                         </span>
                       </td>
@@ -460,7 +460,7 @@ function ChartOfAccounts({ accounts, loading, onRefresh }: { accounts: Account[]
         )
       )}
       {!loading && accounts.length === 0 && (
-        <div className="text-center py-12 text-gray-400 text-sm">No accounts found. Accounts are seeded from the firm-level chart of accounts.</div>
+        <div className="text-center py-12 text-white/30 text-sm">No accounts found. Accounts are seeded from the firm-level chart of accounts.</div>
       )}
     </div>
   );
@@ -564,32 +564,32 @@ function JournalEntryForm({
   return (
     <div className="space-y-5 max-w-3xl">
       {success && <div className="bg-green-50 border border-green-100 rounded-lg px-4 py-3 text-sm text-green-700 font-medium">Journal entry saved successfully.</div>}
-      <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-gray-900">New Journal Entry</h3>
+      <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-5 space-y-4">
+        <h3 className="text-sm font-semibold text-white/85">New Journal Entry</h3>
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Date *</label>
-            <input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <label className="block text-xs font-medium text-white/55 mb-1">Date *</label>
+            <input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
-            <select value={entryType} onChange={(e) => setEntryType(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <label className="block text-xs font-medium text-white/55 mb-1">Type</label>
+            <select value={entryType} onChange={(e) => setEntryType(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
               {ENTRY_TYPES.map((t) => <option key={t}>{t}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Reference No.</label>
-            <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="INV-001" className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <label className="block text-xs font-medium text-white/55 mb-1">Reference No.</label>
+            <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="INV-001" className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Narration *</label>
-          <input value={narration} onChange={(e) => setNarration(e.target.value)} placeholder="Being goods sold to ABC Ltd..." className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <label className="block text-xs font-medium text-white/55 mb-1">Narration *</label>
+          <input value={narration} onChange={(e) => setNarration(e.target.value)} placeholder="Being goods sold to ABC Ltd..." className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-gray-100 text-gray-400">
+              <tr className="border-b border-white/[0.05] text-white/30">
                 <th className="pb-2 text-left font-semibold">Account</th>
                 <th className="pb-2 text-right font-semibold w-28">Debit (₹)</th>
                 <th className="pb-2 text-right font-semibold w-28">Credit (₹)</th>
@@ -597,11 +597,11 @@ function JournalEntryForm({
                 <th className="pb-2 w-6" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-white/[0.03]">
               {lines.map((line, idx) => (
                 <tr key={idx}>
                   <td className="py-1.5 pr-2">
-                    <select value={line.account_id} onChange={(e) => setLine(idx, { account_id: e.target.value })} className="w-full px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs">
+                    <select value={line.account_id} onChange={(e) => setLine(idx, { account_id: e.target.value })} className="w-full px-2 py-1 border border-white/[0.07] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs">
                       <option value="">— Select account —</option>
                       {["Asset","Liability","Equity","Revenue","Expense"].map((type) => (
                         <optgroup key={type} label={type}>
@@ -613,21 +613,21 @@ function JournalEntryForm({
                     </select>
                   </td>
                   <td className="py-1.5 px-2">
-                    <input type="number" min="0" step="0.01" value={line.debit_paise === 0 ? "" : (line.debit_paise / 100).toFixed(2)} onChange={(e) => { const v = Math.round(parseFloat(e.target.value || "0") * 100); setLine(idx, { debit_paise: v, credit_paise: v > 0 ? 0 : line.credit_paise }); }} placeholder="0.00" className="w-full px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                    <input type="number" min="0" step="0.01" value={line.debit_paise === 0 ? "" : (line.debit_paise / 100).toFixed(2)} onChange={(e) => { const v = Math.round(parseFloat(e.target.value || "0") * 100); setLine(idx, { debit_paise: v, credit_paise: v > 0 ? 0 : line.credit_paise }); }} placeholder="0.00" className="w-full px-2 py-1 border border-white/[0.07] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
                   </td>
                   <td className="py-1.5 px-2">
-                    <input type="number" min="0" step="0.01" value={line.credit_paise === 0 ? "" : (line.credit_paise / 100).toFixed(2)} onChange={(e) => { const v = Math.round(parseFloat(e.target.value || "0") * 100); setLine(idx, { credit_paise: v, debit_paise: v > 0 ? 0 : line.debit_paise }); }} placeholder="0.00" className="w-full px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                    <input type="number" min="0" step="0.01" value={line.credit_paise === 0 ? "" : (line.credit_paise / 100).toFixed(2)} onChange={(e) => { const v = Math.round(parseFloat(e.target.value || "0") * 100); setLine(idx, { credit_paise: v, debit_paise: v > 0 ? 0 : line.debit_paise }); }} placeholder="0.00" className="w-full px-2 py-1 border border-white/[0.07] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
                   </td>
-                  <td className="py-1.5 pl-3"><input value={line.narration} onChange={(e) => setLine(idx, { narration: e.target.value })} placeholder="optional" className="w-full px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" /></td>
-                  <td className="py-1.5 pl-1">{lines.length > 2 && <button onClick={() => removeLine(idx)} className="text-gray-300 hover:text-red-400 font-bold">×</button>}</td>
+                  <td className="py-1.5 pl-3"><input value={line.narration} onChange={(e) => setLine(idx, { narration: e.target.value })} placeholder="optional" className="w-full px-2 py-1 border border-white/[0.07] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" /></td>
+                  <td className="py-1.5 pl-1">{lines.length > 2 && <button onClick={() => removeLine(idx)} className="text-white/20 hover:text-red-400 font-bold">×</button>}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="border-t border-gray-100 text-xs font-semibold">
-                <td className="pt-2 text-gray-500">Total</td>
-                <td className="pt-2 text-right text-gray-700 px-2">{totalDebit > 0 ? `₹${(totalDebit/100).toFixed(2)}` : "—"}</td>
-                <td className="pt-2 text-right text-gray-700 px-2">{totalCredit > 0 ? `₹${(totalCredit/100).toFixed(2)}` : "—"}</td>
+              <tr className="border-t border-white/[0.05] text-xs font-semibold">
+                <td className="pt-2 text-white/40">Total</td>
+                <td className="pt-2 text-right text-white/65 px-2">{totalDebit > 0 ? `₹${(totalDebit/100).toFixed(2)}` : "—"}</td>
+                <td className="pt-2 text-right text-white/65 px-2">{totalCredit > 0 ? `₹${(totalCredit/100).toFixed(2)}` : "—"}</td>
                 <td colSpan={2} className="pt-2 pl-3">
                   {totalDebit > 0 && totalDebit !== totalCredit && <span className="text-red-500 text-[10px]">Difference: ₹{(Math.abs(totalDebit - totalCredit)/100).toFixed(2)}</span>}
                   {isBalanced && <span className="text-green-600 text-[10px]">✓ Balanced</span>}
@@ -639,26 +639,26 @@ function JournalEntryForm({
         <button onClick={addLine} className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Plus size={12} /> Add line</button>
         {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
         <div className="flex gap-3 justify-end pt-1">
-          <button onClick={() => handleSave(false)} disabled={saving || !isBalanced} className="text-xs px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40">Save Draft</button>
+          <button onClick={() => handleSave(false)} disabled={saving || !isBalanced} className="text-xs px-4 py-2 border border-white/[0.07] rounded-lg hover:bg-[#0e1017] disabled:opacity-40">Save Draft</button>
           <button onClick={() => handleSave(true)} disabled={saving || !isBalanced} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">{saving ? "Saving…" : "Post Entry"}</button>
         </div>
       </div>
 
       {recentEntries.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-50"><p className="text-xs font-semibold text-gray-700">Recent Entries</p></div>
+        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-50"><p className="text-xs font-semibold text-white/65">Recent Entries</p></div>
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-gray-50 text-gray-400"><th className="px-4 py-2 text-left font-semibold">Date</th><th className="px-3 py-2 text-left font-semibold">Narration</th><th className="px-3 py-2 text-left font-semibold">Type</th><th className="px-3 py-2 text-right font-semibold">Amount</th><th className="px-4 py-2 text-left font-semibold">Status</th></tr></thead>
-            <tbody className="divide-y divide-gray-50">
+            <thead><tr className="border-b border-gray-50 text-white/30"><th className="px-4 py-2 text-left font-semibold">Date</th><th className="px-3 py-2 text-left font-semibold">Narration</th><th className="px-3 py-2 text-left font-semibold">Type</th><th className="px-3 py-2 text-right font-semibold">Amount</th><th className="px-4 py-2 text-left font-semibold">Status</th></tr></thead>
+            <tbody className="divide-y divide-white/[0.03]">
               {recentEntries.map((e) => {
                 const totalDr = (e.lines ?? []).reduce((s, l) => s + l.debit_paise, 0);
                 return (
-                  <tr key={e.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{e.entry_date}</td>
-                    <td className="px-3 py-2 text-gray-700 truncate max-w-[200px]">{e.narration}</td>
-                    <td className="px-3 py-2 text-gray-400">{e.entry_type}</td>
-                    <td className="px-3 py-2 text-right font-mono text-gray-700">₹{(totalDr/100).toFixed(2)}</td>
-                    <td className="px-4 py-2"><span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${e.is_posted ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{e.is_posted ? "Posted" : "Draft"}</span></td>
+                  <tr key={e.id} className="hover:bg-[#0e1017]">
+                    <td className="px-4 py-2 text-white/40 whitespace-nowrap">{e.entry_date}</td>
+                    <td className="px-3 py-2 text-white/65 truncate max-w-[200px]">{e.narration}</td>
+                    <td className="px-3 py-2 text-white/30">{e.entry_type}</td>
+                    <td className="px-3 py-2 text-right font-mono text-white/65">₹{(totalDr/100).toFixed(2)}</td>
+                    <td className="px-4 py-2"><span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${e.is_posted ? "bg-green-100 text-green-700" : "bg-white/[0.06] text-white/40"}`}>{e.is_posted ? "Posted" : "Draft"}</span></td>
                   </tr>
                 );
               })}
@@ -709,9 +709,9 @@ function GeneralLedger({ accounts, clientId, financialYear }: { accounts: Accoun
 
   return (
     <div className="space-y-4 max-w-4xl">
-      <div className="bg-white rounded-xl border border-gray-100 p-4">
-        <label className="block text-xs font-medium text-gray-600 mb-1.5">Select Account</label>
-        <select value={selectedAccountId} onChange={(e) => { setSelectedAccountId(e.target.value); loadLedger(e.target.value); }} className="w-full max-w-xs px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
+        <label className="block text-xs font-medium text-white/55 mb-1.5">Select Account</label>
+        <select value={selectedAccountId} onChange={(e) => { setSelectedAccountId(e.target.value); loadLedger(e.target.value); }} className="w-full max-w-xs px-3 py-2 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="">— Choose account —</option>
           {["Asset","Liability","Equity","Revenue","Expense"].map((type) => (
             <optgroup key={type} label={type}>
@@ -722,22 +722,22 @@ function GeneralLedger({ accounts, clientId, financialYear }: { accounts: Accoun
       </div>
 
       {selectedAccountId && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
-            <p className="text-xs font-semibold text-gray-700">Ledger — FY {financialYear} — {accounts.find((a) => a.id === selectedAccountId)?.account_name}</p>
-            {loading && <RefreshCw size={13} className="animate-spin text-gray-400" />}
+            <p className="text-xs font-semibold text-white/65">Ledger — FY {financialYear} — {accounts.find((a) => a.id === selectedAccountId)?.account_name}</p>
+            {loading && <RefreshCw size={13} className="animate-spin text-white/30" />}
           </div>
           {!loading && lines.length > 0 ? (
             <table className="w-full text-xs">
-              <thead><tr className="border-b border-gray-100 text-gray-400"><th className="px-4 py-2.5 text-left font-semibold">Date</th><th className="px-3 py-2.5 text-left font-semibold">Particulars</th><th className="px-3 py-2.5 text-left font-semibold">Ref</th><th className="px-3 py-2.5 text-right font-semibold">Debit</th><th className="px-3 py-2.5 text-right font-semibold">Credit</th><th className="px-4 py-2.5 text-right font-semibold">Balance</th></tr></thead>
-              <tbody className="divide-y divide-gray-50">
+              <thead><tr className="border-b border-white/[0.05] text-white/30"><th className="px-4 py-2.5 text-left font-semibold">Date</th><th className="px-3 py-2.5 text-left font-semibold">Particulars</th><th className="px-3 py-2.5 text-left font-semibold">Ref</th><th className="px-3 py-2.5 text-right font-semibold">Debit</th><th className="px-3 py-2.5 text-right font-semibold">Credit</th><th className="px-4 py-2.5 text-right font-semibold">Balance</th></tr></thead>
+              <tbody className="divide-y divide-white/[0.03]">
                 {lines.map((l) => (
-                  <tr key={l.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{l.entry_date}</td>
-                    <td className="px-3 py-2 text-gray-700">{l.narration}</td>
-                    <td className="px-3 py-2 font-mono text-gray-400">{l.reference_no ?? "—"}</td>
-                    <td className="px-3 py-2 text-right font-mono text-gray-700">{fmt(l.debit_paise)}</td>
-                    <td className="px-3 py-2 text-right font-mono text-gray-700">{fmt(l.credit_paise)}</td>
+                  <tr key={l.id} className="hover:bg-[#0e1017]">
+                    <td className="px-4 py-2 text-white/40 whitespace-nowrap">{l.entry_date}</td>
+                    <td className="px-3 py-2 text-white/65">{l.narration}</td>
+                    <td className="px-3 py-2 font-mono text-white/30">{l.reference_no ?? "—"}</td>
+                    <td className="px-3 py-2 text-right font-mono text-white/65">{fmt(l.debit_paise)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-white/65">{fmt(l.credit_paise)}</td>
                     <td className={`px-4 py-2 text-right font-mono font-semibold ${l.is_debit ? "text-blue-700" : "text-orange-700"}`}>
                       {fmt(Math.abs(l.running_balance_paise))}<span className="text-[10px] font-normal ml-1 opacity-60">{l.is_debit ? "Dr" : "Cr"}</span>
                     </td>
@@ -746,7 +746,7 @@ function GeneralLedger({ accounts, clientId, financialYear }: { accounts: Accoun
               </tbody>
             </table>
           ) : !loading ? (
-            <div className="text-center py-10 text-gray-400 text-sm">No posted transactions for this account in FY {financialYear}.</div>
+            <div className="text-center py-10 text-white/30 text-sm">No posted transactions for this account in FY {financialYear}.</div>
           ) : null}
         </div>
       )}
@@ -800,35 +800,35 @@ function TrialBalance({ clientId, financialYear }: { clientId: string; financial
   return (
     <div className="space-y-4 max-w-3xl">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-gray-700">Trial Balance — FY {financialYear}</p>
-        <button onClick={load} className="p-1.5 rounded border border-gray-200 hover:bg-gray-50 text-gray-500"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+        <p className="text-xs font-semibold text-white/65">Trial Balance — FY {financialYear}</p>
+        <button onClick={load} className="p-1.5 rounded border border-white/[0.07] hover:bg-[#0e1017] text-white/40"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
       </div>
-      {loading ? <div className="h-40 rounded-lg bg-gray-50 animate-pulse" /> : loaded && rows.length > 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      {loading ? <div className="h-40 rounded-lg bg-[#0e1017] animate-pulse" /> : loaded && rows.length > 0 ? (
+        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-gray-100 text-gray-400"><th className="px-4 py-3 text-left font-semibold">Code</th><th className="px-3 py-3 text-left font-semibold">Account</th><th className="px-3 py-3 text-left font-semibold">Type</th><th className="px-3 py-3 text-right font-semibold">Debit (₹)</th><th className="px-4 py-3 text-right font-semibold">Credit (₹)</th></tr></thead>
-            <tbody className="divide-y divide-gray-50">
+            <thead><tr className="border-b border-white/[0.05] text-white/30"><th className="px-4 py-3 text-left font-semibold">Code</th><th className="px-3 py-3 text-left font-semibold">Account</th><th className="px-3 py-3 text-left font-semibold">Type</th><th className="px-3 py-3 text-right font-semibold">Debit (₹)</th><th className="px-4 py-3 text-right font-semibold">Credit (₹)</th></tr></thead>
+            <tbody className="divide-y divide-white/[0.03]">
               {rows.map((r) => (
-                <tr key={r.account_id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 font-mono text-gray-500">{r.account_code}</td>
-                  <td className="px-3 py-2 font-medium text-gray-800">{r.account_name}</td>
-                  <td className="px-3 py-2 text-gray-400">{r.account_type}</td>
-                  <td className="px-3 py-2 text-right font-mono text-gray-700">{r.total_debit_paise > 0 ? fmt(r.total_debit_paise) : "—"}</td>
-                  <td className="px-4 py-2 text-right font-mono text-gray-700">{r.total_credit_paise > 0 ? fmt(r.total_credit_paise) : "—"}</td>
+                <tr key={r.account_id} className="hover:bg-[#0e1017]">
+                  <td className="px-4 py-2 font-mono text-white/40">{r.account_code}</td>
+                  <td className="px-3 py-2 font-medium text-white/75">{r.account_name}</td>
+                  <td className="px-3 py-2 text-white/30">{r.account_type}</td>
+                  <td className="px-3 py-2 text-right font-mono text-white/65">{r.total_debit_paise > 0 ? fmt(r.total_debit_paise) : "—"}</td>
+                  <td className="px-4 py-2 text-right font-mono text-white/65">{r.total_credit_paise > 0 ? fmt(r.total_credit_paise) : "—"}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="border-t-2 border-gray-200 font-semibold">
-                <td colSpan={3} className="px-4 py-3 text-gray-700 text-sm">Total</td>
-                <td className="px-3 py-3 text-right font-mono text-gray-900 text-sm">₹{(grandDebit/100).toFixed(2)}</td>
-                <td className="px-4 py-3 text-right font-mono text-gray-900 text-sm">₹{(grandCredit/100).toFixed(2)}</td>
+              <tr className="border-t-2 border-white/[0.07] font-semibold">
+                <td colSpan={3} className="px-4 py-3 text-white/65 text-sm">Total</td>
+                <td className="px-3 py-3 text-right font-mono text-white/85 text-sm">₹{(grandDebit/100).toFixed(2)}</td>
+                <td className="px-4 py-3 text-right font-mono text-white/85 text-sm">₹{(grandCredit/100).toFixed(2)}</td>
               </tr>
               <tr><td colSpan={5} className="px-4 pb-3">{isBalanced ? <span className="text-xs text-green-600 font-medium">✓ Trial Balance is balanced</span> : <span className="text-xs text-red-600 font-medium">✗ Out of balance by ₹{(Math.abs(grandDebit-grandCredit)/100).toFixed(2)}</span>}</td></tr>
             </tfoot>
           </table>
         </div>
-      ) : loaded ? <div className="text-center py-12 text-gray-400 text-sm">No posted journal entries for FY {financialYear}.</div> : null}
+      ) : loaded ? <div className="text-center py-12 text-white/30 text-sm">No posted journal entries for FY {financialYear}.</div> : null}
     </div>
   );
 }
@@ -891,25 +891,25 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
   return (
     <div className="space-y-4 max-w-2xl">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-gray-700">Statement of Profit & Loss — FY {financialYear}</p>
+        <p className="text-xs font-semibold text-white/65">Statement of Profit & Loss — FY {financialYear}</p>
         <div className="flex gap-2">
-          <button onClick={load} className="p-1.5 rounded border border-gray-200 hover:bg-gray-50 text-gray-500"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
-          <button onClick={() => window.print()} className="p-1.5 rounded border border-gray-200 hover:bg-gray-50 text-gray-500" title="Print"><Printer size={13} /></button>
+          <button onClick={load} className="p-1.5 rounded border border-white/[0.07] hover:bg-[#0e1017] text-white/40"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button onClick={() => window.print()} className="p-1.5 rounded border border-white/[0.07] hover:bg-[#0e1017] text-white/40" title="Print"><Printer size={13} /></button>
         </div>
       </div>
 
-      {loading && <div className="h-48 rounded-lg bg-gray-50 animate-pulse" />}
+      {loading && <div className="h-48 rounded-lg bg-[#0e1017] animate-pulse" />}
       {!loading && loaded && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden print:border-0">
-          <div className="px-5 py-4 bg-gray-50 border-b border-gray-100 print:bg-white">
-            <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Statement of Profit & Loss</p>
-            <p className="text-[10px] text-gray-400 mt-0.5">For the year ended 31 March {parseInt(financialYear.split("-")[0]) + 1}</p>
+        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden print:border-0">
+          <div className="px-5 py-4 bg-[#0e1017] border-b border-white/[0.05] print:bg-[#131620]">
+            <p className="text-xs font-bold text-white/55 uppercase tracking-wide">Statement of Profit & Loss</p>
+            <p className="text-[10px] text-white/30 mt-0.5">For the year ended 31 March {parseInt(financialYear.split("-")[0]) + 1}</p>
           </div>
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-gray-100 text-gray-400 text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
+            <thead><tr className="border-b border-white/[0.05] text-white/30 text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
             <tbody>
               {/* Revenue */}
-              <tr><td colSpan={2} className="px-5 py-2 font-semibold text-gray-700 bg-gray-50 text-[10px] uppercase tracking-wide">I. Revenue</td></tr>
+              <tr><td colSpan={2} className="px-5 py-2 font-semibold text-white/65 bg-[#0e1017] text-[10px] uppercase tracking-wide">I. Revenue</td></tr>
               {PL_REV_ORDER.map((bucket) => {
                 const items = revBuckets[bucket] ?? [];
                 if (items.length === 0) return null;
@@ -918,27 +918,27 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
                   <PLSection key={bucket} label={bucket} items={items} total={total} />
                 );
               })}
-              <tr className="border-t border-gray-200 font-semibold">
-                <td className="px-5 py-2.5 text-gray-800">Total Revenue (I)</td>
-                <td className="px-4 py-2.5 text-right font-mono text-gray-900">{fmt(totalRevenue)}</td>
+              <tr className="border-t border-white/[0.07] font-semibold">
+                <td className="px-5 py-2.5 text-white/75">Total Revenue (I)</td>
+                <td className="px-4 py-2.5 text-right font-mono text-white/85">{fmt(totalRevenue)}</td>
               </tr>
 
               {/* Expenses */}
-              <tr><td colSpan={2} className="px-5 py-2 font-semibold text-gray-700 bg-gray-50 text-[10px] uppercase tracking-wide">II. Expenses</td></tr>
+              <tr><td colSpan={2} className="px-5 py-2 font-semibold text-white/65 bg-[#0e1017] text-[10px] uppercase tracking-wide">II. Expenses</td></tr>
               {PL_EXP_ORDER.map((bucket) => {
                 const items = expBuckets[bucket] ?? [];
                 if (items.length === 0) return null;
                 const total = items.reduce((s, b) => s + b.net_paise, 0);
                 return <PLSection key={bucket} label={bucket} items={items} total={total} />;
               })}
-              <tr className="border-t border-gray-200 font-semibold">
-                <td className="px-5 py-2.5 text-gray-800">Total Expenses (II)</td>
-                <td className="px-4 py-2.5 text-right font-mono text-gray-900">{fmt(totalExpenses)}</td>
+              <tr className="border-t border-white/[0.07] font-semibold">
+                <td className="px-5 py-2.5 text-white/75">Total Expenses (II)</td>
+                <td className="px-4 py-2.5 text-right font-mono text-white/85">{fmt(totalExpenses)}</td>
               </tr>
 
               {/* Net P&L */}
               <tr className={`border-t-2 border-gray-300 font-bold text-sm ${netPL >= 0 ? "bg-green-50" : "bg-red-50"}`}>
-                <td className="px-5 py-3 text-gray-900">
+                <td className="px-5 py-3 text-white/85">
                   {netPL >= 0 ? "III. Profit for the Year (I − II)" : "III. Loss for the Year (II − I)"}
                 </td>
                 <td className={`px-4 py-3 text-right font-mono ${netPL >= 0 ? "text-green-700" : "text-red-700"}`}>
@@ -947,7 +947,7 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
               </tr>
             </tbody>
           </table>
-          {balances.length === 0 && <div className="text-center py-12 text-gray-400 text-sm">No posted entries with Revenue or Expense accounts in FY {financialYear}.</div>}
+          {balances.length === 0 && <div className="text-center py-12 text-white/30 text-sm">No posted entries with Revenue or Expense accounts in FY {financialYear}.</div>}
         </div>
       )}
     </div>
@@ -958,12 +958,12 @@ function PLSection({ label, items, total }: { label: string; items: AccountBalan
   const [open, setOpen] = useState(true);
   return (
     <>
-      <tr className="cursor-pointer hover:bg-gray-50" onClick={() => setOpen((o) => !o)}>
-        <td className="px-5 py-2 text-gray-700 font-medium pl-8">{label}</td>
-        <td className="px-4 py-2 text-right font-mono text-gray-700">{fmt(total)}</td>
+      <tr className="cursor-pointer hover:bg-[#0e1017]" onClick={() => setOpen((o) => !o)}>
+        <td className="px-5 py-2 text-white/65 font-medium pl-8">{label}</td>
+        <td className="px-4 py-2 text-right font-mono text-white/65">{fmt(total)}</td>
       </tr>
       {open && items.map((item) => (
-        <tr key={item.account_id} className="text-gray-400">
+        <tr key={item.account_id} className="text-white/30">
           <td className="px-5 py-1.5 pl-14">{item.account_name}</td>
           <td className="px-4 py-1.5 text-right font-mono">{fmt(item.net_paise)}</td>
         </tr>
@@ -1044,48 +1044,48 @@ function BalanceSheet({ clientId, financialYear }: { clientId: string; financial
   return (
     <div className="space-y-4 max-w-2xl">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-gray-700">Balance Sheet — as at 31 March {parseInt(financialYear.split("-")[0]) + 1}</p>
+        <p className="text-xs font-semibold text-white/65">Balance Sheet — as at 31 March {parseInt(financialYear.split("-")[0]) + 1}</p>
         <div className="flex gap-2">
-          <button onClick={load} className="p-1.5 rounded border border-gray-200 hover:bg-gray-50 text-gray-500"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
-          <button onClick={() => window.print()} className="p-1.5 rounded border border-gray-200 hover:bg-gray-50 text-gray-500" title="Print"><Printer size={13} /></button>
+          <button onClick={load} className="p-1.5 rounded border border-white/[0.07] hover:bg-[#0e1017] text-white/40"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button onClick={() => window.print()} className="p-1.5 rounded border border-white/[0.07] hover:bg-[#0e1017] text-white/40" title="Print"><Printer size={13} /></button>
         </div>
       </div>
 
-      {loading && <div className="h-48 rounded-lg bg-gray-50 animate-pulse" />}
+      {loading && <div className="h-48 rounded-lg bg-[#0e1017] animate-pulse" />}
       {!loading && loaded && (
         <div className="space-y-4">
           {/* Equity & Liabilities side */}
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-            <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
-              <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">I. Equity & Liabilities</p>
+          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+            <div className="px-5 py-3 bg-[#0e1017] border-b border-white/[0.05]">
+              <p className="text-xs font-bold text-white/55 uppercase tracking-wide">I. Equity & Liabilities</p>
             </div>
             <table className="w-full text-xs">
-              <thead><tr className="border-b border-gray-100 text-gray-400 text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
+              <thead><tr className="border-b border-white/[0.05] text-white/30 text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
               <tbody>
-                <tr><td colSpan={2} className="px-5 py-2 font-semibold text-gray-700 bg-gray-50 text-[10px] uppercase tracking-wide">(A) Equity</td></tr>
+                <tr><td colSpan={2} className="px-5 py-2 font-semibold text-white/65 bg-[#0e1017] text-[10px] uppercase tracking-wide">(A) Equity</td></tr>
                 {BS_EQ_ORDER.map((bucket) => { const items = equityBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} />; })}
                 {equityBuckets["Capital Account"] && <BSSectionRows label="Capital Account" items={equityBuckets["Capital Account"]} />}
-                <tr className="border-t border-gray-200 font-semibold"><td className="px-5 py-2.5 text-gray-800">Total Equity</td><td className="px-4 py-2.5 text-right font-mono text-gray-900">{fmt(totalEquity)}</td></tr>
+                <tr className="border-t border-white/[0.07] font-semibold"><td className="px-5 py-2.5 text-white/75">Total Equity</td><td className="px-4 py-2.5 text-right font-mono text-white/85">{fmt(totalEquity)}</td></tr>
 
-                <tr><td colSpan={2} className="px-5 py-2 font-semibold text-gray-700 bg-gray-50 text-[10px] uppercase tracking-wide">(B) Liabilities</td></tr>
+                <tr><td colSpan={2} className="px-5 py-2 font-semibold text-white/65 bg-[#0e1017] text-[10px] uppercase tracking-wide">(B) Liabilities</td></tr>
                 {BS_LIAB_ORDER.map((bucket) => { const items = liabBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} />; })}
-                <tr className="border-t border-gray-200 font-semibold"><td className="px-5 py-2.5 text-gray-800">Total Liabilities</td><td className="px-4 py-2.5 text-right font-mono text-gray-900">{fmt(totalLiab)}</td></tr>
+                <tr className="border-t border-white/[0.07] font-semibold"><td className="px-5 py-2.5 text-white/75">Total Liabilities</td><td className="px-4 py-2.5 text-right font-mono text-white/85">{fmt(totalLiab)}</td></tr>
 
-                <tr className="border-t-2 border-gray-300 font-bold bg-gray-50"><td className="px-5 py-3 text-gray-900 text-sm">Total Equity & Liabilities</td><td className="px-4 py-3 text-right font-mono text-gray-900 text-sm">{fmt(totalLiab + totalEquity)}</td></tr>
+                <tr className="border-t-2 border-gray-300 font-bold bg-[#0e1017]"><td className="px-5 py-3 text-white/85 text-sm">Total Equity & Liabilities</td><td className="px-4 py-3 text-right font-mono text-white/85 text-sm">{fmt(totalLiab + totalEquity)}</td></tr>
               </tbody>
             </table>
           </div>
 
           {/* Assets side */}
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-            <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
-              <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">II. Assets</p>
+          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+            <div className="px-5 py-3 bg-[#0e1017] border-b border-white/[0.05]">
+              <p className="text-xs font-bold text-white/55 uppercase tracking-wide">II. Assets</p>
             </div>
             <table className="w-full text-xs">
-              <thead><tr className="border-b border-gray-100 text-gray-400 text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
+              <thead><tr className="border-b border-white/[0.05] text-white/30 text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
               <tbody>
                 {BS_ASSET_ORDER.map((bucket) => { const items = assetBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} />; })}
-                <tr className="border-t-2 border-gray-300 font-bold bg-gray-50"><td className="px-5 py-3 text-gray-900 text-sm">Total Assets</td><td className="px-4 py-3 text-right font-mono text-gray-900 text-sm">{fmt(totalAssets)}</td></tr>
+                <tr className="border-t-2 border-gray-300 font-bold bg-[#0e1017]"><td className="px-5 py-3 text-white/85 text-sm">Total Assets</td><td className="px-4 py-3 text-right font-mono text-white/85 text-sm">{fmt(totalAssets)}</td></tr>
               </tbody>
             </table>
           </div>
@@ -1096,7 +1096,7 @@ function BalanceSheet({ clientId, financialYear }: { clientId: string; financial
               ? "✓ Balance Sheet balances — Assets = Equity + Liabilities"
               : `✗ Out of balance by ${fmt(Math.abs(totalAssets - totalLiab - totalEquity))} — check for unposted entries`}
           </div>
-          {balances.length === 0 && <div className="text-center py-8 text-gray-400 text-sm">No posted journal entries found for this client.</div>}
+          {balances.length === 0 && <div className="text-center py-8 text-white/30 text-sm">No posted journal entries found for this client.</div>}
         </div>
       )}
     </div>
@@ -1108,12 +1108,12 @@ function BSSectionRows({ label, items }: { label: string; items: AccountBalance[
   const total = items.reduce((s, b) => s + b.net_paise, 0);
   return (
     <>
-      <tr className="cursor-pointer hover:bg-gray-50" onClick={() => setOpen((o) => !o)}>
-        <td className="px-5 py-2 text-gray-700 font-medium pl-8">{label}</td>
-        <td className="px-4 py-2 text-right font-mono text-gray-700">{fmt(total)}</td>
+      <tr className="cursor-pointer hover:bg-[#0e1017]" onClick={() => setOpen((o) => !o)}>
+        <td className="px-5 py-2 text-white/65 font-medium pl-8">{label}</td>
+        <td className="px-4 py-2 text-right font-mono text-white/65">{fmt(total)}</td>
       </tr>
       {open && items.map((item) => (
-        <tr key={item.account_id} className="text-gray-400">
+        <tr key={item.account_id} className="text-white/30">
           <td className="px-5 py-1.5 pl-14">{item.account_name}</td>
           <td className="px-4 py-1.5 text-right font-mono">{fmt(item.net_paise)}</td>
         </tr>
@@ -1156,9 +1156,9 @@ function BankAccounts({ clientId, financialYear }: { clientId: string; financial
   return (
     <div className="space-y-4 max-w-4xl">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-gray-700">{statements.length} bank statement{statements.length !== 1 ? "s" : ""} imported</p>
+        <p className="text-xs font-semibold text-white/65">{statements.length} bank statement{statements.length !== 1 ? "s" : ""} imported</p>
         <div className="flex gap-2">
-          <button onClick={loadStatements} className="p-1.5 rounded border border-gray-200 hover:bg-gray-50 text-gray-500"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button onClick={loadStatements} className="p-1.5 rounded border border-white/[0.07] hover:bg-[#0e1017] text-white/40"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
             <Upload size={12} /> Import Statement
           </button>
@@ -1166,27 +1166,27 @@ function BankAccounts({ clientId, financialYear }: { clientId: string; financial
       </div>
 
       {loading ? (
-        <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-14 rounded-lg bg-gray-50 animate-pulse" />)}</div>
+        <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-14 rounded-lg bg-[#0e1017] animate-pulse" />)}</div>
       ) : statements.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 text-center py-16 space-y-3">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.05] text-center py-16 space-y-3">
           <FileText size={32} className="text-gray-200 mx-auto" />
-          <p className="text-sm text-gray-500">No bank statements imported yet</p>
+          <p className="text-sm text-white/40">No bank statements imported yet</p>
           <button onClick={() => setShowImport(true)} className="text-xs text-blue-600 hover:underline">Import your first statement</button>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-gray-100 text-gray-400"><th className="px-4 py-3 text-left font-semibold">Bank</th><th className="px-3 py-3 text-left font-semibold">Account No.</th><th className="px-3 py-3 text-left font-semibold">Period</th><th className="px-3 py-3 text-right font-semibold">Credits</th><th className="px-3 py-3 text-right font-semibold">Debits</th><th className="px-3 py-3 text-left font-semibold">Status</th><th className="px-4 py-3 text-left font-semibold">Action</th></tr></thead>
-            <tbody className="divide-y divide-gray-50">
+            <thead><tr className="border-b border-white/[0.05] text-white/30"><th className="px-4 py-3 text-left font-semibold">Bank</th><th className="px-3 py-3 text-left font-semibold">Account No.</th><th className="px-3 py-3 text-left font-semibold">Period</th><th className="px-3 py-3 text-right font-semibold">Credits</th><th className="px-3 py-3 text-right font-semibold">Debits</th><th className="px-3 py-3 text-left font-semibold">Status</th><th className="px-4 py-3 text-left font-semibold">Action</th></tr></thead>
+            <tbody className="divide-y divide-white/[0.03]">
               {statements.map((s) => (
-                <tr key={s.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2.5 font-medium text-gray-800">{s.bank_name}</td>
-                  <td className="px-3 py-2.5 font-mono text-gray-500 text-[10px]">{s.account_number ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-gray-500">{s.statement_from} → {s.statement_to}</td>
+                <tr key={s.id} className="hover:bg-[#0e1017]">
+                  <td className="px-4 py-2.5 font-medium text-white/75">{s.bank_name}</td>
+                  <td className="px-3 py-2.5 font-mono text-white/40 text-[10px]">{s.account_number ?? "—"}</td>
+                  <td className="px-3 py-2.5 text-white/40">{s.statement_from} → {s.statement_to}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-green-700">{fmt(s.total_credits_paise)}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-red-700">{fmt(s.total_debits_paise)}</td>
                   <td className="px-3 py-2.5">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STATUS_COLORS[s.import_status] ?? "bg-gray-100 text-gray-500"}`}>{s.import_status}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STATUS_COLORS[s.import_status] ?? "bg-white/[0.06] text-white/40"}`}>{s.import_status}</span>
                   </td>
                   <td className="px-4 py-2.5">
                     <button onClick={() => selectedStmt === s.id ? setSelectedStmt(null) : openStatement(s.id)} className="text-xs text-blue-600 hover:underline">
@@ -1202,24 +1202,24 @@ function BankAccounts({ clientId, financialYear }: { clientId: string; financial
 
       {/* Statement transactions inline view */}
       {selectedStmt && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
-            <p className="text-xs font-semibold text-gray-700">Transactions</p>
-            {txnsLoading && <RefreshCw size={13} className="animate-spin text-gray-400" />}
+            <p className="text-xs font-semibold text-white/65">Transactions</p>
+            {txnsLoading && <RefreshCw size={13} className="animate-spin text-white/30" />}
           </div>
           {!txnsLoading && stmtTxns.length > 0 && (
             <div className="overflow-x-auto max-h-72 overflow-y-auto">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-white"><tr className="border-b border-gray-100 text-gray-400"><th className="px-4 py-2 text-left font-semibold">Date</th><th className="px-3 py-2 text-left font-semibold">Description</th><th className="px-3 py-2 text-right font-semibold">Debit</th><th className="px-3 py-2 text-right font-semibold">Credit</th><th className="px-3 py-2 text-left font-semibold">Status</th></tr></thead>
-                <tbody className="divide-y divide-gray-50">
+                <thead className="sticky top-0 bg-[#131620]"><tr className="border-b border-white/[0.05] text-white/30"><th className="px-4 py-2 text-left font-semibold">Date</th><th className="px-3 py-2 text-left font-semibold">Description</th><th className="px-3 py-2 text-right font-semibold">Debit</th><th className="px-3 py-2 text-right font-semibold">Credit</th><th className="px-3 py-2 text-left font-semibold">Status</th></tr></thead>
+                <tbody className="divide-y divide-white/[0.03]">
                   {stmtTxns.map((t) => (
-                    <tr key={t.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{t.transaction_date}</td>
-                      <td className="px-3 py-2 text-gray-700 max-w-xs truncate">{t.description}</td>
+                    <tr key={t.id} className="hover:bg-[#0e1017]">
+                      <td className="px-4 py-2 text-white/40 whitespace-nowrap">{t.transaction_date}</td>
+                      <td className="px-3 py-2 text-white/65 max-w-xs truncate">{t.description}</td>
                       <td className="px-3 py-2 text-right font-mono text-red-700">{t.debit_paise > 0 ? fmt(t.debit_paise) : "—"}</td>
                       <td className="px-3 py-2 text-right font-mono text-green-700">{t.credit_paise > 0 ? fmt(t.credit_paise) : "—"}</td>
                       <td className="px-3 py-2">
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${t.match_status === "posted" ? "bg-green-100 text-green-700" : t.match_status === "matched" ? "bg-blue-100 text-blue-700" : t.match_status === "ignored" ? "bg-gray-100 text-gray-400" : "bg-amber-100 text-amber-700"}`}>{t.match_status}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${t.match_status === "posted" ? "bg-green-100 text-green-700" : t.match_status === "matched" ? "bg-blue-100 text-blue-700" : t.match_status === "ignored" ? "bg-white/[0.06] text-white/30" : "bg-amber-100 text-amber-700"}`}>{t.match_status}</span>
                       </td>
                     </tr>
                   ))}
@@ -1227,7 +1227,7 @@ function BankAccounts({ clientId, financialYear }: { clientId: string; financial
               </table>
             </div>
           )}
-          {!txnsLoading && stmtTxns.length === 0 && <div className="text-center py-8 text-gray-400 text-sm">No transactions found.</div>}
+          {!txnsLoading && stmtTxns.length === 0 && <div className="text-center py-8 text-white/30 text-sm">No transactions found.</div>}
         </div>
       )}
 
@@ -1283,26 +1283,26 @@ function BankImportModal({ clientId, financialYear, onClose, onImported }: { cli
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+      <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900">Import Bank Statement</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+          <h3 className="text-sm font-semibold text-white/85">Import Bank Statement</h3>
+          <button onClick={onClose} className="text-white/30 hover:text-white/55"><X size={16} /></button>
         </div>
         <div className="space-y-3">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Bank Name *</label>
-            <select value={bankName} onChange={(e) => setBankName(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <label className="block text-xs font-medium text-white/55 mb-1">Bank Name *</label>
+            <select value={bankName} onChange={(e) => setBankName(e.target.value)} className="w-full px-3 py-2 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
               {["HDFC Bank","SBI","ICICI Bank","Axis Bank","Kotak Mahindra Bank","IndusInd Bank","Yes Bank","IDFC First Bank","Other"].map((b) => <option key={b}>{b}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Account Number</label>
-            <input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder="XXXX XXXX XXXX" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <label className="block text-xs font-medium text-white/55 mb-1">Account Number</label>
+            <input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder="XXXX XXXX XXXX" className="w-full px-3 py-2 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">CSV File *</label>
+            <label className="block text-xs font-medium text-white/55 mb-1">CSV File *</label>
             <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleFile} className="hidden" />
-            <button onClick={() => fileRef.current?.click()} className="w-full border-2 border-dashed border-gray-200 rounded-lg py-4 text-sm text-gray-500 hover:border-blue-300 hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
+            <button onClick={() => fileRef.current?.click()} className="w-full border-2 border-dashed border-white/[0.07] rounded-lg py-4 text-sm text-white/40 hover:border-blue-300 hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
               <Upload size={16} /> {parsed ? `${parsed.length} transactions loaded` : "Click to select CSV"}
             </button>
           </div>
@@ -1315,7 +1315,7 @@ function BankImportModal({ clientId, financialYear, onClose, onImported }: { cli
         )}
         {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
         <div className="flex gap-3 justify-end">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
+          <button onClick={onClose} className="text-xs px-4 py-2 border border-white/[0.07] rounded-lg hover:bg-[#0e1017]">Cancel</button>
           <button onClick={handleImport} disabled={importing || !parsed} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
             {importing ? "Importing…" : "Import"}
           </button>
@@ -1392,10 +1392,10 @@ function BankReconciliation({ accounts, clientId, financialYear }: { accounts: A
   return (
     <div className="space-y-4 max-w-4xl">
       {/* Statement selector */}
-      <div className="bg-white rounded-xl border border-gray-100 p-4">
-        <label className="block text-xs font-medium text-gray-600 mb-1.5">Select Bank Statement to Reconcile</label>
-        {loadingStmts ? <div className="h-8 bg-gray-50 rounded animate-pulse" /> : (
-          <select value={selectedStmtId} onChange={(e) => e.target.value && loadTxns(e.target.value)} className="w-full max-w-sm px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
+        <label className="block text-xs font-medium text-white/55 mb-1.5">Select Bank Statement to Reconcile</label>
+        {loadingStmts ? <div className="h-8 bg-[#0e1017] rounded animate-pulse" /> : (
+          <select value={selectedStmtId} onChange={(e) => e.target.value && loadTxns(e.target.value)} className="w-full max-w-sm px-3 py-2 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="">— Choose statement —</option>
             {statements.map((s) => <option key={s.id} value={s.id}>{s.bank_name} {s.account_number ? `(${s.account_number})` : ""} · {s.statement_from} → {s.statement_to} · {s.row_count} txns</option>)}
           </select>
@@ -1406,12 +1406,12 @@ function BankReconciliation({ accounts, clientId, financialYear }: { accounts: A
         <>
           {/* Progress bar */}
           {total > 0 && (
-            <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-2">
+            <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4 space-y-2">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-medium text-gray-700">Reconciliation Progress</span>
-                <span className="text-gray-500">{processedCount}/{total} processed</span>
+                <span className="font-medium text-white/65">Reconciliation Progress</span>
+                <span className="text-white/40">{processedCount}/{total} processed</span>
               </div>
-              <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+              <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
                 <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${total > 0 ? (processedCount/total)*100 : 0}%` }} />
               </div>
               {processedCount === total && total > 0 && (
@@ -1422,18 +1422,18 @@ function BankReconciliation({ accounts, clientId, financialYear }: { accounts: A
             </div>
           )}
 
-          {loadingTxns ? <div className="h-40 bg-gray-50 rounded-lg animate-pulse" /> : unprocessed.length > 0 ? (
-            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          {loadingTxns ? <div className="h-40 bg-[#0e1017] rounded-lg animate-pulse" /> : unprocessed.length > 0 ? (
+            <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-50">
-                <p className="text-xs font-semibold text-gray-700">{unprocessed.length} unmatched transaction{unprocessed.length !== 1 ? "s" : ""}</p>
+                <p className="text-xs font-semibold text-white/65">{unprocessed.length} unmatched transaction{unprocessed.length !== 1 ? "s" : ""}</p>
               </div>
-              <div className="divide-y divide-gray-50">
+              <div className="divide-y divide-white/[0.03]">
                 {unprocessed.map((txn) => (
                   <div key={txn.id} className="px-4 py-3 space-y-2">
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
-                        <p className="text-xs font-medium text-gray-800 truncate">{txn.description}</p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">{txn.transaction_date} · {txn.reference_no ?? ""}</p>
+                        <p className="text-xs font-medium text-white/75 truncate">{txn.description}</p>
+                        <p className="text-[10px] text-white/30 mt-0.5">{txn.transaction_date} · {txn.reference_no ?? ""}</p>
                       </div>
                       <div className="shrink-0 text-right">
                         {txn.debit_paise > 0 && <p className="text-xs font-mono text-red-700">{fmt(txn.debit_paise)} Dr</p>}
@@ -1441,7 +1441,7 @@ function BankReconciliation({ accounts, clientId, financialYear }: { accounts: A
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <select value={mapping[txn.id] ?? ""} onChange={(e) => setMapping((m) => ({ ...m, [txn.id]: e.target.value }))} className="flex-1 px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
+                      <select value={mapping[txn.id] ?? ""} onChange={(e) => setMapping((m) => ({ ...m, [txn.id]: e.target.value }))} className="flex-1 px-2 py-1 text-xs border border-white/[0.07] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
                         <option value="">— Map to account —</option>
                         {["Asset","Liability","Equity","Revenue","Expense"].map((type) => (
                           <optgroup key={type} label={type}>
@@ -1452,7 +1452,7 @@ function BankReconciliation({ accounts, clientId, financialYear }: { accounts: A
                       <button onClick={() => postTxn(txn)} disabled={!mapping[txn.id] || posting[txn.id]} className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40 whitespace-nowrap">
                         {posting[txn.id] ? "Posting…" : "Post"}
                       </button>
-                      <button onClick={() => ignoreTxn(txn.id)} className="text-xs px-3 py-1 border border-gray-200 rounded hover:bg-gray-50 text-gray-500 whitespace-nowrap">Ignore</button>
+                      <button onClick={() => ignoreTxn(txn.id)} className="text-xs px-3 py-1 border border-white/[0.07] rounded hover:bg-[#0e1017] text-white/40 whitespace-nowrap">Ignore</button>
                     </div>
                   </div>
                 ))}
@@ -1469,7 +1469,7 @@ function BankReconciliation({ accounts, clientId, financialYear }: { accounts: A
       )}
 
       {!selectedStmtId && !loadingStmts && statements.length === 0 && (
-        <div className="text-center py-12 text-gray-400 text-sm">No bank statements imported. Import a statement first from the Banks tab.</div>
+        <div className="text-center py-12 text-white/30 text-sm">No bank statements imported. Import a statement first from the Banks tab.</div>
       )}
     </div>
   );
@@ -1513,17 +1513,17 @@ function YearEndClose({ financialYear }: { financialYear: string }) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+    <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-50">
-        <p className="text-xs font-semibold text-gray-700">Year-End Close — FY {financialYear}</p>
-        <p className="text-[10px] text-gray-400 mt-0.5">
+        <p className="text-xs font-semibold text-white/65">Year-End Close — FY {financialYear}</p>
+        <p className="text-[10px] text-white/30 mt-0.5">
           Lock the financial year to prevent new journal entries. Locked years remain viewable.
         </p>
       </div>
       <div className="px-5 py-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className={`w-3 h-3 rounded-full ${loading ? "bg-gray-200" : locked ? "bg-red-400" : "bg-green-400"}`} />
-          <span className="text-sm text-gray-700">
+          <div className={`w-3 h-3 rounded-full ${loading ? "bg-white/[0.08]" : locked ? "bg-red-400" : "bg-green-400"}`} />
+          <span className="text-sm text-white/65">
             {loading ? "Checking…" : locked ? `FY ${financialYear} is locked` : `FY ${financialYear} is open`}
           </span>
         </div>
@@ -1764,23 +1764,23 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
   return (
     <div className="space-y-5 max-w-3xl">
       {/* Generate / export reports */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
-          <p className="text-xs font-semibold text-gray-700">Generate Reports — FY {financialYear}</p>
-          <p className="text-[10px] text-gray-400 mt-0.5">Export to XLSX or share directly to the client portal.</p>
+          <p className="text-xs font-semibold text-white/65">Generate Reports — FY {financialYear}</p>
+          <p className="text-[10px] text-white/30 mt-0.5">Export to XLSX or share directly to the client portal.</p>
         </div>
-        <div className="divide-y divide-gray-50">
+        <div className="divide-y divide-white/[0.03]">
           {REPORT_LINKS.map((r) => (
             <div key={r.id} className="px-5 py-4 flex items-center gap-4">
               <span className="text-2xl">{r.icon}</span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800">{r.label}</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">{r.description}</p>
+                <p className="text-sm font-medium text-white/75">{r.label}</p>
+                <p className="text-[10px] text-white/30 mt-0.5">{r.description}</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => window.print()}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-white/[0.07] rounded-lg hover:bg-[#0e1017] text-white/55"
                   title="Print as PDF"
                 >
                   <Printer size={12} />
@@ -1788,7 +1788,7 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
                 <button
                   onClick={() => exportXLSX(r.id)}
                   disabled={exporting === r.id}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-50"
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-white/[0.07] rounded-lg hover:bg-[#0e1017] text-white/55 disabled:opacity-50"
                 >
                   <Download size={12} />
                   {exporting === r.id ? "…" : "XLSX"}
@@ -1824,25 +1824,25 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
       </div>
 
       {/* Shared reports history */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
-          <p className="text-xs font-semibold text-gray-700">Shared Reports</p>
-          <p className="text-[10px] text-gray-400 mt-0.5">Reports previously shared with this client via portal.</p>
+          <p className="text-xs font-semibold text-white/65">Shared Reports</p>
+          <p className="text-[10px] text-white/30 mt-0.5">Reports previously shared with this client via portal.</p>
         </div>
         {loadingShared ? (
-          <div className="px-5 py-6"><div className="h-12 bg-gray-50 rounded animate-pulse" /></div>
+          <div className="px-5 py-6"><div className="h-12 bg-[#0e1017] rounded animate-pulse" /></div>
         ) : sharedReports.length === 0 ? (
-          <div className="text-center py-8 text-gray-400 text-sm">No reports shared yet.</div>
+          <div className="text-center py-8 text-white/30 text-sm">No reports shared yet.</div>
         ) : (
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-gray-100 text-gray-400"><th className="px-5 py-2 text-left font-semibold">Report</th><th className="px-3 py-2 text-left font-semibold">FY</th><th className="px-3 py-2 text-left font-semibold">File</th><th className="px-4 py-2 text-left font-semibold">Shared On</th><th className="px-3 py-2"></th></tr></thead>
-            <tbody className="divide-y divide-gray-50">
+            <thead><tr className="border-b border-white/[0.05] text-white/30"><th className="px-5 py-2 text-left font-semibold">Report</th><th className="px-3 py-2 text-left font-semibold">FY</th><th className="px-3 py-2 text-left font-semibold">File</th><th className="px-4 py-2 text-left font-semibold">Shared On</th><th className="px-3 py-2"></th></tr></thead>
+            <tbody className="divide-y divide-white/[0.03]">
               {sharedReports.map((r) => (
-                <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="px-5 py-2.5 font-medium text-gray-800">{r.report_label}</td>
-                  <td className="px-3 py-2.5 text-gray-500">FY {r.financial_year}</td>
-                  <td className="px-3 py-2.5 text-gray-500 font-mono text-[10px] truncate max-w-[130px]">{r.file_name}</td>
-                  <td className="px-4 py-2.5 text-gray-400">{new Date(r.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</td>
+                <tr key={r.id} className="hover:bg-[#0e1017]">
+                  <td className="px-5 py-2.5 font-medium text-white/75">{r.report_label}</td>
+                  <td className="px-3 py-2.5 text-white/40">FY {r.financial_year}</td>
+                  <td className="px-3 py-2.5 text-white/40 font-mono text-[10px] truncate max-w-[130px]">{r.file_name}</td>
+                  <td className="px-4 py-2.5 text-white/30">{new Date(r.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</td>
                   <td className="px-3 py-2.5">
                     <button
                       onClick={async () => {

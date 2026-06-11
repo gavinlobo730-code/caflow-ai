@@ -37,7 +37,7 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
       <div className="px-2 py-2 border-b border-white/[0.06] shrink-0">
         <button
           onClick={onOpenSearch}
-          className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[7px] bg-white/[0.04] border border-white/[0.06] text-[12px] text-white/30 hover:text-white/50 hover:bg-white/[0.06] transition-all duration-75"
+          className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[7px] bg-[#131620]/[0.04] border border-white/[0.06] text-[12px] text-white/30 hover:text-white/50 hover:bg-[#131620]/[0.06] transition-all duration-75"
         >
           <Search size={12} className="shrink-0" />
           <span className="flex-1 text-left">Search clients...</span>
@@ -63,15 +63,15 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
                 className={cn(
                   "flex items-center gap-2.5 px-2.5 py-2 rounded-[7px] text-[12.5px] font-medium transition-all duration-75",
                   active
-                    ? "bg-indigo-500/15 text-white/90"
-                    : "text-white/50 hover:text-white/80 hover:bg-white/[0.04]"
+                    ? "bg-blue-500/15 text-white/90"
+                    : "text-white/50 hover:text-white/80 hover:bg-[#131620]/[0.04]"
                 )}
               >
                 <Icon
                   size={15}
                   className={cn(
                     "shrink-0",
-                    active ? "text-indigo-400" : "text-white/30"
+                    active ? "text-blue-400" : "text-white/30"
                   )}
                 />
                 <span className="truncate">{label}</span>
@@ -80,10 +80,10 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
           })}
         </div>
 
-        <div className="mt-4 mx-2 p-2.5 rounded-[7px] bg-white/[0.03] border border-white/[0.06]">
+        <div className="mt-4 mx-2 p-2.5 rounded-[7px] bg-[#131620]/[0.03] border border-white/[0.06]">
           <p className="text-[11px] text-white/30 leading-relaxed">
             Select a client from{" "}
-            <Link href="/clients" className="text-indigo-400 hover:underline">
+            <Link href="/clients" className="text-blue-400 hover:underline">
               All Clients
             </Link>{" "}
             to view their GST, TDS, Income Tax and more.

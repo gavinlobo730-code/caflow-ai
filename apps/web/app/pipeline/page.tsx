@@ -67,9 +67,9 @@ const ENTITY_TYPES: EntityType[] = [
 
 const STAGE_COLORS: Record<Stage, { bg: string; header: string; badge: string }> = {
   Lead: {
-    bg: "bg-gray-50",
-    header: "bg-gray-100 border-gray-200",
-    badge: "bg-gray-200 text-gray-700",
+    bg: "bg-[#0e1017]",
+    header: "bg-white/[0.06] border-white/[0.07]",
+    badge: "bg-white/[0.08] text-white/65",
   },
   "Proposal Sent": {
     bg: "bg-blue-50",
@@ -231,14 +231,14 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">
+      <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.05]">
+          <h2 className="text-base font-semibold text-white/85">
             {initial ? "Edit Lead" : "Add Lead"}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-white/30 hover:text-white/55"
           >
             <X size={18} />
           </button>
@@ -247,7 +247,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           {/* Name */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
+            <label className="block text-xs font-medium text-white/65 mb-1">
               Contact Name *
             </label>
             <input
@@ -255,14 +255,14 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="Full name"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-white/[0.07] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>
 
           {/* Phone + Email */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-white/65 mb-1">
                 Phone *
               </label>
               <input
@@ -270,11 +270,11 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 placeholder="10-digit mobile"
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-white/[0.07] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-white/65 mb-1">
                 Email
               </label>
               <input
@@ -282,14 +282,14 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="email@example.com"
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-white/[0.07] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
           </div>
 
           {/* Business Name */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
+            <label className="block text-xs font-medium text-white/65 mb-1">
               Business Name *
             </label>
             <input
@@ -299,14 +299,14 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 setForm({ ...form, businessName: e.target.value })
               }
               placeholder="Business / firm name"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-white/[0.07] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>
 
           {/* Entity Type + Source */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-white/65 mb-1">
                 Entity Type *
               </label>
               <select
@@ -314,7 +314,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, entityType: e.target.value as EntityType })
                 }
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-white/[0.07] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
                 {ENTITY_TYPES.map((t) => (
                   <option key={t}>{t}</option>
@@ -322,7 +322,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-white/65 mb-1">
                 Source *
               </label>
               <select
@@ -330,7 +330,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, source: e.target.value as Source })
                 }
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-white/[0.07] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
                 {SOURCES.map((s) => (
                   <option key={s}>{s}</option>
@@ -341,7 +341,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
 
           {/* Monthly fee */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
+            <label className="block text-xs font-medium text-white/65 mb-1">
               Estimated Monthly Fee (₹)
             </label>
             <input
@@ -355,14 +355,14 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 })
               }
               placeholder="e.g. 5000"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-white/[0.07] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>
 
           {/* Dates */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-white/65 mb-1">
                 Last Contact Date
               </label>
               <input
@@ -371,11 +371,11 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, lastContactDate: e.target.value })
                 }
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-white/[0.07] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-white/65 mb-1">
                 Next Follow-up Date
               </label>
               <input
@@ -384,14 +384,14 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, nextFollowUpDate: e.target.value })
                 }
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-white/[0.07] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
           </div>
 
           {/* Notes */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
+            <label className="block text-xs font-medium text-white/65 mb-1">
               Notes
             </label>
             <textarea
@@ -399,7 +399,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               rows={3}
               placeholder="Any additional context…"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none"
+              className="w-full rounded-lg border border-white/[0.07] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none"
             />
           </div>
 
@@ -408,7 +408,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              className="flex-1 rounded-lg border border-white/[0.07] px-4 py-2 text-sm font-medium text-white/55 hover:bg-[#0e1017] transition-colors"
             >
               Cancel
             </button>
@@ -442,27 +442,27 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
   const overdue = isOverdueOrToday(lead.nextFollowUpDate);
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3 shadow-sm hover:shadow-md transition-shadow">
+    <div className="bg-[#131620] rounded-lg border border-white/[0.07] p-4 space-y-3 shadow-sm hover:shadow-md transition-shadow">
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-gray-900 leading-tight">
+          <p className="text-sm font-semibold text-white/85 leading-tight">
             {lead.name}
           </p>
-          <p className="text-xs text-gray-500 truncate mt-0.5">
+          <p className="text-xs text-white/40 truncate mt-0.5">
             {lead.businessName}
           </p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={() => onEdit(lead)}
-            className="text-xs text-gray-400 hover:text-gray-600 px-1.5 py-0.5 rounded hover:bg-gray-100 transition-colors"
+            className="text-xs text-white/30 hover:text-white/55 px-1.5 py-0.5 rounded hover:bg-white/[0.06] transition-colors"
           >
             Edit
           </button>
           <button
             onClick={() => onDelete(lead.id)}
-            className="text-gray-300 hover:text-red-500 transition-colors"
+            className="text-white/20 hover:text-red-500 transition-colors"
             aria-label="Delete lead"
           >
             <X size={14} />
@@ -472,24 +472,24 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
 
       {/* Meta */}
       <div className="space-y-1.5">
-        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+        <div className="flex items-center gap-1.5 text-xs text-white/40">
           <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-[10px] font-medium">
             {lead.entityType}
           </span>
-          <span className="px-1.5 py-0.5 bg-gray-50 text-gray-600 rounded text-[10px] font-medium">
+          <span className="px-1.5 py-0.5 bg-[#0e1017] text-white/55 rounded text-[10px] font-medium">
             {lead.source}
           </span>
         </div>
 
         {lead.phone && (
-          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+          <div className="flex items-center gap-1.5 text-xs text-white/40">
             <Phone size={11} className="shrink-0" />
             <span>{lead.phone}</span>
           </div>
         )}
 
         {lead.email && (
-          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+          <div className="flex items-center gap-1.5 text-xs text-white/40">
             <Mail size={11} className="shrink-0" />
             <span className="truncate">{lead.email}</span>
           </div>
@@ -502,7 +502,7 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
           </div>
         )}
 
-        <div className="flex items-center gap-1.5 text-xs text-gray-400">
+        <div className="flex items-center gap-1.5 text-xs text-white/30">
           <Calendar size={11} className="shrink-0" />
           <span>Last: {formatDate(lead.lastContactDate)}</span>
         </div>
@@ -510,7 +510,7 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
         {lead.nextFollowUpDate && (
           <div
             className={`flex items-center gap-1.5 text-xs font-medium ${
-              overdue ? "text-red-600" : "text-gray-500"
+              overdue ? "text-red-600" : "text-white/40"
             }`}
           >
             <AlertCircle size={11} className="shrink-0" />
@@ -568,22 +568,22 @@ function ConvertModal({ lead, onClose }: ConvertModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+      <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
             <UserCheck size={18} className="text-green-700" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-gray-900">
+            <h2 className="text-base font-semibold text-white/85">
               Convert to Client
             </h2>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-white/40">
               {lead.name} · {lead.businessName}
             </p>
           </div>
         </div>
 
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-white/55">
           This will pre-fill the Add Client form with{" "}
           <strong>{lead.name}&apos;s</strong> details. You can complete the remaining
           fields (PAN, GSTIN, etc.) on the Clients page.
@@ -592,7 +592,7 @@ function ConvertModal({ lead, onClose }: ConvertModalProps) {
         <div className="flex gap-3 pt-2">
           <button
             onClick={onClose}
-            className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+            className="flex-1 rounded-lg border border-white/[0.07] px-4 py-2 text-sm font-medium text-white/55 hover:bg-[#0e1017] transition-colors"
           >
             Cancel
           </button>
@@ -679,17 +679,17 @@ export default function PipelinePage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
-            <Link href="/clients" className="hover:text-gray-600">
+          <div className="flex items-center gap-2 text-xs text-white/30 mb-1">
+            <Link href="/clients" className="hover:text-white/55">
               Clients
             </Link>
             <ChevronRight size={12} />
             <span>Pipeline</span>
           </div>
-          <h1 className="text-xl font-semibold text-gray-900">
+          <h1 className="text-xl font-semibold text-white/85">
             Prospect Pipeline
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <p className="text-sm text-white/40 mt-0.5">
             Track and convert prospective clients through your sales funnel
           </p>
         </div>
@@ -704,15 +704,15 @@ export default function PipelinePage() {
 
       {/* Summary bar */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="bg-white rounded-lg border border-gray-100 px-4 py-3">
-          <p className="text-xs text-gray-500">Total Leads</p>
-          <p className="text-xl font-bold text-gray-900 mt-0.5">
+        <div className="bg-[#131620] rounded-lg border border-white/[0.05] px-4 py-3">
+          <p className="text-xs text-white/40">Total Leads</p>
+          <p className="text-xl font-bold text-white/85 mt-0.5">
             <Users size={14} className="inline mr-1 text-blue-500" />
             {totalLeads}
           </p>
         </div>
-        <div className="bg-white rounded-lg border border-gray-100 px-4 py-3">
-          <p className="text-xs text-gray-500">Est. MRR (if all convert)</p>
+        <div className="bg-[#131620] rounded-lg border border-white/[0.05] px-4 py-3">
+          <p className="text-xs text-white/40">Est. MRR (if all convert)</p>
           <p className="text-xl font-bold text-green-700 mt-0.5">
             {formatRupees(estimatedMRRPaise)}
           </p>
@@ -722,10 +722,10 @@ export default function PipelinePage() {
           return (
             <div
               key={stage}
-              className="bg-white rounded-lg border border-gray-100 px-4 py-3"
+              className="bg-[#131620] rounded-lg border border-white/[0.05] px-4 py-3"
             >
-              <p className="text-xs text-gray-500">{stage}</p>
-              <p className="text-xl font-bold text-gray-900 mt-0.5">{count}</p>
+              <p className="text-xs text-white/40">{stage}</p>
+              <p className="text-xl font-bold text-white/85 mt-0.5">{count}</p>
             </div>
           );
         })}
@@ -758,7 +758,7 @@ export default function PipelinePage() {
               {/* Column header */}
               <div className={`px-4 py-3 border-b ${colors.header}`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-gray-800">
+                  <span className="text-sm font-semibold text-white/75">
                     {stage}
                   </span>
                   <span
@@ -772,7 +772,7 @@ export default function PipelinePage() {
               {/* Cards */}
               <div className={`p-3 space-y-3 min-h-[200px] ${colors.bg}`}>
                 {stageLeads.length === 0 && (
-                  <div className="text-center py-10 text-xs text-gray-400">
+                  <div className="text-center py-10 text-xs text-white/30">
                     No leads in this stage
                   </div>
                 )}

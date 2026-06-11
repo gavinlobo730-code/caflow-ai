@@ -207,8 +207,8 @@ export default function TimeTrackingPage() {
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Time Tracking</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Track billable and non-billable hours</p>
+          <h1 className="text-xl font-semibold text-white/85">Time Tracking</h1>
+          <p className="text-sm text-white/40 mt-0.5">Track billable and non-billable hours</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setShowManual(true)} className="gap-1.5">
@@ -262,25 +262,25 @@ export default function TimeTrackingPage() {
       <div className="grid grid-cols-3 gap-4">
         <Card>
           <CardContent className="py-4">
-            <p className="text-xs text-gray-500">Total Hours</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{formatDuration(totalMinutes)}</p>
-            <p className="text-xs text-gray-400">{entries.length} entries</p>
+            <p className="text-xs text-white/40">Total Hours</p>
+            <p className="text-2xl font-bold text-white/85 mt-1">{formatDuration(totalMinutes)}</p>
+            <p className="text-xs text-white/30">{entries.length} entries</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-4">
-            <p className="text-xs text-gray-500">Billable Hours</p>
-            <p className="text-2xl font-bold text-indigo-700 mt-1">{formatDuration(billableMinutes)}</p>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-white/40">Billable Hours</p>
+            <p className="text-2xl font-bold text-blue-400 mt-1">{formatDuration(billableMinutes)}</p>
+            <p className="text-xs text-white/30">
               {totalMinutes > 0 ? Math.round((billableMinutes / totalMinutes) * 100) : 0}% of total
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-4">
-            <p className="text-xs text-gray-500">Non-Billable</p>
-            <p className="text-2xl font-bold text-gray-600 mt-1">{formatDuration(totalMinutes - billableMinutes)}</p>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-white/40">Non-Billable</p>
+            <p className="text-2xl font-bold text-white/55 mt-1">{formatDuration(totalMinutes - billableMinutes)}</p>
+            <p className="text-xs text-white/30">
               {totalMinutes > 0 ? Math.round(((totalMinutes - billableMinutes) / totalMinutes) * 100) : 0}% of total
             </p>
           </CardContent>
@@ -291,32 +291,32 @@ export default function TimeTrackingPage() {
       <Card>
         <CardContent className="py-3 flex flex-wrap items-end gap-3">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Client</label>
+            <label className="block text-xs font-medium text-white/65 mb-1">Client</label>
             <select
               value={exportClientId}
               onChange={e => setExportClientId(e.target.value)}
-              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             >
               <option value="">All clients</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">From</label>
+            <label className="block text-xs font-medium text-white/65 mb-1">From</label>
             <input
               type="date"
               value={exportDateFrom}
               onChange={e => setExportDateFrom(e.target.value)}
-              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">To</label>
+            <label className="block text-xs font-medium text-white/65 mb-1">To</label>
             <input
               type="date"
               value={exportDateTo}
               onChange={e => setExportDateTo(e.target.value)}
-              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             />
           </div>
           <div className="flex gap-2 ml-auto">
@@ -337,44 +337,44 @@ export default function TimeTrackingPage() {
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
-            <div className="flex items-center justify-center py-10 text-gray-400">
+            <div className="flex items-center justify-center py-10 text-white/30">
               <Loader2 className="animate-spin mr-2" size={16} /> Loading…
             </div>
           ) : entries.length === 0 ? (
-            <div className="py-12 text-center text-gray-400">
+            <div className="py-12 text-center text-white/30">
               <Clock size={28} className="mx-auto mb-2 opacity-30" />
               <p className="text-sm">No time entries yet</p>
             </div>
           ) : (
             <div className="divide-y">
               {entries.map((e) => (
-                <div key={e.id} className="flex items-center gap-4 px-5 py-3 hover:bg-gray-50">
+                <div key={e.id} className="flex items-center gap-4 px-5 py-3 hover:bg-[#0e1017]">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-800 truncate">
+                      <span className="text-sm font-medium text-white/75 truncate">
                         {e.client_id ? (clientMap.get(e.client_id) ?? "Unknown") : "No client"}
                       </span>
                       {e.is_billable ? (
                         <Badge className="text-[10px] px-1.5 py-0 bg-green-100 text-green-700">Billable</Badge>
                       ) : (
-                        <Badge className="text-[10px] px-1.5 py-0 bg-gray-100 text-gray-500">Non-billable</Badge>
+                        <Badge className="text-[10px] px-1.5 py-0 bg-white/[0.06] text-white/40">Non-billable</Badge>
                       )}
                     </div>
                     {e.description && (
-                      <p className="text-xs text-gray-500 truncate mt-0.5">{e.description}</p>
+                      <p className="text-xs text-white/40 truncate mt-0.5">{e.description}</p>
                     )}
-                    <p className="text-[11px] text-gray-400 mt-0.5">
+                    <p className="text-[11px] text-white/30 mt-0.5">
                       {fmt(e.started_at)} {fmtTime(e.started_at)}
                       {e.ended_at ? ` → ${fmtTime(e.ended_at)}` : ""}
                     </p>
                   </div>
                   <div className="text-right shrink-0 flex items-center gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-gray-800">
+                      <p className="text-sm font-semibold text-white/75">
                         {e.duration_minutes ? formatDuration(e.duration_minutes) : "—"}
                       </p>
                       {e.is_billable && e.hourly_rate_paise && e.duration_minutes && (
-                        <p className="text-[11px] text-gray-500 flex items-center justify-end gap-0.5">
+                        <p className="text-[11px] text-white/40 flex items-center justify-end gap-0.5">
                           <IndianRupee size={9} />
                           {Math.round((e.hourly_rate_paise * e.duration_minutes) / 6000).toLocaleString("en-IN")}
                         </p>
@@ -382,7 +382,7 @@ export default function TimeTrackingPage() {
                     </div>
                     <button
                       onClick={() => handleDelete(e.id)}
-                      className="p-1.5 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      className="p-1.5 rounded text-white/20 hover:text-red-500 hover:bg-red-50 transition-colors"
                     >
                       <Trash2 size={13} />
                     </button>
@@ -397,31 +397,31 @@ export default function TimeTrackingPage() {
       {/* Start Timer Dialog */}
       {showStart && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+          <div className="bg-[#131620] rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">Start Timer</h2>
-              <button onClick={() => setShowStart(false)} className="text-gray-400 hover:text-gray-600">
+              <h2 className="font-semibold text-white/85">Start Timer</h2>
+              <button onClick={() => setShowStart(false)} className="text-white/30 hover:text-white/55">
                 <X size={18} />
               </button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Client</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Client</label>
                 <select
                   value={startClientId}
                   onChange={e => setStartClientId(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                 >
                   <option value="">No client</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Description</label>
                 <input
                   value={startDescription}
                   onChange={e => setStartDescription(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   placeholder="What are you working on?"
                 />
               </div>
@@ -433,7 +433,7 @@ export default function TimeTrackingPage() {
                   onChange={e => setStartBillable(e.target.checked)}
                   className="rounded"
                 />
-                <label htmlFor="billable-start" className="text-sm text-gray-700">Billable</label>
+                <label htmlFor="billable-start" className="text-sm text-white/65">Billable</label>
               </div>
             </div>
             <div className="flex gap-2 justify-end pt-1">
@@ -455,51 +455,51 @@ export default function TimeTrackingPage() {
       {/* Manual Entry Dialog */}
       {showManual && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+          <div className="bg-[#131620] rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">Manual Time Entry</h2>
-              <button onClick={() => setShowManual(false)} className="text-gray-400 hover:text-gray-600">
+              <h2 className="font-semibold text-white/85">Manual Time Entry</h2>
+              <button onClick={() => setShowManual(false)} className="text-white/30 hover:text-white/55">
                 <X size={18} />
               </button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Client</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Client</label>
                 <select
                   value={manualClientId}
                   onChange={e => setManualClientId(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                 >
                   <option value="">No client</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Description</label>
                 <input
                   value={manualDescription}
                   onChange={e => setManualDescription(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   placeholder="What did you work on?"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Start *</label>
+                  <label className="block text-xs font-medium text-white/65 mb-1">Start *</label>
                   <input
                     type="datetime-local"
                     value={manualStarted}
                     onChange={e => setManualStarted(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">End *</label>
+                  <label className="block text-xs font-medium text-white/65 mb-1">End *</label>
                   <input
                     type="datetime-local"
                     value={manualEnded}
                     onChange={e => setManualEnded(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   />
                 </div>
               </div>
@@ -512,7 +512,7 @@ export default function TimeTrackingPage() {
                     onChange={e => setManualBillable(e.target.checked)}
                     className="rounded"
                   />
-                  <label htmlFor="billable-manual" className="text-sm text-gray-700">Billable</label>
+                  <label htmlFor="billable-manual" className="text-sm text-white/65">Billable</label>
                 </div>
                 {manualBillable && (
                   <div className="flex-1">
@@ -522,7 +522,7 @@ export default function TimeTrackingPage() {
                       step="0.01"
                       value={manualHourlyRate}
                       onChange={e => setManualHourlyRate(e.target.value)}
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                       placeholder="Rate ₹/hr"
                     />
                   </div>

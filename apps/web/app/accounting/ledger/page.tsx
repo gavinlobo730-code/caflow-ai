@@ -23,9 +23,9 @@ interface LedgerLineRow {
 function LoadingSpinner() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-4 animate-pulse">
-      <div className="h-6 bg-gray-200 rounded w-48" />
-      <div className="h-10 bg-gray-100 rounded" />
-      <div className="h-64 bg-gray-100 rounded-xl" />
+      <div className="h-6 bg-white/[0.08] rounded w-48" />
+      <div className="h-10 bg-white/[0.06] rounded" />
+      <div className="h-64 bg-white/[0.06] rounded-xl" />
     </div>
   );
 }
@@ -145,33 +145,33 @@ export default function LedgerPage() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-gray-400 hover:text-gray-600">
+        <Link href="/accounting" className="text-white/30 hover:text-white/55">
           <ChevronLeft size={18} />
         </Link>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">General Ledger</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{selectedAccount?.account_name}</p>
+          <h1 className="text-xl font-semibold text-white/85">General Ledger</h1>
+          <p className="text-sm text-white/40 mt-0.5">{selectedAccount?.account_name}</p>
         </div>
       </div>
 
       {/* Controls */}
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <label className="text-xs text-gray-500">Account</label>
+          <label className="text-xs text-white/40">Account</label>
           <select value={accountId} onChange={(e) => setAccountId(e.target.value)}
-            className="block mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[240px]">
+            className="block mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[240px]">
             {accounts.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-xs text-gray-500">From</label>
+          <label className="text-xs text-white/40">From</label>
           <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-            className="block mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="block mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
-          <label className="text-xs text-gray-500">To</label>
+          <label className="text-xs text-white/40">To</label>
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-            className="block mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="block mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <Button variant="outline" size="sm" onClick={exportToExcel} disabled={linesWithBalance.length === 0} className="mt-5">
           <Download size={14} className="mr-1" /> Export Excel
@@ -181,12 +181,12 @@ export default function LedgerPage() {
       {/* Ledger table */}
       <Card>
         {loadingLedger ? (
-          <div className="p-8 text-center text-gray-400 text-sm animate-pulse">Loading ledger…</div>
+          <div className="p-8 text-center text-white/30 text-sm animate-pulse">Loading ledger…</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-100 text-xs text-gray-400">
+                <tr className="border-b border-white/[0.05] text-xs text-white/30">
                   <th className="px-5 py-3 text-left font-semibold">Date</th>
                   <th className="px-3 py-3 text-left font-semibold">Reference</th>
                   <th className="px-3 py-3 text-left font-semibold">Narration</th>
@@ -195,22 +195,22 @@ export default function LedgerPage() {
                   <th className="px-5 py-3 text-right font-semibold">Balance</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-white/[0.03]">
                 {linesWithBalance.length === 0 && (
-                  <tr><td colSpan={6} className="text-center text-gray-400 py-8 text-sm">No transactions found</td></tr>
+                  <tr><td colSpan={6} className="text-center text-white/30 py-8 text-sm">No transactions found</td></tr>
                 )}
                 {linesWithBalance.map((line, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-5 py-3 text-xs text-gray-600 whitespace-nowrap">{formatDate(line.date)}</td>
-                    <td className="px-3 py-3 text-xs font-mono text-gray-500">{line.reference_no ?? "—"}</td>
-                    <td className="px-3 py-3 text-sm text-gray-900 max-w-xs truncate">{line.narration}</td>
+                  <tr key={i} className="hover:bg-[#0e1017]">
+                    <td className="px-5 py-3 text-xs text-white/55 whitespace-nowrap">{formatDate(line.date)}</td>
+                    <td className="px-3 py-3 text-xs font-mono text-white/40">{line.reference_no ?? "—"}</td>
+                    <td className="px-3 py-3 text-sm text-white/85 max-w-xs truncate">{line.narration}</td>
                     <td className="px-3 py-3 text-sm tabular-nums text-right text-green-700">
                       {line.debit_paise > 0 ? formatPaise(line.debit_paise) : "—"}
                     </td>
                     <td className="px-3 py-3 text-sm tabular-nums text-right text-red-600">
                       {line.credit_paise > 0 ? formatPaise(line.credit_paise) : "—"}
                     </td>
-                    <td className={`px-5 py-3 text-sm tabular-nums font-semibold text-right ${line.running_balance_paise >= 0 ? "text-gray-900" : "text-red-600"}`}>
+                    <td className={`px-5 py-3 text-sm tabular-nums font-semibold text-right ${line.running_balance_paise >= 0 ? "text-white/85" : "text-red-600"}`}>
                       {formatPaise(Math.abs(line.running_balance_paise))}{line.running_balance_paise < 0 ? " Cr" : " Dr"}
                     </td>
                   </tr>
@@ -218,15 +218,15 @@ export default function LedgerPage() {
               </tbody>
               {linesWithBalance.length > 0 && (
                 <tfoot>
-                  <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold text-sm">
-                    <td colSpan={3} className="px-5 py-3 text-gray-500">Closing Balance</td>
+                  <tr className="border-t-2 border-white/[0.07] bg-[#0e1017] font-semibold text-sm">
+                    <td colSpan={3} className="px-5 py-3 text-white/40">Closing Balance</td>
                     <td className="px-3 py-3 text-right tabular-nums text-green-700">
                       {formatPaise(linesWithBalance.reduce((s, l) => s + l.debit_paise, 0))}
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums text-red-600">
                       {formatPaise(linesWithBalance.reduce((s, l) => s + l.credit_paise, 0))}
                     </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-gray-900">
+                    <td className="px-5 py-3 text-right tabular-nums text-white/85">
                       {formatPaise(Math.abs(linesWithBalance[linesWithBalance.length - 1].running_balance_paise))}
                     </td>
                   </tr>

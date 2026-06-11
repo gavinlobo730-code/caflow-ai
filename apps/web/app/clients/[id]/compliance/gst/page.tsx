@@ -34,7 +34,7 @@ function rupees(paise: number) {
 type GSTTab = "dashboard" | "gstr1" | "gstr3b" | "gstr2b" | "history" | "gstr9";
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-700",
+  draft: "bg-white/[0.06] text-white/65",
   validated: "bg-blue-100 text-blue-700",
   ca_approved: "bg-green-100 text-green-700",
   submitted: "bg-emerald-100 text-emerald-800",
@@ -52,7 +52,7 @@ function GSTDashboard({ clientId }: { clientId: string }) {
       .finally(() => setLoading(false));
   }, [clientId]);
 
-  if (loading) return <p className="text-sm text-gray-500">Loading…</p>;
+  if (loading) return <p className="text-sm text-white/40">Loading…</p>;
   if (!data) return <p className="text-sm text-red-500">Failed to load GST dashboard.</p>;
 
   const due = data.upcoming_due_dates as Record<string, string>;
@@ -63,11 +63,11 @@ function GSTDashboard({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div className="rounded border p-4 bg-blue-50">
-          <p className="text-xs text-gray-500">GSTR-1 due date</p>
+          <p className="text-xs text-white/40">GSTR-1 due date</p>
           <p className="font-semibold">{due?.gstr1 ?? "—"}</p>
         </div>
         <div className="rounded border p-4 bg-amber-50">
-          <p className="text-xs text-gray-500">GSTR-3B due date</p>
+          <p className="text-xs text-white/40">GSTR-3B due date</p>
           <p className="font-semibold">{due?.gstr3b ?? "—"}</p>
         </div>
       </div>
@@ -136,7 +136,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
       </div>
 
       {showNew && (
-        <div className="border rounded p-4 bg-gray-50 space-y-3">
+        <div className="border rounded p-4 bg-[#0e1017] space-y-3">
           <p className="text-sm font-medium">New GSTR-1</p>
           <input placeholder="Period (MMYYYY e.g. 042025)" value={period}
             onChange={(e) => setPeriod(e.target.value)}
@@ -155,10 +155,10 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {loading ? <p className="text-sm text-gray-500">Loading…</p> : (
+      {loading ? <p className="text-sm text-white/40">Loading…</p> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-gray-50 text-left">
+            <tr className="bg-[#0e1017] text-left">
               <th className="px-3 py-2 border-b">Period</th>
               <th className="px-3 py-2 border-b">GSTIN</th>
               <th className="px-3 py-2 border-b">Taxable</th>
@@ -168,7 +168,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
           </thead>
           <tbody>
             {returns.map((r) => (
-              <tr key={r.id as string} className="border-b hover:bg-gray-50">
+              <tr key={r.id as string} className="border-b hover:bg-[#0e1017]">
                 <td className="px-3 py-2">{r.period as string}</td>
                 <td className="px-3 py-2 text-xs">{r.gstin as string}</td>
                 <td className="px-3 py-2">{rupees((r.total_taxable_paise as number) ?? 0)}</td>
@@ -180,7 +180,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2 space-x-2">
                   {r.status === "draft" && (
                     <button onClick={() => updateStatus(r.id as string, "validated")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-gray-100">Validate</button>
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-white/[0.06]">Validate</button>
                   )}
                   {r.status === "validated" && (
                     <button onClick={() => updateStatus(r.id as string, "ca_approved")}
@@ -190,7 +190,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
               </tr>
             ))}
             {returns.length === 0 && (
-              <tr><td colSpan={5} className="px-3 py-4 text-center text-gray-400">No GSTR-1 returns yet.</td></tr>
+              <tr><td colSpan={5} className="px-3 py-4 text-center text-white/30">No GSTR-1 returns yet.</td></tr>
             )}
           </tbody>
         </table>
@@ -250,7 +250,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
       </div>
 
       {showNew && (
-        <div className="border rounded p-4 bg-gray-50 space-y-3">
+        <div className="border rounded p-4 bg-[#0e1017] space-y-3">
           <p className="text-sm font-medium">New GSTR-3B</p>
           <input placeholder="Period (MMYYYY)" value={period}
             onChange={(e) => setPeriod(e.target.value)}
@@ -269,10 +269,10 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {loading ? <p className="text-sm text-gray-500">Loading…</p> : (
+      {loading ? <p className="text-sm text-white/40">Loading…</p> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-gray-50 text-left">
+            <tr className="bg-[#0e1017] text-left">
               <th className="px-3 py-2 border-b">Period</th>
               <th className="px-3 py-2 border-b">Tax Liability</th>
               <th className="px-3 py-2 border-b">ITC Claimed</th>
@@ -283,7 +283,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
           </thead>
           <tbody>
             {returns.map((r) => (
-              <tr key={r.id as string} className="border-b hover:bg-gray-50">
+              <tr key={r.id as string} className="border-b hover:bg-[#0e1017]">
                 <td className="px-3 py-2">{r.period as string}</td>
                 <td className="px-3 py-2">{rupees((r.tax_liability_paise as number) ?? 0)}</td>
                 <td className="px-3 py-2">{rupees((r.itc_claimed_paise as number) ?? 0)}</td>
@@ -296,7 +296,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2 space-x-2">
                   {r.status === "draft" && (
                     <button onClick={() => updateStatus(r.id as string, "validated")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-gray-100">Validate</button>
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-white/[0.06]">Validate</button>
                   )}
                   {r.status === "validated" && (
                     <button onClick={() => updateStatus(r.id as string, "ca_approved")}
@@ -306,7 +306,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
               </tr>
             ))}
             {returns.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-gray-400">No GSTR-3B returns yet.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-4 text-center text-white/30">No GSTR-3B returns yet.</td></tr>
             )}
           </tbody>
         </table>
@@ -378,7 +378,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
                   <div>
                     <p className="text-sm font-medium text-amber-700">Amount mismatches:</p>
                     {(mismatched as Record<string, unknown>[]).map((m, i) => (
-                      <div key={i} className="text-xs text-gray-700 mt-1">
+                      <div key={i} className="text-xs text-white/65 mt-1">
                         {JSON.stringify(m.key)} — Book: {rupees(m.book_paise as number)}, 2B: {rupees(m.gstr2b_paise as number)}
                       </div>
                     ))}
@@ -388,7 +388,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
                   <div>
                     <p className="text-sm font-medium text-red-700">Missing in GSTR-2B:</p>
                     {(missing as Record<string, unknown>[]).map((m, i) => (
-                      <div key={i} className="text-xs text-gray-700 mt-1">{JSON.stringify(m.key)}</div>
+                      <div key={i} className="text-xs text-white/65 mt-1">{JSON.stringify(m.key)}</div>
                     ))}
                   </div>
                 )}
@@ -413,7 +413,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
       .finally(() => setLoading(false));
   }, [clientId]);
 
-  if (loading) return <p className="text-sm text-gray-500">Loading…</p>;
+  if (loading) return <p className="text-sm text-white/40">Loading…</p>;
   if (!data) return <p className="text-sm text-red-500">Failed to load filing history.</p>;
 
   const all = ([
@@ -428,7 +428,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
       <h3 className="font-medium">Filing History</h3>
       <table className="w-full text-sm border-collapse">
         <thead>
-          <tr className="bg-gray-50 text-left">
+          <tr className="bg-[#0e1017] text-left">
             <th className="px-3 py-2 border-b">Type</th>
             <th className="px-3 py-2 border-b">Period</th>
             <th className="px-3 py-2 border-b">ARN</th>
@@ -437,7 +437,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
         </thead>
         <tbody>
           {all.map((r) => (
-            <tr key={r.id as string} className="border-b hover:bg-gray-50">
+            <tr key={r.id as string} className="border-b hover:bg-[#0e1017]">
               <td className="px-3 py-2 font-medium">{r.type as string}</td>
               <td className="px-3 py-2">{r.period as string}</td>
               <td className="px-3 py-2 text-xs">{(r.arn as string) ?? "—"}</td>
@@ -449,7 +449,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
             </tr>
           ))}
           {all.length === 0 && (
-            <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400">No filed returns yet.</td></tr>
+            <tr><td colSpan={4} className="px-3 py-4 text-center text-white/30">No filed returns yet.</td></tr>
           )}
         </tbody>
       </table>
@@ -468,11 +468,11 @@ function GSTR9Tab() {
         <p className="mt-1">GSTR-9 is generated as a read-only draft. The CA must review all data before filing.
           CGST Act §44 — Annual return must be filed by 31st December.</p>
       </div>
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-white/55">
         GSTR-9 is auto-computed from your GSTR-1 and GSTR-3B returns for the financial year.
         Navigate to GSTR-1 and GSTR-3B tabs to review monthly returns first.
       </p>
-      <p className="text-xs text-gray-400">Draft generation from filed monthly returns will be available once GSTR-1/3B returns are CA approved.</p>
+      <p className="text-xs text-white/30">Draft generation from filed monthly returns will be available once GSTR-1/3B returns are CA approved.</p>
     </div>
   );
 }
@@ -493,7 +493,7 @@ export default function GSTWorkspacePage() {
   const [tab, setTab] = useState<GSTTab>("dashboard");
 
   if (!clientId || clientId === "_placeholder") {
-    return <p className="text-sm text-gray-500 p-6">Select a client to view GST workspace.</p>;
+    return <p className="text-sm text-white/40 p-6">Select a client to view GST workspace.</p>;
   }
 
   return (
@@ -511,7 +511,7 @@ export default function GSTWorkspacePage() {
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id
                 ? "border-blue-600 text-blue-700"
-                : "border-transparent text-gray-500 hover:text-gray-700"
+                : "border-transparent text-white/40 hover:text-white/65"
             }`}>
             {t.label}
           </button>

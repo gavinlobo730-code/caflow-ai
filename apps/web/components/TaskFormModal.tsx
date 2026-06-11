@@ -93,14 +93,14 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-[#131620] rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.05]">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">New Task</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Create a task for a client</p>
+            <h2 className="text-base font-semibold text-white/85">New Task</h2>
+            <p className="text-xs text-white/40 mt-0.5">Create a task for a client</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-white/30">
             <X size={16} />
           </button>
         </div>
@@ -108,7 +108,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Client */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Client *</label>
+            <label className="block text-xs font-medium text-white/65 mb-1">Client *</label>
             <select
               required
               value={form.client_id}
@@ -125,7 +125,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
           {/* Assignee */}
           {teamMembers.length > 0 && (
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Assign To</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">Assign To</label>
               <select
                 value={form.assignee_id ?? ""}
                 onChange={e => set("assignee_id", e.target.value)}
@@ -141,7 +141,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
 
           {/* Task type */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Task Type *</label>
+            <label className="block text-xs font-medium text-white/65 mb-1">Task Type *</label>
             <select
               onChange={e => handleTemplateChange(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
@@ -154,7 +154,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
           {/* Custom title */}
           {customTitle && (
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Task Title *</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">Task Title *</label>
               <input
                 required
                 value={form.title}
@@ -168,7 +168,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
           {/* Priority + Due Date */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Priority</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">Priority</label>
               <select
                 value={form.priority}
                 onChange={e => set("priority", e.target.value)}
@@ -180,7 +180,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">Due Date</label>
               <input
                 type="date"
                 value={form.due_date}
@@ -192,7 +192,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
 
           {/* Description */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+            <label className="block text-xs font-medium text-white/65 mb-1">Notes</label>
             <textarea
               value={form.description}
               onChange={e => set("description", e.target.value)}
@@ -211,7 +211,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
           <div className="flex gap-3 pt-1">
             <button
               type="button" onClick={onClose}
-              className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-white/65 hover:bg-[#0e1017]"
             >
               Cancel
             </button>

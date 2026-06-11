@@ -297,7 +297,7 @@ function StatusBadge({ status }: { status: DueStatus }) {
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-white/[0.06] text-white/55">
       <CheckCircle size={11} />Upcoming
     </span>
   );
@@ -370,7 +370,7 @@ function PayslipSummaryTab({ slips, runs }: { slips: PayrollSlip[]; runs: Payrol
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <div>
           <CardTitle className="text-base">Payslip Summary</CardTitle>
-          <p className="text-xs text-gray-500 mt-0.5">All employees for a selected month</p>
+          <p className="text-xs text-white/40 mt-0.5">All employees for a selected month</p>
         </div>
         <div className="flex items-center gap-3">
           <select
@@ -389,12 +389,12 @@ function PayslipSummaryTab({ slips, runs }: { slips: PayrollSlip[]; runs: Payrol
       </CardHeader>
       <CardContent className="p-0">
         {monthSlips.length === 0 ? (
-          <p className="text-center text-gray-400 py-12 text-sm">No payroll data for {selectedMonth || "selected month"}.</p>
+          <p className="text-center text-white/30 py-12 text-sm">No payroll data for {selectedMonth || "selected month"}.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-xs font-medium text-gray-500 uppercase tracking-wide bg-gray-50">
+                <tr className="border-b text-xs font-medium text-white/40 uppercase tracking-wide bg-[#0e1017]">
                   <th className="text-left py-3 px-4">Employee</th>
                   <th className="text-left py-3 px-4">PAN</th>
                   <th className="text-right py-3 px-4">Gross</th>
@@ -407,9 +407,9 @@ function PayslipSummaryTab({ slips, runs }: { slips: PayrollSlip[]; runs: Payrol
               </thead>
               <tbody>
                 {monthSlips.map(s => (
-                  <tr key={s.id} className="border-b hover:bg-gray-50">
+                  <tr key={s.id} className="border-b hover:bg-[#0e1017]">
                     <td className="py-3 px-4 font-medium">{s.employee?.name ?? "—"}</td>
-                    <td className="py-3 px-4 font-mono text-xs text-gray-500">{s.employee?.pan || "—"}</td>
+                    <td className="py-3 px-4 font-mono text-xs text-white/40">{s.employee?.pan || "—"}</td>
                     <td className="py-3 px-4 text-right font-mono">{fmtPaise(s.gross_paise)}</td>
                     <td className="py-3 px-4 text-right font-mono text-red-600">{fmtPaise(s.pf_employee_paise)}</td>
                     <td className="py-3 px-4 text-right font-mono text-red-600">{fmtPaise(s.esi_employee_paise)}</td>
@@ -418,7 +418,7 @@ function PayslipSummaryTab({ slips, runs }: { slips: PayrollSlip[]; runs: Payrol
                     <td className="py-3 px-4 text-right font-mono font-semibold text-green-700">{fmtPaise(s.net_paise)}</td>
                   </tr>
                 ))}
-                <tr className="bg-gray-50 font-semibold border-t-2 border-gray-200">
+                <tr className="bg-[#0e1017] font-semibold border-t-2 border-white/[0.07]">
                   <td className="py-3 px-4" colSpan={2}>Total ({monthSlips.length} employees)</td>
                   <td className="py-3 px-4 text-right font-mono">{fmtPaise(totals.gross)}</td>
                   <td className="py-3 px-4 text-right font-mono text-red-700">{fmtPaise(totals.pf)}</td>
@@ -506,7 +506,7 @@ function YtdTab({ slips, employees }: { slips: PayrollSlip[]; employees: Employe
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <div>
           <CardTitle className="text-base">Year-to-Date (YTD)</CardTitle>
-          <p className="text-xs text-gray-500 mt-0.5">Month-by-month breakdown — used for Form 16 preparation (IT Act Section 203)</p>
+          <p className="text-xs text-white/40 mt-0.5">Month-by-month breakdown — used for Form 16 preparation (IT Act Section 203)</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <select
@@ -530,12 +530,12 @@ function YtdTab({ slips, employees }: { slips: PayrollSlip[]; employees: Employe
       </CardHeader>
       <CardContent className="p-0">
         {!emp ? (
-          <p className="text-center text-gray-400 py-12 text-sm">No employees found.</p>
+          <p className="text-center text-white/30 py-12 text-sm">No employees found.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-xs font-medium text-gray-500 uppercase tracking-wide bg-gray-50">
+                <tr className="border-b text-xs font-medium text-white/40 uppercase tracking-wide bg-[#0e1017]">
                   <th className="text-left py-3 px-4">Month</th>
                   <th className="text-right py-3 px-4">Gross</th>
                   <th className="text-right py-3 px-4">PF</th>
@@ -553,9 +553,9 @@ function YtdTab({ slips, employees }: { slips: PayrollSlip[]; employees: Employe
                 {rows.map(r => (
                   <tr
                     key={r.month}
-                    className={`border-b hover:bg-gray-50 ${r.gross === 0 ? "text-gray-300" : ""}`}
+                    className={`border-b hover:bg-[#0e1017] ${r.gross === 0 ? "text-white/20" : ""}`}
                   >
-                    <td className="py-3 px-4 font-medium text-gray-700">{monthLabel(r.month)}</td>
+                    <td className="py-3 px-4 font-medium text-white/65">{monthLabel(r.month)}</td>
                     <td className="py-3 px-4 text-right font-mono">{r.gross > 0 ? fmtPaise(r.gross) : "—"}</td>
                     <td className="py-3 px-4 text-right font-mono text-red-600">{r.pf > 0 ? fmtPaise(r.pf) : "—"}</td>
                     <td className="py-3 px-4 text-right font-mono text-red-600">{r.esi > 0 ? fmtPaise(r.esi) : "—"}</td>
@@ -563,7 +563,7 @@ function YtdTab({ slips, employees }: { slips: PayrollSlip[]; employees: Employe
                     <td className="py-3 px-4 text-right font-mono text-red-600">{r.tds > 0 ? fmtPaise(r.tds) : "—"}</td>
                     <td className="py-3 px-4 text-right font-mono text-red-700">{r.totalDeductions > 0 ? fmtPaise(r.totalDeductions) : "—"}</td>
                     <td className="py-3 px-4 text-right font-mono font-semibold text-green-700">{r.net > 0 ? fmtPaise(r.net) : "—"}</td>
-                    <td className="py-3 px-4 text-right font-mono bg-blue-50/50 font-semibold text-gray-800">{fmtPaise(r.ytdGross)}</td>
+                    <td className="py-3 px-4 text-right font-mono bg-blue-50/50 font-semibold text-white/75">{fmtPaise(r.ytdGross)}</td>
                     <td className="py-3 px-4 text-right font-mono bg-blue-50/50 text-red-700">{fmtPaise(r.ytdTds)}</td>
                     <td className="py-3 px-4 text-right font-mono bg-blue-50/50 text-green-700 font-semibold">{fmtPaise(r.ytdNet)}</td>
                   </tr>
@@ -647,7 +647,7 @@ function CtcTab({ slips, runs }: { slips: PayrollSlip[]; runs: PayrollRun[] }) {
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <div>
           <CardTitle className="text-base">Cost to Company (CTC)</CardTitle>
-          <p className="text-xs text-gray-500 mt-0.5">Gross + Employer PF (12%) + Employer ESI (3.25%) — EPF Act &amp; ESI Act</p>
+          <p className="text-xs text-white/40 mt-0.5">Gross + Employer PF (12%) + Employer ESI (3.25%) — EPF Act &amp; ESI Act</p>
         </div>
         <div className="flex items-center gap-3">
           <select
@@ -664,37 +664,37 @@ function CtcTab({ slips, runs }: { slips: PayrollSlip[]; runs: PayrollRun[] }) {
       </CardHeader>
       <CardContent className="p-0">
         {ctcRows.length === 0 ? (
-          <p className="text-center text-gray-400 py-12 text-sm">No payroll data for {selectedMonth || "selected month"}.</p>
+          <p className="text-center text-white/30 py-12 text-sm">No payroll data for {selectedMonth || "selected month"}.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-xs font-medium text-gray-500 uppercase tracking-wide bg-gray-50">
+                <tr className="border-b text-xs font-medium text-white/40 uppercase tracking-wide bg-[#0e1017]">
                   <th className="text-left py-3 px-4">Employee</th>
                   <th className="text-left py-3 px-4">PAN</th>
                   <th className="text-right py-3 px-4">Gross Salary</th>
                   <th className="text-right py-3 px-4">Employer PF</th>
                   <th className="text-right py-3 px-4">Employer ESI</th>
-                  <th className="text-right py-3 px-4 bg-indigo-50">Total CTC</th>
+                  <th className="text-right py-3 px-4 bg-blue-500/[0.08]">Total CTC</th>
                 </tr>
               </thead>
               <tbody>
                 {ctcRows.map(r => (
-                  <tr key={r.slip.id} className="border-b hover:bg-gray-50">
+                  <tr key={r.slip.id} className="border-b hover:bg-[#0e1017]">
                     <td className="py-3 px-4 font-medium">{r.slip.employee?.name ?? "—"}</td>
-                    <td className="py-3 px-4 font-mono text-xs text-gray-500">{r.slip.employee?.pan || "—"}</td>
+                    <td className="py-3 px-4 font-mono text-xs text-white/40">{r.slip.employee?.pan || "—"}</td>
                     <td className="py-3 px-4 text-right font-mono">{fmtPaise(r.gross)}</td>
                     <td className="py-3 px-4 text-right font-mono text-blue-600">+ {fmtPaise(r.employerPf)}</td>
                     <td className="py-3 px-4 text-right font-mono text-blue-600">+ {fmtPaise(r.employerEsi)}</td>
-                    <td className="py-3 px-4 text-right font-mono font-bold text-indigo-700 bg-indigo-50/50">{fmtPaise(r.totalCtc)}</td>
+                    <td className="py-3 px-4 text-right font-mono font-bold text-blue-400 bg-blue-500/[0.08]/50">{fmtPaise(r.totalCtc)}</td>
                   </tr>
                 ))}
-                <tr className="bg-gray-50 font-semibold border-t-2 border-gray-200">
+                <tr className="bg-[#0e1017] font-semibold border-t-2 border-white/[0.07]">
                   <td className="py-3 px-4" colSpan={2}>Total ({ctcRows.length} employees)</td>
                   <td className="py-3 px-4 text-right font-mono">{fmtPaise(totals.gross)}</td>
                   <td className="py-3 px-4 text-right font-mono text-blue-700">+ {fmtPaise(totals.employerPf)}</td>
                   <td className="py-3 px-4 text-right font-mono text-blue-700">+ {fmtPaise(totals.employerEsi)}</td>
-                  <td className="py-3 px-4 text-right font-mono text-indigo-800 bg-indigo-50">{fmtPaise(totals.totalCtc)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-indigo-800 bg-blue-500/[0.08]">{fmtPaise(totals.totalCtc)}</td>
                 </tr>
               </tbody>
             </table>
@@ -786,7 +786,7 @@ function TdsProjectionTab({ slips, employees }: { slips: PayrollSlip[]; employee
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <div>
             <CardTitle className="text-base">TDS Projection</CardTitle>
-            <p className="text-xs text-gray-500 mt-0.5">Plan TDS deductions to avoid IT Act Section 234B/234C interest</p>
+            <p className="text-xs text-white/40 mt-0.5">Plan TDS deductions to avoid IT Act Section 234B/234C interest</p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <select
@@ -807,20 +807,20 @@ function TdsProjectionTab({ slips, employees }: { slips: PayrollSlip[]; employee
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-            <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-              <p className="text-xs text-gray-500">Est. Annual Gross</p>
-              <p className="text-base font-bold text-gray-900 mt-0.5">{fmtPaise(estimatedAnnualGross)}</p>
+            <div className="p-3 bg-[#0e1017] rounded-lg border border-white/[0.05]">
+              <p className="text-xs text-white/40">Est. Annual Gross</p>
+              <p className="text-base font-bold text-white/85 mt-0.5">{fmtPaise(estimatedAnnualGross)}</p>
             </div>
             <div className="p-3 bg-red-50 rounded-lg border border-red-100">
-              <p className="text-xs text-gray-500">Est. Annual Tax</p>
+              <p className="text-xs text-white/40">Est. Annual Tax</p>
               <p className="text-base font-bold text-red-700 mt-0.5">{fmtPaise(estimatedAnnualTds)}</p>
             </div>
             <div className="p-3 bg-green-50 rounded-lg border border-green-100">
-              <p className="text-xs text-gray-500">TDS Deducted So Far</p>
+              <p className="text-xs text-white/40">TDS Deducted So Far</p>
               <p className="text-base font-bold text-green-700 mt-0.5">{fmtPaise(cumulativeActual)}</p>
             </div>
             <div className="p-3 bg-orange-50 rounded-lg border border-orange-100">
-              <p className="text-xs text-gray-500">Suggested Monthly TDS</p>
+              <p className="text-xs text-white/40">Suggested Monthly TDS</p>
               <p className="text-base font-bold text-orange-700 mt-0.5">
                 {remainingMonths > 0 ? fmtPaise(suggestedMonthlyTds) : "—"}
               </p>
@@ -831,7 +831,7 @@ function TdsProjectionTab({ slips, employees }: { slips: PayrollSlip[]; employee
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-xs font-medium text-gray-500 uppercase tracking-wide bg-gray-50">
+                <tr className="border-b text-xs font-medium text-white/40 uppercase tracking-wide bg-[#0e1017]">
                   <th className="text-left py-3 px-4">Month</th>
                   <th className="text-center py-3 px-4">Status</th>
                   <th className="text-right py-3 px-4">Actual Gross</th>
@@ -845,31 +845,31 @@ function TdsProjectionTab({ slips, employees }: { slips: PayrollSlip[]; employee
               <tbody>
                 {projectionRows.map(r => {
                   const variance = r.hasActual ? r.actualTds - r.projectedTds : 0;
-                  const varianceColor = !r.hasActual ? "" : variance < 0 ? "text-red-600" : variance > 0 ? "text-green-600" : "text-gray-500";
+                  const varianceColor = !r.hasActual ? "" : variance < 0 ? "text-red-600" : variance > 0 ? "text-green-600" : "text-white/40";
                   return (
                     <tr
                       key={r.month}
-                      className={`border-b hover:bg-gray-50 ${!r.hasActual ? "text-gray-400" : ""}`}
+                      className={`border-b hover:bg-[#0e1017] ${!r.hasActual ? "text-white/30" : ""}`}
                     >
-                      <td className="py-3 px-4 font-medium text-gray-700">{monthLabel(r.month)}</td>
+                      <td className="py-3 px-4 font-medium text-white/65">{monthLabel(r.month)}</td>
                       <td className="py-3 px-4 text-center">
                         {r.hasActual ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">
                             <CheckCircle size={10} />Processed
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-white/[0.06] text-white/40">
                             <Clock size={10} />Pending
                           </span>
                         )}
                       </td>
                       <td className="py-3 px-4 text-right font-mono">{r.hasActual ? fmtPaise(r.actualGross) : "—"}</td>
                       <td className="py-3 px-4 text-right font-mono text-red-600">{r.hasActual ? fmtPaise(r.actualTds) : "—"}</td>
-                      <td className="py-3 px-4 text-right font-mono text-gray-500">{fmtPaise(r.projectedTds)}</td>
+                      <td className="py-3 px-4 text-right font-mono text-white/40">{fmtPaise(r.projectedTds)}</td>
                       <td className={`py-3 px-4 text-right font-mono ${varianceColor}`}>
                         {r.hasActual ? `${variance >= 0 ? "+" : ""}${fmtPaise(Math.abs(variance))}` : "—"}
                       </td>
-                      <td className="py-3 px-4 text-right font-mono font-semibold text-gray-700">{fmtPaise(r.cumulativeActual)}</td>
+                      <td className="py-3 px-4 text-right font-mono font-semibold text-white/65">{fmtPaise(r.cumulativeActual)}</td>
                       <td className="py-3 px-4 text-right font-mono text-orange-600">{fmtPaise(r.cumulativeRemaining)}</td>
                     </tr>
                   );
@@ -877,7 +877,7 @@ function TdsProjectionTab({ slips, employees }: { slips: PayrollSlip[]; employee
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-gray-400 mt-3">
+          <p className="text-xs text-white/30 mt-3">
             * Projected TDS based on estimated annual income at current salary using new-regime slabs (IT Act Section 192).
             Rebate u/s 87A applied for income ≤ ₹7,00,000. Consult employee&apos;s actual investment declarations for accuracy.
           </p>
@@ -971,7 +971,7 @@ function YearEndSummaryTab({ slips }: { slips: PayrollSlip[] }) {
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <div>
           <CardTitle className="text-base">Year End Summary</CardTitle>
-          <p className="text-xs text-gray-500 mt-0.5">Annual totals per employee — for Form 24Q annual return &amp; employer reconciliation (IT Act Section 192)</p>
+          <p className="text-xs text-white/40 mt-0.5">Annual totals per employee — for Form 24Q annual return &amp; employer reconciliation (IT Act Section 192)</p>
         </div>
         <div className="flex items-center gap-3">
           <select
@@ -988,39 +988,39 @@ function YearEndSummaryTab({ slips }: { slips: PayrollSlip[] }) {
       </CardHeader>
       <CardContent className="p-0">
         {empRows.length === 0 ? (
-          <p className="text-center text-gray-400 py-12 text-sm">No payroll data for FY {selectedFy}.</p>
+          <p className="text-center text-white/30 py-12 text-sm">No payroll data for FY {selectedFy}.</p>
         ) : (
           <>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4 border-b">
-              <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                <p className="text-xs text-gray-500">Total Gross Paid</p>
-                <p className="text-lg font-bold text-gray-900 mt-0.5">{fmtPaise(grandTotal.gross)}</p>
+              <div className="p-3 bg-[#0e1017] rounded-lg border border-white/[0.05]">
+                <p className="text-xs text-white/40">Total Gross Paid</p>
+                <p className="text-lg font-bold text-white/85 mt-0.5">{fmtPaise(grandTotal.gross)}</p>
               </div>
               <div className="p-3 bg-red-50 rounded-lg border border-red-100">
-                <p className="text-xs text-gray-500">Total TDS Deducted</p>
+                <p className="text-xs text-white/40">Total TDS Deducted</p>
                 <p className="text-lg font-bold text-red-700 mt-0.5">{fmtPaise(grandTotal.tds)}</p>
               </div>
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
-                <p className="text-xs text-gray-500">Total PF (Employee)</p>
+                <p className="text-xs text-white/40">Total PF (Employee)</p>
                 <p className="text-lg font-bold text-blue-700 mt-0.5">{fmtPaise(grandTotal.pf)}</p>
               </div>
               <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
-                <p className="text-xs text-gray-500">Total ESI (Employee)</p>
+                <p className="text-xs text-white/40">Total ESI (Employee)</p>
                 <p className="text-lg font-bold text-purple-700 mt-0.5">{fmtPaise(grandTotal.esi)}</p>
               </div>
               <div className="p-3 bg-teal-50 rounded-lg border border-teal-100">
-                <p className="text-xs text-gray-500">Total Professional Tax</p>
+                <p className="text-xs text-white/40">Total Professional Tax</p>
                 <p className="text-lg font-bold text-teal-700 mt-0.5">{fmtPaise(grandTotal.pt)}</p>
               </div>
               <div className="p-3 bg-green-50 rounded-lg border border-green-100">
-                <p className="text-xs text-gray-500">Total Net Paid</p>
+                <p className="text-xs text-white/40">Total Net Paid</p>
                 <p className="text-lg font-bold text-green-700 mt-0.5">{fmtPaise(grandTotal.net)}</p>
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b text-xs font-medium text-gray-500 uppercase tracking-wide bg-gray-50">
+                  <tr className="border-b text-xs font-medium text-white/40 uppercase tracking-wide bg-[#0e1017]">
                     <th className="text-left py-3 px-4">Employee</th>
                     <th className="text-left py-3 px-4">PAN</th>
                     <th className="text-right py-3 px-4">Total Gross</th>
@@ -1033,9 +1033,9 @@ function YearEndSummaryTab({ slips }: { slips: PayrollSlip[] }) {
                 </thead>
                 <tbody>
                   {empRows.map((r, idx) => (
-                    <tr key={r.emp?.id ?? idx} className="border-b hover:bg-gray-50">
+                    <tr key={r.emp?.id ?? idx} className="border-b hover:bg-[#0e1017]">
                       <td className="py-3 px-4 font-medium">{r.emp?.name ?? "—"}</td>
-                      <td className="py-3 px-4 font-mono text-xs text-gray-500">{r.emp?.pan || "—"}</td>
+                      <td className="py-3 px-4 font-mono text-xs text-white/40">{r.emp?.pan || "—"}</td>
                       <td className="py-3 px-4 text-right font-mono">{fmtPaise(r.gross)}</td>
                       <td className="py-3 px-4 text-right font-mono text-blue-600">{fmtPaise(r.pf)}</td>
                       <td className="py-3 px-4 text-right font-mono text-purple-600">{fmtPaise(r.esi)}</td>
@@ -1044,7 +1044,7 @@ function YearEndSummaryTab({ slips }: { slips: PayrollSlip[] }) {
                       <td className="py-3 px-4 text-right font-mono font-semibold text-green-700">{fmtPaise(r.net)}</td>
                     </tr>
                   ))}
-                  <tr className="bg-gray-50 font-semibold border-t-2 border-gray-200">
+                  <tr className="bg-[#0e1017] font-semibold border-t-2 border-white/[0.07]">
                     <td className="py-3 px-4" colSpan={2}>Grand Total ({empRows.length} employees)</td>
                     <td className="py-3 px-4 text-right font-mono">{fmtPaise(grandTotal.gross)}</td>
                     <td className="py-3 px-4 text-right font-mono text-blue-700">{fmtPaise(grandTotal.pf)}</td>
@@ -1098,7 +1098,7 @@ function StatutoryDuesCalendarTab() {
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <div>
             <CardTitle className="text-base">Statutory Dues Calendar</CardTitle>
-            <p className="text-xs text-gray-500 mt-0.5">PF ECR, ESI, PT &amp; TDS 24Q due dates — colour-coded by status</p>
+            <p className="text-xs text-white/40 mt-0.5">PF ECR, ESI, PT &amp; TDS 24Q due dates — colour-coded by status</p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <select
@@ -1125,7 +1125,7 @@ function StatutoryDuesCalendarTab() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-xs font-medium text-gray-500 uppercase tracking-wide bg-gray-50">
+                <tr className="border-b text-xs font-medium text-white/40 uppercase tracking-wide bg-[#0e1017]">
                   <th className="text-left py-3 px-4">Filing</th>
                   <th className="text-left py-3 px-4">Category</th>
                   <th className="text-left py-3 px-4">Description</th>
@@ -1143,13 +1143,13 @@ function StatutoryDuesCalendarTab() {
                         ? "bg-red-50 hover:bg-red-100"
                         : r.status === "due-soon"
                         ? "bg-amber-50 hover:bg-amber-100"
-                        : "hover:bg-gray-50"
+                        : "hover:bg-[#0e1017]"
                     }`}
                   >
-                    <td className="py-3 px-4 font-medium text-gray-900">{r.label}</td>
+                    <td className="py-3 px-4 font-medium text-white/85">{r.label}</td>
                     <td className="py-3 px-4"><CategoryBadge category={r.category} /></td>
-                    <td className="py-3 px-4 text-xs text-gray-500 max-w-xs">{r.description}</td>
-                    <td className="py-3 px-4 text-xs text-gray-500">{r.portal}</td>
+                    <td className="py-3 px-4 text-xs text-white/40 max-w-xs">{r.description}</td>
+                    <td className="py-3 px-4 text-xs text-white/40">{r.portal}</td>
                     <td className="py-3 px-4 text-right font-mono text-xs font-medium">{r.dueDate}</td>
                     <td className="py-3 px-4 text-center"><StatusBadge status={r.status} /></td>
                   </tr>
@@ -1157,7 +1157,7 @@ function StatutoryDuesCalendarTab() {
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-gray-400 p-4 border-t">
+          <p className="text-xs text-white/30 p-4 border-t">
             Status computed from today&apos;s date. This calendar does not auto-track filed returns.
             Update your firm records after each submission. Due dates are general — verify state-specific PT deadlines.
           </p>
@@ -1214,24 +1214,24 @@ export default function PayrollReportsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-500">Loading payroll reports...</p>
+      <div className="min-h-screen bg-[#0e1017] flex items-center justify-center">
+        <p className="text-white/40">Loading payroll reports...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 p-8">
+      <div className="min-h-screen bg-[#0e1017] p-8">
         <div className="max-w-xl mx-auto">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-start gap-3">
                 <AlertCircle size={18} className="text-red-500 mt-0.5 flex-shrink-0" />
                 <div>
-                  <p className="font-medium text-gray-900">Could not load payroll data</p>
-                  <p className="text-sm text-gray-600 mt-1">{error}</p>
-                  <p className="text-xs text-gray-400 mt-2">
+                  <p className="font-medium text-white/85">Could not load payroll data</p>
+                  <p className="text-sm text-white/55 mt-1">{error}</p>
+                  <p className="text-xs text-white/30 mt-2">
                     Make sure the payroll tables are installed. See the Payroll page for SQL setup instructions.
                   </p>
                 </div>
@@ -1251,22 +1251,22 @@ export default function PayrollReportsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-[#0e1017] p-8">
       <div className="max-w-7xl mx-auto">
         <div className="mb-6 flex items-start justify-between flex-wrap gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <Link href="/payroll">
-                <Button variant="ghost" size="sm" className="flex items-center gap-1.5 text-gray-500 hover:text-gray-900 -ml-2">
+                <Button variant="ghost" size="sm" className="flex items-center gap-1.5 text-white/40 hover:text-white/85 -ml-2">
                   <ArrowLeft size={14} />Payroll
                 </Button>
               </Link>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <BarChart2 size={22} className="text-indigo-600" />
+            <h1 className="text-2xl font-bold text-white/85 flex items-center gap-2">
+              <BarChart2 size={22} className="text-blue-400" />
               Payroll Reports
             </h1>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <p className="text-sm text-white/40 mt-0.5">
               IT Act Section 192 &middot; EPF Act &middot; ESI Act &middot; 234B/234C planning
             </p>
           </div>

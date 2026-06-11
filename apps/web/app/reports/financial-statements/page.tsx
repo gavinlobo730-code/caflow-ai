@@ -245,7 +245,7 @@ function variancePct(current: number, prior: number): string {
 }
 
 function varianceClass(v: number, isIncome: boolean): string {
-  if (v === 0) return "text-gray-500";
+  if (v === 0) return "text-white/40";
   // For income: positive variance = good = green; negative = bad = red
   // For expense: positive variance = bad = red; negative = good = green
   if (isIncome) return v > 0 ? "text-green-600" : "text-red-600";
@@ -332,7 +332,7 @@ function exportToExcel(
 
 function AmountCell({ paise }: { paise: number }) {
   return (
-    <td className="px-4 py-2 text-right tabular-nums text-gray-800">
+    <td className="px-4 py-2 text-right tabular-nums text-white/75">
       {formatPaise(paise)}
     </td>
   );
@@ -352,7 +352,7 @@ function VarianceCell({
   return (
     <td className={`px-4 py-2 text-right tabular-nums text-xs ${cls}`}>
       <div>{formatPaise(v)}</div>
-      <div className="text-gray-400">{variancePct(current, prior)}</div>
+      <div className="text-white/30">{variancePct(current, prior)}</div>
     </td>
   );
 }
@@ -366,8 +366,8 @@ interface PLTableProps {
 
 function PLTable({ currentPL, priorPL, currentFY, priorFY }: PLTableProps) {
   const colHeader =
-    "px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide";
-  const thLeft = "px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide";
+    "px-4 py-3 text-right text-xs font-semibold text-white/40 uppercase tracking-wide";
+  const thLeft = "px-4 py-3 text-left text-xs font-semibold text-white/40 uppercase tracking-wide";
 
   // Build a union of income/expense accounts
   const incomeIdSet = new Set<string>();
@@ -385,9 +385,9 @@ function PLTable({ currentPL, priorPL, currentFY, priorFY }: PLTableProps) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-200">
+    <div className="overflow-x-auto rounded-xl border border-white/[0.07]">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50 border-b border-gray-200">
+        <thead className="bg-[#0e1017] border-b border-white/[0.07]">
           <tr>
             <th className={thLeft}>Particulars</th>
             <th className={colHeader}>FY {currentFY}</th>
@@ -395,7 +395,7 @@ function PLTable({ currentPL, priorPL, currentFY, priorFY }: PLTableProps) {
             <th className={colHeader}>Variance / %</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody className="divide-y divide-white/[0.05]">
           {/* INCOME */}
           <tr className="bg-blue-50">
             <td colSpan={4} className="px-4 py-2 text-xs font-bold text-blue-700 uppercase tracking-wider">
@@ -406,8 +406,8 @@ function PLTable({ currentPL, priorPL, currentFY, priorFY }: PLTableProps) {
             const cur = currentPL.incomeAccounts.find((a) => a.accountId === id)?.balancePaise ?? 0;
             const pri = priorPL.incomeAccounts.find((a) => a.accountId === id)?.balancePaise ?? 0;
             return (
-              <tr key={id} className="hover:bg-gray-50">
-                <td className="px-4 py-2 pl-8 text-gray-700">{accountName(id, currentPL.incomeAccounts, priorPL.incomeAccounts)}</td>
+              <tr key={id} className="hover:bg-[#0e1017]">
+                <td className="px-4 py-2 pl-8 text-white/65">{accountName(id, currentPL.incomeAccounts, priorPL.incomeAccounts)}</td>
                 <AmountCell paise={cur} />
                 <AmountCell paise={pri} />
                 <VarianceCell current={cur} prior={pri} isIncome={true} />
@@ -416,7 +416,7 @@ function PLTable({ currentPL, priorPL, currentFY, priorFY }: PLTableProps) {
           })}
           {allIncomeIds.length === 0 && (
             <tr>
-              <td colSpan={4} className="px-4 py-3 pl-8 text-gray-400 text-xs italic">No income accounts</td>
+              <td colSpan={4} className="px-4 py-3 pl-8 text-white/30 text-xs italic">No income accounts</td>
             </tr>
           )}
           <tr className="bg-blue-50 font-semibold">
@@ -436,8 +436,8 @@ function PLTable({ currentPL, priorPL, currentFY, priorFY }: PLTableProps) {
             const cur = currentPL.expenseAccounts.find((a) => a.accountId === id)?.balancePaise ?? 0;
             const pri = priorPL.expenseAccounts.find((a) => a.accountId === id)?.balancePaise ?? 0;
             return (
-              <tr key={id} className="hover:bg-gray-50">
-                <td className="px-4 py-2 pl-8 text-gray-700">{accountName(id, currentPL.expenseAccounts, priorPL.expenseAccounts)}</td>
+              <tr key={id} className="hover:bg-[#0e1017]">
+                <td className="px-4 py-2 pl-8 text-white/65">{accountName(id, currentPL.expenseAccounts, priorPL.expenseAccounts)}</td>
                 <AmountCell paise={cur} />
                 <AmountCell paise={pri} />
                 <VarianceCell current={cur} prior={pri} isIncome={false} />
@@ -446,7 +446,7 @@ function PLTable({ currentPL, priorPL, currentFY, priorFY }: PLTableProps) {
           })}
           {allExpenseIds.length === 0 && (
             <tr>
-              <td colSpan={4} className="px-4 py-3 pl-8 text-gray-400 text-xs italic">No expense accounts</td>
+              <td colSpan={4} className="px-4 py-3 pl-8 text-white/30 text-xs italic">No expense accounts</td>
             </tr>
           )}
           <tr className="bg-red-50 font-semibold">
@@ -457,14 +457,14 @@ function PLTable({ currentPL, priorPL, currentFY, priorFY }: PLTableProps) {
           </tr>
 
           {/* PBT */}
-          <tr className="border-t-2 border-gray-300 font-semibold bg-gray-50">
-            <td className="px-4 py-3 text-gray-900">PROFIT BEFORE TAX</td>
+          <tr className="border-t-2 border-gray-300 font-semibold bg-[#0e1017]">
+            <td className="px-4 py-3 text-white/85">PROFIT BEFORE TAX</td>
             <AmountCell paise={currentPL.profitBeforeTax} />
             <AmountCell paise={priorPL.profitBeforeTax} />
             <VarianceCell current={currentPL.profitBeforeTax} prior={priorPL.profitBeforeTax} isIncome={true} />
           </tr>
-          <tr className="hover:bg-gray-50">
-            <td className="px-4 py-2 pl-8 text-gray-600 text-sm">Less: Tax Expense (30% provision)</td>
+          <tr className="hover:bg-[#0e1017]">
+            <td className="px-4 py-2 pl-8 text-white/55 text-sm">Less: Tax Expense (30% provision)</td>
             <AmountCell paise={currentPL.taxExpense} />
             <AmountCell paise={priorPL.taxExpense} />
             <td />
@@ -494,8 +494,8 @@ interface BSTableProps {
 
 function BSTable({ currentBS, priorBS, currentFY, priorFY }: BSTableProps) {
   const colHeader =
-    "px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide";
-  const thLeft = "px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide";
+    "px-4 py-3 text-right text-xs font-semibold text-white/40 uppercase tracking-wide";
+  const thLeft = "px-4 py-3 text-left text-xs font-semibold text-white/40 uppercase tracking-wide";
 
   function SectionRows({
     label,
@@ -528,8 +528,8 @@ function BSTable({ currentBS, priorBS, currentFY, priorFY }: BSTableProps) {
           const cur = curAccounts.find((a) => a.accountId === id)?.balancePaise ?? 0;
           const pri = priAccounts.find((a) => a.accountId === id)?.balancePaise ?? 0;
           return (
-            <tr key={id} className="hover:bg-gray-50">
-              <td className="px-4 py-2 pl-8 text-gray-700">{name(id)}</td>
+            <tr key={id} className="hover:bg-[#0e1017]">
+              <td className="px-4 py-2 pl-8 text-white/65">{name(id)}</td>
               <AmountCell paise={cur} />
               <AmountCell paise={pri} />
             </tr>
@@ -537,7 +537,7 @@ function BSTable({ currentBS, priorBS, currentFY, priorFY }: BSTableProps) {
         })}
         {allIds.length === 0 && (
           <tr>
-            <td colSpan={3} className="px-4 py-3 pl-8 text-gray-400 text-xs italic">None</td>
+            <td colSpan={3} className="px-4 py-3 pl-8 text-white/30 text-xs italic">None</td>
           </tr>
         )}
       </>
@@ -545,16 +545,16 @@ function BSTable({ currentBS, priorBS, currentFY, priorFY }: BSTableProps) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-200">
+    <div className="overflow-x-auto rounded-xl border border-white/[0.07]">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50 border-b border-gray-200">
+        <thead className="bg-[#0e1017] border-b border-white/[0.07]">
           <tr>
             <th className={thLeft}>Particulars</th>
             <th className={colHeader}>As at 31 Mar {currentFY.split("-")[0].slice(-2) === "99" ? "2099" : `20${currentFY.split("-")[1]}`}</th>
             <th className={colHeader}>As at 31 Mar {priorFY.split("-")[0].slice(-2) === "99" ? "2099" : `20${priorFY.split("-")[1]}`}</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody className="divide-y divide-white/[0.05]">
           <SectionRows
             label="ASSETS"
             curAccounts={currentBS.assetAccounts}
@@ -580,8 +580,8 @@ function BSTable({ currentBS, priorBS, currentFY, priorFY }: BSTableProps) {
             priAccounts={priorBS.liabilityAccounts}
             colorClass="bg-orange-50 text-orange-700"
           />
-          <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
-            <td className="px-4 py-3 text-gray-900">TOTAL LIABILITIES &amp; EQUITY</td>
+          <tr className="border-t-2 border-gray-300 bg-[#0e1017] font-semibold">
+            <td className="px-4 py-3 text-white/85">TOTAL LIABILITIES &amp; EQUITY</td>
             <AmountCell paise={currentBS.totalLiabilitiesAndEquity} />
             <AmountCell paise={priorBS.totalLiabilitiesAndEquity} />
           </tr>
@@ -747,11 +747,11 @@ export default function FinancialStatementsPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+          <h1 className="text-xl font-semibold text-white/85 flex items-center gap-2">
             <BarChart3 size={20} className="text-blue-600" />
             Financial Statements
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5">Year-on-year comparison — P&L and Balance Sheet</p>
+          <p className="text-sm text-white/40 mt-0.5">Year-on-year comparison — P&L and Balance Sheet</p>
         </div>
         {hasData && (
           <div className="flex items-center gap-2">
@@ -764,7 +764,7 @@ export default function FinancialStatementsPage() {
             </button>
             <button
               onClick={handleExport}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-[#131620] border border-white/[0.07] text-white/65 text-sm font-medium rounded-lg hover:bg-[#0e1017] transition-colors shadow-sm"
             >
               <Download size={14} />
               Export Excel
@@ -774,15 +774,15 @@ export default function FinancialStatementsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+      <div className="flex gap-1 bg-white/[0.06] p-1 rounded-lg w-fit">
         {(["pl", "bs", "cashflow"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
               activeTab === tab
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-500 hover:text-gray-700"
+                ? "bg-[#131620] text-white/85 shadow-sm"
+                : "text-white/40 hover:text-white/65"
             }`}
           >
             {tab === "pl" ? "P&L" : tab === "bs" ? "Balance Sheet" : "Cash Flow Summary"}
@@ -791,15 +791,15 @@ export default function FinancialStatementsPage() {
       </div>
 
       {/* Controls */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="bg-[#131620] rounded-xl border border-white/[0.07] p-5">
         <div className="flex flex-wrap gap-4 items-end">
           {/* Client selector */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500 font-medium">Client</label>
+            <label className="text-xs text-white/40 font-medium">Client</label>
             <select
               value={selectedClientId}
               onChange={(e) => setSelectedClientId(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]"
+              className="text-sm border border-white/[0.07] rounded-lg px-3 py-2 bg-[#131620] focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]"
             >
               {clients.length === 0 && <option value="">Loading clients…</option>}
               {clients.map((c) => (
@@ -812,11 +812,11 @@ export default function FinancialStatementsPage() {
 
           {/* Current FY */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500 font-medium">Current FY</label>
+            <label className="text-xs text-white/40 font-medium">Current FY</label>
             <select
               value={currentFY}
               onChange={(e) => setCurrentFY(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="text-sm border border-white/[0.07] rounded-lg px-3 py-2 bg-[#131620] focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {fyOptions.map((fy) => (
                 <option key={fy} value={fy}>
@@ -828,11 +828,11 @@ export default function FinancialStatementsPage() {
 
           {/* Comparison FY */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500 font-medium">Comparison FY</label>
+            <label className="text-xs text-white/40 font-medium">Comparison FY</label>
             <select
               value={priorFY}
               onChange={(e) => setPriorFY(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="text-sm border border-white/[0.07] rounded-lg px-3 py-2 bg-[#131620] focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {fyOptions.map((fy) => (
                 <option key={fy} value={fy}>
@@ -863,7 +863,7 @@ export default function FinancialStatementsPage() {
 
       {/* Empty state */}
       {!loading && !error && !hasData && (
-        <div className="text-center py-16 text-gray-400">
+        <div className="text-center py-16 text-white/30">
           <BarChart3 size={40} className="mx-auto mb-3 opacity-30" />
           <p className="text-sm">Select a client and FY range, then click Generate.</p>
         </div>
@@ -871,7 +871,7 @@ export default function FinancialStatementsPage() {
 
       {/* Loading */}
       {loading && (
-        <div className="flex items-center justify-center py-16 gap-3 text-gray-400">
+        <div className="flex items-center justify-center py-16 gap-3 text-white/30">
           <Loader2 size={22} className="animate-spin" />
           <span className="text-sm">Fetching journal data…</span>
         </div>
@@ -899,28 +899,28 @@ export default function FinancialStatementsPage() {
 
       {/* Cash Flow Summary Tab */}
       {hasData && activeTab === "cashflow" && (
-        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.07] p-8 text-center text-white/30">
           <BarChart3 size={32} className="mx-auto mb-3 opacity-30" />
           <p className="text-sm">Cash Flow Statement requires direct cash account mapping.</p>
-          <p className="text-xs mt-1 text-gray-300">Coming in next phase — configure cash &amp; bank accounts in Chart of Accounts first.</p>
+          <p className="text-xs mt-1 text-white/20">Coming in next phase — configure cash &amp; bank accounts in Chart of Accounts first.</p>
         </div>
       )}
 
       {/* Share with Client Modal */}
       {showShareModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+          <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-gray-900">Share with Client</h3>
-              <button onClick={() => setShowShareModal(false)} className="text-gray-400 hover:text-gray-600">
+              <h3 className="text-base font-semibold text-white/85">Share with Client</h3>
+              <button onClick={() => setShowShareModal(false)} className="text-white/30 hover:text-white/55">
                 <X size={18} />
               </button>
             </div>
             {shareSuccess ? (
               <div className="flex flex-col items-center gap-3 py-4">
                 <CheckCircle size={40} className="text-green-500" />
-                <p className="text-sm font-medium text-gray-900">Shared successfully!</p>
-                <p className="text-xs text-gray-400">The client can now view and download this report from their portal.</p>
+                <p className="text-sm font-medium text-white/85">Shared successfully!</p>
+                <p className="text-xs text-white/30">The client can now view and download this report from their portal.</p>
               </div>
             ) : (
               <>
@@ -930,13 +930,13 @@ export default function FinancialStatementsPage() {
                     {clients.find((c) => c.id === selectedClientId)?.client_name ?? "Selected client"}
                   </p>
                 </div>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-white/40">
                   This will upload an Excel copy to the client&apos;s portal under the <strong>Reports</strong> tab. The client can view and download it.
                 </p>
                 <div className="flex gap-2 justify-end pt-1">
                   <button
                     onClick={() => setShowShareModal(false)}
-                    className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+                    className="px-4 py-2 text-sm text-white/55 border border-white/[0.07] rounded-lg hover:bg-[#0e1017]"
                   >
                     Cancel
                   </button>

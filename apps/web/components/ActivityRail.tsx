@@ -28,7 +28,7 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
     <aside className="relative flex flex-col h-full w-[52px] shrink-0 bg-[#0d0d14] border-r border-white/5 z-10">
       {/* Logo */}
       <div className="flex items-center justify-center h-14 border-b border-white/5 shrink-0">
-        <div className="w-7 h-7 rounded-[8px] bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-[11px] font-bold text-white shadow-[0_0_16px_rgba(99,102,241,0.35)]">
+        <div className="w-7 h-7 rounded-[8px] bg-blue-500 flex items-center justify-center text-[11px] font-bold text-white shadow-[0_0_16px_rgba(59,130,246,0.35)]">
           P
         </div>
       </div>
@@ -46,25 +46,25 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
                 className={cn(
                   "relative flex items-center justify-center w-9 h-9 rounded-[9px] transition-all duration-100 mx-auto",
                   isActive
-                    ? "bg-indigo-500/15"
+                    ? "bg-blue-500/15"
                     : "hover:bg-white/[0.04]"
                 )}
               >
                 {isActive && (
-                  <span className="absolute left-[-1px] h-5 w-[3px] rounded-r-[2px] bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+                  <span className="absolute left-[-1px] h-5 w-[3px] rounded-r-[2px] bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
                 )}
                 <Icon
                   size={16}
                   className={cn(
                     "shrink-0 transition-colors duration-100",
-                    isActive ? "text-indigo-400" : "text-white/30"
+                    isActive ? "text-blue-400" : "text-white/30"
                   )}
                 />
               </button>
               <span
                 className={cn(
                   "text-[9px] font-medium leading-none select-none",
-                  isActive ? "text-indigo-400" : "text-white/25"
+                  isActive ? "text-blue-400" : "text-white/25"
                 )}
               >
                 {ws.label}
@@ -96,7 +96,7 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
           <button
             onClick={() => setAvatarMenuOpen((v) => !v)}
             title={user?.email ?? "Account"}
-            className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-[10px] font-bold text-white hover:opacity-80 transition-opacity shrink-0"
+            className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-[10px] font-bold text-white hover:opacity-80 transition-opacity shrink-0"
           >
             {initials}
           </button>
