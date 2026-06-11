@@ -186,11 +186,20 @@ def unmatch_transaction(
     db = _db()
     if not db:
         return api_response(True, {"unmatched": True})
+    txn = db.table("bank_transactions").select("id, client_id").eq("id", txn_id).single().execute().data
     db.table("bank_transactions").update({
         "reconciled":            False,
         "reconciled_journal_id": None,
         "reconciled_at":         None,
     }).eq("id", txn_id).execute()
+    if txn:
+        timeline_service.log(
+            txn["client_id"], "accounting", "Reconciliation Unmatched",
+            "Bank transaction match reversed",
+            "warning", firm_id=current_user.get("firm_id", ""),
+            entity_type="bank_transaction", entity_id=txn_id,
+            actor_id=current_user.get("auth_user_id"),
+        )
     return api_response(True, {"unmatched": True, "txn_id": txn_id})
 
 
