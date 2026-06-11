@@ -19,7 +19,7 @@ const EXPORT_CONFIGS: {
   type: "financial_statements" | "notes" | "complete_pack";
   label: string;
   description: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: React.ElementType;
   primary?: boolean;
 }[] = [
   {
