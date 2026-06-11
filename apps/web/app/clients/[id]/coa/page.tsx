@@ -173,7 +173,7 @@ export default function ClientCoaPage() {
           prev.map((a) => a.id === editTarget.id ? { ...data as Account, _source: "client" } : a)
         );
       } else {
-        const { data, error: err } = await sb
+        const { error: err } = await sb
           .from("chart_of_accounts")
           .insert({
             firm_id: firmId,
