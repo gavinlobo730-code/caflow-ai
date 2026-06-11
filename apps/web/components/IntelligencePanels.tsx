@@ -139,7 +139,7 @@ export function IntelligencePanels() {
           {risk.length === 0 ? (
             <p className="text-xs text-[#94A3B8] py-3">No at-risk clients detected</p>
           ) : (
-            <div className="divide-y divide-white/[0.03]">
+            <div className="divide-y divide-[#E2E8F0]">
               {risk.map(c => (
                 <div key={c.client_id} className="flex items-center justify-between gap-3 py-2.5">
                   <div className="min-w-0">
@@ -167,7 +167,7 @@ export function IntelligencePanels() {
           {health.length === 0 ? (
             <p className="text-xs text-[#94A3B8] py-3">No client health data yet</p>
           ) : (
-            <div className="divide-y divide-white/[0.03]">
+            <div className="divide-y divide-[#E2E8F0]">
               {health.map(c => (
                 <div key={c.client_id} className="flex items-center justify-between gap-3 py-2.5">
                   <div className="min-w-0">
@@ -200,7 +200,7 @@ export function IntelligencePanels() {
           {recommendations.length === 0 ? (
             <p className="text-xs text-[#94A3B8] py-3">No recommendations right now</p>
           ) : (
-            <div className="divide-y divide-white/[0.03]">
+            <div className="divide-y divide-[#E2E8F0]">
               {recommendations.map((r, i) => (
                 <div key={i} className="py-2.5 space-y-1">
                   <div className="flex items-center gap-1.5">

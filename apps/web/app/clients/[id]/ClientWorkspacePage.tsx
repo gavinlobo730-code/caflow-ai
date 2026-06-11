@@ -70,7 +70,7 @@ const FILING_STATUS_COLORS: Record<string, string> = {
 function LoadingSkeleton() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6 animate-pulse">
-      <div className="h-8 bg-white/[0.08] rounded w-64" />
+      <div className="h-8 bg-[#F1F5F9] rounded w-64" />
       <div className="grid grid-cols-5 gap-3">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="h-20 bg-[#F1F5F9] rounded-lg" />
