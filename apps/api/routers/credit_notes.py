@@ -10,11 +10,31 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, field_validator
 from models.common import api_response
+from models.invoices import InvoiceLineIn
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
+
+
+class CreditNoteIn(BaseModel):
+    client_id: str
+    customer_id: str
+    credit_note_date: str  # YYYY-MM-DD
+    lines: list[InvoiceLineIn]
+    sales_invoice_id: str | None = None
+    reference_no: str | None = None
+    notes: str | None = None
+    is_interstate: bool = False
+
+    @field_validator("lines")
+    @classmethod
+    def at_least_one_line(cls, v: list) -> list:
+        if not v:
+            raise ValueError("Credit note must have at least one line.")
+        return v
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.credit_notes")
@@ -113,7 +133,7 @@ def list_credit_notes(
 
 @router.post("/")
 def create_credit_note(
-    data: dict,
+    data: CreditNoteIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """
@@ -123,11 +143,7 @@ def create_credit_note(
     All money in integer paise.
     """
     try:
-        required = ["client_id", "customer_id", "credit_note_date", "lines"]
-        for field in required:
-            if not data.get(field):
-                raise HTTPException(status_code=422, detail=f"{field} is required")
-
+        data = data.model_dump()
         firm_id   = current_user.get("firm_id")
         client_id = data["client_id"]
         lines_data = data.get("lines", [])
