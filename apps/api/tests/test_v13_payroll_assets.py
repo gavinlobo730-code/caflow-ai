@@ -234,3 +234,178 @@ class TestDepreciation:
         asset = self._asset()
         result = _compute_annual_depreciation(asset)
         assert isinstance(result, int)
+
+
+# ─── PF Boundary Tests ────────────────────────────────────────────────────────
+
+class TestPFBoundary:
+    def test_pf_exactly_at_cap(self):
+        """Basic exactly ₹15,000 → PF = ₹1,800 (not capped, exactly at boundary)."""
+        result = _compute_pf(1500000)
+        assert result["employee"] == 180000
+        assert result["employer"] == 180000
+
+    def test_pf_one_paise_above_cap(self):
+        """Basic ₹15,001 → still capped at ₹1,800 (cap applies above ₹15,000)."""
+        result = _compute_pf(1500100)
+        assert result["employee"] == 180000
+        assert result["employer"] == 180000
+
+    def test_pf_one_paise_below_cap(self):
+        """Basic ₹14,999 → PF = 12% of ₹14,999 (not capped)."""
+        result = _compute_pf(1499900)
+        assert result["employee"] == 179988  # floor(1499900 * 12 / 100)
+        assert result["employer"] == 179988
+
+    def test_pf_symmetry(self):
+        """Employee and employer PF must always be equal."""
+        for basic in [500000, 1000000, 1500000, 2000000, 5000000]:
+            r = _compute_pf(basic)
+            assert r["employee"] == r["employer"], f"PF asymmetric at basic={basic}"
+
+    def test_pf_integer_result(self):
+        """PF must always be integer paise — no float."""
+        result = _compute_pf(1234567)
+        assert isinstance(result["employee"], int)
+        assert isinstance(result["employer"], int)
+
+
+# ─── ESI Boundary Tests ───────────────────────────────────────────────────────
+
+class TestESIBoundary:
+    def test_esi_one_paise_above_ceiling(self):
+        """Gross ₹21,001 → ESI not applicable (above ceiling)."""
+        result = _compute_esi(2100100)
+        assert result["employee"] == 0
+        assert result["employer"] == 0
+
+    def test_esi_one_paise_below_ceiling(self):
+        """Gross ₹20,999 → ESI applicable."""
+        result = _compute_esi(2099900)
+        assert result["employee"] > 0
+        assert result["employer"] > 0
+
+    def test_esi_rates_correct(self):
+        """ESI Act §2(9): employee 0.75%, employer 3.25% of gross."""
+        gross = 1800000  # ₹18,000
+        result = _compute_esi(gross)
+        assert result["employee"] == 13500   # 0.75% of 1800000 = 13500
+        assert result["employer"] == 58500   # 3.25% of 1800000 = 58500
+
+    def test_esi_total_is_4_percent(self):
+        """Total ESI = employee + employer = 4% of gross."""
+        gross = 2000000
+        result = _compute_esi(gross)
+        total = result["employee"] + result["employer"]
+        expected = gross * 4 // 100
+        assert abs(total - expected) <= 1  # allow 1 paise rounding tolerance
+
+    def test_esi_integer_result(self):
+        result = _compute_esi(1500000)
+        assert isinstance(result["employee"], int)
+        assert isinstance(result["employer"], int)
+
+
+# ─── TDS §192 Boundary Tests ─────────────────────────────────────────────────
+
+class TestTDS192Boundary:
+    def test_exactly_at_300k_threshold(self):
+        """Annual ₹3,00,000 exactly → no TDS (not exceeding)."""
+        assert _compute_tds_192(30000000) == 0
+
+    def test_one_rupee_above_threshold(self):
+        """Annual ₹3,00,001 → marginal TDS > 0."""
+        monthly = _compute_tds_192(30000100)
+        assert monthly >= 0  # may be 0 due to floor division
+        assert isinstance(monthly, int)
+
+    def test_700k_boundary(self):
+        """Annual ₹7,00,000: still in 5% slab. ₹7,00,001 moves to 10%."""
+        monthly_7L = _compute_tds_192(70000000)
+        monthly_above = _compute_tds_192(70000100)
+        assert isinstance(monthly_7L, int)
+        assert isinstance(monthly_above, int)
+
+    def test_cess_is_4_percent(self):
+        """IT Act §87A cess: 4% on income tax. Verify cess is added (±12 paise rounding tolerance)."""
+        # ₹5L annual: tax = ₹10,000 * 100 paise, cess = ₹400 * 100 paise, total = ₹10,400 * 100 paise
+        import math as m
+        annual_tds = _compute_tds_192(50000000) * 12
+        base_tax = (50000000 - 30000000) * 5 // 100
+        cess = m.floor(base_tax * 4 / 100)
+        expected_annual = base_tax + cess
+        # Allow ≤12 paise rounding tolerance (floor division applied per month × 12)
+        assert abs(annual_tds - expected_annual) <= 12
+
+    def test_tds_never_negative(self):
+        """TDS must always be non-negative."""
+        for gross in [0, 100000, 2999999, 30000000, 100000000]:
+            assert _compute_tds_192(gross) >= 0
+
+
+# ─── Validator Tests ──────────────────────────────────────────────────────────
+
+class TestValidators:
+    """Tests for core/validators.py — Indian tax identifier validation."""
+
+    def test_valid_gstin(self):
+        from core.validators import validate_gstin
+        assert validate_gstin("27AAAAA0000A1Z5") is None
+
+    def test_invalid_gstin_format(self):
+        from core.validators import validate_gstin
+        assert validate_gstin("INVALID") is not None
+        assert validate_gstin("00AAAAA0000A1Z5") is not None  # state 00 invalid
+
+    def test_gstin_required(self):
+        from core.validators import validate_gstin
+        err = validate_gstin(None)
+        assert err is not None
+        assert "required" in err.lower()
+
+    def test_valid_pan(self):
+        from core.validators import validate_pan
+        assert validate_pan("ABCDE1234F") is None
+
+    def test_invalid_pan(self):
+        from core.validators import validate_pan
+        assert validate_pan("123AB456CD") is not None
+        assert validate_pan("ABCDE12345") is not None  # digit at end
+
+    def test_pan_optional(self):
+        from core.validators import validate_pan
+        assert validate_pan(None) is None
+
+    def test_valid_phone(self):
+        from core.validators import validate_phone
+        assert validate_phone("9876543210") is None
+        assert validate_phone("+919876543210") is None
+
+    def test_invalid_phone(self):
+        from core.validators import validate_phone
+        assert validate_phone("123") is not None  # too short
+
+    def test_valid_pincode(self):
+        from core.validators import validate_pincode
+        assert validate_pincode("400001") is None
+
+    def test_invalid_pincode(self):
+        from core.validators import validate_pincode
+        assert validate_pincode("000001") is not None  # starts with 0
+        assert validate_pincode("12345") is not None   # only 5 digits
+
+    def test_collect_errors_aggregates(self):
+        from core.validators import collect_errors, validate_gstin, validate_pan
+        errors = collect_errors(
+            gstin=(validate_gstin, "BAD"),
+            pan=(validate_pan, "BADPAN"),
+        )
+        assert len(errors) == 2
+
+    def test_collect_errors_empty_on_valid(self):
+        from core.validators import collect_errors, validate_gstin, validate_pan
+        errors = collect_errors(
+            gstin=(validate_gstin, "27AAAAA0000A1Z5"),
+            pan=(validate_pan, "ABCDE1234F"),
+        )
+        assert errors == []

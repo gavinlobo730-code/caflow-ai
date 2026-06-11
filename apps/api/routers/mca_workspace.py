@@ -108,7 +108,7 @@ def list_companies(
             rows = get_supabase().table("mca_companies").select("*").eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
         return api_response(True, rows)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
 
 
 @router.post("/companies")
@@ -143,7 +143,7 @@ def create_company(
                   actor_id=current_user.get("id"), new_data=record)
         return api_response(True, record)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
 
 
 @router.get("/companies/{company_id}")
@@ -168,7 +168,7 @@ def get_company(company_id: str, current_user: dict = Depends(rbac("mca", "read"
 
         return api_response(True, {**company, "directors": directors})
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
 
 
 @router.get("/directors")
@@ -186,7 +186,7 @@ def list_directors(
             rows = get_supabase().table("mca_directors").select("*").eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
         return api_response(True, rows)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
 
 
 @router.post("/directors")
@@ -223,7 +223,7 @@ def create_director(
                   actor_id=current_user.get("id"), new_data=record)
         return api_response(True, record)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
 
 
 @router.patch("/directors/{director_id}")
@@ -235,7 +235,7 @@ def update_director(
     """Update director KYC status or cessation date."""
     try:
         firm_id = current_user["firm_id"]
-        updates = {k: v for k, v in body.dict().items() if v is not None}
+        updates = {k: v for k, v in body.model_dump().items() if v is not None}
         if not updates:
             return api_response(False, None, "No update fields provided")
 
@@ -253,7 +253,7 @@ def update_director(
                   actor_id=current_user.get("id"), new_data=updates)
         return api_response(True, rec)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
 
 
 @router.get("/filings")
@@ -292,7 +292,7 @@ def list_filings(
 
         return api_response(True, rows)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
 
 
 @router.post("/filings")
@@ -341,7 +341,7 @@ def create_filing(
                   actor_id=current_user.get("id"), new_data=record)
         return api_response(True, record)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
 
 
 @router.patch("/filings/{filing_id}/status")
@@ -404,7 +404,7 @@ def update_filing_status(
     except HTTPException:
         raise
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
 
 
 @router.get("/filings/{filing_id}")
@@ -424,7 +424,7 @@ def get_filing(filing_id: str, current_user: dict = Depends(rbac("mca", "read"))
                 return api_response(False, None, "Filing not found")
         return api_response(True, rec)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
 
 
 @router.get("/filing-history")
@@ -446,4 +446,4 @@ def filing_history(
             rows = get_supabase().table("mca_filings").select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "filed").range(offset, offset + limit - 1).execute().data or []
         return api_response(True, rows)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete MCA operation. Please try again.")

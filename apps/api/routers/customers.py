@@ -10,7 +10,9 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import ValidationError as PydanticValidationError
 from models.common import api_response
+from models.parties import CustomerIn, CustomerUpdateIn
 from core.permissions import rbac
 from core.exceptions import NotFoundError
 from services.audit_service import log_event
@@ -85,28 +87,20 @@ def list_customers(
         return api_response(True, resp.data or [])
     except Exception as e:
         _logger.error("list_customers: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
 @router.post("/")
 def create_customer(
-    data: dict,
+    data: CustomerIn,
     current_user: dict = Depends(rbac("client", "write")),
 ):
     try:
-        # Validate required fields
-        if not data.get("name"):
-            raise HTTPException(status_code=422, detail="name is required")
-        if not data.get("client_id"):
-            raise HTTPException(status_code=422, detail="client_id is required")
-
-        # GSTIN validation if provided — CGST Act §25
-        if data.get("gstin"):
-            _validate_gstin(data["gstin"], data.get("state_code"))
-
-        data["firm_id"] = current_user.get("firm_id")
-        data["is_active"] = True
-        data["created_at"] = datetime.now(timezone.utc).isoformat()
+        payload = data.model_dump()
+        payload["firm_id"] = current_user.get("firm_id")
+        payload["is_active"] = True
+        payload["created_at"] = datetime.now(timezone.utc).isoformat()
+        data = payload
 
         if _USE_MOCK:
             data["id"] = str(uuid.uuid4())
@@ -142,7 +136,7 @@ def create_customer(
         raise
     except Exception as e:
         _logger.error("create_customer: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
 @router.get("/outstanding")
@@ -184,7 +178,7 @@ def get_outstanding_summary(
         return api_response(True, {"client_id": client_id, "total_outstanding_paise": total, "customers": result})
     except Exception as e:
         _logger.error("get_outstanding_summary: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
 @router.get("/{customer_id}")
@@ -209,20 +203,19 @@ def get_customer(
         raise
     except Exception as e:
         _logger.error("get_customer: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
 @router.patch("/{customer_id}")
 def update_customer(
     customer_id: str,
-    data: dict,
+    data: CustomerUpdateIn,
     current_user: dict = Depends(rbac("client", "write")),
 ):
     try:
-        if data.get("gstin"):
-            _validate_gstin(data["gstin"], data.get("state_code"))
-
-        data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        payload = data.model_dump(exclude_none=True)
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        data = payload
 
         if _USE_MOCK:
             for i, c in enumerate(MOCK_CUSTOMERS):
@@ -247,7 +240,7 @@ def update_customer(
         raise
     except Exception as e:
         _logger.error("update_customer: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
 @router.delete("/{customer_id}")
@@ -279,7 +272,7 @@ def delete_customer(
         raise
     except Exception as e:
         _logger.error("delete_customer: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
 @router.get("/{customer_id}/outstanding")
@@ -332,4 +325,4 @@ def get_customer_outstanding(
         raise
     except Exception as e:
         _logger.error("get_customer_outstanding: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")

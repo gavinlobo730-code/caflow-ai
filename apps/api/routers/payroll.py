@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import math
 
 from models.common import api_response
+from models.payroll import EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn, RunStatusIn
 from core.permissions import rbac
 from services.timeline_service import timeline_service
 
@@ -165,61 +166,32 @@ def list_employees(
 
 @router.post("/employees")
 def create_employee(
-    data: dict,
+    data: EmployeeIn,
     current_user: dict = Depends(rbac("payroll", "write"))
 ):
     db = _db()
     if not db:
-        return api_response(True, {"id": "mock-id", **data})
-    from services.timeline_service import timeline_service
-    row = db.table("payroll_employees").insert({
-        "firm_id":   current_user["firm_id"],
-        "client_id": data["client_id"],
-        "name":      data["name"],
-        "pan":       data.get("pan"),
-        "designation": data.get("designation"),
-        "department":  data.get("department"),
-        "joining_date": data.get("joining_date"),
-        "status":    "active",
-        "basic_paise":           int(data.get("basic_paise", 0)),
-        "hra_percent":           float(data.get("hra_percent", 0)),
-        "da_percent":            float(data.get("da_percent", 0)),
-        "other_allowances_paise": int(data.get("other_allowances_paise", 0)),
-        "lta_paise":             int(data.get("lta_paise", 0)),
-        "medical_paise":         int(data.get("medical_paise", 0)),
-        "special_allowance_paise": int(data.get("special_allowance_paise", 0)),
-        "pf_applicable":  bool(data.get("pf_applicable", True)),
-        "esi_applicable": bool(data.get("esi_applicable", True)),
-        "pt_applicable":  bool(data.get("pt_applicable", False)),
-        "pt_state":       data.get("pt_state"),
-        "uan":            data.get("uan"),
-        "esi_number":     data.get("esi_number"),
-        "bank_account_no": data.get("bank_account_no"),
-        "bank_ifsc":      data.get("bank_ifsc"),
-        "bank_name":      data.get("bank_name"),
-    }).execute()
+        return api_response(True, {"id": "mock-id", **data.model_dump()})
+    payload = data.model_dump()
+    payload["firm_id"] = current_user["firm_id"]
+    payload["status"] = "active"
+    row = db.table("payroll_employees").insert(payload).execute()
     emp = (row.data or [{}])[0]
-    timeline_service.log(data["client_id"], "work", "Employee Added",
-        f"{data['name']} added to payroll", "info")
+    timeline_service.log(data.client_id, "work", "Employee Added",
+        f"{data.name} added to payroll", "info")
     return api_response(True, emp)
 
 
 @router.patch("/employees/{employee_id}")
 def update_employee(
     employee_id: str,
-    data: dict,
+    data: EmployeeUpdateIn,
     current_user: dict = Depends(rbac("payroll", "write"))
 ):
     db = _db()
+    update = data.model_dump(exclude_none=True)
     if not db:
-        return api_response(True, data)
-    allowed = {
-        "name", "designation", "department", "basic_paise", "hra_percent",
-        "da_percent", "lta_paise", "medical_paise", "special_allowance_paise",
-        "pf_applicable", "esi_applicable", "pt_applicable", "pt_state",
-        "bank_account_no", "bank_ifsc", "bank_name", "uan", "esi_number", "status"
-    }
-    update = {k: v for k, v in data.items() if k in allowed}
+        return api_response(True, update)
     row = db.table("payroll_employees").update(update).eq("id", employee_id).execute()
     return api_response(True, (row.data or [{}])[0])
 
@@ -240,27 +212,15 @@ def list_salary_structures(
 
 @router.post("/salary-structures")
 def create_salary_structure(
-    data: dict,
+    data: SalaryStructureIn,
     current_user: dict = Depends(rbac("payroll", "write"))
 ):
     db = _db()
     if not db:
-        return api_response(True, {"id": "mock-id", **data})
-    row = db.table("salary_structures").insert({
-        "firm_id":   current_user["firm_id"],
-        "client_id": data["client_id"],
-        "name":      data["name"],
-        "basic_percent":   float(data.get("basic_percent", 40)),
-        "hra_percent":     float(data.get("hra_percent", 20)),
-        "da_percent":      float(data.get("da_percent", 0)),
-        "lta_percent":     float(data.get("lta_percent", 5)),
-        "medical_paise":   int(data.get("medical_paise", 125000)),
-        "special_percent": float(data.get("special_percent", 0)),
-        "pf_applicable":  bool(data.get("pf_applicable", True)),
-        "esi_applicable": bool(data.get("esi_applicable", True)),
-        "pt_applicable":  bool(data.get("pt_applicable", False)),
-        "pt_state":       data.get("pt_state"),
-    }).execute()
+        return api_response(True, {"id": "mock-id", **data.model_dump()})
+    payload = data.model_dump()
+    payload["firm_id"] = current_user["firm_id"]
+    row = db.table("salary_structures").insert(payload).execute()
     return api_response(True, (row.data or [{}])[0])
 
 
@@ -280,7 +240,7 @@ def list_runs(
 
 @router.post("/runs")
 def create_run(
-    data: dict,
+    data: PayrollRunIn,
     current_user: dict = Depends(rbac("payroll", "write"))
 ):
     """
@@ -288,8 +248,8 @@ def create_run(
     Computation is deterministic from employee master + attendance.
     """
     db = _db()
-    client_id = data["client_id"]
-    month     = data["month"]  # e.g. "2026-06"
+    client_id = data.client_id
+    month     = data.month  # e.g. "2026-06"
 
     if not db:
         return api_response(True, {"id": "mock-run", "month": month, "status": "draft"})
@@ -349,6 +309,13 @@ def create_run(
 
     run["totals"] = totals
     run["headcount"] = len(emps)
+    timeline_service.log(
+        client_id, "work", "Payroll Run Created",
+        f"Draft payroll run for {month} created with {len(emps)} employees",
+        "info", firm_id=current_user.get("firm_id", ""),
+        entity_type="payroll_run", entity_id=run_id,
+        actor_id=current_user.get("auth_user_id"),
+    )
     return api_response(True, run)
 
 
@@ -367,14 +334,12 @@ def get_run_slips(
 @router.patch("/runs/{run_id}/status")
 def update_run_status(
     run_id: str,
-    data: dict,
+    data: RunStatusIn,
     current_user: dict = Depends(rbac("payroll", "write"))
 ):
     """Move run to 'review' or back to 'draft'. Finalization is a separate endpoint."""
     db = _db()
-    new_status = data.get("status")
-    if new_status not in ("draft", "review"):
-        raise HTTPException(status_code=422, detail="Use /finalize to finalize a run")
+    new_status = data.status
     if not db:
         return api_response(True, {"id": run_id, "status": new_status})
     row = db.table("payroll_runs").update({"status": new_status}).eq("id", run_id).neq("status", "finalized").execute()
@@ -386,10 +351,10 @@ def update_run_status(
 @router.post("/runs/{run_id}/finalize")
 def finalize_run(
     run_id: str,
-    current_user: dict = Depends(rbac("payroll", "write"))
+    current_user: dict = Depends(rbac("payroll", "finalize"))
 ):
     """
-    Finalize payroll run — immutable after this point.
+    Finalize payroll run — Partner only. Immutable after this point.
     Creates journal entry per Product Bible immutability rules:
 
     Dr  Salaries Expense        (total gross)
