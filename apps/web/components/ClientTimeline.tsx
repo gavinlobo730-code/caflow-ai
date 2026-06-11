@@ -26,14 +26,14 @@ const CATEGORY_ICONS: Record<EventCategory, React.ElementType> = {
 };
 
 const SEVERITY_STYLES = {
-  info:     "border-l-white/10 bg-white/[0.02]",
-  success:  "border-l-emerald-500/40 bg-emerald-500/[0.04]",
-  warning:  "border-l-amber-500/40 bg-amber-500/[0.04]",
-  critical: "border-l-red-500/40 bg-red-500/[0.04]",
+  info:     "border-l-[#E2E8F0] bg-[#F8FAFC]",
+  success:  "border-l-emerald-300 bg-emerald-50/50",
+  warning:  "border-l-amber-300 bg-amber-50/50",
+  critical: "border-l-red-300 bg-red-50/50",
 };
 
 const SEVERITY_DOT = {
-  info:     "bg-white/20",
+  info:     "bg-[#CBD5E1]",
   success:  "bg-emerald-400",
   warning:  "bg-amber-400",
   critical: "bg-red-400",
@@ -146,7 +146,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
     return (
       <div className="space-y-2">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-14 rounded-lg bg-white/[0.03] animate-pulse" />
+          <div key={i} className="h-14 rounded-lg bg-[#F1F5F9] animate-pulse" />
         ))}
       </div>
     );
@@ -161,14 +161,14 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search events…"
-          className="flex-1 min-w-[120px] bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-[11px] text-[#475569] placeholder:text-[#CBD5E1] outline-none focus:border-white/15"
+          className="flex-1 min-w-[120px] bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-[11px] text-[#475569] placeholder:text-[#CBD5E1] outline-none focus:border-blue-300"
         />
         {/* Category filter */}
         <div className="relative">
           <select
             value={catFilter}
             onChange={(e) => setCatFilter(e.target.value as EventCategory | "all")}
-            className="appearance-none bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg pl-2.5 pr-6 py-1 text-[11px] text-[#64748B] outline-none focus:border-white/15 cursor-pointer"
+            className="appearance-none bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg pl-2.5 pr-6 py-1 text-[11px] text-[#64748B] outline-none focus:border-blue-300 cursor-pointer"
           >
             {CATEGORY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -181,7 +181,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           <select
             value={sevFilter}
             onChange={(e) => setSevFilter(e.target.value)}
-            className="appearance-none bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg pl-2.5 pr-6 py-1 text-[11px] text-[#64748B] outline-none focus:border-white/15 cursor-pointer"
+            className="appearance-none bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg pl-2.5 pr-6 py-1 text-[11px] text-[#64748B] outline-none focus:border-blue-300 cursor-pointer"
           >
             {SEVERITY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -192,7 +192,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
         {/* Refresh */}
         <button
           onClick={() => load(true)}
-          className="text-[#CBD5E1] hover:text-[#64748B] transition-colors p-1"
+          className="text-[#94A3B8] hover:text-[#64748B] transition-colors p-1"
           title="Refresh"
         >
           <RefreshCw size={11} className={cn(refreshing && "animate-spin")} />
@@ -202,7 +202,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
       {filtered.length === 0 && (
         <div className="flex flex-col items-center justify-center py-10 text-center space-y-2">
           <div className="w-10 h-10 rounded-full bg-[#F1F5F9] flex items-center justify-center">
-            <Shield size={18} className="text-[#CBD5E1]" />
+            <Shield size={18} className="text-[#94A3B8]" />
           </div>
           <p className="text-sm text-[#94A3B8]">
             {search || catFilter !== "all" || sevFilter !== "all"
@@ -215,7 +215,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
       {/* Pinned events */}
       {pinned.length > 0 && (
         <div className="mb-1 space-y-1">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#CBD5E1] px-1 flex items-center gap-1">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] px-1 flex items-center gap-1">
             <Pin size={9} /> Pinned
           </p>
           {pinned.map((e) => (
@@ -228,7 +228,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
       {feed.length > 0 && (
         <div className="space-y-1">
           {pinned.length > 0 && (
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#CBD5E1] px-1">Activity</p>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] px-1">Activity</p>
           )}
           {feed.map((e) => (
             <TimelineEventRow key={e.id} event={e} onPin={togglePin} pinning={pinning === e.id} />
@@ -242,7 +242,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           {page > 0 && (
             <button
               onClick={() => { setPage((p) => p - 1); load(false, false); }}
-              className="text-[11px] text-[#94A3B8] hover:text-[#475569] px-3 py-1 rounded border border-[#E2E8F0] hover:border-white/15"
+              className="text-[11px] text-[#94A3B8] hover:text-[#475569] px-3 py-1 rounded border border-[#E2E8F0] hover:border-blue-300"
             >
               ← Previous
             </button>
@@ -250,7 +250,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           {hasMore && (
             <button
               onClick={() => { setPage((p) => p + 1); load(false, false); }}
-              className="text-[11px] text-[#94A3B8] hover:text-[#475569] px-3 py-1 rounded border border-[#E2E8F0] hover:border-white/15"
+              className="text-[11px] text-[#94A3B8] hover:text-[#475569] px-3 py-1 rounded border border-[#E2E8F0] hover:border-blue-300"
             >
               Load more →
             </button>
@@ -276,7 +276,7 @@ function TimelineEventRow({
   return (
     <div
       className={cn(
-        "group flex items-start gap-3 px-3 py-2.5 rounded-lg border-l-2 transition-colors hover:bg-white/[0.03]",
+        "group flex items-start gap-3 px-3 py-2.5 rounded-lg border-l-2 transition-colors hover:opacity-80",
         SEVERITY_STYLES[event.severity ?? "info"]
       )}
       onMouseEnter={() => setHover(true)}
@@ -293,11 +293,11 @@ function TimelineEventRow({
         )}
       </div>
       <div className="shrink-0 text-right flex flex-col items-end gap-0.5">
-        <p className="text-[10px] text-[#CBD5E1] whitespace-nowrap">{timeAgo(event.created_at)}</p>
+        <p className="text-[10px] text-[#94A3B8] whitespace-nowrap">{timeAgo(event.created_at)}</p>
         {event.action_label && event.action_url && (
           <a
             href={event.action_url}
-            className="text-[10px] text-violet-600 hover:text-violet-300 underline underline-offset-2"
+            className="text-[10px] text-blue-600 hover:text-blue-800 underline underline-offset-2"
           >
             {event.action_label}
           </a>
@@ -309,7 +309,7 @@ function TimelineEventRow({
             disabled={pinning}
             className={cn(
               "mt-0.5 transition-colors",
-              event.is_pinned ? "text-amber-600" : "text-white/15 hover:text-[#64748B]"
+              event.is_pinned ? "text-amber-500" : "text-[#CBD5E1] hover:text-[#64748B]"
             )}
             title={event.is_pinned ? "Unpin" : "Pin to top"}
           >
