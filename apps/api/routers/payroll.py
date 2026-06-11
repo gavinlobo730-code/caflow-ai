@@ -349,6 +349,13 @@ def create_run(
 
     run["totals"] = totals
     run["headcount"] = len(emps)
+    timeline_service.log(
+        client_id, "work", "Payroll Run Created",
+        f"Draft payroll run for {month} created with {len(emps)} employees",
+        "info", firm_id=current_user.get("firm_id", ""),
+        entity_type="payroll_run", entity_id=run_id,
+        actor_id=current_user.get("auth_user_id"),
+    )
     return api_response(True, run)
 
 
@@ -386,10 +393,10 @@ def update_run_status(
 @router.post("/runs/{run_id}/finalize")
 def finalize_run(
     run_id: str,
-    current_user: dict = Depends(rbac("payroll", "write"))
+    current_user: dict = Depends(rbac("payroll", "finalize"))
 ):
     """
-    Finalize payroll run — immutable after this point.
+    Finalize payroll run — Partner only. Immutable after this point.
     Creates journal entry per Product Bible immutability rules:
 
     Dr  Salaries Expense        (total gross)

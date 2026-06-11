@@ -113,7 +113,7 @@ def list_purchase_payments(
         return api_response(True, resp.data or [])
     except Exception as e:
         _logger.error("list_purchase_payments error: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete payment operation. Please try again.")
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +150,7 @@ def get_purchase_payment(
         raise
     except Exception as e:
         _logger.error("get_purchase_payment error: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete payment operation. Please try again.")
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +281,7 @@ def create_purchase_payment(
         raise
     except Exception as e:
         _logger.error("create_purchase_payment error: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete payment operation. Please try again.")
 
 
 def _update_bill_payment_status(db, bill_id: str, paid_paise: int) -> None:

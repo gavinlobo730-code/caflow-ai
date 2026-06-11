@@ -102,6 +102,91 @@ def post_journal_entry(entry_id: str, current_user: dict = Depends(rbac("account
         raise HTTPException(status_code=422, detail=str(e))
 
 
+@router.post("/journal/{entry_id}/reverse")
+def reverse_journal_entry(
+    entry_id: str,
+    data: dict,
+    current_user: dict = Depends(rbac("accounting", "approve")),
+):
+    """
+    Reverse a posted journal entry — Partner only.
+    Creates a new equal-and-opposite journal entry linked to the original.
+    The original entry is NOT modified (immutability preserved).
+    Audit trail: reversal_of field links back to original entry id.
+    """
+    try:
+        import uuid
+        from datetime import timezone
+
+        if not data.get("reversal_date"):
+            raise HTTPException(status_code=422, detail="reversal_date is required")
+        narration = data.get("narration", f"Reversal of journal {entry_id}")
+
+        db = accounting_service._db()  # type: ignore[attr-defined]
+        if not db:
+            return api_response(True, {"id": "mock-reversal", "reversal_of": entry_id})
+
+        # Fetch original entry
+        orig = db.table("journal_entries").select("*, journal_lines(*)").eq("id", entry_id).single().execute().data
+        if not orig:
+            raise HTTPException(status_code=404, detail="Journal entry not found")
+        if not orig.get("is_posted"):
+            raise HTTPException(status_code=422, detail="Only posted journal entries can be reversed")
+        if orig.get("reversal_of"):
+            raise HTTPException(status_code=409, detail="This entry is itself a reversal — cannot reverse a reversal")
+
+        # Check not already reversed
+        existing_rev = db.table("journal_entries").select("id").eq("reversal_of", entry_id).execute().data
+        if existing_rev:
+            raise HTTPException(status_code=409, detail=f"Journal {entry_id} has already been reversed")
+
+        rev_id = str(uuid.uuid4())
+        # Create reversal entry (swap debit/credit on each line)
+        rev_entry = db.table("journal_entries").insert({
+            "id":            rev_id,
+            "firm_id":       orig["firm_id"],
+            "client_id":     orig["client_id"],
+            "entry_date":    data["reversal_date"],
+            "reference_no":  f"REV-{orig.get('reference_no', entry_id[:8])}",
+            "narration":     narration,
+            "is_posted":     True,
+            "reversal_of":   entry_id,
+            "created_at":    datetime.now(timezone.utc).isoformat(),
+        }).execute().data[0]
+
+        # Reverse each line (swap debit ↔ credit)
+        rev_lines = []
+        for line in orig.get("journal_lines", []):
+            rev_lines.append({
+                "journal_entry_id": rev_id,
+                "account_id":       line["account_id"],
+                "debit_paise":      line["credit_paise"],
+                "credit_paise":     line["debit_paise"],
+                "narration":        narration,
+            })
+        if rev_lines:
+            db.table("journal_lines").insert(rev_lines).execute()
+
+        log_event(
+            current_user["firm_id"], "journal_entry", rev_id,
+            "reverse", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            new_data={"reversal_of": entry_id},
+        )
+        timeline_service.log(
+            orig["client_id"], "accounting", "Journal Reversed",
+            f"Reversal of {orig.get('reference_no', entry_id[:8])} posted",
+            "warning", firm_id=current_user.get("firm_id", ""),
+            entity_type="journal_entry", entity_id=rev_id,
+            actor_id=current_user.get("auth_user_id"),
+        )
+        return api_response(True, {**rev_entry, "reversal_of": entry_id, "lines": rev_lines})
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Unable to reverse journal entry. Please try again.")
+
+
 @router.get("/ledger")
 def get_ledger(
     account_id: str = Query(...),

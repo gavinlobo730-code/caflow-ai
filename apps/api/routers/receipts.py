@@ -99,7 +99,7 @@ def list_receipts(
         return api_response(True, resp.data or [])
     except Exception as e:
         _logger.error("list_receipts: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete receipt operation. Please try again.")
 
 
 @router.post("/")
@@ -257,7 +257,7 @@ def create_receipt(
         raise
     except Exception as e:
         _logger.error("create_receipt: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete receipt operation. Please try again.")
 
 
 @router.get("/{receipt_id}")
@@ -287,7 +287,7 @@ def get_receipt(
         raise
     except Exception as e:
         _logger.error("get_receipt: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete receipt operation. Please try again.")
 
 
 @router.patch("/{receipt_id}/allocate")
@@ -381,4 +381,4 @@ def update_allocations(
         raise
     except Exception as e:
         _logger.error("update_allocations: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete receipt operation. Please try again.")

@@ -183,6 +183,14 @@ def match_transaction(
         "reconciled_at":         datetime.now(timezone.utc).isoformat(),
     }).eq("id", txn_id).execute()
 
+    timeline_service.log(
+        txn["client_id"], "accounting", "Reconciliation Matched",
+        f"Bank transaction matched to journal entry (CA reviewed)",
+        "success", firm_id=current_user.get("firm_id", ""),
+        entity_type="bank_transaction", entity_id=txn_id,
+        actor_id=current_user.get("auth_user_id"),
+    )
+
     return api_response(True, {"matched": True, "txn_id": txn_id, "journal_id": journal_id})
 
 
