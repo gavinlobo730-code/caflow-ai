@@ -107,6 +107,12 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "compute": _AT_LEAST_EXECUTIVE,
         "approve": _AT_LEAST_MANAGER,
     },
+    # ── Payroll ───────────────────────────────────────────────────────────────
+    "payroll": {
+        "read":     _AT_LEAST_EXECUTIVE,
+        "write":    _AT_LEAST_MANAGER,
+        "finalize": _PARTNER_ONLY,
+    },
     # ── Notifications (every authenticated staff member can read/mark own) ───
     "notification": {
         "read":  _ALL_STAFF,

@@ -17,6 +17,7 @@ import {
   ArrowLeft,
   ShoppingCart,
   Package,
+  Landmark,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ClientSection } from "@/lib/workspace/ClientNavContext";
@@ -35,7 +36,8 @@ const RAIL_ITEMS: RailItem[] = [
   { section: "sales",       label: "Sales",       icon: ShoppingCart,  href: (id) => `/clients/${id}/sales/` },
   { section: "purchases",   label: "Purchases",   icon: Package,       href: (id) => `/clients/${id}/purchases/` },
   { section: "compliance",  label: "Compliance",  icon: Shield,        href: (id) => `/clients/${id}/compliance/` },
-  { section: "payroll",     label: "Payroll",     icon: Users,         href: (id) => `/clients/${id}/payroll/` },
+  { section: "payroll",      label: "Payroll",       icon: Users,     href: (id) => `/clients/${id}/payroll/` },
+  { section: "fixed-assets", label: "Fixed Assets",  icon: Landmark,  href: (id) => `/clients/${id}/fixed-assets/` },
   { section: "year-end",    label: "Year End",    icon: CalendarCheck, href: (id) => `/clients/${id}/year-end/` },
   { section: "tax",         label: "Tax",         icon: FileText,      href: (id) => `/clients/${id}/tax/` },
   { section: "documents",   label: "Documents",   icon: FolderOpen,    href: (id) => `/clients/${id}/documents/` },

@@ -374,6 +374,228 @@ class Phase2JournalService:
             _logger.error("journal_for_purchase_payment error: %s", e)
             return None
 
+    def journal_for_payroll(
+        self, run: dict, firm_id: str, client_id: str
+    ) -> Optional[str]:
+        """
+        Create payroll accrual journal on finalization.
+        IT Act §192: TDS on salary — credited to TDS Payable (24Q).
+        EPF Act: PF Payable (employer + employee combined).
+        ESI Act: ESI Payable. PT: state-wise Professional Tax Payable.
+
+        Dr  Salaries Expense        (total gross)
+          Cr  Net Salary Payable    (net pay)
+          Cr  PF Payable            (employee + employer PF)
+          Cr  ESI Payable           (employee + employer ESI)
+          Cr  PT Payable
+          Cr  TDS Payable - Salary
+        """
+        if _USE_MOCK:
+            _logger.info("[MOCK] journal_for_payroll: %s", run.get("month"))
+            return None
+
+        try:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+
+            salary_exp_id  = self._find_account(db, firm_id, client_id, "%Salaries Expense%")
+            net_sal_id     = self._find_account(db, firm_id, client_id, "%Net Salary Payable%")
+            pf_id          = self._find_account(db, firm_id, client_id, "%PF Payable%")
+            esi_id         = self._find_account(db, firm_id, client_id, "%ESI Payable%")
+            pt_id          = self._find_account(db, firm_id, client_id, "%PT Payable%")
+            tds_sal_id     = self._find_account(db, firm_id, client_id, "%TDS Payable - Salary%")
+
+            gross    = run["total_gross_paise"]
+            net      = run["total_net_paise"]
+            pf       = run["total_pf_paise"]
+            esi      = run["total_esi_paise"]
+            pt       = run["total_pt_paise"]
+            tds      = run["total_tds_paise"]
+
+            # Net salary = gross - employee deductions; gross includes employer cost
+            # Rebalance: Dr Salaries Expense = net + employee_pf + employee_esi + pt + tds
+            # Employer PF/ESI are additional Dr (PF Expense / ESI Expense) — simplified here
+            # as single Salaries Expense debit for MVP
+
+            lines = [
+                {"account_id": salary_exp_id, "debit_paise": gross, "credit_paise": 0,
+                 "narration": f"Salary expense for {run['month']} — IT Act §192"},
+                {"account_id": net_sal_id,    "debit_paise": 0, "credit_paise": net,
+                 "narration": "Net salary payable to employees"},
+            ]
+
+            if pf > 0:
+                lines.append({"account_id": pf_id, "debit_paise": 0, "credit_paise": pf,
+                               "narration": "PF payable (employee + employer) — EPF Act"})
+            if esi > 0:
+                lines.append({"account_id": esi_id, "debit_paise": 0, "credit_paise": esi,
+                               "narration": "ESI payable (employee + employer) — ESI Act"})
+            if pt > 0:
+                lines.append({"account_id": pt_id, "debit_paise": 0, "credit_paise": pt,
+                               "narration": "Professional Tax payable — IT Act §16(iii)"})
+            if tds > 0:
+                lines.append({"account_id": tds_sal_id, "debit_paise": 0, "credit_paise": tds,
+                               "narration": "TDS on salary payable 24Q — IT Act §192"})
+
+            return self._create_journal(
+                db=db,
+                firm_id=firm_id,
+                client_id=client_id,
+                entry_date=str(datetime.now(timezone.utc).date()),
+                reference_no=f"PAY-{run['month']}",
+                narration=f"Payroll accrual for {run['month']}",
+                entry_type="Journal",
+                lines=lines,
+            )
+        except ValueError:
+            raise
+        except Exception as e:
+            _logger.error("journal_for_payroll error: %s", e)
+            return None
+
+    def journal_for_asset_acquisition(
+        self, asset: dict, firm_id: str, client_id: str
+    ) -> Optional[str]:
+        """
+        Asset acquisition journal.
+        Dr  Fixed Asset Account (cost_paise)
+          Cr  Bank / Creditor (cost_paise)
+        """
+        if _USE_MOCK:
+            _logger.info("[MOCK] journal_for_asset_acquisition: %s", asset.get("asset_name"))
+            return None
+        try:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+
+            category = asset.get("asset_category", "Plant & Machinery")
+            cat_map = {
+                "Plant & Machinery": "%Plant & Machinery%",
+                "Furniture": "%Furniture & Fixtures%",
+                "Computer": "%Computers & Software%",
+                "Vehicle": "%Vehicles%",
+                "Building": "%Land & Building%",
+                "Intangible": "%Intangible Assets%",
+            }
+            asset_acct = self._find_account(db, firm_id, client_id, cat_map.get(category, "%Plant & Machinery%"))
+            bank_id    = self._find_account(db, firm_id, client_id, "%Bank%")
+
+            cost = asset["purchase_cost_paise"]
+            return self._create_journal(
+                db=db, firm_id=firm_id, client_id=client_id,
+                entry_date=asset["purchase_date"],
+                reference_no=f"FA-ACQ-{asset.get('asset_code', asset['id'][:8])}",
+                narration=f"Asset acquisition: {asset['asset_name']}",
+                entry_type="Journal",
+                lines=[
+                    {"account_id": asset_acct, "debit_paise": cost, "credit_paise": 0,
+                     "narration": f"Fixed asset: {asset['asset_name']}"},
+                    {"account_id": bank_id, "debit_paise": 0, "credit_paise": cost,
+                     "narration": "Bank payment for asset acquisition"},
+                ],
+            )
+        except Exception as e:
+            _logger.error("journal_for_asset_acquisition error: %s", e)
+            return None
+
+    def journal_for_depreciation(
+        self, asset: dict, depreciation_paise: int, period: str, firm_id: str, client_id: str
+    ) -> Optional[str]:
+        """
+        Monthly/annual depreciation journal.
+        Dr  Depreciation Expense        (depreciation_paise)
+          Cr  Accumulated Depreciation  (depreciation_paise)
+        """
+        if _USE_MOCK:
+            return None
+        try:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+
+            depn_exp_id  = self._find_account(db, firm_id, client_id, "%Depreciation Expense%")
+            accum_dep_id = self._find_account(db, firm_id, client_id, "%Accumulated Depreciation%")
+
+            return self._create_journal(
+                db=db, firm_id=firm_id, client_id=client_id,
+                entry_date=str(datetime.now(timezone.utc).date()),
+                reference_no=f"FA-DEPN-{asset.get('asset_code', asset['id'][:8])}-{period}",
+                narration=f"Depreciation on {asset['asset_name']} for {period}",
+                entry_type="Journal",
+                lines=[
+                    {"account_id": depn_exp_id,  "debit_paise": depreciation_paise, "credit_paise": 0,
+                     "narration": f"Depreciation: {asset['asset_name']} ({asset['depreciation_method']})"},
+                    {"account_id": accum_dep_id, "debit_paise": 0, "credit_paise": depreciation_paise,
+                     "narration": f"Accumulated depreciation: {asset['asset_name']}"},
+                ],
+            )
+        except Exception as e:
+            _logger.error("journal_for_depreciation error: %s", e)
+            return None
+
+    def journal_for_asset_disposal(
+        self, asset: dict, sale_proceeds_paise: int, firm_id: str, client_id: str
+    ) -> Optional[str]:
+        """
+        Asset disposal journal.
+        Dr  Accumulated Depreciation  (accumulated_depreciation_paise)
+        Dr  Bank                      (sale_proceeds_paise)
+        Dr/Cr  P&L on Disposal        (balancing — loss or gain)
+          Cr  Fixed Asset Account     (purchase_cost_paise)
+        """
+        if _USE_MOCK:
+            return None
+        try:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+
+            category = asset.get("asset_category", "Plant & Machinery")
+            cat_map = {
+                "Plant & Machinery": "%Plant & Machinery%",
+                "Furniture": "%Furniture & Fixtures%",
+                "Computer": "%Computers & Software%",
+                "Vehicle": "%Vehicles%",
+                "Building": "%Land & Building%",
+                "Intangible": "%Intangible Assets%",
+            }
+            asset_acct    = self._find_account(db, firm_id, client_id, cat_map.get(category, "%Plant & Machinery%"))
+            accum_dep_id  = self._find_account(db, firm_id, client_id, "%Accumulated Depreciation%")
+            bank_id       = self._find_account(db, firm_id, client_id, "%Bank%")
+
+            cost        = asset["purchase_cost_paise"]
+            accum_depn  = asset.get("accumulated_depreciation_paise", 0)
+            wdv         = cost - accum_depn
+            gain_loss   = sale_proceeds_paise - wdv  # positive = gain, negative = loss
+
+            lines = [
+                {"account_id": accum_dep_id, "debit_paise": accum_depn, "credit_paise": 0,
+                 "narration": "Accumulated depreciation cleared on disposal"},
+                {"account_id": bank_id,       "debit_paise": sale_proceeds_paise, "credit_paise": 0,
+                 "narration": "Sale proceeds from asset disposal"},
+                {"account_id": asset_acct,    "debit_paise": 0, "credit_paise": cost,
+                 "narration": f"Fixed asset removed: {asset['asset_name']}"},
+            ]
+
+            if gain_loss > 0:
+                gain_id = self._find_account(db, firm_id, client_id, "%Profit on Asset Disposal%")
+                lines.append({"account_id": gain_id, "debit_paise": 0, "credit_paise": gain_loss,
+                               "narration": "Gain on disposal of fixed asset"})
+            elif gain_loss < 0:
+                loss_id = self._find_account(db, firm_id, client_id, "%Loss on Asset Disposal%")
+                lines.append({"account_id": loss_id, "debit_paise": abs(gain_loss), "credit_paise": 0,
+                               "narration": "Loss on disposal of fixed asset"})
+
+            return self._create_journal(
+                db=db, firm_id=firm_id, client_id=client_id,
+                entry_date=asset.get("disposal_date", str(datetime.now(timezone.utc).date())),
+                reference_no=f"FA-DISP-{asset.get('asset_code', asset['id'][:8])}",
+                narration=f"Asset disposal: {asset['asset_name']}",
+                entry_type="Journal",
+                lines=lines,
+            )
+        except Exception as e:
+            _logger.error("journal_for_asset_disposal error: %s", e)
+            return None
+
     # ------------------------------------------------------------------ #
     #  Private Helpers                                                      #
     # ------------------------------------------------------------------ #
