@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from datetime import datetime, timezone
 from models.common import api_response
+from models.accounting import AccountIn, AccountUpdateIn, JournalEntryIn, JournalReversalIn
 from domain.accounting_service import accounting_service
 from core.exceptions import NotFoundError, ValidationError
 from core.permissions import rbac
@@ -27,18 +28,18 @@ def list_accounts(current_user: dict = Depends(rbac("accounting", "read"))):
 
 
 @router.post("/accounts")
-def create_account(data: dict, current_user: dict = Depends(rbac("accounting", "write"))):
+def create_account(data: AccountIn, current_user: dict = Depends(rbac("accounting", "write"))):
     try:
-        account = accounting_service.create_account(data)
+        account = accounting_service.create_account(data.model_dump())
         return api_response(True, account)
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.patch("/accounts/{account_id}")
-def update_account(account_id: str, data: dict, current_user: dict = Depends(rbac("accounting", "write"))):
+def update_account(account_id: str, data: AccountUpdateIn, current_user: dict = Depends(rbac("accounting", "write"))):
     try:
-        account = accounting_service.update_account(account_id, data)
+        account = accounting_service.update_account(account_id, data.model_dump(exclude_none=True))
         return api_response(True, account)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -61,10 +62,11 @@ def list_journal_entries(
 
 
 @router.post("/journal")
-def create_journal_entry(data: dict, current_user: dict = Depends(rbac("accounting", "write"))):
+def create_journal_entry(data: JournalEntryIn, current_user: dict = Depends(rbac("accounting", "write"))):
     try:
-        data["firm_id"] = current_user["firm_id"]
-        entry = accounting_service.create_journal_entry(data)
+        payload = data.model_dump()
+        payload["firm_id"] = current_user["firm_id"]
+        entry = accounting_service.create_journal_entry(payload)
         log_event(current_user["firm_id"], "journal_entry", entry.get("id",""), "create",
                   actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
                   new_data=entry)
@@ -105,7 +107,7 @@ def post_journal_entry(entry_id: str, current_user: dict = Depends(rbac("account
 @router.post("/journal/{entry_id}/reverse")
 def reverse_journal_entry(
     entry_id: str,
-    data: dict,
+    data: JournalReversalIn,
     current_user: dict = Depends(rbac("accounting", "approve")),
 ):
     """
@@ -118,9 +120,7 @@ def reverse_journal_entry(
         import uuid
         from datetime import timezone
 
-        if not data.get("reversal_date"):
-            raise HTTPException(status_code=422, detail="reversal_date is required")
-        narration = data.get("narration", f"Reversal of journal {entry_id}")
+        narration = data.narration or f"Reversal of journal {entry_id}"
 
         db = accounting_service._db()  # type: ignore[attr-defined]
         if not db:
@@ -146,7 +146,7 @@ def reverse_journal_entry(
             "id":            rev_id,
             "firm_id":       orig["firm_id"],
             "client_id":     orig["client_id"],
-            "entry_date":    data["reversal_date"],
+            "entry_date":    data.reversal_date,
             "reference_no":  f"REV-{orig.get('reference_no', entry_id[:8])}",
             "narration":     narration,
             "is_posted":     True,
