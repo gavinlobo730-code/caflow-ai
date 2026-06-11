@@ -122,9 +122,11 @@ def reverse_journal_entry(
 
         narration = data.narration or f"Reversal of journal {entry_id}"
 
-        db = accounting_service._db()  # type: ignore[attr-defined]
-        if not db:
+        import os
+        if not os.environ.get("SUPABASE_URL"):
             return api_response(True, {"id": "mock-reversal", "reversal_of": entry_id})
+        from core.supabase_client import get_supabase
+        db = get_supabase()
 
         # Fetch original entry
         orig = db.table("journal_entries").select("*, journal_lines(*)").eq("id", entry_id).single().execute().data
