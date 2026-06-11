@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from core.exceptions import PermissionDeniedError
 
-app = FastAPI(title="CAflow AI API", version="2.0.0")
+app = FastAPI(title="CAflow AI API", version="2.0.0", redirect_slashes=False)
 
 # CORS must be added before exception handlers and routers so it wraps
 # the entire request lifecycle — including error responses.
@@ -101,6 +101,7 @@ from routers import purchase_bills, purchase_payments, document_intelligence_v1
 # Phase 3 — GST/TDS/MCA Workspace + Document Intelligence v2
 from routers import gst_workspace, tds_workspace, mca_workspace, document_intelligence_v2
 from routers import payroll, fixed_assets, banking
+from routers import timeline
 
 app.include_router(clients.router)
 app.include_router(compliance.router)
@@ -151,6 +152,7 @@ app.include_router(document_intelligence_v2.router)
 app.include_router(payroll.router)
 app.include_router(fixed_assets.router)
 app.include_router(banking.router)
+app.include_router(timeline.router)
 
 
 @app.get("/")

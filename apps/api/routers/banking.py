@@ -16,6 +16,9 @@ from services.timeline_service import timeline_service
 
 router = APIRouter(prefix="/api/banking", tags=["banking"])
 
+# In-memory dedup store for mock mode: set of (client_id, bank_account_id, txn_date, debit_paise, credit_paise, description)
+_MOCK_IMPORTED_TXNS: set[tuple] = set()
+
 
 def _db():
     import os
@@ -84,7 +87,18 @@ def import_statement(
     bank_account_id = data.bank_account_id
 
     if not db:
-        return api_response(True, {"imported": len(data.rows), "skipped": 0})
+        inserted = 0
+        skipped = 0
+        for r in data.rows:
+            key = (client_id, bank_account_id, r.txn_date, r.debit_paise, r.credit_paise, r.description)
+            if key in _MOCK_IMPORTED_TXNS:
+                skipped += 1
+            else:
+                _MOCK_IMPORTED_TXNS.add(key)
+                inserted += 1
+        timeline_service.log(client_id, "accounting", "Bank Statement Imported",
+            f"{inserted} transactions imported, {skipped} skipped", "info")
+        return api_response(True, {"imported": inserted, "skipped": skipped})
 
     firm_id = current_user["firm_id"]
     inserted = 0
