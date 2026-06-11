@@ -255,11 +255,11 @@ class TestComplianceRecordsTenantIsolation:
         assert exc_info.value.status_code == 404
 
     def test_create_record_uses_firm_from_user_not_body(self):
-        from routers.compliance_records import create_compliance_record
+        from routers.compliance_records import create_compliance_record, ComplianceRecordIn
         created = {**self.RECORDS_MIXED[0], "id": "cr-new"}
         with patch("routers.compliance_records.compliance_record_service") as mock_svc:
             mock_svc.create_record.return_value = created
-            body = {"client_id": "c1", "compliance_type": "GST", "due_date": "2026-07-11", "firm_id": FIRM_B}
+            body = ComplianceRecordIn(client_id="c1", compliance_type="GST", due_date="2026-07-11")
             create_compliance_record(data=body, current_user=USER_FIRM_A)
         # firm_id must be USER_FIRM_A["firm_id"], regardless of what was in body
         call_kwargs = mock_svc.create_record.call_args

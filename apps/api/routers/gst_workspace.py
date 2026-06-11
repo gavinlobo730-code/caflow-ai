@@ -479,9 +479,14 @@ def upload_gstr2b(
         return api_response(False, None, str(e))
 
 
+class GSTR9In(BaseModel):
+    client_id: str
+    financial_year: str  # e.g. "2025-26"
+
+
 @router.post("/gstr9")
 def save_gstr9(
-    data: dict,
+    data: GSTR9In,
     current_user: dict = Depends(rbac("gst", "compute")),
 ):
     """
@@ -490,14 +495,9 @@ def save_gstr9(
     All amounts in integer paise.
     """
     try:
-        required = ["client_id", "financial_year"]
-        for field in required:
-            if not data.get(field):
-                raise HTTPException(status_code=422, detail=f"{field} is required")
-
         firm_id   = current_user.get("firm_id")
-        client_id = data["client_id"]
-        fy        = data["financial_year"]  # e.g. "2025-26"
+        client_id = data.client_id
+        fy        = data.financial_year  # e.g. "2025-26"
 
         # CGST Act §44 — GSTR-9 is annual; use April 1 of the FY for period validation
         fy_start_year = int(fy.split("-")[0]) if fy else datetime.now(timezone.utc).year
