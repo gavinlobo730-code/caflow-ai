@@ -64,7 +64,6 @@ _TRANSITION_ROLE_GUARDS: dict[str, set[str]] = {
 # ── Request models ────────────────────────────────────────────────────────────
 
 class EngagementCreateIn(BaseModel):
-    firm_id: str
     client_id: str
     financial_year: str   # e.g. "2024-25"
     engagement_name: Optional[str] = None
@@ -82,6 +81,7 @@ def create_engagement(
     data: EngagementCreateIn,
     current_user: dict = Depends(rbac("year_end", "write")),
 ):
+    firm_id = current_user["firm_id"]
     fy_start, fy_end = _parse_financial_year(data.financial_year)
     now = datetime.now(timezone.utc).isoformat()
 
@@ -89,7 +89,7 @@ def create_engagement(
         eid = str(uuid.uuid4())
         engagement = {
             "id": eid,
-            "firm_id": data.firm_id,
+            "firm_id": firm_id,
             "client_id": data.client_id,
             "financial_year": data.financial_year,
             "fy_start": fy_start,
@@ -107,7 +107,7 @@ def create_engagement(
     db = get_supabase()
     row = db.table("year_end_engagements").insert({
         "id": str(uuid.uuid4()),
-        "firm_id": data.firm_id,
+        "firm_id": firm_id,
         "client_id": data.client_id,
         "financial_year": data.financial_year,
         "fy_start": fy_start,
