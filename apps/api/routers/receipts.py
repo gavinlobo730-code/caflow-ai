@@ -7,6 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
+from models.invoices import ReceiptIn, ReceiptAllocationsUpdateIn
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
@@ -104,29 +105,25 @@ def list_receipts(
 
 @router.post("/")
 def create_receipt(
-    data: dict,
+    data: ReceiptIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """
     Create a customer receipt with optional invoice allocations.
-    - sum(allocations.allocated_paise) must be <= amount_paise
+    - sum(allocations.allocated_paise) must be <= amount_paise (enforced by ReceiptIn)
     - unallocated_paise = amount_paise - sum(allocated)
     - Auto-creates journal entry (Dr Bank / Cr Trade Receivables)
     - Updates invoice status if fully paid
     All amounts in integer paise.
     """
     try:
-        required = ["client_id", "customer_id", "receipt_date", "amount_paise"]
-        for field in required:
-            if not data.get(field):
-                raise HTTPException(status_code=422, detail=f"{field} is required")
-
+        data = data.model_dump()
         firm_id      = current_user.get("firm_id")
         client_id    = data["client_id"]
-        amount_paise = int(data["amount_paise"])
+        amount_paise = data["amount_paise"]
         allocations  = data.get("allocations", [])
 
-        # Validate allocation totals — integer arithmetic
+        # Validate allocation totals — integer arithmetic (also enforced by ReceiptIn)
         total_allocated = sum(int(a.get("allocated_paise", 0)) for a in allocations)
         if total_allocated > amount_paise:
             raise HTTPException(
@@ -293,7 +290,7 @@ def get_receipt(
 @router.patch("/{receipt_id}/allocate")
 def update_allocations(
     receipt_id: str,
-    data: dict,
+    data: ReceiptAllocationsUpdateIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """
@@ -302,7 +299,7 @@ def update_allocations(
     Validates total allocated does not exceed receipt amount.
     """
     try:
-        allocations = data.get("allocations", [])
+        allocations = [a.model_dump() for a in data.allocations]
 
         if _USE_MOCK:
             rcpt = next((r for r in MOCK_RECEIPTS if r["id"] == receipt_id), None)
