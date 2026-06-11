@@ -29,8 +29,7 @@ def list_timeline_events(
     """
     if _USE_MOCK:
         from services.timeline_service import MOCK_TIMELINE_EVENTS
-        firm_id = current_user.get("firm_id")
-        events = [e for e in MOCK_TIMELINE_EVENTS if e["client_id"] == client_id and e.get("firm_id") == firm_id]
+        events = [e for e in MOCK_TIMELINE_EVENTS if e["client_id"] == client_id]
         if category:
             events = [e for e in events if e.get("category") == category]
         if severity:
