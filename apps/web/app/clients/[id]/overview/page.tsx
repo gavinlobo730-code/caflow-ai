@@ -288,7 +288,7 @@ function StatCard({
   );
 }
 
-function ScoreRow({ label, value, muted }: { label: string; value: number; muted?: boolean }) {
+function ScoreRow({ label, value }: { label: string; value: number }) {
   const pct = Math.min(100, value);
   const color = value >= 80 ? "bg-emerald-500" : value >= 60 ? "bg-yellow-500" : value >= 40 ? "bg-orange-500" : "bg-red-500";
   return (
