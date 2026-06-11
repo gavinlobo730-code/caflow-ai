@@ -139,7 +139,7 @@ export default function OverviewPage() {
         </div>
 
         {/* Timeline */}
-        <div className="bg-[#0f0f18] rounded-xl border border-[#F1F5F9] p-4">
+        <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-3">
             Activity · FY {financialYear}
           </p>
@@ -156,10 +156,10 @@ export default function OverviewPage() {
               const Icon = alert.severity === "critical" ? AlertCircle
                 : alert.severity === "warning" ? AlertTriangle : Info;
               const colors = alert.severity === "critical"
-                ? "bg-red-50 border-red-500/20 text-red-300"
+                ? "bg-red-50 border-red-200 text-red-600"
                 : alert.severity === "warning"
-                ? "bg-amber-50 border-amber-500/20 text-amber-300"
-                : "bg-blue-50 border-blue-500/20 text-blue-500";
+                ? "bg-amber-50 border-amber-200 text-amber-600"
+                : "bg-blue-50 border-blue-200 text-blue-600";
               return (
                 <div key={i} className={`rounded-lg border px-2.5 py-2 flex items-start gap-2 ${colors}`}>
                   <Icon size={11} className="shrink-0 mt-0.5" />
@@ -175,8 +175,8 @@ export default function OverviewPage() {
 
         {/* Health score */}
         {health && (
-          <div className="bg-[#0f0f18] rounded-xl border border-[#F1F5F9] p-3 space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#CBD5E1]">
+          <div className="bg-white rounded-xl border border-[#E2E8F0] p-3 space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">
               Health Score
             </p>
             <div className="flex items-center gap-2">
@@ -192,15 +192,15 @@ export default function OverviewPage() {
         )}
 
         {/* Client info */}
-        <div className="bg-[#0f0f18] rounded-xl border border-[#F1F5F9] p-3 space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#CBD5E1]">
+        <div className="bg-white rounded-xl border border-[#E2E8F0] p-3 space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">
             Client
           </p>
           <p className="text-[13px] font-semibold text-[#1E293B] leading-snug">{client.client_name}</p>
           <p className="text-[10px] text-[#94A3B8]">
             {ENTITY_TYPE_LABELS[client.entity_type] ?? client.entity_type}
           </p>
-          <div className="space-y-1.5 pt-1 border-t border-white/5">
+          <div className="space-y-1.5 pt-1 border-t border-[#E2E8F0]">
             {client.pan && (
               <InfoRow label="PAN" value={client.pan} mono />
             )}
@@ -236,8 +236,8 @@ export default function OverviewPage() {
 
         {/* Upcoming deadlines */}
         {compliance.filter((c) => c.filing_status !== "filed" && c.due_date >= today).length > 0 && (
-          <div className="bg-[#0f0f18] rounded-xl border border-[#F1F5F9] p-3 space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#CBD5E1]">
+          <div className="bg-white rounded-xl border border-[#E2E8F0] p-3 space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">
               Upcoming
             </p>
             <div className="space-y-2">
@@ -248,7 +248,7 @@ export default function OverviewPage() {
                   <div key={c.id} className="flex items-center justify-between gap-2">
                     <p className="text-[11px] text-[#475569] truncate">{c.compliance_type}</p>
                     <p className={`text-[10px] font-mono shrink-0 ${
-                      daysUntil(c.due_date) <= 7 ? "text-amber-600" : "text-[#CBD5E1]"
+                      daysUntil(c.due_date) <= 7 ? "text-amber-600" : "text-[#64748B]"
                     }`}>
                       {formatDate(c.due_date)}
                     </p>
@@ -294,14 +294,14 @@ function ScoreRow({ label, value, muted }: { label: string; value: number; muted
   return (
     <div className="space-y-0.5">
       <div className="flex items-center justify-between">
-        <span className={`text-[10px] ${muted ? "text-[#CBD5E1]" : "text-[#64748B]"}`}>{label}</span>
-        <span className={`text-[10px] font-semibold tabular-nums ${muted ? "text-[#CBD5E1]" : "text-white/60"}`}>
+        <span className="text-[10px] text-[#64748B]">{label}</span>
+        <span className="text-[10px] font-semibold tabular-nums text-[#1E293B]">
           {value}
         </span>
       </div>
-      <div className="h-1 rounded-full bg-white/5 overflow-hidden">
+      <div className="h-1 rounded-full bg-[#E2E8F0] overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all ${muted ? "bg-white/10" : color}`}
+          className={`h-full rounded-full transition-all ${color}`}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -312,8 +312,8 @@ function ScoreRow({ label, value, muted }: { label: string; value: number; muted
 function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-start gap-1.5">
-      <span className="text-[9px] text-[#CBD5E1] mt-0.5 shrink-0 w-10">{label}</span>
-      <span className={`text-[11px] text-white/50 break-all ${mono ? "font-mono" : ""}`}>{value}</span>
+      <span className="text-[9px] text-[#94A3B8] mt-0.5 shrink-0 w-10">{label}</span>
+      <span className={`text-[11px] text-[#475569] break-all ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
 }

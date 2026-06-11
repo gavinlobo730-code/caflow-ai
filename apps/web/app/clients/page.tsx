@@ -286,7 +286,7 @@ export default function ClientsPage() {
                 </Badge>
                 <button
                   onClick={e => openEdit(e, c)}
-                  className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-white/[0.08] text-[#64748B] transition-all"
+                  className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-[#F1F5F9] text-[#64748B] transition-all"
                   title="Edit client"
                 >
                   <Pencil size={13} />
