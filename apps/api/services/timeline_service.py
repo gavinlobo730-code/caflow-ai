@@ -17,6 +17,9 @@ from typing import Optional
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.timeline_service")
 
+# In-memory store for mock mode — enables GET /api/timeline in dev
+MOCK_TIMELINE_EVENTS: list[dict] = []
+
 
 class TimelineService:
     """Writes structured events to the client_timeline_events table."""
@@ -75,6 +78,30 @@ class TimelineService:
                 "[MOCK] timeline_event firm=%s client=%s fy=%s category=%s type=%s title=%r",
                 firm_id, client_id, financial_year, category, event_type, title,
             )
+            now = datetime.now(timezone.utc)
+            MOCK_TIMELINE_EVENTS.append({
+                "id":             str(uuid.uuid4()),
+                "client_id":      client_id,
+                "firm_id":        firm_id,
+                "financial_year": financial_year,
+                "period":         now.strftime("%Y-%m"),
+                "category":       category,
+                "event_type":     event_type,
+                "title":          title,
+                "description":    description,
+                "severity":       severity,
+                "entity_type":    entity_type,
+                "entity_id":      entity_id,
+                "amount_paise":   amount_paise,
+                "actor_id":       actor_id,
+                "actor_name":     actor_name,
+                "actor_type":     actor_type,
+                "action_label":   action_label,
+                "action_url":     action_url,
+                "visibility":     visibility,
+                "is_pinned":      False,
+                "created_at":     now.isoformat(),
+            })
             return
 
         try:
