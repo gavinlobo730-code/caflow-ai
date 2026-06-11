@@ -129,10 +129,10 @@ function getUpcomingGSTDates(frequency: string | null): GSTDueDate[] {
 
 function LoadingScreen() {
   return (
-    <div className="min-h-screen bg-[#0e1017] flex items-center justify-center">
+    <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
       <div className="text-center space-y-3">
         <LogoIcon size="md" />
-        <p className="text-sm text-white/40">Loading your portal…</p>
+        <p className="text-sm text-[#64748B]">Loading your portal…</p>
       </div>
     </div>
   );
@@ -354,11 +354,11 @@ export default function PortalPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#0e1017] flex items-center justify-center p-4">
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] shadow-sm p-8 max-w-sm w-full text-center space-y-4">
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl border border-[#F1F5F9] shadow-sm p-8 max-w-sm w-full text-center space-y-4">
           <div className="flex items-center justify-center gap-2 mb-2">
             <LogoIcon size="sm" />
-            <span className="text-base font-bold text-white/85">PracticeSync AI</span>
+            <span className="text-base font-bold text-[#0F172A]">PracticeSync AI</span>
           </div>
           <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-red-700 text-left">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -366,7 +366,7 @@ export default function PortalPage() {
           </div>
           <button
             onClick={handleSignOut}
-            className="text-xs text-white/30 hover:text-white/55 flex items-center gap-1 mx-auto"
+            className="text-xs text-[#94A3B8] hover:text-[#475569] flex items-center gap-1 mx-auto"
           >
             <LogOut className="w-3 h-3" /> Sign out
           </button>
@@ -394,23 +394,23 @@ export default function PortalPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#0e1017]">
+    <div className="min-h-screen bg-[#F8FAFC]">
       {/* Top bar */}
-      <div className="bg-[#131620] border-b border-white/[0.05] px-6 py-3 flex items-center justify-between">
+      <div className="bg-white border-b border-[#F1F5F9] px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <LogoIcon size="sm" />
-          <span className="text-sm font-bold text-white/85">PracticeSync AI</span>
-          <span className="text-white/20 text-sm">·</span>
-          <span className="text-sm text-white/40">Client Portal</span>
+          <span className="text-sm font-bold text-[#0F172A]">PracticeSync AI</span>
+          <span className="text-[#CBD5E1] text-sm">·</span>
+          <span className="text-sm text-[#64748B]">Client Portal</span>
         </div>
         <div className="flex items-center gap-4">
           <div className="text-right hidden sm:block">
-            <p className="text-xs font-medium text-white/85">{client.client_name}</p>
-            {firm && <p className="text-xs text-white/30">{firm.firm_name}</p>}
+            <p className="text-xs font-medium text-[#0F172A]">{client.client_name}</p>
+            {firm && <p className="text-xs text-[#94A3B8]">{firm.firm_name}</p>}
           </div>
           <button
             onClick={handleSignOut}
-            className="flex items-center gap-1.5 text-xs text-white/30 hover:text-white/55"
+            className="flex items-center gap-1.5 text-xs text-[#94A3B8] hover:text-[#475569]"
           >
             <LogOut className="w-3.5 h-3.5" />
             Sign out
@@ -420,9 +420,9 @@ export default function PortalPage() {
 
       <div className="max-w-4xl mx-auto p-6 space-y-6">
         {/* Welcome */}
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-5">
-          <h1 className="text-xl font-semibold text-white/85">Welcome, {client.client_name}</h1>
-          {firm && <p className="text-sm text-white/40 mt-0.5">Managed by {firm.firm_name}</p>}
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-5">
+          <h1 className="text-xl font-semibold text-[#0F172A]">Welcome, {client.client_name}</h1>
+          {firm && <p className="text-sm text-[#64748B] mt-0.5">Managed by {firm.firm_name}</p>}
           {pendingRequests.length > 0 && (
             <div className="mt-3 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
@@ -434,7 +434,7 @@ export default function PortalPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-white/[0.07] bg-[#131620] rounded-t-xl px-2 pt-2 overflow-x-auto">
+        <div className="flex gap-1 border-b border-[#E2E8F0] bg-white rounded-t-xl px-2 pt-2 overflow-x-auto">
           {TABS.map((tab) => (
             <button
               key={tab.id}
@@ -442,7 +442,7 @@ export default function PortalPage() {
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap rounded-t-lg ${
                 activeTab === tab.id
                   ? "border-blue-600 text-blue-700 bg-blue-50/50"
-                  : "border-transparent text-white/40 hover:text-white/65 hover:bg-[#0e1017]"
+                  : "border-transparent text-[#64748B] hover:text-[#334155] hover:bg-[#F8FAFC]"
               }`}
             >
               <tab.icon size={14} />
@@ -458,18 +458,18 @@ export default function PortalPage() {
 
         {/* Documents Requested tab */}
         {activeTab === "requests" && (
-          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2">
               <FileText className="w-4 h-4 text-blue-600" />
-              <h2 className="text-sm font-semibold text-white/85">Documents Requested by Your CA</h2>
+              <h2 className="text-sm font-semibold text-[#0F172A]">Documents Requested by Your CA</h2>
             </div>
             {docRequests.length === 0 ? (
               <div className="px-5 py-12 text-center space-y-2">
                 <FileText className="w-8 h-8 text-gray-200 mx-auto" />
-                <p className="text-sm text-white/30">No documents have been requested yet</p>
+                <p className="text-sm text-[#94A3B8]">No documents have been requested yet</p>
               </div>
             ) : (
-              <div className="divide-y divide-white/[0.03]">
+              <div className="divide-y divide-[#F8FAFC]">
                 {/* Pending first */}
                 {pendingRequests.map((req) => (
                   <div key={req.id} className="px-5 py-4 flex items-start gap-3">
@@ -478,7 +478,7 @@ export default function PortalPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-medium text-white/85">{req.title}</p>
+                        <p className="text-sm font-medium text-[#0F172A]">{req.title}</p>
                         {req.is_urgent && (
                           <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-medium">
                             <AlertTriangle size={10} /> Urgent
@@ -486,9 +486,9 @@ export default function PortalPage() {
                         )}
                       </div>
                       {req.description && (
-                        <p className="text-xs text-white/40 mt-0.5">{req.description}</p>
+                        <p className="text-xs text-[#64748B] mt-0.5">{req.description}</p>
                       )}
-                      <p className="text-xs text-white/30 mt-1">Requested {formatDate(req.created_at)}</p>
+                      <p className="text-xs text-[#94A3B8] mt-1">Requested {formatDate(req.created_at)}</p>
                     </div>
                     <div className="shrink-0">
                       <input
@@ -520,16 +520,16 @@ export default function PortalPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-medium text-white/65 line-through decoration-gray-400">{req.title}</p>
+                        <p className="text-sm font-medium text-[#334155] line-through decoration-gray-400">{req.title}</p>
                         <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">
                           <CheckCircle size={10} /> Submitted ✓
                         </span>
                       </div>
                       {req.file_name && (
-                        <p className="text-xs text-white/30 mt-0.5">Uploaded: {req.file_name}</p>
+                        <p className="text-xs text-[#94A3B8] mt-0.5">Uploaded: {req.file_name}</p>
                       )}
                       {req.fulfilled_at && (
-                        <p className="text-xs text-white/30 mt-0.5">{formatDate(req.fulfilled_at)}</p>
+                        <p className="text-xs text-[#94A3B8] mt-0.5">{formatDate(req.fulfilled_at)}</p>
                       )}
                     </div>
                   </div>
@@ -541,25 +541,25 @@ export default function PortalPage() {
 
         {/* Shared by CA tab */}
         {activeTab === "shared" && (
-          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2">
               <FolderOpen className="w-4 h-4 text-blue-600" />
-              <h2 className="text-sm font-semibold text-white/85">Documents Shared by Your CA</h2>
+              <h2 className="text-sm font-semibold text-[#0F172A]">Documents Shared by Your CA</h2>
             </div>
             {documents.length === 0 ? (
               <div className="px-5 py-12 text-center space-y-2">
                 <FolderOpen className="w-8 h-8 text-gray-200 mx-auto" />
-                <p className="text-sm text-white/30">
+                <p className="text-sm text-[#94A3B8]">
                   No documents shared yet — your CA will upload returns, notices, and reports here
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-white/[0.03]">
+              <div className="divide-y divide-[#F8FAFC]">
                 {documents.map((doc) => (
                   <div key={doc.id} className="px-5 py-3 flex items-center justify-between gap-4">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-white/85 truncate">{doc.label}</p>
-                      <p className="text-xs text-white/30 mt-0.5 truncate">
+                      <p className="text-sm font-medium text-[#0F172A] truncate">{doc.label}</p>
+                      <p className="text-xs text-[#94A3B8] mt-0.5 truncate">
                         {doc.file_name}
                         {doc.file_size_bytes ? ` · ${formatFileSize(doc.file_size_bytes)}` : ""}
                         {" · "}{formatDate(doc.created_at)}
@@ -581,24 +581,24 @@ export default function PortalPage() {
 
         {/* Reports tab — shared by CA */}
         {activeTab === "reports" && (
-          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-blue-600" />
-              <h2 className="text-sm font-semibold text-white/85">Reports Shared by Your CA</h2>
+              <h2 className="text-sm font-semibold text-[#0F172A]">Reports Shared by Your CA</h2>
             </div>
             {sharedReports.length === 0 ? (
               <div className="px-5 py-12 text-center space-y-2">
                 <BarChart3 className="w-8 h-8 text-gray-200 mx-auto" />
-                <p className="text-sm text-white/30">No reports shared yet</p>
-                <p className="text-xs text-white/20">Your CA will share P&L, Balance Sheet, and other reports here</p>
+                <p className="text-sm text-[#94A3B8]">No reports shared yet</p>
+                <p className="text-xs text-[#CBD5E1]">Your CA will share P&L, Balance Sheet, and other reports here</p>
               </div>
             ) : (
-              <div className="divide-y divide-white/[0.03]">
+              <div className="divide-y divide-[#F8FAFC]">
                 {sharedReports.map((r) => (
                   <div key={r.id} className="px-5 py-3 flex items-center justify-between gap-4">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-white/85 truncate">{r.report_label}</p>
-                      <p className="text-xs text-white/30 mt-0.5">
+                      <p className="text-sm font-medium text-[#0F172A] truncate">{r.report_label}</p>
+                      <p className="text-xs text-[#94A3B8] mt-0.5">
                         FY {r.financial_year}
                         {r.file_size_bytes ? ` · ${formatFileSize(r.file_size_bytes)}` : ""}
                         {" · "}{formatDate(r.created_at)}
@@ -630,29 +630,29 @@ export default function PortalPage() {
 
         {/* Recent Filings tab — GST due dates */}
         {activeTab === "filings" && (
-          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2">
               <Calendar className="w-4 h-4 text-blue-600" />
-              <h2 className="text-sm font-semibold text-white/85">Upcoming GST Due Dates</h2>
+              <h2 className="text-sm font-semibold text-[#0F172A]">Upcoming GST Due Dates</h2>
             </div>
             {gstDates.length === 0 ? (
-              <div className="px-5 py-8 text-center text-sm text-white/30">No upcoming GST deadlines</div>
+              <div className="px-5 py-8 text-center text-sm text-[#94A3B8]">No upcoming GST deadlines</div>
             ) : (
-              <div className="divide-y divide-white/[0.03]">
+              <div className="divide-y divide-[#F8FAFC]">
                 {gstDates.map((d, i) => {
                   const isOverdue = d.dueDate < today;
                   const daysLeft = Math.ceil((new Date(d.dueDate).getTime() - Date.now()) / 86400000);
                   return (
                     <div key={i} className="px-5 py-3 flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-white/85">{d.label}</p>
-                        <p className="text-xs text-white/30 mt-0.5">{d.description}</p>
+                        <p className="text-sm font-medium text-[#0F172A]">{d.label}</p>
+                        <p className="text-xs text-[#94A3B8] mt-0.5">{d.description}</p>
                       </div>
                       <div className="text-right">
-                        <p className={`text-sm font-medium ${isOverdue ? "text-red-600" : daysLeft <= 7 ? "text-amber-600" : "text-white/65"}`}>
+                        <p className={`text-sm font-medium ${isOverdue ? "text-red-600" : daysLeft <= 7 ? "text-amber-600" : "text-[#334155]"}`}>
                           {formatDate(d.dueDate)}
                         </p>
-                        <p className={`text-xs mt-0.5 ${isOverdue ? "text-red-500" : daysLeft <= 7 ? "text-amber-500" : "text-white/30"}`}>
+                        <p className={`text-xs mt-0.5 ${isOverdue ? "text-red-500" : daysLeft <= 7 ? "text-amber-500" : "text-[#94A3B8]"}`}>
                           {isOverdue ? "Overdue" : daysLeft === 0 ? "Due today" : `${daysLeft} days`}
                         </p>
                       </div>
@@ -666,18 +666,18 @@ export default function PortalPage() {
 
         {/* Messages tab */}
         {activeTab === "messages" && (
-          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden flex flex-col" style={{ minHeight: 400 }}>
+          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden flex flex-col" style={{ minHeight: 400 }}>
             <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-blue-600" />
-              <h2 className="text-sm font-semibold text-white/85">Messages with Your CA</h2>
+              <h2 className="text-sm font-semibold text-[#0F172A]">Messages with Your CA</h2>
             </div>
             {/* Message list */}
             <div className="flex-1 px-5 py-4 space-y-3 overflow-y-auto max-h-96">
               {messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 text-center space-y-2">
                   <MessageSquare className="w-8 h-8 text-gray-200" />
-                  <p className="text-sm text-white/30">No messages yet</p>
-                  <p className="text-xs text-white/20">Send a message to your CA below</p>
+                  <p className="text-sm text-[#94A3B8]">No messages yet</p>
+                  <p className="text-xs text-[#CBD5E1]">Send a message to your CA below</p>
                 </div>
               ) : (
                 messages.map((msg) => (
@@ -689,11 +689,11 @@ export default function PortalPage() {
                       className={`max-w-[75%] rounded-xl px-4 py-2.5 ${
                         msg.sender_type === "client"
                           ? "bg-blue-600 text-white"
-                          : "bg-white/[0.06] text-white/75"
+                          : "bg-[#F1F5F9] text-[#1E293B]"
                       }`}
                     >
                       <p className="text-sm leading-snug">{msg.body}</p>
-                      <p className={`text-[10px] mt-1 ${msg.sender_type === "client" ? "text-blue-200" : "text-white/30"}`}>
+                      <p className={`text-[10px] mt-1 ${msg.sender_type === "client" ? "text-blue-200" : "text-[#94A3B8]"}`}>
                         {msg.sender_type === "ca" ? (msg.sender_name ?? "Your CA") : "You"} · {formatDate(msg.created_at)}
                       </p>
                     </div>
@@ -708,7 +708,7 @@ export default function PortalPage() {
                 onChange={(e) => setMessageBody(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                 placeholder="Type a message…"
-                className="flex-1 px-3 py-2 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
                 onClick={sendMessage}
@@ -724,15 +724,15 @@ export default function PortalPage() {
 
         {/* Outstanding Dues tab — placeholder */}
         {activeTab === "dues" && (
-          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-blue-600" />
-              <h2 className="text-sm font-semibold text-white/85">Outstanding Dues</h2>
+              <h2 className="text-sm font-semibold text-[#0F172A]">Outstanding Dues</h2>
             </div>
             <div className="px-5 py-12 text-center space-y-2">
               <AlertCircle className="w-8 h-8 text-gray-200 mx-auto" />
-              <p className="text-sm text-white/30">Outstanding dues will be shown here</p>
-              <p className="text-xs text-white/20">Contact your CA for details</p>
+              <p className="text-sm text-[#94A3B8]">Outstanding dues will be shown here</p>
+              <p className="text-xs text-[#CBD5E1]">Contact your CA for details</p>
             </div>
           </div>
         )}

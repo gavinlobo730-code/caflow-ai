@@ -17,16 +17,16 @@ const TREND_ARROW = {
 };
 
 const TREND_COLOR = {
-  improving: "text-emerald-400",
-  stable:    "text-white/30",
-  declining: "text-red-400",
+  improving: "text-emerald-600",
+  stable:    "text-[#94A3B8]",
+  declining: "text-red-600",
 };
 
 const RING_COLOR = {
   Healthy:  "bg-emerald-500/15 text-emerald-300 ring-emerald-500/20",
   Fair:     "bg-yellow-500/15 text-yellow-300 ring-yellow-500/20",
   "At Risk":"bg-orange-500/15 text-orange-300 ring-orange-500/20",
-  Critical: "bg-red-500/15 text-red-300 ring-red-500/20",
+  Critical: "bg-red-50 text-red-300 ring-red-500/20",
 };
 
 export function HealthBadge({ score, size = "sm", showLabel = false, trend }: HealthBadgeProps) {

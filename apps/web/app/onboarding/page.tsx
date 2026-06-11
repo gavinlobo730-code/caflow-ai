@@ -436,7 +436,7 @@ export default function OnboardingPage() {
   }) {
     return (
       <div>
-        <label className="text-xs font-medium text-white/40 block mb-1">
+        <label className="text-xs font-medium text-[#64748B] block mb-1">
           {label}
           {required && <span className="text-red-500 ml-0.5">*</span>}
         </label>
@@ -450,11 +450,11 @@ export default function OnboardingPage() {
             }
           }}
           placeholder={placeholder}
-          className={`w-full text-sm text-white/85 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#0e1017] ${
-            errors[field] ? "border-red-400 bg-red-50" : "border-white/[0.07]"
+          className={`w-full text-sm text-[#0F172A] border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] ${
+            errors[field] ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"
           }`}
         />
-        {hint && !errors[field] && <p className="text-xs text-white/30 mt-1">{hint}</p>}
+        {hint && !errors[field] && <p className="text-xs text-[#94A3B8] mt-1">{hint}</p>}
         {errors[field] && <p className="text-xs text-red-500 mt-1">{errors[field] as string}</p>}
       </div>
     );
@@ -478,14 +478,14 @@ export default function OnboardingPage() {
                         ? "bg-blue-600 text-white"
                         : active
                         ? "bg-blue-600 text-white ring-4 ring-blue-100"
-                        : "bg-white/[0.06] text-white/30"
+                        : "bg-[#F1F5F9] text-[#94A3B8]"
                     }`}
                   >
                     {done ? <CheckCircle size={16} /> : n}
                   </div>
                   <span
                     className={`text-sm font-medium hidden sm:block ${
-                      active ? "text-blue-700" : done ? "text-white/65" : "text-white/30"
+                      active ? "text-blue-700" : done ? "text-[#334155]" : "text-[#94A3B8]"
                     }`}
                   >
                     {s.label}
@@ -502,23 +502,23 @@ export default function OnboardingPage() {
             );
           })}
         </div>
-        <p className="text-xs text-white/30 text-right">Step {step} of {STEPS.length}</p>
+        <p className="text-xs text-[#94A3B8] text-right">Step {step} of {STEPS.length}</p>
       </div>
     );
   }
 
   // ─── Render ────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#0e1017] flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl bg-[#131620] rounded-2xl shadow-sm border border-white/[0.05] p-8">
+    <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4">
+      <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-[#F1F5F9] p-8">
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-1">
             <LogoIcon size="sm" />
-            <span className="text-sm font-semibold text-white/65">PracticeSync AI</span>
+            <span className="text-sm font-semibold text-[#334155]">PracticeSync AI</span>
           </div>
-          <h1 className="text-2xl font-bold text-white/85 mt-4">Welcome! Let&apos;s set up your firm</h1>
-          <p className="text-sm text-white/40 mt-1">This takes about 2 minutes. You can always update these later in Settings.</p>
+          <h1 className="text-2xl font-bold text-[#0F172A] mt-4">Welcome! Let&apos;s set up your firm</h1>
+          <p className="text-sm text-[#64748B] mt-1">This takes about 2 minutes. You can always update these later in Settings.</p>
         </div>
 
         <ProgressBar />
@@ -534,7 +534,7 @@ export default function OnboardingPage() {
           <div>
             <div className="flex items-center gap-2 mb-5">
               <Building2 size={18} className="text-blue-600" />
-              <h2 className="text-base font-semibold text-white/85">Firm Profile</h2>
+              <h2 className="text-base font-semibold text-[#0F172A]">Firm Profile</h2>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -595,11 +595,11 @@ export default function OnboardingPage() {
                 placeholder="e.g. Mumbai"
               />
               <div>
-                <label className="text-xs font-medium text-white/40 block mb-1">State</label>
+                <label className="text-xs font-medium text-[#64748B] block mb-1">State</label>
                 <select
                   value={firmForm.state}
                   onChange={(e) => setFirmForm((p) => ({ ...p, state: e.target.value }))}
-                  className="w-full text-sm text-white/85 border border-white/[0.07] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#0e1017]"
+                  className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
                 >
                   <option value="">Select state…</option>
                   {INDIAN_STATES.map((s) => (
@@ -621,7 +621,7 @@ export default function OnboardingPage() {
             <div className="flex items-center justify-between mt-8 pt-5 border-t border-gray-50">
               <button
                 onClick={finish}
-                className="text-sm text-white/30 hover:text-white/55 transition-colors"
+                className="text-sm text-[#94A3B8] hover:text-[#475569] transition-colors"
               >
                 Skip for now
               </button>
@@ -642,13 +642,13 @@ export default function OnboardingPage() {
           <div>
             <div className="flex items-center gap-2 mb-2">
               <BookOpen size={18} className="text-blue-600" />
-              <h2 className="text-base font-semibold text-white/85">Chart of Accounts</h2>
+              <h2 className="text-base font-semibold text-[#0F172A]">Chart of Accounts</h2>
             </div>
-            <p className="text-sm text-white/40 mb-5">
+            <p className="text-sm text-[#64748B] mb-5">
               We&apos;ll seed your ledger with {COA_ACCOUNTS.length} standard Indian accounts. You can add, rename or delete them later.
             </p>
 
-            <div className="border border-white/[0.05] rounded-xl overflow-hidden divide-y divide-white/[0.03] max-h-80 overflow-y-auto">
+            <div className="border border-[#F1F5F9] rounded-xl overflow-hidden divide-y divide-[#F8FAFC] max-h-80 overflow-y-auto">
               {COA_GROUPS.map((group) => {
                 const accounts = COA_ACCOUNTS.filter((a) => a.account_type === group.type);
                 return (
@@ -658,9 +658,9 @@ export default function OnboardingPage() {
                       <span className="text-xs font-medium">{accounts.length} accounts</span>
                     </div>
                     {accounts.map((acc) => (
-                      <div key={acc.account_code} className="flex items-center justify-between px-4 py-2 hover:bg-[#0e1017]">
-                        <span className="text-sm text-white/75">{acc.account_name}</span>
-                        <span className="text-xs text-white/30 font-mono">{acc.account_code}</span>
+                      <div key={acc.account_code} className="flex items-center justify-between px-4 py-2 hover:bg-[#F8FAFC]">
+                        <span className="text-sm text-[#1E293B]">{acc.account_name}</span>
+                        <span className="text-xs text-[#94A3B8] font-mono">{acc.account_code}</span>
                       </div>
                     ))}
                   </div>
@@ -679,13 +679,13 @@ export default function OnboardingPage() {
               <div className="flex items-center gap-4">
                 <button
                   onClick={goBack}
-                  className="flex items-center gap-1 text-sm text-white/40 hover:text-white/65 transition-colors"
+                  className="flex items-center gap-1 text-sm text-[#64748B] hover:text-[#334155] transition-colors"
                 >
                   <ChevronLeft size={16} /> Back
                 </button>
                 <button
                   onClick={goNext}
-                  className="text-sm text-white/30 hover:text-white/55 transition-colors"
+                  className="text-sm text-[#94A3B8] hover:text-[#475569] transition-colors"
                 >
                   Skip for now
                 </button>
@@ -707,9 +707,9 @@ export default function OnboardingPage() {
           <div>
             <div className="flex items-center gap-2 mb-2">
               <Users size={18} className="text-blue-600" />
-              <h2 className="text-base font-semibold text-white/85">Add Your First Client</h2>
+              <h2 className="text-base font-semibold text-[#0F172A]">Add Your First Client</h2>
             </div>
-            <p className="text-sm text-white/40 mb-5">
+            <p className="text-sm text-[#64748B] mb-5">
               Add a client to get started. You can add more from the Clients section.
             </p>
 
@@ -726,14 +726,14 @@ export default function OnboardingPage() {
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-white/40 block mb-1">
+                <label className="text-xs font-medium text-[#64748B] block mb-1">
                   Entity Type<span className="text-red-500 ml-0.5">*</span>
                 </label>
                 <select
                   value={clientForm.entity_type}
                   onChange={(e) => setClientForm((p) => ({ ...p, entity_type: e.target.value }))}
-                  className={`w-full text-sm text-white/85 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#0e1017] ${
-                    clientErrors.entity_type ? "border-red-400 bg-red-50" : "border-white/[0.07]"
+                  className={`w-full text-sm text-[#0F172A] border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] ${
+                    clientErrors.entity_type ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"
                   }`}
                 >
                   {ENTITY_TYPES.map((t) => (
@@ -786,13 +786,13 @@ export default function OnboardingPage() {
               <div className="flex items-center gap-4">
                 <button
                   onClick={goBack}
-                  className="flex items-center gap-1 text-sm text-white/40 hover:text-white/65 transition-colors"
+                  className="flex items-center gap-1 text-sm text-[#64748B] hover:text-[#334155] transition-colors"
                 >
                   <ChevronLeft size={16} /> Back
                 </button>
                 <button
                   onClick={finish}
-                  className="text-sm text-white/30 hover:text-white/55 transition-colors"
+                  className="text-sm text-[#94A3B8] hover:text-[#475569] transition-colors"
                 >
                   Skip for now
                 </button>

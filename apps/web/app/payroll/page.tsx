@@ -450,54 +450,54 @@ function AddEmployeeModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-lg p-6">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-white/85">Add Employee</h2>
+          <h2 className="font-semibold text-[#0F172A]">Add Employee</h2>
           <button onClick={onClose}><X size={16} /></button>
         </div>
         {err && <p className="text-red-600 text-sm mb-3">{err}</p>}
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <label className="block text-xs font-medium text-white/65 mb-1">Client</label>
+            <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
             <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}>
               {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-white/65 mb-1">Name *</label>
+            <label className="block text-xs font-medium text-[#334155] mb-1">Name *</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-white/65 mb-1">PAN</label>
+            <label className="block text-xs font-medium text-[#334155] mb-1">PAN</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm uppercase" value={form.pan} onChange={e => setForm(f => ({ ...f, pan: e.target.value }))} maxLength={10} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-white/65 mb-1">Designation</label>
+            <label className="block text-xs font-medium text-[#334155] mb-1">Designation</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.designation} onChange={e => setForm(f => ({ ...f, designation: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-white/65 mb-1">Basic Salary (Rs/month) *</label>
+            <label className="block text-xs font-medium text-[#334155] mb-1">Basic Salary (Rs/month) *</label>
             <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.basic_rs} onChange={e => setForm(f => ({ ...f, basic_rs: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-white/65 mb-1">HRA %</label>
+            <label className="block text-xs font-medium text-[#334155] mb-1">HRA %</label>
             <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.hra_percent} onChange={e => setForm(f => ({ ...f, hra_percent: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-white/65 mb-1">DA %</label>
+            <label className="block text-xs font-medium text-[#334155] mb-1">DA %</label>
             <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.da_percent} onChange={e => setForm(f => ({ ...f, da_percent: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-white/65 mb-1">Other Allowances (Rs)</label>
+            <label className="block text-xs font-medium text-[#334155] mb-1">Other Allowances (Rs)</label>
             <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.other_rs} onChange={e => setForm(f => ({ ...f, other_rs: e.target.value }))} />
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" id="pf" checked={form.pf_applicable} onChange={e => setForm(f => ({ ...f, pf_applicable: e.target.checked }))} />
-            <label htmlFor="pf" className="text-sm text-white/65">PF Applicable (12% of basic)</label>
+            <label htmlFor="pf" className="text-sm text-[#334155]">PF Applicable (12% of basic)</label>
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" id="esi" checked={form.esi_applicable} onChange={e => setForm(f => ({ ...f, esi_applicable: e.target.checked }))} />
-            <label htmlFor="esi" className="text-sm text-white/65">ESI Applicable (if &le; Rs 21,000)</label>
+            <label htmlFor="esi" className="text-sm text-[#334155]">ESI Applicable (if &le; Rs 21,000)</label>
           </div>
         </div>
         <div className="flex gap-2 justify-end mt-5">
@@ -516,7 +516,7 @@ function PayslipModal({ slip, onClose }: { slip: PayrollSlip; onClose: () => voi
   const run = slip.run!;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md p-6">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="font-semibold">Payslip</h2>
           <div className="flex gap-2">
@@ -525,39 +525,39 @@ function PayslipModal({ slip, onClose }: { slip: PayrollSlip; onClose: () => voi
           </div>
         </div>
         <div className="border-b pb-3 mb-3">
-          <h3 className="font-bold text-lg text-white/85">{emp.name}</h3>
-          <p className="text-sm text-white/55">{emp.designation} {emp.pan ? `• ${emp.pan}` : ""}</p>
-          <p className="text-sm text-white/55">Month: {run.month}</p>
+          <h3 className="font-bold text-lg text-[#0F172A]">{emp.name}</h3>
+          <p className="text-sm text-[#475569]">{emp.designation} {emp.pan ? `• ${emp.pan}` : ""}</p>
+          <p className="text-sm text-[#475569]">Month: {run.month}</p>
         </div>
         <table className="w-full text-sm">
           <tbody>
             <tr className="border-b">
-              <td className="py-1 text-white/55">Gross Salary</td>
+              <td className="py-1 text-[#475569]">Gross Salary</td>
               <td className="py-1 text-right font-medium">{fmtRs(slip.gross_paise)}</td>
             </tr>
             <tr>
-              <td className="py-1 text-white/55">PF Deduction (12% of Basic)</td>
+              <td className="py-1 text-[#475569]">PF Deduction (12% of Basic)</td>
               <td className="py-1 text-right text-red-600">- {fmtRs(slip.pf_employee_paise)}</td>
             </tr>
             <tr>
-              <td className="py-1 text-white/55">ESI Deduction (0.75%)</td>
+              <td className="py-1 text-[#475569]">ESI Deduction (0.75%)</td>
               <td className="py-1 text-right text-red-600">- {fmtRs(slip.esi_employee_paise)}</td>
             </tr>
             <tr>
-              <td className="py-1 text-white/55">Professional Tax</td>
+              <td className="py-1 text-[#475569]">Professional Tax</td>
               <td className="py-1 text-right text-red-600">- {fmtRs(slip.pt_paise)}</td>
             </tr>
             <tr className="border-b">
-              <td className="py-1 text-white/55">TDS on Salary (IT Act Sec 192)</td>
+              <td className="py-1 text-[#475569]">TDS on Salary (IT Act Sec 192)</td>
               <td className="py-1 text-right text-red-600">- {fmtRs(slip.tds_paise)}</td>
             </tr>
             <tr className="font-bold">
-              <td className="py-2 text-white/85">Net Pay</td>
+              <td className="py-2 text-[#0F172A]">Net Pay</td>
               <td className="py-2 text-right text-green-700">{fmtRs(slip.net_paise)}</td>
             </tr>
           </tbody>
         </table>
-        <p className="text-[10px] text-white/30 mt-4 text-center">Generated by PracticeSync AI</p>
+        <p className="text-[10px] text-[#94A3B8] mt-4 text-center">Generated by PracticeSync AI</p>
       </div>
     </div>
   );
@@ -588,7 +588,7 @@ function StatusBadge({ status }: { status: "overdue" | "due-soon" | "upcoming" |
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-white/[0.06] text-white/55">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-[#F1F5F9] text-[#475569]">
       <Clock size={11} />Upcoming
     </span>
   );
@@ -641,7 +641,7 @@ function StatutoryReturnsTab({
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Statutory Return Deadlines</CardTitle>
-          <p className="text-xs text-white/40 mt-0.5">
+          <p className="text-xs text-[#64748B] mt-0.5">
             Based on today&apos;s date. Mark as filed in your records after submission.
           </p>
         </CardHeader>
@@ -655,13 +655,13 @@ function StatutoryReturnsTab({
                     ? "border-red-200 bg-red-50"
                     : d.status === "due-soon"
                     ? "border-amber-200 bg-amber-50"
-                    : "border-white/[0.07] bg-[#131620]"
+                    : "border-[#E2E8F0] bg-white"
                 }`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white/85">{d.label}</p>
-                  <p className="text-xs text-white/40 mt-0.5">{d.description}</p>
-                  <p className="text-xs text-white/40 mt-0.5">
+                  <p className="text-sm font-medium text-[#0F172A]">{d.label}</p>
+                  <p className="text-xs text-[#64748B] mt-0.5">{d.description}</p>
+                  <p className="text-xs text-[#64748B] mt-0.5">
                     Portal: {d.portal} &middot; Due:{" "}
                     {d.dueDate.toLocaleDateString("en-IN", {
                       day: "numeric",
@@ -676,7 +676,7 @@ function StatutoryReturnsTab({
               </div>
             ))}
           </div>
-          <p className="text-xs text-white/30 mt-4 border-t pt-3">
+          <p className="text-xs text-[#94A3B8] mt-4 border-t pt-3">
             Note: Status is computed from today&apos;s date. This checklist does not auto-track filed
             returns — update your firm records after each submission.
           </p>
@@ -687,14 +687,14 @@ function StatutoryReturnsTab({
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Generate Statutory Return Files</CardTitle>
-          <p className="text-xs text-white/40 mt-0.5">
+          <p className="text-xs text-[#64748B] mt-0.5">
             Download files in the correct format for each portal. Review before uploading.
           </p>
         </CardHeader>
         <CardContent>
           {clients.length > 1 && (
             <div className="mb-4">
-              <label className="block text-xs font-medium text-white/65 mb-1">Client</label>
+              <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
               <select
                 className="border rounded-lg px-3 py-2 text-sm"
                 value={selectedClientId}
@@ -708,7 +708,7 @@ function StatutoryReturnsTab({
           )}
 
           {clientRuns.length === 0 ? (
-            <p className="text-sm text-white/30 py-6 text-center">
+            <p className="text-sm text-[#94A3B8] py-6 text-center">
               No payroll runs for this client. Run a Monthly Payroll first.
             </p>
           ) : (
@@ -726,7 +726,7 @@ function StatutoryReturnsTab({
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b text-xs font-medium text-white/40 uppercase tracking-wide">
+                    <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide">
                       <th className="text-left py-3 px-3">Month</th>
                       <th className="text-center py-3 px-3">Employees</th>
                       <th className="text-right py-3 px-3">Total Gross</th>
@@ -744,9 +744,9 @@ function StatutoryReturnsTab({
                         s => s.employee?.esi_applicable && s.gross_paise <= 2100000,
                       ).length;
                       return (
-                        <tr key={run.id} className="border-b hover:bg-[#0e1017]">
+                        <tr key={run.id} className="border-b hover:bg-[#F8FAFC]">
                           <td className="py-3 px-3 font-medium">{run.month}</td>
-                          <td className="py-3 px-3 text-center text-white/55">{runSlips.length}</td>
+                          <td className="py-3 px-3 text-center text-[#475569]">{runSlips.length}</td>
                           <td className="py-3 px-3 text-right font-mono">{fmtRs(totalGross)}</td>
                           <td className="py-3 px-3 text-right font-mono text-red-600">{fmtRs(totalTds)}</td>
                           <td className="py-3 px-3">
@@ -794,17 +794,17 @@ function StatutoryReturnsTab({
               </div>
 
               {/* Format notes */}
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-white/40">
-                <div className="p-3 bg-[#0e1017] rounded-lg border border-white/[0.05]">
-                  <p className="font-medium text-white/65 mb-1">PF ECR (.txt)</p>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-[#64748B]">
+                <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#F1F5F9]">
+                  <p className="font-medium text-[#334155] mb-1">PF ECR (.txt)</p>
                   <p>Tilde-separated format for EPFO Unified Portal. Upload via &quot;ECR Upload&quot; on epfindia.gov.in. Due by 15th each month.</p>
                 </div>
-                <div className="p-3 bg-[#0e1017] rounded-lg border border-white/[0.05]">
-                  <p className="font-medium text-white/65 mb-1">ESI Statement (.csv)</p>
+                <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#F1F5F9]">
+                  <p className="font-medium text-[#334155] mb-1">ESI Statement (.csv)</p>
                   <p>Employee-wise ESI contribution data for ESIC portal. Half-yearly filing — Apr-Sep by Nov 11, Oct-Mar by May 11.</p>
                 </div>
-                <div className="p-3 bg-[#0e1017] rounded-lg border border-white/[0.05]">
-                  <p className="font-medium text-white/65 mb-1">TDS 24Q (.csv)</p>
+                <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#F1F5F9]">
+                  <p className="font-medium text-[#334155] mb-1">TDS 24Q (.csv)</p>
                   <p>Quarterly TDS data per IT Act Section 192. Must be filed via TRACES/NSDL. CA review mandatory before submission.</p>
                 </div>
               </div>
@@ -930,12 +930,12 @@ export default function PayrollPage() {
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-[#0e1017] flex items-center justify-center"><p className="text-white/40">Loading payroll...</p></div>;
+    return <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center"><p className="text-[#64748B]">Loading payroll...</p></div>;
   }
 
   if (tablesError) {
     return (
-      <div className="min-h-screen bg-[#0e1017] p-8">
+      <div className="min-h-screen bg-[#F8FAFC] p-8">
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -944,7 +944,7 @@ export default function PayrollPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-white/55 mb-4">The payroll tables do not exist yet. Run this SQL in your Supabase dashboard:</p>
+            <p className="text-sm text-[#475569] mb-4">The payroll tables do not exist yet. Run this SQL in your Supabase dashboard:</p>
             <pre className="bg-gray-900 text-green-400 p-4 rounded-lg text-xs overflow-auto whitespace-pre-wrap">{INSTALL_SQL}</pre>
           </CardContent>
         </Card>
@@ -953,7 +953,7 @@ export default function PayrollPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0e1017] p-8">
+    <div className="min-h-screen bg-[#F8FAFC] p-8">
       {showAdd && firmId && (
         <AddEmployeeModal
           clients={clients}
@@ -967,8 +967,8 @@ export default function PayrollPage() {
       <div className="max-w-6xl mx-auto">
         <div className="mb-6 flex items-start justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white/85">Payroll</h1>
-            <p className="text-sm text-white/40 mt-0.5">IT Act Section 192 &middot; EPF Act &middot; ESI Act</p>
+            <h1 className="text-2xl font-bold text-[#0F172A]">Payroll</h1>
+            <p className="text-sm text-[#64748B] mt-0.5">IT Act Section 192 &middot; EPF Act &middot; ESI Act</p>
           </div>
           <Link href="/payroll/reports">
             <Button variant="outline" className="flex items-center gap-1.5">
@@ -1002,7 +1002,7 @@ export default function PayrollPage() {
               </CardHeader>
               <CardContent>
                 {employees.length === 0 ? (
-                  <div className="text-center py-12 text-white/30">
+                  <div className="text-center py-12 text-[#94A3B8]">
                     <Users size={32} className="mx-auto mb-3 opacity-30" />
                     <p>No employees yet. Click &quot;Add Employee&quot; to get started.</p>
                   </div>
@@ -1010,7 +1010,7 @@ export default function PayrollPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b text-xs font-medium text-white/40 uppercase tracking-wide">
+                        <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide">
                           <th className="text-left py-3 px-4">Name</th>
                           <th className="text-left py-3 px-4">PAN</th>
                           <th className="text-left py-3 px-4">Designation</th>
@@ -1026,18 +1026,18 @@ export default function PayrollPage() {
                             + Math.round(emp.basic_paise * emp.da_percent / 100)
                             + emp.other_allowances_paise;
                           return (
-                            <tr key={emp.id} className="border-b hover:bg-[#0e1017]">
+                            <tr key={emp.id} className="border-b hover:bg-[#F8FAFC]">
                               <td className="py-3 px-4 font-medium">{emp.name}</td>
                               <td className="py-3 px-4 font-mono text-xs">{emp.pan || "—"}</td>
-                              <td className="py-3 px-4 text-white/55">{emp.designation || "—"}</td>
+                              <td className="py-3 px-4 text-[#475569]">{emp.designation || "—"}</td>
                               <td className="py-3 px-4 text-right font-mono">{fmtRs(gross)}</td>
                               <td className="py-3 px-4 text-center">
-                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${emp.pf_applicable ? "bg-green-100 text-green-700" : "bg-white/[0.06] text-white/40"}`}>
+                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${emp.pf_applicable ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
                                   {emp.pf_applicable ? "Yes" : "No"}
                                 </span>
                               </td>
                               <td className="py-3 px-4 text-center">
-                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${emp.esi_applicable ? "bg-green-100 text-green-700" : "bg-white/[0.06] text-white/40"}`}>
+                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${emp.esi_applicable ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
                                   {emp.esi_applicable ? "Yes" : "No"}
                                 </span>
                               </td>
@@ -1058,17 +1058,17 @@ export default function PayrollPage() {
               <CardContent className="pt-5">
                 <div className="flex flex-wrap gap-4 items-end">
                   <div>
-                    <label className="block text-xs font-medium text-white/65 mb-1">Client</label>
+                    <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
                     <select className="border rounded-lg px-3 py-2 text-sm" value={runClientId} onChange={e => setRunClientId(e.target.value)}>
                       {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-white/65 mb-1">Month</label>
+                    <label className="block text-xs font-medium text-[#334155] mb-1">Month</label>
                     <input type="month" className="border rounded-lg px-3 py-2 text-sm" value={runMonth} onChange={e => setRunMonth(e.target.value)} />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-white/65 mb-1">PT State</label>
+                    <label className="block text-xs font-medium text-[#334155] mb-1">PT State</label>
                     <select className="border rounded-lg px-3 py-2 text-sm" value={ptState} onChange={e => setPtState(e.target.value)}>
                       {PT_STATES.map(s => <option key={s.code} value={s.code}>{s.label}</option>)}
                     </select>
@@ -1084,14 +1084,14 @@ export default function PayrollPage() {
               </CardContent>
             </Card>
             {runEmployees.length === 0 ? (
-              <Card><CardContent className="py-12 text-center text-white/30">No employees for this client.</CardContent></Card>
+              <Card><CardContent className="py-12 text-center text-[#94A3B8]">No employees for this client.</CardContent></Card>
             ) : (
               <Card>
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b text-xs font-medium text-white/40 uppercase tracking-wide">
+                        <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide">
                           <th className="text-left py-3 px-4">Employee</th>
                           <th className="text-right py-3 px-4">Gross</th>
                           <th className="text-right py-3 px-4">PF Emp</th>
@@ -1105,7 +1105,7 @@ export default function PayrollPage() {
                         {runEmployees.map(emp => {
                           const c = computeSlip(emp, ptState);
                           return (
-                            <tr key={emp.id} className="border-b hover:bg-[#0e1017]">
+                            <tr key={emp.id} className="border-b hover:bg-[#F8FAFC]">
                               <td className="py-3 px-4 font-medium">{emp.name}</td>
                               <td className="py-3 px-4 text-right font-mono">{fmtRs(c.gross)}</td>
                               <td className="py-3 px-4 text-right font-mono text-red-600">{fmtRs(c.pf)}</td>
@@ -1130,7 +1130,7 @@ export default function PayrollPage() {
               <CardHeader><CardTitle>Generated Payslips</CardTitle></CardHeader>
               <CardContent>
                 {slips.length === 0 ? (
-                  <div className="text-center py-12 text-white/30">
+                  <div className="text-center py-12 text-[#94A3B8]">
                     <FileText size={32} className="mx-auto mb-3 opacity-30" />
                     <p>No payslips generated yet. Run a Monthly Run to generate payslips.</p>
                   </div>
@@ -1138,7 +1138,7 @@ export default function PayrollPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b text-xs font-medium text-white/40 uppercase tracking-wide">
+                        <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide">
                           <th className="text-left py-3 px-4">Employee</th>
                           <th className="text-left py-3 px-4">Month</th>
                           <th className="text-right py-3 px-4">Gross</th>
@@ -1151,9 +1151,9 @@ export default function PayrollPage() {
                         {slips.map(s => {
                           const deductions = s.pf_employee_paise + s.esi_employee_paise + s.pt_paise + s.tds_paise;
                           return (
-                            <tr key={s.id} className="border-b hover:bg-[#0e1017]">
+                            <tr key={s.id} className="border-b hover:bg-[#F8FAFC]">
                               <td className="py-3 px-4 font-medium">{s.employee?.name ?? "—"}</td>
-                              <td className="py-3 px-4 text-white/55">{s.run?.month ?? "—"}</td>
+                              <td className="py-3 px-4 text-[#475569]">{s.run?.month ?? "—"}</td>
                               <td className="py-3 px-4 text-right font-mono">{fmtRs(s.gross_paise)}</td>
                               <td className="py-3 px-4 text-right font-mono text-red-600">{fmtRs(deductions)}</td>
                               <td className="py-3 px-4 text-right font-mono font-semibold text-green-700">{fmtRs(s.net_paise)}</td>
@@ -1177,20 +1177,20 @@ export default function PayrollPage() {
               <CardContent className="pt-5">
                 <div className="flex gap-4 items-end">
                   <div>
-                    <label className="block text-xs font-medium text-white/65 mb-1">Client</label>
+                    <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
                     <select className="border rounded-lg px-3 py-2 text-sm" value={statClientId} onChange={e => setStatClientId(e.target.value)}>
                       {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-white/65 mb-1">Month</label>
+                    <label className="block text-xs font-medium text-[#334155] mb-1">Month</label>
                     <input type="month" className="border rounded-lg px-3 py-2 text-sm" value={statMonth} onChange={e => setStatMonth(e.target.value)} />
                   </div>
                 </div>
               </CardContent>
             </Card>
             {statSlips.length === 0 ? (
-              <Card><CardContent className="py-12 text-center text-white/30">No payroll runs for selected month/client.</CardContent></Card>
+              <Card><CardContent className="py-12 text-center text-[#94A3B8]">No payroll runs for selected month/client.</CardContent></Card>
             ) : (() => {
               const emps = statSlips.map(s => s.employee).filter(Boolean) as Employee[];
               let totalPfEmp = 0, totalPfEmployer = 0, totalEsiEmp = 0, totalEsiEmployer = 0, totalPt = 0, totalTds = 0;
@@ -1211,7 +1211,7 @@ export default function PayrollPage() {
                   <CardContent>
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b text-xs font-medium text-white/40 uppercase">
+                        <tr className="border-b text-xs font-medium text-[#64748B] uppercase">
                           <th className="text-left py-2">Component</th>
                           <th className="text-right py-2">Amount</th>
                         </tr>

@@ -58,12 +58,12 @@ export default function AiInsightsPage() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="h-32 animate-pulse bg-[#0e1017] rounded" />
+            <div className="h-32 animate-pulse bg-[#F8FAFC] rounded" />
           ) : insights.length === 0 ? (
             <div className="text-center py-12 space-y-2">
               <Sparkles className="w-8 h-8 text-gray-200 mx-auto" />
-              <p className="text-sm text-white/30">No AI insights yet</p>
-              <p className="text-xs text-white/20">
+              <p className="text-sm text-[#94A3B8]">No AI insights yet</p>
+              <p className="text-xs text-[#CBD5E1]">
                 Insights are generated automatically as activity is recorded for this client.
               </p>
             </div>
