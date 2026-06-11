@@ -1,5 +1,9 @@
 "use client";
 
+export function generateStaticParams() {
+  return [{ id: "_placeholder", engagementId: "_placeholder" }];
+}
+
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { CheckCircle2, Circle, User, Loader2 } from "lucide-react";

@@ -1,5 +1,9 @@
 "use client";
 
+export function generateStaticParams() {
+  return [{ id: "_placeholder", engagementId: "_placeholder" }];
+}
+
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { FileText, BarChart3, Package, Download, Loader2, AlertTriangle } from "lucide-react";
