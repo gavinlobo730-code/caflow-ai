@@ -135,8 +135,21 @@ def create_customer(
         return api_response(True, customer)
     except HTTPException:
         raise
+    except PydanticValidationError as e:
+        # Surface specific field-level validation errors to the caller
+        msgs = "; ".join(
+            err.get("msg", str(err)) for err in e.errors()
+        )
+        _logger.warning("create_customer validation: %s", msgs)
+        return api_response(False, None, msgs)
     except Exception as e:
-        _logger.error("create_customer: %s", e)
+        err_str = str(e)
+        _logger.error("create_customer: %s", err_str)
+        # Surface DB constraint violations (duplicate GSTIN, missing FK, etc.)
+        if "duplicate" in err_str.lower() or "unique" in err_str.lower():
+            return api_response(False, None, "A customer with this GSTIN already exists.")
+        if "foreign key" in err_str.lower() or "violates" in err_str.lower():
+            return api_response(False, None, "Invalid client reference. Please refresh and try again.")
         return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
