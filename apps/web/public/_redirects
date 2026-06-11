@@ -1,23 +1,38 @@
 # Client workspace — rewrite dynamic client IDs to the pre-rendered _placeholder shell.
 # Rules are first-match-wins. More specific paths must come before catch-alls.
+# Each section has both trailing-slash and non-trailing-slash variants.
 
-# Sub-page routes: /clients/:id/section/... → _placeholder equivalent
-# Using explicit named sections so the rewrite target is unambiguous.
+/clients/:id/overview             /clients/_placeholder/overview/             200
 /clients/:id/overview/            /clients/_placeholder/overview/             200
+/clients/:id/accounting           /clients/_placeholder/accounting/           200
 /clients/:id/accounting/          /clients/_placeholder/accounting/           200
+/clients/:id/sales                /clients/_placeholder/sales/                200
 /clients/:id/sales/               /clients/_placeholder/sales/                200
+/clients/:id/purchases            /clients/_placeholder/purchases/            200
 /clients/:id/purchases/           /clients/_placeholder/purchases/            200
+/clients/:id/compliance/gst       /clients/_placeholder/compliance/gst/       200
 /clients/:id/compliance/gst/      /clients/_placeholder/compliance/gst/       200
+/clients/:id/compliance/tds       /clients/_placeholder/compliance/tds/       200
 /clients/:id/compliance/tds/      /clients/_placeholder/compliance/tds/       200
+/clients/:id/compliance/mca       /clients/_placeholder/compliance/mca/       200
 /clients/:id/compliance/mca/      /clients/_placeholder/compliance/mca/       200
+/clients/:id/compliance           /clients/_placeholder/compliance/           200
 /clients/:id/compliance/          /clients/_placeholder/compliance/           200
+/clients/:id/payroll              /clients/_placeholder/payroll/              200
 /clients/:id/payroll/             /clients/_placeholder/payroll/              200
+/clients/:id/tax                  /clients/_placeholder/tax/                  200
 /clients/:id/tax/                 /clients/_placeholder/tax/                  200
+/clients/:id/documents            /clients/_placeholder/documents/            200
 /clients/:id/documents/           /clients/_placeholder/documents/            200
+/clients/:id/tasks                /clients/_placeholder/tasks/                200
 /clients/:id/tasks/               /clients/_placeholder/tasks/                200
+/clients/:id/reports              /clients/_placeholder/reports/              200
 /clients/:id/reports/             /clients/_placeholder/reports/              200
+/clients/:id/portal               /clients/_placeholder/portal/               200
 /clients/:id/portal/              /clients/_placeholder/portal/               200
+/clients/:id/ai-insights          /clients/_placeholder/ai-insights/          200
 /clients/:id/ai-insights/         /clients/_placeholder/ai-insights/          200
+/clients/:id/year-end             /clients/_placeholder/year-end/             200
 /clients/:id/year-end/            /clients/_placeholder/year-end/             200
 
 # Root client URL — with and without trailing slash
