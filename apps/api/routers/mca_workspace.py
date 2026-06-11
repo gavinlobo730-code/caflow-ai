@@ -235,7 +235,7 @@ def update_director(
     """Update director KYC status or cessation date."""
     try:
         firm_id = current_user["firm_id"]
-        updates = {k: v for k, v in body.dict().items() if v is not None}
+        updates = {k: v for k, v in body.model_dump().items() if v is not None}
         if not updates:
             return api_response(False, None, "No update fields provided")
 
