@@ -549,6 +549,13 @@ def save_gstr9(
             "create", actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"), new_data=rec,
         )
+        timeline_service.log(
+            client_id, "gst", "GSTR-9 Draft Saved",
+            f"Annual return draft for FY {fy} saved",
+            "info", firm_id=firm_id or "",
+            entity_type="gstr9_return", entity_id=rec.get("id", ""),
+            actor_id=current_user.get("auth_user_id"),
+        )
         return api_response(True, rec)
     except HTTPException:
         raise
