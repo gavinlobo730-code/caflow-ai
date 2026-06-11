@@ -90,14 +90,14 @@ function SidebarContent({
     <aside
       className={cn(
         "flex flex-col h-full transition-all duration-200 shrink-0",
-        "bg-[#F0F7FF]",
+        "bg-[#0F172A]",
         collapsed ? "w-[60px]" : "w-[220px]"
       )}
     >
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
       {/* Logo */}
       <div className={cn(
-        "flex items-center border-b border-[#BFDBFE] shrink-0",
+        "flex items-center border-b border-white/10 shrink-0",
         collapsed ? "justify-center px-0 py-4 h-14" : "justify-between px-4 py-4 h-14"
       )}>
         {!collapsed && <LogoWordmark size="sm" />}
@@ -107,7 +107,7 @@ function SidebarContent({
         {!collapsed && (
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="p-1 rounded-md text-[#94A3B8] hover:text-[#475569] hover:bg-[#DBEAFE] transition-colors hidden md:flex"
+            className="p-1 rounded-md text-slate-500 hover:text-slate-300 hover:bg-white/10 transition-colors hidden md:flex"
           >
             <ChevronLeft size={14} />
           </button>
@@ -115,18 +115,18 @@ function SidebarContent({
       </div>
 
       {/* Search button */}
-      <div className={cn("px-2 py-2 border-b border-[#BFDBFE]", collapsed ? "flex justify-center" : "")}>
+      <div className={cn("px-2 py-2 border-b border-white/10", collapsed ? "flex justify-center" : "")}>
         <button
           onClick={() => setSearchOpen(true)}
           title="Search (⌘K)"
           className={cn(
-            "flex items-center gap-2 rounded-lg text-[12.5px] font-medium transition-colors text-[#64748B] hover:text-[#1E293B] hover:bg-[#DBEAFE]",
+            "flex items-center gap-2 rounded-lg text-[12.5px] font-medium transition-colors text-slate-400 hover:text-white hover:bg-white/10",
             collapsed ? "p-2" : "px-2.5 py-1.5 w-full"
           )}
         >
           <Search size={14} className="shrink-0" />
           {!collapsed && <span className="flex-1 text-left">Search</span>}
-          {!collapsed && <kbd className="text-[10px] text-[#CBD5E1] font-mono">⌘K</kbd>}
+          {!collapsed && <kbd className="text-[10px] text-slate-600 font-mono">⌘K</kbd>}
         </button>
       </div>
 
@@ -135,11 +135,11 @@ function SidebarContent({
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
             {!collapsed && (
-              <p className="text-[10px] font-semibold uppercase tracking-widest px-2 mb-1.5 text-[#94A3B8]">
+              <p className="text-[10px] font-semibold uppercase tracking-widest px-2 mb-1.5 text-slate-500">
                 {group.label}
               </p>
             )}
-            {collapsed && <div className="border-t border-[#BFDBFE] mb-2" />}
+            {collapsed && <div className="border-t border-white/10 mb-2" />}
             <div className="space-y-0.5">
               {group.items
                 .filter(({ href }) => canAccessHref(href, userRole))
@@ -155,11 +155,11 @@ function SidebarContent({
                         "flex items-center gap-2.5 rounded-lg text-[12.5px] font-medium transition-all duration-100",
                         collapsed ? "justify-center px-0 py-2.5 mx-0" : "px-2.5 py-2",
                         active
-                          ? "bg-[#DBEAFE] text-blue-600"
-                          : "text-[#64748B] hover:text-[#1E293B] hover:bg-[#DBEAFE]"
+                          ? "bg-blue-600 text-white"
+                          : "text-slate-400 hover:text-white hover:bg-white/10"
                       )}
                     >
-                      <Icon size={15} className={cn("shrink-0", active ? "text-blue-600" : "text-[#64748B]")} />
+                      <Icon size={15} className={cn("shrink-0", active ? "text-white" : "text-slate-500")} />
                       {!collapsed && <span className="truncate">{label}</span>}
                     </Link>
                   );
@@ -173,7 +173,7 @@ function SidebarContent({
       {collapsed && (
         <button
           onClick={() => setCollapsed(false)}
-          className="mx-auto mb-2 p-1.5 rounded-md text-[#94A3B8] hover:text-[#475569] hover:bg-[#DBEAFE] transition-colors hidden md:flex"
+          className="mx-auto mb-2 p-1.5 rounded-md text-slate-500 hover:text-white hover:bg-white/10 transition-colors hidden md:flex"
         >
           <ChevronRight size={14} />
         </button>
@@ -181,22 +181,22 @@ function SidebarContent({
 
       {/* User footer */}
       <div className={cn(
-        "border-t border-[#BFDBFE] p-3 flex items-center gap-2.5",
+        "border-t border-white/10 p-3 flex items-center gap-2.5",
         collapsed ? "justify-center flex-col" : ""
       )}>
-        <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-[11px] font-bold shrink-0">
+        <div className="w-7 h-7 rounded-full bg-blue-500 text-white flex items-center justify-center text-[11px] font-bold shrink-0">
           {initials}
         </div>
         {!collapsed && (
           <div className="min-w-0 flex-1">
-            <p className="text-[12px] font-semibold text-[#1E293B] truncate">{displayEmail}</p>
-            <p className="text-[10px] text-[#94A3B8] truncate">{userRole ?? "Partner"}</p>
+            <p className="text-[12px] font-semibold text-slate-200 truncate">{displayEmail}</p>
+            <p className="text-[10px] text-slate-500 truncate">{userRole ?? "Partner"}</p>
           </div>
         )}
         <button
           onClick={signOut}
           title="Sign out"
-          className="p-1.5 rounded-md text-[#94A3B8] hover:text-red-600 hover:bg-[#DBEAFE] transition-colors shrink-0"
+          className="p-1.5 rounded-md text-slate-500 hover:text-red-400 hover:bg-white/10 transition-colors shrink-0"
         >
           <LogOut size={13} />
         </button>
