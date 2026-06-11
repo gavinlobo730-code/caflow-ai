@@ -1522,7 +1522,7 @@ function YearEndClose({ financialYear }: { financialYear: string }) {
       </div>
       <div className="px-5 py-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className={`w-3 h-3 rounded-full ${loading ? "bg-white/[0.08]" : locked ? "bg-red-400" : "bg-green-400"}`} />
+          <div className={`w-3 h-3 rounded-full ${loading ? "bg-[#E2E8F0]" : locked ? "bg-red-400" : "bg-green-400"}`} />
           <span className="text-sm text-[#334155]">
             {loading ? "Checking…" : locked ? `FY ${financialYear} is locked` : `FY ${financialYear} is open`}
           </span>

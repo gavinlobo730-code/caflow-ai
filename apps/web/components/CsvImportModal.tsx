@@ -224,7 +224,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
                       <th className="px-4 py-2 text-left font-medium text-[#64748B]">Notes</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/[0.03]">
+                  <tbody className="divide-y divide-[#E2E8F0]">
                     {columns.map(col => (
                       <tr key={col.key}>
                         <td className="px-4 py-2 font-mono text-[#0F172A]">{col.key}</td>
@@ -293,7 +293,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
                       <th className="px-3 py-2 text-left text-[#64748B]">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/[0.03]">
+                  <tbody className="divide-y divide-[#E2E8F0]">
                     {rows.map(row => (
                       <tr key={row.index} className={row.errors.length > 0 ? "bg-red-50" : ""}>
                         <td className="px-3 py-2 text-[#94A3B8] tabular-nums">{row.index}</td>

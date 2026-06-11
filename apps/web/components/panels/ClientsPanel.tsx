@@ -80,7 +80,7 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
           })}
         </div>
 
-        <div className="mt-4 mx-2 p-2.5 rounded-[7px] bg-white/[0.03] border border-[#E2E8F0]">
+        <div className="mt-4 mx-2 p-2.5 rounded-[7px] bg-[#F1F5F9] border border-[#E2E8F0]">
           <p className="text-[11px] text-[#94A3B8] leading-relaxed">
             Select a client from{" "}
             <Link href="/clients" className="text-blue-600 hover:underline">
