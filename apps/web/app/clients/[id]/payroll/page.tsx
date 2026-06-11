@@ -9,7 +9,14 @@ import {
 import { cn } from "@/lib/utils";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
-import { api } from "@/lib/api";
+
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ data: T }> {
+  const res = await fetch(`${API}${path}`, { credentials: "include", ...options,
+    headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) } });
+  return res.json();
+}
 
 type Tab = "dashboard" | "employees" | "structures" | "runs" | "statutory" | "reports";
 
@@ -64,6 +71,26 @@ interface Slip {
   payroll_employees?: { name: string; pan?: string; designation?: string };
 }
 
+interface SalaryStructure {
+  id: string;
+  name: string;
+  basic_percent: number;
+  hra_percent: number;
+  pf_applicable: boolean;
+  esi_applicable: boolean;
+}
+
+interface StatutoryData {
+  pf_total_paise: number;
+  esi_total_paise: number;
+  pt_total_paise: number;
+  tds_24q_paise: number;
+}
+
+interface SalaryRegister {
+  slips: Slip[];
+}
+
 // ─── Dashboard Tab ────────────────────────────────────────────────────────────
 
 function DashboardTab({ clientId }: { clientId: string }) {
@@ -73,8 +100,8 @@ function DashboardTab({ clientId }: { clientId: string }) {
 
   useEffect(() => {
     Promise.all([
-      api.get(`/api/payroll/runs?client_id=${clientId}`).catch(() => ({ data: [] })),
-      api.get(`/api/payroll/employees?client_id=${clientId}`).catch(() => ({ data: [] })),
+      apiFetch<PayrollRun[]>(`/api/payroll/runs?client_id=${clientId}`).catch(() => ({ data: [] as PayrollRun[] })),
+      apiFetch<Employee[]>(`/api/payroll/employees?client_id=${clientId}`).catch(() => ({ data: [] as Employee[] })),
     ]).then(([r, e]) => {
       setRuns(r.data || []);
       setEmployees(e.data || []);
@@ -145,7 +172,7 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await api.get(`/api/payroll/employees?client_id=${clientId}`).catch(() => ({ data: [] }));
+    const res = await apiFetch<Employee[]>(`/api/payroll/employees?client_id=${clientId}`).catch(() => ({ data: [] as Employee[] }));
     setEmployees(res.data || []);
     setLoading(false);
   }, [clientId]);
@@ -155,12 +182,15 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
   async function addEmployee() {
     if (!form.name || !form.basic_paise) return;
     setSaving(true);
-    await api.post("/api/payroll/employees", {
-      client_id: clientId,
-      firm_id: firmId,
-      ...form,
-      basic_paise: Math.round(parseFloat(form.basic_paise) * 100),
-      hra_percent: parseFloat(form.hra_percent),
+    await apiFetch("/api/payroll/employees", {
+      method: "POST",
+      body: JSON.stringify({
+        client_id: clientId,
+        firm_id: firmId,
+        ...form,
+        basic_paise: Math.round(parseFloat(form.basic_paise) * 100),
+        hra_percent: parseFloat(form.hra_percent),
+      }),
     }).catch(() => null);
     await load();
     setShowAdd(false);
@@ -252,7 +282,7 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
   const [month, setMonth] = useState(defaultMonth);
 
   const load = useCallback(async () => {
-    const res = await api.get(`/api/payroll/runs?client_id=${clientId}`).catch(() => ({ data: [] }));
+    const res = await apiFetch<PayrollRun[]>(`/api/payroll/runs?client_id=${clientId}`).catch(() => ({ data: [] as PayrollRun[] }));
     setRuns(res.data || []);
     setLoading(false);
   }, [clientId]);
@@ -261,14 +291,14 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
 
   async function createRun() {
     setCreating(true);
-    await api.post("/api/payroll/runs", { client_id: clientId, firm_id: firmId, month }).catch(() => null);
+    await apiFetch("/api/payroll/runs", { method: "POST", body: JSON.stringify({ client_id: clientId, firm_id: firmId, month }) }).catch(() => null);
     await load();
     setCreating(false);
   }
 
   async function finalizeRun(runId: string) {
     setFinalizing(runId);
-    await api.post(`/api/payroll/runs/${runId}/finalize`, {}).catch(() => null);
+    await apiFetch(`/api/payroll/runs/${runId}/finalize`, { method: "POST", body: JSON.stringify({}) }).catch(() => null);
     await load();
     setFinalizing(null);
   }
@@ -277,7 +307,7 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
     if (selectedRun === runId) { setSelectedRun(null); return; }
     setSelectedRun(runId);
     setLoadingSlips(true);
-    const res = await api.get(`/api/payroll/runs/${runId}/slips`).catch(() => ({ data: [] }));
+    const res = await apiFetch<Slip[]>(`/api/payroll/runs/${runId}/slips`).catch(() => ({ data: [] as Slip[] }));
     setSlips(res.data || []);
     setLoadingSlips(false);
   }
@@ -382,12 +412,12 @@ function StatutoryTab({ clientId }: { clientId: string }) {
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const [month, setMonth] = useState(defaultMonth);
-  const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [data, setData] = useState<StatutoryData | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function load() {
     setLoading(true);
-    const res = await api.get(`/api/payroll/reports/statutory-summary?client_id=${clientId}&month=${month}`).catch(() => ({ data: null }));
+    const res = await apiFetch<StatutoryData>(`/api/payroll/reports/statutory-summary?client_id=${clientId}&month=${month}`).catch(() => ({ data: null }));
     setData(res.data);
     setLoading(false);
   }
@@ -412,7 +442,7 @@ function StatutoryTab({ clientId }: { clientId: string }) {
           ].map(({ label, amount, due, color }) => (
             <div key={label} className="bg-white rounded-xl border border-[#E2E8F0] p-4">
               <p className="text-[11px] font-semibold text-[#64748B]">{label}</p>
-              <p className={`text-2xl font-bold mt-1 text-${color}-600`}>{fmt(amount || 0)}</p>
+              <p className={`text-2xl font-bold mt-1 text-${color}-600`}>{fmt(amount ?? 0)}</p>
               <p className="text-[10px] text-[#94A3B8] mt-1">Due: {due}</p>
             </div>
           ))}
@@ -526,14 +556,14 @@ export default function PayrollPage() {
 // ─── Salary Structures Tab ────────────────────────────────────────────────────
 
 function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: string }) {
-  const [structures, setStructures] = useState<Record<string, unknown>[]>([]);
+  const [structures, setStructures] = useState<SalaryStructure[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: "", basic_percent: "40", hra_percent: "20", pf_applicable: true, esi_applicable: true });
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await api.get(`/api/payroll/salary-structures?client_id=${clientId}`).catch(() => ({ data: [] }));
+    const res = await apiFetch<SalaryStructure[]>(`/api/payroll/salary-structures?client_id=${clientId}`).catch(() => ({ data: [] as SalaryStructure[] }));
     setStructures(res.data || []);
     setLoading(false);
   }, [clientId]);
@@ -542,7 +572,10 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
 
   async function addStructure() {
     setSaving(true);
-    await api.post("/api/payroll/salary-structures", { client_id: clientId, firm_id: firmId, ...form, basic_percent: parseFloat(form.basic_percent), hra_percent: parseFloat(form.hra_percent) }).catch(() => null);
+    await apiFetch("/api/payroll/salary-structures", {
+      method: "POST",
+      body: JSON.stringify({ client_id: clientId, firm_id: firmId, ...form, basic_percent: parseFloat(form.basic_percent), hra_percent: parseFloat(form.hra_percent) }),
+    }).catch(() => null);
     await load();
     setShowAdd(false);
     setSaving(false);
@@ -601,12 +634,12 @@ function ReportsTab({ clientId }: { clientId: string }) {
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const [month, setMonth] = useState(defaultMonth);
-  const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [data, setData] = useState<SalaryRegister | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function load() {
     setLoading(true);
-    const res = await api.get(`/api/payroll/reports/salary-register?client_id=${clientId}&month=${month}`).catch(() => ({ data: null }));
+    const res = await apiFetch<SalaryRegister>(`/api/payroll/reports/salary-register?client_id=${clientId}&month=${month}`).catch(() => ({ data: null }));
     setData(res.data);
     setLoading(false);
   }
@@ -620,11 +653,11 @@ function ReportsTab({ clientId }: { clientId: string }) {
           {loading ? "Loading…" : "Load Salary Register"}
         </button>
       </div>
-      {data?.slips?.length > 0 && (
+      {(data?.slips?.length ?? 0) > 0 && (
         <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
           <div className="px-4 py-3 border-b border-[#F1F5F9] flex items-center justify-between">
             <p className="text-[12px] font-semibold text-[#1E293B]">Salary Register — {fmtMonth(month)}</p>
-            <span className="text-[11px] text-[#94A3B8]">{data.slips.length} employees</span>
+            <span className="text-[11px] text-[#94A3B8]">{data!.slips.length} employees</span>
           </div>
           <table className="w-full text-[11px]">
             <thead>
@@ -635,7 +668,7 @@ function ReportsTab({ clientId }: { clientId: string }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F8FAFC]">
-              {data.slips.map((s: Slip) => (
+              {data!.slips.map((s) => (
                 <tr key={s.id}>
                   <td className="px-3 py-2 text-[#1E293B] font-medium">{s.payroll_employees?.name}</td>
                   <td className="px-3 py-2 font-mono text-[#94A3B8]">{s.payroll_employees?.pan || "—"}</td>
