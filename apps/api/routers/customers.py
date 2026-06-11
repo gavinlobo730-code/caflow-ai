@@ -73,7 +73,8 @@ def list_customers(
 ):
     try:
         if _USE_MOCK:
-            result = [c for c in MOCK_CUSTOMERS if c["client_id"] == client_id]
+            firm_id = current_user.get("firm_id")
+            result = [c for c in MOCK_CUSTOMERS if c["client_id"] == client_id and c.get("firm_id") == firm_id]
             if not include_inactive:
                 result = [c for c in result if c.get("is_active", True)]
             return api_response(True, result)

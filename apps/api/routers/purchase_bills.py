@@ -152,8 +152,11 @@ def create_purchase_bill(
             raise HTTPException(status_code=422, detail="At least one line item is required")
 
         if _USE_MOCK:
-            # Mock vendor lookup
-            vendor = {"tds_applicable": False, "tds_section": None, "tds_rate_bps": 0, "state_code": "27"}
+            # Look up vendor from in-memory store; fall back to safe defaults
+            from routers.vendors import MOCK_VENDORS
+            vendor = next((v for v in MOCK_VENDORS if v.get("id") == vendor_id), None)
+            if vendor is None:
+                vendor = {"tds_applicable": False, "tds_section": None, "tds_rate_bps": 0, "state_code": "27"}
             is_interstate = False
         else:
             from core.supabase_client import get_supabase
