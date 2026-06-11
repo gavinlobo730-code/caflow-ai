@@ -19,7 +19,7 @@ import { getClients } from "@/lib/data/clients";
 import type { TaskTemplate, Client } from "@/lib/types";
 
 const PRIORITY_COLORS: Record<string, string> = {
-  low: "bg-gray-100 text-gray-600",
+  low: "bg-white/[0.06] text-white/55",
   medium: "bg-blue-100 text-blue-700",
   high: "bg-amber-100 text-amber-700",
   critical: "bg-red-100 text-red-700",
@@ -177,8 +177,8 @@ export default function TaskTemplatesPage() {
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Task Templates</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Reusable templates for recurring work types</p>
+          <h1 className="text-xl font-semibold text-white/85">Task Templates</h1>
+          <p className="text-sm text-white/40 mt-0.5">Reusable templates for recurring work types</p>
         </div>
         <Button onClick={openCreate} size="sm" className="gap-1.5">
           <Plus size={14} /> New Template
@@ -192,12 +192,12 @@ export default function TaskTemplatesPage() {
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center py-20 text-gray-400">
+        <div className="flex items-center justify-center py-20 text-white/30">
           <Loader2 className="animate-spin mr-2" size={18} /> Loading templates…
         </div>
       ) : templates.length === 0 ? (
         <Card>
-          <CardContent className="py-16 text-center text-gray-400">
+          <CardContent className="py-16 text-center text-white/30">
             <CheckSquare size={32} className="mx-auto mb-3 opacity-30" />
             <p className="font-medium">No templates yet</p>
             <p className="text-sm mt-1">Create reusable task templates for common work types</p>
@@ -213,22 +213,22 @@ export default function TaskTemplatesPage() {
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <CardTitle className="text-sm font-semibold text-gray-900 truncate">{t.name}</CardTitle>
+                    <CardTitle className="text-sm font-semibold text-white/85 truncate">{t.name}</CardTitle>
                     {t.description && (
-                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">{t.description}</p>
+                      <p className="text-xs text-white/40 mt-1 line-clamp-2">{t.description}</p>
                     )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       onClick={() => openInstantiate(t.id)}
                       title="Create task from template"
-                      className="p-1.5 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                      className="p-1.5 rounded text-white/30 hover:text-blue-400 hover:bg-blue-500/[0.08] transition-colors"
                     >
                       <Copy size={14} />
                     </button>
                     <button
                       onClick={() => openEdit(t)}
-                      className="p-1.5 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                      className="p-1.5 rounded text-white/30 hover:text-white/65 hover:bg-white/[0.06] transition-colors"
                     >
                       <Edit2 size={14} />
                     </button>
@@ -240,7 +240,7 @@ export default function TaskTemplatesPage() {
                     {t.firm_id && (
                       <button
                         onClick={() => handleDelete(t.id)}
-                        className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                        className="p-1.5 rounded text-white/30 hover:text-red-600 hover:bg-red-50 transition-colors"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -254,12 +254,12 @@ export default function TaskTemplatesPage() {
                     {t.default_priority}
                   </Badge>
                   {t.estimated_hours && (
-                    <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                    <span className="flex items-center gap-1 text-[11px] text-white/40">
                       <Clock size={11} /> {t.estimated_hours}h est.
                     </span>
                   )}
                   {t.default_assignee_role && (
-                    <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                    <span className="flex items-center gap-1 text-[11px] text-white/40">
                       <User size={11} /> {t.default_assignee_role}
                     </span>
                   )}
@@ -270,7 +270,7 @@ export default function TaskTemplatesPage() {
                 {t.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1">
                     {t.tags.map((tag) => (
-                      <span key={tag} className="flex items-center gap-0.5 text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                      <span key={tag} className="flex items-center gap-0.5 text-[11px] bg-white/[0.06] text-white/55 px-2 py-0.5 rounded-full">
                         <Tag size={9} /> {tag}
                       </span>
                     ))}
@@ -285,41 +285,41 @@ export default function TaskTemplatesPage() {
       {/* Create / Edit dialog */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
+          <div className="bg-[#131620] rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">{editingId ? "Edit Template" : "New Template"}</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600">
+              <h2 className="font-semibold text-white/85">{editingId ? "Edit Template" : "New Template"}</h2>
+              <button onClick={() => setShowForm(false)} className="text-white/30 hover:text-white/55">
                 <X size={18} />
               </button>
             </div>
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Name *</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Name *</label>
                 <input
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   placeholder="e.g. Monthly GST Filing"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Description</label>
                 <textarea
                   value={form.description}
                   onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                   rows={2}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none"
                   placeholder="Brief description of this template"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Default Priority</label>
+                  <label className="block text-xs font-medium text-white/65 mb-1">Default Priority</label>
                   <select
                     value={form.default_priority}
                     onChange={e => setForm(f => ({ ...f, default_priority: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   >
                     {["low", "medium", "high", "critical"].map(p => (
                       <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
@@ -327,32 +327,32 @@ export default function TaskTemplatesPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Est. Hours</label>
+                  <label className="block text-xs font-medium text-white/65 mb-1">Est. Hours</label>
                   <input
                     type="number"
                     min="0"
                     value={form.estimated_hours}
                     onChange={e => setForm(f => ({ ...f, estimated_hours: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                     placeholder="e.g. 3"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Tags (comma-separated)</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Tags (comma-separated)</label>
                 <input
                   value={form.tags}
                   onChange={e => setForm(f => ({ ...f, tags: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   placeholder="e.g. gst, monthly, filing"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Default Assignee Role</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Default Assignee Role</label>
                 <select
                   value={form.default_assignee_role}
                   onChange={e => setForm(f => ({ ...f, default_assignee_role: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                 >
                   <option value="">None</option>
                   {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
@@ -374,10 +374,10 @@ export default function TaskTemplatesPage() {
       {/* Instantiate dialog */}
       {instantiateId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+          <div className="bg-[#131620] rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">Create Task from Template</h2>
-              <button onClick={() => setInstantiateId(null)} className="text-gray-400 hover:text-gray-600">
+              <h2 className="font-semibold text-white/85">Create Task from Template</h2>
+              <button onClick={() => setInstantiateId(null)} className="text-white/30 hover:text-white/55">
                 <X size={18} />
               </button>
             </div>
@@ -388,23 +388,23 @@ export default function TaskTemplatesPage() {
             ) : (
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Client *</label>
+                  <label className="block text-xs font-medium text-white/65 mb-1">Client *</label>
                   <select
                     value={instClientId}
                     onChange={e => setInstClientId(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   >
                     <option value="">Select client…</option>
                     {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
+                  <label className="block text-xs font-medium text-white/65 mb-1">Due Date</label>
                   <input
                     type="date"
                     value={instDueDate}
                     onChange={e => setInstDueDate(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   />
                 </div>
                 {instError && (

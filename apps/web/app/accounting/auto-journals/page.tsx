@@ -421,9 +421,9 @@ async function generateSuggestions(
 function LoadingSpinner() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-4 animate-pulse">
-      <div className="h-8 bg-gray-200 rounded w-64" />
-      <div className="h-32 bg-gray-100 rounded-xl" />
-      <div className="h-48 bg-gray-100 rounded-xl" />
+      <div className="h-8 bg-white/[0.08] rounded w-64" />
+      <div className="h-32 bg-white/[0.06] rounded-xl" />
+      <div className="h-48 bg-white/[0.06] rounded-xl" />
     </div>
   );
 }
@@ -446,7 +446,7 @@ function SuggestionCard({
   const isPlaceholder = totalDebit === 0 && totalCredit === 0;
 
   return (
-    <Card className={`border ${suggestion.status === "approved" ? "border-green-200 bg-green-50/30" : suggestion.status === "dismissed" ? "border-gray-200 opacity-60" : "border-gray-200"}`}>
+    <Card className={`border ${suggestion.status === "approved" ? "border-green-200 bg-green-50/30" : suggestion.status === "dismissed" ? "border-white/[0.07] opacity-60" : "border-white/[0.07]"}`}>
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -454,8 +454,8 @@ function SuggestionCard({
               {SOURCE_LABELS[suggestion.source_type]}
             </Badge>
             <div className="min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">{suggestion.description}</p>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-sm font-medium text-white/85 truncate">{suggestion.description}</p>
+              <p className="text-xs text-white/40 mt-0.5">
                 {MONTH_NAMES[suggestion.period_month - 1]} {suggestion.period_year}
               </p>
             </div>
@@ -468,7 +468,7 @@ function SuggestionCard({
             )}
             {suggestion.status === "dismissed" && (
               <>
-                <Badge className="text-xs bg-gray-100 text-gray-500">Dismissed</Badge>
+                <Badge className="text-xs bg-white/[0.06] text-white/40">Dismissed</Badge>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -484,7 +484,7 @@ function SuggestionCard({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 text-xs text-gray-500 hover:text-gray-700"
+                  className="h-7 text-xs text-white/40 hover:text-white/65"
                   onClick={() => onDismiss(suggestion.id)}
                 >
                   <X size={12} className="mr-1" /> Dismiss
@@ -514,31 +514,31 @@ function SuggestionCard({
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-xs border-collapse">
             <thead>
-              <tr className="bg-gray-50">
-                <th className="text-left px-2 py-1 font-medium text-gray-600 border border-gray-200">Account</th>
-                <th className="text-left px-2 py-1 font-medium text-gray-600 border border-gray-200">Type</th>
-                <th className="text-right px-2 py-1 font-medium text-gray-600 border border-gray-200">Debit</th>
-                <th className="text-right px-2 py-1 font-medium text-gray-600 border border-gray-200">Credit</th>
+              <tr className="bg-[#0e1017]">
+                <th className="text-left px-2 py-1 font-medium text-white/55 border border-white/[0.07]">Account</th>
+                <th className="text-left px-2 py-1 font-medium text-white/55 border border-white/[0.07]">Type</th>
+                <th className="text-right px-2 py-1 font-medium text-white/55 border border-white/[0.07]">Debit</th>
+                <th className="text-right px-2 py-1 font-medium text-white/55 border border-white/[0.07]">Credit</th>
               </tr>
             </thead>
             <tbody>
               {suggestion.lines.map((line, i) => (
-                <tr key={i} className="hover:bg-gray-50/50">
-                  <td className="px-2 py-1 border border-gray-200 text-gray-800">{line.account_name}</td>
-                  <td className="px-2 py-1 border border-gray-200 text-gray-500">{line.account_type}</td>
-                  <td className="px-2 py-1 border border-gray-200 text-right font-mono text-gray-800">
+                <tr key={i} className="hover:bg-[#0e1017]/50">
+                  <td className="px-2 py-1 border border-white/[0.07] text-white/75">{line.account_name}</td>
+                  <td className="px-2 py-1 border border-white/[0.07] text-white/40">{line.account_type}</td>
+                  <td className="px-2 py-1 border border-white/[0.07] text-right font-mono text-white/75">
                     {line.debit_paise > 0 ? formatPaise(line.debit_paise) : "—"}
                   </td>
-                  <td className="px-2 py-1 border border-gray-200 text-right font-mono text-gray-800">
+                  <td className="px-2 py-1 border border-white/[0.07] text-right font-mono text-white/75">
                     {line.credit_paise > 0 ? formatPaise(line.credit_paise) : "—"}
                   </td>
                 </tr>
               ))}
               {!isPlaceholder && (
-                <tr className="bg-gray-50 font-semibold">
-                  <td colSpan={2} className="px-2 py-1 border border-gray-200 text-gray-700">Total</td>
-                  <td className="px-2 py-1 border border-gray-200 text-right font-mono text-gray-800">{formatPaise(totalDebit)}</td>
-                  <td className="px-2 py-1 border border-gray-200 text-right font-mono text-gray-800">{formatPaise(totalCredit)}</td>
+                <tr className="bg-[#0e1017] font-semibold">
+                  <td colSpan={2} className="px-2 py-1 border border-white/[0.07] text-white/65">Total</td>
+                  <td className="px-2 py-1 border border-white/[0.07] text-right font-mono text-white/75">{formatPaise(totalDebit)}</td>
+                  <td className="px-2 py-1 border border-white/[0.07] text-right font-mono text-white/75">{formatPaise(totalCredit)}</td>
                 </tr>
               )}
             </tbody>
@@ -740,12 +740,12 @@ export default function AutoJournalsPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
-            <Zap size={16} className="text-indigo-600" />
+          <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
+            <Zap size={16} className="text-blue-400" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Auto Journals</h1>
-            <p className="text-xs text-gray-500">
+            <h1 className="text-xl font-semibold text-white/85">Auto Journals</h1>
+            <p className="text-xs text-white/40">
               AI-generated journal entries for {MONTH_NAMES[currentMonth - 1]} {currentYear} — CA approval required
             </p>
           </div>
@@ -757,9 +757,9 @@ export default function AutoJournalsPage() {
         <CardContent className="p-4">
           <div className="flex items-end gap-3 flex-wrap">
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-medium text-gray-700 mb-1">Client</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">Client</label>
               <select
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                 value={selectedClientId}
                 onChange={(e) => setSelectedClientId(e.target.value)}
               >
@@ -772,7 +772,7 @@ export default function AutoJournalsPage() {
             <Button
               onClick={handleGenerate}
               disabled={!selectedClientId || generating}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              className="bg-blue-500 hover:bg-blue-600 text-white"
             >
               <Zap size={14} className="mr-2" />
               {generating ? "Scanning…" : "Generate Suggestions"}
@@ -789,7 +789,7 @@ export default function AutoJournalsPage() {
       {/* Pending Suggestions */}
       {suggestions.length === 0 && !generating && (
         <Card>
-          <CardContent className="p-8 text-center text-gray-500 text-sm">
+          <CardContent className="p-8 text-center text-white/40 text-sm">
             No suggestions yet. Select a client and click &quot;Generate Suggestions&quot; to scan existing data.
           </CardContent>
         </Card>
@@ -797,7 +797,7 @@ export default function AutoJournalsPage() {
 
       {pending.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-white/65 flex items-center gap-2">
             <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-700 text-xs flex items-center justify-center font-bold">{pending.length}</span>
             Pending Approval
           </h2>
@@ -817,7 +817,7 @@ export default function AutoJournalsPage() {
       {/* Dismissed Suggestions */}
       {dismissed.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-gray-500">Dismissed ({dismissed.length})</h2>
+          <h2 className="text-sm font-semibold text-white/40">Dismissed ({dismissed.length})</h2>
           {dismissed.map((s) => (
             <SuggestionCard
               key={s.id}
@@ -835,7 +835,7 @@ export default function AutoJournalsPage() {
       {approved.length > 0 && (
         <div className="space-y-3">
           <button
-            className="flex items-center gap-2 text-sm font-semibold text-gray-500 hover:text-gray-700 transition-colors"
+            className="flex items-center gap-2 text-sm font-semibold text-white/40 hover:text-white/65 transition-colors"
             onClick={() => setShowPosted(!showPosted)}
           >
             {showPosted ? <ChevronDown size={14} /> : <ChevronRight size={14} />}

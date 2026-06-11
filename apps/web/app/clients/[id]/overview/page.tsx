@@ -102,7 +102,7 @@ export default function OverviewPage() {
 
   if (loading) return <OverviewSkeleton />;
   if (error) return <div className="p-6 text-red-500 text-sm">{error}</div>;
-  if (!client) return <div className="p-6 text-gray-400 text-sm">Client not found.</div>;
+  if (!client) return <div className="p-6 text-white/30 text-sm">Client not found.</div>;
 
   const today = new Date().toISOString().split("T")[0];
   const openTasks = tasks.filter((t) => t.status !== "completed");
@@ -119,7 +119,7 @@ export default function OverviewPage() {
         {/* Stat strip */}
         <div className="grid grid-cols-3 gap-3">
           <StatCard
-            icon={<CheckSquare size={14} className="text-indigo-400" />}
+            icon={<CheckSquare size={14} className="text-blue-400" />}
             label="Open Tasks"
             value={openTasks.length}
             accent={openTasks.length > 0 ? "indigo" : "neutral"}
@@ -274,9 +274,9 @@ function StatCard({
   value: number;
   accent: "indigo" | "amber" | "neutral";
 }) {
-  const bg = accent === "indigo" && value > 0 ? "bg-indigo-500/10 border-indigo-500/15"
+  const bg = accent === "indigo" && value > 0 ? "bg-blue-500/10 border-blue-500/20/15"
     : accent === "amber" && value > 0 ? "bg-amber-500/10 border-amber-500/15"
-    : "bg-white/[0.03] border-white/[0.05]";
+    : "bg-[#131620]/[0.03] border-white/[0.05]";
   return (
     <div className={`rounded-xl border p-3 space-y-1 ${bg}`}>
       <div className="flex items-center gap-1.5">
@@ -324,14 +324,14 @@ function OverviewSkeleton() {
       <div className="flex-1 p-5 space-y-4">
         <div className="grid grid-cols-3 gap-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-16 rounded-xl bg-white/[0.03] animate-pulse" />
+            <div key={i} className="h-16 rounded-xl bg-[#131620]/[0.03] animate-pulse" />
           ))}
         </div>
-        <div className="h-64 rounded-xl bg-white/[0.03] animate-pulse" />
+        <div className="h-64 rounded-xl bg-[#131620]/[0.03] animate-pulse" />
       </div>
       <div className="w-[240px] p-4 space-y-4 hidden lg:block">
-        <div className="h-32 rounded-xl bg-white/[0.03] animate-pulse" />
-        <div className="h-48 rounded-xl bg-white/[0.03] animate-pulse" />
+        <div className="h-32 rounded-xl bg-[#131620]/[0.03] animate-pulse" />
+        <div className="h-48 rounded-xl bg-[#131620]/[0.03] animate-pulse" />
       </div>
     </div>
   );

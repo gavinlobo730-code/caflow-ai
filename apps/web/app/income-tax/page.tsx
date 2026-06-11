@@ -340,8 +340,8 @@ export default function IncomeTaxPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Income Tax</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-xl font-semibold text-white/85">Income Tax</h1>
+          <p className="text-sm text-white/40 mt-0.5">
             ITR Tracking — IT Act Section 139
           </p>
           {/* Sub-navigation */}
@@ -349,10 +349,10 @@ export default function IncomeTaxPage() {
             <a href="/income-tax/capital-gains" className="text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 bg-blue-50 px-2.5 py-1 rounded-lg hover:bg-blue-100 transition-colors">
               Capital Gains Calculator
             </a>
-            <a href="/income-tax/advance-tax" className="text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 px-2.5 py-1 rounded-lg hover:bg-gray-50 transition-colors">
+            <a href="/income-tax/advance-tax" className="text-xs font-medium text-white/40 hover:text-white/65 border border-white/[0.07] px-2.5 py-1 rounded-lg hover:bg-[#0e1017] transition-colors">
               Advance Tax
             </a>
-            <a href="/income-tax/notices" className="text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 px-2.5 py-1 rounded-lg hover:bg-gray-50 transition-colors">
+            <a href="/income-tax/notices" className="text-xs font-medium text-white/40 hover:text-white/65 border border-white/[0.07] px-2.5 py-1 rounded-lg hover:bg-[#0e1017] transition-colors">
               Notices
             </a>
           </div>
@@ -372,7 +372,7 @@ export default function IncomeTaxPage() {
           label="Total ITRs Due"
           value={String(totalDue)}
           icon={FileText}
-          gradient="bg-gradient-to-br from-indigo-500 to-indigo-600"
+          gradient="bg-gradient-to-br from-blue-600 to-blue-500"
         />
         <StatCard
           label="Filed This Year"
@@ -400,7 +400,7 @@ export default function IncomeTaxPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-gray-100">
+      <div className="flex gap-1 border-b border-white/[0.05]">
         {TABS.map((tab) => (
           <button
             key={tab}
@@ -408,7 +408,7 @@ export default function IncomeTaxPage() {
             className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab
                 ? "border-blue-600 text-blue-700"
-                : "border-transparent text-gray-500 hover:text-gray-700"
+                : "border-transparent text-white/40 hover:text-white/65"
             }`}
           >
             {tab}
@@ -422,9 +422,9 @@ export default function IncomeTaxPage() {
       {activeTab === "ITR Status" && (
         <div className="space-y-4">
           {/* ITR Status Table */}
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-900">
+              <h2 className="text-sm font-semibold text-white/85">
                 ITR Status — AY {currentAY}
               </h2>
               {overdue > 0 && (
@@ -436,7 +436,7 @@ export default function IncomeTaxPage() {
             </div>
 
             {loading ? (
-              <div className="px-5 py-12 text-center text-sm text-gray-400">
+              <div className="px-5 py-12 text-center text-sm text-white/30">
                 Loading ITR data…
               </div>
             ) : error ? (
@@ -446,10 +446,10 @@ export default function IncomeTaxPage() {
             ) : entries.length === 0 ? (
               <div className="px-5 py-14 text-center space-y-3">
                 <FileText className="w-10 h-10 text-gray-200 mx-auto" />
-                <p className="text-sm font-medium text-gray-600">
+                <p className="text-sm font-medium text-white/55">
                   No ITR deadlines added yet
                 </p>
-                <p className="text-xs text-gray-400 max-w-sm mx-auto">
+                <p className="text-xs text-white/30 max-w-sm mx-auto">
                   Click &ldquo;Add ITR Deadline&rdquo; to manually track ITR filings for
                   your clients. Each entry records the ITR form, assessment year,
                   due date, and filing status.
@@ -466,7 +466,7 @@ export default function IncomeTaxPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-gray-50 text-xs text-gray-500 font-medium uppercase tracking-wider">
+                    <tr className="bg-[#0e1017] text-xs text-white/40 font-medium uppercase tracking-wider">
                       <th className="px-5 py-2.5 text-left">Client Name</th>
                       <th className="px-4 py-2.5 text-left">PAN</th>
                       <th className="px-4 py-2.5 text-left">Entity</th>
@@ -478,7 +478,7 @@ export default function IncomeTaxPage() {
                       <th className="px-4 py-2.5 text-left">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-white/[0.03]">
                     {entries.map((entry) => {
                       const isOverdue =
                         entry.filing_status !== "filed" && entry.due_date < today;
@@ -489,17 +489,17 @@ export default function IncomeTaxPage() {
                       return (
                         <tr
                           key={entry.id}
-                          className="hover:bg-gray-50/50 transition-colors"
+                          className="hover:bg-[#0e1017]/50 transition-colors"
                         >
-                          <td className="px-5 py-3 font-medium text-gray-900">
+                          <td className="px-5 py-3 font-medium text-white/85">
                             {entry.clients?.client_name ?? "—"}
                           </td>
                           <td className="px-4 py-3">
-                            <span className="font-mono text-xs text-gray-600 bg-gray-50 px-1.5 py-0.5 rounded">
+                            <span className="font-mono text-xs text-white/55 bg-[#0e1017] px-1.5 py-0.5 rounded">
                               {entry.clients?.pan ?? "—"}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-gray-600 text-xs capitalize">
+                          <td className="px-4 py-3 text-white/55 text-xs capitalize">
                             {(entry.clients?.entity_type ?? "—").replace(/_/g, " ")}
                           </td>
                           <td className="px-4 py-3">
@@ -507,25 +507,25 @@ export default function IncomeTaxPage() {
                               {entry.compliance_type}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-gray-600 text-xs">
+                          <td className="px-4 py-3 text-white/55 text-xs">
                             {getAYFromDates(entry.period_start)}
                           </td>
-                          <td className="px-4 py-3 text-gray-600 text-xs">
+                          <td className="px-4 py-3 text-white/55 text-xs">
                             {formatDate(entry.due_date)}
                           </td>
                           <td className="px-4 py-3">
                             <span
                               className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                                 STATUS_STYLES[effectiveStatus] ??
-                                "bg-gray-100 text-gray-600"
+                                "bg-white/[0.06] text-white/55"
                               }`}
                             >
                               {STATUS_LABELS[effectiveStatus] ?? effectiveStatus}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-xs font-mono text-gray-500">
+                          <td className="px-4 py-3 text-xs font-mono text-white/40">
                             {entry.arn_number ?? (
-                              <span className="text-gray-300">—</span>
+                              <span className="text-white/20">—</span>
                             )}
                           </td>
                           <td className="px-4 py-3">
@@ -544,7 +544,7 @@ export default function IncomeTaxPage() {
                                 Mark Filed
                               </button>
                             ) : (
-                              <span className="text-xs text-gray-400">
+                              <span className="text-xs text-white/30">
                                 Filed {entry.filed_date ? formatDate(entry.filed_date) : ""}
                               </span>
                             )}
@@ -559,19 +559,19 @@ export default function IncomeTaxPage() {
           </div>
 
           {/* ITR Form Guide — collapsible */}
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
             <button
               onClick={() => setShowGuide((v) => !v)}
-              className="w-full flex items-center justify-between px-5 py-4 text-sm font-semibold text-gray-900 hover:bg-gray-50/50 transition-colors"
+              className="w-full flex items-center justify-between px-5 py-4 text-sm font-semibold text-white/85 hover:bg-[#0e1017]/50 transition-colors"
             >
               <span className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-gray-400" />
+                <FileText className="w-4 h-4 text-white/30" />
                 ITR Form Guide
               </span>
               {showGuide ? (
-                <ChevronUp className="w-4 h-4 text-gray-400" />
+                <ChevronUp className="w-4 h-4 text-white/30" />
               ) : (
-                <ChevronDown className="w-4 h-4 text-gray-400" />
+                <ChevronDown className="w-4 h-4 text-white/30" />
               )}
             </button>
             {showGuide && (
@@ -615,14 +615,14 @@ export default function IncomeTaxPage() {
                 ].map(({ form, desc, tag }) => (
                   <div
                     key={form}
-                    className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg"
+                    className="flex items-start gap-3 p-3 bg-[#0e1017] rounded-lg"
                   >
                     <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded shrink-0">
                       {form}
                     </span>
                     <div>
-                      <p className="text-xs font-medium text-gray-700">{desc}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{tag}</p>
+                      <p className="text-xs font-medium text-white/65">{desc}</p>
+                      <p className="text-xs text-white/30 mt-0.5">{tag}</p>
                     </div>
                   </div>
                 ))}
@@ -637,16 +637,16 @@ export default function IncomeTaxPage() {
       {/* ------------------------------------------------------------------ */}
       {activeTab === "Advance Tax" && (
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50">
-              <h2 className="text-sm font-semibold text-gray-900">
+              <h2 className="text-sm font-semibold text-white/85">
                 Advance Tax Installments — FY 2025-26
               </h2>
-              <p className="text-xs text-gray-400 mt-0.5">
+              <p className="text-xs text-white/30 mt-0.5">
                 IT Act Section 208 — applicable when tax liability ≥ ₹10,000
               </p>
             </div>
-            <div className="divide-y divide-gray-50">
+            <div className="divide-y divide-white/[0.03]">
               {ADVANCE_TAX_INSTALLMENTS.map((inst) => {
                 const dueDate = inst.due.replace(/(\d+) (\w+) (\d+)/, (_, d, m, y) => {
                   const months: Record<string, string> = {
@@ -668,23 +668,23 @@ export default function IncomeTaxPage() {
                       <IndianRupee className="w-5 h-5 text-blue-600" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">
+                      <p className="text-sm font-medium text-white/85">
                         {inst.label}
                       </p>
-                      <p className="text-xs text-gray-400 mt-0.5">
+                      <p className="text-xs text-white/30 mt-0.5">
                         Due: {inst.due} · Cumulative {inst.cumulative} of estimated tax
                       </p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-sm font-semibold text-gray-700">
+                      <p className="text-sm font-semibold text-white/65">
                         {inst.percent}%
                       </p>
-                      <p className="text-xs text-gray-400 mt-0.5">of estimated tax</p>
+                      <p className="text-xs text-white/30 mt-0.5">of estimated tax</p>
                     </div>
                     <span
                       className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${
                         isPast
-                          ? "bg-gray-100 text-gray-500"
+                          ? "bg-white/[0.06] text-white/40"
                           : isUpcoming
                           ? "bg-amber-100 text-amber-700"
                           : "bg-blue-50 text-blue-600"
@@ -762,14 +762,14 @@ export default function IncomeTaxPage() {
       {/* ================================================================== */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">
+          <div className="bg-[#131620] rounded-2xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.05]">
+              <h3 className="text-base font-semibold text-white/85">
                 Add ITR Deadline
               </h3>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-white/30 hover:text-white/55 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -778,13 +778,13 @@ export default function IncomeTaxPage() {
             <div className="px-6 py-5 space-y-4">
               {/* Client */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-medium text-white/65 mb-1.5">
                   Client <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={addForm.client_id}
                   onChange={(e) => handleAddFormChange("client_id", e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm text-white/85 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select client…</option>
                   {clients.map((c) => (
@@ -797,7 +797,7 @@ export default function IncomeTaxPage() {
 
               {/* ITR Form */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-medium text-white/65 mb-1.5">
                   ITR Form
                 </label>
                 <select
@@ -805,7 +805,7 @@ export default function IncomeTaxPage() {
                   onChange={(e) =>
                     handleAddFormChange("itr_form", e.target.value)
                   }
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm text-white/85 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {ITR_FORMS.map((f) => (
                     <option key={f} value={f}>
@@ -817,7 +817,7 @@ export default function IncomeTaxPage() {
 
               {/* Assessment Year */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-medium text-white/65 mb-1.5">
                   Assessment Year
                 </label>
                 <select
@@ -825,7 +825,7 @@ export default function IncomeTaxPage() {
                   onChange={(e) =>
                     handleAddFormChange("assessment_year", e.target.value)
                   }
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm text-white/85 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {ASSESSMENT_YEARS.map((ay) => (
                     <option key={ay} value={ay}>
@@ -837,9 +837,9 @@ export default function IncomeTaxPage() {
 
               {/* Due Date — pre-filled, editable */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-medium text-white/65 mb-1.5">
                   Due Date
-                  <span className="ml-1 text-gray-400 font-normal">
+                  <span className="ml-1 text-white/30 font-normal">
                     (31 Jul — non-audit · 31 Oct — audit, IT Act S.139)
                   </span>
                 </label>
@@ -849,7 +849,7 @@ export default function IncomeTaxPage() {
                   onChange={(e) =>
                     handleAddFormChange("due_date", e.target.value)
                   }
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm text-white/85 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -860,10 +860,10 @@ export default function IncomeTaxPage() {
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end">
+            <div className="px-6 py-4 border-t border-white/[0.05] flex gap-3 justify-end">
               <button
                 onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-white/65 bg-white/[0.06] rounded-lg hover:bg-white/[0.08] transition-colors"
               >
                 Cancel
               </button>
@@ -885,14 +885,14 @@ export default function IncomeTaxPage() {
       {/* ================================================================== */}
       {filedModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">
+          <div className="bg-[#131620] rounded-2xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.05]">
+              <h3 className="text-base font-semibold text-white/85">
                 Mark ITR as Filed
               </h3>
               <button
                 onClick={() => setFiledModal(null)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-white/30 hover:text-white/55 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -911,11 +911,11 @@ export default function IncomeTaxPage() {
                 </p>
               </div>
 
-              <div className="text-sm text-gray-700 bg-gray-50 rounded-lg px-4 py-3">
+              <div className="text-sm text-white/65 bg-[#0e1017] rounded-lg px-4 py-3">
                 <p className="font-medium">
                   {filedModal.entry.clients?.client_name ?? "Client"}
                 </p>
-                <p className="text-xs text-gray-400 mt-0.5 font-mono">
+                <p className="text-xs text-white/30 mt-0.5 font-mono">
                   {filedModal.entry.clients?.pan ?? ""} ·{" "}
                   {filedModal.entry.compliance_type}
                 </p>
@@ -923,7 +923,7 @@ export default function IncomeTaxPage() {
 
               {/* Acknowledgement Number */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-medium text-white/65 mb-1.5">
                   Acknowledgement Number (ARN){" "}
                   <span className="text-red-500">*</span>
                 </label>
@@ -934,13 +934,13 @@ export default function IncomeTaxPage() {
                   onChange={(e) =>
                     setFiledForm((p) => ({ ...p, arn: e.target.value }))
                   }
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm font-mono text-white/85 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               {/* Filing Date */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-medium text-white/65 mb-1.5">
                   Date of Filing <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -949,7 +949,7 @@ export default function IncomeTaxPage() {
                   onChange={(e) =>
                     setFiledForm((p) => ({ ...p, filed_date: e.target.value }))
                   }
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm text-white/85 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -960,10 +960,10 @@ export default function IncomeTaxPage() {
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end">
+            <div className="px-6 py-4 border-t border-white/[0.05] flex gap-3 justify-end">
               <button
                 onClick={() => setFiledModal(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-white/65 bg-white/[0.06] rounded-lg hover:bg-white/[0.08] transition-colors"
               >
                 Cancel
               </button>

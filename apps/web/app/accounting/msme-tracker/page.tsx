@@ -129,8 +129,8 @@ function AddModal({ clients, onClose, onAdded }: {
 
   function upd(patch: Partial<AddFormState>) { setForm(f => ({ ...f, ...patch })); }
 
-  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500";
-  const lbl = "text-xs font-medium text-gray-700 block mb-1";
+  const inputCls = "w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500";
+  const lbl = "text-xs font-medium text-white/65 block mb-1";
 
   async function handleSave() {
     if (!form.clientId || !form.supplierName || !form.invoiceDate || !form.amountRs) {
@@ -168,10 +168,10 @@ function AddModal({ clients, onClose, onAdded }: {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-900">Add MSME Payment</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+      <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-[#131620] flex items-center justify-between px-6 py-4 border-b border-white/[0.05]">
+          <h3 className="text-sm font-semibold text-white/85">Add MSME Payment</h3>
+          <button onClick={onClose} className="text-white/30 hover:text-white/55"><X size={16} /></button>
         </div>
         <div className="px-6 py-4 space-y-4">
           {error && <div className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</div>}
@@ -204,7 +204,7 @@ function AddModal({ clients, onClose, onAdded }: {
             <label className={lbl}>Agreement Type</label>
             <div className="flex gap-3">
               {(["written", "oral"] as const).map(t => (
-                <label key={t} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                <label key={t} className="flex items-center gap-1.5 text-sm text-white/65 cursor-pointer">
                   <input type="radio" name="agreement" value={t} checked={form.agreementType === t} onChange={() => upd({ agreementType: t })} />
                   {t === "written" ? "Written (45 days)" : "Oral/None (15 days)"}
                 </label>
@@ -216,8 +216,8 @@ function AddModal({ clients, onClose, onAdded }: {
             <input type="date" value={form.paymentDate} onChange={e => upd({ paymentDate: e.target.value })} className={inputCls} />
           </div>
         </div>
-        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-gray-100 flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Cancel</button>
+        <div className="sticky bottom-0 bg-[#131620] px-6 py-4 border-t border-white/[0.05] flex gap-2 justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-white/65 bg-white/[0.06] rounded-lg hover:bg-white/[0.08]">Cancel</button>
           <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
             {saving ? "Saving…" : "Add Payment"}
           </button>
@@ -297,10 +297,10 @@ export default function MSMETrackerPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-gray-400 hover:text-gray-600"><ChevronLeft size={18} /></Link>
+        <Link href="/accounting" className="text-white/30 hover:text-white/55"><ChevronLeft size={18} /></Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-gray-900">MSME 43B(h) Tracker</h1>
-          <p className="text-sm text-gray-500 mt-0.5">IT Act Section 43B(h) — MSME payment compliance (FY 2024-25 onwards)</p>
+          <h1 className="text-xl font-semibold text-white/85">MSME 43B(h) Tracker</h1>
+          <p className="text-sm text-white/40 mt-0.5">IT Act Section 43B(h) — MSME payment compliance (FY 2024-25 onwards)</p>
         </div>
         <Button variant="outline" size="sm" onClick={exportExcel} disabled={filtered.length === 0}>
           <Download size={14} className="mr-1" /> Export
@@ -330,7 +330,7 @@ export default function MSMETrackerPage() {
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "Total", value: filtered.length, color: "text-gray-900" },
+          { label: "Total", value: filtered.length, color: "text-white/85" },
           { label: "Paid on Time", value: filtered.filter(p => p.status === "paid_on_time").length, color: "text-green-700" },
           { label: "Overdue (not yet disallowed)", value: filtered.filter(p => p.status === "overdue").length, color: "text-amber-700" },
           { label: "Disallowed", value: disallowedCount, color: "text-red-700" },
@@ -338,7 +338,7 @@ export default function MSMETrackerPage() {
           <Card key={s.label}>
             <CardContent className="pt-4 pb-3">
               <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+              <p className="text-xs text-white/40 mt-0.5">{s.label}</p>
             </CardContent>
           </Card>
         ))}
@@ -347,7 +347,7 @@ export default function MSMETrackerPage() {
       {/* Filters */}
       <div className="flex gap-3">
         <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+          className="border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
           <option value="all">All Clients</option>
           {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
         </select>
@@ -358,12 +358,12 @@ export default function MSMETrackerPage() {
       {/* Table */}
       <Card>
         {loading ? (
-          <div className="p-8 text-center text-gray-400 text-sm animate-pulse">Loading…</div>
+          <div className="p-8 text-center text-white/30 text-sm animate-pulse">Loading…</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[900px]">
               <thead>
-                <tr className="border-b border-gray-100 text-xs text-gray-400">
+                <tr className="border-b border-white/[0.05] text-xs text-white/30">
                   <th className="px-5 py-3 text-left">Client</th>
                   <th className="px-3 py-3 text-left">Supplier</th>
                   <th className="px-3 py-3 text-left">Invoice</th>
@@ -375,25 +375,25 @@ export default function MSMETrackerPage() {
                   <th className="px-5 py-3 text-left">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-white/[0.03]">
                 {filtered.length === 0 && (
-                  <tr><td colSpan={9} className="text-center text-gray-400 py-8 text-sm">No MSME payments found. Add one above.</td></tr>
+                  <tr><td colSpan={9} className="text-center text-white/30 py-8 text-sm">No MSME payments found. Add one above.</td></tr>
                 )}
                 {filtered.map(p => {
                   const badge = statusBadge(p.status);
                   const Icon = badge.icon;
                   return (
-                    <tr key={p.id} className="hover:bg-gray-50">
-                      <td className="px-5 py-3 text-sm font-medium text-gray-900">{clientName(p.client_id)}</td>
-                      <td className="px-3 py-3 text-sm text-gray-700">{p.supplier_name}</td>
-                      <td className="px-3 py-3 text-xs font-mono text-gray-500">{p.invoice_number ?? "—"}</td>
-                      <td className="px-3 py-3 text-xs text-gray-600">{p.invoice_date}</td>
+                    <tr key={p.id} className="hover:bg-[#0e1017]">
+                      <td className="px-5 py-3 text-sm font-medium text-white/85">{clientName(p.client_id)}</td>
+                      <td className="px-3 py-3 text-sm text-white/65">{p.supplier_name}</td>
+                      <td className="px-3 py-3 text-xs font-mono text-white/40">{p.invoice_number ?? "—"}</td>
+                      <td className="px-3 py-3 text-xs text-white/55">{p.invoice_date}</td>
                       <td className="px-3 py-3 text-sm tabular-nums text-right font-medium">{formatPaise(p.amount_paise)}</td>
-                      <td className="px-3 py-3 text-xs text-gray-600">
+                      <td className="px-3 py-3 text-xs text-white/55">
                         {p.agreement_type === "written" ? "Written (45d)" : "Oral (15d)"}
                       </td>
-                      <td className="px-3 py-3 text-xs text-gray-600">{p.due_date}</td>
-                      <td className="px-3 py-3 text-xs text-gray-600">{p.payment_date ?? "—"}</td>
+                      <td className="px-3 py-3 text-xs text-white/55">{p.due_date}</td>
+                      <td className="px-3 py-3 text-xs text-white/55">{p.payment_date ?? "—"}</td>
                       <td className="px-5 py-3">
                         <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ${badge.cls}`}>
                           <Icon size={12} /> {badge.label}

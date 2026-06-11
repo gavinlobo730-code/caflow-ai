@@ -29,7 +29,7 @@ function r(paise: number) {
 }
 
 const STATUS_CONFIG: Record<TDSReturnStatus, { label: string; color: string }> = {
-  pending:     { label: "Pending",     color: "bg-gray-100 text-gray-700" },
+  pending:     { label: "Pending",     color: "bg-white/[0.06] text-white/65" },
   prepared:    { label: "Prepared",    color: "bg-blue-100 text-blue-700" },
   ca_approved: { label: "CA Approved", color: "bg-green-100 text-green-700" },
   filed:       { label: "Filed",       color: "bg-emerald-100 text-emerald-700" },
@@ -179,8 +179,8 @@ export default function TDSReturnsPage() {
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/tds" className="text-gray-400 hover:text-gray-600 text-sm">← TDS</Link>
-        <h1 className="text-xl font-bold text-gray-900">TDS Returns — 24Q / 26Q</h1>
+        <Link href="/tds" className="text-white/30 hover:text-white/55 text-sm">← TDS</Link>
+        <h1 className="text-xl font-bold text-white/85">TDS Returns — 24Q / 26Q</h1>
       </div>
 
       {/* CA Review Banner */}
@@ -192,10 +192,10 @@ export default function TDSReturnsPage() {
       </div>
 
       {/* Selector */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4">
+      <div className="bg-[#131620] border border-white/[0.07] rounded-xl p-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Client *</label>
+            <label className="block text-xs font-medium text-white/65 mb-1">Client *</label>
             <select value={clientId} onChange={e => setClientId(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
               <option value="">Select client…</option>
@@ -203,7 +203,7 @@ export default function TDSReturnsPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Return Type</label>
+            <label className="block text-xs font-medium text-white/65 mb-1">Return Type</label>
             <select value={returnType} onChange={e => setReturnType(e.target.value as TDSReturnType)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
               <option value="26Q">26Q — Non-salary (194 series)</option>
@@ -211,7 +211,7 @@ export default function TDSReturnsPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Financial Year</label>
+            <label className="block text-xs font-medium text-white/65 mb-1">Financial Year</label>
             <select value={financialYear} onChange={e => setFinancialYear(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
               <option value="2025-26">2025-26</option>
@@ -220,7 +220,7 @@ export default function TDSReturnsPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Quarter</label>
+            <label className="block text-xs font-medium text-white/65 mb-1">Quarter</label>
             <select value={quarter} onChange={e => setQuarter(e.target.value as TDSQuarter)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
               {QUARTERS.map(q => <option key={q} value={q}>{QUARTER_LABELS[q]}</option>)}
@@ -274,12 +274,12 @@ export default function TDSReturnsPage() {
           )}
 
           {/* Tabs */}
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <div className="flex border-b border-gray-200">
+          <div className="bg-[#131620] border border-white/[0.07] rounded-xl overflow-hidden">
+            <div className="flex border-b border-white/[0.07]">
               {(["summary", "deductees", "challans", "json"] as const).map(t => (
                 <button key={t} onClick={() => setTab(t)}
                   className={`px-4 py-3 text-sm font-medium capitalize transition-colors ${
-                    tab === t ? "border-b-2 border-blue-600 text-blue-600" : "text-gray-500 hover:text-gray-700"
+                    tab === t ? "border-b-2 border-blue-600 text-blue-600" : "text-white/40 hover:text-white/65"
                   }`}>
                   {t}
                 </button>
@@ -290,9 +290,9 @@ export default function TDSReturnsPage() {
               {tab === "summary" && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-gray-50 rounded-xl p-4 text-center">
-                      <p className="text-xs text-gray-500 mb-1">Total Payment</p>
-                      <p className="text-lg font-bold text-gray-900">
+                    <div className="bg-[#0e1017] rounded-xl p-4 text-center">
+                      <p className="text-xs text-white/40 mb-1">Total Payment</p>
+                      <p className="text-lg font-bold text-white/85">
                         {r(result.total_payment_paise ?? result.total_salary_paise ?? 0)}
                       </p>
                     </div>
@@ -304,12 +304,12 @@ export default function TDSReturnsPage() {
                       <p className="text-xs text-green-600 mb-1">TDS Deposited</p>
                       <p className="text-lg font-bold text-green-900">{r(result.total_tds_deposited_paise)}</p>
                     </div>
-                    <div className="bg-gray-50 rounded-xl p-4 text-center">
-                      <p className="text-xs text-gray-500 mb-1">Deductees</p>
-                      <p className="text-lg font-bold text-gray-900">{result.deductee_count}</p>
+                    <div className="bg-[#0e1017] rounded-xl p-4 text-center">
+                      <p className="text-xs text-white/40 mb-1">Deductees</p>
+                      <p className="text-lg font-bold text-white/85">{result.deductee_count}</p>
                     </div>
                   </div>
-                  <div className="text-xs text-gray-500 space-y-1">
+                  <div className="text-xs text-white/40 space-y-1">
                     <p>Form: <strong>{result.form}</strong></p>
                     <p>TAN: <strong className="font-mono">{result.tan}</strong></p>
                     <p>Period: <strong>{result.financial_year} — {result.quarter} (ends {result.quarter_end_date})</strong></p>
@@ -321,20 +321,20 @@ export default function TDSReturnsPage() {
               {tab === "deductees" && (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
-                    <thead className="bg-gray-50 border-b border-gray-200">
+                    <thead className="bg-[#0e1017] border-b border-white/[0.07]">
                       <tr>
-                        <th className="text-left px-3 py-2 text-gray-600">Name</th>
-                        <th className="text-left px-3 py-2 text-gray-600 font-mono">PAN</th>
-                        <th className="text-left px-3 py-2 text-gray-600">Section</th>
-                        <th className="text-right px-3 py-2 text-gray-600">Payment</th>
-                        <th className="text-right px-3 py-2 text-gray-600">Rate</th>
-                        <th className="text-right px-3 py-2 text-gray-600">TDS Deducted</th>
-                        <th className="text-right px-3 py-2 text-gray-600">TDS Deposited</th>
+                        <th className="text-left px-3 py-2 text-white/55">Name</th>
+                        <th className="text-left px-3 py-2 text-white/55 font-mono">PAN</th>
+                        <th className="text-left px-3 py-2 text-white/55">Section</th>
+                        <th className="text-right px-3 py-2 text-white/55">Payment</th>
+                        <th className="text-right px-3 py-2 text-white/55">Rate</th>
+                        <th className="text-right px-3 py-2 text-white/55">TDS Deducted</th>
+                        <th className="text-right px-3 py-2 text-white/55">TDS Deposited</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-white/[0.05]">
                       {result.deductees.map((d, i) => (
-                        <tr key={i} className="bg-white hover:bg-gray-50">
+                        <tr key={i} className="bg-[#131620] hover:bg-[#0e1017]">
                           <td className="px-3 py-2">{d.deductee_name}</td>
                           <td className="px-3 py-2 font-mono">{d.deductee_pan}</td>
                           <td className="px-3 py-2">
@@ -347,7 +347,7 @@ export default function TDSReturnsPage() {
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className="bg-gray-50 border-t border-gray-200 font-semibold">
+                    <tfoot className="bg-[#0e1017] border-t border-white/[0.07] font-semibold">
                       <tr>
                         <td colSpan={3} className="px-3 py-2">Total</td>
                         <td className="px-3 py-2 text-right">{r(result.total_payment_paise ?? result.total_salary_paise ?? 0)}</td>
@@ -364,19 +364,19 @@ export default function TDSReturnsPage() {
                 result.challans.length > 0 ? (
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
-                      <thead className="bg-gray-50 border-b border-gray-200">
+                      <thead className="bg-[#0e1017] border-b border-white/[0.07]">
                         <tr>
-                          <th className="text-left px-3 py-2 text-gray-600">Challan No</th>
-                          <th className="text-left px-3 py-2 text-gray-600">BSR Code</th>
-                          <th className="text-left px-3 py-2 text-gray-600">Date</th>
-                          <th className="text-right px-3 py-2 text-gray-600">TDS</th>
-                          <th className="text-right px-3 py-2 text-gray-600">Interest</th>
-                          <th className="text-right px-3 py-2 text-gray-600">Total</th>
+                          <th className="text-left px-3 py-2 text-white/55">Challan No</th>
+                          <th className="text-left px-3 py-2 text-white/55">BSR Code</th>
+                          <th className="text-left px-3 py-2 text-white/55">Date</th>
+                          <th className="text-right px-3 py-2 text-white/55">TDS</th>
+                          <th className="text-right px-3 py-2 text-white/55">Interest</th>
+                          <th className="text-right px-3 py-2 text-white/55">Total</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-100">
+                      <tbody className="divide-y divide-white/[0.05]">
                         {result.challans.map((c, i) => (
-                          <tr key={i} className="bg-white">
+                          <tr key={i} className="bg-[#131620]">
                             <td className="px-3 py-2 font-mono">{c.challan_no}</td>
                             <td className="px-3 py-2 font-mono">{c.bsr_code}</td>
                             <td className="px-3 py-2">{c.payment_date}</td>
@@ -389,7 +389,7 @@ export default function TDSReturnsPage() {
                     </table>
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500 text-center py-8">No challans linked to this period.</p>
+                  <p className="text-sm text-white/40 text-center py-8">No challans linked to this period.</p>
                 )
               )}
 
@@ -412,7 +412,7 @@ export default function TDSReturnsPage() {
             )}
             {(filingStatus === "ca_approved" || filingStatus === "filed") && (
               <button onClick={() => result && downloadTDSJSON(result)}
-                className="flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
+                className="flex items-center gap-2 bg-[#131620] border border-gray-300 text-white/65 px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#0e1017]">
                 <Download size={15} />
                 Download JSON (for TRACES)
               </button>
@@ -432,24 +432,24 @@ export default function TDSReturnsPage() {
       {showFiledModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowFiledModal(false)} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4">
-            <h3 className="font-semibold text-gray-900">Mark {returnType} as Filed</h3>
-            <p className="text-sm text-gray-500">Enter the details from TRACES after successful submission.</p>
+          <div className="relative bg-[#131620] rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4">
+            <h3 className="font-semibold text-white/85">Mark {returnType} as Filed</h3>
+            <p className="text-sm text-white/40">Enter the details from TRACES after successful submission.</p>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">PRN (Provisional Receipt Number) *</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">PRN (Provisional Receipt Number) *</label>
               <input value={prn} onChange={e => setPrn(e.target.value.toUpperCase())}
                 placeholder="Enter PRN from TRACES"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Acknowledgement Number</label>
+              <label className="block text-xs font-medium text-white/65 mb-1">Acknowledgement Number</label>
               <input value={ackNumber} onChange={e => setAckNumber(e.target.value)}
                 placeholder="Optional acknowledgement number"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-blue-500" />
             </div>
             <div className="flex gap-3 pt-1">
               <button onClick={() => setShowFiledModal(false)}
-                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-white/65 hover:bg-[#0e1017]">
                 Cancel
               </button>
               <button onClick={handleMarkFiled} disabled={!prn}

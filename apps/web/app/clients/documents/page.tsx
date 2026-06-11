@@ -121,39 +121,39 @@ function UploadModal({ onClose, onUploaded, clientId, firmId }: UploadModalProps
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+      <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900">Upload Document</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+          <h3 className="text-sm font-semibold text-white/85">Upload Document</h3>
+          <button onClick={onClose} className="text-white/30 hover:text-white/55"><X size={16} /></button>
         </div>
         {error && <div className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</div>}
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Document Name</label>
+            <label className="text-xs font-medium text-white/65 block mb-1">Document Name</label>
             <input type="text" value={docName} onChange={e => setDocName(e.target.value)}
               placeholder="e.g. PAN Card"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Category</label>
+            <label className="text-xs font-medium text-white/65 block mb-1">Category</label>
             <select value={category} onChange={e => setCategory(e.target.value as DocCategory)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+              className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
               {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Expiry Date (optional)</label>
+            <label className="text-xs font-medium text-white/65 block mb-1">Expiry Date (optional)</label>
             <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">File</label>
+            <label className="text-xs font-medium text-white/65 block mb-1">File</label>
             <div onClick={() => fileRef.current?.click()}
-              className="border-2 border-dashed border-gray-200 rounded-lg px-4 py-6 text-center cursor-pointer hover:border-blue-400 transition-colors">
+              className="border-2 border-dashed border-white/[0.07] rounded-lg px-4 py-6 text-center cursor-pointer hover:border-blue-400 transition-colors">
               {file ? (
-                <p className="text-sm text-gray-700">{file.name} ({formatBytes(file.size)})</p>
+                <p className="text-sm text-white/65">{file.name} ({formatBytes(file.size)})</p>
               ) : (
-                <p className="text-sm text-gray-400">Click to select file</p>
+                <p className="text-sm text-white/30">Click to select file</p>
               )}
             </div>
             <input ref={fileRef} type="file" className="hidden"
@@ -162,7 +162,7 @@ function UploadModal({ onClose, onUploaded, clientId, firmId }: UploadModalProps
         </div>
         <div className="flex gap-2 pt-1">
           <button onClick={onClose}
-            className="flex-1 border border-gray-200 text-gray-700 rounded-lg py-2 text-sm hover:bg-gray-50">
+            className="flex-1 border border-white/[0.07] text-white/65 rounded-lg py-2 text-sm hover:bg-[#0e1017]">
             Cancel
           </button>
           <button onClick={handleUpload} disabled={uploading}
@@ -253,16 +253,16 @@ export default function ClientDocumentsPage() {
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/clients" className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500">
+          <Link href="/clients" className="p-2 rounded-lg border border-white/[0.07] hover:bg-[#0e1017] text-white/40">
             <ArrowLeft size={15} />
           </Link>
           <div>
-            <h1 className="text-lg md:text-xl font-semibold text-gray-900">Document Vault</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Organized client document storage</p>
+            <h1 className="text-lg md:text-xl font-semibold text-white/85">Document Vault</h1>
+            <p className="text-sm text-white/40 mt-0.5">Organized client document storage</p>
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={load} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500">
+          <button onClick={load} className="p-2 rounded-lg border border-white/[0.07] hover:bg-[#0e1017] text-white/40">
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
           </button>
           <button onClick={() => setShowUpload(true)}
@@ -274,7 +274,7 @@ export default function ClientDocumentsPage() {
 
       {/* Client selector */}
       <select value={clientId} onChange={e => setClientId(e.target.value)}
-        className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+        className="border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
         {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
       </select>
 
@@ -298,32 +298,32 @@ export default function ClientDocumentsPage() {
       )}
 
       {/* Category tabs */}
-      <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
+      <div className="flex gap-1 border-b border-white/[0.07] overflow-x-auto">
         {CATEGORIES.map(cat => {
           const count = documents.filter(d => d.category === cat).length;
           return (
             <button key={cat} onClick={() => setActiveCategory(cat)}
               className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-                activeCategory === cat ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"
+                activeCategory === cat ? "border-blue-600 text-blue-600" : "border-transparent text-white/40 hover:text-white/65"
               }`}>
-              {cat} {count > 0 && <span className="ml-1 text-xs text-gray-400">({count})</span>}
+              {cat} {count > 0 && <span className="ml-1 text-xs text-white/30">({count})</span>}
             </button>
           );
         })}
       </div>
 
-      <p className="text-xs text-gray-400">{CATEGORY_DESC[activeCategory]}</p>
+      <p className="text-xs text-white/30">{CATEGORY_DESC[activeCategory]}</p>
 
       {loading && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse h-32" />
+            <div key={i} className="bg-[#131620] rounded-xl border border-white/[0.07] p-4 animate-pulse h-32" />
           ))}
         </div>
       )}
 
       {!loading && categoryDocs.length === 0 && (
-        <div className="text-center py-12 text-gray-400">
+        <div className="text-center py-12 text-white/30">
           <p className="text-sm">No documents in {activeCategory} category</p>
           <button onClick={() => setShowUpload(true)}
             className="mt-3 text-xs text-blue-600 hover:underline">Upload one now</button>
@@ -338,18 +338,18 @@ export default function ClientDocumentsPage() {
 
           return (
             <div key={doc.id}
-              className={`bg-white rounded-xl border p-4 space-y-3 ${isExpired ? "border-red-200" : isExpiringSoon ? "border-amber-200" : "border-gray-200"}`}>
+              className={`bg-[#131620] rounded-xl border p-4 space-y-3 ${isExpired ? "border-red-200" : isExpiringSoon ? "border-amber-200" : "border-white/[0.07]"}`}>
               <div className="flex items-start justify-between">
                 <div className="min-w-0">
-                  <p className="font-medium text-gray-900 text-sm truncate">{doc.document_name}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{formatBytes(doc.file_size)}</p>
+                  <p className="font-medium text-white/85 text-sm truncate">{doc.document_name}</p>
+                  <p className="text-xs text-white/30 mt-0.5">{formatBytes(doc.file_size)}</p>
                 </div>
                 {(isExpiringSoon || isExpired) && (
                   <AlertTriangle size={14} className={isExpired ? "text-red-500" : "text-amber-500"} />
                 )}
               </div>
 
-              <div className="text-xs text-gray-500 space-y-1">
+              <div className="text-xs text-white/40 space-y-1">
                 <div>Uploaded: {fmtDate(doc.created_at.split("T")[0])}</div>
                 {doc.expiry_date && (
                   <div className={isExpired ? "text-red-600 font-medium" : isExpiringSoon ? "text-amber-600 font-medium" : ""}>
@@ -363,7 +363,7 @@ export default function ClientDocumentsPage() {
               <div className="flex gap-2">
                 {doc.public_url && (
                   <a href={doc.public_url} target="_blank" rel="noopener noreferrer" download
-                    className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-50">
+                    className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 border border-white/[0.07] rounded-lg text-xs text-white/55 hover:bg-[#0e1017]">
                     <Download size={12} /> Download
                   </a>
                 )}

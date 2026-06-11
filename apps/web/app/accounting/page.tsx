@@ -76,8 +76,8 @@ export default function AccountingHubPage() {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Accounting</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Double-entry books — FY 2025-26</p>
+          <h1 className="text-xl font-semibold text-white/85">Accounting</h1>
+          <p className="text-sm text-white/40 mt-0.5">Double-entry books — FY 2025-26</p>
         </div>
         <Link href="/accounting/journal" className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700 transition-colors">
           + New Journal Entry
@@ -92,8 +92,8 @@ export default function AccountingHubPage() {
               <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center mb-3">
                 <s.icon size={16} className="text-blue-600" />
               </div>
-              <p className="text-xl font-bold text-gray-900">{s.value}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+              <p className="text-xl font-bold text-white/85">{s.value}</p>
+              <p className="text-xs text-white/40 mt-0.5">{s.label}</p>
             </CardContent>
           </Card>
         ))}
@@ -109,8 +109,8 @@ export default function AccountingHubPage() {
                   <card.icon size={18} className="text-blue-600" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-gray-900">{card.label}</p>
-                  <p className="text-xs text-gray-500 mt-0.5 leading-tight">{card.description}</p>
+                  <p className="text-sm font-semibold text-white/85">{card.label}</p>
+                  <p className="text-xs text-white/40 mt-0.5 leading-tight">{card.description}</p>
                 </div>
               </CardContent>
             </Card>
@@ -125,9 +125,9 @@ export default function AccountingHubPage() {
           <Link href="/accounting/journal" className="text-xs text-blue-600 hover:underline">View all →</Link>
         </CardHeader>
         {loading ? (
-          <div className="px-5 py-6 text-sm text-gray-400 text-center animate-pulse">Loading…</div>
+          <div className="px-5 py-6 text-sm text-white/30 text-center animate-pulse">Loading…</div>
         ) : (
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-white/[0.03]">
             {entries.map((entry) => (
               <div key={entry.id} className="flex items-center gap-4 px-5 py-3.5">
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${entry.entry_type === "Receipt" || entry.entry_type === "Sales" ? "bg-green-50" : "bg-blue-50"}`}>
@@ -136,8 +136,8 @@ export default function AccountingHubPage() {
                     : <ArrowDownRight size={14} className="text-blue-500" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-900 truncate">{entry.narration}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{formatDate(entry.entry_date)} · {entry.reference_no} · {entry.entry_type}</p>
+                  <p className="text-sm text-white/85 truncate">{entry.narration}</p>
+                  <p className="text-xs text-white/30 mt-0.5">{formatDate(entry.entry_date)} · {entry.reference_no} · {entry.entry_type}</p>
                 </div>
                 <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${statusBadge[entry.status]}`}>{entry.status}</span>
                 <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 font-medium ${entry.is_posted ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
@@ -146,7 +146,7 @@ export default function AccountingHubPage() {
               </div>
             ))}
             {entries.length === 0 && (
-              <div className="px-5 py-6 text-sm text-gray-400 text-center">No entries yet</div>
+              <div className="px-5 py-6 text-sm text-white/30 text-center">No entries yet</div>
             )}
           </div>
         )}

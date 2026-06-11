@@ -71,14 +71,14 @@ export default function JoinPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-indigo-900 to-violet-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-indigo-900 to-blue-400 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <LogoIcon size="xl" />
           <h1 className="text-white text-2xl font-bold">PracticeSync AI</h1>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-2xl p-8 text-center space-y-4">
+        <div className="bg-[#131620] rounded-2xl shadow-2xl p-8 text-center space-y-4">
           {(status === "checking" || status === "linking") && (
             <>
               <div className="flex items-center justify-center gap-1.5 py-4">
@@ -86,7 +86,7 @@ export default function JoinPage() {
                 <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:150ms]" />
                 <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:300ms]" />
               </div>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-white/40">
                 {status === "checking" ? "Verifying your invite…" : "Setting up your account…"}
               </p>
             </>
@@ -99,18 +99,18 @@ export default function JoinPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className="text-lg font-semibold text-white/85">
                 Welcome to the team{name ? `, ${name}` : ""}!
               </h2>
               {role && (
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-white/40">
                   You&apos;ve been added as <strong>{role}</strong>
                   {jobTitle ? ` — ${jobTitle}` : ""}.
                 </p>
               )}
               <button
                 onClick={() => router.replace("/")}
-                className="w-full bg-indigo-600 text-white text-sm font-medium py-2.5 rounded-lg hover:bg-indigo-700 transition-colors"
+                className="w-full bg-blue-500 text-white text-sm font-medium py-2.5 rounded-lg hover:bg-blue-600 transition-colors"
               >
                 Go to Dashboard →
               </button>
@@ -124,9 +124,9 @@ export default function JoinPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
-              <h2 className="text-lg font-semibold text-gray-900">Something went wrong</h2>
-              <p className="text-sm text-gray-500">{errorMsg}</p>
-              <p className="text-xs text-gray-400">Please contact your CA to resend the invite.</p>
+              <h2 className="text-lg font-semibold text-white/85">Something went wrong</h2>
+              <p className="text-sm text-white/40">{errorMsg}</p>
+              <p className="text-xs text-white/30">Please contact your CA to resend the invite.</p>
             </>
           )}
         </div>

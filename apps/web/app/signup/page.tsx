@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { LogoIcon } from "@/components/LogoIcon";
+import { ArrowRight, Mail } from "lucide-react";
 
 export default function SignupPage() {
   const [firmName, setFirmName] = useState("");
@@ -19,7 +19,6 @@ export default function SignupPage() {
     setLoading(true);
     setError(null);
     try {
-      // Store signup data so /onboarding can read it after magic link click
       if (typeof window !== "undefined") {
         localStorage.setItem(
           "practicesync_signup",
@@ -45,90 +44,84 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-indigo-900 to-violet-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-[#080B12] px-6 py-12">
+      <div className="w-full max-w-[380px]">
+
         {/* Logo */}
-        <div className="text-center mb-8">
-          <LogoIcon size="xl" />
-          <h1 className="text-white text-2xl font-bold">PracticeSync AI</h1>
-          <p className="text-indigo-300 text-sm mt-1">AI-powered operating system for modern accounting and advisory firms</p>
+        <div className="flex items-center gap-2.5 justify-center mb-8">
+          <div className="w-8 h-8 rounded-[9px] bg-blue-500 flex items-center justify-center text-[13px] font-bold text-white shadow-[0_0_20px_rgba(59,130,246,0.4)]">P</div>
+          <span className="text-[15px] font-semibold text-white/90 tracking-tight">PracticeSync AI</span>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
+        <div className="bg-[#0F1219] border border-white/[0.08] rounded-xl shadow-[0_24px_48px_rgba(0,0,0,0.4)]">
           {sent ? (
-            <div className="text-center space-y-4">
-              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto">
-                <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
+            <div className="p-8 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto">
+                <Mail size={20} className="text-emerald-400" />
               </div>
-              <h2 className="text-lg font-semibold text-gray-900">Check your email</h2>
-              <p className="text-sm text-gray-500">
-                We sent a magic link to <strong>{email}</strong>. Click the link to continue setting up your firm.
-              </p>
-              <p className="text-xs text-gray-400">Didn&apos;t get it? Check your spam folder.</p>
+              <div>
+                <h2 className="text-[17px] font-semibold text-white/90">Check your inbox</h2>
+                <p className="text-[13px] text-white/40 mt-2 leading-relaxed">
+                  We sent a magic link to <span className="text-white/65 font-medium">{email}</span>. Click it to finish setting up your firm.
+                </p>
+                <p className="text-[12px] text-white/25 mt-3">Didn&apos;t receive it? Check your spam folder.</p>
+              </div>
             </div>
           ) : (
-            <>
-              <h2 className="text-xl font-semibold text-gray-900 mb-1">Create your firm</h2>
-              <p className="text-sm text-gray-500 mb-6">Get started in minutes — no credit card required</p>
+            <div className="p-8">
+              <div className="mb-6">
+                <h2 className="text-[20px] font-semibold text-white/90 tracking-tight">Create your firm</h2>
+                <p className="text-[13px] text-white/40 mt-1">Get started in minutes — no credit card required</p>
+              </div>
 
               {error && (
-                <div className="bg-red-50 border border-red-100 rounded-lg px-3 py-2 text-xs text-red-700 mb-4">
-                  {error}
+                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-500/[0.08] border border-red-500/20 mb-4">
+                  <div className="w-4 h-4 rounded-full bg-red-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-red-400 text-[10px] font-bold leading-none">!</span>
+                  </div>
+                  <p className="text-[12.5px] text-red-400 leading-snug">{error}</p>
                 </div>
               )}
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Firm Name</label>
-                  <input
-                    type="text"
-                    value={firmName}
-                    onChange={(e) => setFirmName(e.target.value)}
-                    placeholder="e.g. Sharma & Associates"
-                    required
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Your Full Name</label>
-                  <input
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="e.g. CA Ravi Sharma"
-                    required
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Email Address</label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    required
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
+                {[
+                  { label: "Firm Name", value: firmName, setter: setFirmName, placeholder: "e.g. Sharma & Associates", type: "text" },
+                  { label: "Your Full Name", value: fullName, setter: setFullName, placeholder: "e.g. CA Ravi Sharma", type: "text" },
+                  { label: "Email Address", value: email, setter: setEmail, placeholder: "you@example.com", type: "email" },
+                ].map(({ label, value, setter, placeholder, type }) => (
+                  <div key={label} className="space-y-1.5">
+                    <label className="block text-[11.5px] font-medium text-white/50 uppercase tracking-wider">{label}</label>
+                    <input
+                      type={type}
+                      value={value}
+                      onChange={(e) => setter(e.target.value)}
+                      placeholder={placeholder}
+                      required
+                      className="w-full bg-[#141820] border border-white/[0.09] rounded-lg px-3.5 py-2.5 text-[13.5px] text-white/85 placeholder:text-white/20 outline-none focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/15 transition-all"
+                    />
+                  </div>
+                ))}
+
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-indigo-600 text-white text-sm font-medium py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                  className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13.5px] font-semibold px-4 py-2.5 rounded-lg transition-colors mt-2 shadow-[0_4px_12px_rgba(59,130,246,0.25)]"
                 >
-                  {loading ? "Sending…" : "Get Started — we'll email you a login link"}
+                  {loading ? (
+                    <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Sending…</>
+                  ) : (
+                    <>Get started <ArrowRight size={14} /></>
+                  )}
                 </button>
               </form>
 
-              <p className="text-center text-xs text-gray-400 mt-6">
+              <p className="text-center text-[12px] text-white/30 mt-5">
                 Already have an account?{" "}
-                <Link href="/login" className="text-indigo-600 hover:underline">
-                  Sign in
+                <Link href="/login" className="text-blue-400 hover:text-blue-300 transition-colors">
+                  Sign in →
                 </Link>
               </p>
-            </>
+            </div>
           )}
         </div>
       </div>

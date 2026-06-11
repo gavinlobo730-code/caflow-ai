@@ -50,7 +50,7 @@ const THRESHOLD_PROFESSION = 50_00_00_00; // ₹50 lakh = 5,000,000 paise
 
 function statusBadge(status: AuditStatus) {
   switch (status) {
-    case "not_started": return { cls: "text-gray-600 bg-gray-100", icon: Clock, label: "Not Started" };
+    case "not_started": return { cls: "text-white/55 bg-white/[0.06]", icon: Clock, label: "Not Started" };
     case "in_progress": return { cls: "text-blue-700 bg-blue-50", icon: Clock, label: "In Progress" };
     case "completed": return { cls: "text-amber-700 bg-amber-50", icon: CheckCircle, label: "Completed" };
     case "filed": return { cls: "text-green-700 bg-green-50", icon: CheckCircle, label: "Filed" };
@@ -110,8 +110,8 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
   const [error, setError] = useState<string | null>(null);
 
   function upd(patch: Partial<AuditFormState>) { setForm(f => ({ ...f, ...patch })); }
-  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500";
-  const lbl = "text-xs font-medium text-gray-700 block mb-1";
+  const inputCls = "w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500";
+  const lbl = "text-xs font-medium text-white/65 block mb-1";
 
   async function handleSave() {
     if (!form.clientId) { setError("Select a client"); return; }
@@ -153,10 +153,10 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-900">{editAudit ? "Edit Tax Audit" : "Add Tax Audit"}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+      <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-[#131620] flex items-center justify-between px-6 py-4 border-b border-white/[0.05]">
+          <h3 className="text-sm font-semibold text-white/85">{editAudit ? "Edit Tax Audit" : "Add Tax Audit"}</h3>
+          <button onClick={onClose} className="text-white/30 hover:text-white/55"><X size={16} /></button>
         </div>
         <div className="px-6 py-4 space-y-3">
           {error && <div className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</div>}
@@ -185,7 +185,7 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
             <label className={lbl}>Turnover / Gross Receipts (₹)</label>
             <input type="number" min="0" step="0.01" value={form.turnoverRs} onChange={e => upd({ turnoverRs: e.target.value })} className={inputCls} placeholder="Enter turnover for threshold check" />
             {form.turnoverRs && (
-              <p className="text-xs mt-1 text-gray-500">
+              <p className="text-xs mt-1 text-white/40">
                 {Math.round(parseFloat(form.turnoverRs || "0") * 100) >= THRESHOLD_BUSINESS
                   ? "✓ Exceeds ₹1 crore — tax audit mandatory (business)"
                   : Math.round(parseFloat(form.turnoverRs || "0") * 100) >= THRESHOLD_PROFESSION
@@ -225,8 +225,8 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
             </div>
           </div>
         </div>
-        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-gray-100 flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Cancel</button>
+        <div className="sticky bottom-0 bg-[#131620] px-6 py-4 border-t border-white/[0.05] flex gap-2 justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-white/65 bg-white/[0.06] rounded-lg hover:bg-white/[0.08]">Cancel</button>
           <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
             {saving ? "Saving…" : editAudit ? "Update" : "Add Audit"}
           </button>
@@ -276,13 +276,13 @@ export default function TaxAuditPage() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/income-tax" className="text-gray-400 hover:text-gray-600"><ChevronLeft size={18} /></Link>
+        <Link href="/income-tax" className="text-white/30 hover:text-white/55"><ChevronLeft size={18} /></Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-gray-900">Tax Audit Tracker</h1>
-          <p className="text-sm text-gray-500 mt-0.5">IT Act Section 44AB — Form 3CA/3CB/3CD | Due: 30 November</p>
+          <h1 className="text-xl font-semibold text-white/85">Tax Audit Tracker</h1>
+          <p className="text-sm text-white/40 mt-0.5">IT Act Section 44AB — Form 3CA/3CB/3CD | Due: 30 November</p>
         </div>
         <select value={fyFilter} onChange={e => setFyFilter(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+          className="border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
           {FY_OPTIONS.map(f => <option key={f} value={f}>FY {f}</option>)}
         </select>
         <Button size="sm" onClick={() => setShowAdd(true)}>
@@ -307,8 +307,8 @@ export default function TaxAuditPage() {
           return (
             <Card key={s}>
               <CardContent className="pt-4 pb-3">
-                <p className="text-2xl font-bold text-gray-900">{audits.filter(a => a.status === s).length}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{badge.label}</p>
+                <p className="text-2xl font-bold text-white/85">{audits.filter(a => a.status === s).length}</p>
+                <p className="text-xs text-white/40 mt-0.5">{badge.label}</p>
               </CardContent>
             </Card>
           );
@@ -320,16 +320,16 @@ export default function TaxAuditPage() {
       {/* Table */}
       <Card>
         {loading ? (
-          <div className="p-8 text-center text-gray-400 text-sm animate-pulse">Loading…</div>
+          <div className="p-8 text-center text-white/30 text-sm animate-pulse">Loading…</div>
         ) : audits.length === 0 ? (
-          <div className="p-10 text-center text-gray-400 text-sm">
+          <div className="p-10 text-center text-white/30 text-sm">
             No tax audits for FY {fyFilter}. Click &quot;Add Audit&quot; to track one.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[900px]">
               <thead>
-                <tr className="border-b border-gray-100 text-xs text-gray-400">
+                <tr className="border-b border-white/[0.05] text-xs text-white/30">
                   <th className="px-5 py-3 text-left">Client</th>
                   <th className="px-3 py-3 text-left">Form</th>
                   <th className="px-3 py-3 text-right">Turnover</th>
@@ -341,14 +341,14 @@ export default function TaxAuditPage() {
                   <th className="px-5 py-3 text-left">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-white/[0.03]">
                 {audits.map(a => {
                   const badge = statusBadge(a.status);
                   const Icon = badge.icon;
                   return (
-                    <tr key={a.id} className="hover:bg-gray-50">
+                    <tr key={a.id} className="hover:bg-[#0e1017]">
                       <td className="px-5 py-3 text-sm font-medium">{clientName(a.client_id)}</td>
-                      <td className="px-3 py-3 text-xs font-mono text-gray-600">{a.form_type}</td>
+                      <td className="px-3 py-3 text-xs font-mono text-white/55">{a.form_type}</td>
                       <td className="px-3 py-3 text-sm tabular-nums text-right">
                         {a.turnover_paise > 0 ? formatPaise(a.turnover_paise) : "—"}
                       </td>
@@ -357,10 +357,10 @@ export default function TaxAuditPage() {
                           <Icon size={11} /> {badge.label}
                         </span>
                       </td>
-                      <td className="px-3 py-3 text-xs text-gray-600">{a.auditor_name ?? "—"}</td>
-                      <td className="px-3 py-3 text-xs text-gray-600">{a.audit_date ?? "—"}</td>
-                      <td className="px-3 py-3 text-xs text-gray-600">{a.filing_date ?? "—"}</td>
-                      <td className="px-3 py-3 text-xs font-mono text-gray-500 max-w-[120px] truncate" title={a.udin ?? undefined}>{a.udin ?? "—"}</td>
+                      <td className="px-3 py-3 text-xs text-white/55">{a.auditor_name ?? "—"}</td>
+                      <td className="px-3 py-3 text-xs text-white/55">{a.audit_date ?? "—"}</td>
+                      <td className="px-3 py-3 text-xs text-white/55">{a.filing_date ?? "—"}</td>
+                      <td className="px-3 py-3 text-xs font-mono text-white/40 max-w-[120px] truncate" title={a.udin ?? undefined}>{a.udin ?? "—"}</td>
                       <td className="px-5 py-3">
                         <button onClick={() => setEditAudit(a)}
                           className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
@@ -376,7 +376,7 @@ export default function TaxAuditPage() {
         )}
       </Card>
 
-      <p className="text-xs text-gray-400 text-center">
+      <p className="text-xs text-white/30 text-center">
         {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
         All audit details are for internal tracking only. UDIN must be verified on the ICAI portal before report submission.
       </p>

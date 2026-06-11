@@ -97,12 +97,12 @@ export default function PortalPage() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
-      <div className="bg-white rounded-xl border border-gray-100 p-6">
+      <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-6">
         <div className="flex items-start gap-3">
           <Globe className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
           <div className="flex-1">
-            <h2 className="text-sm font-semibold text-gray-900">Client Portal</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <h2 className="text-sm font-semibold text-white/85">Client Portal</h2>
+            <p className="text-xs text-white/40 mt-0.5">
               {portal?.enabled
                 ? `Active · Invited ${portal.invitedAt ? new Date(portal.invitedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : ""}`
                 : "Not enabled — client cannot log in yet"}
@@ -111,7 +111,7 @@ export default function PortalPage() {
           <div className="flex items-center gap-2 shrink-0">
             <span
               className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                portal?.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                portal?.enabled ? "bg-green-100 text-green-700" : "bg-white/[0.06] text-white/40"
               }`}
             >
               {portal?.enabled ? "Active" : "Not enabled"}
@@ -126,11 +126,11 @@ export default function PortalPage() {
           </div>
         </div>
 
-        <div className="mt-4 bg-gray-50 rounded-lg px-4 py-3 flex items-center gap-3">
-          <code className="text-xs text-gray-600 flex-1 break-all">{portalUrl}</code>
+        <div className="mt-4 bg-[#0e1017] rounded-lg px-4 py-3 flex items-center gap-3">
+          <code className="text-xs text-white/55 flex-1 break-all">{portalUrl}</code>
           <button
             onClick={() => navigator.clipboard.writeText(portalUrl)}
-            className="shrink-0 text-gray-400 hover:text-blue-600"
+            className="shrink-0 text-white/30 hover:text-blue-600"
             title="Copy URL"
           >
             <Copy className="w-4 h-4" />
@@ -141,10 +141,10 @@ export default function PortalPage() {
       {/* Invite Modal */}
       {showInviteModal && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+          <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-900">Invite to Portal</h3>
-              <button onClick={() => setShowInviteModal(false)} className="text-gray-400 hover:text-gray-600">
+              <h3 className="text-sm font-semibold text-white/85">Invite to Portal</h3>
+              <button onClick={() => setShowInviteModal(false)} className="text-white/30 hover:text-white/55">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -159,20 +159,20 @@ export default function PortalPage() {
             ) : (
               <>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Client email *</label>
+                  <label className="block text-xs font-medium text-white/65 mb-1">Client email *</label>
                   <input
                     type="email"
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
                     placeholder="client@example.com"
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 {inviteError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{inviteError}</p>}
                 <div className="flex gap-3 justify-end">
                   <button
                     onClick={() => setShowInviteModal(false)}
-                    className="text-xs px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+                    className="text-xs px-4 py-2 border border-white/[0.07] rounded-lg hover:bg-[#0e1017]"
                   >
                     Cancel
                   </button>

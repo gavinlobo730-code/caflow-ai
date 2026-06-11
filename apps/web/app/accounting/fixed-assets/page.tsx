@@ -309,7 +309,7 @@ export default function FixedAssetsPage() {
 
   if (loading) {
     return (
-      <div className="p-6 text-center text-sm text-gray-400 animate-pulse">Loading…</div>
+      <div className="p-6 text-center text-sm text-white/30 animate-pulse">Loading…</div>
     );
   }
 
@@ -318,19 +318,19 @@ export default function FixedAssetsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/accounting" className="text-gray-400 hover:text-gray-600">
+          <Link href="/accounting" className="text-white/30 hover:text-white/55">
             <ArrowLeft size={18} />
           </Link>
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Fixed Assets</h1>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <h1 className="text-xl font-semibold text-white/85">Fixed Assets</h1>
+            <p className="text-xs text-white/40 mt-0.5">
               Depreciation per IT Act 1961 Schedule II — Section 32(1)(i)/(ii)
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <select
-            className="text-sm border rounded-md px-3 py-1.5 bg-white"
+            className="text-sm border rounded-md px-3 py-1.5 bg-[#131620]"
             value={selectedClientId}
             onChange={(e) => setSelectedClientId(e.target.value)}
           >
@@ -364,8 +364,8 @@ export default function FixedAssetsPage() {
         ].map((s) => (
           <Card key={s.label}>
             <CardContent className="pt-4 pb-3">
-              <p className="text-lg font-bold text-gray-900">{s.value}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+              <p className="text-lg font-bold text-white/85">{s.value}</p>
+              <p className="text-xs text-white/40 mt-0.5">{s.label}</p>
             </CardContent>
           </Card>
         ))}
@@ -378,39 +378,39 @@ export default function FixedAssetsPage() {
         </CardHeader>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="bg-gray-50 border-y border-gray-100">
+            <thead className="bg-[#0e1017] border-y border-white/[0.05]">
               <tr>
                 {["Asset Name", "Category", "Purchase Date", "Cost", "Method", "Rate / Life", "Accum. Dep.", "WDV", "Status", "Actions"].map((h) => (
-                  <th key={h} className="px-3 py-2 text-left text-gray-500 font-medium whitespace-nowrap">{h}</th>
+                  <th key={h} className="px-3 py-2 text-left text-white/40 font-medium whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-white/[0.03]">
               {assets.map((asset) => {
                 const wdv = asset.purchase_cost_paise - asset.accumulated_depreciation_paise;
                 const gainLoss = calcGainLoss(asset);
                 return (
-                  <tr key={asset.id} className={asset.is_disposed ? "bg-gray-50 opacity-60" : "hover:bg-gray-50"}>
-                    <td className="px-3 py-2.5 font-medium text-gray-900">{asset.asset_name}</td>
-                    <td className="px-3 py-2.5 text-gray-600">{asset.asset_category}</td>
-                    <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{asset.purchase_date}</td>
-                    <td className="px-3 py-2.5 text-gray-900 whitespace-nowrap">{fmtRs(asset.purchase_cost_paise)}</td>
+                  <tr key={asset.id} className={asset.is_disposed ? "bg-[#0e1017] opacity-60" : "hover:bg-[#0e1017]"}>
+                    <td className="px-3 py-2.5 font-medium text-white/85">{asset.asset_name}</td>
+                    <td className="px-3 py-2.5 text-white/55">{asset.asset_category}</td>
+                    <td className="px-3 py-2.5 text-white/55 whitespace-nowrap">{asset.purchase_date}</td>
+                    <td className="px-3 py-2.5 text-white/85 whitespace-nowrap">{fmtRs(asset.purchase_cost_paise)}</td>
                     <td className="px-3 py-2.5">
                       <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${asset.depreciation_method === "WDV" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>
                         {asset.depreciation_method}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+                    <td className="px-3 py-2.5 text-white/55 whitespace-nowrap">
                       {asset.depreciation_method === "WDV"
                         ? `${asset.wdv_rate_percent}%`
                         : `${asset.useful_life_years} yrs`}
                     </td>
-                    <td className="px-3 py-2.5 text-gray-900 whitespace-nowrap">{fmtRs(asset.accumulated_depreciation_paise)}</td>
-                    <td className="px-3 py-2.5 font-semibold text-gray-900 whitespace-nowrap">{fmtRs(wdv)}</td>
+                    <td className="px-3 py-2.5 text-white/85 whitespace-nowrap">{fmtRs(asset.accumulated_depreciation_paise)}</td>
+                    <td className="px-3 py-2.5 font-semibold text-white/85 whitespace-nowrap">{fmtRs(wdv)}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       {asset.is_disposed ? (
                         <div>
-                          <span className="px-1.5 py-0.5 rounded text-xs bg-gray-200 text-gray-600">Disposed</span>
+                          <span className="px-1.5 py-0.5 rounded text-xs bg-white/[0.08] text-white/55">Disposed</span>
                           {gainLoss !== null && (
                             <span className={`ml-1 px-1.5 py-0.5 rounded text-xs ${gainLoss >= 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                               {gainLoss >= 0 ? "Gain" : "Loss"} {fmtRs(Math.abs(gainLoss))}
@@ -440,7 +440,7 @@ export default function FixedAssetsPage() {
               })}
               {assets.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-3 py-8 text-center text-gray-400">
+                  <td colSpan={10} className="px-3 py-8 text-center text-white/30">
                     No assets found. Add your first fixed asset.
                   </td>
                 </tr>
@@ -453,14 +453,14 @@ export default function FixedAssetsPage() {
       {/* ── Add Asset Modal ── */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h2 className="text-base font-semibold">Add Fixed Asset</h2>
-              <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <button onClick={() => setShowAddModal(false)} className="text-white/30 hover:text-white/55"><X size={18} /></button>
             </div>
             <form onSubmit={handleAddAsset} className="px-5 py-4 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Asset Name *</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Asset Name *</label>
                 <input
                   className="w-full border rounded-md px-3 py-2 text-sm"
                   value={addForm.asset_name}
@@ -471,7 +471,7 @@ export default function FixedAssetsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Category *</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Category *</label>
                 <select
                   className="w-full border rounded-md px-3 py-2 text-sm"
                   value={addForm.asset_category}
@@ -482,7 +482,7 @@ export default function FixedAssetsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Purchase Date *</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Purchase Date *</label>
                 <input
                   type="date"
                   className="w-full border rounded-md px-3 py-2 text-sm"
@@ -494,7 +494,7 @@ export default function FixedAssetsPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Purchase Cost (₹) *</label>
+                  <label className="block text-xs font-medium text-white/65 mb-1">Purchase Cost (₹) *</label>
                   <input
                     type="number"
                     min="0"
@@ -507,7 +507,7 @@ export default function FixedAssetsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Salvage Value (₹)</label>
+                  <label className="block text-xs font-medium text-white/65 mb-1">Salvage Value (₹)</label>
                   <input
                     type="number"
                     min="0"
@@ -521,7 +521,7 @@ export default function FixedAssetsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Depreciation Method *</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Depreciation Method *</label>
                 <select
                   className="w-full border rounded-md px-3 py-2 text-sm"
                   value={addForm.depreciation_method}
@@ -534,7 +534,7 @@ export default function FixedAssetsPage() {
 
               {addForm.depreciation_method === "SL" && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Useful Life (years) *</label>
+                  <label className="block text-xs font-medium text-white/65 mb-1">Useful Life (years) *</label>
                   <input
                     type="number"
                     min="1"
@@ -549,9 +549,9 @@ export default function FixedAssetsPage() {
 
               {addForm.depreciation_method === "WDV" && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                  <label className="block text-xs font-medium text-white/65 mb-1">
                     WDV Rate % *
-                    <span className="ml-1 text-gray-400 font-normal">(IT Act default: {DEFAULT_WDV_RATES[addForm.asset_category]}%)</span>
+                    <span className="ml-1 text-white/30 font-normal">(IT Act default: {DEFAULT_WDV_RATES[addForm.asset_category]}%)</span>
                   </label>
                   <input
                     type="number"
@@ -567,7 +567,7 @@ export default function FixedAssetsPage() {
               )}
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Notes</label>
                 <textarea
                   className="w-full border rounded-md px-3 py-2 text-sm resize-none"
                   rows={2}
@@ -597,14 +597,14 @@ export default function FixedAssetsPage() {
       {/* ── Run Depreciation Modal ── */}
       {showDepModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h2 className="text-base font-semibold">Run Depreciation</h2>
-              <button onClick={() => setShowDepModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <button onClick={() => setShowDepModal(false)} className="text-white/30 hover:text-white/55"><X size={18} /></button>
             </div>
             <div className="px-5 py-4 space-y-4">
               <div className="flex items-center gap-3">
-                <label className="text-xs font-medium text-gray-700">Financial Year Ending</label>
+                <label className="text-xs font-medium text-white/65">Financial Year Ending</label>
                 <input
                   type="number"
                   min="2000"
@@ -613,7 +613,7 @@ export default function FixedAssetsPage() {
                   value={depYear}
                   onChange={(e) => setDepYear(e.target.value)}
                 />
-                <span className="text-xs text-gray-500">(FY {parseInt(depYear) - 1}-{depYear.slice(2)})</span>
+                <span className="text-xs text-white/40">(FY {parseInt(depYear) - 1}-{depYear.slice(2)})</span>
               </div>
 
               <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-3">
@@ -622,21 +622,21 @@ export default function FixedAssetsPage() {
               </div>
 
               <table className="w-full text-xs">
-                <thead className="bg-gray-50 border-y border-gray-100">
+                <thead className="bg-[#0e1017] border-y border-white/[0.05]">
                   <tr>
                     {["Asset", "Method", "Opening WDV", "Depreciation", "Closing WDV"].map((h) => (
-                      <th key={h} className="px-3 py-2 text-left text-gray-500 font-medium">{h}</th>
+                      <th key={h} className="px-3 py-2 text-left text-white/40 font-medium">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-white/[0.03]">
                   {depPreview.map(({ asset, annualDep }) => {
                     const openWdv = asset.purchase_cost_paise - asset.accumulated_depreciation_paise;
                     const closeWdv = openWdv - annualDep;
                     return (
                       <tr key={asset.id}>
                         <td className="px-3 py-2 font-medium">{asset.asset_name}</td>
-                        <td className="px-3 py-2 text-gray-500">{asset.depreciation_method}</td>
+                        <td className="px-3 py-2 text-white/40">{asset.depreciation_method}</td>
                         <td className="px-3 py-2">{fmtRs(openWdv)}</td>
                         <td className="px-3 py-2 text-red-600">{fmtRs(annualDep)}</td>
                         <td className="px-3 py-2 font-semibold">{fmtRs(closeWdv)}</td>
@@ -644,12 +644,12 @@ export default function FixedAssetsPage() {
                     );
                   })}
                   {depPreview.length === 0 && (
-                    <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">No active assets to depreciate</td></tr>
+                    <tr><td colSpan={5} className="px-3 py-6 text-center text-white/30">No active assets to depreciate</td></tr>
                   )}
                 </tbody>
               </table>
 
-              <div className="flex items-center gap-2 text-xs text-gray-600 border-t pt-3">
+              <div className="flex items-center gap-2 text-xs text-white/55 border-t pt-3">
                 <input
                   type="checkbox"
                   id="dep-confirm"
@@ -685,19 +685,19 @@ export default function FixedAssetsPage() {
       {/* ── Dispose Asset Modal ── */}
       {disposeAsset && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
+          <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md mx-4">
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h2 className="text-base font-semibold">Dispose Asset</h2>
-              <button onClick={() => setDisposeAsset(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <button onClick={() => setDisposeAsset(null)} className="text-white/30 hover:text-white/55"><X size={18} /></button>
             </div>
             <form onSubmit={handleDispose} className="px-5 py-4 space-y-4">
-              <div className="bg-gray-50 rounded-md p-3 text-xs space-y-1">
-                <p className="font-semibold text-gray-900">{disposeAsset.asset_name}</p>
-                <p className="text-gray-500">WDV at disposal: {fmtRs(disposeAsset.purchase_cost_paise - disposeAsset.accumulated_depreciation_paise)}</p>
+              <div className="bg-[#0e1017] rounded-md p-3 text-xs space-y-1">
+                <p className="font-semibold text-white/85">{disposeAsset.asset_name}</p>
+                <p className="text-white/40">WDV at disposal: {fmtRs(disposeAsset.purchase_cost_paise - disposeAsset.accumulated_depreciation_paise)}</p>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Disposal Date *</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Disposal Date *</label>
                 <input
                   type="date"
                   className="w-full border rounded-md px-3 py-2 text-sm"
@@ -708,7 +708,7 @@ export default function FixedAssetsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Disposal Value (₹) *</label>
+                <label className="block text-xs font-medium text-white/65 mb-1">Disposal Value (₹) *</label>
                 <input
                   type="number"
                   min="0"

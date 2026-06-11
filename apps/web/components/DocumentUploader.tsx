@@ -78,7 +78,7 @@ export function DocumentUploader({ clientId, onSuccess }: Props) {
   return (
     <div className="space-y-3">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-white/65 mb-1">
           Document Type
         </label>
         <select
@@ -104,7 +104,7 @@ export function DocumentUploader({ clientId, onSuccess }: Props) {
         className={`
           relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed
           p-8 cursor-pointer transition-colors
-          ${dragOver ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"}
+          ${dragOver ? "border-blue-400 bg-blue-50" : "border-white/[0.07] hover:border-blue-300 hover:bg-[#0e1017]"}
           ${state === "uploading" ? "pointer-events-none opacity-70" : ""}
         `}
       >
@@ -118,11 +118,11 @@ export function DocumentUploader({ clientId, onSuccess }: Props) {
 
         {state === "idle" && (
           <>
-            <Upload className="h-8 w-8 text-gray-400" />
-            <p className="text-sm font-medium text-gray-700">
+            <Upload className="h-8 w-8 text-white/30" />
+            <p className="text-sm font-medium text-white/65">
               Drop file here or click to browse
             </p>
-            <p className="text-xs text-gray-400">PDF, PNG, JPG, XLSX, CSV</p>
+            <p className="text-xs text-white/30">PDF, PNG, JPG, XLSX, CSV</p>
           </>
         )}
 
@@ -139,7 +139,7 @@ export function DocumentUploader({ clientId, onSuccess }: Props) {
             <p className="text-sm font-medium text-green-700">{message}</p>
             <button
               onClick={(e) => { e.stopPropagation(); reset(); }}
-              className="mt-1 text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+              className="mt-1 text-xs text-white/40 hover:text-white/65 flex items-center gap-1"
             >
               <X size={12} /> Upload another
             </button>
@@ -152,7 +152,7 @@ export function DocumentUploader({ clientId, onSuccess }: Props) {
             <p className="text-sm font-medium text-red-700">{message}</p>
             <button
               onClick={(e) => { e.stopPropagation(); reset(); }}
-              className="mt-1 text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+              className="mt-1 text-xs text-white/40 hover:text-white/65 flex items-center gap-1"
             >
               <X size={12} /> Try again
             </button>

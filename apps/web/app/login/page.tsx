@@ -4,22 +4,21 @@ import { useState, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { Sparkles, Shield, Zap, TrendingUp } from "lucide-react";
-import { LogoIcon } from "@/components/LogoIcon";
+import { Shield, Zap, TrendingUp, ArrowRight } from "lucide-react";
 
 const FEATURES = [
-  { icon: Shield, text: "GST, ITR & TDS all in one place" },
-  { icon: Zap, text: "AI-powered compliance reminders" },
-  { icon: TrendingUp, text: "Real-time practice analytics" },
+  { icon: Shield, label: "GST · ITR · TDS · MCA", desc: "All compliance in one place" },
+  { icon: Zap,    label: "AI-powered automation",  desc: "Reminders, drafts, insights" },
+  { icon: TrendingUp, label: "Practice analytics", desc: "Client health, deadlines, revenue" },
 ];
 
 export default function LoginPage() {
   const { signIn } = useAuth();
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+  const [loading, setLoading]   = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -27,12 +26,8 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { error } = await signIn(email, password);
-      if (error) {
-        setError(error);
-        setLoading(false);
-      } else {
-        router.push("/");
-      }
+      if (error) { setError(error); setLoading(false); }
+      else { router.push("/"); }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Connection error. Please try again.");
       setLoading(false);
@@ -40,80 +35,78 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left panel — brand */}
-      <div className="hidden lg:flex flex-col justify-between w-[480px] shrink-0 bg-gradient-to-br from-indigo-900 via-indigo-800 to-violet-900 p-12 relative overflow-hidden">
-        {/* Background decoration */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/4" />
+    <div className="min-h-screen flex bg-[#080B12]">
+
+      {/* ── Left brand panel ── */}
+      <div className="hidden lg:flex flex-col justify-between w-[420px] shrink-0 bg-[#0A0D16] border-r border-white/[0.06] p-10 relative overflow-hidden">
+        {/* Subtle grid */}
+        <div className="absolute inset-0 opacity-[0.015]"
+          style={{ backgroundImage: "linear-gradient(hsl(220 90% 60%) 1px, transparent 1px), linear-gradient(90deg, hsl(220 90% 60%) 1px, transparent 1px)", backgroundSize: "40px 40px" }} />
+        {/* Glow */}
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full bg-blue-500/[0.06] blur-3xl pointer-events-none" />
 
         {/* Logo */}
-        <div className="relative z-10 flex items-center gap-3">
-          <LogoIcon size="md" />
-          <div>
-            <span className="text-white font-bold text-xl tracking-tight">PracticeSync</span>
-            <span className="text-indigo-300 font-bold text-xl ml-1">AI</span>
+        <div className="relative z-10 flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-[9px] bg-blue-500 flex items-center justify-center text-[13px] font-bold text-white shadow-[0_0_20px_rgba(59,130,246,0.4)]">
+            P
           </div>
+          <span className="text-[15px] font-semibold text-white/90 tracking-tight">PracticeSync AI</span>
         </div>
 
-        {/* Hero text */}
+        {/* Hero */}
         <div className="relative z-10 space-y-8">
           <div>
-            <h1 className="text-4xl font-bold text-white leading-tight">
-              PracticeSync AI<br />
-              <span className="text-indigo-300">built for modern firms</span>
+            <h1 className="text-3xl font-bold text-white leading-snug tracking-tight">
+              The operating system<br />
+              <span className="text-blue-400">for modern CA firms</span>
             </h1>
-            <p className="text-indigo-200 mt-4 text-base leading-relaxed">
-              Manage clients, compliance, accounting, payroll, documents and workflows from one intelligent workspace.
+            <p className="text-[13.5px] text-white/45 mt-3 leading-relaxed">
+              Manage clients, compliance, accounting,<br />payroll and documents from one workspace.
             </p>
           </div>
 
-          <div className="space-y-4">
-            {FEATURES.map(({ icon: Icon, text }) => (
-              <div key={text} className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-white/10 border border-white/10 flex items-center justify-center shrink-0">
-                  <Icon size={15} className="text-indigo-300" />
+          <div className="space-y-3">
+            {FEATURES.map(({ icon: Icon, label, desc }) => (
+              <div key={label} className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-[#131620]/[0.05] border border-white/[0.07] flex items-center justify-center shrink-0">
+                  <Icon size={14} className="text-blue-400" />
                 </div>
-                <p className="text-indigo-100 text-sm font-medium">{text}</p>
+                <div>
+                  <p className="text-[12.5px] font-medium text-white/75">{label}</p>
+                  <p className="text-[11px] text-white/35">{desc}</p>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        <p className="relative z-10 text-indigo-400 text-xs">
-          © 2026 PracticeSync AI. Trusted by accounting and advisory firms.
+        <p className="relative z-10 text-[11px] text-white/25">
+          © 2026 PracticeSync AI — Trusted by accounting firms across India
         </p>
       </div>
 
-      {/* Right panel — form */}
-      <div className="flex-1 flex items-center justify-center bg-[hsl(220,20%,97%)] px-6 py-12">
-        <div className="w-full max-w-sm">
+      {/* ── Right form panel ── */}
+      <div className="flex-1 flex items-center justify-center px-6 py-12">
+        <div className="w-full max-w-[360px]">
 
           {/* Mobile logo */}
-          <div className="lg:hidden flex items-center justify-center gap-2.5 mb-8">
-            <LogoIcon size="md" />
-            <span className="text-xl font-bold text-gray-900">
-              PracticeSync<span className="text-indigo-600">AI</span>
-            </span>
+          <div className="lg:hidden flex items-center gap-2.5 justify-center mb-8">
+            <div className="w-8 h-8 rounded-[9px] bg-blue-500 flex items-center justify-center text-[13px] font-bold text-white">P</div>
+            <span className="text-[15px] font-semibold text-white/90">PracticeSync AI</span>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-            {/* Header */}
-            <div className="mb-7">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
-                  <Sparkles size={13} className="text-white" />
-                </div>
-                <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Welcome back</span>
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900">Welcome to PracticeSync AI</h2>
-              <p className="text-sm text-gray-500 mt-1">Enter your credentials to continue</p>
+          {/* Card */}
+          <div className="bg-[#0F1219] border border-white/[0.08] rounded-xl p-8 shadow-[0_24px_48px_rgba(0,0,0,0.4)]">
+
+            <div className="mb-6">
+              <h2 className="text-[20px] font-semibold text-white/90 tracking-tight">Sign in</h2>
+              <p className="text-[13px] text-white/40 mt-1">Enter your credentials to continue</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
-                  Email Address
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="block text-[11.5px] font-medium text-white/50 uppercase tracking-wider">
+                  Email
                 </label>
                 <input
                   type="email"
@@ -121,12 +114,12 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="ca@yourfirm.com"
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-all placeholder:text-gray-400"
+                  className="w-full bg-[#141820] border border-white/[0.09] rounded-lg px-3.5 py-2.5 text-[13.5px] text-white/85 placeholder:text-white/20 outline-none focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/15 transition-all"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
+              <div className="space-y-1.5">
+                <label className="block text-[11.5px] font-medium text-white/50 uppercase tracking-wider">
                   Password
                 </label>
                 <input
@@ -135,42 +128,38 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-all placeholder:text-gray-400"
+                  className="w-full bg-[#141820] border border-white/[0.09] rounded-lg px-3.5 py-2.5 text-[13.5px] text-white/85 placeholder:text-white/20 outline-none focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/15 transition-all"
                 />
               </div>
 
               {error && (
-                <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-100">
-                  <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-red-600 text-[10px] font-bold">!</span>
+                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-500/[0.08] border border-red-500/20">
+                  <div className="w-4 h-4 rounded-full bg-red-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-red-400 text-[10px] font-bold leading-none">!</span>
                   </div>
-                  <p className="text-sm text-red-700">{error}</p>
+                  <p className="text-[12.5px] text-red-400 leading-snug">{error}</p>
                 </div>
               )}
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-3 text-sm font-semibold text-white hover:from-indigo-700 hover:to-violet-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md hover:scale-[1.01] active:scale-100"
+                className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13.5px] font-semibold px-4 py-2.5 rounded-lg transition-colors mt-2 shadow-[0_4px_12px_rgba(59,130,246,0.25)]"
               >
                 {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Signing in…
-                  </span>
-                ) : "Sign in →"}
+                  <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Signing in…</>
+                ) : (
+                  <>Sign in <ArrowRight size={14} /></>
+                )}
               </button>
             </form>
           </div>
 
-          <p className="text-center text-xs text-gray-400 mt-4">
-            New firm?{" "}
-            <Link href="/signup" className="text-indigo-600 hover:underline">
+          <p className="text-center text-[12px] text-white/30 mt-4">
+            New to PracticeSync?{" "}
+            <Link href="/signup" className="text-blue-400 hover:text-blue-300 transition-colors">
               Create your account →
             </Link>
-          </p>
-          <p className="text-center text-xs text-gray-400 mt-2">
-            PracticeSync AI — The operating system for modern accounting and advisory firms
           </p>
         </div>
       </div>
