@@ -482,6 +482,13 @@ def upload_gstr2b(
 class GSTR9In(BaseModel):
     client_id: str
     financial_year: str  # e.g. "2025-26"
+    payload_json: dict = Field(default_factory=dict)
+    summary_json: dict = Field(default_factory=dict)
+    total_taxable_paise: int = 0
+    total_igst_paise: int = 0
+    total_cgst_paise: int = 0
+    total_sgst_paise: int = 0
+    total_tax_paise: int = 0
 
 
 @router.post("/gstr9")
@@ -510,13 +517,13 @@ def save_gstr9(
             "period":               f"FY{fy}",
             "return_type":          "gstr9",
             "status":               "draft",
-            "payload_json":         data.get("payload_json", {}),
-            "summary_json":         data.get("summary_json", {}),
-            "total_taxable_paise":  int(data.get("total_taxable_paise", 0)),
-            "total_igst_paise":     int(data.get("total_igst_paise", 0)),
-            "total_cgst_paise":     int(data.get("total_cgst_paise", 0)),
-            "total_sgst_paise":     int(data.get("total_sgst_paise", 0)),
-            "total_tax_paise":      int(data.get("total_tax_paise", 0)),
+            "payload_json":         data.payload_json,
+            "summary_json":         data.summary_json,
+            "total_taxable_paise":  data.total_taxable_paise,
+            "total_igst_paise":     data.total_igst_paise,
+            "total_cgst_paise":     data.total_cgst_paise,
+            "total_sgst_paise":     data.total_sgst_paise,
+            "total_tax_paise":      data.total_tax_paise,
             "created_at":           datetime.utcnow().isoformat(),
         }
 
