@@ -27,9 +27,9 @@ export function DeadlinesPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 py-3 border-b border-[#E2E8F0] shrink-0">
-        <p className="text-[13px] font-semibold text-[#1E293B]">Deadlines</p>
-        <p className="text-[11px] text-[#94A3B8] mt-0.5">Cross-client monitoring</p>
+      <div className="px-4 py-3 border-b border-white/10 shrink-0">
+        <p className="text-[13px] font-semibold text-white">Deadlines</p>
+        <p className="text-[11px] text-slate-500 mt-0.5">Cross-client monitoring</p>
       </div>
 
       <div className="mx-2 mt-2 shrink-0">
@@ -49,7 +49,7 @@ export function DeadlinesPanel() {
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2 px-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#94A3B8] px-2 mb-1.5 mt-2">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 px-2 mb-1.5 mt-2">
           By Type
         </p>
         <div className="space-y-0.5">
@@ -64,15 +64,15 @@ export function DeadlinesPanel() {
                 className={cn(
                   "flex items-center gap-2.5 px-2.5 py-2 rounded-[7px] text-[12.5px] font-medium transition-all duration-75",
                   active
-                    ? "bg-[#DBEAFE] text-[#1E293B]"
-                    : "text-[#64748B] hover:text-[#334155] hover:bg-[#F1F5F9]"
+                    ? "bg-blue-600 text-white"
+                    : "text-slate-400 hover:text-white hover:bg-white/10"
                 )}
               >
                 <Icon
                   size={15}
                   className={cn(
                     "shrink-0",
-                    active ? "text-blue-600" : "text-[#94A3B8]"
+                    active ? "text-blue-600" : "text-slate-500"
                   )}
                 />
                 <span className="truncate">{label}</span>
@@ -82,7 +82,7 @@ export function DeadlinesPanel() {
         </div>
 
         <div className="mt-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#94A3B8] px-2 mb-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 px-2 mb-1.5">
             Critical Tools
           </p>
           <Link
@@ -90,8 +90,8 @@ export function DeadlinesPanel() {
             className={cn(
               "flex items-center gap-2.5 px-2.5 py-2 rounded-[7px] text-[12.5px] font-medium transition-all duration-75",
               pathname.startsWith("/settings/dsc-tracker")
-                ? "bg-[#DBEAFE] text-[#1E293B]"
-                : "text-[#64748B] hover:text-[#334155] hover:bg-[#F1F5F9]"
+                ? "bg-blue-600 text-white"
+                : "text-slate-400 hover:text-white hover:bg-white/10"
             )}
           >
             <KeyRound
@@ -100,7 +100,7 @@ export function DeadlinesPanel() {
                 "shrink-0",
                 pathname.startsWith("/settings/dsc-tracker")
                   ? "text-blue-600"
-                  : "text-[#94A3B8]"
+                  : "text-slate-500"
               )}
             />
             <span className="truncate">DSC Tracker</span>
