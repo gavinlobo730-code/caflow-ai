@@ -30,19 +30,19 @@ interface RailItem {
 }
 
 const RAIL_ITEMS: RailItem[] = [
-  { section: "overview",    label: "Overview",    icon: LayoutGrid,    href: (id) => `/clients/${id}/overview` },
-  { section: "accounting",  label: "Accounting",  icon: BookOpen,      href: (id) => `/clients/${id}/accounting` },
-  { section: "sales",       label: "Sales",       icon: ShoppingCart,  href: (id) => `/clients/${id}/sales` },
-  { section: "purchases",   label: "Purchases",   icon: Package,       href: (id) => `/clients/${id}/purchases` },
-  { section: "compliance",  label: "Compliance",  icon: Shield,        href: (id) => `/clients/${id}/compliance` },
-  { section: "payroll",     label: "Payroll",     icon: Users,         href: (id) => `/clients/${id}/payroll` },
-  { section: "year-end",    label: "Year End",    icon: CalendarCheck, href: (id) => `/clients/${id}/year-end` },
-  { section: "tax",         label: "Tax",         icon: FileText,      href: (id) => `/clients/${id}/tax` },
-  { section: "documents",   label: "Documents",   icon: FolderOpen,    href: (id) => `/clients/${id}/documents` },
-  { section: "tasks",       label: "Tasks",       icon: CheckSquare,   href: (id) => `/clients/${id}/tasks` },
-  { section: "reports",     label: "Reports",     icon: BarChart3,     href: (id) => `/clients/${id}/reports` },
-  { section: "portal",      label: "Portal",      icon: Globe,         href: (id) => `/clients/${id}/portal` },
-  { section: "ai-insights", label: "AI Insights", icon: Sparkles,      href: (id) => `/clients/${id}/ai-insights` },
+  { section: "overview",    label: "Overview",    icon: LayoutGrid,    href: (id) => `/clients/${id}/overview/` },
+  { section: "accounting",  label: "Accounting",  icon: BookOpen,      href: (id) => `/clients/${id}/accounting/` },
+  { section: "sales",       label: "Sales",       icon: ShoppingCart,  href: (id) => `/clients/${id}/sales/` },
+  { section: "purchases",   label: "Purchases",   icon: Package,       href: (id) => `/clients/${id}/purchases/` },
+  { section: "compliance",  label: "Compliance",  icon: Shield,        href: (id) => `/clients/${id}/compliance/` },
+  { section: "payroll",     label: "Payroll",     icon: Users,         href: (id) => `/clients/${id}/payroll/` },
+  { section: "year-end",    label: "Year End",    icon: CalendarCheck, href: (id) => `/clients/${id}/year-end/` },
+  { section: "tax",         label: "Tax",         icon: FileText,      href: (id) => `/clients/${id}/tax/` },
+  { section: "documents",   label: "Documents",   icon: FolderOpen,    href: (id) => `/clients/${id}/documents/` },
+  { section: "tasks",       label: "Tasks",       icon: CheckSquare,   href: (id) => `/clients/${id}/tasks/` },
+  { section: "reports",     label: "Reports",     icon: BarChart3,     href: (id) => `/clients/${id}/reports/` },
+  { section: "portal",      label: "Portal",      icon: Globe,         href: (id) => `/clients/${id}/portal/` },
+  { section: "ai-insights", label: "AI Insights", icon: Sparkles,      href: (id) => `/clients/${id}/ai-insights/` },
 ];
 
 export function ClientRail() {

@@ -10,7 +10,7 @@ export default function ClientRootPage() {
     const m = window.location.pathname.match(/^\/clients\/([^/]+)/);
     const id = m ? decodeURIComponent(m[1]) : null;
     if (id && id !== "_placeholder") {
-      router.replace(`/clients/${id}/overview`);
+      router.replace(`/clients/${id}/overview/`);
     } else if (id === "_placeholder") {
       router.replace("/clients");
     }
