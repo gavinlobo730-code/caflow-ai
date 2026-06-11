@@ -10,6 +10,7 @@ from typing import Optional
 from datetime import datetime, timezone
 
 from models.common import api_response
+from models.banking import BankAccountIn, BankAccountUpdateIn, StatementImportIn, ReconcileMatchIn, MatchingRuleIn
 from core.permissions import rbac
 from services.timeline_service import timeline_service
 
@@ -40,22 +41,15 @@ def list_bank_accounts(
 
 @router.post("/accounts")
 def create_bank_account(
-    data: dict,
+    data: BankAccountIn,
     current_user: dict = Depends(rbac("accounting", "write"))
 ):
     db = _db()
     if not db:
-        return api_response(True, {"id": "mock-id", **data})
+        return api_response(True, {"id": "mock-id", **data.model_dump()})
     row = db.table("bank_accounts").insert({
         "firm_id":               current_user["firm_id"],
-        "client_id":             data["client_id"],
-        "bank_name":             data["bank_name"],
-        "account_no":            data["account_no"],
-        "ifsc":                  data.get("ifsc"),
-        "account_type":          data.get("account_type", "Current"),
-        "opening_balance_paise": int(data.get("opening_balance_paise", 0)),
-        "opening_balance_date":  data.get("opening_balance_date"),
-        "coa_account_id":        data.get("coa_account_id"),
+        **data.model_dump(),
     }).execute()
     return api_response(True, (row.data or [{}])[0])
 
@@ -63,14 +57,13 @@ def create_bank_account(
 @router.patch("/accounts/{account_id}")
 def update_bank_account(
     account_id: str,
-    data: dict,
+    data: BankAccountUpdateIn,
     current_user: dict = Depends(rbac("accounting", "write"))
 ):
     db = _db()
+    update = data.model_dump(exclude_none=True)
     if not db:
-        return api_response(True, data)
-    allowed = {"bank_name", "ifsc", "account_type", "opening_balance_paise", "opening_balance_date", "coa_account_id", "is_active"}
-    update = {k: v for k, v in data.items() if k in allowed}
+        return api_response(True, update)
     row = db.table("bank_accounts").update(update).eq("id", account_id).execute()
     return api_response(True, (row.data or [{}])[0])
 
@@ -79,45 +72,35 @@ def update_bank_account(
 
 @router.post("/statements/import")
 def import_statement(
-    data: dict,
+    data: StatementImportIn,
     current_user: dict = Depends(rbac("accounting", "write"))
 ):
     """
     Import parsed bank transactions into bank_transactions table.
-    data.rows = list of {txn_date, description, debit_paise, credit_paise, balance_paise}
     All amounts must already be in integer paise — no float conversion here.
     """
     db = _db()
-    client_id      = data["client_id"]
-    bank_account_id = data.get("bank_account_id")
-    rows           = data.get("rows", [])
-
-    if not rows:
-        raise HTTPException(status_code=422, detail="No transactions provided")
+    client_id       = data.client_id
+    bank_account_id = data.bank_account_id
 
     if not db:
-        return api_response(True, {"imported": len(rows), "skipped": 0})
+        return api_response(True, {"imported": len(data.rows), "skipped": 0})
 
     firm_id = current_user["firm_id"]
     inserted = 0
     skipped  = 0
 
-    for r in rows:
-        # Validate paise are integers
-        for field in ("debit_paise", "credit_paise", "balance_paise"):
-            if field in r and not isinstance(r[field], int):
-                raise HTTPException(status_code=422, detail=f"Field {field} must be integer paise, not float")
-
+    for r in data.rows:
         try:
             db.table("bank_transactions").insert({
                 "firm_id":         firm_id,
                 "client_id":       client_id,
                 "bank_account_id": bank_account_id,
-                "txn_date":        r["txn_date"],
-                "description":     r.get("description", ""),
-                "debit_paise":     r.get("debit_paise", 0),
-                "credit_paise":    r.get("credit_paise", 0),
-                "balance_paise":   r.get("balance_paise", 0),
+                "txn_date":        r.txn_date,
+                "description":     r.description,
+                "debit_paise":     r.debit_paise,
+                "credit_paise":    r.credit_paise,
+                "balance_paise":   r.balance_paise,
                 "reconciled":      False,
             }).execute()
             inserted += 1
@@ -155,7 +138,7 @@ def list_transactions(
 
 @router.post("/reconcile/match")
 def match_transaction(
-    data: dict,
+    data: ReconcileMatchIn,
     current_user: dict = Depends(rbac("accounting", "write"))
 ):
     """
@@ -164,8 +147,8 @@ def match_transaction(
     Human must review and confirm each match before it takes effect.
     """
     db = _db()
-    txn_id     = data["bank_transaction_id"]
-    journal_id = data["journal_entry_id"]
+    txn_id     = data.bank_transaction_id
+    journal_id = data.journal_entry_id
 
     if not db:
         return api_response(True, {"matched": True, "txn_id": txn_id})
@@ -285,22 +268,15 @@ def list_rules(
 
 @router.post("/rules")
 def create_rule(
-    data: dict,
+    data: MatchingRuleIn,
     current_user: dict = Depends(rbac("accounting", "write"))
 ):
     db = _db()
     if not db:
-        return api_response(True, {"id": "mock-id", **data})
+        return api_response(True, {"id": "mock-id", **data.model_dump()})
     row = db.table("bank_matching_rules").insert({
-        "firm_id":              current_user["firm_id"],
-        "client_id":            data["client_id"],
-        "rule_name":            data["rule_name"],
-        "description_pattern":  data.get("description_pattern"),
-        "amount_min_paise":     data.get("amount_min_paise"),
-        "amount_max_paise":     data.get("amount_max_paise"),
-        "txn_type":             data.get("txn_type", "any"),
-        "suggested_account_id": data.get("suggested_account_id"),
-        "suggested_narration":  data.get("suggested_narration"),
+        "firm_id": current_user["firm_id"],
+        **data.model_dump(),
     }).execute()
     return api_response(True, (row.data or [{}])[0])
 
