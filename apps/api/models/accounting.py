@@ -84,3 +84,47 @@ class JournalEntryIn(BaseModel):
 class JournalReversalIn(BaseModel):
     reversal_date: str  # YYYY-MM-DD
     narration: Optional[str] = None
+
+
+class DepreciationMethod(str, Enum):
+    SL = "SL"
+    WDV = "WDV"
+
+
+class FixedAssetIn(BaseModel):
+    client_id: str
+    asset_name: str
+    asset_category: str = "Other"
+    purchase_date: str  # YYYY-MM-DD
+    purchase_cost_paise: int
+    salvage_value_paise: int = 0
+    useful_life_years: Optional[int] = None
+    depreciation_method: DepreciationMethod = DepreciationMethod.WDV
+    wdv_rate_percent: Optional[float] = None
+    location: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("purchase_cost_paise", "salvage_value_paise")
+    @classmethod
+    def must_be_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("Cost/salvage values must be non-negative paise integers.")
+        return v
+
+
+class DepreciationIn(BaseModel):
+    period: Optional[str] = None  # YYYY-MM; defaults to current month
+
+
+class DisposalIn(BaseModel):
+    disposal_type: str = "Sale"  # Sale | Scrapped | Written Off
+    sale_proceeds_paise: int = 0
+    disposal_date: Optional[str] = None  # YYYY-MM-DD; defaults to today
+    notes: Optional[str] = None
+
+    @field_validator("sale_proceeds_paise")
+    @classmethod
+    def must_be_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("sale_proceeds_paise must be non-negative.")
+        return v
