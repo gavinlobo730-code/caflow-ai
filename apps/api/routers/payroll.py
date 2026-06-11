@@ -19,6 +19,7 @@ from services.timeline_service import timeline_service
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
 
 _USE_MOCK = True  # switched off when SUPABASE_URL is set
+_MOCK_FINALIZED_RUNS: set[str] = set()  # tracks finalized run IDs in mock mode
 
 
 def _db():
@@ -341,6 +342,9 @@ def update_run_status(
     db = _db()
     new_status = data.status
     if not db:
+        # Mock: track finalized runs to enforce immutability
+        if run_id in _MOCK_FINALIZED_RUNS:
+            raise HTTPException(status_code=409, detail="Run already finalized — cannot change status")
         return api_response(True, {"id": run_id, "status": new_status})
     row = db.table("payroll_runs").update({"status": new_status}).eq("id", run_id).neq("status", "finalized").execute()
     if not row.data:
@@ -368,6 +372,9 @@ def finalize_run(
     """
     db = _db()
     if not db:
+        if run_id in _MOCK_FINALIZED_RUNS:
+            raise HTTPException(status_code=409, detail="Run already finalized")
+        _MOCK_FINALIZED_RUNS.add(run_id)
         return api_response(True, {"id": run_id, "status": "finalized"})
 
     run = db.table("payroll_runs").select("*").eq("id", run_id).single().execute().data

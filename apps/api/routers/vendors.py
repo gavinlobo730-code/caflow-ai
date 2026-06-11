@@ -69,7 +69,8 @@ def list_vendors(
     """List vendors for a client."""
     try:
         if _USE_MOCK:
-            result = [v for v in MOCK_VENDORS if v["client_id"] == client_id]
+            firm_id = current_user.get("firm_id")
+            result = [v for v in MOCK_VENDORS if v["client_id"] == client_id and v.get("firm_id") == firm_id]
             if not include_inactive:
                 result = [v for v in result if v.get("is_active", True)]
             return api_response(True, result)

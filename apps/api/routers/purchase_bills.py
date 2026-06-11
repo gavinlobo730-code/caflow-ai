@@ -19,6 +19,17 @@ from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
 
+# IT Act §194C: 2% (companies/firms); §194I: 10%; §194J: 10%
+# Default rates when vendor master tds_rate_bps is 0
+_TDS_DEFAULT_BPS: dict[str, int] = {
+    "194C":  200,   # 2% for companies/firms (conservative default)
+    "194I":  1000,  # 10% on rent
+    "194IA": 100,   # 1% on immovable property transfer
+    "194J":  1000,  # 10% professional/technical fees
+    "194H":  500,   # 5% commission/brokerage
+    "194A":  1000,  # 10% interest (other than bank)
+}
+
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_bills")
 
@@ -141,8 +152,11 @@ def create_purchase_bill(
             raise HTTPException(status_code=422, detail="At least one line item is required")
 
         if _USE_MOCK:
-            # Mock vendor lookup
-            vendor = {"tds_applicable": False, "tds_section": None, "tds_rate_bps": 0, "state_code": "27"}
+            # Look up vendor from in-memory store; fall back to safe defaults
+            from routers.vendors import MOCK_VENDORS
+            vendor = next((v for v in MOCK_VENDORS if v.get("id") == vendor_id), None)
+            if vendor is None:
+                vendor = {"tds_applicable": False, "tds_section": None, "tds_rate_bps": 0, "state_code": "27"}
             is_interstate = False
         else:
             from core.supabase_client import get_supabase
@@ -200,12 +214,17 @@ def create_purchase_bill(
         total_paise = total_taxable + total_cgst + total_sgst + total_igst
 
         # TDS computation — integer paise, never float
-        # IT Act §194C: 1% (individual/HUF) / 2% (others); §194I: 10%; §194J: 10%
+        # IT Act §194C: 2% (companies/firms); §194I: 10%; §194J: 10%
         tds_paise = 0
-        if vendor.get("tds_applicable") and vendor.get("tds_rate_bps", 0) > 0:
-            tds_rate_bps = int(vendor["tds_rate_bps"])
-            # TDS is on taxable amount (excluding GST) — IT Act §194C/194I/194J
-            tds_paise = (total_taxable * tds_rate_bps) // 10000
+        if vendor.get("tds_applicable"):
+            tds_rate_bps = int(vendor.get("tds_rate_bps") or 0)
+            if tds_rate_bps == 0 and vendor.get("tds_section"):
+                # Auto-populate statutory default when vendor master rate not set
+                section = str(vendor["tds_section"]).upper().strip()
+                tds_rate_bps = _TDS_DEFAULT_BPS.get(section, 0)
+            if tds_rate_bps > 0:
+                # TDS is on taxable amount (excluding GST) — IT Act §194C/194I/194J
+                tds_paise = (total_taxable * tds_rate_bps) // 10000
 
         net_payable_paise = total_paise - tds_paise
 
