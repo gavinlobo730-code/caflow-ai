@@ -16,6 +16,7 @@ export type ClientSection =
   | "purchases"
   | "compliance"
   | "payroll"
+  | "fixed-assets"
   | "year-end"
   | "tax"
   | "documents"
