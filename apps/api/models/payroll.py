@@ -1,0 +1,116 @@
+"""
+Pydantic request models for payroll endpoints.
+EPF Act: PF = 12% of basic. ESI Act §2(9): employee 0.75%, employer 3.25%.
+IT Act §192: TDS on salary (new regime slabs + 4% cess).
+All monetary amounts in integer paise.
+"""
+from pydantic import BaseModel, field_validator
+from typing import Optional
+
+
+class EmployeeIn(BaseModel):
+    client_id: str
+    name: str
+    pan: Optional[str] = None
+    designation: Optional[str] = None
+    department: Optional[str] = None
+    joining_date: Optional[str] = None
+    basic_paise: int = 0
+    hra_percent: float = 0.0
+    da_percent: float = 0.0
+    other_allowances_paise: int = 0
+    lta_paise: int = 0
+    medical_paise: int = 0
+    special_allowance_paise: int = 0
+    pf_applicable: bool = True
+    esi_applicable: bool = True
+    pt_applicable: bool = False
+    pt_state: Optional[str] = None
+    uan: Optional[str] = None
+    esi_number: Optional[str] = None
+    bank_account_no: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    bank_name: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def name_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Employee name cannot be blank.")
+        return v.strip()
+
+    @field_validator("basic_paise", "other_allowances_paise", "lta_paise",
+                     "medical_paise", "special_allowance_paise")
+    @classmethod
+    def non_negative_paise(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("Paise values must be non-negative.")
+        return v
+
+
+class EmployeeUpdateIn(BaseModel):
+    name: Optional[str] = None
+    designation: Optional[str] = None
+    department: Optional[str] = None
+    basic_paise: Optional[int] = None
+    hra_percent: Optional[float] = None
+    da_percent: Optional[float] = None
+    lta_paise: Optional[int] = None
+    medical_paise: Optional[int] = None
+    special_allowance_paise: Optional[int] = None
+    pf_applicable: Optional[bool] = None
+    esi_applicable: Optional[bool] = None
+    pt_applicable: Optional[bool] = None
+    pt_state: Optional[str] = None
+    bank_account_no: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    bank_name: Optional[str] = None
+    uan: Optional[str] = None
+    esi_number: Optional[str] = None
+    status: Optional[str] = None
+
+
+class SalaryStructureIn(BaseModel):
+    client_id: str
+    name: str
+    basic_percent: float = 40.0
+    hra_percent: float = 20.0
+    da_percent: float = 0.0
+    lta_percent: float = 5.0
+    medical_paise: int = 125000  # ₹1,250/month
+    special_percent: float = 0.0
+    pf_applicable: bool = True
+    esi_applicable: bool = True
+    pt_applicable: bool = False
+    pt_state: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def name_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Structure name cannot be blank.")
+        return v.strip()
+
+
+class PayrollRunIn(BaseModel):
+    client_id: str
+    month: str  # YYYY-MM
+
+    @field_validator("month")
+    @classmethod
+    def valid_month_format(cls, v: str) -> str:
+        import re
+        if not re.match(r"^\d{4}-(0[1-9]|1[0-2])$", v):
+            raise ValueError("month must be in YYYY-MM format (e.g. 2026-06).")
+        return v
+
+
+class RunStatusIn(BaseModel):
+    status: str
+
+    @field_validator("status")
+    @classmethod
+    def valid_status(cls, v: str) -> str:
+        if v not in ("draft", "review"):
+            raise ValueError("status must be 'draft' or 'review'. Use /finalize to finalize.")
+        return v
