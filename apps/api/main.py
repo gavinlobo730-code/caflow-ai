@@ -7,9 +7,16 @@ from core.exceptions import PermissionDeniedError
 from routers import clients, compliance, documents, assistant, insights, tasks, workflows, reminders, team
 from routers import accounting, compliance_records
 from routers import document_intelligence, risks, ai_insights, automation, notifications, ai_copilot
-from routers import gst
-from routers import tds
-from routers import income_tax
+from routers import gst, tds, income_tax
+from routers import task_templates, task_extras, task_recurring
+from routers import time_tracking, workload, analytics, engagements, invoices
+from routers import intelligence
+from routers import scheduler_status, audit, onboarding
+from routers import customers, vendors, sales_invoices, receipts, credit_notes
+from routers import purchase_bills, purchase_payments, document_intelligence_v1
+from routers import gst_workspace, tds_workspace, mca_workspace, document_intelligence_v2
+from routers import payroll, fixed_assets, banking
+from routers import timeline
 # Phase 6 — Year End
 from routers import year_end, year_end_checklist, year_end_adjustments
 from routers import year_end_statements, year_end_notes, year_end_reviews
@@ -58,6 +65,34 @@ app.include_router(ai_copilot.router)
 app.include_router(gst.router)
 app.include_router(tds.router)
 app.include_router(income_tax.router)
+app.include_router(task_templates.router)
+app.include_router(task_extras.router)
+app.include_router(task_recurring.router)
+app.include_router(time_tracking.router)
+app.include_router(workload.router)
+app.include_router(analytics.router)
+app.include_router(engagements.router)
+app.include_router(invoices.router)
+app.include_router(intelligence.router)
+app.include_router(scheduler_status.router)
+app.include_router(audit.router)
+app.include_router(onboarding.router)
+app.include_router(customers.router)
+app.include_router(vendors.router)
+app.include_router(sales_invoices.router)
+app.include_router(receipts.router)
+app.include_router(credit_notes.router)
+app.include_router(purchase_bills.router)
+app.include_router(purchase_payments.router)
+app.include_router(document_intelligence_v1.router)
+app.include_router(gst_workspace.router)
+app.include_router(tds_workspace.router)
+app.include_router(mca_workspace.router)
+app.include_router(document_intelligence_v2.router)
+app.include_router(payroll.router)
+app.include_router(fixed_assets.router)
+app.include_router(banking.router)
+app.include_router(timeline.router)
 # Phase 6 — Year End routers
 app.include_router(year_end.router, prefix="/api")
 app.include_router(year_end_checklist.router, prefix="/api")

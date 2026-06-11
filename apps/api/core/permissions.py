@@ -137,6 +137,12 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "read":  _ALL_STAFF,
         "write": _AT_LEAST_EXECUTIVE,
     },
+    # ── MCA / ROC filings ────────────────────────────────────────────────────
+    "mca": {
+        "read":    _ALL_STAFF,
+        "write":   _AT_LEAST_EXECUTIVE,
+        "approve": _AT_LEAST_MANAGER,   # CGST/CA rules: Partner or Manager can approve MCA filings
+    },
     # ── Year End Engagements (Schedule III, audit pack, adjustments) ───────────
     "year_end": {
         "read":          _AT_LEAST_EXECUTIVE,

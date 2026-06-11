@@ -33,11 +33,11 @@ _VALID_STATE_CODES = {
 
 def validate_gstin(value: Optional[str]) -> Optional[str]:
     """Return None if valid, error message string if invalid.
-    Returns None (no error) when value is empty/None — GSTIN is optional for parties.
     CGST Act §25: GSTIN format: 2-digit state + PAN(10) + entity + Z + check.
+    Returns an error when value is None/empty — GSTIN is required.
     """
     if not value:
-        return None  # GSTIN is optional; callers enforce required separately if needed
+        return "GSTIN is required. CGST Act §25: every registered person must have a valid GSTIN."
     v = value.strip().upper()
     if not _GSTIN_RE.match(v):
         return "GSTIN format is invalid. Expected: 2-digit state + PAN + 1 entity + Z + 1 check (e.g. 27AAAAA0000A1Z5)."
