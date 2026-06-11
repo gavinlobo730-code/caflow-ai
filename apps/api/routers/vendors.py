@@ -82,7 +82,7 @@ def list_vendors(
         return api_response(True, resp.data or [])
     except Exception as e:
         _logger.error("list_vendors: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
 @router.post("/")
@@ -156,7 +156,7 @@ def create_vendor(
         raise
     except Exception as e:
         _logger.error("create_vendor: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
 @router.get("/{vendor_id}")
@@ -182,7 +182,7 @@ def get_vendor(
         raise
     except Exception as e:
         _logger.error("get_vendor: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
 @router.patch("/{vendor_id}")
@@ -227,7 +227,7 @@ def update_vendor(
         raise
     except Exception as e:
         _logger.error("update_vendor: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
 @router.delete("/{vendor_id}")
@@ -259,7 +259,7 @@ def delete_vendor(
         raise
     except Exception as e:
         _logger.error("delete_vendor: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
 @router.get("/{vendor_id}/outstanding")
@@ -320,4 +320,4 @@ def get_vendor_outstanding(
         raise
     except Exception as e:
         _logger.error("get_vendor_outstanding: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")

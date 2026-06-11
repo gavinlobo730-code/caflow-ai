@@ -85,7 +85,7 @@ def list_customers(
         return api_response(True, resp.data or [])
     except Exception as e:
         _logger.error("list_customers: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
 @router.post("/")
@@ -142,7 +142,7 @@ def create_customer(
         raise
     except Exception as e:
         _logger.error("create_customer: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
 @router.get("/outstanding")
@@ -184,7 +184,7 @@ def get_outstanding_summary(
         return api_response(True, {"client_id": client_id, "total_outstanding_paise": total, "customers": result})
     except Exception as e:
         _logger.error("get_outstanding_summary: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
 @router.get("/{customer_id}")
@@ -209,7 +209,7 @@ def get_customer(
         raise
     except Exception as e:
         _logger.error("get_customer: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
 @router.patch("/{customer_id}")
@@ -247,7 +247,7 @@ def update_customer(
         raise
     except Exception as e:
         _logger.error("update_customer: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
 @router.delete("/{customer_id}")
@@ -279,7 +279,7 @@ def delete_customer(
         raise
     except Exception as e:
         _logger.error("delete_customer: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
 @router.get("/{customer_id}/outstanding")
@@ -332,4 +332,4 @@ def get_customer_outstanding(
         raise
     except Exception as e:
         _logger.error("get_customer_outstanding: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
