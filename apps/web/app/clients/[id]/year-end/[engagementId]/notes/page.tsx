@@ -168,7 +168,7 @@ export default function NotesPage() {
                 </span>
                 <p className="text-xs text-[#475569] flex-1 truncate">{note.title}</p>
                 {note.is_locked && (
-                  <Lock size={12} className="text-[#94A3B8] flex-shrink-0" title="Locked" />
+                  <span title="Locked"><Lock size={12} className="text-[#94A3B8] flex-shrink-0" /></span>
                 )}
               </div>
 
