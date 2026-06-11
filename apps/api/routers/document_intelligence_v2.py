@@ -243,7 +243,7 @@ def extract_notice(
         })
     except Exception as e:
         _logger.exception("extract_notice error")
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete document processing. Please try again.")
 
 
 @router.get("/notices")
@@ -270,7 +270,7 @@ def list_notices(
             rows = q.range(offset, offset + limit - 1).execute().data or []
         return api_response(True, rows)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete document processing. Please try again.")
 
 
 @router.get("/notices/{notice_id}")
@@ -290,7 +290,7 @@ def get_notice(notice_id: str, current_user: dict = Depends(rbac("compliance", "
                 return api_response(False, None, "Notice not found")
         return api_response(True, rec)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete document processing. Please try again.")
 
 
 @router.patch("/notices/{notice_id}/status")
@@ -322,7 +322,7 @@ def update_notice_status(
                   actor_id=current_user.get("id"), new_data=updates)
         return api_response(True, rec)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete document processing. Please try again.")
 
 
 @router.post("/notices/{notice_id}/approve")
@@ -374,4 +374,4 @@ def approve_notice(
         )
         return api_response(True, {**rec, "message": "Notice approved by CA. Now actionable."})
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete document processing. Please try again.")
