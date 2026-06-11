@@ -227,9 +227,11 @@ def create_invoice(
         client_id = data["client_id"]
         supply_state_code = data.get("supply_state_code", "")
 
+        customer: dict = {}
         if _USE_MOCK:
-            # Determine is_interstate from supply_state_code vs a placeholder "27" (Mumbai)
-            is_interstate = False
+            # In mock mode use is_inter_state flag or derive from place_of_supply vs "27" (Mumbai)
+            place = data.get("place_of_supply") or data.get("supply_state_code") or ""
+            is_interstate = data.get("is_inter_state", False) or (bool(place) and place != "27")
             client_state_code = "27"
         else:
             from core.supabase_client import get_supabase
@@ -259,8 +261,10 @@ def create_invoice(
         # Effective place of supply
         effective_supply_state = supply_state_code or customer.get("state_code") or ""  # type: ignore[possibly-undefined]
 
-        # CGST Act §8: Intra-state if both in same state; inter-state otherwise
-        is_interstate = bool(client_state_code and effective_supply_state and client_state_code != effective_supply_state)
+        if not _USE_MOCK:
+            # CGST Act §8: Intra-state if both in same state; inter-state otherwise
+            # (In mock mode is_interstate was already determined above from request flags)
+            is_interstate = bool(client_state_code and effective_supply_state and client_state_code != effective_supply_state)
 
         # Compute lines — use Decimal for quantity × rate_paise, cast to int immediately
         computed_lines: list[dict] = []
@@ -272,7 +276,9 @@ def create_invoice(
         for ln in lines_data:
             qty        = ln.get("quantity", 1)
             rate_paise = int(ln.get("rate_paise", 0))
-            gst_rate_bps = int(ln.get("gst_rate_bps", 0))
+            # Model uses gst_rate_percent (e.g. 18.0), convert to bps (10000 bps = 100%)
+            gst_rate_percent = float(ln.get("gst_rate_percent", 0) or ln.get("gst_rate_bps", 0) / 100)
+            gst_rate_bps = int(round(gst_rate_percent * 100))
 
             # Integer multiplication: use Decimal for quantity precision, cast immediately
             taxable_paise = int(Decimal(str(qty)) * rate_paise)
@@ -481,7 +487,8 @@ def update_invoice(
             for ln in data["lines"]:
                 qty          = ln.get("quantity", 1)
                 rate_paise   = int(ln.get("rate_paise", 0))
-                gst_rate_bps = int(ln.get("gst_rate_bps", 0))
+                gst_rate_percent = float(ln.get("gst_rate_percent", 0) or ln.get("gst_rate_bps", 0) / 100)
+                gst_rate_bps = int(round(gst_rate_percent * 100))
                 taxable      = int(Decimal(str(qty)) * rate_paise)
                 cgst, sgst, igst = _compute_line_gst(taxable, gst_rate_bps, is_interstate)
 
