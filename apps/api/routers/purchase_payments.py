@@ -10,6 +10,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
+from models.invoices import PurchasePaymentIn
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
@@ -159,7 +160,7 @@ def get_purchase_payment(
 
 @router.post("")
 def create_purchase_payment(
-    data: dict,
+    data: PurchasePaymentIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """
@@ -170,10 +171,8 @@ def create_purchase_payment(
     TDS was already deducted at the purchase bill stage, so payment is net.
     """
     firm_id = current_user["firm_id"]
+    data = data.model_dump()
     client_id = data.get("client_id")
-    if not client_id:
-        raise HTTPException(status_code=422, detail="client_id is required")
-
     vendor_id = data.get("vendor_id")
     if not vendor_id:
         raise HTTPException(status_code=422, detail="vendor_id is required")

@@ -12,6 +12,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
+from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
@@ -207,7 +208,7 @@ def list_invoices(
 
 @router.post("/")
 def create_invoice(
-    data: dict,
+    data: SalesInvoiceIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """
@@ -217,11 +218,7 @@ def create_invoice(
     All monetary values in integer paise.
     """
     try:
-        required = ["client_id", "customer_id", "invoice_date", "lines"]
-        for field in required:
-            if not data.get(field):
-                raise HTTPException(status_code=422, detail=f"{field} is required")
-
+        data = data.model_dump()
         lines_data = data.get("lines", [])
         if not lines_data:
             raise HTTPException(status_code=422, detail="At least one line item is required")
@@ -443,11 +440,12 @@ def get_invoice(
 @router.patch("/{invoice_id}")
 def update_invoice(
     invoice_id: str,
-    data: dict,
+    data: SalesInvoiceUpdateIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """Update a draft invoice. Recomputes GST if lines are changed. Only allowed on draft status."""
     try:
+        data = data.model_dump(exclude_none=True)
         if _USE_MOCK:
             for i, inv in enumerate(MOCK_SALES_INVOICES):
                 if inv["id"] == invoice_id:
