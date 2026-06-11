@@ -10,6 +10,15 @@ const TYPE_BADGE: Record<string, string> = {
   manual: "bg-[#F1F5F9] text-[#475569]",
 };
 
+function noteType(note: NoteToAccount): "auto" | "manual" {
+  if (note.type) return note.type;
+  return note.is_auto_generated ? "auto" : "manual";
+}
+
+function noteNumber(note: NoteToAccount): number {
+  return note.note_number ?? note.sequence_no ?? 0;
+}
+
 export default function NotesPage() {
   const params = useParams<{ id: string; engagementId: string }>();
   const { engagementId } = params;
@@ -161,10 +170,10 @@ export default function NotesPage() {
                   <ChevronRight size={14} className="text-[#94A3B8] flex-shrink-0" />
                 )}
                 <span className="text-xs font-semibold text-[#334155] min-w-[56px]">
-                  Note {note.note_number}
+                  Note {noteNumber(note)}
                 </span>
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${TYPE_BADGE[note.type] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
-                  {note.type === "auto" ? "Auto-generated" : "Manual"}
+                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${TYPE_BADGE[noteType(note)] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
+                  {noteType(note) === "auto" ? "Auto-generated" : "Manual"}
                 </span>
                 <p className="text-xs text-[#475569] flex-1 truncate">{note.title}</p>
                 {note.is_locked && (
@@ -175,7 +184,7 @@ export default function NotesPage() {
               {/* Expanded content */}
               {isExpanded && (
                 <div className="border-t border-[#F8FAFC] px-4 py-3 space-y-3">
-                  {note.type === "auto" ? (
+                  {noteType(note) === "auto" ? (
                     // Auto-generated notes: display as formatted read-only view
                     <AutoNoteContent content={note.content} locked={note.is_locked} />
                   ) : (

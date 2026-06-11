@@ -182,8 +182,8 @@ export default function ExportsPage() {
 
               {latest && (
                 <p className="text-[10px] text-[#94A3B8]">
-                  Last generated: {timeAgo(latest.generated_at)}
-                  {latest.is_draft && " · DRAFT"}
+                  Last generated: {timeAgo(latest.generated_at ?? latest.created_at)}
+                  {(latest.is_draft ?? false) && " · DRAFT"}
                 </p>
               )}
 
@@ -237,15 +237,15 @@ export default function ExportsPage() {
                 {exports.map((exp) => (
                   <tr key={exp.id} className="hover:bg-[#F8FAFC]">
                     <td className="px-4 py-2.5 text-[#334155]">{TYPE_LABELS[exp.export_type] ?? exp.export_type}</td>
-                    <td className="px-3 py-2.5 text-[#64748B]">v{exp.version_number}</td>
-                    <td className="px-3 py-2.5 text-[#475569]">{exp.generated_by}</td>
+                    <td className="px-3 py-2.5 text-[#64748B]">v{exp.version_number ?? 1}</td>
+                    <td className="px-3 py-2.5 text-[#475569]">{exp.generated_by ?? exp.created_by}</td>
                     <td className="px-3 py-2.5 text-[#64748B] whitespace-nowrap">
-                      {new Date(exp.generated_at).toLocaleDateString("en-IN", {
+                      {new Date(exp.generated_at ?? exp.created_at).toLocaleDateString("en-IN", {
                         day: "numeric", month: "short", year: "numeric",
                       })}
                     </td>
                     <td className="px-3 py-2.5">
-                      {exp.is_draft ? (
+                      {(exp.is_draft ?? false) ? (
                         <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Draft</span>
                       ) : (
                         <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Final</span>
