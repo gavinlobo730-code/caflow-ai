@@ -2,12 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Users, Plus, Play, CheckCircle, AlertCircle, ChevronDown,
-  FileText, TrendingUp, IndianRupee, Download, RefreshCw,
-  Building2, CreditCard, User
+  Users, Plus, Play, CheckCircle,
+  FileText, TrendingUp, IndianRupee, Download,
+  Building2, CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { api } from "@/lib/api";
@@ -383,7 +382,7 @@ function StatutoryTab({ clientId }: { clientId: string }) {
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const [month, setMonth] = useState(defaultMonth);
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function load() {
@@ -527,7 +526,7 @@ export default function PayrollPage() {
 // ─── Salary Structures Tab ────────────────────────────────────────────────────
 
 function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: string }) {
-  const [structures, setStructures] = useState<any[]>([]);
+  const [structures, setStructures] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: "", basic_percent: "40", hra_percent: "20", pf_applicable: true, esi_applicable: true });
@@ -602,7 +601,7 @@ function ReportsTab({ clientId }: { clientId: string }) {
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const [month, setMonth] = useState(defaultMonth);
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function load() {
