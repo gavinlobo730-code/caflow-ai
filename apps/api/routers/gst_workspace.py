@@ -564,6 +564,46 @@ def save_gstr9(
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
+@router.get("/gstr9")
+def get_gstr9(
+    client_id: str = Query(...),
+    financial_year: str = Query(..., description="FY string e.g. '2025-26'"),
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """
+    Retrieve saved GSTR-9 draft for a client and financial year.
+    CGST Act §44: Annual return filed by 31st December following FY end.
+    """
+    try:
+        if _USE_MOCK:
+            rec = next(
+                (v for v in _MOCK_GSTR1.values()
+                 if v.get("client_id") == client_id
+                 and v.get("financial_year") == financial_year
+                 and v.get("return_type") == "gstr9"),
+                None,
+            )
+            return api_response(True, rec)
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        res = (
+            db.table("gstr1_returns")
+            .select("*")
+            .eq("client_id", client_id)
+            .eq("financial_year", financial_year)
+            .eq("return_type", "gstr9")
+            .limit(1)
+            .execute()
+        )
+        return api_response(True, res.data[0] if res.data else None)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("get_gstr9: %s", e)
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
+
+
 @router.get("/gstr2b/{upload_id}")
 def get_gstr2b(upload_id: str, current_user: dict = Depends(rbac("gst", "read"))):
     """Get GSTR-2B reconciliation result."""
