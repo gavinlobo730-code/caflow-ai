@@ -327,14 +327,15 @@ class TestTDS192Boundary:
         assert isinstance(monthly_above, int)
 
     def test_cess_is_4_percent(self):
-        """IT Act §87A cess: 4% on income tax. Verify cess is added."""
-        # ₹5L annual: tax = ₹10,000, cess = ₹400, total = ₹10,400
+        """IT Act §87A cess: 4% on income tax. Verify cess is added (±12 paise rounding tolerance)."""
+        # ₹5L annual: tax = ₹10,000 * 100 paise, cess = ₹400 * 100 paise, total = ₹10,400 * 100 paise
         import math as m
         annual_tds = _compute_tds_192(50000000) * 12
-        base_tax = (50000000 - 30000000) * 5 // 100  # 10000 * 100 paise
+        base_tax = (50000000 - 30000000) * 5 // 100
         cess = m.floor(base_tax * 4 / 100)
         expected_annual = base_tax + cess
-        assert annual_tds == expected_annual
+        # Allow ≤12 paise rounding tolerance (floor division applied per month × 12)
+        assert abs(annual_tds - expected_annual) <= 12
 
     def test_tds_never_negative(self):
         """TDS must always be non-negative."""
