@@ -50,12 +50,12 @@ export function ClientRail() {
   const { clientId } = useClientNav();
 
   return (
-    <div className="flex flex-col h-full w-[52px] shrink-0 bg-white border-r border-[#E2E8F0]">
+    <div className="flex flex-col h-full w-[52px] shrink-0 bg-[#0F172A] border-r border-white/10">
       {/* Back to Firm */}
       <Link
         href="/clients"
         title="Back to Clients"
-        className="flex items-center justify-center h-12 w-full text-[#94A3B8] hover:text-[#475569] hover:bg-[#F1F5F9] transition-colors border-b border-[#E2E8F0]"
+        className="flex items-center justify-center h-12 w-full text-slate-500 hover:text-white hover:bg-white/10 transition-colors border-b border-white/10"
       >
         <ArrowLeft size={16} />
       </Link>
@@ -73,12 +73,12 @@ export function ClientRail() {
               className={cn(
                 "relative flex items-center justify-center w-9 h-9 rounded-lg transition-all duration-100",
                 active
-                  ? "bg-violet-600/20 text-violet-400"
-                  : "text-[#94A3B8] hover:text-[#475569] hover:bg-[#F1F5F9]"
+                  ? "bg-blue-600 text-white"
+                  : "text-slate-500 hover:text-white hover:bg-white/10"
               )}
             >
               {active && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-violet-500 rounded-r" />
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-blue-400 rounded-r" />
               )}
               <Icon size={16} className="shrink-0" />
             </Link>

@@ -25,9 +25,9 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
   );
 
   return (
-    <aside className="relative flex flex-col h-full w-[52px] shrink-0 bg-white border-r border-[#BFDBFE] z-10">
+    <aside className="relative flex flex-col h-full w-[52px] shrink-0 bg-[#0F172A] border-r border-white/10 z-10">
       {/* Logo */}
-      <div className="flex items-center justify-center h-14 border-b border-[#BFDBFE] shrink-0">
+      <div className="flex items-center justify-center h-14 border-b border-white/10 shrink-0">
         <div className="w-7 h-7 rounded-[8px] bg-blue-600 flex items-center justify-center text-[11px] font-bold text-white shadow-[0_0_16px_rgba(59,130,246,0.35)]">
           P
         </div>
@@ -46,25 +46,25 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
                 className={cn(
                   "relative flex items-center justify-center w-9 h-9 rounded-[9px] transition-all duration-100 mx-auto",
                   isActive
-                    ? "bg-[#DBEAFE]"
-                    : "hover:bg-[#DBEAFE]"
+                    ? "bg-blue-600"
+                    : "hover:bg-white/10"
                 )}
               >
                 {isActive && (
-                  <span className="absolute left-[-1px] h-5 w-[3px] rounded-r-[2px] bg-blue-600 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+                  <span className="absolute left-[-1px] h-5 w-[3px] rounded-r-[2px] bg-blue-400" />
                 )}
                 <Icon
                   size={16}
                   className={cn(
                     "shrink-0 transition-colors duration-100",
-                    isActive ? "text-blue-600" : "text-[#94A3B8]"
+                    isActive ? "text-white" : "text-slate-500"
                   )}
                 />
               </button>
               <span
                 className={cn(
                   "text-[9px] font-medium leading-none select-none",
-                  isActive ? "text-blue-600" : "text-[#94A3B8]"
+                  isActive ? "text-white" : "text-slate-500"
                 )}
               >
                 {ws.label}
@@ -75,18 +75,18 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
       </nav>
 
       {/* Bottom utilities */}
-      <div className="flex flex-col items-center gap-2 pb-3 shrink-0 border-t border-[#BFDBFE] pt-3">
+      <div className="flex flex-col items-center gap-2 pb-3 shrink-0 border-t border-white/10 pt-3">
         <button
           onClick={onOpenSearch}
           title="Search (⌘K)"
-          className="flex items-center justify-center w-9 h-9 rounded-[9px] text-[#94A3B8] hover:text-[#64748B] hover:bg-[#DBEAFE] transition-all duration-100"
+          className="flex items-center justify-center w-9 h-9 rounded-[9px] text-slate-500 hover:text-white hover:bg-white/10 transition-all duration-100"
         >
           <Search size={15} />
         </button>
         <Link
           href="/settings"
           title="Settings"
-          className="flex items-center justify-center w-9 h-9 rounded-[9px] text-[#94A3B8] hover:text-[#64748B] hover:bg-[#DBEAFE] transition-all duration-100"
+          className="flex items-center justify-center w-9 h-9 rounded-[9px] text-slate-500 hover:text-white hover:bg-white/10 transition-all duration-100"
         >
           <Settings size={15} />
         </Link>
@@ -108,12 +108,12 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
                 onClick={() => setAvatarMenuOpen(false)}
               />
               {/* Popover */}
-              <div className="absolute left-full bottom-0 ml-2 z-30 w-48 bg-white border border-[#BFDBFE] rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.5)] p-1.5">
-                <div className="px-3 py-2 border-b border-[#BFDBFE] mb-1">
-                  <p className="text-[12px] font-semibold text-[#1E293B] truncate">
+              <div className="absolute left-full bottom-0 ml-2 z-30 w-48 bg-[#1E293B] border border-white/10 rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.5)] p-1.5">
+                <div className="px-3 py-2 border-b border-white/10 mb-1">
+                  <p className="text-[12px] font-semibold text-white truncate">
                     {user?.email ?? "user@firm.com"}
                   </p>
-                  <p className="text-[10px] text-[#94A3B8] truncate mt-0.5">
+                  <p className="text-[10px] text-slate-500 truncate mt-0.5">
                     {userRole ?? "Partner"}
                   </p>
                 </div>
@@ -122,7 +122,7 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
                     setAvatarMenuOpen(false);
                     signOut();
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[12.5px] text-[#64748B] hover:text-red-600 hover:bg-[#DBEAFE] transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[12.5px] text-slate-400 hover:text-red-400 hover:bg-white/10 transition-colors"
                 >
                   <LogOut size={13} />
                   Sign out

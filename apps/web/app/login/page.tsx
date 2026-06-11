@@ -37,14 +37,16 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex">
 
-      {/* Left blue brand panel */}
-      <div className="hidden lg:flex flex-col justify-between w-[420px] shrink-0 relative overflow-hidden"
-        style={{ background: "linear-gradient(135deg, #2563EB 0%, #3B82F6 100%)" }}>
-        <div className="absolute inset-0 opacity-[0.06]"
-          style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
+      {/* Left dark navy brand panel */}
+      <div className="hidden lg:flex flex-col justify-between w-[420px] shrink-0 relative overflow-hidden bg-[#0F172A]">
+        {/* Subtle grid pattern */}
+        <div className="absolute inset-0 opacity-[0.04]"
+          style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "28px 28px" }} />
+        {/* Blue glow accent bottom-right */}
+        <div className="absolute bottom-0 right-0 w-64 h-64 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 flex items-center gap-3 px-10 py-10">
-          <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-[14px] font-bold text-white">P</div>
+          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-[14px] font-bold text-white shadow-[0_0_20px_rgba(37,99,235,0.5)]">P</div>
           <span className="text-[16px] font-bold text-white tracking-tight">PracticeSync AI</span>
         </div>
 
@@ -53,32 +55,32 @@ export default function LoginPage() {
             <h1 className="text-[32px] font-bold text-white leading-tight tracking-tight">
               The operating system<br />for modern CA firms
             </h1>
-            <p className="text-[14px] text-blue-100/80 mt-3 leading-relaxed">
+            <p className="text-[14px] text-slate-400 mt-3 leading-relaxed">
               Manage clients, compliance, accounting, payroll and documents from one workspace.
             </p>
           </div>
           <div className="space-y-4">
             {FEATURES.map(({ icon: Icon, label, desc }) => (
               <div key={label} className="flex items-center gap-3.5">
-                <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
-                  <Icon size={16} className="text-white" />
+                <div className="w-9 h-9 rounded-xl bg-white/[0.06] border border-white/10 flex items-center justify-center shrink-0">
+                  <Icon size={16} className="text-blue-400" />
                 </div>
                 <div>
-                  <p className="text-[13px] font-semibold text-white">{label}</p>
-                  <p className="text-[12px] text-blue-100/65">{desc}</p>
+                  <p className="text-[13px] font-semibold text-slate-200">{label}</p>
+                  <p className="text-[12px] text-slate-500">{desc}</p>
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        <p className="relative z-10 px-10 pb-8 text-[11px] text-blue-100/50">
+        <p className="relative z-10 px-10 pb-8 text-[11px] text-slate-600">
           © 2026 PracticeSync AI — Trusted by accounting firms across India
         </p>
       </div>
 
-      {/* Right white form panel */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12 bg-white">
+      {/* Right form panel */}
+      <div className="flex-1 flex items-center justify-center px-6 py-12 bg-[#F8FAFC]">
         <div className="w-full max-w-[380px]">
 
           <div className="lg:hidden flex items-center gap-2.5 justify-center mb-8">
