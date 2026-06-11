@@ -89,39 +89,44 @@ def list_vendors(
 
 @router.post("/")
 def create_vendor(
-    data: VendorIn,
+    vendor_in: VendorIn,
     current_user: dict = Depends(rbac("client", "write")),
 ):
     """Create a vendor. IT Act §194C/194I/194J: TDS section tracked per vendor."""
     try:
-        payload = data.model_dump()
+        payload = vendor_in.model_dump()
         payload["firm_id"] = current_user.get("firm_id")
         payload["is_active"] = True
         payload["created_at"] = datetime.now(timezone.utc).isoformat()
-        data = payload
 
         if _USE_MOCK:
-            data["id"] = str(uuid.uuid4())
-            MOCK_VENDORS.append(data)
-            return api_response(True, data)
+            payload["id"] = str(uuid.uuid4())
+            MOCK_VENDORS.append(payload)
+            return api_response(True, payload)
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("vendors").insert(data).execute()
-        vendor = resp.data[0] if resp.data else data
+        resp = db.table("vendors").insert(payload).execute()
+        if not resp.data:
+            _logger.error("create_vendor: Supabase insert returned no data. payload=%s", payload)
+            raise HTTPException(
+                status_code=500,
+                detail="Vendor could not be saved to the database. Please try again.",
+            )
+        vendor = resp.data[0]
         vendor_id = vendor.get("id", "")
         log_event(
-            data["firm_id"], "vendor", vendor_id,
+            payload["firm_id"], "vendor", vendor_id,
             "create", actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"), new_data=vendor,
         )
         timeline_service.log_timeline_event(
-            client_id=data.get("client_id", ""),
-            firm_id=data.get("firm_id", ""),
+            client_id=payload.get("client_id", ""),
+            firm_id=payload.get("firm_id", ""),
             financial_year=_current_fy_long(),
             category="accounting",
             event_type="vendor_created",
-            title=f"Vendor {data.get('name', '')} added",
+            title=f"Vendor {payload.get('name', '')} added",
             description="New vendor added to the system.",
             severity="info",
             entity_type="vendor",
@@ -133,8 +138,16 @@ def create_vendor(
     except HTTPException:
         raise
     except Exception as e:
-        _logger.error("create_vendor: %s", e)
-        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
+        _logger.error("create_vendor: %s", e, exc_info=True)
+        # Surface a meaningful error — never expose raw DB internals to the client
+        msg = str(e)
+        if "duplicate" in msg.lower() or "unique" in msg.lower():
+            return api_response(False, None, "A vendor with this GSTIN or PAN already exists for this client.")
+        if "foreign key" in msg.lower() or "violates" in msg.lower():
+            return api_response(False, None, f"Vendor creation failed due to a data constraint: {msg}")
+        if "not-null" in msg.lower() or "null value" in msg.lower():
+            return api_response(False, None, f"Vendor creation failed — a required field is missing: {msg}")
+        return api_response(False, None, f"Vendor creation failed: {msg}")
 
 
 @router.get("/{vendor_id}")

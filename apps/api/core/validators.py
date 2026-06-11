@@ -18,7 +18,7 @@ _TAN_RE   = re.compile(r"^[A-Z]{4}[0-9]{5}[A-Z]{1}$")
 _CIN_RE   = re.compile(
     r"^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$"
 )
-_PHONE_RE  = re.compile(r"^\+?[0-9]{10,13}$")
+_PHONE_RE  = re.compile(r"^\+?[\d\s\-]{10,16}$")  # allows spaces/hyphens; e.g. +91 98765 43210
 _EMAIL_RE  = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _PINCODE_RE = re.compile(r"^[1-9][0-9]{5}$")
 
@@ -32,9 +32,12 @@ _VALID_STATE_CODES = {
 
 
 def validate_gstin(value: Optional[str]) -> Optional[str]:
-    """Return None if valid, error message string if invalid."""
+    """Return None if valid, error message string if invalid.
+    Returns None (no error) when value is empty/None — GSTIN is optional for parties.
+    CGST Act §25: GSTIN format: 2-digit state + PAN(10) + entity + Z + check.
+    """
     if not value:
-        return "GSTIN is required."
+        return None  # GSTIN is optional; callers enforce required separately if needed
     v = value.strip().upper()
     if not _GSTIN_RE.match(v):
         return "GSTIN format is invalid. Expected: 2-digit state + PAN + 1 entity + Z + 1 check (e.g. 27AAAAA0000A1Z5)."
