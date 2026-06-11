@@ -172,7 +172,7 @@ export default function ChartOfAccountsPage() {
     return (
       <div className="p-6 max-w-5xl mx-auto space-y-4 animate-pulse">
         <div className="h-6 bg-white/[0.08] rounded w-48" />
-        {[1,2,3].map(i => <div key={i} className="h-32 bg-white/[0.06] rounded-xl" />)}
+        {[1,2,3].map(i => <div key={i} className="h-32 bg-[#F1F5F9] rounded-xl" />)}
       </div>
     );
   }
@@ -208,16 +208,16 @@ export default function ChartOfAccountsPage() {
     <div className="p-6 max-w-5xl mx-auto space-y-5">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-white/30 hover:text-white/55">
+        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
           <ChevronLeft size={18} />
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-white/85">Chart of Accounts</h1>
-          <p className="text-sm text-white/40 mt-0.5">{accounts.filter(a => a.is_active).length} active accounts</p>
+          <h1 className="text-xl font-semibold text-[#0F172A]">Chart of Accounts</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">{accounts.filter(a => a.is_active).length} active accounts</p>
         </div>
         <button
           onClick={() => setShowArchived(v => !v)}
-          className="text-xs text-white/40 border border-white/[0.07] px-3 py-1.5 rounded-md hover:bg-[#0e1017]"
+          className="text-xs text-[#64748B] border border-[#E2E8F0] px-3 py-1.5 rounded-md hover:bg-[#F8FAFC]"
         >
           {showArchived ? "Hide Archived" : "Show Archived"}
         </button>
@@ -231,17 +231,17 @@ export default function ChartOfAccountsPage() {
 
       {/* Search */}
       <div className="relative">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search by account name or code…"
-          className="w-full pl-8 pr-4 py-2 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full pl-8 pr-4 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-white/[0.05]">
+      <div className="flex gap-1 border-b border-[#F1F5F9]">
         {tabs.map(tab => (
           <button
             key={tab}
@@ -249,10 +249,10 @@ export default function ChartOfAccountsPage() {
             className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
               activeTab === tab
                 ? "border-blue-600 text-blue-700"
-                : "border-transparent text-white/40 hover:text-white/65"
+                : "border-transparent text-[#64748B] hover:text-[#334155]"
             }`}
           >
-            {tab} <span className="ml-1 text-white/30">({counts[tab] ?? 0})</span>
+            {tab} <span className="ml-1 text-[#94A3B8]">({counts[tab] ?? 0})</span>
           </button>
         ))}
       </div>
@@ -260,7 +260,7 @@ export default function ChartOfAccountsPage() {
       {/* Account groups */}
       {accounts.length === 0 ? (
         <div className="text-center py-16">
-          <p className="text-sm text-white/40 mb-3">No accounts yet</p>
+          <p className="text-sm text-[#64748B] mb-3">No accounts yet</p>
           <button onClick={openCreate} className="text-sm bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
             Add First Account
           </button>
@@ -275,12 +275,12 @@ export default function ChartOfAccountsPage() {
               <Card key={type}>
                 <div className="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TYPE_COLORS[type]}`}>{type}</span>
-                  <span className="text-xs text-white/30">{accs.length} accounts</span>
+                  <span className="text-xs text-[#94A3B8]">{accs.length} accounts</span>
                 </div>
                 <CardContent className="p-0">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-xs text-white/30 border-b border-gray-50">
+                      <tr className="text-xs text-[#94A3B8] border-b border-gray-50">
                         <th className="px-5 py-2 text-left font-medium w-20">Code</th>
                         <th className="px-3 py-2 text-left font-medium">Name</th>
                         <th className="px-3 py-2 text-left font-medium">Sub-type</th>
@@ -288,14 +288,14 @@ export default function ChartOfAccountsPage() {
                         <th className="px-5 py-2 text-right font-medium w-24">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-white/[0.03]">
+                    <tbody className="divide-y divide-[#F8FAFC]">
                       {accs.map(acc => (
-                        <tr key={acc.id} className={`hover:bg-[#0e1017] group ${!acc.is_active ? "opacity-50" : ""}`}>
-                          <td className="px-5 py-2.5 font-mono text-xs text-white/30">{acc.account_code}</td>
-                          <td className="px-3 py-2.5 text-sm font-medium text-white/85">{acc.account_name}</td>
-                          <td className="px-3 py-2.5 text-xs text-white/40">{acc.account_subtype ?? "—"}</td>
+                        <tr key={acc.id} className={`hover:bg-[#F8FAFC] group ${!acc.is_active ? "opacity-50" : ""}`}>
+                          <td className="px-5 py-2.5 font-mono text-xs text-[#94A3B8]">{acc.account_code}</td>
+                          <td className="px-3 py-2.5 text-sm font-medium text-[#0F172A]">{acc.account_name}</td>
+                          <td className="px-3 py-2.5 text-xs text-[#64748B]">{acc.account_subtype ?? "—"}</td>
                           <td className="px-3 py-2.5">
-                            <Badge className={`text-xs ${acc.is_active ? "bg-green-100 text-green-700" : "bg-white/[0.06] text-white/40"}`}>
+                            <Badge className={`text-xs ${acc.is_active ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
                               {acc.is_active ? "Active" : "Archived"}
                             </Badge>
                           </td>
@@ -303,14 +303,14 @@ export default function ChartOfAccountsPage() {
                             <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
                                 onClick={() => openEdit(acc)}
-                                className="p-1.5 rounded hover:bg-white/[0.08] text-white/30 hover:text-white/65"
+                                className="p-1.5 rounded hover:bg-white/[0.08] text-[#94A3B8] hover:text-[#334155]"
                                 title="Edit"
                               >
                                 <Pencil size={12} />
                               </button>
                               <button
                                 onClick={() => toggleArchive(acc)}
-                                className="p-1.5 rounded hover:bg-white/[0.08] text-white/30 hover:text-white/65"
+                                className="p-1.5 rounded hover:bg-white/[0.08] text-[#94A3B8] hover:text-[#334155]"
                                 title={acc.is_active ? "Archive" : "Restore"}
                               >
                                 {acc.is_active ? <Archive size={12} /> : <ArchiveRestore size={12} />}
@@ -331,47 +331,47 @@ export default function ChartOfAccountsPage() {
       {/* Add / Edit Modal */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-[#131620] rounded-xl shadow-xl p-6 w-full max-w-md">
-            <h2 className="text-sm font-semibold text-white/85 mb-4">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+            <h2 className="text-sm font-semibold text-[#0F172A] mb-4">
               {editTarget ? "Edit Account" : "New Account"}
             </h2>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-white/40 font-medium">Account Code *</label>
+                  <label className="text-xs text-[#64748B] font-medium">Account Code *</label>
                   <input
                     value={form.account_code}
                     onChange={e => setForm({ ...form, account_code: e.target.value })}
-                    className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                     placeholder="e.g. 1006"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-white/40 font-medium">Account Type *</label>
+                  <label className="text-xs text-[#64748B] font-medium">Account Type *</label>
                   <select
                     value={form.account_type}
                     onChange={e => setForm({ ...form, account_type: e.target.value as AccountType, account_subtype: "" })}
-                    className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     {ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
               </div>
               <div>
-                <label className="text-xs text-white/40 font-medium">Account Name *</label>
+                <label className="text-xs text-[#64748B] font-medium">Account Name *</label>
                 <input
                   value={form.account_name}
                   onChange={e => setForm({ ...form, account_name: e.target.value })}
-                  className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="e.g. ICICI Bank Savings Account"
                 />
               </div>
               <div>
-                <label className="text-xs text-white/40 font-medium">Sub-type</label>
+                <label className="text-xs text-[#64748B] font-medium">Sub-type</label>
                 <select
                   value={form.account_subtype}
                   onChange={e => setForm({ ...form, account_subtype: e.target.value })}
-                  className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">— Select sub-type —</option>
                   {SUBTYPES[form.account_type].map(s => <option key={s} value={s}>{s}</option>)}
@@ -384,7 +384,7 @@ export default function ChartOfAccountsPage() {
             <div className="flex gap-2 mt-5">
               <button
                 onClick={() => setModalOpen(false)}
-                className="flex-1 text-sm text-white/55 border border-white/[0.07] py-2 rounded-md hover:bg-[#0e1017]"
+                className="flex-1 text-sm text-[#475569] border border-[#E2E8F0] py-2 rounded-md hover:bg-[#F8FAFC]"
               >
                 Cancel
               </button>

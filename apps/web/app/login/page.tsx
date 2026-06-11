@@ -35,129 +35,104 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex bg-[#080B12]">
+    <div className="min-h-screen flex">
 
-      {/* ── Left brand panel ── */}
-      <div className="hidden lg:flex flex-col justify-between w-[420px] shrink-0 bg-[#0A0D16] border-r border-white/[0.06] p-10 relative overflow-hidden">
-        {/* Subtle grid */}
-        <div className="absolute inset-0 opacity-[0.015]"
-          style={{ backgroundImage: "linear-gradient(hsl(220 90% 60%) 1px, transparent 1px), linear-gradient(90deg, hsl(220 90% 60%) 1px, transparent 1px)", backgroundSize: "40px 40px" }} />
-        {/* Glow */}
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full bg-blue-500/[0.06] blur-3xl pointer-events-none" />
+      {/* Left blue brand panel */}
+      <div className="hidden lg:flex flex-col justify-between w-[420px] shrink-0 relative overflow-hidden"
+        style={{ background: "linear-gradient(135deg, #2563EB 0%, #3B82F6 100%)" }}>
+        <div className="absolute inset-0 opacity-[0.06]"
+          style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
 
-        {/* Logo */}
-        <div className="relative z-10 flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-[9px] bg-blue-500 flex items-center justify-center text-[13px] font-bold text-white shadow-[0_0_20px_rgba(59,130,246,0.4)]">
-            P
-          </div>
-          <span className="text-[15px] font-semibold text-white/90 tracking-tight">PracticeSync AI</span>
+        <div className="relative z-10 flex items-center gap-3 px-10 py-10">
+          <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-[14px] font-bold text-white">P</div>
+          <span className="text-[16px] font-bold text-white tracking-tight">PracticeSync AI</span>
         </div>
 
-        {/* Hero */}
-        <div className="relative z-10 space-y-8">
+        <div className="relative z-10 px-10 pb-4 space-y-8">
           <div>
-            <h1 className="text-3xl font-bold text-white leading-snug tracking-tight">
-              The operating system<br />
-              <span className="text-blue-400">for modern CA firms</span>
+            <h1 className="text-[32px] font-bold text-white leading-tight tracking-tight">
+              The operating system<br />for modern CA firms
             </h1>
-            <p className="text-[13.5px] text-white/45 mt-3 leading-relaxed">
-              Manage clients, compliance, accounting,<br />payroll and documents from one workspace.
+            <p className="text-[14px] text-blue-100/80 mt-3 leading-relaxed">
+              Manage clients, compliance, accounting, payroll and documents from one workspace.
             </p>
           </div>
-
-          <div className="space-y-3">
+          <div className="space-y-4">
             {FEATURES.map(({ icon: Icon, label, desc }) => (
-              <div key={label} className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#131620]/[0.05] border border-white/[0.07] flex items-center justify-center shrink-0">
-                  <Icon size={14} className="text-blue-400" />
+              <div key={label} className="flex items-center gap-3.5">
+                <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
+                  <Icon size={16} className="text-white" />
                 </div>
                 <div>
-                  <p className="text-[12.5px] font-medium text-white/75">{label}</p>
-                  <p className="text-[11px] text-white/35">{desc}</p>
+                  <p className="text-[13px] font-semibold text-white">{label}</p>
+                  <p className="text-[12px] text-blue-100/65">{desc}</p>
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        <p className="relative z-10 text-[11px] text-white/25">
+        <p className="relative z-10 px-10 pb-8 text-[11px] text-blue-100/50">
           © 2026 PracticeSync AI — Trusted by accounting firms across India
         </p>
       </div>
 
-      {/* ── Right form panel ── */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-[360px]">
+      {/* Right white form panel */}
+      <div className="flex-1 flex items-center justify-center px-6 py-12 bg-white">
+        <div className="w-full max-w-[380px]">
 
-          {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-2.5 justify-center mb-8">
-            <div className="w-8 h-8 rounded-[9px] bg-blue-500 flex items-center justify-center text-[13px] font-bold text-white">P</div>
-            <span className="text-[15px] font-semibold text-white/90">PracticeSync AI</span>
+            <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-[13px] font-bold text-white">P</div>
+            <span className="text-[16px] font-bold text-[#0F172A]">PracticeSync AI</span>
           </div>
 
-          {/* Card */}
-          <div className="bg-[#0F1219] border border-white/[0.08] rounded-xl p-8 shadow-[0_24px_48px_rgba(0,0,0,0.4)]">
+          <div className="mb-8">
+            <h2 className="text-[26px] font-bold text-[#0F172A] tracking-tight">Sign in</h2>
+            <p className="text-[14px] text-[#64748B] mt-1">Enter your credentials to continue</p>
+          </div>
 
-            <div className="mb-6">
-              <h2 className="text-[20px] font-semibold text-white/90 tracking-tight">Sign in</h2>
-              <p className="text-[13px] text-white/40 mt-1">Enter your credentials to continue</p>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="space-y-1.5">
+              <label className="block text-[13px] font-semibold text-[#0F172A]">Email address</label>
+              <input
+                type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="ca@yourfirm.com"
+                className="w-full bg-white border border-[#E2E8F0] rounded-lg px-4 py-3 text-[14px] text-[#0F172A] placeholder:text-[#CBD5E1] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[13px] font-semibold text-[#0F172A]">Password</label>
+              <input
+                type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-white border border-[#E2E8F0] rounded-lg px-4 py-3 text-[14px] text-[#0F172A] placeholder:text-[#CBD5E1] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+              />
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="block text-[11.5px] font-medium text-white/50 uppercase tracking-wider">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ca@yourfirm.com"
-                  className="w-full bg-[#141820] border border-white/[0.09] rounded-lg px-3.5 py-2.5 text-[13.5px] text-white/85 placeholder:text-white/20 outline-none focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/15 transition-all"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-[11.5px] font-medium text-white/50 uppercase tracking-wider">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-[#141820] border border-white/[0.09] rounded-lg px-3.5 py-2.5 text-[13.5px] text-white/85 placeholder:text-white/20 outline-none focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/15 transition-all"
-                />
-              </div>
-
-              {error && (
-                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-500/[0.08] border border-red-500/20">
-                  <div className="w-4 h-4 rounded-full bg-red-500/20 flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-red-400 text-[10px] font-bold leading-none">!</span>
-                  </div>
-                  <p className="text-[12.5px] text-red-400 leading-snug">{error}</p>
+            {error && (
+              <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-red-50 border border-red-100">
+                <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-red-500 text-[10px] font-bold leading-none">!</span>
                 </div>
+                <p className="text-[13px] text-red-600 leading-snug">{error}</p>
+              </div>
+            )}
+
+            <button
+              type="submit" disabled={loading}
+              className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[14px] font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
+            >
+              {loading ? (
+                <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Signing in…</>
+              ) : (
+                <>Sign in <ArrowRight size={15} /></>
               )}
+            </button>
+          </form>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13.5px] font-semibold px-4 py-2.5 rounded-lg transition-colors mt-2 shadow-[0_4px_12px_rgba(59,130,246,0.25)]"
-              >
-                {loading ? (
-                  <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Signing in…</>
-                ) : (
-                  <>Sign in <ArrowRight size={14} /></>
-                )}
-              </button>
-            </form>
-          </div>
-
-          <p className="text-center text-[12px] text-white/30 mt-4">
+          <p className="text-center text-[13px] text-[#94A3B8] mt-6">
             New to PracticeSync?{" "}
-            <Link href="/signup" className="text-blue-400 hover:text-blue-300 transition-colors">
+            <Link href="/signup" className="text-blue-600 hover:text-blue-700 font-medium transition-colors">
               Create your account →
             </Link>
           </p>

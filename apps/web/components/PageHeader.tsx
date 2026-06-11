@@ -15,7 +15,7 @@ interface PageHeaderProps {
 
 export function PageHeader({
   icon: Icon,
-  iconColor = "bg-blue-500/15 text-blue-400",
+  iconColor = "bg-blue-50 text-blue-600",
   title,
   subtitle,
   actions,
@@ -28,8 +28,8 @@ export function PageHeader({
           <Icon size={17} />
         </div>
         <div>
-          <h1 className="text-[18px] font-semibold text-white/85 tracking-tight">{title}</h1>
-          {subtitle && <p className="text-[13px] text-white/35 mt-0.5">{subtitle}</p>}
+          <h1 className="text-[18px] font-semibold text-[#0F172A] tracking-tight">{title}</h1>
+          {subtitle && <p className="text-[13px] text-[#64748B] mt-0.5">{subtitle}</p>}
         </div>
       </div>
       {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}

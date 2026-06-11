@@ -59,7 +59,7 @@ export function AccountsPanel() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-4 py-3 border-b border-white/[0.06] shrink-0">
-        <p className="text-[13px] font-semibold text-white/90">Accounts</p>
+        <p className="text-[13px] font-semibold text-white/85">Accounts</p>
         <p className="text-[11px] text-white/30 mt-0.5">Accounting & payroll</p>
       </div>
 
@@ -83,8 +83,8 @@ export function AccountsPanel() {
                     className={cn(
                       "flex items-center gap-2.5 px-2.5 py-2 rounded-[7px] text-[12.5px] font-medium transition-all duration-75",
                       active
-                        ? "bg-blue-500/15 text-white/90"
-                        : "text-white/50 hover:text-white/80 hover:bg-[#131620]/[0.04]"
+                        ? "bg-blue-500/15 text-white/85"
+                        : "text-white/50 hover:text-white/75 hover:bg-[#0F172A]/[0.04]"
                     )}
                   >
                     <Icon

@@ -209,12 +209,12 @@ export default function ScheduledReportsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/settings" className="text-white/30 hover:text-white/55">
+          <Link href="/settings" className="text-[#94A3B8] hover:text-[#475569]">
             <ArrowLeft size={16} />
           </Link>
           <div>
-            <h1 className="text-xl font-semibold text-white/85">Scheduled Reports</h1>
-            <p className="text-sm text-white/30 mt-0.5">Automatically email reports to clients on a schedule</p>
+            <h1 className="text-xl font-semibold text-[#0F172A]">Scheduled Reports</h1>
+            <p className="text-sm text-[#94A3B8] mt-0.5">Automatically email reports to clients on a schedule</p>
           </div>
         </div>
         <button
@@ -235,21 +235,21 @@ export default function ScheduledReportsPage() {
 
       {/* List */}
       {loading ? (
-        <div className="text-center py-12 flex items-center justify-center gap-2 text-white/30">
+        <div className="text-center py-12 flex items-center justify-center gap-2 text-[#94A3B8]">
           <Loader2 className="w-4 h-4 animate-spin" />
           <span className="text-sm">Loading schedules…</span>
         </div>
       ) : schedules.length === 0 ? (
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] px-5 py-14 text-center">
+        <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-14 text-center">
           <Calendar className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-          <p className="text-sm text-white/30">No schedules yet</p>
-          <p className="text-xs text-white/20 mt-1">Create your first scheduled report to get started</p>
+          <p className="text-sm text-[#94A3B8]">No schedules yet</p>
+          <p className="text-xs text-[#CBD5E1] mt-1">Create your first scheduled report to get started</p>
         </div>
       ) : (
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/[0.05] text-xs text-white/30">
+              <tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8]">
                 <th className="px-5 py-3 text-left font-semibold">Report Type</th>
                 <th className="px-4 py-3 text-left font-semibold">Client</th>
                 <th className="px-4 py-3 text-left font-semibold">Frequency</th>
@@ -259,22 +259,22 @@ export default function ScheduledReportsPage() {
                 <th className="px-5 py-3 text-left font-semibold">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/[0.03]">
+            <tbody className="divide-y divide-[#F8FAFC]">
               {schedules.map(s => (
-                <tr key={s.id} className="hover:bg-[#0e1017]">
-                  <td className="px-5 py-3 font-medium text-white/85 text-xs">
+                <tr key={s.id} className="hover:bg-[#F8FAFC]">
+                  <td className="px-5 py-3 font-medium text-[#0F172A] text-xs">
                     {REPORT_TYPE_LABELS[s.report_type]}
                   </td>
-                  <td className="px-4 py-3 text-xs text-white/40">
-                    {s.client_name ?? <span className="text-white/20 italic">All clients</span>}
+                  <td className="px-4 py-3 text-xs text-[#64748B]">
+                    {s.client_name ?? <span className="text-[#CBD5E1] italic">All clients</span>}
                   </td>
-                  <td className="px-4 py-3 text-xs text-white/55">
+                  <td className="px-4 py-3 text-xs text-[#475569]">
                     {FREQUENCY_LABELS[s.frequency]}
                   </td>
-                  <td className="px-4 py-3 text-xs text-white/55">{s.day_of_month}</td>
-                  <td className="px-4 py-3 text-xs text-white/40 max-w-[160px]">
+                  <td className="px-4 py-3 text-xs text-[#475569]">{s.day_of_month}</td>
+                  <td className="px-4 py-3 text-xs text-[#64748B] max-w-[160px]">
                     <div className="flex items-center gap-1 truncate">
-                      <Mail size={11} className="shrink-0 text-white/20" />
+                      <Mail size={11} className="shrink-0 text-[#CBD5E1]" />
                       <span className="truncate">{s.recipients.join(", ")}</span>
                     </div>
                   </td>
@@ -282,7 +282,7 @@ export default function ScheduledReportsPage() {
                     <button
                       onClick={() => handleToggle(s.id, s.is_active)}
                       className={`flex items-center gap-1 text-xs font-medium ${
-                        s.is_active ? "text-green-600" : "text-white/30"
+                        s.is_active ? "text-green-600" : "text-[#94A3B8]"
                       }`}
                     >
                       {s.is_active
@@ -310,21 +310,21 @@ export default function ScheduledReportsPage() {
       {/* New Schedule Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-white/85">New Schedule</h3>
-              <button onClick={() => setShowModal(false)} className="text-white/30 hover:text-white/55">
+              <h3 className="text-sm font-semibold text-[#0F172A]">New Schedule</h3>
+              <button onClick={() => setShowModal(false)} className="text-[#94A3B8] hover:text-[#475569]">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-white/65 mb-1">Report Type *</label>
+                <label className="block text-xs font-medium text-[#334155] mb-1">Report Type *</label>
                 <select
                   value={form.report_type}
                   onChange={e => setForm(f => ({ ...f, report_type: e.target.value as ReportType }))}
-                  className="w-full px-3 py-2 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {(Object.entries(REPORT_TYPE_LABELS) as [ReportType, string][]).map(([v, l]) => (
                     <option key={v} value={v}>{l}</option>
@@ -333,11 +333,11 @@ export default function ScheduledReportsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-white/65 mb-1">Client (optional — leave blank for all)</label>
+                <label className="block text-xs font-medium text-[#334155] mb-1">Client (optional — leave blank for all)</label>
                 <select
                   value={form.client_id}
                   onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">All clients</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -345,11 +345,11 @@ export default function ScheduledReportsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-white/65 mb-1">Frequency *</label>
+                <label className="block text-xs font-medium text-[#334155] mb-1">Frequency *</label>
                 <select
                   value={form.frequency}
                   onChange={e => setForm(f => ({ ...f, frequency: e.target.value as Frequency }))}
-                  className="w-full px-3 py-2 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {(Object.entries(FREQUENCY_LABELS) as [Frequency, string][]).map(([v, l]) => (
                     <option key={v} value={v}>{l}</option>
@@ -358,25 +358,25 @@ export default function ScheduledReportsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-white/65 mb-1">Recipients (comma-separated emails) *</label>
+                <label className="block text-xs font-medium text-[#334155] mb-1">Recipients (comma-separated emails) *</label>
                 <input
                   type="text"
                   value={form.recipients}
                   onChange={e => setForm(f => ({ ...f, recipients: e.target.value }))}
                   placeholder="e.g. client@example.com, partner@firm.com"
-                  className="w-full px-3 py-2 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-white/65 mb-1">Day of month (1–28) *</label>
+                <label className="block text-xs font-medium text-[#334155] mb-1">Day of month (1–28) *</label>
                 <input
                   type="number"
                   min={1}
                   max={28}
                   value={form.day_of_month}
                   onChange={e => setForm(f => ({ ...f, day_of_month: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -388,7 +388,7 @@ export default function ScheduledReportsPage() {
             <div className="flex gap-3 justify-end pt-1">
               <button
                 onClick={() => setShowModal(false)}
-                className="text-xs px-4 py-2 border border-white/[0.07] rounded-lg hover:bg-[#0e1017]"
+                className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]"
               >
                 Cancel
               </button>

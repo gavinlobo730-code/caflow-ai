@@ -110,54 +110,54 @@ function AddDSCModal({ firmId, onClose, onAdded }: {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white/85">Add DSC Record</h3>
-          <button onClick={onClose}><X className="w-4 h-4 text-white/30" /></button>
+          <h3 className="text-sm font-semibold text-[#0F172A]">Add DSC Record</h3>
+          <button onClick={onClose}><X className="w-4 h-4 text-[#94A3B8]" /></button>
         </div>
         {err && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{err}</p>}
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <label className="text-xs font-medium text-white/65 block mb-1">Full Name</label>
-            <input className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={holderName} onChange={e => setHolderName(e.target.value)} placeholder="CA / Director name" />
+            <label className="text-xs font-medium text-[#334155] block mb-1">Full Name</label>
+            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={holderName} onChange={e => setHolderName(e.target.value)} placeholder="CA / Director name" />
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">PAN</label>
-            <input className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500" value={pan} onChange={e => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
+            <label className="text-xs font-medium text-[#334155] block mb-1">PAN</label>
+            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500" value={pan} onChange={e => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Type</label>
-            <select className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={dscType} onChange={e => setDscType(e.target.value as "Class 2" | "Class 3")}>
+            <label className="text-xs font-medium text-[#334155] block mb-1">Type</label>
+            <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={dscType} onChange={e => setDscType(e.target.value as "Class 2" | "Class 3")}>
               {DSC_TYPES.map(t => <option key={t}>{t}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Purpose</label>
-            <select className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purpose} onChange={e => setPurpose(e.target.value)}>
+            <label className="text-xs font-medium text-[#334155] block mb-1">Purpose</label>
+            <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purpose} onChange={e => setPurpose(e.target.value)}>
               {DSC_PURPOSES.map(p => <option key={p}>{p}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Issuing CA</label>
-            <select className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={issuingCA} onChange={e => setIssuingCA(e.target.value)}>
+            <label className="text-xs font-medium text-[#334155] block mb-1">Issuing CA</label>
+            <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={issuingCA} onChange={e => setIssuingCA(e.target.value)}>
               {ISSUING_CAS.map(c => <option key={c}>{c}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Issue Date</label>
-            <input type="date" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
+            <label className="text-xs font-medium text-[#334155] block mb-1">Issue Date</label>
+            <input type="date" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Expiry Date</label>
-            <input type="date" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
+            <label className="text-xs font-medium text-[#334155] block mb-1">Expiry Date</label>
+            <input type="date" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
           </div>
           <div className="col-span-2">
-            <label className="text-xs font-medium text-white/65 block mb-1">Notes</label>
-            <input className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
+            <label className="text-xs font-medium text-[#334155] block mb-1">Notes</label>
+            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 border border-white/[0.07] text-white/55 text-sm py-2 rounded-lg">Cancel</button>
+          <button onClick={onClose} className="flex-1 border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg">Cancel</button>
           <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
             {saving ? "Saving…" : "Add DSC"}
           </button>
@@ -201,8 +201,8 @@ export default function DSCTrackerPage() {
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-white/85">DSC Tracker</h1>
-          <p className="text-sm text-white/40 mt-0.5">Digital Signature Certificate expiry tracker</p>
+          <h1 className="text-xl font-semibold text-[#0F172A]">DSC Tracker</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">Digital Signature Certificate expiry tracker</p>
         </div>
         <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-blue-600 text-white text-sm px-3 py-2 rounded-lg hover:bg-blue-700">
           <Plus className="w-4 h-4" /> Add DSC
@@ -234,50 +234,50 @@ export default function DSCTrackerPage() {
           { icon: <AlertCircle className="w-4 h-4 text-amber-600" />,  bg: "bg-amber-50",  label: "Expiring (30 days)", value: String(expiringIn30), sub: "Renew Now" },
           { icon: <CheckCircle className="w-4 h-4 text-green-600" />,  bg: "bg-green-50",  label: "Expiring (90 days)", value: String(expiringIn90), sub: "Renew Soon" },
         ].map(c => (
-          <div key={c.label} className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
+          <div key={c.label} className="bg-white rounded-xl border border-[#F1F5F9] p-4">
             <div className="flex items-center gap-2 mb-3">
               <div className={`w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center`}>{c.icon}</div>
-              <span className="text-xs text-white/40">{c.label}</span>
+              <span className="text-xs text-[#64748B]">{c.label}</span>
             </div>
-            <p className="text-lg font-semibold text-white/85">{c.value}</p>
-            <p className="text-xs text-white/30 mt-0.5">{c.sub}</p>
+            <p className="text-lg font-semibold text-[#0F172A]">{c.value}</p>
+            <p className="text-xs text-[#94A3B8] mt-0.5">{c.sub}</p>
           </div>
         ))}
       </div>
 
       {/* Table */}
-      <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
-          <h2 className="text-sm font-semibold text-white/85">DSC Records</h2>
-          <p className="text-xs text-white/30 mt-0.5">Class 2/3 digital signatures for GST, MCA, Income Tax filings</p>
+          <h2 className="text-sm font-semibold text-[#0F172A]">DSC Records</h2>
+          <p className="text-xs text-[#94A3B8] mt-0.5">Class 2/3 digital signatures for GST, MCA, Income Tax filings</p>
         </div>
-        {loading ? <div className="px-5 py-10 text-center text-sm text-white/30">Loading…</div> : (
+        {loading ? <div className="px-5 py-10 text-center text-sm text-[#94A3B8]">Loading…</div> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-50">
                   {["Name", "PAN", "Type", "Purpose", "Issuing CA", "Issue Date", "Expiry Date", "Days Remaining", "Status"].map(h => (
-                    <th key={h} className="text-left text-xs font-medium text-white/30 px-4 py-3">{h}</th>
+                    <th key={h} className="text-left text-xs font-medium text-[#94A3B8] px-4 py-3">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.03]">
+              <tbody className="divide-y divide-[#F8FAFC]">
                 {dscs.sort((a, b) => getDaysRemaining(a.expiry_date) - getDaysRemaining(b.expiry_date)).map(d => {
                   const days = getDaysRemaining(d.expiry_date);
                   const status = getDSCStatus(d.expiry_date);
                   return (
-                    <tr key={d.id} className="hover:bg-[#0e1017]/50">
+                    <tr key={d.id} className="hover:bg-[#F8FAFC]/50">
                       <td className="px-4 py-3">
-                        <p className="text-sm font-medium text-white/85">{d.holder_name}</p>
+                        <p className="text-sm font-medium text-[#0F172A]">{d.holder_name}</p>
                       </td>
-                      <td className="px-4 py-3 text-xs font-mono text-white/55">{d.pan || "—"}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-[#475569]">{d.pan || "—"}</td>
                       <td className="px-4 py-3">
-                        <span className="text-xs font-medium text-white/65 bg-white/[0.06] px-1.5 py-0.5 rounded">{d.dsc_type}</span>
+                        <span className="text-xs font-medium text-[#334155] bg-[#F1F5F9] px-1.5 py-0.5 rounded">{d.dsc_type}</span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-white/55">{d.purpose}</td>
-                      <td className="px-4 py-3 text-xs text-white/55">{d.issuing_ca}</td>
-                      <td className="px-4 py-3 text-xs text-white/55">{new Date(d.issue_date).toLocaleDateString("en-IN")}</td>
-                      <td className="px-4 py-3 text-xs text-white/55 font-medium">{new Date(d.expiry_date).toLocaleDateString("en-IN")}</td>
+                      <td className="px-4 py-3 text-xs text-[#475569]">{d.purpose}</td>
+                      <td className="px-4 py-3 text-xs text-[#475569]">{d.issuing_ca}</td>
+                      <td className="px-4 py-3 text-xs text-[#475569]">{new Date(d.issue_date).toLocaleDateString("en-IN")}</td>
+                      <td className="px-4 py-3 text-xs text-[#475569] font-medium">{new Date(d.expiry_date).toLocaleDateString("en-IN")}</td>
                       <td className="px-4 py-3 text-xs font-medium">
                         <span className={days < 0 ? "text-red-600" : days <= 30 ? "text-amber-600" : days <= 90 ? "text-yellow-600" : "text-green-600"}>
                           {days < 0 ? `${Math.abs(days)}d overdue` : `${days} days`}

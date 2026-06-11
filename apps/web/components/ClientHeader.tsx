@@ -51,7 +51,7 @@ export function ClientHeader() {
   const fyOptions = getFYOptions();
 
   return (
-    <header className="flex items-center gap-4 h-12 px-4 bg-[#0d0d15] border-b border-white/[0.06] shrink-0">
+    <header className="flex items-center gap-4 h-12 px-4 bg-[#0F172A] border-b border-white/[0.06] shrink-0">
       <Building2 size={15} className="text-violet-400 shrink-0" />
 
       <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -88,7 +88,7 @@ export function ClientHeader() {
         {fyOpen && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setFyOpen(false)} />
-            <div className="absolute right-0 top-full mt-1 z-20 bg-[#1a1a24] border border-white/10 rounded-lg shadow-xl py-1 min-w-[120px]">
+            <div className="absolute right-0 top-full mt-1 z-20 bg-[#1E293B] border border-white/10 rounded-lg shadow-xl py-1 min-w-[120px]">
               {fyOptions.map((fy) => (
                 <button
                   key={fy}
