@@ -1,7 +1,6 @@
 name = "practicesync-ai"
 compatibility_date = "2024-09-23"
-compatibility_flags = ["nodejs_compat"]
-pages_build_output_dir = ".vercel/output/static"
+pages_build_output_dir = "out"
 
 [vars]
 NEXT_PUBLIC_SUPABASE_URL = "https://pbgoeyjvmllrafzavkgx.supabase.co"
