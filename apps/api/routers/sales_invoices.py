@@ -12,6 +12,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
+from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
@@ -135,7 +136,7 @@ def get_outstanding(
         return api_response(True, {"client_id": client_id, "outstanding_paise": outstanding})
     except Exception as e:
         _logger.error("get_outstanding: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete invoice operation. Please try again.")
 
 
 @router.get("/")
@@ -202,12 +203,12 @@ def list_invoices(
         return api_response(True, invoices)
     except Exception as e:
         _logger.error("list_invoices: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete invoice operation. Please try again.")
 
 
 @router.post("/")
 def create_invoice(
-    data: dict,
+    data: SalesInvoiceIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """
@@ -217,11 +218,7 @@ def create_invoice(
     All monetary values in integer paise.
     """
     try:
-        required = ["client_id", "customer_id", "invoice_date", "lines"]
-        for field in required:
-            if not data.get(field):
-                raise HTTPException(status_code=422, detail=f"{field} is required")
-
+        data = data.model_dump()
         lines_data = data.get("lines", [])
         if not lines_data:
             raise HTTPException(status_code=422, detail="At least one line item is required")
@@ -395,12 +392,19 @@ def create_invoice(
             "create", actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"), new_data=invoice,
         )
+        timeline_service.log(
+            client_id, "accounting", "Sales Invoice Created",
+            f"Invoice {invoice.get('invoice_no', '')} for ₹{invoice.get('total_paise', 0) // 100:,} created (draft)",
+            "info", firm_id=firm_id or "",
+            entity_type="sales_invoice", entity_id=invoice_id,
+            amount_paise=invoice.get("total_paise"), actor_id=current_user.get("auth_user_id"),
+        )
         return api_response(True, invoice)
     except HTTPException:
         raise
     except Exception as e:
         _logger.error("create_invoice: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to create invoice. Please try again.")
 
 
 @router.get("/{invoice_id}")
@@ -430,17 +434,18 @@ def get_invoice(
         raise
     except Exception as e:
         _logger.error("get_invoice: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete invoice operation. Please try again.")
 
 
 @router.patch("/{invoice_id}")
 def update_invoice(
     invoice_id: str,
-    data: dict,
+    data: SalesInvoiceUpdateIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """Update a draft invoice. Recomputes GST if lines are changed. Only allowed on draft status."""
     try:
+        data = data.model_dump(exclude_none=True)
         if _USE_MOCK:
             for i, inv in enumerate(MOCK_SALES_INVOICES):
                 if inv["id"] == invoice_id:
@@ -525,7 +530,7 @@ def update_invoice(
         raise
     except Exception as e:
         _logger.error("update_invoice: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete invoice operation. Please try again.")
 
 
 @router.post("/{invoice_id}/issue")
@@ -609,7 +614,7 @@ def issue_invoice(
         raise
     except Exception as e:
         _logger.error("issue_invoice: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete invoice operation. Please try again.")
 
 
 @router.post("/{invoice_id}/cancel")
@@ -653,4 +658,4 @@ def cancel_invoice(
         raise
     except Exception as e:
         _logger.error("cancel_invoice: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete invoice operation. Please try again.")

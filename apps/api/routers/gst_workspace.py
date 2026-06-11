@@ -125,7 +125,7 @@ def gst_dashboard(
         })
     except Exception as e:
         _logger.exception("gst_dashboard error")
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
 @router.get("/returns")
@@ -151,7 +151,7 @@ def list_returns(
 
         return api_response(True, {"gstr1": g1, "gstr3b": g3b})
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
 @router.post("/gstr1")
@@ -198,7 +198,7 @@ def save_gstr1(
         )
         return api_response(True, record)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
 @router.get("/gstr1/{return_id}")
@@ -219,7 +219,7 @@ def get_gstr1(return_id: str, current_user: dict = Depends(rbac("gst", "read")))
 
         return api_response(True, rec)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
 @router.patch("/gstr1/{return_id}/status")
@@ -263,7 +263,7 @@ def update_gstr1_status(
             )
         return api_response(True, rec)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
 @router.post("/gstr3b")
@@ -302,7 +302,7 @@ def save_gstr3b(
                   actor_id=current_user.get("id"), new_data=record)
         return api_response(True, record)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
 @router.get("/gstr3b/{return_id}")
@@ -323,7 +323,7 @@ def get_gstr3b(return_id: str, current_user: dict = Depends(rbac("gst", "read"))
 
         return api_response(True, rec)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
 @router.patch("/gstr3b/{return_id}/status")
@@ -367,7 +367,7 @@ def update_gstr3b_status(
             )
         return api_response(True, rec)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
 @router.get("/filing-history")
@@ -395,7 +395,7 @@ def filing_history(
 
         return api_response(True, {"gstr1_filed": g1, "gstr3b_filed": g3b})
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
 @router.post("/gstr2b/upload")
@@ -476,12 +476,24 @@ def upload_gstr2b(
             )
         return api_response(True, record)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
+
+
+class GSTR9In(BaseModel):
+    client_id: str
+    financial_year: str  # e.g. "2025-26"
+    payload_json: dict = Field(default_factory=dict)
+    summary_json: dict = Field(default_factory=dict)
+    total_taxable_paise: int = 0
+    total_igst_paise: int = 0
+    total_cgst_paise: int = 0
+    total_sgst_paise: int = 0
+    total_tax_paise: int = 0
 
 
 @router.post("/gstr9")
 def save_gstr9(
-    data: dict,
+    data: GSTR9In,
     current_user: dict = Depends(rbac("gst", "compute")),
 ):
     """
@@ -490,14 +502,9 @@ def save_gstr9(
     All amounts in integer paise.
     """
     try:
-        required = ["client_id", "financial_year"]
-        for field in required:
-            if not data.get(field):
-                raise HTTPException(status_code=422, detail=f"{field} is required")
-
         firm_id   = current_user.get("firm_id")
-        client_id = data["client_id"]
-        fy        = data["financial_year"]  # e.g. "2025-26"
+        client_id = data.client_id
+        fy        = data.financial_year  # e.g. "2025-26"
 
         # CGST Act §44 — GSTR-9 is annual; use April 1 of the FY for period validation
         fy_start_year = int(fy.split("-")[0]) if fy else datetime.now(timezone.utc).year
@@ -510,13 +517,13 @@ def save_gstr9(
             "period":               f"FY{fy}",
             "return_type":          "gstr9",
             "status":               "draft",
-            "payload_json":         data.get("payload_json", {}),
-            "summary_json":         data.get("summary_json", {}),
-            "total_taxable_paise":  int(data.get("total_taxable_paise", 0)),
-            "total_igst_paise":     int(data.get("total_igst_paise", 0)),
-            "total_cgst_paise":     int(data.get("total_cgst_paise", 0)),
-            "total_sgst_paise":     int(data.get("total_sgst_paise", 0)),
-            "total_tax_paise":      int(data.get("total_tax_paise", 0)),
+            "payload_json":         data.payload_json,
+            "summary_json":         data.summary_json,
+            "total_taxable_paise":  data.total_taxable_paise,
+            "total_igst_paise":     data.total_igst_paise,
+            "total_cgst_paise":     data.total_cgst_paise,
+            "total_sgst_paise":     data.total_sgst_paise,
+            "total_tax_paise":      data.total_tax_paise,
             "created_at":           datetime.utcnow().isoformat(),
         }
 
@@ -542,12 +549,19 @@ def save_gstr9(
             "create", actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"), new_data=rec,
         )
+        timeline_service.log(
+            client_id, "gst", "GSTR-9 Draft Saved",
+            f"Annual return draft for FY {fy} saved",
+            "info", firm_id=firm_id or "",
+            entity_type="gstr9_return", entity_id=rec.get("id", ""),
+            actor_id=current_user.get("auth_user_id"),
+        )
         return api_response(True, rec)
     except HTTPException:
         raise
     except Exception as e:
         _logger.error("save_gstr9: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
 @router.get("/gstr2b/{upload_id}")
@@ -568,4 +582,4 @@ def get_gstr2b(upload_id: str, current_user: dict = Depends(rbac("gst", "read"))
 
         return api_response(True, rec)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")

@@ -2,11 +2,30 @@
 Compliance Records router.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from core.permissions import rbac
-from typing import Optional
+from typing import Optional, Any
 from models.common import api_response
 from domain.compliance_record_service import compliance_record_service
 from core.exceptions import NotFoundError, ValidationError
+
+
+class ComplianceRecordIn(BaseModel):
+    """Typed wrapper — fields delegated to domain service for validation."""
+    client_id: str
+    compliance_type: str
+    financial_year: Optional[str] = None
+    due_date: Optional[str] = None
+    status: str = "pending"
+    notes: Optional[str] = None
+
+
+class ComplianceRecordUpdateIn(BaseModel):
+    status: Optional[str] = None
+    due_date: Optional[str] = None
+    notes: Optional[str] = None
+    filing_date: Optional[str] = None
+    acknowledgement_no: Optional[str] = None
 
 router = APIRouter(prefix="/api/compliance-records", tags=["compliance-records"])
 
@@ -29,10 +48,10 @@ def list_compliance_records(
 
 
 @router.post("")
-def create_compliance_record(data: dict, current_user: dict = Depends(rbac("compliance_record", "write"))):
+def create_compliance_record(data: ComplianceRecordIn, current_user: dict = Depends(rbac("compliance_record", "write"))):
     try:
         # firm_id always comes from the authenticated user — never from the request body
-        record = compliance_record_service.create_record(data, firm_id=current_user["firm_id"])
+        record = compliance_record_service.create_record(data.model_dump(), firm_id=current_user["firm_id"])
         return api_response(True, record)
     except (ValidationError, KeyError) as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -65,10 +84,10 @@ def get_compliance_record(record_id: str, current_user: dict = Depends(rbac("com
 
 
 @router.patch("/{record_id}")
-def update_compliance_record(record_id: str, data: dict, current_user: dict = Depends(rbac("compliance_record", "write"))):
+def update_compliance_record(record_id: str, data: ComplianceRecordUpdateIn, current_user: dict = Depends(rbac("compliance_record", "write"))):
     try:
         record = compliance_record_service.update_record(
-            record_id, data, firm_id=current_user.get("firm_id")
+            record_id, data.model_dump(exclude_none=True), firm_id=current_user.get("firm_id")
         )
         return api_response(True, record)
     except NotFoundError as e:

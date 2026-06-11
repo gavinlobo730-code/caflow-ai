@@ -13,6 +13,7 @@ from datetime import datetime, timezone, date
 import math
 
 from models.common import api_response
+from models.accounting import FixedAssetIn, DepreciationIn, DisposalIn
 from core.permissions import rbac
 from services.timeline_service import timeline_service
 from services.phase2_journal_service import Phase2JournalService
@@ -91,36 +92,36 @@ def list_assets(
 
 @router.post("")
 def create_asset(
-    data: dict,
+    data: FixedAssetIn,
     current_user: dict = Depends(rbac("accounting", "write"))
 ):
     """Add an asset and auto-post the acquisition journal."""
     db = _db()
     if not db:
-        return api_response(True, {"id": "mock-id", **data})
+        return api_response(True, {"id": "mock-id", **data.model_dump()})
 
     # Generate asset code
-    client_id = data["client_id"]
+    client_id = data.client_id
     count_res = db.table("fixed_assets").select("id", count="exact").eq("client_id", client_id).execute()
     count = (count_res.count or 0) + 1
     asset_code = f"FA-{count:04d}"
 
-    cat = data.get("asset_category", "Other")
+    cat = data.asset_category
     row = db.table("fixed_assets").insert({
         "firm_id":                     current_user["firm_id"],
         "client_id":                   client_id,
         "asset_code":                  asset_code,
-        "asset_name":                  data["asset_name"],
+        "asset_name":                  data.asset_name,
         "asset_category":              cat,
-        "purchase_date":               data["purchase_date"],
-        "purchase_cost_paise":         int(data["purchase_cost_paise"]),
-        "salvage_value_paise":         int(data.get("salvage_value_paise", 0)),
-        "useful_life_years":           data.get("useful_life_years"),
-        "depreciation_method":         data.get("depreciation_method", "WDV"),
-        "wdv_rate_percent":            data.get("wdv_rate_percent") or _DEFAULT_WDV_RATES.get(cat, 13.91),
+        "purchase_date":               data.purchase_date,
+        "purchase_cost_paise":         data.purchase_cost_paise,
+        "salvage_value_paise":         data.salvage_value_paise,
+        "useful_life_years":           data.useful_life_years,
+        "depreciation_method":         data.depreciation_method.value,
+        "wdv_rate_percent":            data.wdv_rate_percent or _DEFAULT_WDV_RATES.get(cat, 13.91),
         "accumulated_depreciation_paise": 0,
-        "location":                    data.get("location"),
-        "notes":                       data.get("notes"),
+        "location":                    data.location,
+        "notes":                       data.notes,
     }).execute()
 
     asset = (row.data or [{}])[0]
@@ -132,7 +133,7 @@ def create_asset(
         asset["journal_entry_id"] = journal_id
 
     timeline_service.log(client_id, "accounting", "Asset Created",
-        f"{asset_code}: {data['asset_name']} added — ₹{int(data['purchase_cost_paise'])//100:,}", "info")
+        f"{asset_code}: {data.asset_name} added — ₹{data.purchase_cost_paise//100:,}", "info")
 
     return api_response(True, asset)
 
@@ -140,7 +141,7 @@ def create_asset(
 @router.post("/{asset_id}/depreciate")
 def post_depreciation(
     asset_id: str,
-    data: dict,
+    data: DepreciationIn,
     current_user: dict = Depends(rbac("accounting", "write"))
 ):
     """
@@ -149,7 +150,7 @@ def post_depreciation(
     Idempotent: checks depreciation_posted_through before posting.
     """
     db = _db()
-    period = data.get("period", datetime.now(timezone.utc).strftime("%Y-%m"))
+    period = data.period or datetime.now(timezone.utc).strftime("%Y-%m")
 
     if not db:
         return api_response(True, {"asset_id": asset_id, "period": period, "depreciation_paise": 0})
@@ -200,7 +201,7 @@ def post_depreciation(
 @router.patch("/{asset_id}/dispose")
 def dispose_asset(
     asset_id: str,
-    data: dict,
+    data: DisposalIn,
     current_user: dict = Depends(rbac("accounting", "write"))
 ):
     """
@@ -218,9 +219,9 @@ def dispose_asset(
     if asset["is_disposed"]:
         raise HTTPException(status_code=409, detail="Asset already disposed")
 
-    disposal_type   = data.get("disposal_type", "Sale")  # Sale | Scrapped | Written Off
-    sale_proceeds   = int(data.get("sale_proceeds_paise", 0))
-    disposal_date   = data.get("disposal_date", str(datetime.now(timezone.utc).date()))
+    disposal_type   = data.disposal_type
+    sale_proceeds   = data.sale_proceeds_paise
+    disposal_date   = data.disposal_date or str(datetime.now(timezone.utc).date())
 
     asset["disposal_date"] = disposal_date
 

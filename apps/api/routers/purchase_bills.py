@@ -13,6 +13,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
+from models.invoices import PurchaseBillIn, PurchaseBillUpdateIn, BillFromDocumentIn
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
@@ -112,12 +113,12 @@ def list_purchase_bills(
         return api_response(True, resp.data or [])
     except Exception as e:
         _logger.error("list_purchase_bills: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
 
 
 @router.post("/")
 def create_purchase_bill(
-    data: dict,
+    data: PurchaseBillIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """
@@ -126,6 +127,7 @@ def create_purchase_bill(
     All monetary values in integer paise. Status: 'draft'.
     """
     try:
+        data = data.model_dump()
         required = ["client_id", "vendor_id", "bill_date", "lines"]
         for field in required:
             if not data.get(field):
@@ -289,12 +291,19 @@ def create_purchase_bill(
             "create", actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"), new_data=bill,
         )
+        timeline_service.log(
+            client_id, "accounting", "Purchase Bill Created",
+            f"Bill {bill.get('bill_no', '')} for ₹{bill.get('total_paise', 0) // 100:,} created (draft)",
+            "info", firm_id=firm_id or "",
+            entity_type="purchase_bill", entity_id=bill_id,
+            amount_paise=bill.get("total_paise"), actor_id=current_user.get("auth_user_id"),
+        )
         return api_response(True, bill)
     except HTTPException:
         raise
     except Exception as e:
         _logger.error("create_purchase_bill: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to create purchase bill. Please try again.")
 
 
 @router.get("/{bill_id}")
@@ -324,17 +333,18 @@ def get_purchase_bill(
         raise
     except Exception as e:
         _logger.error("get_purchase_bill: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
 
 
 @router.patch("/{bill_id}")
 def update_purchase_bill(
     bill_id: str,
-    data: dict,
+    data: PurchaseBillUpdateIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """Update a draft purchase bill. Only allowed on draft status."""
     try:
+        data = data.model_dump(exclude_none=True)
         if _USE_MOCK:
             for i, b in enumerate(MOCK_PURCHASE_BILLS):
                 if b["id"] == bill_id:
@@ -365,7 +375,7 @@ def update_purchase_bill(
         raise
     except Exception as e:
         _logger.error("update_purchase_bill: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
 
 
 @router.post("/{bill_id}/receive")
@@ -447,7 +457,7 @@ def receive_purchase_bill(
         raise
     except Exception as e:
         _logger.error("receive_purchase_bill: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
 
 
 @router.post("/{bill_id}/cancel")
@@ -490,12 +500,12 @@ def cancel_purchase_bill(
         raise
     except Exception as e:
         _logger.error("cancel_purchase_bill: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
 
 
 @router.post("/from-document")
 def create_bill_from_document(
-    data: dict,
+    data: BillFromDocumentIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """
@@ -506,8 +516,8 @@ def create_bill_from_document(
     """
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     try:
-        client_id      = data.get("client_id")
-        extracted_data = data.get("extracted_data", {})
+        client_id      = data.client_id
+        extracted_data = data.extracted_data
         firm_id        = current_user.get("firm_id")
 
         if not client_id:
@@ -631,4 +641,4 @@ def create_bill_from_document(
         raise
     except Exception as e:
         _logger.error("create_bill_from_document: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")

@@ -128,5 +128,41 @@ class TimelineService:
             )
 
 
+    def log(
+        self,
+        client_id: str,
+        category: str,
+        title: str,
+        description: Optional[str] = None,
+        severity: str = "info",
+        firm_id: str = "",
+        financial_year: str = "",
+        entity_type: Optional[str] = None,
+        entity_id: Optional[str] = None,
+        amount_paise: Optional[int] = None,
+        actor_id: Optional[str] = None,
+    ) -> None:
+        """Convenience shorthand for log_timeline_event with minimal required args."""
+        if not financial_year:
+            from datetime import date
+            today = date.today()
+            fy_start = today.year if today.month >= 4 else today.year - 1
+            financial_year = f"{fy_start}-{str(fy_start + 1)[-2:]}"
+        self.log_timeline_event(
+            client_id=client_id,
+            firm_id=firm_id,
+            financial_year=financial_year,
+            category=category,
+            event_type=title.lower().replace(" ", "_"),
+            title=title,
+            description=description,
+            severity=severity,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            amount_paise=amount_paise,
+            actor_id=actor_id,
+        )
+
+
 # Module-level singleton
 timeline_service = TimelineService()

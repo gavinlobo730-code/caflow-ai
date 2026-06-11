@@ -12,6 +12,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
+from models.parties import VendorIn, VendorUpdateIn
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
@@ -82,45 +83,21 @@ def list_vendors(
         return api_response(True, resp.data or [])
     except Exception as e:
         _logger.error("list_vendors: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
 @router.post("/")
 def create_vendor(
-    data: dict,
+    data: VendorIn,
     current_user: dict = Depends(rbac("client", "write")),
 ):
-    """
-    Create a vendor. Fields:
-      name, gstin?, state_code?, pan?, email?, phone?, address?, city?, state?, pincode?,
-      opening_balance_paise?, opening_balance_date?, credit_days?,
-      tds_applicable (bool), tds_section (str: 194C/194I/194J), tds_rate_bps (int),
-      client_id (required)
-    """
+    """Create a vendor. IT Act §194C/194I/194J: TDS section tracked per vendor."""
     try:
-        if not data.get("name"):
-            raise HTTPException(status_code=422, detail="name is required")
-        if not data.get("client_id"):
-            raise HTTPException(status_code=422, detail="client_id is required")
-
-        # GSTIN validation if provided — CGST Act §25
-        if data.get("gstin"):
-            _validate_gstin(data["gstin"], data.get("state_code"))
-
-        # TDS rate must be integer bps, never float
-        if data.get("tds_rate_bps") is not None:
-            data["tds_rate_bps"] = int(data["tds_rate_bps"])
-
-        # Opening balance must be integer paise
-        if data.get("opening_balance_paise") is not None:
-            data["opening_balance_paise"] = int(data["opening_balance_paise"])
-
-        data["firm_id"] = current_user.get("firm_id")
-        data.setdefault("tds_applicable", False)
-        data.setdefault("tds_section", None)
-        data.setdefault("tds_rate_bps", 0)
-        data["is_active"] = True
-        data["created_at"] = datetime.now(timezone.utc).isoformat()
+        payload = data.model_dump()
+        payload["firm_id"] = current_user.get("firm_id")
+        payload["is_active"] = True
+        payload["created_at"] = datetime.now(timezone.utc).isoformat()
+        data = payload
 
         if _USE_MOCK:
             data["id"] = str(uuid.uuid4())
@@ -156,7 +133,7 @@ def create_vendor(
         raise
     except Exception as e:
         _logger.error("create_vendor: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
 @router.get("/{vendor_id}")
@@ -182,27 +159,20 @@ def get_vendor(
         raise
     except Exception as e:
         _logger.error("get_vendor: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
 @router.patch("/{vendor_id}")
 def update_vendor(
     vendor_id: str,
-    data: dict,
+    data: VendorUpdateIn,
     current_user: dict = Depends(rbac("client", "write")),
 ):
     """Partial update of vendor."""
     try:
-        if data.get("gstin"):
-            _validate_gstin(data["gstin"], data.get("state_code"))
-
-        if data.get("tds_rate_bps") is not None:
-            data["tds_rate_bps"] = int(data["tds_rate_bps"])
-
-        if data.get("opening_balance_paise") is not None:
-            data["opening_balance_paise"] = int(data["opening_balance_paise"])
-
-        data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        payload = data.model_dump(exclude_none=True)
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        data = payload
 
         if _USE_MOCK:
             for i, v in enumerate(MOCK_VENDORS):
@@ -227,7 +197,7 @@ def update_vendor(
         raise
     except Exception as e:
         _logger.error("update_vendor: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
 @router.delete("/{vendor_id}")
@@ -259,7 +229,7 @@ def delete_vendor(
         raise
     except Exception as e:
         _logger.error("delete_vendor: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
 @router.get("/{vendor_id}/outstanding")
@@ -320,4 +290,4 @@ def get_vendor_outstanding(
         raise
     except Exception as e:
         _logger.error("get_vendor_outstanding: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
