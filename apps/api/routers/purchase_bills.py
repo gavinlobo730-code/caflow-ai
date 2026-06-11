@@ -172,7 +172,9 @@ def create_purchase_bill(
         for ln in lines_data:
             qty          = ln.get("quantity", 1)
             rate_paise   = int(ln.get("rate_paise", 0))
-            gst_rate_bps = int(ln.get("gst_rate_bps", 0))
+            # Model uses gst_rate_percent (e.g. 18.0), convert to bps (10000 bps = 100%)
+            gst_rate_percent = float(ln.get("gst_rate_percent", 0) or ln.get("gst_rate_bps", 0) / 100)
+            gst_rate_bps = int(round(gst_rate_percent * 100))
             taxable      = int(Decimal(str(qty)) * rate_paise)
             cgst, sgst, igst = _compute_line_gst(taxable, gst_rate_bps, is_interstate)
 

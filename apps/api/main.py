@@ -62,9 +62,20 @@ async def permission_denied_handler(request: Request, exc: PermissionDeniedError
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # Pydantic v2 exc.errors() can include non-JSON-serializable ctx objects (e.g. ValueError instances).
+    # Sanitize by converting ctx values to strings before returning.
+    def _sanitize(errors: list) -> list:
+        out = []
+        for err in errors:
+            e = dict(err)
+            if "ctx" in e:
+                e["ctx"] = {k: str(v) for k, v in e["ctx"].items()}
+            out.append(e)
+        return out
+
     return JSONResponse(
         status_code=422,
-        content={"success": False, "data": None, "error": "Validation error", "details": exc.errors()},
+        content={"success": False, "data": None, "error": "Validation error", "details": _sanitize(exc.errors())},
         headers=_cors_headers(request),
     )
 
