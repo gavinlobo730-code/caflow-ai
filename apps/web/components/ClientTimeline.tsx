@@ -161,14 +161,14 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search events…"
-          className="flex-1 min-w-[120px] bg-white/[0.04] border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-[11px] text-white/60 placeholder:text-[#CBD5E1] outline-none focus:border-white/15"
+          className="flex-1 min-w-[120px] bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-[11px] text-[#475569] placeholder:text-[#CBD5E1] outline-none focus:border-white/15"
         />
         {/* Category filter */}
         <div className="relative">
           <select
             value={catFilter}
             onChange={(e) => setCatFilter(e.target.value as EventCategory | "all")}
-            className="appearance-none bg-white/[0.04] border border-[#E2E8F0] rounded-lg pl-2.5 pr-6 py-1 text-[11px] text-white/50 outline-none focus:border-white/15 cursor-pointer"
+            className="appearance-none bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg pl-2.5 pr-6 py-1 text-[11px] text-[#64748B] outline-none focus:border-white/15 cursor-pointer"
           >
             {CATEGORY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -181,7 +181,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           <select
             value={sevFilter}
             onChange={(e) => setSevFilter(e.target.value)}
-            className="appearance-none bg-white/[0.04] border border-[#E2E8F0] rounded-lg pl-2.5 pr-6 py-1 text-[11px] text-white/50 outline-none focus:border-white/15 cursor-pointer"
+            className="appearance-none bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg pl-2.5 pr-6 py-1 text-[11px] text-[#64748B] outline-none focus:border-white/15 cursor-pointer"
           >
             {SEVERITY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -192,7 +192,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
         {/* Refresh */}
         <button
           onClick={() => load(true)}
-          className="text-[#CBD5E1] hover:text-white/50 transition-colors p-1"
+          className="text-[#CBD5E1] hover:text-[#64748B] transition-colors p-1"
           title="Refresh"
         >
           <RefreshCw size={11} className={cn(refreshing && "animate-spin")} />
@@ -201,7 +201,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
 
       {filtered.length === 0 && (
         <div className="flex flex-col items-center justify-center py-10 text-center space-y-2">
-          <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-full bg-[#F1F5F9] flex items-center justify-center">
             <Shield size={18} className="text-[#CBD5E1]" />
           </div>
           <p className="text-sm text-[#94A3B8]">
@@ -242,7 +242,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           {page > 0 && (
             <button
               onClick={() => { setPage((p) => p - 1); load(false, false); }}
-              className="text-[11px] text-[#94A3B8] hover:text-white/60 px-3 py-1 rounded border border-[#E2E8F0] hover:border-white/15"
+              className="text-[11px] text-[#94A3B8] hover:text-[#475569] px-3 py-1 rounded border border-[#E2E8F0] hover:border-white/15"
             >
               ← Previous
             </button>
@@ -250,7 +250,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           {hasMore && (
             <button
               onClick={() => { setPage((p) => p + 1); load(false, false); }}
-              className="text-[11px] text-[#94A3B8] hover:text-white/60 px-3 py-1 rounded border border-[#E2E8F0] hover:border-white/15"
+              className="text-[11px] text-[#94A3B8] hover:text-[#475569] px-3 py-1 rounded border border-[#E2E8F0] hover:border-white/15"
             >
               Load more →
             </button>
