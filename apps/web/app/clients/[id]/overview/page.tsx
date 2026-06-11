@@ -102,7 +102,7 @@ export default function OverviewPage() {
 
   if (loading) return <OverviewSkeleton />;
   if (error) return <div className="p-6 text-red-500 text-sm">{error}</div>;
-  if (!client) return <div className="p-6 text-white/30 text-sm">Client not found.</div>;
+  if (!client) return <div className="p-6 text-[#94A3B8] text-sm">Client not found.</div>;
 
   const today = new Date().toISOString().split("T")[0];
   const openTasks = tasks.filter((t) => t.status !== "completed");
@@ -119,19 +119,19 @@ export default function OverviewPage() {
         {/* Stat strip */}
         <div className="grid grid-cols-3 gap-3">
           <StatCard
-            icon={<CheckSquare size={14} className="text-blue-400" />}
+            icon={<CheckSquare size={14} className="text-blue-600" />}
             label="Open Tasks"
             value={openTasks.length}
             accent={openTasks.length > 0 ? "indigo" : "neutral"}
           />
           <StatCard
-            icon={<Shield size={14} className="text-amber-400" />}
+            icon={<Shield size={14} className="text-amber-600" />}
             label="Overdue Filings"
             value={overdueFiling.length}
             accent={overdueFiling.length > 0 ? "amber" : "neutral"}
           />
           <StatCard
-            icon={<TrendingUp size={14} className="text-emerald-400" />}
+            icon={<TrendingUp size={14} className="text-emerald-600" />}
             label="Filed This FY"
             value={filedCount}
             accent="neutral"
@@ -139,8 +139,8 @@ export default function OverviewPage() {
         </div>
 
         {/* Timeline */}
-        <div className="bg-[#0f0f18] rounded-xl border border-white/[0.05] p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-white/30 mb-3">
+        <div className="bg-[#0f0f18] rounded-xl border border-[#F1F5F9] p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-3">
             Activity · FY {financialYear}
           </p>
           <ClientTimeline clientId={clientId} financialYear={financialYear} />
@@ -148,7 +148,7 @@ export default function OverviewPage() {
       </div>
 
       {/* ── Right sidebar ───────────────────────────────────── */}
-      <div className="w-[240px] shrink-0 border-l border-white/[0.05] overflow-y-auto p-4 space-y-4 hidden lg:block">
+      <div className="w-[240px] shrink-0 border-l border-[#F1F5F9] overflow-y-auto p-4 space-y-4 hidden lg:block">
         {/* Health Alerts */}
         {alerts.length > 0 && (
           <div className="space-y-1">
@@ -156,10 +156,10 @@ export default function OverviewPage() {
               const Icon = alert.severity === "critical" ? AlertCircle
                 : alert.severity === "warning" ? AlertTriangle : Info;
               const colors = alert.severity === "critical"
-                ? "bg-red-500/10 border-red-500/20 text-red-300"
+                ? "bg-red-50 border-red-500/20 text-red-300"
                 : alert.severity === "warning"
-                ? "bg-amber-500/10 border-amber-500/20 text-amber-300"
-                : "bg-blue-500/10 border-blue-500/20 text-blue-300";
+                ? "bg-amber-50 border-amber-500/20 text-amber-300"
+                : "bg-blue-50 border-blue-500/20 text-blue-500";
               return (
                 <div key={i} className={`rounded-lg border px-2.5 py-2 flex items-start gap-2 ${colors}`}>
                   <Icon size={11} className="shrink-0 mt-0.5" />
@@ -175,8 +175,8 @@ export default function OverviewPage() {
 
         {/* Health score */}
         {health && (
-          <div className="bg-[#0f0f18] rounded-xl border border-white/[0.05] p-3 space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25">
+          <div className="bg-[#0f0f18] rounded-xl border border-[#F1F5F9] p-3 space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#CBD5E1]">
               Health Score
             </p>
             <div className="flex items-center gap-2">
@@ -192,12 +192,12 @@ export default function OverviewPage() {
         )}
 
         {/* Client info */}
-        <div className="bg-[#0f0f18] rounded-xl border border-white/[0.05] p-3 space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25">
+        <div className="bg-[#0f0f18] rounded-xl border border-[#F1F5F9] p-3 space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#CBD5E1]">
             Client
           </p>
-          <p className="text-[13px] font-semibold text-white/80 leading-snug">{client.client_name}</p>
-          <p className="text-[10px] text-white/35">
+          <p className="text-[13px] font-semibold text-[#1E293B] leading-snug">{client.client_name}</p>
+          <p className="text-[10px] text-[#94A3B8]">
             {ENTITY_TYPE_LABELS[client.entity_type] ?? client.entity_type}
           </p>
           <div className="space-y-1.5 pt-1 border-t border-white/5">
@@ -208,25 +208,25 @@ export default function OverviewPage() {
               <InfoRow label="GSTIN" value={client.gstin} mono />
             )}
             {client.email && (
-              <div className="flex items-center gap-1.5 text-[11px] text-white/40">
+              <div className="flex items-center gap-1.5 text-[11px] text-[#64748B]">
                 <Mail size={11} className="shrink-0" />
                 <span className="truncate">{client.email}</span>
               </div>
             )}
             {client.mobile && (
-              <div className="flex items-center gap-1.5 text-[11px] text-white/40">
+              <div className="flex items-center gap-1.5 text-[11px] text-[#64748B]">
                 <Phone size={11} className="shrink-0" />
                 <span>{client.mobile}</span>
               </div>
             )}
             {client.city && (
-              <div className="flex items-center gap-1.5 text-[11px] text-white/40">
+              <div className="flex items-center gap-1.5 text-[11px] text-[#64748B]">
                 <MapPin size={11} className="shrink-0" />
                 <span>{client.city}{client.state ? `, ${client.state}` : ""}</span>
               </div>
             )}
             {client.gst_filing_frequency && (
-              <div className="flex items-center gap-1.5 text-[11px] text-white/40">
+              <div className="flex items-center gap-1.5 text-[11px] text-[#64748B]">
                 <Calendar size={11} className="shrink-0" />
                 <span>GST: {client.gst_filing_frequency}</span>
               </div>
@@ -236,8 +236,8 @@ export default function OverviewPage() {
 
         {/* Upcoming deadlines */}
         {compliance.filter((c) => c.filing_status !== "filed" && c.due_date >= today).length > 0 && (
-          <div className="bg-[#0f0f18] rounded-xl border border-white/[0.05] p-3 space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25">
+          <div className="bg-[#0f0f18] rounded-xl border border-[#F1F5F9] p-3 space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#CBD5E1]">
               Upcoming
             </p>
             <div className="space-y-2">
@@ -246,9 +246,9 @@ export default function OverviewPage() {
                 .slice(0, 4)
                 .map((c) => (
                   <div key={c.id} className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] text-white/55 truncate">{c.compliance_type}</p>
+                    <p className="text-[11px] text-[#475569] truncate">{c.compliance_type}</p>
                     <p className={`text-[10px] font-mono shrink-0 ${
-                      daysUntil(c.due_date) <= 7 ? "text-amber-400" : "text-white/25"
+                      daysUntil(c.due_date) <= 7 ? "text-amber-600" : "text-[#CBD5E1]"
                     }`}>
                       {formatDate(c.due_date)}
                     </p>
@@ -274,16 +274,16 @@ function StatCard({
   value: number;
   accent: "indigo" | "amber" | "neutral";
 }) {
-  const bg = accent === "indigo" && value > 0 ? "bg-blue-500/10 border-blue-500/20/15"
-    : accent === "amber" && value > 0 ? "bg-amber-500/10 border-amber-500/15"
-    : "bg-[#131620]/[0.03] border-white/[0.05]";
+  const bg = accent === "indigo" && value > 0 ? "bg-blue-50 border-blue-500/20/15"
+    : accent === "amber" && value > 0 ? "bg-amber-50 border-amber-500/15"
+    : "bg-[#F8FAFC] border-[#F1F5F9]";
   return (
     <div className={`rounded-xl border p-3 space-y-1 ${bg}`}>
       <div className="flex items-center gap-1.5">
         {icon}
-        <p className="text-[10px] text-white/35">{label}</p>
+        <p className="text-[10px] text-[#94A3B8]">{label}</p>
       </div>
-      <p className="text-2xl font-bold text-white/80 tabular-nums">{value}</p>
+      <p className="text-2xl font-bold text-[#1E293B] tabular-nums">{value}</p>
     </div>
   );
 }
@@ -294,8 +294,8 @@ function ScoreRow({ label, value, muted }: { label: string; value: number; muted
   return (
     <div className="space-y-0.5">
       <div className="flex items-center justify-between">
-        <span className={`text-[10px] ${muted ? "text-white/20" : "text-white/45"}`}>{label}</span>
-        <span className={`text-[10px] font-semibold tabular-nums ${muted ? "text-white/20" : "text-white/60"}`}>
+        <span className={`text-[10px] ${muted ? "text-[#CBD5E1]" : "text-[#64748B]"}`}>{label}</span>
+        <span className={`text-[10px] font-semibold tabular-nums ${muted ? "text-[#CBD5E1]" : "text-white/60"}`}>
           {value}
         </span>
       </div>
@@ -312,7 +312,7 @@ function ScoreRow({ label, value, muted }: { label: string; value: number; muted
 function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-start gap-1.5">
-      <span className="text-[9px] text-white/20 mt-0.5 shrink-0 w-10">{label}</span>
+      <span className="text-[9px] text-[#CBD5E1] mt-0.5 shrink-0 w-10">{label}</span>
       <span className={`text-[11px] text-white/50 break-all ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
@@ -324,14 +324,14 @@ function OverviewSkeleton() {
       <div className="flex-1 p-5 space-y-4">
         <div className="grid grid-cols-3 gap-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-16 rounded-xl bg-[#131620]/[0.03] animate-pulse" />
+            <div key={i} className="h-16 rounded-xl bg-[#F8FAFC] animate-pulse" />
           ))}
         </div>
-        <div className="h-64 rounded-xl bg-[#131620]/[0.03] animate-pulse" />
+        <div className="h-64 rounded-xl bg-[#F8FAFC] animate-pulse" />
       </div>
       <div className="w-[240px] p-4 space-y-4 hidden lg:block">
-        <div className="h-32 rounded-xl bg-[#131620]/[0.03] animate-pulse" />
-        <div className="h-48 rounded-xl bg-[#131620]/[0.03] animate-pulse" />
+        <div className="h-32 rounded-xl bg-[#F8FAFC] animate-pulse" />
+        <div className="h-48 rounded-xl bg-[#F8FAFC] animate-pulse" />
       </div>
     </div>
   );

@@ -246,11 +246,11 @@ export default function StatutoryPage() {
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-[#0e1017] flex items-center justify-center"><p className="text-white/40">Loading...</p></div>;
+    return <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center"><p className="text-[#64748B]">Loading...</p></div>;
   }
 
   return (
-    <div className="min-h-screen bg-[#0e1017] p-8">
+    <div className="min-h-screen bg-[#F8FAFC] p-8">
       <div className="max-w-7xl mx-auto">
         <div className="mb-6 flex items-center gap-3">
           <Link href="/payroll">
@@ -259,8 +259,8 @@ export default function StatutoryPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-white/85">Statutory Deductions</h1>
-            <p className="text-sm text-white/40 mt-0.5">
+            <h1 className="text-2xl font-bold text-[#0F172A]">Statutory Deductions</h1>
+            <p className="text-sm text-[#64748B] mt-0.5">
               PF (EPF Act 1952) &middot; ESIC (ESI Act 1948) &middot; Gratuity (Gratuity Act 1972 Sec 4)
             </p>
           </div>
@@ -272,7 +272,7 @@ export default function StatutoryPage() {
             <div className="flex flex-wrap gap-4 items-end justify-between">
               <div className="flex flex-wrap gap-4 items-end">
                 <div>
-                  <label className="block text-xs font-medium text-white/65 mb-1">Client</label>
+                  <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
                   <select
                     className="border rounded-lg px-3 py-2 text-sm"
                     value={selectedClientId}
@@ -282,7 +282,7 @@ export default function StatutoryPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-white/65 mb-1">Month</label>
+                  <label className="block text-xs font-medium text-[#334155] mb-1">Month</label>
                   <select
                     className="border rounded-lg px-3 py-2 text-sm"
                     value={selMonth}
@@ -292,7 +292,7 @@ export default function StatutoryPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-white/65 mb-1">Year</label>
+                  <label className="block text-xs font-medium text-[#334155] mb-1">Year</label>
                   <input
                     type="number"
                     className="border rounded-lg px-3 py-2 text-sm w-24"
@@ -340,37 +340,37 @@ export default function StatutoryPage() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-[#131620] rounded-lg p-4 border border-blue-500/20">
-                  <p className="text-xs font-semibold uppercase text-blue-400 mb-3">PF Challan (EPF Act 1952)</p>
+                <div className="bg-white rounded-lg p-4 border border-blue-500/20">
+                  <p className="text-xs font-semibold uppercase text-blue-600 mb-3">PF Challan (EPF Act 1952)</p>
                   <table className="w-full text-sm">
                     <tbody>
-                      <tr><td className="py-1 text-white/55">Employee PF (12%)</td><td className="text-right font-mono">{fmtRs(totalEmpPF)}</td></tr>
-                      <tr><td className="py-1 text-white/55">Employer EPF (3.67%)</td><td className="text-right font-mono">{fmtRs(rows.reduce((s, r) => s + r.employerEPF, 0))}</td></tr>
-                      <tr><td className="py-1 text-white/55">Employer EPS (8.33%)</td><td className="text-right font-mono">{fmtRs(rows.reduce((s, r) => s + r.employerEPS, 0))}</td></tr>
-                      <tr className="border-t font-bold"><td className="py-2">Total PF Payable</td><td className="text-right font-mono text-blue-400">{fmtRs(totalPF)}</td></tr>
+                      <tr><td className="py-1 text-[#475569]">Employee PF (12%)</td><td className="text-right font-mono">{fmtRs(totalEmpPF)}</td></tr>
+                      <tr><td className="py-1 text-[#475569]">Employer EPF (3.67%)</td><td className="text-right font-mono">{fmtRs(rows.reduce((s, r) => s + r.employerEPF, 0))}</td></tr>
+                      <tr><td className="py-1 text-[#475569]">Employer EPS (8.33%)</td><td className="text-right font-mono">{fmtRs(rows.reduce((s, r) => s + r.employerEPS, 0))}</td></tr>
+                      <tr className="border-t font-bold"><td className="py-2">Total PF Payable</td><td className="text-right font-mono text-blue-600">{fmtRs(totalPF)}</td></tr>
                     </tbody>
                   </table>
                 </div>
-                <div className="bg-[#131620] rounded-lg p-4 border border-green-100">
+                <div className="bg-white rounded-lg p-4 border border-green-100">
                   <p className="text-xs font-semibold uppercase text-green-600 mb-3">ESIC Challan (ESI Act 1948)</p>
                   <table className="w-full text-sm">
                     <tbody>
-                      <tr><td className="py-1 text-white/55">Employee ESIC (0.75%)</td><td className="text-right font-mono">{fmtRs(totalEmpESIC)}</td></tr>
-                      <tr><td className="py-1 text-white/55">Employer ESIC (3.25%)</td><td className="text-right font-mono">{fmtRs(totalEmprESIC)}</td></tr>
+                      <tr><td className="py-1 text-[#475569]">Employee ESIC (0.75%)</td><td className="text-right font-mono">{fmtRs(totalEmpESIC)}</td></tr>
+                      <tr><td className="py-1 text-[#475569]">Employer ESIC (3.25%)</td><td className="text-right font-mono">{fmtRs(totalEmprESIC)}</td></tr>
                       <tr className="border-t font-bold"><td className="py-2">Total ESIC Payable</td><td className="text-right font-mono text-green-700">{fmtRs(totalESIC)}</td></tr>
                     </tbody>
                   </table>
-                  <p className="text-xs text-white/30 mt-2">Applicable for employees with gross &le; ₹21,000/month</p>
+                  <p className="text-xs text-[#94A3B8] mt-2">Applicable for employees with gross &le; ₹21,000/month</p>
                 </div>
-                <div className="bg-[#131620] rounded-lg p-4 border border-orange-100">
+                <div className="bg-white rounded-lg p-4 border border-orange-100">
                   <p className="text-xs font-semibold uppercase text-orange-600 mb-3">Gratuity Liability (Gratuity Act 1972)</p>
                   <table className="w-full text-sm">
                     <tbody>
-                      <tr><td className="py-1 text-white/55">Eligible Employees</td><td className="text-right font-mono">{rows.filter(r => r.yearsOfService >= 5).length}</td></tr>
+                      <tr><td className="py-1 text-[#475569]">Eligible Employees</td><td className="text-right font-mono">{rows.filter(r => r.yearsOfService >= 5).length}</td></tr>
                       <tr className="border-t font-bold"><td className="py-2">Total Gratuity Liability</td><td className="text-right font-mono text-orange-700">{fmtRs(totalGratuity)}</td></tr>
                     </tbody>
                   </table>
-                  <p className="text-xs text-white/30 mt-2">Applicable after 5 years of continuous service. Max ₹20 lakh.</p>
+                  <p className="text-xs text-[#94A3B8] mt-2">Applicable after 5 years of continuous service. Max ₹20 lakh.</p>
                 </div>
               </div>
             </CardContent>
@@ -379,7 +379,7 @@ export default function StatutoryPage() {
 
         {/* Employee-wise statutory table */}
         {clientEmployees.length === 0 ? (
-          <Card><CardContent className="py-12 text-center text-white/30">No employees for this client.</CardContent></Card>
+          <Card><CardContent className="py-12 text-center text-[#94A3B8]">No employees for this client.</CardContent></Card>
         ) : (
           <Card>
             <CardHeader>
@@ -389,7 +389,7 @@ export default function StatutoryPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b text-xs font-medium text-white/40 uppercase tracking-wide">
+                    <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide">
                       <th className="text-left py-3 px-4">Employee</th>
                       <th className="text-right py-3 px-3">Basic</th>
                       <th className="text-right py-3 px-3">Gross</th>
@@ -403,10 +403,10 @@ export default function StatutoryPage() {
                   </thead>
                   <tbody>
                     {rows.map(r => (
-                      <tr key={r.emp.id} className="border-b hover:bg-[#0e1017]">
+                      <tr key={r.emp.id} className="border-b hover:bg-[#F8FAFC]">
                         <td className="py-3 px-4">
-                          <div className="font-medium text-white/85">{r.emp.name}</div>
-                          {r.emp.designation && <div className="text-xs text-white/40">{r.emp.designation}</div>}
+                          <div className="font-medium text-[#0F172A]">{r.emp.name}</div>
+                          {r.emp.designation && <div className="text-xs text-[#64748B]">{r.emp.designation}</div>}
                           <div className="flex gap-1 mt-0.5">
                             {r.emp.pf_applicable && (
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">PF</span>
@@ -419,34 +419,34 @@ export default function StatutoryPage() {
                         <td className="py-3 px-3 text-right font-mono text-xs">{fmtRs(r.basicPaise)}</td>
                         <td className="py-3 px-3 text-right font-mono text-xs">{fmtRs(r.grossPaise)}</td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-red-600">
-                          {r.employeePF > 0 ? fmtRs(r.employeePF) : <span className="text-white/20">—</span>}
+                          {r.employeePF > 0 ? fmtRs(r.employeePF) : <span className="text-[#CBD5E1]">—</span>}
                         </td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-orange-600">
-                          {r.totalEmployerPF > 0 ? fmtRs(r.totalEmployerPF) : <span className="text-white/20">—</span>}
+                          {r.totalEmployerPF > 0 ? fmtRs(r.totalEmployerPF) : <span className="text-[#CBD5E1]">—</span>}
                         </td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-red-600">
-                          {r.employeeESIC > 0 ? fmtRs(r.employeeESIC) : <span className="text-white/20">—</span>}
+                          {r.employeeESIC > 0 ? fmtRs(r.employeeESIC) : <span className="text-[#CBD5E1]">—</span>}
                         </td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-orange-600">
-                          {r.employerESIC > 0 ? fmtRs(r.employerESIC) : <span className="text-white/20">—</span>}
+                          {r.employerESIC > 0 ? fmtRs(r.employerESIC) : <span className="text-[#CBD5E1]">—</span>}
                         </td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-purple-700">
-                          {r.gratuityPaise > 0 ? fmtRs(r.gratuityPaise) : <span className="text-white/20">—</span>}
+                          {r.gratuityPaise > 0 ? fmtRs(r.gratuityPaise) : <span className="text-[#CBD5E1]">—</span>}
                         </td>
                         <td className="py-3 px-3 text-center text-xs">
                           {r.yearsOfService > 0 ? (
-                            <span className={r.yearsOfService >= 5 ? "text-green-700 font-medium" : "text-white/40"}>
+                            <span className={r.yearsOfService >= 5 ? "text-green-700 font-medium" : "text-[#64748B]"}>
                               {r.yearsOfService}y
                             </span>
-                          ) : <span className="text-white/20">—</span>}
+                          ) : <span className="text-[#CBD5E1]">—</span>}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                   {rows.length > 1 && (
                     <tfoot>
-                      <tr className="border-t-2 font-bold bg-[#0e1017]">
-                        <td className="py-3 px-4 text-white/65">Total</td>
+                      <tr className="border-t-2 font-bold bg-[#F8FAFC]">
+                        <td className="py-3 px-4 text-[#334155]">Total</td>
                         <td className="py-3 px-3 text-right font-mono text-xs">{fmtRs(rows.reduce((s, r) => s + r.basicPaise, 0))}</td>
                         <td className="py-3 px-3 text-right font-mono text-xs">{fmtRs(rows.reduce((s, r) => s + r.grossPaise, 0))}</td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-red-600">{fmtRs(totalEmpPF)}</td>
@@ -461,17 +461,17 @@ export default function StatutoryPage() {
                 </table>
               </div>
               <div className="p-4 border-t">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-white/40">
-                  <div className="p-3 bg-[#0e1017] rounded-lg border border-white/[0.05]">
-                    <p className="font-medium text-white/65 mb-1">PF Calculation (EPF Act 1952)</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-[#64748B]">
+                  <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#F1F5F9]">
+                    <p className="font-medium text-[#334155] mb-1">PF Calculation (EPF Act 1952)</p>
                     <p>Employee: 12% of basic (capped at ₹15,000 basic). Employer: 3.67% EPF + 8.33% EPS. Basic ceiling ₹15,000/month.</p>
                   </div>
-                  <div className="p-3 bg-[#0e1017] rounded-lg border border-white/[0.05]">
-                    <p className="font-medium text-white/65 mb-1">ESIC (ESI Act 1948)</p>
+                  <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#F1F5F9]">
+                    <p className="font-medium text-[#334155] mb-1">ESIC (ESI Act 1948)</p>
                     <p>Employee: 0.75% of gross. Employer: 3.25% of gross. Applicable only if gross salary ≤ ₹21,000/month.</p>
                   </div>
-                  <div className="p-3 bg-[#0e1017] rounded-lg border border-white/[0.05]">
-                    <p className="font-medium text-white/65 mb-1">Gratuity (Gratuity Act 1972 Sec 4)</p>
+                  <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#F1F5F9]">
+                    <p className="font-medium text-[#334155] mb-1">Gratuity (Gratuity Act 1972 Sec 4)</p>
                     <p>= (Basic/26) × 15 × years. Applicable after 5 years continuous service. Maximum ₹20 lakh. Requires date of joining in employee record.</p>
                   </div>
                 </div>

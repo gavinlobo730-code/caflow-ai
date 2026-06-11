@@ -90,7 +90,7 @@ function SidebarContent({
     <aside
       className={cn(
         "flex flex-col h-full transition-all duration-200 shrink-0",
-        "bg-[hsl(224,71%,4%)]",
+        "bg-[#0F172A]",
         collapsed ? "w-[60px]" : "w-[220px]"
       )}
     >
@@ -214,7 +214,7 @@ export function Sidebar() {
       {/* Hamburger — mobile */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="md:hidden fixed top-3 left-3 z-40 p-2 rounded-lg bg-[hsl(224,71%,4%)] text-white/60 hover:text-white shadow-lg"
+        className="md:hidden fixed top-3 left-3 z-40 p-2 rounded-lg bg-[#0F172A] text-white/60 hover:text-white shadow-lg"
         aria-label="Open menu"
       >
         <Menu size={18} />

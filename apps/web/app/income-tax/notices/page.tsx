@@ -93,8 +93,8 @@ function AddModal({ clients, onClose, onAdded }: {
   const [error, setError] = useState<string | null>(null);
 
   function upd(patch: Partial<AddFormState>) { setForm(f => ({ ...f, ...patch })); }
-  const inputCls = "w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500";
-  const lbl = "text-xs font-medium text-white/65 block mb-1";
+  const inputCls = "w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500";
+  const lbl = "text-xs font-medium text-[#334155] block mb-1";
 
   async function handleSave() {
     if (!form.clientId || !form.dateReceived) { setError("Client and date received are required"); return; }
@@ -128,10 +128,10 @@ function AddModal({ clients, onClose, onAdded }: {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-[#131620] flex items-center justify-between px-6 py-4 border-b border-white/[0.05]">
-          <h3 className="text-sm font-semibold text-white/85">Add IT Notice</h3>
-          <button onClick={onClose} className="text-white/30 hover:text-white/55"><X size={16} /></button>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-[#F1F5F9]">
+          <h3 className="text-sm font-semibold text-[#0F172A]">Add IT Notice</h3>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
         </div>
         <div className="px-6 py-4 space-y-3">
           {error && <div className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</div>}
@@ -178,12 +178,12 @@ function AddModal({ clients, onClose, onAdded }: {
           <div>
             <label className={lbl}>Notes</label>
             <textarea rows={2} value={form.notes} onChange={e => upd({ notes: e.target.value })}
-              className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none"
+              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none"
               placeholder="Additional details…" />
           </div>
         </div>
-        <div className="sticky bottom-0 bg-[#131620] px-6 py-4 border-t border-white/[0.05] flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-white/65 bg-white/[0.06] rounded-lg hover:bg-white/[0.08]">Cancel</button>
+        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-[#F1F5F9] flex gap-2 justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-white/[0.08]">Cancel</button>
           <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
             {saving ? "Saving…" : "Add Notice"}
           </button>
@@ -246,7 +246,7 @@ function UploadDocButton({ noticeId, firmId, clientId, field, label, currentPath
         <>
           <input ref={fileRef} type="file" className="hidden" onChange={handleFile} accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" />
           <button onClick={() => fileRef.current?.click()} disabled={uploading}
-            className="flex items-center gap-1 text-xs text-white/40 hover:text-blue-600 disabled:opacity-40">
+            className="flex items-center gap-1 text-xs text-[#64748B] hover:text-blue-600 disabled:opacity-40">
             {uploading ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
             {uploading ? "Uploading…" : label}
           </button>
@@ -319,10 +319,10 @@ export default function ITNoticesPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/income-tax" className="text-white/30 hover:text-white/55"><ChevronLeft size={18} /></Link>
+        <Link href="/income-tax" className="text-[#94A3B8] hover:text-[#475569]"><ChevronLeft size={18} /></Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-white/85">IT Notices Tracker</h1>
-          <p className="text-sm text-white/40 mt-0.5">Sections 143(1), 148, 271 — Income Tax notices with document upload</p>
+          <h1 className="text-xl font-semibold text-[#0F172A]">IT Notices Tracker</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">Sections 143(1), 148, 271 — Income Tax notices with document upload</p>
         </div>
         <Button size="sm" onClick={() => setShowAdd(true)}>
           <Plus size={14} className="mr-1" /> Add Notice
@@ -346,8 +346,8 @@ export default function ITNoticesPage() {
         ].map(s => (
           <Card key={s.label}>
             <CardContent className="pt-4 pb-3">
-              <p className="text-2xl font-bold text-white/85">{s.value}</p>
-              <p className="text-xs text-white/40 mt-0.5">{s.label}</p>
+              <p className="text-2xl font-bold text-[#0F172A]">{s.value}</p>
+              <p className="text-xs text-[#64748B] mt-0.5">{s.label}</p>
             </CardContent>
           </Card>
         ))}
@@ -356,17 +356,17 @@ export default function ITNoticesPage() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
-          className="border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+          className="border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
           <option value="all">All Clients</option>
           {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
         </select>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as NoticeStatus | "all")}
-          className="border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+          className="border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
           <option value="all">All Statuses</option>
           {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
         </select>
         {filtered.length > 0 && (
-          <div className="ml-auto flex items-center text-sm text-white/55">
+          <div className="ml-auto flex items-center text-sm text-[#475569]">
             Total demand: <span className="font-semibold ml-1 text-red-600">{formatPaise(totalDemand)}</span>
           </div>
         )}
@@ -377,9 +377,9 @@ export default function ITNoticesPage() {
       {/* Table */}
       <Card>
         {loading ? (
-          <div className="p-8 text-center text-white/30 text-sm animate-pulse">Loading…</div>
+          <div className="p-8 text-center text-[#94A3B8] text-sm animate-pulse">Loading…</div>
         ) : filtered.length === 0 ? (
-          <div className="p-10 text-center text-white/30 text-sm">
+          <div className="p-10 text-center text-[#94A3B8] text-sm">
             <FileText className="w-10 h-10 text-gray-200 mx-auto mb-3" />
             {notices.length === 0 ? "No notices tracked yet. Add your first notice." : "No notices match filters."}
           </div>
@@ -387,7 +387,7 @@ export default function ITNoticesPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[1000px]">
               <thead>
-                <tr className="border-b border-white/[0.05] text-xs text-white/30">
+                <tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8]">
                   <th className="px-5 py-3 text-left">Client</th>
                   <th className="px-3 py-3 text-left">Notice Type</th>
                   <th className="px-3 py-3 text-left">AY</th>
@@ -399,18 +399,18 @@ export default function ITNoticesPage() {
                   <th className="px-5 py-3 text-left">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.03]">
+              <tbody className="divide-y divide-[#F8FAFC]">
                 {filtered.map(n => {
                   const badge = statusBadge(n.status);
                   const Icon = badge.icon;
                   const overdue = isOverdue(n);
                   return (
-                    <tr key={n.id} className={`hover:bg-[#0e1017] ${overdue ? "bg-red-50/40" : ""}`}>
-                      <td className="px-5 py-3 text-sm font-medium text-white/85">{clientName(n.client_id)}</td>
+                    <tr key={n.id} className={`hover:bg-[#F8FAFC] ${overdue ? "bg-red-50/40" : ""}`}>
+                      <td className="px-5 py-3 text-sm font-medium text-[#0F172A]">{clientName(n.client_id)}</td>
                       <td className="px-3 py-3 text-sm">Sec. {n.notice_type}</td>
-                      <td className="px-3 py-3 text-xs text-white/55">{n.assessment_year}</td>
-                      <td className="px-3 py-3 text-xs text-white/55">{n.date_received}</td>
-                      <td className={`px-3 py-3 text-xs ${overdue ? "text-red-600 font-semibold" : "text-white/55"}`}>
+                      <td className="px-3 py-3 text-xs text-[#475569]">{n.assessment_year}</td>
+                      <td className="px-3 py-3 text-xs text-[#475569]">{n.date_received}</td>
+                      <td className={`px-3 py-3 text-xs ${overdue ? "text-red-600 font-semibold" : "text-[#475569]"}`}>
                         {n.response_due_date ?? "—"}
                         {overdue && " ⚠"}
                       </td>
@@ -457,7 +457,7 @@ export default function ITNoticesPage() {
                             </button>
                           )}
                           <button onClick={() => deleteNotice(n.id)}
-                            className="p-1 text-white/20 hover:text-red-500">
+                            className="p-1 text-[#CBD5E1] hover:text-red-500">
                             <Trash2 size={13} />
                           </button>
                         </div>

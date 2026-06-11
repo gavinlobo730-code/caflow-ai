@@ -4,51 +4,51 @@
 
 /* ─── Design Tokens ─────────────────────────────────────────────────────────── */
 :root {
-  /* Surfaces */
-  --background:           220 30% 6%;     /* #0C0E14 */
-  --surface:              224 28% 9%;     /* #131620 */
-  --surface-elevated:     224 25% 12%;    /* #191E2B */
-  --surface-hover:        224 22% 14%;    /* #1D2232 */
+  /* Backgrounds */
+  --background:           210 40% 98%;    /* #F8FAFC */
+  --surface:              0 0% 100%;      /* #FFFFFF */
+  --surface-elevated:     210 40% 96%;    /* #F1F5F9 */
+  --surface-hover:        210 40% 94%;
+
+  /* Sidebar (kept dark) */
+  --sidebar-bg:           222 47% 11%;    /* #0F172A */
+  --sidebar-fg:           215 20% 55%;
+  --sidebar-active-bg:    213 94% 48%;    /* #2563EB */
+  --sidebar-active-fg:    0 0% 100%;
+  --sidebar-hover-bg:     222 40% 16%;
+  --sidebar-border:       222 40% 14%;
+  --sidebar-group-label:  215 14% 40%;
 
   /* Foreground */
-  --foreground:           215 30% 93%;    /* #EDF1F8 */
-  --foreground-muted:     215 18% 58%;    /* #8895B0 */
-  --foreground-subtle:    215 14% 38%;    /* #566073 */
+  --foreground:           222 47% 11%;    /* #0F172A */
+  --foreground-secondary: 215 16% 47%;   /* #64748B */
+  --foreground-muted:     215 14% 58%;   /* #94A3B8 */
 
   /* shadcn/ui tokens */
-  --card:                 224 28% 9%;
-  --card-foreground:      215 30% 93%;
-  --popover:              224 25% 12%;
-  --popover-foreground:   215 30% 93%;
-  --primary:              220 90% 60%;    /* #3B82F6 blue-500 */
+  --card:                 0 0% 100%;
+  --card-foreground:      222 47% 11%;
+  --popover:              0 0% 100%;
+  --popover-foreground:   222 47% 11%;
+  --primary:              213 94% 48%;    /* #2563EB */
   --primary-foreground:   0 0% 100%;
-  --secondary:            224 20% 14%;
-  --secondary-foreground: 215 18% 58%;
-  --muted:                224 20% 12%;
-  --muted-foreground:     215 14% 45%;
-  --accent:               220 90% 60%;
-  --accent-foreground:    0 0% 100%;
-  --destructive:          0 72% 51%;
-  --destructive-foreground:0 0% 100%;
-  --border:               224 20% 13%;
-  --input:                224 20% 12%;
-  --ring:                 220 90% 60%;
+  --secondary:            210 40% 96%;
+  --secondary-foreground: 222 47% 11%;
+  --muted:                210 40% 96%;
+  --muted-foreground:     215 16% 47%;
+  --accent:               210 40% 94%;
+  --accent-foreground:    222 47% 11%;
+  --destructive:          0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border:               214 32% 91%;    /* #E2E8F0 */
+  --input:                214 32% 91%;
+  --ring:                 213 94% 48%;
   --radius:               0.5rem;
-
-  /* Sidebar */
-  --sidebar-bg:           224 38% 5%;
-  --sidebar-fg:           215 14% 42%;
-  --sidebar-active-bg:    220 90% 60%;
-  --sidebar-active-fg:    0 0% 100%;
-  --sidebar-hover-bg:     224 25% 9%;
-  --sidebar-border:       224 30% 8%;
-  --sidebar-group-label:  215 14% 35%;
 }
 
 /* ─── Base ───────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { border-color: hsl(var(--border)); }
 
-html { color-scheme: dark; }
+html { color-scheme: light; }
 
 body {
   background-color: hsl(var(--background));
@@ -61,12 +61,12 @@ body {
 }
 
 /* ─── Scrollbar ──────────────────────────────────────────────────────────────── */
-::-webkit-scrollbar             { width: 3px; height: 3px; }
+::-webkit-scrollbar             { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track       { background: transparent; }
-::-webkit-scrollbar-thumb       { background: hsl(224 20% 18%); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: hsl(224 20% 26%); }
+::-webkit-scrollbar-thumb       { background: hsl(214 32% 85%); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(214 32% 74%); }
 
-/* ─── Skeleton shimmer (dark) ────────────────────────────────────────────────── */
+/* ─── Skeleton shimmer ────────────────────────────────────────────────────────── */
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
   100% { background-position:  200% 0; }
@@ -74,9 +74,9 @@ body {
 .skeleton-shimmer {
   background: linear-gradient(
     90deg,
-    hsl(224 20% 11%) 25%,
-    hsl(224 20% 15%) 50%,
-    hsl(224 20% 11%) 75%
+    hsl(214 32% 93%) 25%,
+    hsl(214 32% 97%) 50%,
+    hsl(214 32% 93%) 75%
   );
   background-size: 200% 100%;
   animation: shimmer 1.6s ease-in-out infinite;
@@ -97,18 +97,18 @@ body {
 
 /* ─── Card hover ─────────────────────────────────────────────────────────────── */
 .card-hover {
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
 .card-hover:hover {
-  background-color: hsl(var(--surface-hover));
-  border-color: hsl(224 20% 18%);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+  border-color: hsl(213 94% 48% / 0.2);
 }
 
 /* ─── Input base ─────────────────────────────────────────────────────────────── */
 .input-base {
   width: 100%;
   background: hsl(var(--surface));
-  border: 1px solid hsl(224 20% 16%);
+  border: 1px solid hsl(var(--border));
   border-radius: var(--radius);
   padding: 0.625rem 0.875rem;
   font-size: 0.875rem;
@@ -116,10 +116,10 @@ body {
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.input-base::placeholder { color: hsl(var(--foreground-subtle)); }
+.input-base::placeholder { color: hsl(var(--foreground-muted)); }
 .input-base:focus {
   border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 3px hsl(220 90% 60% / 0.15);
+  box-shadow: 0 0 0 3px hsl(213 94% 48% / 0.12);
 }
 
 /* ─── Data table ─────────────────────────────────────────────────────────────── */
@@ -131,17 +131,17 @@ body {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: hsl(var(--foreground-subtle));
+  color: hsl(var(--foreground-secondary));
   border-bottom: 1px solid hsl(var(--border));
-  background: hsl(var(--surface));
+  background: hsl(var(--surface-elevated));
   white-space: nowrap;
 }
 .data-table td {
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid hsl(224 20% 10%);
+  border-bottom: 1px solid hsl(214 32% 95%);
   color: hsl(var(--foreground));
 }
-.data-table tr:hover td { background: hsl(var(--surface-hover)); }
+.data-table tr:hover td { background: hsl(var(--surface-elevated)); }
 
 /* ─── Motion ─────────────────────────────────────────────────────────────────── */
 @keyframes fade-in  { from { opacity: 0; }              to { opacity: 1; transform: none; } }

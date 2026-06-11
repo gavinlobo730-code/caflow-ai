@@ -31,8 +31,8 @@ function LoadingSpinner() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4 animate-pulse">
       <div className="h-6 bg-white/[0.08] rounded w-48" />
-      <div className="h-10 bg-white/[0.06] rounded w-48" />
-      <div className="h-64 bg-white/[0.06] rounded-xl" />
+      <div className="h-10 bg-[#F1F5F9] rounded w-48" />
+      <div className="h-64 bg-[#F1F5F9] rounded-xl" />
     </div>
   );
 }
@@ -144,21 +144,21 @@ export default function TrialBalancePage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-white/30 hover:text-white/55">
+        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
           <ChevronLeft size={18} />
         </Link>
         <div>
-          <h1 className="text-xl font-semibold text-white/85">Trial Balance</h1>
-          <p className="text-sm text-white/40 mt-0.5">As of {asOfDate}</p>
+          <h1 className="text-xl font-semibold text-[#0F172A]">Trial Balance</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">As of {asOfDate}</p>
         </div>
       </div>
 
       {/* Controls */}
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <label className="text-xs text-white/40">As of Date</label>
+          <label className="text-xs text-[#64748B]">As of Date</label>
           <input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)}
-            className="block mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="block mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <Button variant="outline" size="sm" onClick={exportToExcel} disabled={lines.length === 0}>
           <Download size={14} className="mr-1" /> Export Excel
@@ -166,8 +166,8 @@ export default function TrialBalancePage() {
       </div>
 
       {lines.length === 0 ? (
-        <div className="bg-[#0e1017] rounded-xl border border-white/[0.05] p-12 text-center">
-          <p className="text-sm text-white/40">No posted entries found for the selected date.</p>
+        <div className="bg-[#F8FAFC] rounded-xl border border-[#F1F5F9] p-12 text-center">
+          <p className="text-sm text-[#64748B]">No posted entries found for the selected date.</p>
         </div>
       ) : (
         <>
@@ -184,7 +184,7 @@ export default function TrialBalancePage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-white/[0.05] text-xs text-white/30">
+                  <tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8]">
                     <th className="px-5 py-3 text-left font-semibold">Code</th>
                     <th className="px-3 py-3 text-left font-semibold">Account Name</th>
                     <th className="px-3 py-3 text-left font-semibold">Type</th>
@@ -192,26 +192,26 @@ export default function TrialBalancePage() {
                     <th className="px-5 py-3 text-right font-semibold">Credit</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/[0.03]">
+                <tbody className="divide-y divide-[#F8FAFC]">
                   {lines.map((line) => (
-                    <tr key={line.account_id} className="hover:bg-[#0e1017]">
-                      <td className="px-5 py-3 text-xs font-mono text-white/30">{line.account_code}</td>
-                      <td className="px-3 py-3 text-sm text-white/85">{line.account_name}</td>
+                    <tr key={line.account_id} className="hover:bg-[#F8FAFC]">
+                      <td className="px-5 py-3 text-xs font-mono text-[#94A3B8]">{line.account_code}</td>
+                      <td className="px-3 py-3 text-sm text-[#0F172A]">{line.account_name}</td>
                       <td className={`px-3 py-3 text-xs font-medium ${TYPE_COLORS[line.account_type]}`}>{line.account_type}</td>
-                      <td className="px-5 py-3 text-sm tabular-nums text-right text-white/65">
+                      <td className="px-5 py-3 text-sm tabular-nums text-right text-[#334155]">
                         {line.total_debit_paise > 0 ? formatPaise(line.total_debit_paise) : "—"}
                       </td>
-                      <td className="px-5 py-3 text-sm tabular-nums text-right text-white/65">
+                      <td className="px-5 py-3 text-sm tabular-nums text-right text-[#334155]">
                         {line.total_credit_paise > 0 ? formatPaise(line.total_credit_paise) : "—"}
                       </td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t-2 border-gray-300 bg-[#0e1017] font-bold text-sm">
-                    <td colSpan={3} className="px-5 py-3 text-white/65">Total</td>
-                    <td className="px-5 py-3 text-right tabular-nums text-white/85">{formatPaise(totalDebit)}</td>
-                    <td className="px-5 py-3 text-right tabular-nums text-white/85">{formatPaise(totalCredit)}</td>
+                  <tr className="border-t-2 border-gray-300 bg-[#F8FAFC] font-bold text-sm">
+                    <td colSpan={3} className="px-5 py-3 text-[#334155]">Total</td>
+                    <td className="px-5 py-3 text-right tabular-nums text-[#0F172A]">{formatPaise(totalDebit)}</td>
+                    <td className="px-5 py-3 text-right tabular-nums text-[#0F172A]">{formatPaise(totalCredit)}</td>
                   </tr>
                 </tfoot>
               </table>

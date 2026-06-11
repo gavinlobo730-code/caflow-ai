@@ -176,12 +176,12 @@ export default function ReceivablesAgingPage() {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-white/30 hover:text-white/55">
+        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
           <ChevronLeft className="w-4 h-4" />
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-white/85">Receivables Aging</h1>
-          <p className="text-sm text-white/40 mt-0.5">Outstanding invoices by age bucket</p>
+          <h1 className="text-xl font-semibold text-[#0F172A]">Receivables Aging</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">Outstanding invoices by age bucket</p>
         </div>
         {generated && (
           <Button variant="outline" size="sm" onClick={exportExcel} className="flex items-center gap-1">
@@ -203,8 +203,8 @@ export default function ReceivablesAgingPage() {
       <Card>
         <CardContent className="pt-4 pb-4 flex items-end gap-4 flex-wrap">
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Client</label>
-            <select className="border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}>
+            <label className="text-xs font-medium text-[#334155] block mb-1">Client</label>
+            <select className="border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}>
               <option value="all">All Clients</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
             </select>
@@ -220,7 +220,7 @@ export default function ReceivablesAgingPage() {
       {generated && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: "Total Outstanding", value: fmtRs(totalOutstanding), cls: "text-white/85" },
+            { label: "Total Outstanding", value: fmtRs(totalOutstanding), cls: "text-[#0F172A]" },
             { label: "Current (Not Due)", value: fmtRs(currentAmt), cls: "text-green-700" },
             { label: "Overdue", value: fmtRs(overdueAmt), cls: "text-amber-700" },
             { label: "90+ Days Overdue", value: fmtRs(ninetyPlusAmt), cls: "text-red-700" },
@@ -228,7 +228,7 @@ export default function ReceivablesAgingPage() {
             <Card key={s.label}>
               <CardContent className="pt-4 pb-3">
                 <p className={`text-lg font-bold ${s.cls}`}>{s.value}</p>
-                <p className="text-xs text-white/40 mt-0.5">{s.label}</p>
+                <p className="text-xs text-[#64748B] mt-0.5">{s.label}</p>
               </CardContent>
             </Card>
           ))}
@@ -244,7 +244,7 @@ export default function ReceivablesAgingPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-[#0e1017] text-xs text-white/40 uppercase tracking-wide">
+                <tr className="bg-[#F8FAFC] text-xs text-[#64748B] uppercase tracking-wide">
                   <th className="px-4 py-3 text-left">Invoice No</th>
                   <th className="px-4 py-3 text-left">Client</th>
                   <th className="px-4 py-3 text-left">Invoice Date</th>
@@ -256,16 +256,16 @@ export default function ReceivablesAgingPage() {
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.03]">
+              <tbody className="divide-y divide-[#F8FAFC]">
                 {rows.map(r => (
                   <tr key={r.invoice.id} className={ROW_COLOR[r.bucket]}>
-                    <td className="px-4 py-3 font-mono text-xs font-medium text-white/85">{r.invoice.invoice_no}</td>
-                    <td className="px-4 py-3 text-white/65">{r.clientName}</td>
-                    <td className="px-4 py-3 text-white/55">{r.invoice.invoice_date}</td>
-                    <td className="px-4 py-3 text-white/55">{r.invoice.due_date ?? "—"}</td>
-                    <td className="px-4 py-3 text-right text-white/65">{fmtRs(r.invoice.total_paise)}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-white/85">{fmtRs(r.outstandingPaise)}</td>
-                    <td className="px-4 py-3 text-right text-white/55">{r.daysOverdue > 0 ? r.daysOverdue : "—"}</td>
+                    <td className="px-4 py-3 font-mono text-xs font-medium text-[#0F172A]">{r.invoice.invoice_no}</td>
+                    <td className="px-4 py-3 text-[#334155]">{r.clientName}</td>
+                    <td className="px-4 py-3 text-[#475569]">{r.invoice.invoice_date}</td>
+                    <td className="px-4 py-3 text-[#475569]">{r.invoice.due_date ?? "—"}</td>
+                    <td className="px-4 py-3 text-right text-[#334155]">{fmtRs(r.invoice.total_paise)}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-[#0F172A]">{fmtRs(r.outstandingPaise)}</td>
+                    <td className="px-4 py-3 text-right text-[#475569]">{r.daysOverdue > 0 ? r.daysOverdue : "—"}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${BUCKET_COLOR[r.bucket]}`}>
                         {BUCKET_LABEL[r.bucket]}
@@ -281,7 +281,7 @@ export default function ReceivablesAgingPage() {
                   </tr>
                 ))}
                 {rows.length === 0 && (
-                  <tr><td colSpan={9} className="px-4 py-8 text-center text-white/30 text-sm">No outstanding invoices found.</td></tr>
+                  <tr><td colSpan={9} className="px-4 py-8 text-center text-[#94A3B8] text-sm">No outstanding invoices found.</td></tr>
                 )}
               </tbody>
             </table>
@@ -290,9 +290,9 @@ export default function ReceivablesAgingPage() {
       )}
 
       {!generated && !loading && (
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-12 text-center">
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-12 text-center">
           <RefreshCw className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-          <p className="text-sm text-white/30">Select a client and click &quot;Generate Aging&quot; to see outstanding invoices</p>
+          <p className="text-sm text-[#94A3B8]">Select a client and click &quot;Generate Aging&quot; to see outstanding invoices</p>
         </div>
       )}
     </div>

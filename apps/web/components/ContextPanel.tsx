@@ -16,7 +16,7 @@ export function ContextPanel({ onOpenSearch }: ContextPanelProps) {
   const { activeWorkspace } = useWorkspace();
 
   return (
-    <div className="flex flex-col h-full w-[220px] shrink-0 bg-[#111118] border-r border-white/[0.06]">
+    <div className="flex flex-col h-full w-[220px] shrink-0 bg-[#0F172A] border-r border-white/[0.06]">
       {activeWorkspace === "home" && <HomePanel />}
       {activeWorkspace === "clients" && (
         <ClientsPanel onOpenSearch={onOpenSearch} />

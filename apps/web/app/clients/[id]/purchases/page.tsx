@@ -68,7 +68,7 @@ export default function PurchasesPage() {
     return (
       <div className="px-6 py-4">
         <div className="space-y-3">
-          {[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-[#0e1017] animate-pulse" />)}
+          {[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-[#F8FAFC] animate-pulse" />)}
         </div>
       </div>
     );
@@ -77,13 +77,13 @@ export default function PurchasesPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-shrink-0 overflow-x-auto px-6 pt-5 pb-0">
-        <div className="flex gap-0.5 bg-[#0e1017] rounded-lg p-1 w-fit">
+        <div className="flex gap-0.5 bg-[#F8FAFC] rounded-lg p-1 w-fit">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
-                tab === t.id ? "bg-[#131620] text-white/85 shadow-sm" : "text-white/40 hover:text-white/65"
+                tab === t.id ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"
               }`}
             >
               {t.label}
@@ -104,7 +104,7 @@ export default function PurchasesPage() {
 // ── Status badge ───────────────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-white/[0.06] text-white/55",
+  draft: "bg-[#F1F5F9] text-[#475569]",
   received: "bg-blue-100 text-blue-700",
   partially_paid: "bg-amber-100 text-amber-700",
   paid: "bg-green-100 text-green-700",
@@ -373,25 +373,25 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
 
       {/* Summary strip */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
-          <p className="text-[10px] text-white/40 mb-1">Outstanding Payable</p>
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+          <p className="text-[10px] text-[#64748B] mb-1">Outstanding Payable</p>
           <p className="text-lg font-bold text-orange-700 tabular-nums">{fmt(totalPayable)}</p>
         </div>
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
-          <p className="text-[10px] text-white/40 mb-1">Total Bills (FY)</p>
-          <p className="text-lg font-bold text-white/75 tabular-nums">{fmt(totalThisFy)}</p>
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+          <p className="text-[10px] text-[#64748B] mb-1">Total Bills (FY)</p>
+          <p className="text-lg font-bold text-[#1E293B] tabular-nums">{fmt(totalThisFy)}</p>
         </div>
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
-          <p className="text-[10px] text-white/40 mb-1">Bills This FY</p>
-          <p className="text-lg font-bold text-white/75 tabular-nums">{bills.length}</p>
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+          <p className="text-[10px] text-[#64748B] mb-1">Bills This FY</p>
+          <p className="text-lg font-bold text-[#1E293B] tabular-nums">{bills.length}</p>
         </div>
       </div>
 
       <div className="flex justify-between items-center">
-        <p className="text-xs font-semibold text-white/65">Purchase Bills — FY {financialYear}</p>
+        <p className="text-xs font-semibold text-[#334155]">Purchase Bills — FY {financialYear}</p>
         <div className="flex gap-2">
-          <button onClick={load} className="p-1.5 rounded border border-white/[0.07] hover:bg-[#0e1017]">
-            <RefreshCw size={13} className={loading ? "animate-spin text-white/30" : "text-white/30"} />
+          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC]">
+            <RefreshCw size={13} className={loading ? "animate-spin text-[#94A3B8]" : "text-[#94A3B8]"} />
           </button>
           <button
             onClick={() => setShowForm((s) => !s)}
@@ -404,10 +404,10 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
 
       {/* Create form */}
       {showForm && (
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-5 space-y-4">
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white/85">New Purchase Bill</h3>
-            <button onClick={() => setShowForm(false)} className="text-white/30 hover:text-white/55"><X size={16} /></button>
+            <h3 className="text-sm font-semibold text-[#0F172A]">New Purchase Bill</h3>
+            <button onClick={() => setShowForm(false)} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
           </div>
 
           {/* AI Upload */}
@@ -418,7 +418,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
                 type="file"
                 accept=".pdf,.png,.jpg,.jpeg"
                 onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                className="text-xs text-white/55"
+                className="text-xs text-[#475569]"
               />
               <button
                 onClick={handleExtract}
@@ -437,23 +437,23 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-white/55 mb-1">Vendor *</label>
-              <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <label className="block text-xs font-medium text-[#475569] mb-1">Vendor *</label>
+              <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">— Select vendor —</option>
                 {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}{v.tds_applicable ? ` (TDS ${(v.tds_rate_bps / 100).toFixed(0)}%)` : ""}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/55 mb-1">Vendor Invoice No.</label>
-              <input value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="INV-001" className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-[#475569] mb-1">Vendor Invoice No.</label>
+              <input value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="INV-001" className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/55 mb-1">Bill Date *</label>
-              <input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-[#475569] mb-1">Bill Date *</label>
+              <input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/55 mb-1">Due Date</label>
-              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-[#475569] mb-1">Due Date</label>
+              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
 
@@ -469,7 +469,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-white/[0.05] text-white/30">
+                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
                   <th className="pb-2 text-left font-semibold">Description *</th>
                   <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
                   <th className="pb-2 text-left font-semibold w-28">Expense Account</th>
@@ -480,53 +480,53 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
                   <th className="pb-2 w-6" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.03]">
+              <tbody className="divide-y divide-[#F8FAFC]">
                 {lines.map((line, idx) => {
                   const g = lineGst(line);
                   return (
                     <tr key={idx}>
                       <td className="py-1.5 pr-2">
-                        <input value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" className="w-full px-2 py-1 border border-white/[0.07] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
+                        <input value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
                       </td>
                       <td className="py-1.5 px-1">
-                        <input value={line.hsn_sac} onChange={(e) => setLine(idx, { hsn_sac: e.target.value })} placeholder="HSN/SAC" className="w-full px-2 py-1 border border-white/[0.07] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
+                        <input value={line.hsn_sac} onChange={(e) => setLine(idx, { hsn_sac: e.target.value })} placeholder="HSN/SAC" className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
                       </td>
                       <td className="py-1.5 px-1">
-                        <select value={line.expense_account_id} onChange={(e) => setLine(idx, { expense_account_id: e.target.value })} className="w-full px-1 py-1 border border-white/[0.07] rounded focus:outline-none text-xs">
+                        <select value={line.expense_account_id} onChange={(e) => setLine(idx, { expense_account_id: e.target.value })} className="w-full px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs">
                           <option value="">— Account —</option>
                           {accounts.map((a) => <option key={a.id} value={a.id}>{a.account_code} {a.account_name}</option>)}
                         </select>
                       </td>
                       <td className="py-1.5 px-1">
-                        <input type="number" min="0.001" step="0.001" value={line.quantity} onChange={(e) => setLine(idx, { quantity: parseFloat(e.target.value) || 1 })} className="w-full px-2 py-1 border border-white/[0.07] rounded focus:outline-none text-xs text-right" />
+                        <input type="number" min="0.001" step="0.001" value={line.quantity} onChange={(e) => setLine(idx, { quantity: parseFloat(e.target.value) || 1 })} className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs text-right" />
                       </td>
                       <td className="py-1.5 px-1">
-                        <input type="number" min="0" step="0.01" value={line.rate || ""} onChange={(e) => setLine(idx, { rate: parseFloat(e.target.value) || 0 })} placeholder="0.00" className="w-full px-2 py-1 border border-white/[0.07] rounded focus:outline-none text-xs text-right" />
+                        <input type="number" min="0" step="0.01" value={line.rate || ""} onChange={(e) => setLine(idx, { rate: parseFloat(e.target.value) || 0 })} placeholder="0.00" className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs text-right" />
                       </td>
                       <td className="py-1.5 px-1">
-                        <select value={line.gst_rate_bps} onChange={(e) => setLine(idx, { gst_rate_bps: parseInt(e.target.value) })} className="w-full px-1 py-1 border border-white/[0.07] rounded focus:outline-none text-xs">
+                        <select value={line.gst_rate_bps} onChange={(e) => setLine(idx, { gst_rate_bps: parseInt(e.target.value) })} className="w-full px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs">
                           {GST_RATES.map((r) => <option key={r.bps} value={r.bps}>{r.label}</option>)}
                         </select>
                       </td>
-                      <td className="py-1.5 px-1 text-right font-mono text-white/65">
+                      <td className="py-1.5 px-1 text-right font-mono text-[#334155]">
                         {g.taxable_paise > 0 ? fmt(g.line_total) : "—"}
                       </td>
                       <td className="py-1.5 pl-1">
-                        {lines.length > 1 && <button onClick={() => setLines((prev) => prev.filter((_, i) => i !== idx))} className="text-white/20 hover:text-red-400 font-bold">×</button>}
+                        {lines.length > 1 && <button onClick={() => setLines((prev) => prev.filter((_, i) => i !== idx))} className="text-[#CBD5E1] hover:text-red-600 font-bold">×</button>}
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
               <tfoot>
-                <tr className="border-t border-white/[0.05] text-xs font-semibold">
-                  <td colSpan={6} className="pt-2 text-right text-white/40 pr-2">Taxable</td>
-                  <td className="pt-2 text-right font-mono text-white/65 px-1">{fmt(totals.taxable)}</td>
+                <tr className="border-t border-[#F1F5F9] text-xs font-semibold">
+                  <td colSpan={6} className="pt-2 text-right text-[#64748B] pr-2">Taxable</td>
+                  <td className="pt-2 text-right font-mono text-[#334155] px-1">{fmt(totals.taxable)}</td>
                   <td />
                 </tr>
                 <tr className="text-xs">
-                  <td colSpan={6} className="text-right text-white/30 pr-2">Total GST</td>
-                  <td className="text-right font-mono text-white/40 px-1">{fmt(totals.gst)}</td>
+                  <td colSpan={6} className="text-right text-[#94A3B8] pr-2">Total GST</td>
+                  <td className="text-right font-mono text-[#64748B] px-1">{fmt(totals.gst)}</td>
                   <td />
                 </tr>
                 {tds_paise > 0 && (
@@ -536,9 +536,9 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
                     <td />
                   </tr>
                 )}
-                <tr className="text-xs font-bold border-t border-white/[0.07]">
-                  <td colSpan={6} className="pt-1 text-right text-white/75 pr-2">Net Payable</td>
-                  <td className="pt-1 text-right font-mono text-white/85 px-1">{fmt(net_payable)}</td>
+                <tr className="text-xs font-bold border-t border-[#E2E8F0]">
+                  <td colSpan={6} className="pt-1 text-right text-[#1E293B] pr-2">Net Payable</td>
+                  <td className="pt-1 text-right font-mono text-[#0F172A] px-1">{fmt(net_payable)}</td>
                   <td />
                 </tr>
               </tfoot>
@@ -547,7 +547,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
           <button onClick={() => setLines((prev) => [...prev, { description: "", hsn_sac: "", quantity: 1, rate: 0, gst_rate_bps: 1800, expense_account_id: "" }])} className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Plus size={12} /> Add line</button>
 
           <div className="flex gap-3 justify-end pt-1">
-            <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-white/[0.07] rounded-lg hover:bg-[#0e1017]">Cancel</button>
+            <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
             <button onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
               {saving ? "Saving…" : "Save Draft"}
             </button>
@@ -557,17 +557,17 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
 
       {/* Bills table */}
       {loading ? (
-        <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-[#0e1017] animate-pulse" />)}</div>
+        <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-[#F8FAFC] animate-pulse" />)}</div>
       ) : bills.length === 0 ? (
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] text-center py-16">
-          <p className="text-sm text-white/30">No purchase bills for FY {financialYear}.</p>
+        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16">
+          <p className="text-sm text-[#94A3B8]">No purchase bills for FY {financialYear}.</p>
         </div>
       ) : (
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-white/[0.05] text-white/30">
+                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
                   <th className="px-4 py-3 text-left font-semibold">Our Ref</th>
                   <th className="px-3 py-3 text-left font-semibold">Vendor Invoice</th>
                   <th className="px-3 py-3 text-left font-semibold">Vendor</th>
@@ -580,19 +580,19 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
                   <th className="px-4 py-3 text-left font-semibold">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.03]">
+              <tbody className="divide-y divide-[#F8FAFC]">
                 {bills.map((b) => (
-                  <tr key={b.id} className="hover:bg-[#0e1017]">
-                    <td className="px-4 py-2.5 font-mono text-white/55 text-[10px]">{b.our_reference ?? "—"}</td>
-                    <td className="px-3 py-2.5 text-white/55">{b.bill_no ?? "—"}{b.is_ai_extracted && <span className="ml-1 text-[9px] bg-amber-100 text-amber-600 px-1 rounded">AI</span>}</td>
-                    <td className="px-3 py-2.5 font-medium text-white/75">{(b.vendors as { name: string } | undefined)?.name ?? "—"}</td>
-                    <td className="px-3 py-2.5 text-white/40">{b.bill_date}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-white/65">{fmt(b.taxable_amount_paise)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-white/40">{fmt(b.total_gst_paise)}</td>
+                  <tr key={b.id} className="hover:bg-[#F8FAFC]">
+                    <td className="px-4 py-2.5 font-mono text-[#475569] text-[10px]">{b.our_reference ?? "—"}</td>
+                    <td className="px-3 py-2.5 text-[#475569]">{b.bill_no ?? "—"}{b.is_ai_extracted && <span className="ml-1 text-[9px] bg-amber-100 text-amber-600 px-1 rounded">AI</span>}</td>
+                    <td className="px-3 py-2.5 font-medium text-[#1E293B]">{(b.vendors as { name: string } | undefined)?.name ?? "—"}</td>
+                    <td className="px-3 py-2.5 text-[#64748B]">{b.bill_date}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-[#334155]">{fmt(b.taxable_amount_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-[#64748B]">{fmt(b.total_gst_paise)}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-blue-600">{b.tds_paise > 0 ? fmt(b.tds_paise) : "—"}</td>
-                    <td className="px-3 py-2.5 text-right font-mono font-semibold text-white/75">{fmt(b.net_payable_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-semibold text-[#1E293B]">{fmt(b.net_payable_paise)}</td>
                     <td className="px-3 py-2.5">
-                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[b.status] ?? "bg-white/[0.06] text-white/55"}`}>{b.status}</span>
+                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[b.status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>{b.status}</span>
                     </td>
                     <td className="px-4 py-2.5">
                       {b.status === "draft" && (
@@ -714,43 +714,43 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
       )}
 
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-white/65">{vendors.length} vendor{vendors.length !== 1 ? "s" : ""}</p>
+        <p className="text-xs font-semibold text-[#334155]">{vendors.length} vendor{vendors.length !== 1 ? "s" : ""}</p>
         <div className="flex gap-2">
-          <button onClick={load} className="p-1.5 rounded border border-white/[0.07] hover:bg-[#0e1017]"><RefreshCw size={13} className={loading ? "animate-spin text-white/30" : "text-white/30"} /></button>
+          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC]"><RefreshCw size={13} className={loading ? "animate-spin text-[#94A3B8]" : "text-[#94A3B8]"} /></button>
           <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"><Plus size={12} /> Add Vendor</button>
         </div>
       </div>
 
       {showForm && (
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-5 space-y-4">
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white/85">New Vendor</h3>
-            <button onClick={() => setShowForm(false)}><X size={16} className="text-white/30" /></button>
+            <h3 className="text-sm font-semibold text-[#0F172A]">New Vendor</h3>
+            <button onClick={() => setShowForm(false)}><X size={16} className="text-[#94A3B8]" /></button>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-white/55 mb-1">Name *</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Vendor legal name" className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-[#475569] mb-1">Name *</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Vendor legal name" className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/55 mb-1">GSTIN</label>
-              <input value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} placeholder="27AABCS1429B1Z5" maxLength={15} className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+              <label className="block text-xs font-medium text-[#475569] mb-1">GSTIN</label>
+              <input value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} placeholder="27AABCS1429B1Z5" maxLength={15} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/55 mb-1">PAN</label>
-              <input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+              <label className="block text-xs font-medium text-[#475569] mb-1">PAN</label>
+              <input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/55 mb-1">Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-[#475569] mb-1">Email</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/55 mb-1">Phone</label>
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-[#475569] mb-1">Phone</label>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/55 mb-1">Opening Balance (₹ payable)</label>
-              <input type="number" min="0" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-[#475569] mb-1">Opening Balance (₹ payable)</label>
+              <input type="number" min="0" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
 
@@ -763,43 +763,43 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
             {tdsApplicable && (
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <div>
-                  <label className="block text-xs font-medium text-white/55 mb-1">TDS Section</label>
-                  <select value={tdsSection} onChange={(e) => { setTdsSection(e.target.value); setTdsRate(String(TDS_DEFAULT_RATES[e.target.value] / 100)); }} className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <label className="block text-xs font-medium text-[#475569] mb-1">TDS Section</label>
+                  <select value={tdsSection} onChange={(e) => { setTdsSection(e.target.value); setTdsRate(String(TDS_DEFAULT_RATES[e.target.value] / 100)); }} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     {TDS_SECTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-white/55 mb-1">TDS Rate (%)</label>
-                  <input type="number" min="0" max="30" step="0.1" value={tdsRate} onChange={(e) => setTdsRate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <label className="block text-xs font-medium text-[#475569] mb-1">TDS Rate (%)</label>
+                  <input type="number" min="0" max="30" step="0.1" value={tdsRate} onChange={(e) => setTdsRate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
             )}
           </div>
 
           <div className="flex gap-3 justify-end">
-            <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-white/[0.07] rounded-lg hover:bg-[#0e1017]">Cancel</button>
+            <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
             <button onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">{saving ? "Saving…" : "Add Vendor"}</button>
           </div>
         </div>
       )}
 
       {loading ? (
-        <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-[#0e1017] animate-pulse" />)}</div>
+        <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-[#F8FAFC] animate-pulse" />)}</div>
       ) : (
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-white/[0.05] text-white/30"><th className="px-4 py-3 text-left font-semibold">Name</th><th className="px-3 py-3 text-left font-semibold">GSTIN</th><th className="px-3 py-3 text-center font-semibold">TDS</th><th className="px-3 py-3 text-left font-semibold">Section</th><th className="px-3 py-3 text-right font-semibold">Rate</th><th className="px-4 py-3 text-right font-semibold">Opening Bal</th></tr></thead>
-            <tbody className="divide-y divide-white/[0.03]">
+            <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className="px-4 py-3 text-left font-semibold">Name</th><th className="px-3 py-3 text-left font-semibold">GSTIN</th><th className="px-3 py-3 text-center font-semibold">TDS</th><th className="px-3 py-3 text-left font-semibold">Section</th><th className="px-3 py-3 text-right font-semibold">Rate</th><th className="px-4 py-3 text-right font-semibold">Opening Bal</th></tr></thead>
+            <tbody className="divide-y divide-[#F8FAFC]">
               {vendors.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-white/30">No vendors added yet.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-[#94A3B8]">No vendors added yet.</td></tr>
               ) : vendors.map((v) => (
-                <tr key={v.id} className="hover:bg-[#0e1017]">
-                  <td className="px-4 py-2.5 font-medium text-white/75">{v.name}</td>
-                  <td className="px-3 py-2.5 font-mono text-white/40 text-[10px]">{v.gstin ?? "—"}</td>
+                <tr key={v.id} className="hover:bg-[#F8FAFC]">
+                  <td className="px-4 py-2.5 font-medium text-[#1E293B]">{v.name}</td>
+                  <td className="px-3 py-2.5 font-mono text-[#64748B] text-[10px]">{v.gstin ?? "—"}</td>
                   <td className="px-3 py-2.5 text-center">{v.tds_applicable ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">Yes</span> : "—"}</td>
-                  <td className="px-3 py-2.5 text-white/40">{v.tds_section ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-right text-white/55">{v.tds_rate_bps > 0 ? `${(v.tds_rate_bps / 100).toFixed(1)}%` : "—"}</td>
-                  <td className="px-4 py-2.5 text-right font-mono text-white/65">{v.opening_balance_paise > 0 ? fmt(v.opening_balance_paise) : "—"}</td>
+                  <td className="px-3 py-2.5 text-[#64748B]">{v.tds_section ?? "—"}</td>
+                  <td className="px-3 py-2.5 text-right text-[#475569]">{v.tds_rate_bps > 0 ? `${(v.tds_rate_bps / 100).toFixed(1)}%` : "—"}</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-[#334155]">{v.opening_balance_paise > 0 ? fmt(v.opening_balance_paise) : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -921,88 +921,88 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
-          <p className="text-[10px] text-white/40 mb-1">Total Paid (FY)</p>
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+          <p className="text-[10px] text-[#64748B] mb-1">Total Paid (FY)</p>
           <p className="text-lg font-bold text-green-700 tabular-nums">{fmt(totalPaid)}</p>
         </div>
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
-          <p className="text-[10px] text-white/40 mb-1">Transactions</p>
-          <p className="text-lg font-bold text-white/75 tabular-nums">{payments.length}</p>
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+          <p className="text-[10px] text-[#64748B] mb-1">Transactions</p>
+          <p className="text-lg font-bold text-[#1E293B] tabular-nums">{payments.length}</p>
         </div>
       </div>
 
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-white/65">Payments — FY {financialYear}</p>
+        <p className="text-xs font-semibold text-[#334155]">Payments — FY {financialYear}</p>
         <div className="flex gap-2">
-          <button onClick={load} className="p-1.5 rounded border border-white/[0.07] hover:bg-[#0e1017]"><RefreshCw size={13} className={loading ? "animate-spin text-white/30" : "text-white/30"} /></button>
+          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC]"><RefreshCw size={13} className={loading ? "animate-spin text-[#94A3B8]" : "text-[#94A3B8]"} /></button>
           <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"><Plus size={12} /> Record Payment</button>
         </div>
       </div>
 
       {showForm && (
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-5 space-y-4">
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white/85">Record Payment</h3>
-            <button onClick={() => setShowForm(false)}><X size={16} className="text-white/30" /></button>
+            <h3 className="text-sm font-semibold text-[#0F172A]">Record Payment</h3>
+            <button onClick={() => setShowForm(false)}><X size={16} className="text-[#94A3B8]" /></button>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <div className="col-span-2 lg:col-span-1">
-              <label className="block text-xs font-medium text-white/55 mb-1">Vendor *</label>
-              <select value={vendorId} onChange={(e) => { setVendorId(e.target.value); if (e.target.value) loadOpenBills(e.target.value); }} className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <label className="block text-xs font-medium text-[#475569] mb-1">Vendor *</label>
+              <select value={vendorId} onChange={(e) => { setVendorId(e.target.value); if (e.target.value) loadOpenBills(e.target.value); }} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">— Select vendor —</option>
                 {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/55 mb-1">Against Bill (optional)</label>
-              <select value={billId} onChange={(e) => setBillId(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <label className="block text-xs font-medium text-[#475569] mb-1">Against Bill (optional)</label>
+              <select value={billId} onChange={(e) => setBillId(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">— Advance / Select bill —</option>
                 {openBills.map((b) => <option key={b.id} value={b.id}>{b.our_reference ?? b.bill_no} ({fmt(b.net_payable_paise)})</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/55 mb-1">Date *</label>
-              <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-[#475569] mb-1">Date *</label>
+              <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/55 mb-1">Amount (₹) *</label>
-              <input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-[#475569] mb-1">Amount (₹) *</label>
+              <input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/55 mb-1">Mode</label>
-              <select value={mode} onChange={(e) => setMode(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <label className="block text-xs font-medium text-[#475569] mb-1">Mode</label>
+              <select value={mode} onChange={(e) => setMode(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 {["bank", "cash", "cheque", "upi", "neft", "rtgs"].map((m) => <option key={m}>{m}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/55 mb-1">Reference No.</label>
-              <input value={refNo} onChange={(e) => setRefNo(e.target.value)} placeholder="UTR / cheque no." className="w-full px-3 py-1.5 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-[#475569] mb-1">Reference No.</label>
+              <input value={refNo} onChange={(e) => setRefNo(e.target.value)} placeholder="UTR / cheque no." className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
           <div className="flex gap-3 justify-end">
-            <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-white/[0.07] rounded-lg hover:bg-[#0e1017]">Cancel</button>
+            <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
             <button onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">{saving ? "Saving…" : "Record Payment"}</button>
           </div>
         </div>
       )}
 
       {loading ? (
-        <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-[#0e1017] animate-pulse" />)}</div>
+        <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-[#F8FAFC] animate-pulse" />)}</div>
       ) : (
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-white/[0.05] text-white/30"><th className="px-4 py-3 text-left font-semibold">Payment No</th><th className="px-3 py-3 text-left font-semibold">Date</th><th className="px-3 py-3 text-left font-semibold">Vendor</th><th className="px-3 py-3 text-right font-semibold">Amount</th><th className="px-3 py-3 text-left font-semibold">Mode</th><th className="px-4 py-3 text-left font-semibold">Reference</th></tr></thead>
-            <tbody className="divide-y divide-white/[0.03]">
+            <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className="px-4 py-3 text-left font-semibold">Payment No</th><th className="px-3 py-3 text-left font-semibold">Date</th><th className="px-3 py-3 text-left font-semibold">Vendor</th><th className="px-3 py-3 text-right font-semibold">Amount</th><th className="px-3 py-3 text-left font-semibold">Mode</th><th className="px-4 py-3 text-left font-semibold">Reference</th></tr></thead>
+            <tbody className="divide-y divide-[#F8FAFC]">
               {payments.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-white/30">No payments for FY {financialYear}.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-[#94A3B8]">No payments for FY {financialYear}.</td></tr>
               ) : payments.map((p) => (
-                <tr key={p.id} className="hover:bg-[#0e1017]">
-                  <td className="px-4 py-2.5 font-mono text-white/55 text-[10px]">{p.payment_no}</td>
-                  <td className="px-3 py-2.5 text-white/40">{p.payment_date}</td>
-                  <td className="px-3 py-2.5 font-medium text-white/75">{(p.vendors as { name: string } | undefined)?.name ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-right font-mono font-semibold text-white/75">{fmt(p.amount_paise)}</td>
-                  <td className="px-3 py-2.5 text-white/40 capitalize">{p.payment_mode}</td>
-                  <td className="px-4 py-2.5 text-white/30 text-[10px]">{p.reference_no ?? "—"}</td>
+                <tr key={p.id} className="hover:bg-[#F8FAFC]">
+                  <td className="px-4 py-2.5 font-mono text-[#475569] text-[10px]">{p.payment_no}</td>
+                  <td className="px-3 py-2.5 text-[#64748B]">{p.payment_date}</td>
+                  <td className="px-3 py-2.5 font-medium text-[#1E293B]">{(p.vendors as { name: string } | undefined)?.name ?? "—"}</td>
+                  <td className="px-3 py-2.5 text-right font-mono font-semibold text-[#1E293B]">{fmt(p.amount_paise)}</td>
+                  <td className="px-3 py-2.5 text-[#64748B] capitalize">{p.payment_mode}</td>
+                  <td className="px-4 py-2.5 text-[#94A3B8] text-[10px]">{p.reference_no ?? "—"}</td>
                 </tr>
               ))}
             </tbody>

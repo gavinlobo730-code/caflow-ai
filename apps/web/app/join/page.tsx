@@ -78,7 +78,7 @@ export default function JoinPage() {
           <h1 className="text-white text-2xl font-bold">PracticeSync AI</h1>
         </div>
 
-        <div className="bg-[#131620] rounded-2xl shadow-2xl p-8 text-center space-y-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 text-center space-y-4">
           {(status === "checking" || status === "linking") && (
             <>
               <div className="flex items-center justify-center gap-1.5 py-4">
@@ -86,7 +86,7 @@ export default function JoinPage() {
                 <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:150ms]" />
                 <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:300ms]" />
               </div>
-              <p className="text-sm text-white/40">
+              <p className="text-sm text-[#64748B]">
                 {status === "checking" ? "Verifying your invite…" : "Setting up your account…"}
               </p>
             </>
@@ -99,11 +99,11 @@ export default function JoinPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h2 className="text-lg font-semibold text-white/85">
+              <h2 className="text-lg font-semibold text-[#0F172A]">
                 Welcome to the team{name ? `, ${name}` : ""}!
               </h2>
               {role && (
-                <p className="text-sm text-white/40">
+                <p className="text-sm text-[#64748B]">
                   You&apos;ve been added as <strong>{role}</strong>
                   {jobTitle ? ` — ${jobTitle}` : ""}.
                 </p>
@@ -124,9 +124,9 @@ export default function JoinPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
-              <h2 className="text-lg font-semibold text-white/85">Something went wrong</h2>
-              <p className="text-sm text-white/40">{errorMsg}</p>
-              <p className="text-xs text-white/30">Please contact your CA to resend the invite.</p>
+              <h2 className="text-lg font-semibold text-[#0F172A]">Something went wrong</h2>
+              <p className="text-sm text-[#64748B]">{errorMsg}</p>
+              <p className="text-xs text-[#94A3B8]">Please contact your CA to resend the invite.</p>
             </>
           )}
         </div>

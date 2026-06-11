@@ -30,8 +30,7 @@ export default function SignupPage() {
         email: email.trim(),
         options: {
           emailRedirectTo:
-            (typeof window !== "undefined" ? window.location.origin : "") +
-            "/onboarding",
+            (typeof window !== "undefined" ? window.location.origin : "") + "/onboarding",
         },
       });
       if (otpErr) throw new Error(otpErr.message);
@@ -44,42 +43,41 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#080B12] px-6 py-12">
-      <div className="w-full max-w-[380px]">
+    <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] px-6 py-12">
+      <div className="w-full max-w-[420px]">
 
-        {/* Logo */}
         <div className="flex items-center gap-2.5 justify-center mb-8">
-          <div className="w-8 h-8 rounded-[9px] bg-blue-500 flex items-center justify-center text-[13px] font-bold text-white shadow-[0_0_20px_rgba(59,130,246,0.4)]">P</div>
-          <span className="text-[15px] font-semibold text-white/90 tracking-tight">PracticeSync AI</span>
+          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-[13px] font-bold text-white">P</div>
+          <span className="text-[16px] font-bold text-[#0F172A]">PracticeSync AI</span>
         </div>
 
-        <div className="bg-[#0F1219] border border-white/[0.08] rounded-xl shadow-[0_24px_48px_rgba(0,0,0,0.4)]">
+        <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-8">
           {sent ? (
-            <div className="p-8 text-center space-y-4">
-              <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto">
-                <Mail size={20} className="text-emerald-400" />
+            <div className="text-center space-y-4 py-4">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center mx-auto">
+                <Mail size={22} className="text-emerald-600" />
               </div>
               <div>
-                <h2 className="text-[17px] font-semibold text-white/90">Check your inbox</h2>
-                <p className="text-[13px] text-white/40 mt-2 leading-relaxed">
-                  We sent a magic link to <span className="text-white/65 font-medium">{email}</span>. Click it to finish setting up your firm.
+                <h2 className="text-[18px] font-bold text-[#0F172A]">Check your inbox</h2>
+                <p className="text-[14px] text-[#64748B] mt-2 leading-relaxed">
+                  We sent a magic link to <span className="text-[#0F172A] font-medium">{email}</span>. Click it to finish setting up your firm.
                 </p>
-                <p className="text-[12px] text-white/25 mt-3">Didn&apos;t receive it? Check your spam folder.</p>
+                <p className="text-[12px] text-[#94A3B8] mt-3">Didn&apos;t receive it? Check your spam folder.</p>
               </div>
             </div>
           ) : (
-            <div className="p-8">
+            <>
               <div className="mb-6">
-                <h2 className="text-[20px] font-semibold text-white/90 tracking-tight">Create your firm</h2>
-                <p className="text-[13px] text-white/40 mt-1">Get started in minutes — no credit card required</p>
+                <h2 className="text-[22px] font-bold text-[#0F172A] tracking-tight">Create your firm</h2>
+                <p className="text-[14px] text-[#64748B] mt-1">Get started in minutes — no credit card required</p>
               </div>
 
               {error && (
-                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-500/[0.08] border border-red-500/20 mb-4">
-                  <div className="w-4 h-4 rounded-full bg-red-500/20 flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-red-400 text-[10px] font-bold leading-none">!</span>
+                <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-red-50 border border-red-100 mb-5">
+                  <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-red-500 text-[10px] font-bold leading-none">!</span>
                   </div>
-                  <p className="text-[12.5px] text-red-400 leading-snug">{error}</p>
+                  <p className="text-[13px] text-red-600 leading-snug">{error}</p>
                 </div>
               )}
 
@@ -90,38 +88,33 @@ export default function SignupPage() {
                   { label: "Email Address", value: email, setter: setEmail, placeholder: "you@example.com", type: "email" },
                 ].map(({ label, value, setter, placeholder, type }) => (
                   <div key={label} className="space-y-1.5">
-                    <label className="block text-[11.5px] font-medium text-white/50 uppercase tracking-wider">{label}</label>
+                    <label className="block text-[13px] font-semibold text-[#0F172A]">{label}</label>
                     <input
-                      type={type}
-                      value={value}
-                      onChange={(e) => setter(e.target.value)}
-                      placeholder={placeholder}
-                      required
-                      className="w-full bg-[#141820] border border-white/[0.09] rounded-lg px-3.5 py-2.5 text-[13.5px] text-white/85 placeholder:text-white/20 outline-none focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/15 transition-all"
+                      type={type} value={value} onChange={(e) => setter(e.target.value)}
+                      placeholder={placeholder} required
+                      className="w-full bg-white border border-[#E2E8F0] rounded-lg px-4 py-3 text-[14px] text-[#0F172A] placeholder:text-[#CBD5E1] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
                     />
                   </div>
                 ))}
-
                 <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13.5px] font-semibold px-4 py-2.5 rounded-lg transition-colors mt-2 shadow-[0_4px_12px_rgba(59,130,246,0.25)]"
+                  type="submit" disabled={loading}
+                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[14px] font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm mt-2"
                 >
                   {loading ? (
-                    <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Sending…</>
+                    <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Sending…</>
                   ) : (
-                    <>Get started <ArrowRight size={14} /></>
+                    <>Get started <ArrowRight size={15} /></>
                   )}
                 </button>
               </form>
 
-              <p className="text-center text-[12px] text-white/30 mt-5">
+              <p className="text-center text-[13px] text-[#94A3B8] mt-5">
                 Already have an account?{" "}
-                <Link href="/login" className="text-blue-400 hover:text-blue-300 transition-colors">
+                <Link href="/login" className="text-blue-600 hover:text-blue-700 font-medium transition-colors">
                   Sign in →
                 </Link>
               </p>
-            </div>
+            </>
           )}
         </div>
       </div>

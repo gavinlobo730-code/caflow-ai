@@ -212,20 +212,20 @@ export default function TrialBalanceImportPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0e1017] p-8">
+    <div className="min-h-screen bg-[#F8FAFC] p-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold text-white/85 mb-2">Trial Balance Import</h1>
-        <p className="text-sm text-white/40 mb-6">Universal importer — Tally, Busy, QuickBooks, Zoho, Excel (export as CSV)</p>
+        <h1 className="text-2xl font-bold text-[#0F172A] mb-2">Trial Balance Import</h1>
+        <p className="text-sm text-[#64748B] mb-6">Universal importer — Tally, Busy, QuickBooks, Zoho, Excel (export as CSV)</p>
 
         {/* Step indicator */}
         <div className="flex items-center gap-2 mb-8 text-sm">
           {["Upload", "Map Columns", "Review", "Import"].map((s, i) => (
             <div key={s} className="flex items-center gap-2">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${step > i + 1 ? "bg-green-500 text-white" : step === i + 1 ? "bg-blue-500 text-white" : "bg-white/[0.08] text-white/40"}`}>
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${step > i + 1 ? "bg-green-500 text-white" : step === i + 1 ? "bg-blue-500 text-white" : "bg-white/[0.08] text-[#64748B]"}`}>
                 {step > i + 1 ? <CheckCircle size={14} /> : i + 1}
               </div>
-              <span className={step === i + 1 ? "font-semibold text-white/85" : "text-white/30"}>{s}</span>
-              {i < 3 && <ChevronRight size={14} className="text-white/20" />}
+              <span className={step === i + 1 ? "font-semibold text-[#0F172A]" : "text-[#94A3B8]"}>{s}</span>
+              {i < 3 && <ChevronRight size={14} className="text-[#CBD5E1]" />}
             </div>
           ))}
         </div>
@@ -245,7 +245,7 @@ export default function TrialBalanceImportPage() {
             <Card>
               <CardContent className="pt-6">
                 <div
-                  className="border-2 border-dashed border-white/[0.07] rounded-xl p-12 text-center cursor-pointer hover:border-blue-500/20 hover:bg-blue-500/[0.08] transition-colors"
+                  className="border-2 border-dashed border-[#E2E8F0] rounded-xl p-12 text-center cursor-pointer hover:border-blue-500/20 hover:bg-blue-500/[0.08] transition-colors"
                   onClick={() => fileRef.current?.click()}
                   onDragOver={e => { e.preventDefault(); }}
                   onDrop={e => {
@@ -257,10 +257,10 @@ export default function TrialBalanceImportPage() {
                     }
                   }}
                 >
-                  <Upload size={32} className="mx-auto mb-3 text-white/30" />
-                  <p className="font-medium text-white/65 mb-1">Drop your CSV here or click to browse</p>
-                  <p className="text-sm text-white/30">Supports: Tally CSV, Busy CSV, QuickBooks CSV, Zoho CSV</p>
-                  <p className="text-xs text-white/30 mt-1">Excel: File &rarr; Save As &rarr; CSV</p>
+                  <Upload size={32} className="mx-auto mb-3 text-[#94A3B8]" />
+                  <p className="font-medium text-[#334155] mb-1">Drop your CSV here or click to browse</p>
+                  <p className="text-sm text-[#94A3B8]">Supports: Tally CSV, Busy CSV, QuickBooks CSV, Zoho CSV</p>
+                  <p className="text-xs text-[#94A3B8] mt-1">Excel: File &rarr; Save As &rarr; CSV</p>
                 </div>
                 <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleFile} />
               </CardContent>
@@ -290,7 +290,7 @@ export default function TrialBalanceImportPage() {
                     { label: "Account Type (optional)", key: "typeCol" },
                   ] as { label: string; key: keyof ColumnMap }[]).map(({ label, key }) => (
                     <div key={key}>
-                      <label className="block text-xs font-medium text-white/65 mb-1">{label}</label>
+                      <label className="block text-xs font-medium text-[#334155] mb-1">{label}</label>
                       <select
                         className="w-full border rounded-lg px-3 py-2 text-sm"
                         value={colMap[key]}
@@ -304,11 +304,11 @@ export default function TrialBalanceImportPage() {
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-medium text-white/65 mb-2">Preview (first 5 rows)</h3>
+                  <h3 className="text-sm font-medium text-[#334155] mb-2">Preview (first 5 rows)</h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs border-collapse">
                       <thead>
-                        <tr className="bg-white/[0.06]">
+                        <tr className="bg-[#F1F5F9]">
                           {headers.map((h, i) => <th key={i} className="border px-2 py-1 text-left">{h || `Col ${i + 1}`}</th>)}
                         </tr>
                       </thead>
@@ -338,19 +338,19 @@ export default function TrialBalanceImportPage() {
             <div className="grid grid-cols-3 gap-4">
               <Card>
                 <CardContent className="pt-4">
-                  <p className="text-xs text-white/40 mb-1">Total Debit</p>
-                  <p className="text-lg font-bold text-white/85">Rs {(totalDr / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
+                  <p className="text-xs text-[#64748B] mb-1">Total Debit</p>
+                  <p className="text-lg font-bold text-[#0F172A]">Rs {(totalDr / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4">
-                  <p className="text-xs text-white/40 mb-1">Total Credit</p>
-                  <p className="text-lg font-bold text-white/85">Rs {(totalCr / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
+                  <p className="text-xs text-[#64748B] mb-1">Total Credit</p>
+                  <p className="text-lg font-bold text-[#0F172A]">Rs {(totalCr / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4">
-                  <p className="text-xs text-white/40 mb-1">Difference</p>
+                  <p className="text-xs text-[#64748B] mb-1">Difference</p>
                   <p className={`text-lg font-bold ${Math.abs(diff) < 1 ? "text-green-700" : "text-red-600"}`}>
                     Rs {(diff / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                     {Math.abs(diff) < 1 && " ✓"}
@@ -366,8 +366,8 @@ export default function TrialBalanceImportPage() {
               <CardContent className="p-0">
                 <div className="overflow-x-auto max-h-96 overflow-y-auto">
                   <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-[#131620]">
-                      <tr className="border-b text-xs font-medium text-white/40 uppercase">
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="border-b text-xs font-medium text-[#64748B] uppercase">
                         <th className="text-left py-2 px-4">Account Name</th>
                         <th className="text-left py-2 px-4">Code</th>
                         <th className="py-2 px-4">Type</th>
@@ -377,7 +377,7 @@ export default function TrialBalanceImportPage() {
                     </thead>
                     <tbody>
                       {accounts.map((acc, i) => (
-                        <tr key={i} className="border-b hover:bg-[#0e1017]">
+                        <tr key={i} className="border-b hover:bg-[#F8FAFC]">
                           <td className="py-2 px-4 font-medium">{acc.account_name}</td>
                           <td className="py-2 px-4 font-mono text-xs">{acc.account_code || "—"}</td>
                           <td className="py-2 px-4">
@@ -422,8 +422,8 @@ export default function TrialBalanceImportPage() {
             <Card>
               <CardContent className="pt-8 pb-8 text-center">
                 <CheckCircle size={48} className="mx-auto mb-4 text-green-500" />
-                <h2 className="text-xl font-bold text-white/85 mb-2">Import Complete</h2>
-                <p className="text-white/55 mb-1">{importResult.success} accounts imported successfully.</p>
+                <h2 className="text-xl font-bold text-[#0F172A] mb-2">Import Complete</h2>
+                <p className="text-[#475569] mb-1">{importResult.success} accounts imported successfully.</p>
                 {importResult.errors > 0 && (
                   <p className="text-red-600">{importResult.errors} errors encountered.</p>
                 )}

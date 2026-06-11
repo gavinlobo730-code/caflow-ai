@@ -276,17 +276,17 @@ export default function BankReconciliationPage() {
 
   /* ── Render ─────────────────────────────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-[#0e1017] p-6">
+    <div className="min-h-screen bg-[#F8FAFC] p-6">
       <div className="max-w-7xl mx-auto space-y-5">
 
         {/* Header */}
         <div className="flex items-center gap-3">
-          <Link href="/accounting" className="text-white/30 hover:text-white/55">
+          <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
             <ArrowLeft size={18} />
           </Link>
           <div>
-            <h1 className="text-xl font-semibold text-white/85">Bank Reconciliation</h1>
-            <p className="text-sm text-white/40 mt-0.5">Match bank statement transactions to journal entries</p>
+            <h1 className="text-xl font-semibold text-[#0F172A]">Bank Reconciliation</h1>
+            <p className="text-sm text-[#64748B] mt-0.5">Match bank statement transactions to journal entries</p>
           </div>
         </div>
 
@@ -306,7 +306,7 @@ export default function BankReconciliationPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-white/65 mb-1">Client *</label>
+                  <label className="block text-xs font-medium text-[#334155] mb-1">Client *</label>
                   <select
                     className="w-full border rounded-lg px-3 py-2 text-sm"
                     value={clientId}
@@ -319,7 +319,7 @@ export default function BankReconciliationPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-white/65 mb-1">Account Number (optional)</label>
+                  <label className="block text-xs font-medium text-[#334155] mb-1">Account Number (optional)</label>
                   <input
                     type="text"
                     className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -329,7 +329,7 @@ export default function BankReconciliationPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-white/65 mb-1">Period Start *</label>
+                  <label className="block text-xs font-medium text-[#334155] mb-1">Period Start *</label>
                   <input
                     type="date"
                     className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -338,7 +338,7 @@ export default function BankReconciliationPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-white/65 mb-1">Period End *</label>
+                  <label className="block text-xs font-medium text-[#334155] mb-1">Period End *</label>
                   <input
                     type="date"
                     className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -347,7 +347,7 @@ export default function BankReconciliationPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-white/65 mb-1">Opening Balance (₹)</label>
+                  <label className="block text-xs font-medium text-[#334155] mb-1">Opening Balance (₹)</label>
                   <input
                     type="text"
                     className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -357,7 +357,7 @@ export default function BankReconciliationPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-white/65 mb-1">Statement Closing Balance (₹)</label>
+                  <label className="block text-xs font-medium text-[#334155] mb-1">Statement Closing Balance (₹)</label>
                   <input
                     type="text"
                     className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -385,8 +385,8 @@ export default function BankReconciliationPage() {
               >
                 ← Back to Setup
               </button>
-              <span className="text-white/20">|</span>
-              <span className="text-sm text-white/40">
+              <span className="text-[#CBD5E1]">|</span>
+              <span className="text-sm text-[#64748B]">
                 Period: {periodStart} to {periodEnd}
                 {accountNo ? ` · Account: ${accountNo}` : ""}
               </span>
@@ -413,20 +413,20 @@ export default function BankReconciliationPage() {
             </div>
 
             {loading ? (
-              <div className="text-center py-12 text-white/30 animate-pulse">Loading transactions…</div>
+              <div className="text-center py-12 text-[#94A3B8] animate-pulse">Loading transactions…</div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 {/* Left: Bank Statement Transactions */}
                 <div>
-                  <h2 className="text-sm font-semibold text-white/65 mb-2">
+                  <h2 className="text-sm font-semibold text-[#334155] mb-2">
                     Bank Statement Transactions
-                    <span className="ml-2 font-normal text-white/30">
+                    <span className="ml-2 font-normal text-[#94A3B8]">
                       ({bankTxs.filter((t) => !t.reconciled).length} unreconciled)
                     </span>
                   </h2>
                   <div className="space-y-1.5">
                     {bankTxs.length === 0 && (
-                      <p className="text-sm text-white/30 py-6 text-center">No bank transactions found for this period.</p>
+                      <p className="text-sm text-[#94A3B8] py-6 text-center">No bank transactions found for this period.</p>
                     )}
                     {bankTxs.map((tx) => {
                       const isSelected = selectedBankId === tx.id;
@@ -434,7 +434,7 @@ export default function BankReconciliationPage() {
                         ? "bg-green-50 border-green-200"
                         : isSelected
                         ? "bg-blue-500/[0.08] border-blue-500/20"
-                        : "bg-[#131620] border-white/[0.07] hover:bg-[#0e1017]";
+                        : "bg-white border-[#E2E8F0] hover:bg-[#F8FAFC]";
                       return (
                         <div
                           key={tx.id}
@@ -443,8 +443,8 @@ export default function BankReconciliationPage() {
                         >
                           <div className="flex justify-between items-start gap-2">
                             <div className="min-w-0">
-                              <p className="text-sm font-medium text-white/85 truncate">{tx.description}</p>
-                              <p className="text-xs text-white/30 mt-0.5">{tx.date}</p>
+                              <p className="text-sm font-medium text-[#0F172A] truncate">{tx.description}</p>
+                              <p className="text-xs text-[#94A3B8] mt-0.5">{tx.date}</p>
                             </div>
                             <div className="shrink-0 text-right">
                               {tx.debit_paise > 0 && (
@@ -472,15 +472,15 @@ export default function BankReconciliationPage() {
 
                 {/* Right: Journal Entries */}
                 <div>
-                  <h2 className="text-sm font-semibold text-white/65 mb-2">
+                  <h2 className="text-sm font-semibold text-[#334155] mb-2">
                     Journal Entries
-                    <span className="ml-2 font-normal text-white/30">
+                    <span className="ml-2 font-normal text-[#94A3B8]">
                       ({journalEntries.length} entries)
                     </span>
                   </h2>
                   <div className="space-y-1.5">
                     {journalEntries.length === 0 && (
-                      <p className="text-sm text-white/30 py-6 text-center">No journal entries found for this period.</p>
+                      <p className="text-sm text-[#94A3B8] py-6 text-center">No journal entries found for this period.</p>
                     )}
                     {journalEntries.map((je) => {
                       const isSelected = selectedJournalId === je.id;
@@ -489,7 +489,7 @@ export default function BankReconciliationPage() {
                         ? "bg-green-50 border-green-200"
                         : isSelected
                         ? "bg-blue-500/[0.08] border-blue-500/20"
-                        : "bg-[#131620] border-white/[0.07] hover:bg-[#0e1017]";
+                        : "bg-white border-[#E2E8F0] hover:bg-[#F8FAFC]";
                       const displayPaise = je.total_credit_paise > 0 ? je.total_credit_paise : je.total_debit_paise;
                       return (
                         <div
@@ -499,10 +499,10 @@ export default function BankReconciliationPage() {
                         >
                           <div className="flex justify-between items-start gap-2">
                             <div className="min-w-0">
-                              <p className="text-sm font-medium text-white/85 truncate">{je.narration}</p>
-                              <p className="text-xs text-white/30 mt-0.5">{je.entry_date}</p>
+                              <p className="text-sm font-medium text-[#0F172A] truncate">{je.narration}</p>
+                              <p className="text-xs text-[#94A3B8] mt-0.5">{je.entry_date}</p>
                             </div>
-                            <span className="shrink-0 text-sm font-mono font-semibold text-white/65">
+                            <span className="shrink-0 text-sm font-mono font-semibold text-[#334155]">
                               {fmtRs(displayPaise)}
                             </span>
                           </div>
@@ -527,35 +527,35 @@ export default function BankReconciliationPage() {
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 text-sm mb-4">
                   <div>
-                    <p className="text-xs text-white/40">Opening Balance</p>
-                    <p className="font-semibold text-white/85">{fmtRs(openingPaise)}</p>
+                    <p className="text-xs text-[#64748B]">Opening Balance</p>
+                    <p className="font-semibold text-[#0F172A]">{fmtRs(openingPaise)}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-white/40">Add: Total Credits</p>
+                    <p className="text-xs text-[#64748B]">Add: Total Credits</p>
                     <p className="font-semibold text-green-700">{fmtRs(totalCreditPaise)}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-white/40">Less: Total Debits</p>
+                    <p className="text-xs text-[#64748B]">Less: Total Debits</p>
                     <p className="font-semibold text-red-600">{fmtRs(totalDebitPaise)}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-white/40">= Closing Balance</p>
-                    <p className="font-semibold text-white/85">{fmtRs(calculatedClosingPaise)}</p>
+                    <p className="text-xs text-[#64748B]">= Closing Balance</p>
+                    <p className="font-semibold text-[#0F172A]">{fmtRs(calculatedClosingPaise)}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-white/40">Statement Closing</p>
-                    <p className="font-semibold text-white/85">{fmtRs(statementClosingPaise)}</p>
+                    <p className="text-xs text-[#64748B]">Statement Closing</p>
+                    <p className="font-semibold text-[#0F172A]">{fmtRs(statementClosingPaise)}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-white/40">Difference</p>
+                    <p className="text-xs text-[#64748B]">Difference</p>
                     <p className={`font-bold ${differencePaise === 0 ? "text-green-700" : "text-red-600"}`}>
                       {fmtRs(differencePaise)}
                     </p>
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs text-white/40">
-                    Reconciled: <span className="font-semibold text-white/75">{reconciledCount}</span> / {totalCount} transactions
+                  <p className="text-xs text-[#64748B]">
+                    Reconciled: <span className="font-semibold text-[#1E293B]">{reconciledCount}</span> / {totalCount} transactions
                   </p>
                   {differencePaise !== 0 && (
                     <p className="text-xs text-red-600 flex items-center gap-1">

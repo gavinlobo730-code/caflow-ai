@@ -168,7 +168,7 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
       onClick={onClose}
     >
       <div
-        className="bg-[#16161f] rounded-2xl shadow-[0_24px_60px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.03)] border border-white/[0.08] w-full max-w-2xl mx-4 overflow-hidden"
+        className="bg-[#1E293B] rounded-2xl shadow-[0_24px_60px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.03)] border border-white/[0.08] w-full max-w-2xl mx-4 overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Input */}

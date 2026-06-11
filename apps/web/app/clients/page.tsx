@@ -158,29 +158,29 @@ export default function ClientsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white/85">Clients</h1>
-          <p className="text-white/40 text-sm mt-1">
+          <h1 className="text-2xl font-bold text-[#0F172A]">Clients</h1>
+          <p className="text-[#64748B] text-sm mt-1">
             {loading ? "Loading…" : `${filtered.length} client${filtered.length !== 1 ? "s" : ""}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={load}
-            className="p-2 rounded-lg border border-white/[0.07] hover:bg-[#0e1017] text-white/40"
+            className="p-2 rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"
             title="Refresh"
           >
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
           </button>
           <Link
             href="/pipeline"
-            className="flex items-center gap-2 rounded-lg border border-white/[0.07] px-4 py-2 text-sm font-medium text-white/55 hover:bg-[#0e1017] transition-colors"
+            className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] transition-colors"
           >
             <KanbanSquare size={15} />
             Pipeline
           </Link>
           <button
             onClick={() => setImportOpen(true)}
-            className="flex items-center gap-2 rounded-lg border border-white/[0.07] px-4 py-2 text-sm font-medium text-white/55 hover:bg-[#0e1017] transition-colors"
+            className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] transition-colors"
           >
             <Upload size={15} />
             Import CSV
@@ -197,12 +197,12 @@ export default function ClientsPage() {
 
       {/* Search */}
       <div className="relative">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search by name, PAN, GSTIN, city…"
-          className="w-full rounded-lg border border-white/[0.07] pl-9 pr-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          className="w-full rounded-lg border border-[#E2E8F0] pl-9 pr-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         />
       </div>
 
@@ -217,13 +217,13 @@ export default function ClientsPage() {
       {/* Loading skeleton */}
       {loading && (
         <Card>
-          <CardContent className="p-0 divide-y divide-white/[0.05]">
+          <CardContent className="p-0 divide-y divide-[#F1F5F9]">
             {[...Array(4)].map((_, i) => (
               <div key={i} className="flex items-center gap-4 px-6 py-4">
-                <div className="w-10 h-10 rounded-full bg-white/[0.06] animate-pulse shrink-0" />
+                <div className="w-10 h-10 rounded-full bg-[#F1F5F9] animate-pulse shrink-0" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-3 bg-white/[0.06] rounded animate-pulse w-48" />
-                  <div className="h-2.5 bg-white/[0.06] rounded animate-pulse w-32" />
+                  <div className="h-3 bg-[#F1F5F9] rounded animate-pulse w-48" />
+                  <div className="h-2.5 bg-[#F1F5F9] rounded animate-pulse w-32" />
                 </div>
               </div>
             ))}
@@ -237,8 +237,8 @@ export default function ClientsPage() {
           <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
             <Plus size={24} className="text-blue-500" />
           </div>
-          <h3 className="text-base font-semibold text-white/85 mb-1">No clients yet</h3>
-          <p className="text-sm text-white/40 mb-4">Add your first client to get started</p>
+          <h3 className="text-base font-semibold text-[#0F172A] mb-1">No clients yet</h3>
+          <p className="text-sm text-[#64748B] mb-4">Add your first client to get started</p>
           <button
             onClick={openCreate}
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
@@ -250,7 +250,7 @@ export default function ClientsPage() {
 
       {/* No search results */}
       {!loading && !error && clients.length > 0 && filtered.length === 0 && (
-        <div className="text-center py-10 text-sm text-white/40">
+        <div className="text-center py-10 text-sm text-[#64748B]">
           No clients match &ldquo;{search}&rdquo;
         </div>
       )}
@@ -258,25 +258,25 @@ export default function ClientsPage() {
       {/* Client list */}
       {!loading && filtered.length > 0 && (
         <Card>
-          <CardContent className="p-0 divide-y divide-white/[0.05]">
+          <CardContent className="p-0 divide-y divide-[#F1F5F9]">
             {filtered.map((c) => (
               <Link
                 key={c.id}
                 href={`/clients/${c.id}`}
-                className="flex items-center gap-4 px-6 py-4 hover:bg-[#0e1017] transition-colors group"
+                className="flex items-center gap-4 px-6 py-4 hover:bg-[#F8FAFC] transition-colors group"
               >
                 <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm shrink-0">
                   {c.client_name[0]}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-white/85">{c.client_name}</p>
-                  <p className="text-xs text-white/40 font-mono mt-0.5">
+                  <p className="text-sm font-semibold text-[#0F172A]">{c.client_name}</p>
+                  <p className="text-xs text-[#64748B] font-mono mt-0.5">
                     {c.gstin ?? c.pan}
                   </p>
                 </div>
                 <div className="text-right mr-2">
-                  <p className="text-xs text-white/40">{ENTITY_LABELS[c.entity_type] ?? c.entity_type}</p>
-                  <p className="text-xs font-mono text-white/55">{c.pan}</p>
+                  <p className="text-xs text-[#64748B]">{ENTITY_LABELS[c.entity_type] ?? c.entity_type}</p>
+                  <p className="text-xs font-mono text-[#475569]">{c.pan}</p>
                 </div>
                 {healthScores[c.id] !== undefined && (
                   <HealthBadgeLight score={healthScores[c.id]} />
@@ -286,12 +286,12 @@ export default function ClientsPage() {
                 </Badge>
                 <button
                   onClick={e => openEdit(e, c)}
-                  className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-white/[0.08] text-white/40 transition-all"
+                  className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-white/[0.08] text-[#64748B] transition-all"
                   title="Edit client"
                 >
                   <Pencil size={13} />
                 </button>
-                <ChevronRight size={16} className="text-white/30 group-hover:text-white/55 shrink-0" />
+                <ChevronRight size={16} className="text-[#94A3B8] group-hover:text-[#475569] shrink-0" />
               </Link>
             ))}
           </CardContent>

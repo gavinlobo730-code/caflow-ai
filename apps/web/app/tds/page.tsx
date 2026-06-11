@@ -59,7 +59,7 @@ const STATUS_STYLE: Record<string, string> = {
   Paid:     "bg-green-100 text-green-700",
   Overdue:  "bg-red-100 text-red-700",
   Filed:    "bg-green-100 text-green-700",
-  Draft:    "bg-white/[0.06] text-white/55",
+  Draft:    "bg-[#F1F5F9] text-[#475569]",
   Issued:   "bg-green-100 text-green-700",
 };
 
@@ -199,66 +199,66 @@ function AddDeductionModal({ firmId, onClose, onAdded }: {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white/85">Add TDS Deduction</h3>
-          <button onClick={onClose} className="text-white/30 hover:text-white/55"><X className="w-4 h-4" /></button>
+          <h3 className="text-sm font-semibold text-[#0F172A]">Add TDS Deduction</h3>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X className="w-4 h-4" /></button>
         </div>
         {err && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{err}</p>}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <label className="text-xs font-medium text-white/65 block mb-1">Party / Vendor Name</label>
-            <input className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={partyName} onChange={e => setPartyName(e.target.value)} placeholder="Vendor name" />
+            <label className="text-xs font-medium text-[#334155] block mb-1">Party / Vendor Name</label>
+            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={partyName} onChange={e => setPartyName(e.target.value)} placeholder="Vendor name" />
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">PAN of Party</label>
-            <input className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500" value={partyPan} onChange={e => setPartyPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
+            <label className="text-xs font-medium text-[#334155] block mb-1">PAN of Party</label>
+            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500" value={partyPan} onChange={e => setPartyPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">TDS Section</label>
-            <select className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={section} onChange={e => setSection(e.target.value)}>
+            <label className="text-xs font-medium text-[#334155] block mb-1">TDS Section</label>
+            <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={section} onChange={e => setSection(e.target.value)}>
               {Object.entries(TDS_SECTIONS).map(([k, v]) => (
                 <option key={k} value={k}>{k} — {v.label}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Gross Payment (₹)</label>
-            <input type="number" min="0" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={grossRupees} onChange={e => setGrossRupees(e.target.value)} placeholder="0.00" />
+            <label className="text-xs font-medium text-[#334155] block mb-1">Gross Payment (₹)</label>
+            <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={grossRupees} onChange={e => setGrossRupees(e.target.value)} placeholder="0.00" />
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">TDS Rate (%)</label>
-            <input type="number" min="0" step="0.1" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={tdsRate} onChange={e => setTdsRate(parseFloat(e.target.value) || 0)} />
+            <label className="text-xs font-medium text-[#334155] block mb-1">TDS Rate (%)</label>
+            <input type="number" min="0" step="0.1" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={tdsRate} onChange={e => setTdsRate(parseFloat(e.target.value) || 0)} />
           </div>
           <div className="col-span-2 bg-blue-50 rounded-lg px-3 py-2 flex justify-between items-center">
             <span className="text-xs text-blue-700 font-medium">TDS Amount (auto-calculated)</span>
             <span className="text-sm font-semibold text-blue-900">{formatPaise(tdsPaise)}</span>
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Payment Date</label>
-            <input type="date" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
+            <label className="text-xs font-medium text-[#334155] block mb-1">Payment Date</label>
+            <input type="date" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Challan No.</label>
-            <input className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={challanNo} onChange={e => setChallanNo(e.target.value)} placeholder="Optional" />
+            <label className="text-xs font-medium text-[#334155] block mb-1">Challan No.</label>
+            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={challanNo} onChange={e => setChallanNo(e.target.value)} placeholder="Optional" />
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Financial Year</label>
-            <select className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={fy} onChange={e => setFy(e.target.value)}>
+            <label className="text-xs font-medium text-[#334155] block mb-1">Financial Year</label>
+            <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={fy} onChange={e => setFy(e.target.value)}>
               {FY_LIST.map(f => <option key={f} value={f}>{f}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Quarter</label>
-            <select className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={quarter} onChange={e => setQuarter(e.target.value)}>
+            <label className="text-xs font-medium text-[#334155] block mb-1">Quarter</label>
+            <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={quarter} onChange={e => setQuarter(e.target.value)}>
               {QUARTERS.map(q => <option key={q} value={q}>{q}</option>)}
             </select>
           </div>
         </div>
 
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 border border-white/[0.07] text-white/55 text-sm py-2 rounded-lg hover:bg-[#0e1017]">Cancel</button>
+          <button onClick={onClose} className="flex-1 border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
           <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
             {saving ? "Saving…" : "Add Deduction"}
           </button>
@@ -304,53 +304,53 @@ function AddChallanModal({ onClose, onAdded }: {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white/85">Add Challan 281</h3>
-          <button onClick={onClose}><X className="w-4 h-4 text-white/30" /></button>
+          <h3 className="text-sm font-semibold text-[#0F172A]">Add Challan 281</h3>
+          <button onClick={onClose}><X className="w-4 h-4 text-[#94A3B8]" /></button>
         </div>
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">BSR Code</label>
-            <input className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" value={bsrCode} onChange={e => setBsrCode(e.target.value)} placeholder="7-digit BSR code" />
+            <label className="text-xs font-medium text-[#334155] block mb-1">BSR Code</label>
+            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" value={bsrCode} onChange={e => setBsrCode(e.target.value)} placeholder="7-digit BSR code" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-white/65 block mb-1">Challan Date</label>
-              <input type="date" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={challanDate} onChange={e => setChallanDate(e.target.value)} />
+              <label className="text-xs font-medium text-[#334155] block mb-1">Challan Date</label>
+              <input type="date" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={challanDate} onChange={e => setChallanDate(e.target.value)} />
             </div>
             <div>
-              <label className="text-xs font-medium text-white/65 block mb-1">Serial No.</label>
-              <input className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" value={serialNo} onChange={e => setSerialNo(e.target.value)} placeholder="00001" />
+              <label className="text-xs font-medium text-[#334155] block mb-1">Serial No.</label>
+              <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" value={serialNo} onChange={e => setSerialNo(e.target.value)} placeholder="00001" />
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Amount (₹)</label>
-            <input type="number" min="0" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={amtRupees} onChange={e => setAmtRupees(e.target.value)} />
+            <label className="text-xs font-medium text-[#334155] block mb-1">Amount (₹)</label>
+            <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={amtRupees} onChange={e => setAmtRupees(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-white/65 block mb-1">Period</label>
-              <select className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={period} onChange={e => setPeriod(e.target.value)}>
+              <label className="text-xs font-medium text-[#334155] block mb-1">Period</label>
+              <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={period} onChange={e => setPeriod(e.target.value)}>
                 {QUARTERS.map(q => <option key={q}>{q}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-white/65 block mb-1">FY</label>
-              <select className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={fy} onChange={e => setFy(e.target.value)}>
+              <label className="text-xs font-medium text-[#334155] block mb-1">FY</label>
+              <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={fy} onChange={e => setFy(e.target.value)}>
                 {FY_LIST.map(f => <option key={f}>{f}</option>)}
               </select>
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Section</label>
-            <select className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={section} onChange={e => setSection(e.target.value)}>
+            <label className="text-xs font-medium text-[#334155] block mb-1">Section</label>
+            <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={section} onChange={e => setSection(e.target.value)}>
               {Object.entries(TDS_SECTIONS).map(([k, v]) => <option key={k} value={k}>{k} — {v.label}</option>)}
             </select>
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 border border-white/[0.07] text-white/55 text-sm py-2 rounded-lg">Cancel</button>
+          <button onClick={onClose} className="flex-1 border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg">Cancel</button>
           <button onClick={handleAdd} className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700">Add</button>
         </div>
       </div>
@@ -406,8 +406,8 @@ export default function TDSPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-white/85">TDS Module</h1>
-        <p className="text-sm text-white/40 mt-0.5">Tax Deducted at Source — IT Act Chapter XVII-B</p>
+        <h1 className="text-xl font-semibold text-[#0F172A]">TDS Module</h1>
+        <p className="text-sm text-[#64748B] mt-0.5">Tax Deducted at Source — IT Act Chapter XVII-B</p>
       </div>
 
       {tableError && (
@@ -427,22 +427,22 @@ export default function TDSPage() {
           { icon: <Calendar className="w-4 h-4 text-red-600" />, bg: "bg-red-50", label: "Returns Due", value: String(pendingReturns), sub: "24Q/26Q/27Q" },
           { icon: <Award className="w-4 h-4 text-purple-600" />, bg: "bg-purple-50", label: "Certificates Pending", value: String(pendingCerts), sub: "Form 16/16A" },
         ].map(c => (
-          <div key={c.label} className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
+          <div key={c.label} className="bg-white rounded-xl border border-[#F1F5F9] p-4">
             <div className="flex items-center gap-2 mb-3">
               <div className={`w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center`}>{c.icon}</div>
-              <span className="text-xs text-white/40">{c.label}</span>
+              <span className="text-xs text-[#64748B]">{c.label}</span>
             </div>
-            <p className="text-lg font-semibold text-white/85">{c.value}</p>
-            <p className="text-xs text-white/30 mt-0.5">{c.sub}</p>
+            <p className="text-lg font-semibold text-[#0F172A]">{c.value}</p>
+            <p className="text-xs text-[#94A3B8] mt-0.5">{c.sub}</p>
           </div>
         ))}
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-white/[0.05]">
+      <div className="flex gap-1 border-b border-[#F1F5F9]">
         {TABS.map((tab, i) => (
           <button key={tab} onClick={() => setActiveTab(i)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === i ? "border-blue-600 text-blue-700" : "border-transparent text-white/40 hover:text-white/65"}`}>
+            className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === i ? "border-blue-600 text-blue-700" : "border-transparent text-[#64748B] hover:text-[#334155]"}`}>
             {tab}
           </button>
         ))}
@@ -450,15 +450,15 @@ export default function TDSPage() {
 
       {/* Tab: Deductions */}
       {activeTab === 0 && (
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-white/85">TDS Deductions</h2>
-              <p className="text-xs text-white/30 mt-0.5">IT Act Section 194 — deductions recorded</p>
+              <h2 className="text-sm font-semibold text-[#0F172A]">TDS Deductions</h2>
+              <p className="text-xs text-[#94A3B8] mt-0.5">IT Act Section 194 — deductions recorded</p>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={() => setShowImport(true)}
-                className="flex items-center gap-1.5 border border-white/[0.07] text-white/55 text-xs px-3 py-1.5 rounded-lg hover:bg-[#0e1017]">
+                className="flex items-center gap-1.5 border border-[#E2E8F0] text-[#475569] text-xs px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]">
                 <Upload className="w-3.5 h-3.5" /> Import CSV
               </button>
               <button onClick={() => setShowAddDeduction(true)}
@@ -467,39 +467,39 @@ export default function TDSPage() {
               </button>
             </div>
           </div>
-          {loading ? <div className="px-5 py-10 text-center text-sm text-white/30">Loading…</div>
+          {loading ? <div className="px-5 py-10 text-center text-sm text-[#94A3B8]">Loading…</div>
             : deductions.length === 0 ? (
-              <div className="px-5 py-10 text-center text-sm text-white/30">No deductions recorded yet. Click &ldquo;Add Deduction&rdquo; to start.</div>
+              <div className="px-5 py-10 text-center text-sm text-[#94A3B8]">No deductions recorded yet. Click &ldquo;Add Deduction&rdquo; to start.</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-50">
                       {["Party Name", "PAN", "Section", "Payment Date", "Gross Amount", "TDS Rate", "TDS Amount", "Challan No"].map(h => (
-                        <th key={h} className="text-left text-xs font-medium text-white/30 px-4 py-3">{h}</th>
+                        <th key={h} className="text-left text-xs font-medium text-[#94A3B8] px-4 py-3">{h}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/[0.03]">
+                  <tbody className="divide-y divide-[#F8FAFC]">
                     {deductions.map(d => (
-                      <tr key={d.id} className="hover:bg-[#0e1017]/50">
-                        <td className="px-4 py-3 text-sm font-medium text-white/85">{d.party_name}</td>
-                        <td className="px-4 py-3 text-xs font-mono text-white/55">{d.party_pan || "—"}</td>
+                      <tr key={d.id} className="hover:bg-[#F8FAFC]/50">
+                        <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">{d.party_name}</td>
+                        <td className="px-4 py-3 text-xs font-mono text-[#475569]">{d.party_pan || "—"}</td>
                         <td className="px-4 py-3">
                           <span className="text-xs font-mono font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{d.section}</span>
-                          <p className="text-[10px] text-white/30 mt-0.5">{TDS_SECTIONS[d.section]?.label}</p>
+                          <p className="text-[10px] text-[#94A3B8] mt-0.5">{TDS_SECTIONS[d.section]?.label}</p>
                         </td>
-                        <td className="px-4 py-3 text-xs text-white/55">{new Date(d.payment_date).toLocaleDateString("en-IN")}</td>
-                        <td className="px-4 py-3 text-sm text-right text-white/85">{formatPaise(d.gross_amount_paise)}</td>
-                        <td className="px-4 py-3 text-xs text-right text-white/55">{d.tds_rate}%</td>
-                        <td className="px-4 py-3 text-sm text-right font-medium text-white/85">{formatPaise(d.tds_amount_paise)}</td>
-                        <td className="px-4 py-3 text-xs font-mono text-white/55">{d.challan_no || "—"}</td>
+                        <td className="px-4 py-3 text-xs text-[#475569]">{new Date(d.payment_date).toLocaleDateString("en-IN")}</td>
+                        <td className="px-4 py-3 text-sm text-right text-[#0F172A]">{formatPaise(d.gross_amount_paise)}</td>
+                        <td className="px-4 py-3 text-xs text-right text-[#475569]">{d.tds_rate}%</td>
+                        <td className="px-4 py-3 text-sm text-right font-medium text-[#0F172A]">{formatPaise(d.tds_amount_paise)}</td>
+                        <td className="px-4 py-3 text-xs font-mono text-[#475569]">{d.challan_no || "—"}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="border-t border-white/[0.05] bg-[#0e1017]/50">
-                      <td colSpan={4} className="px-4 py-3 text-xs font-medium text-white/40">Total</td>
+                    <tr className="border-t border-[#F1F5F9] bg-[#F8FAFC]/50">
+                      <td colSpan={4} className="px-4 py-3 text-xs font-medium text-[#64748B]">Total</td>
                       <td className="px-4 py-3 text-right text-sm font-semibold">{formatPaise(deductions.reduce((s, d) => s + d.gross_amount_paise, 0))}</td>
                       <td></td>
                       <td className="px-4 py-3 text-right text-sm font-semibold">{formatPaise(totalTDSPaise)}</td>
@@ -514,11 +514,11 @@ export default function TDSPage() {
 
       {/* Tab: Challans */}
       {activeTab === 1 && (
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-white/85">Challan 281 Tracker</h2>
-              <p className="text-xs text-white/30 mt-0.5">IT Act Section 200(1) — TDS deposit challans</p>
+              <h2 className="text-sm font-semibold text-[#0F172A]">Challan 281 Tracker</h2>
+              <p className="text-xs text-[#94A3B8] mt-0.5">IT Act Section 200(1) — TDS deposit challans</p>
             </div>
             <button onClick={() => setShowAddChallan(true)}
               className="flex items-center gap-1.5 bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700">
@@ -526,26 +526,26 @@ export default function TDSPage() {
             </button>
           </div>
           {challans.length === 0 ? (
-            <div className="px-5 py-10 text-center text-sm text-white/30">No challans added yet. Click &ldquo;Add Challan&rdquo; to record a deposit.</div>
+            <div className="px-5 py-10 text-center text-sm text-[#94A3B8]">No challans added yet. Click &ldquo;Add Challan&rdquo; to record a deposit.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-50">
                     {["BSR Code", "Challan Date", "Serial No.", "Amount", "Period", "FY", "Section"].map(h => (
-                      <th key={h} className="text-left text-xs font-medium text-white/30 px-4 py-3">{h}</th>
+                      <th key={h} className="text-left text-xs font-medium text-[#94A3B8] px-4 py-3">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/[0.03]">
+                <tbody className="divide-y divide-[#F8FAFC]">
                   {challans.map(c => (
-                    <tr key={c.id} className="hover:bg-[#0e1017]/50">
-                      <td className="px-4 py-3 text-xs font-mono text-white/85">{c.bsr_code || "—"}</td>
-                      <td className="px-4 py-3 text-xs text-white/55">{c.challan_date ? new Date(c.challan_date).toLocaleDateString("en-IN") : "—"}</td>
-                      <td className="px-4 py-3 text-xs font-mono text-white/55">{c.challan_serial_no || "—"}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-white/85">{formatPaise(c.amount_paise)}</td>
-                      <td className="px-4 py-3 text-xs text-white/55">{c.period}</td>
-                      <td className="px-4 py-3 text-xs text-white/55">{c.fy}</td>
+                    <tr key={c.id} className="hover:bg-[#F8FAFC]/50">
+                      <td className="px-4 py-3 text-xs font-mono text-[#0F172A]">{c.bsr_code || "—"}</td>
+                      <td className="px-4 py-3 text-xs text-[#475569]">{c.challan_date ? new Date(c.challan_date).toLocaleDateString("en-IN") : "—"}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-[#475569]">{c.challan_serial_no || "—"}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">{formatPaise(c.amount_paise)}</td>
+                      <td className="px-4 py-3 text-xs text-[#475569]">{c.period}</td>
+                      <td className="px-4 py-3 text-xs text-[#475569]">{c.fy}</td>
                       <td className="px-4 py-3 text-xs font-mono text-blue-700">{c.section}</td>
                     </tr>
                   ))}
@@ -564,31 +564,31 @@ export default function TDSPage() {
             <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <p className="text-sm text-amber-700">File 24Q/26Q returns manually on TRACES portal (traces.gov.in). PracticeSync does not auto-submit to any government portal.</p>
           </div>
-          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50">
-              <h2 className="text-sm font-semibold text-white/85">TDS Returns (24Q / 26Q / 27Q)</h2>
-              <p className="text-xs text-white/30 mt-0.5">IT Act Section 200(3) — quarterly TDS return filing status</p>
+              <h2 className="text-sm font-semibold text-[#0F172A]">TDS Returns (24Q / 26Q / 27Q)</h2>
+              <p className="text-xs text-[#94A3B8] mt-0.5">IT Act Section 200(3) — quarterly TDS return filing status</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-50">
                     {["Form Type", "Quarter", "FY", "Due Date", "Filed Date", "PRN / Acknowledgement", "Status"].map(h => (
-                      <th key={h} className="text-left text-xs font-medium text-white/30 px-4 py-3">{h}</th>
+                      <th key={h} className="text-left text-xs font-medium text-[#94A3B8] px-4 py-3">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/[0.03]">
+                <tbody className="divide-y divide-[#F8FAFC]">
                   {returns.map(r => (
-                    <tr key={r.id} className="hover:bg-[#0e1017]/50">
+                    <tr key={r.id} className="hover:bg-[#F8FAFC]/50">
                       <td className="px-4 py-3 text-xs font-mono font-medium text-blue-700">{r.form_type}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-white/85">{r.quarter}</td>
-                      <td className="px-4 py-3 text-xs text-white/55">{r.fy}</td>
-                      <td className="px-4 py-3 text-xs text-white/55">{new Date(r.due_date).toLocaleDateString("en-IN")}</td>
-                      <td className="px-4 py-3 text-xs text-white/55">{r.filed_date ? new Date(r.filed_date).toLocaleDateString("en-IN") : "—"}</td>
-                      <td className="px-4 py-3 text-xs font-mono text-white/55">{r.prn || "—"}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">{r.quarter}</td>
+                      <td className="px-4 py-3 text-xs text-[#475569]">{r.fy}</td>
+                      <td className="px-4 py-3 text-xs text-[#475569]">{new Date(r.due_date).toLocaleDateString("en-IN")}</td>
+                      <td className="px-4 py-3 text-xs text-[#475569]">{r.filed_date ? new Date(r.filed_date).toLocaleDateString("en-IN") : "—"}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-[#475569]">{r.prn || "—"}</td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLE[r.status] ?? "bg-white/[0.06] text-white/55"}`}>{r.status}</span>
+                        <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLE[r.status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>{r.status}</span>
                       </td>
                     </tr>
                   ))}
@@ -601,28 +601,28 @@ export default function TDSPage() {
 
       {/* Tab: Certificates */}
       {activeTab === 3 && (
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50">
-            <h2 className="text-sm font-semibold text-white/85">Form 16A Certificates</h2>
-            <p className="text-xs text-white/30 mt-0.5">TDS certificates issued to deductees — IT Act Section 203</p>
+            <h2 className="text-sm font-semibold text-[#0F172A]">Form 16A Certificates</h2>
+            <p className="text-xs text-[#94A3B8] mt-0.5">TDS certificates issued to deductees — IT Act Section 203</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-50">
                   {["Deductee Name", "PAN", "Period", "TDS Amount", "Issue Date", "Status"].map(h => (
-                    <th key={h} className="text-left text-xs font-medium text-white/30 px-4 py-3">{h}</th>
+                    <th key={h} className="text-left text-xs font-medium text-[#94A3B8] px-4 py-3">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.03]">
+              <tbody className="divide-y divide-[#F8FAFC]">
                 {certificates.map(c => (
-                  <tr key={c.id} className="hover:bg-[#0e1017]/50">
-                    <td className="px-4 py-3 text-sm font-medium text-white/85">{c.deductee_name}</td>
-                    <td className="px-4 py-3 text-xs font-mono text-white/55">{c.deductee_pan}</td>
-                    <td className="px-4 py-3 text-xs text-white/55">{c.period}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-white/85">{formatPaise(c.amount_paise)}</td>
-                    <td className="px-4 py-3 text-xs text-white/55">{c.issue_date ? new Date(c.issue_date).toLocaleDateString("en-IN") : "—"}</td>
+                  <tr key={c.id} className="hover:bg-[#F8FAFC]/50">
+                    <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">{c.deductee_name}</td>
+                    <td className="px-4 py-3 text-xs font-mono text-[#475569]">{c.deductee_pan}</td>
+                    <td className="px-4 py-3 text-xs text-[#475569]">{c.period}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">{formatPaise(c.amount_paise)}</td>
+                    <td className="px-4 py-3 text-xs text-[#475569]">{c.issue_date ? new Date(c.issue_date).toLocaleDateString("en-IN") : "—"}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLE[c.status]}`}>{c.status}</span>
                     </td>
