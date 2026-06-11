@@ -8,7 +8,7 @@ export default function NotFound() {
   useEffect(() => {
     const path = window.location.pathname;
 
-    // Handle /clients/:id — redirect to overview
+    // /clients/:id or /clients/:id/ — redirect to overview so the workspace loads
     const clientRoot = path.match(/^\/clients\/([^/]+)\/?$/);
     if (clientRoot && clientRoot[1] !== "_placeholder") {
       setRedirecting(true);
@@ -16,12 +16,19 @@ export default function NotFound() {
       return;
     }
 
-    // Handle /clients/:id/:section — redirect to _placeholder equivalent
-    const clientSection = path.match(/^\/clients\/([^/]+)(\/.*)/);
+    // /clients/:id/:section/... — the _redirects rewrite missed this path.
+    // Do NOT navigate to _placeholder. Instead reload so the browser re-requests
+    // the URL and Cloudflare's _redirects can serve the _placeholder shell.
+    const clientSection = path.match(/^\/clients\/([^/]+)\/.+/);
     if (clientSection && clientSection[1] !== "_placeholder") {
-      setRedirecting(true);
-      window.location.replace(`/clients/_placeholder${clientSection[2]}`);
-      return;
+      // Replace trailing slash variant to maximise _redirects match chance
+      const canonical = path.endsWith("/") ? path : path + "/";
+      if (canonical !== path) {
+        window.location.replace(canonical);
+      }
+      // If we're already on the canonical form and still 404ing, show the
+      // generic error rather than looping — the workspace will be unreachable
+      // until _redirects is correct in production.
     }
   }, []);
 
