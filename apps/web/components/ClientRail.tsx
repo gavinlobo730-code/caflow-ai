@@ -50,12 +50,12 @@ export function ClientRail() {
   const { clientId } = useClientNav();
 
   return (
-    <div className="flex flex-col h-full w-[52px] shrink-0 bg-[#0a0a10] border-r border-white/5">
+    <div className="flex flex-col h-full w-[52px] shrink-0 bg-white border-r border-[#E2E8F0]">
       {/* Back to Firm */}
       <Link
         href="/clients"
         title="Back to Clients"
-        className="flex items-center justify-center h-12 w-full text-white/30 hover:text-white/70 hover:bg-white/5 transition-colors border-b border-white/5"
+        className="flex items-center justify-center h-12 w-full text-[#94A3B8] hover:text-[#475569] hover:bg-[#F1F5F9] transition-colors border-b border-[#E2E8F0]"
       >
         <ArrowLeft size={16} />
       </Link>
@@ -74,7 +74,7 @@ export function ClientRail() {
                 "relative flex items-center justify-center w-9 h-9 rounded-lg transition-all duration-100",
                 active
                   ? "bg-violet-600/20 text-violet-400"
-                  : "text-white/30 hover:text-white/70 hover:bg-white/5"
+                  : "text-[#94A3B8] hover:text-[#475569] hover:bg-[#F1F5F9]"
               )}
             >
               {active && (

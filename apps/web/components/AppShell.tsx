@@ -62,7 +62,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile hamburger */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="md:hidden fixed top-3 left-3 z-40 p-2 rounded-lg bg-[#0F172A] text-white/60 hover:text-white shadow-lg"
+        className="md:hidden fixed top-3 left-3 z-40 p-2 rounded-lg bg-white text-[#64748B] hover:text-[#1E293B] border border-[#E2E8F0] shadow-sm"
         aria-label="Open menu"
       >
         <Menu size={18} />
@@ -85,7 +85,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <button
           onClick={() => setMobileOpen(false)}
-          className="absolute top-3 right-[-40px] z-10 p-1.5 rounded-md bg-[#0F172A] text-[#94A3B8] hover:text-white/60"
+          className="absolute top-3 right-[-40px] z-10 p-1.5 rounded-md bg-white text-[#94A3B8] hover:text-[#475569]"
           aria-label="Close menu"
         >
           <X size={15} />
