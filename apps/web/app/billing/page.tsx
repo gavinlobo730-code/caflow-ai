@@ -101,7 +101,7 @@ function fmtDate(date: string): string {
 }
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
-  Draft: "bg-white/[0.06] text-white/55",
+  Draft: "bg-[#F1F5F9] text-[#475569]",
   Sent: "bg-blue-100 text-blue-700",
   Paid: "bg-green-100 text-green-700",
   Overdue: "bg-red-100 text-red-700",
@@ -152,51 +152,51 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white/85">Add Fee Engagement</h3>
-          <button onClick={onClose} className="text-white/30 hover:text-white/55"><X size={16} /></button>
+          <h3 className="text-sm font-semibold text-[#0F172A]">Add Fee Engagement</h3>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
         </div>
         {error && <div className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</div>}
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Client</label>
+            <label className="text-xs font-medium text-[#334155] block mb-1">Client</label>
             <select value={clientId} onChange={e => setClientId(e.target.value)}
-              className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
               {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Service Type</label>
+            <label className="text-xs font-medium text-[#334155] block mb-1">Service Type</label>
             <select value={serviceType} onChange={e => setServiceType(e.target.value as ServiceType)}
-              className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
               {SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-white/65 block mb-1">Fee (₹)</label>
+              <label className="text-xs font-medium text-[#334155] block mb-1">Fee (₹)</label>
               <input type="number" min="0" step="0.01" value={feeRs} onChange={e => setFeeRs(e.target.value)}
                 placeholder="5000"
-                className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="text-xs font-medium text-white/65 block mb-1">Billing Cycle</label>
+              <label className="text-xs font-medium text-[#334155] block mb-1">Billing Cycle</label>
               <select value={billingCycle} onChange={e => setBillingCycle(e.target.value as BillingCycle)}
-                className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
                 {BILLING_CYCLES.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Start Date</label>
+            <label className="text-xs font-medium text-[#334155] block mb-1">Start Date</label>
             <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-              className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
           </div>
         </div>
         <div className="flex gap-2 pt-1">
           <button onClick={onClose}
-            className="flex-1 border border-white/[0.07] text-white/65 rounded-lg py-2 text-sm hover:bg-[#0e1017]">
+            className="flex-1 border border-[#E2E8F0] text-[#334155] rounded-lg py-2 text-sm hover:bg-[#F8FAFC]">
             Cancel
           </button>
           <button onClick={handleSave} disabled={saving}
@@ -250,17 +250,17 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white/85">Record Receipt</h3>
-          <button onClick={onClose} className="text-white/30 hover:text-white/55"><X size={16} /></button>
+          <h3 className="text-sm font-semibold text-[#0F172A]">Record Receipt</h3>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
         </div>
         {error && <div className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</div>}
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-white/65 block mb-1">Invoice</label>
+            <label className="text-xs font-medium text-[#334155] block mb-1">Invoice</label>
             <select value={invoiceId} onChange={e => setInvoiceId(e.target.value)}
-              className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
               {unpaid.map(i => (
                 <option key={i.id} value={i.id}>
                   {i.invoice_no} — {i.client_name} — {fmtPaise(i.total_paise)}
@@ -270,35 +270,35 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-white/65 block mb-1">Receipt Date</label>
+              <label className="text-xs font-medium text-[#334155] block mb-1">Receipt Date</label>
               <input type="date" value={receiptDate} onChange={e => setReceiptDate(e.target.value)}
-                className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="text-xs font-medium text-white/65 block mb-1">Amount (₹)</label>
+              <label className="text-xs font-medium text-[#334155] block mb-1">Amount (₹)</label>
               <input type="number" min="0" step="0.01" value={amountRs} onChange={e => setAmountRs(e.target.value)}
-                className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-white/65 block mb-1">Payment Mode</label>
+              <label className="text-xs font-medium text-[#334155] block mb-1">Payment Mode</label>
               <select value={paymentMode} onChange={e => setPaymentMode(e.target.value as PaymentMode)}
-                className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
                 {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-white/65 block mb-1">Reference No.</label>
+              <label className="text-xs font-medium text-[#334155] block mb-1">Reference No.</label>
               <input type="text" value={referenceNo} onChange={e => setReferenceNo(e.target.value)}
                 placeholder="UTR / Cheque no."
-                className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
           </div>
         </div>
         <div className="flex gap-2 pt-1">
           <button onClick={onClose}
-            className="flex-1 border border-white/[0.07] text-white/65 rounded-lg py-2 text-sm hover:bg-[#0e1017]">
+            className="flex-1 border border-[#E2E8F0] text-[#334155] rounded-lg py-2 text-sm hover:bg-[#F8FAFC]">
             Cancel
           </button>
           <button onClick={handleSave} disabled={saving}
@@ -499,10 +499,10 @@ export default function BillingPage() {
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg md:text-xl font-semibold text-white/85">Fee Billing</h1>
-          <p className="text-sm text-white/40 mt-0.5">Manage CA firm fee engagements and invoices</p>
+          <h1 className="text-lg md:text-xl font-semibold text-[#0F172A]">Fee Billing</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">Manage CA firm fee engagements and invoices</p>
         </div>
-        <button onClick={load} className="p-2 rounded-lg border border-white/[0.07] hover:bg-[#0e1017] text-white/40">
+        <button onClick={load} className="p-2 rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
           <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
         </button>
       </div>
@@ -511,11 +511,11 @@ export default function BillingPage() {
         <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">{error}</div>
       )}
 
-      <div className="flex gap-1 border-b border-white/[0.07] overflow-x-auto">
+      <div className="flex gap-1 border-b border-[#E2E8F0] overflow-x-auto">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-              tab === t.id ? "border-blue-600 text-blue-600" : "border-transparent text-white/40 hover:text-white/65"
+              tab === t.id ? "border-blue-600 text-blue-600" : "border-transparent text-[#64748B] hover:text-[#334155]"
             }`}>
             {t.label}
           </button>
@@ -526,30 +526,30 @@ export default function BillingPage() {
       {tab === "dashboard" && (
         <div className="space-y-5">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-[#131620] border rounded-xl p-4">
-              <p className="text-xs text-white/40">Revenue Collected</p>
-              <p className="text-xl font-bold text-white/85 mt-1">{fmtPaise(dash.totalRevenuePaise)}</p>
-              <p className="text-[11px] text-white/30 mt-0.5">{dash.paidCount} paid invoices</p>
+            <div className="bg-white border rounded-xl p-4">
+              <p className="text-xs text-[#64748B]">Revenue Collected</p>
+              <p className="text-xl font-bold text-[#0F172A] mt-1">{fmtPaise(dash.totalRevenuePaise)}</p>
+              <p className="text-[11px] text-[#94A3B8] mt-0.5">{dash.paidCount} paid invoices</p>
             </div>
-            <div className="bg-[#131620] border rounded-xl p-4">
-              <p className="text-xs text-white/40">Outstanding</p>
-              <p className={`text-xl font-bold mt-1 ${dash.outstandingPaise > 0 ? "text-amber-700" : "text-white/85"}`}>{fmtPaise(dash.outstandingPaise)}</p>
-              <p className="text-[11px] text-white/30 mt-0.5">{dash.sentCount} sent invoices</p>
+            <div className="bg-white border rounded-xl p-4">
+              <p className="text-xs text-[#64748B]">Outstanding</p>
+              <p className={`text-xl font-bold mt-1 ${dash.outstandingPaise > 0 ? "text-amber-700" : "text-[#0F172A]"}`}>{fmtPaise(dash.outstandingPaise)}</p>
+              <p className="text-[11px] text-[#94A3B8] mt-0.5">{dash.sentCount} sent invoices</p>
             </div>
-            <div className={`bg-[#131620] border rounded-xl p-4 ${dash.overduePaise > 0 ? "border-red-200" : ""}`}>
-              <p className="text-xs text-white/40">Overdue</p>
-              <p className={`text-xl font-bold mt-1 ${dash.overduePaise > 0 ? "text-red-600" : "text-white/85"}`}>{fmtPaise(dash.overduePaise)}</p>
-              <p className="text-[11px] text-white/30 mt-0.5">{dash.overdueCount} invoices</p>
+            <div className={`bg-white border rounded-xl p-4 ${dash.overduePaise > 0 ? "border-red-200" : ""}`}>
+              <p className="text-xs text-[#64748B]">Overdue</p>
+              <p className={`text-xl font-bold mt-1 ${dash.overduePaise > 0 ? "text-red-600" : "text-[#0F172A]"}`}>{fmtPaise(dash.overduePaise)}</p>
+              <p className="text-[11px] text-[#94A3B8] mt-0.5">{dash.overdueCount} invoices</p>
             </div>
-            <div className="bg-[#131620] border rounded-xl p-4">
-              <p className="text-xs text-white/40">ARR (Annualised)</p>
-              <p className="text-xl font-bold text-blue-400 mt-1">{fmtPaise(dash.annualisedPaise)}</p>
-              <p className="text-[11px] text-white/30 mt-0.5">{dash.activeEngCount} active engagements</p>
+            <div className="bg-white border rounded-xl p-4">
+              <p className="text-xs text-[#64748B]">ARR (Annualised)</p>
+              <p className="text-xl font-bold text-blue-600 mt-1">{fmtPaise(dash.annualisedPaise)}</p>
+              <p className="text-[11px] text-[#94A3B8] mt-0.5">{dash.activeEngCount} active engagements</p>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-[#131620] border rounded-xl p-4 space-y-3">
-              <p className="text-sm font-semibold text-white/65">Revenue Pipeline</p>
+            <div className="bg-white border rounded-xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-[#334155]">Revenue Pipeline</p>
               <div className="space-y-2">
                 {[
                   { label: "Draft", paise: dash.draftPaise, count: dash.draftCount, color: "bg-white/[0.08]" },
@@ -559,15 +559,15 @@ export default function BillingPage() {
                 ].map(row => (
                   <div key={row.label} className="flex items-center gap-3">
                     <div className={`w-2.5 h-2.5 rounded-full ${row.color} shrink-0`} />
-                    <span className="text-sm text-white/65 flex-1">{row.label}</span>
-                    <span className="text-xs text-white/40">{row.count} inv</span>
-                    <span className="text-sm font-semibold text-white/85">{fmtPaise(row.paise)}</span>
+                    <span className="text-sm text-[#334155] flex-1">{row.label}</span>
+                    <span className="text-xs text-[#64748B]">{row.count} inv</span>
+                    <span className="text-sm font-semibold text-[#0F172A]">{fmtPaise(row.paise)}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="bg-[#131620] border rounded-xl p-4 space-y-3">
-              <p className="text-sm font-semibold text-white/65">Recurring Revenue Breakdown</p>
+            <div className="bg-white border rounded-xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-[#334155]">Recurring Revenue Breakdown</p>
               <div className="space-y-2">
                 {[
                   { label: "Monthly", paise: dash.monthlyPaise, count: _activeEngs.filter(e => e.billing_cycle === "Monthly").length },
@@ -575,14 +575,14 @@ export default function BillingPage() {
                   { label: "Annual", paise: dash.annualPaise, count: _activeEngs.filter(e => e.billing_cycle === "Annual").length },
                 ].map(row => (
                   <div key={row.label} className="flex items-center gap-3">
-                    <span className="text-sm text-white/65 flex-1">{row.label}</span>
-                    <span className="text-xs text-white/40">{row.count} clients</span>
-                    <span className="text-sm font-semibold text-white/85">{fmtPaise(row.paise)}</span>
+                    <span className="text-sm text-[#334155] flex-1">{row.label}</span>
+                    <span className="text-xs text-[#64748B]">{row.count} clients</span>
+                    <span className="text-sm font-semibold text-[#0F172A]">{fmtPaise(row.paise)}</span>
                   </div>
                 ))}
                 <div className="border-t pt-2 flex items-center gap-3">
-                  <span className="text-sm font-semibold text-white/65 flex-1">ARR</span>
-                  <span className="text-sm font-bold text-blue-400">{fmtPaise(dash.annualisedPaise)}</span>
+                  <span className="text-sm font-semibold text-[#334155] flex-1">ARR</span>
+                  <span className="text-sm font-bold text-blue-600">{fmtPaise(dash.annualisedPaise)}</span>
                 </div>
               </div>
             </div>
@@ -599,36 +599,36 @@ export default function BillingPage() {
               <Plus size={15} /> Add Engagement
             </button>
           </div>
-          <div className="overflow-x-auto rounded-xl border border-white/[0.07] bg-[#131620]">
+          <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white">
             <table className="w-full text-sm min-w-[700px]">
-              <thead className="bg-[#0e1017] border-b border-white/[0.07]">
+              <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-white/55">Client</th>
-                  <th className="text-left px-4 py-3 font-medium text-white/55">Service</th>
-                  <th className="text-left px-4 py-3 font-medium text-white/55">Fee</th>
-                  <th className="text-left px-4 py-3 font-medium text-white/55">Cycle</th>
-                  <th className="text-left px-4 py-3 font-medium text-white/55">Start Date</th>
-                  <th className="text-left px-4 py-3 font-medium text-white/55">Status</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Client</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Service</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Fee</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Cycle</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Start Date</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.05]">
+              <tbody className="divide-y divide-[#F1F5F9]">
                 {loading && [...Array(3)].map((_, i) => (
                   <tr key={i}>{[...Array(6)].map((__, j) => (
-                    <td key={j} className="px-4 py-3"><div className="h-4 bg-white/[0.06] rounded animate-pulse" /></td>
+                    <td key={j} className="px-4 py-3"><div className="h-4 bg-[#F1F5F9] rounded animate-pulse" /></td>
                   ))}</tr>
                 ))}
                 {!loading && engagements.length === 0 && (
-                  <tr><td colSpan={6} className="text-center py-8 text-white/30">No engagements yet</td></tr>
+                  <tr><td colSpan={6} className="text-center py-8 text-[#94A3B8]">No engagements yet</td></tr>
                 )}
                 {!loading && engagements.map(e => (
-                  <tr key={e.id} className="hover:bg-[#0e1017]">
-                    <td className="px-4 py-3 font-medium text-white/85">{e.client_name ?? "—"}</td>
-                    <td className="px-4 py-3 text-white/55">{e.service_type}</td>
-                    <td className="px-4 py-3 text-white/75 font-mono">{fmtPaise(e.fee_paise)}</td>
-                    <td className="px-4 py-3 text-white/55">{e.billing_cycle}</td>
-                    <td className="px-4 py-3 text-white/40">{fmtDate(e.start_date)}</td>
+                  <tr key={e.id} className="hover:bg-[#F8FAFC]">
+                    <td className="px-4 py-3 font-medium text-[#0F172A]">{e.client_name ?? "—"}</td>
+                    <td className="px-4 py-3 text-[#475569]">{e.service_type}</td>
+                    <td className="px-4 py-3 text-[#1E293B] font-mono">{fmtPaise(e.fee_paise)}</td>
+                    <td className="px-4 py-3 text-[#475569]">{e.billing_cycle}</td>
+                    <td className="px-4 py-3 text-[#64748B]">{fmtDate(e.start_date)}</td>
                     <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${e.status === "Active" ? "bg-green-100 text-green-700" : "bg-white/[0.06] text-white/55"}`}>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${e.status === "Active" ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#475569]"}`}>
                         {e.status}
                       </span>
                     </td>
@@ -644,10 +644,10 @@ export default function BillingPage() {
       {tab === "invoices" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-white/40">GST @ 18% applied on CA services — SAC 998211</p>
+            <p className="text-xs text-[#64748B]">GST @ 18% applied on CA services — SAC 998211</p>
             <div className="flex items-center gap-2">
               <button onClick={handleRunOverdueCheck} disabled={runningOverdueCheck}
-                className="flex items-center gap-2 px-4 py-2 border border-white/[0.07] text-white/65 text-sm rounded-lg hover:bg-[#0e1017] disabled:opacity-60">
+                className="flex items-center gap-2 px-4 py-2 border border-[#E2E8F0] text-[#334155] text-sm rounded-lg hover:bg-[#F8FAFC] disabled:opacity-60">
                 <Clock size={15} /> {runningOverdueCheck ? "Checking…" : "Run Overdue Check"}
               </button>
               <button onClick={handleRaiseInvoice} disabled={raisingInvoice}
@@ -656,37 +656,37 @@ export default function BillingPage() {
               </button>
             </div>
           </div>
-          <div className="overflow-x-auto rounded-xl border border-white/[0.07] bg-[#131620]">
+          <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white">
             <table className="w-full text-sm min-w-[800px]">
-              <thead className="bg-[#0e1017] border-b border-white/[0.07]">
+              <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-white/55">Invoice No.</th>
-                  <th className="text-left px-4 py-3 font-medium text-white/55">Date</th>
-                  <th className="text-left px-4 py-3 font-medium text-white/55">Client</th>
-                  <th className="text-right px-4 py-3 font-medium text-white/55">Amount</th>
-                  <th className="text-right px-4 py-3 font-medium text-white/55">GST 18%</th>
-                  <th className="text-right px-4 py-3 font-medium text-white/55">Total</th>
-                  <th className="text-left px-4 py-3 font-medium text-white/55">Status</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Invoice No.</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Date</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Client</th>
+                  <th className="text-right px-4 py-3 font-medium text-[#475569]">Amount</th>
+                  <th className="text-right px-4 py-3 font-medium text-[#475569]">GST 18%</th>
+                  <th className="text-right px-4 py-3 font-medium text-[#475569]">Total</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Status</th>
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.05]">
+              <tbody className="divide-y divide-[#F1F5F9]">
                 {loading && [...Array(3)].map((_, i) => (
                   <tr key={i}>{[...Array(8)].map((__, j) => (
-                    <td key={j} className="px-4 py-3"><div className="h-4 bg-white/[0.06] rounded animate-pulse" /></td>
+                    <td key={j} className="px-4 py-3"><div className="h-4 bg-[#F1F5F9] rounded animate-pulse" /></td>
                   ))}</tr>
                 ))}
                 {!loading && invoices.length === 0 && (
-                  <tr><td colSpan={8} className="text-center py-8 text-white/30">No invoices yet — click &quot;Raise Invoice&quot; to generate</td></tr>
+                  <tr><td colSpan={8} className="text-center py-8 text-[#94A3B8]">No invoices yet — click &quot;Raise Invoice&quot; to generate</td></tr>
                 )}
                 {!loading && invoices.map(inv => (
-                  <tr key={inv.id} className="hover:bg-[#0e1017]">
-                    <td className="px-4 py-3 font-mono text-white/65">{inv.invoice_no}</td>
-                    <td className="px-4 py-3 text-white/40">{fmtDate(inv.invoice_date)}</td>
-                    <td className="px-4 py-3 font-medium text-white/85">{inv.client_name ?? "—"}</td>
-                    <td className="px-4 py-3 text-right font-mono text-white/65">{fmtPaise(inv.amount_paise)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-white/40">{fmtPaise(inv.gst_paise)}</td>
-                    <td className="px-4 py-3 text-right font-mono font-semibold text-white/85">{fmtPaise(inv.total_paise)}</td>
+                  <tr key={inv.id} className="hover:bg-[#F8FAFC]">
+                    <td className="px-4 py-3 font-mono text-[#334155]">{inv.invoice_no}</td>
+                    <td className="px-4 py-3 text-[#64748B]">{fmtDate(inv.invoice_date)}</td>
+                    <td className="px-4 py-3 font-medium text-[#0F172A]">{inv.client_name ?? "—"}</td>
+                    <td className="px-4 py-3 text-right font-mono text-[#334155]">{fmtPaise(inv.amount_paise)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-[#64748B]">{fmtPaise(inv.gst_paise)}</td>
+                    <td className="px-4 py-3 text-right font-mono font-semibold text-[#0F172A]">{fmtPaise(inv.total_paise)}</td>
                     <td className="px-4 py-3">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[inv.status]}`}>
                         {inv.status}
@@ -710,31 +710,31 @@ export default function BillingPage() {
       {/* Outstanding */}
       {tab === "outstanding" && (
         <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-white/65">Aged Debtors Report</h2>
-          <div className="overflow-x-auto rounded-xl border border-white/[0.07] bg-[#131620]">
+          <h2 className="text-sm font-semibold text-[#334155]">Aged Debtors Report</h2>
+          <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white">
             <table className="w-full text-sm min-w-[800px]">
-              <thead className="bg-[#0e1017] border-b border-white/[0.07]">
+              <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-white/55">Client</th>
-                  <th className="text-right px-4 py-3 font-medium text-white/55">Invoices</th>
-                  <th className="text-right px-4 py-3 font-medium text-white/55">Total Outstanding</th>
-                  <th className="text-right px-4 py-3 font-medium text-white/55">0–30 days</th>
-                  <th className="text-right px-4 py-3 font-medium text-white/55">31–60 days</th>
-                  <th className="text-right px-4 py-3 font-medium text-white/55">61–90 days</th>
-                  <th className="text-right px-4 py-3 font-medium text-white/55">90+ days</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Client</th>
+                  <th className="text-right px-4 py-3 font-medium text-[#475569]">Invoices</th>
+                  <th className="text-right px-4 py-3 font-medium text-[#475569]">Total Outstanding</th>
+                  <th className="text-right px-4 py-3 font-medium text-[#475569]">0–30 days</th>
+                  <th className="text-right px-4 py-3 font-medium text-[#475569]">31–60 days</th>
+                  <th className="text-right px-4 py-3 font-medium text-[#475569]">61–90 days</th>
+                  <th className="text-right px-4 py-3 font-medium text-[#475569]">90+ days</th>
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.05]">
+              <tbody className="divide-y divide-[#F1F5F9]">
                 {outstanding.length === 0 && (
-                  <tr><td colSpan={8} className="text-center py-8 text-white/30">No outstanding invoices</td></tr>
+                  <tr><td colSpan={8} className="text-center py-8 text-[#94A3B8]">No outstanding invoices</td></tr>
                 )}
                 {outstanding.map(row => (
-                  <tr key={row.client_id} className="hover:bg-[#0e1017]">
-                    <td className="px-4 py-3 font-medium text-white/85">{row.client_name}</td>
-                    <td className="px-4 py-3 text-right text-white/55">{row.invoiceCount}</td>
-                    <td className="px-4 py-3 text-right font-semibold font-mono text-white/85">{fmtPaise(row.totalPaise)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-white/55">{fmtPaise(row.d0_30)}</td>
+                  <tr key={row.client_id} className="hover:bg-[#F8FAFC]">
+                    <td className="px-4 py-3 font-medium text-[#0F172A]">{row.client_name}</td>
+                    <td className="px-4 py-3 text-right text-[#475569]">{row.invoiceCount}</td>
+                    <td className="px-4 py-3 text-right font-semibold font-mono text-[#0F172A]">{fmtPaise(row.totalPaise)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-[#475569]">{fmtPaise(row.d0_30)}</td>
                     <td className="px-4 py-3 text-right font-mono text-amber-600">{fmtPaise(row.d31_60)}</td>
                     <td className="px-4 py-3 text-right font-mono text-orange-600">{fmtPaise(row.d61_90)}</td>
                     <td className="px-4 py-3 text-right font-mono text-red-600">{fmtPaise(row.d90plus)}</td>
@@ -766,30 +766,30 @@ export default function BillingPage() {
               <Plus size={15} /> Record Receipt
             </button>
           </div>
-          <div className="overflow-x-auto rounded-xl border border-white/[0.07] bg-[#131620]">
+          <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white">
             <table className="w-full text-sm min-w-[700px]">
-              <thead className="bg-[#0e1017] border-b border-white/[0.07]">
+              <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-white/55">Invoice</th>
-                  <th className="text-left px-4 py-3 font-medium text-white/55">Client</th>
-                  <th className="text-left px-4 py-3 font-medium text-white/55">Date</th>
-                  <th className="text-right px-4 py-3 font-medium text-white/55">Amount</th>
-                  <th className="text-left px-4 py-3 font-medium text-white/55">Mode</th>
-                  <th className="text-left px-4 py-3 font-medium text-white/55">Reference</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Invoice</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Client</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Date</th>
+                  <th className="text-right px-4 py-3 font-medium text-[#475569]">Amount</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Mode</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#475569]">Reference</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.05]">
+              <tbody className="divide-y divide-[#F1F5F9]">
                 {receipts.length === 0 && (
-                  <tr><td colSpan={6} className="text-center py-8 text-white/30">No receipts recorded</td></tr>
+                  <tr><td colSpan={6} className="text-center py-8 text-[#94A3B8]">No receipts recorded</td></tr>
                 )}
                 {receipts.map(r => (
-                  <tr key={r.id} className="hover:bg-[#0e1017]">
-                    <td className="px-4 py-3 font-mono text-white/65">{r.invoice_no ?? "—"}</td>
-                    <td className="px-4 py-3 font-medium text-white/85">{r.client_name ?? "—"}</td>
-                    <td className="px-4 py-3 text-white/40">{fmtDate(r.receipt_date)}</td>
+                  <tr key={r.id} className="hover:bg-[#F8FAFC]">
+                    <td className="px-4 py-3 font-mono text-[#334155]">{r.invoice_no ?? "—"}</td>
+                    <td className="px-4 py-3 font-medium text-[#0F172A]">{r.client_name ?? "—"}</td>
+                    <td className="px-4 py-3 text-[#64748B]">{fmtDate(r.receipt_date)}</td>
                     <td className="px-4 py-3 text-right font-mono font-semibold text-green-700">{fmtPaise(r.amount_paise)}</td>
-                    <td className="px-4 py-3 text-white/55">{r.payment_mode}</td>
-                    <td className="px-4 py-3 font-mono text-white/40 text-xs">{r.reference_no || "—"}</td>
+                    <td className="px-4 py-3 text-[#475569]">{r.payment_mode}</td>
+                    <td className="px-4 py-3 font-mono text-[#64748B] text-xs">{r.reference_no || "—"}</td>
                   </tr>
                 ))}
               </tbody>

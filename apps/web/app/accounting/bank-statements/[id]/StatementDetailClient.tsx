@@ -16,7 +16,7 @@ const MATCH_STATUS_COLORS: Record<string, string> = {
   unmatched: "bg-amber-100 text-amber-700",
   matched: "bg-blue-100 text-blue-700",
   posted: "bg-green-100 text-green-700",
-  ignored: "bg-white/[0.06] text-white/40",
+  ignored: "bg-[#F1F5F9] text-[#64748B]",
 };
 
 interface Account {
@@ -30,7 +30,7 @@ function LoadingSkeleton() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-4 animate-pulse">
       <div className="h-8 bg-white/[0.08] rounded w-64" />
-      <div className="h-96 bg-white/[0.06] rounded-xl" />
+      <div className="h-96 bg-[#F1F5F9] rounded-xl" />
     </div>
   );
 }
@@ -115,7 +115,7 @@ export default function StatementDetailClient() {
   }
 
   if (!statementId || statementId === "_placeholder") {
-    return <div className="p-6 max-w-7xl mx-auto"><p className="text-white/40 text-sm">Loading…</p></div>;
+    return <div className="p-6 max-w-7xl mx-auto"><p className="text-[#64748B] text-sm">Loading…</p></div>;
   }
   if (loading) return <LoadingSkeleton />;
   if (error) {
@@ -132,15 +132,15 @@ export default function StatementDetailClient() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div>
-        <div className="flex items-center gap-2 text-sm text-white/40 mb-1">
-          <Link href="/accounting" className="hover:text-white/65">Accounting</Link>
+        <div className="flex items-center gap-2 text-sm text-[#64748B] mb-1">
+          <Link href="/accounting" className="hover:text-[#334155]">Accounting</Link>
           <ChevronRight size={14} />
-          <Link href="/accounting/bank-statements" className="hover:text-white/65">Bank Statements</Link>
+          <Link href="/accounting/bank-statements" className="hover:text-[#334155]">Bank Statements</Link>
           <ChevronRight size={14} />
-          <span className="text-white/85 font-medium">Allocate</span>
+          <span className="text-[#0F172A] font-medium">Allocate</span>
         </div>
-        <h1 className="text-xl font-semibold text-white/85">Allocate Bank Transactions</h1>
-        <p className="text-sm text-white/40 mt-0.5">
+        <h1 className="text-xl font-semibold text-[#0F172A]">Allocate Bank Transactions</h1>
+        <p className="text-sm text-[#64748B] mt-0.5">
           {transactions.length} total · {unmatched} unmatched · {posted} posted
         </p>
       </div>
@@ -158,7 +158,7 @@ export default function StatementDetailClient() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/[0.05] text-xs text-white/30">
+              <tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8]">
                 <th className="px-5 py-3 text-left font-semibold">Date</th>
                 <th className="px-3 py-3 text-left font-semibold">Description</th>
                 <th className="px-3 py-3 text-right font-semibold">Debit</th>
@@ -169,30 +169,30 @@ export default function StatementDetailClient() {
                 <th className="px-5 py-3 text-left font-semibold">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/[0.03]">
+            <tbody className="divide-y divide-[#F8FAFC]">
               {transactions.map(txn => (
-                <tr key={txn.id} className="hover:bg-[#0e1017]">
-                  <td className="px-5 py-3 text-xs text-white/55 whitespace-nowrap">{formatDate(txn.transaction_date)}</td>
-                  <td className="px-3 py-3 text-sm text-white/75 max-w-xs truncate" title={txn.description}>{txn.description}</td>
+                <tr key={txn.id} className="hover:bg-[#F8FAFC]">
+                  <td className="px-5 py-3 text-xs text-[#475569] whitespace-nowrap">{formatDate(txn.transaction_date)}</td>
+                  <td className="px-3 py-3 text-sm text-[#1E293B] max-w-xs truncate" title={txn.description}>{txn.description}</td>
                   <td className="px-3 py-3 text-sm text-right tabular-nums text-red-600">
                     {txn.debit_paise > 0 ? formatPaise(txn.debit_paise) : ""}
                   </td>
                   <td className="px-3 py-3 text-sm text-right tabular-nums text-green-600">
                     {txn.credit_paise > 0 ? formatPaise(txn.credit_paise) : ""}
                   </td>
-                  <td className="px-3 py-3 text-sm text-right tabular-nums text-white/40">
+                  <td className="px-3 py-3 text-sm text-right tabular-nums text-[#64748B]">
                     {txn.balance_paise != null ? formatPaise(txn.balance_paise) : ""}
                   </td>
                   <td className="px-3 py-3">
                     {txn.match_status === "posted" ? (
-                      <span className="text-xs text-white/40 font-mono">
+                      <span className="text-xs text-[#64748B] font-mono">
                         {accounts.find(a => a.id === txn.account_id)?.account_name ?? txn.account_id?.slice(0, 8) ?? "—"}
                       </span>
                     ) : (
                       <select
                         value={selectedAccounts[txn.id] ?? txn.account_id ?? ""}
                         onChange={e => handleAccountChange(txn.id, e.target.value)}
-                        className="text-xs border border-white/[0.07] rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 w-44"
+                        className="text-xs border border-[#E2E8F0] rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 w-44"
                       >
                         <option value="">— Select account —</option>
                         {accounts.map(a => (
@@ -204,7 +204,7 @@ export default function StatementDetailClient() {
                     )}
                   </td>
                   <td className="px-3 py-3">
-                    <Badge className={`text-xs ${MATCH_STATUS_COLORS[txn.match_status] ?? "bg-white/[0.06] text-white/55"}`}>
+                    <Badge className={`text-xs ${MATCH_STATUS_COLORS[txn.match_status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
                       {txn.match_status}
                     </Badge>
                   </td>
@@ -227,7 +227,7 @@ export default function StatementDetailClient() {
             </tbody>
           </table>
           {transactions.length === 0 && (
-            <div className="text-center py-12 text-sm text-white/30">No transactions in this statement</div>
+            <div className="text-center py-12 text-sm text-[#94A3B8]">No transactions in this statement</div>
           )}
         </div>
       </Card>

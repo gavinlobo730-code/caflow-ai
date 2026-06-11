@@ -63,7 +63,7 @@ function buildPeriodOptions() {
 const PERIOD_OPTIONS = buildPeriodOptions();
 
 const STATUS_CONFIG: Record<GSTReturnStatus, { label: string; color: string }> = {
-  draft:       { label: "Draft",       color: "bg-white/[0.06] text-white/65" },
+  draft:       { label: "Draft",       color: "bg-[#F1F5F9] text-[#334155]" },
   validated:   { label: "Validated",   color: "bg-blue-100 text-blue-700" },
   ca_approved: { label: "CA Approved", color: "bg-green-100 text-green-700" },
   submitted:   { label: "Filed",       color: "bg-emerald-100 text-emerald-700" },
@@ -177,12 +177,12 @@ export default function GSTR1Page() {
 
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/gst" className="text-white/30 hover:text-white/55">
+        <Link href="/gst" className="text-[#94A3B8] hover:text-[#475569]">
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-white/85">GSTR-1 Review</h1>
-          <p className="text-sm text-white/40 mt-0.5">
+          <h1 className="text-2xl font-bold text-[#0F172A]">GSTR-1 Review</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">
             CGST Act Section 37 — Details of outward supplies. Due 11th of following month.
           </p>
         </div>
@@ -198,11 +198,11 @@ export default function GSTR1Page() {
       </div>
 
       {/* Selection */}
-      <div className="bg-[#131620] border border-white/[0.07] rounded-xl p-5 space-y-4">
-        <h2 className="font-semibold text-white/75">Select Client & Period</h2>
+      <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-4">
+        <h2 className="font-semibold text-[#1E293B]">Select Client & Period</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="sm:col-span-2">
-            <label className="block text-sm font-medium text-white/65 mb-1">Client</label>
+            <label className="block text-sm font-medium text-[#334155] mb-1">Client</label>
             <select
               value={clientId}
               onChange={e => { setClientId(e.target.value); setResult(null); setError(null); }}
@@ -217,7 +217,7 @@ export default function GSTR1Page() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-white/65 mb-1">Period</label>
+            <label className="block text-sm font-medium text-[#334155] mb-1">Period</label>
             <select
               value={yearMonth}
               onChange={e => { setYearMonth(e.target.value); setResult(null); setError(null); }}
@@ -255,7 +255,7 @@ export default function GSTR1Page() {
                   {statusCfg.label}
                 </span>
               )}
-              <span className="text-sm text-white/55">
+              <span className="text-sm text-[#475569]">
                 <strong>{result.invoice_count}</strong> invoices
                 · Taxable <strong>{r(result.taxable_total_rupees)}</strong>
                 · Tax <strong>{r(result.tax_total_rupees)}</strong>
@@ -286,7 +286,7 @@ export default function GSTR1Page() {
               {filingStatus === "ca_approved" && (
                 <button
                   onClick={() => setShowFiledModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-white/[0.06] hover:bg-white/[0.08] text-white/65 text-sm font-medium rounded-lg transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-[#F1F5F9] hover:bg-white/[0.08] text-[#334155] text-sm font-medium rounded-lg transition-colors"
                 >
                   <FileCheck className="w-4 h-4" />
                   Mark as Filed
@@ -328,8 +328,8 @@ export default function GSTR1Page() {
           )}
 
           {/* Tabs */}
-          <div className="bg-[#131620] border border-white/[0.07] rounded-xl overflow-hidden">
-            <div className="flex border-b border-white/[0.07] overflow-x-auto">
+          <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
+            <div className="flex border-b border-[#E2E8F0] overflow-x-auto">
               {TABS.map(tab => (
                 <button
                   key={tab.key}
@@ -337,13 +337,13 @@ export default function GSTR1Page() {
                   className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${
                     activeTab === tab.key
                       ? "border-blue-600 text-blue-600"
-                      : "border-transparent text-white/40 hover:text-white/65"
+                      : "border-transparent text-[#64748B] hover:text-[#334155]"
                   }`}
                 >
                   {tab.label}
                   {tab.count !== undefined && tab.count > 0 && (
                     <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                      activeTab === tab.key ? "bg-blue-100 text-blue-700" : "bg-white/[0.06] text-white/40"
+                      activeTab === tab.key ? "bg-blue-100 text-blue-700" : "bg-[#F1F5F9] text-[#64748B]"
                     }`}>
                       {tab.count}
                     </span>
@@ -359,34 +359,34 @@ export default function GSTR1Page() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     {[
                       { icon: Building2, label: "B2B Invoices",    value: result.summary.counts.b2b ?? 0,                    color: "text-blue-600" },
-                      { icon: Users,     label: "B2CS Groups",     value: result.summary.counts.b2cs_rate_groups ?? 0,       color: "text-blue-400" },
+                      { icon: Users,     label: "B2CS Groups",     value: result.summary.counts.b2cs_rate_groups ?? 0,       color: "text-blue-600" },
                       { icon: Globe,     label: "B2CL Invoices",   value: result.summary.counts.b2cl ?? 0,                   color: "text-purple-600" },
                       { icon: ReceiptText, label: "Credit Notes",  value: (result.summary.counts.credit_notes_registered ?? 0) + (result.summary.counts.credit_notes_unregistered ?? 0), color: "text-orange-600" },
                     ].map(item => (
-                      <div key={item.label} className="bg-[#0e1017] rounded-lg p-4">
+                      <div key={item.label} className="bg-[#F8FAFC] rounded-lg p-4">
                         <item.icon className={`w-5 h-5 ${item.color} mb-2`} />
-                        <p className="text-2xl font-bold text-white/85">{item.value}</p>
-                        <p className="text-xs text-white/40 mt-0.5">{item.label}</p>
+                        <p className="text-2xl font-bold text-[#0F172A]">{item.value}</p>
+                        <p className="text-xs text-[#64748B] mt-0.5">{item.label}</p>
                       </div>
                     ))}
                   </div>
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-xs text-white/40 border-b border-white/[0.05]">
+                      <tr className="text-xs text-[#64748B] border-b border-[#F1F5F9]">
                         <th className="text-left py-2 font-medium">Tax Type</th>
                         <th className="text-right py-2 font-medium">Amount</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-white/[0.03]">
+                    <tbody className="divide-y divide-[#F8FAFC]">
                       {[
                         { label: "Taxable Value", value: result.summary.totals_rupees.taxable ?? 0 },
                         { label: "CGST",  value: result.summary.totals_rupees.cgst ?? 0 },
                         { label: "SGST",  value: result.summary.totals_rupees.sgst ?? 0 },
                         { label: "IGST",  value: result.summary.totals_rupees.igst ?? 0 },
                       ].map(row => (
-                        <tr key={row.label} className="hover:bg-[#0e1017]">
-                          <td className="py-2.5 text-white/65">{row.label}</td>
-                          <td className="py-2.5 text-right font-mono text-white/85">{r(row.value)}</td>
+                        <tr key={row.label} className="hover:bg-[#F8FAFC]">
+                          <td className="py-2.5 text-[#334155]">{row.label}</td>
+                          <td className="py-2.5 text-right font-mono text-[#0F172A]">{r(row.value)}</td>
                         </tr>
                       ))}
                       <tr className="font-semibold bg-blue-50">
@@ -418,11 +418,11 @@ export default function GSTR1Page() {
               {activeTab === "b2b" && (
                 <div className="overflow-x-auto">
                   {(b2b as { ctin: string; inv: Record<string, unknown>[] }[]).length === 0 ? (
-                    <p className="p-6 text-sm text-white/30 text-center">No B2B invoices for this period.</p>
+                    <p className="p-6 text-sm text-[#94A3B8] text-center">No B2B invoices for this period.</p>
                   ) : (
                     <table className="w-full text-sm">
-                      <thead className="bg-[#0e1017] border-b border-white/[0.07]">
-                        <tr className="text-xs text-white/40">
+                      <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                        <tr className="text-xs text-[#64748B]">
                           <th className="text-left px-4 py-2.5 font-medium">Receiver GSTIN</th>
                           <th className="text-left px-4 py-2.5 font-medium">Invoice No.</th>
                           <th className="text-left px-4 py-2.5 font-medium">Date</th>
@@ -433,19 +433,19 @@ export default function GSTR1Page() {
                           <th className="text-center px-4 py-2.5 font-medium">RCM</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-white/[0.03]">
+                      <tbody className="divide-y divide-[#F8FAFC]">
                         {(b2b as { ctin: string; inv: Record<string, unknown>[] }[]).flatMap(g =>
                           g.inv.map((inv, i) => {
                             const itm = ((inv.itms as Record<string, unknown>[])?.[0]?.itm_det as Record<string, unknown>) ?? {};
                             const taxTotal = ((itm.iamt as number) ?? 0) + ((itm.camt as number) ?? 0) + ((itm.samt as number) ?? 0);
                             return (
-                              <tr key={`${g.ctin}-${i}`} className="hover:bg-[#0e1017]">
-                                <td className="px-4 py-2.5 font-mono text-xs text-white/55">{g.ctin}</td>
-                                <td className="px-4 py-2.5 font-mono text-xs text-white/75">{inv.inum as string}</td>
-                                <td className="px-4 py-2.5 text-xs text-white/55">{inv.idt as string}</td>
-                                <td className="px-4 py-2.5 text-xs text-white/55">{inv.pos as string}</td>
+                              <tr key={`${g.ctin}-${i}`} className="hover:bg-[#F8FAFC]">
+                                <td className="px-4 py-2.5 font-mono text-xs text-[#475569]">{g.ctin}</td>
+                                <td className="px-4 py-2.5 font-mono text-xs text-[#1E293B]">{inv.inum as string}</td>
+                                <td className="px-4 py-2.5 text-xs text-[#475569]">{inv.idt as string}</td>
+                                <td className="px-4 py-2.5 text-xs text-[#475569]">{inv.pos as string}</td>
                                 <td className="px-4 py-2.5 text-right font-mono text-xs">{r(itm.txval as number ?? 0)}</td>
-                                <td className="px-4 py-2.5 text-right text-xs text-white/40">{itm.rt as number ?? 0}%</td>
+                                <td className="px-4 py-2.5 text-right text-xs text-[#64748B]">{itm.rt as number ?? 0}%</td>
                                 <td className="px-4 py-2.5 text-right font-mono text-xs">{r(taxTotal)}</td>
                                 <td className="px-4 py-2.5 text-center text-xs">{inv.rchrg as string}</td>
                               </tr>
@@ -462,11 +462,11 @@ export default function GSTR1Page() {
               {activeTab === "b2cs" && (
                 <div className="overflow-x-auto">
                   {b2cs.length === 0 ? (
-                    <p className="p-6 text-sm text-white/30 text-center">No B2CS entries for this period.</p>
+                    <p className="p-6 text-sm text-[#94A3B8] text-center">No B2CS entries for this period.</p>
                   ) : (
                     <table className="w-full text-sm">
-                      <thead className="bg-[#0e1017] border-b border-white/[0.07]">
-                        <tr className="text-xs text-white/40">
+                      <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                        <tr className="text-xs text-[#64748B]">
                           <th className="text-left px-4 py-2.5 font-medium">Supply Type</th>
                           <th className="text-left px-4 py-2.5 font-medium">Rate%</th>
                           <th className="text-left px-4 py-2.5 font-medium">POS</th>
@@ -476,18 +476,18 @@ export default function GSTR1Page() {
                           <th className="text-right px-4 py-2.5 font-medium">SGST</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-white/[0.03]">
+                      <tbody className="divide-y divide-[#F8FAFC]">
                         {b2cs.map((row, i) => (
-                          <tr key={i} className="hover:bg-[#0e1017]">
+                          <tr key={i} className="hover:bg-[#F8FAFC]">
                             <td className="px-4 py-2.5">
                               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                row.sply_tp === "INTER" ? "bg-blue-100 text-blue-700" : "bg-white/[0.06] text-white/55"
+                                row.sply_tp === "INTER" ? "bg-blue-100 text-blue-700" : "bg-[#F1F5F9] text-[#475569]"
                               }`}>
                                 {row.sply_tp as string}
                               </span>
                             </td>
-                            <td className="px-4 py-2.5 text-sm text-white/55">{row.rt as number}%</td>
-                            <td className="px-4 py-2.5 text-sm text-white/55">{row.pos as string}</td>
+                            <td className="px-4 py-2.5 text-sm text-[#475569]">{row.rt as number}%</td>
+                            <td className="px-4 py-2.5 text-sm text-[#475569]">{row.pos as string}</td>
                             <td className="px-4 py-2.5 text-right font-mono text-sm">{r(row.txval as number)}</td>
                             <td className="px-4 py-2.5 text-right font-mono text-sm">{r(row.iamt as number)}</td>
                             <td className="px-4 py-2.5 text-right font-mono text-sm">{r(row.camt as number)}</td>
@@ -504,13 +504,13 @@ export default function GSTR1Page() {
               {activeTab === "b2cl" && (
                 <div className="overflow-x-auto">
                   {(b2cl as { pos: string; inv: Record<string, unknown>[] }[]).length === 0 ? (
-                    <p className="p-6 text-sm text-white/30 text-center">
+                    <p className="p-6 text-sm text-[#94A3B8] text-center">
                       No B2CL invoices. B2CL applies to inter-state unregistered invoices above ₹2.5L (CGST Rule 59(2)).
                     </p>
                   ) : (
                     <table className="w-full text-sm">
-                      <thead className="bg-[#0e1017] border-b border-white/[0.07]">
-                        <tr className="text-xs text-white/40">
+                      <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                        <tr className="text-xs text-[#64748B]">
                           <th className="text-left px-4 py-2.5 font-medium">POS</th>
                           <th className="text-left px-4 py-2.5 font-medium">Invoice No.</th>
                           <th className="text-left px-4 py-2.5 font-medium">Date</th>
@@ -520,18 +520,18 @@ export default function GSTR1Page() {
                           <th className="text-right px-4 py-2.5 font-medium">IGST</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-white/[0.03]">
+                      <tbody className="divide-y divide-[#F8FAFC]">
                         {(b2cl as { pos: string; inv: Record<string, unknown>[] }[]).flatMap(g =>
                           g.inv.map((inv, i) => {
                             const itm = ((inv.itms as Record<string, unknown>[])?.[0]?.itm_det as Record<string, unknown>) ?? {};
                             return (
-                              <tr key={`${g.pos}-${i}`} className="hover:bg-[#0e1017]">
-                                <td className="px-4 py-2.5 text-xs text-white/55">{g.pos}</td>
-                                <td className="px-4 py-2.5 font-mono text-xs text-white/75">{inv.inum as string}</td>
-                                <td className="px-4 py-2.5 text-xs text-white/55">{inv.idt as string}</td>
+                              <tr key={`${g.pos}-${i}`} className="hover:bg-[#F8FAFC]">
+                                <td className="px-4 py-2.5 text-xs text-[#475569]">{g.pos}</td>
+                                <td className="px-4 py-2.5 font-mono text-xs text-[#1E293B]">{inv.inum as string}</td>
+                                <td className="px-4 py-2.5 text-xs text-[#475569]">{inv.idt as string}</td>
                                 <td className="px-4 py-2.5 text-right font-mono text-xs">{r(inv.val as number)}</td>
                                 <td className="px-4 py-2.5 text-right font-mono text-xs">{r(itm.txval as number ?? 0)}</td>
-                                <td className="px-4 py-2.5 text-right text-xs text-white/40">{itm.rt as number ?? 0}%</td>
+                                <td className="px-4 py-2.5 text-right text-xs text-[#64748B]">{itm.rt as number ?? 0}%</td>
                                 <td className="px-4 py-2.5 text-right font-mono text-xs">{r(itm.iamt as number ?? 0)}</td>
                               </tr>
                             );
@@ -547,11 +547,11 @@ export default function GSTR1Page() {
               {activeTab === "cdnr" && (
                 <div className="overflow-x-auto">
                   {(cdnr as { ctin: string; nt: Record<string, unknown>[] }[]).length === 0 ? (
-                    <p className="p-6 text-sm text-white/30 text-center">No credit/debit notes to registered buyers.</p>
+                    <p className="p-6 text-sm text-[#94A3B8] text-center">No credit/debit notes to registered buyers.</p>
                   ) : (
                     <table className="w-full text-sm">
-                      <thead className="bg-[#0e1017] border-b border-white/[0.07]">
-                        <tr className="text-xs text-white/40">
+                      <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                        <tr className="text-xs text-[#64748B]">
                           <th className="text-left px-4 py-2.5 font-medium">Receiver GSTIN</th>
                           <th className="text-left px-4 py-2.5 font-medium">Type</th>
                           <th className="text-left px-4 py-2.5 font-medium">Note No.</th>
@@ -560,13 +560,13 @@ export default function GSTR1Page() {
                           <th className="text-right px-4 py-2.5 font-medium">Taxable</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-white/[0.03]">
+                      <tbody className="divide-y divide-[#F8FAFC]">
                         {(cdnr as { ctin: string; nt: Record<string, unknown>[] }[]).flatMap(g =>
                           g.nt.map((nt, i) => {
                             const itm = ((nt.itms as Record<string, unknown>[])?.[0]?.itm_det as Record<string, unknown>) ?? {};
                             return (
-                              <tr key={`${g.ctin}-${i}`} className="hover:bg-[#0e1017]">
-                                <td className="px-4 py-2.5 font-mono text-xs text-white/55">{g.ctin}</td>
+                              <tr key={`${g.ctin}-${i}`} className="hover:bg-[#F8FAFC]">
+                                <td className="px-4 py-2.5 font-mono text-xs text-[#475569]">{g.ctin}</td>
                                 <td className="px-4 py-2.5">
                                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                                     nt.ntty === "C" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
@@ -574,8 +574,8 @@ export default function GSTR1Page() {
                                     {nt.ntty === "C" ? "Credit" : "Debit"}
                                   </span>
                                 </td>
-                                <td className="px-4 py-2.5 font-mono text-xs text-white/75">{nt.nt_num as string}</td>
-                                <td className="px-4 py-2.5 text-xs text-white/55">{nt.nt_dt as string}</td>
+                                <td className="px-4 py-2.5 font-mono text-xs text-[#1E293B]">{nt.nt_num as string}</td>
+                                <td className="px-4 py-2.5 text-xs text-[#475569]">{nt.nt_dt as string}</td>
                                 <td className="px-4 py-2.5 text-right font-mono text-xs">{r(nt.val as number)}</td>
                                 <td className="px-4 py-2.5 text-right font-mono text-xs">{r(itm.txval as number ?? 0)}</td>
                               </tr>
@@ -592,11 +592,11 @@ export default function GSTR1Page() {
               {activeTab === "exp" && (
                 <div className="overflow-x-auto">
                   {(exp as { exp_typ: string; inv: Record<string, unknown>[] }[]).length === 0 ? (
-                    <p className="p-6 text-sm text-white/30 text-center">No export invoices for this period.</p>
+                    <p className="p-6 text-sm text-[#94A3B8] text-center">No export invoices for this period.</p>
                   ) : (
                     <table className="w-full text-sm">
-                      <thead className="bg-[#0e1017] border-b border-white/[0.07]">
-                        <tr className="text-xs text-white/40">
+                      <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                        <tr className="text-xs text-[#64748B]">
                           <th className="text-left px-4 py-2.5 font-medium">Type</th>
                           <th className="text-left px-4 py-2.5 font-medium">Invoice No.</th>
                           <th className="text-left px-4 py-2.5 font-medium">Date</th>
@@ -605,19 +605,19 @@ export default function GSTR1Page() {
                           <th className="text-right px-4 py-2.5 font-medium">IGST</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-white/[0.03]">
+                      <tbody className="divide-y divide-[#F8FAFC]">
                         {(exp as { exp_typ: string; inv: Record<string, unknown>[] }[]).flatMap(g =>
                           g.inv.map((inv, i) => {
                             const itm = ((inv.itms as Record<string, unknown>[])?.[0]?.itm_det as Record<string, unknown>) ?? {};
                             return (
-                              <tr key={`${g.exp_typ}-${i}`} className="hover:bg-[#0e1017]">
+                              <tr key={`${g.exp_typ}-${i}`} className="hover:bg-[#F8FAFC]">
                                 <td className="px-4 py-2.5">
                                   <span className="text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium">
                                     {g.exp_typ}
                                   </span>
                                 </td>
-                                <td className="px-4 py-2.5 font-mono text-xs text-white/75">{inv.inum as string}</td>
-                                <td className="px-4 py-2.5 text-xs text-white/55">{inv.idt as string}</td>
+                                <td className="px-4 py-2.5 font-mono text-xs text-[#1E293B]">{inv.inum as string}</td>
+                                <td className="px-4 py-2.5 text-xs text-[#475569]">{inv.idt as string}</td>
                                 <td className="px-4 py-2.5 text-right font-mono text-xs">{r(inv.val as number)}</td>
                                 <td className="px-4 py-2.5 text-right font-mono text-xs">{r(itm.txval as number ?? 0)}</td>
                                 <td className="px-4 py-2.5 text-right font-mono text-xs">{r(itm.iamt as number ?? 0)}</td>
@@ -635,13 +635,13 @@ export default function GSTR1Page() {
               {activeTab === "hsn" && (
                 <div className="overflow-x-auto">
                   {hsn.length === 0 ? (
-                    <p className="p-6 text-sm text-white/30 text-center">
+                    <p className="p-6 text-sm text-[#94A3B8] text-center">
                       No HSN summary. Add HSN/SAC codes to invoice line items for Table 12.
                     </p>
                   ) : (
                     <table className="w-full text-sm">
-                      <thead className="bg-[#0e1017] border-b border-white/[0.07]">
-                        <tr className="text-xs text-white/40">
+                      <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                        <tr className="text-xs text-[#64748B]">
                           <th className="text-left px-4 py-2.5 font-medium">HSN/SAC</th>
                           <th className="text-left px-4 py-2.5 font-medium">Description</th>
                           <th className="text-right px-4 py-2.5 font-medium">Qty</th>
@@ -651,12 +651,12 @@ export default function GSTR1Page() {
                           <th className="text-right px-4 py-2.5 font-medium">SGST</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-white/[0.03]">
+                      <tbody className="divide-y divide-[#F8FAFC]">
                         {hsn.map((row, i) => (
-                          <tr key={i} className="hover:bg-[#0e1017]">
-                            <td className="px-4 py-2.5 font-mono text-xs font-semibold text-white/65">{row.hsn_sc as string}</td>
-                            <td className="px-4 py-2.5 text-xs text-white/55">{row.desc as string}</td>
-                            <td className="px-4 py-2.5 text-right text-xs text-white/40">{(row.qty as number).toFixed(2)} {row.uqc as string}</td>
+                          <tr key={i} className="hover:bg-[#F8FAFC]">
+                            <td className="px-4 py-2.5 font-mono text-xs font-semibold text-[#334155]">{row.hsn_sc as string}</td>
+                            <td className="px-4 py-2.5 text-xs text-[#475569]">{row.desc as string}</td>
+                            <td className="px-4 py-2.5 text-right text-xs text-[#64748B]">{(row.qty as number).toFixed(2)} {row.uqc as string}</td>
                             <td className="px-4 py-2.5 text-right font-mono text-xs">{r(row.txval as number)}</td>
                             <td className="px-4 py-2.5 text-right font-mono text-xs">{r(row.iamt as number)}</td>
                             <td className="px-4 py-2.5 text-right font-mono text-xs">{r(row.camt as number)}</td>
@@ -672,13 +672,13 @@ export default function GSTR1Page() {
               {/* JSON Preview tab */}
               {activeTab === "json" && (
                 <div>
-                  <div className="px-4 py-3 bg-[#0e1017] border-b border-white/[0.05] flex items-center justify-between">
-                    <p className="text-xs text-white/40">
+                  <div className="px-4 py-3 bg-[#F8FAFC] border-b border-[#F1F5F9] flex items-center justify-between">
+                    <p className="text-xs text-[#64748B]">
                       GSTN-compatible payload. This JSON is uploaded to gst.gov.in after CA approval.
                       Max 5 MB / 19,000 line items per upload.
                     </p>
                   </div>
-                  <pre className="p-5 text-xs font-mono text-white/55 overflow-auto max-h-96 bg-[#0e1017]">
+                  <pre className="p-5 text-xs font-mono text-[#475569] overflow-auto max-h-96 bg-[#F8FAFC]">
                     {JSON.stringify(result.payload, null, 2)}
                   </pre>
                 </div>
@@ -691,19 +691,19 @@ export default function GSTR1Page() {
       {/* Mark as Filed modal */}
       {showFiledModal && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md p-6">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-white/85">Mark GSTR-1 as Filed</h3>
+              <h3 className="font-semibold text-[#0F172A]">Mark GSTR-1 as Filed</h3>
               <button onClick={() => { setShowFiledModal(false); setArn(""); }}>
-                <X className="w-5 h-5 text-white/30 hover:text-white/55" />
+                <X className="w-5 h-5 text-[#94A3B8] hover:text-[#475569]" />
               </button>
             </div>
-            <p className="text-sm text-white/55 mb-4">
+            <p className="text-sm text-[#475569] mb-4">
               After uploading the JSON to <strong>gst.gov.in</strong> and receiving the ARN,
               enter it below to record the filing in PracticeSync.
             </p>
             <div className="mb-4">
-              <label className="block text-sm font-medium text-white/65 mb-1">
+              <label className="block text-sm font-medium text-[#334155] mb-1">
                 ARN (Acknowledgment Reference Number)
               </label>
               <input
@@ -717,7 +717,7 @@ export default function GSTR1Page() {
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => { setShowFiledModal(false); setArn(""); }}
-                className="px-4 py-2 text-sm text-white/55 hover:text-white/75 border border-gray-300 rounded-lg"
+                className="px-4 py-2 text-sm text-[#475569] hover:text-[#1E293B] border border-gray-300 rounded-lg"
               >
                 Cancel
               </button>

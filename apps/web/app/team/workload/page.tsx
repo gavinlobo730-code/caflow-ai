@@ -21,10 +21,10 @@ function UtilisationBar({ pct }: { pct: number }) {
     "bg-green-500";
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+      <div className="flex-1 h-1.5 bg-[#F1F5F9] rounded-full overflow-hidden">
         <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${clamped}%` }} />
       </div>
-      <span className="text-[11px] text-white/40 w-8 text-right">{clamped}%</span>
+      <span className="text-[11px] text-[#64748B] w-8 text-right">{clamped}%</span>
     </div>
   );
 }
@@ -69,10 +69,10 @@ function CapacityModal({ member, onClose, onSaved }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-[#131620] rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-white/85">Edit Capacity — {member.user_name}</h2>
-          <button onClick={onClose} className="text-white/30 hover:text-white/55">
+          <h2 className="font-semibold text-[#0F172A]">Edit Capacity — {member.user_name}</h2>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]">
             <X size={18} />
           </button>
         </div>
@@ -83,7 +83,7 @@ function CapacityModal({ member, onClose, onSaved }: {
         )}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-white/65 mb-1">Weekly Hours</label>
+            <label className="block text-xs font-medium text-[#334155] mb-1">Weekly Hours</label>
             <input
               type="number" min="1" max="100"
               value={weeklyHours}
@@ -92,7 +92,7 @@ function CapacityModal({ member, onClose, onSaved }: {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-white/65 mb-1">Max Concurrent Tasks</label>
+            <label className="block text-xs font-medium text-[#334155] mb-1">Max Concurrent Tasks</label>
             <input
               type="number" min="1" max="100"
               value={maxTasks}
@@ -128,8 +128,8 @@ function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEdit
               {initials}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-white/85 truncate">{member.user_name}</p>
-              <p className="text-[11px] text-white/40">{member.role}</p>
+              <p className="text-sm font-semibold text-[#0F172A] truncate">{member.user_name}</p>
+              <p className="text-[11px] text-[#64748B]">{member.role}</p>
             </div>
           </div>
           <div className="flex gap-1 shrink-0">
@@ -146,7 +146,7 @@ function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEdit
             <button
               onClick={() => onEditCapacity(member)}
               title="Edit capacity"
-              className="p-1 rounded text-white/20 hover:text-blue-400 hover:bg-blue-500/[0.08] transition-colors"
+              className="p-1 rounded text-[#CBD5E1] hover:text-blue-600 hover:bg-blue-500/[0.08] transition-colors"
             >
               <Pencil size={12} />
             </button>
@@ -154,29 +154,29 @@ function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEdit
         </div>
 
         <UtilisationBar pct={member.utilisation_pct} />
-        <p className="text-[11px] text-white/40">
+        <p className="text-[11px] text-[#64748B]">
           {fmtHours(member.minutes_logged_this_week)} logged of {member.weekly_capacity_hours}h weekly capacity
           · max {member.max_concurrent_tasks} tasks
         </p>
 
         <div className="grid grid-cols-4 gap-2 text-center">
           <div>
-            <p className="text-[18px] font-bold text-white/85">{member.active_tasks}</p>
-            <p className="text-[10px] text-white/30">Active</p>
+            <p className="text-[18px] font-bold text-[#0F172A]">{member.active_tasks}</p>
+            <p className="text-[10px] text-[#94A3B8]">Active</p>
           </div>
           <div>
-            <p className={`text-[18px] font-bold ${member.overdue_tasks > 0 ? "text-red-600" : "text-white/85"}`}>
+            <p className={`text-[18px] font-bold ${member.overdue_tasks > 0 ? "text-red-600" : "text-[#0F172A]"}`}>
               {member.overdue_tasks}
             </p>
-            <p className="text-[10px] text-white/30">Overdue</p>
+            <p className="text-[10px] text-[#94A3B8]">Overdue</p>
           </div>
           <div>
-            <p className="text-[18px] font-bold text-white/85">{member.due_this_week}</p>
-            <p className="text-[10px] text-white/30">This Week</p>
+            <p className="text-[18px] font-bold text-[#0F172A]">{member.due_this_week}</p>
+            <p className="text-[10px] text-[#94A3B8]">This Week</p>
           </div>
           <div>
             <p className="text-[18px] font-bold text-green-600">{member.completed_this_week}</p>
-            <p className="text-[10px] text-white/30">Completed</p>
+            <p className="text-[10px] text-[#94A3B8]">Completed</p>
           </div>
         </div>
       </CardContent>
@@ -213,8 +213,8 @@ export default function WorkloadPage() {
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-white/85">Team Workload</h1>
-          <p className="text-sm text-white/40 mt-0.5">Capacity and task distribution across the team</p>
+          <h1 className="text-xl font-semibold text-[#0F172A]">Team Workload</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">Capacity and task distribution across the team</p>
         </div>
         <Button variant="outline" size="sm" onClick={load} disabled={loading} className="gap-1.5">
           <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
@@ -228,7 +228,7 @@ export default function WorkloadPage() {
       )}
 
       {loading && !workload ? (
-        <div className="flex items-center justify-center py-20 text-white/30">
+        <div className="flex items-center justify-center py-20 text-[#94A3B8]">
           <Loader2 className="animate-spin mr-2" size={18} /> Loading workload data…
         </div>
       ) : workload ? (
@@ -237,36 +237,36 @@ export default function WorkloadPage() {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <Card>
               <CardContent className="py-4">
-                <p className="text-xs text-white/40">Team Members</p>
-                <p className="text-2xl font-bold text-white/85 mt-1">{workload.members.length}</p>
+                <p className="text-xs text-[#64748B]">Team Members</p>
+                <p className="text-2xl font-bold text-[#0F172A] mt-1">{workload.members.length}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="py-4">
-                <p className="text-xs text-white/40">Active Tasks</p>
-                <p className="text-2xl font-bold text-white/85 mt-1">{workload.total_active_tasks}</p>
+                <p className="text-xs text-[#64748B]">Active Tasks</p>
+                <p className="text-2xl font-bold text-[#0F172A] mt-1">{workload.total_active_tasks}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="py-4">
-                <p className="text-xs text-white/40">Overdue Tasks</p>
-                <p className={`text-2xl font-bold mt-1 ${workload.total_overdue_tasks > 0 ? "text-red-600" : "text-white/85"}`}>
+                <p className="text-xs text-[#64748B]">Overdue Tasks</p>
+                <p className={`text-2xl font-bold mt-1 ${workload.total_overdue_tasks > 0 ? "text-red-600" : "text-[#0F172A]"}`}>
                   {workload.total_overdue_tasks}
                 </p>
               </CardContent>
             </Card>
             <Card className={workload.overloaded_count > 0 ? "border-red-200" : ""}>
               <CardContent className="py-4">
-                <p className="text-xs text-white/40">Overloaded</p>
-                <p className={`text-2xl font-bold mt-1 ${workload.overloaded_count > 0 ? "text-red-600" : "text-white/85"}`}>
+                <p className="text-xs text-[#64748B]">Overloaded</p>
+                <p className={`text-2xl font-bold mt-1 ${workload.overloaded_count > 0 ? "text-red-600" : "text-[#0F172A]"}`}>
                   {workload.overloaded_count}
                 </p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="py-4">
-                <p className="text-xs text-white/40">Avg Utilisation</p>
-                <p className="text-2xl font-bold text-white/85 mt-1">{workload.avg_utilisation_pct}%</p>
+                <p className="text-xs text-[#64748B]">Avg Utilisation</p>
+                <p className="text-2xl font-bold text-[#0F172A] mt-1">{workload.avg_utilisation_pct}%</p>
               </CardContent>
             </Card>
           </div>
@@ -309,7 +309,7 @@ export default function WorkloadPage() {
 
           {healthy.length > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-white/65 flex items-center gap-1.5">
+              <h2 className="text-sm font-semibold text-[#334155] flex items-center gap-1.5">
                 <Activity size={13} /> Healthy Workload ({healthy.length})
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -331,7 +331,7 @@ export default function WorkloadPage() {
 
           {workload.members.length === 0 && (
             <Card>
-              <CardContent className="py-16 text-center text-white/30">
+              <CardContent className="py-16 text-center text-[#94A3B8]">
                 <Users size={32} className="mx-auto mb-3 opacity-30" />
                 <p>No team members found. Add team members to see workload data.</p>
               </CardContent>

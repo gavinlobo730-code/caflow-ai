@@ -300,12 +300,12 @@ export default function RecurringPage() {
     <div className="p-6 max-w-5xl mx-auto space-y-5">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-white/30 hover:text-white/55">
+        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
           <ChevronLeft size={18} />
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-white/85">Recurring Transactions</h1>
-          <p className="text-sm text-white/40 mt-0.5">{templates.filter(t => t.status === "Active").length} active templates</p>
+          <h1 className="text-xl font-semibold text-[#0F172A]">Recurring Transactions</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">{templates.filter(t => t.status === "Active").length} active templates</p>
         </div>
         <button
           onClick={openModal}
@@ -342,7 +342,7 @@ export default function RecurringPage() {
       {/* Templates table */}
       {templates.length === 0 ? (
         <div className="text-center py-16">
-          <p className="text-sm text-white/40 mb-3">No recurring templates yet</p>
+          <p className="text-sm text-[#64748B] mb-3">No recurring templates yet</p>
           <button onClick={openModal} className="text-sm bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
             Add First Template
           </button>
@@ -352,7 +352,7 @@ export default function RecurringPage() {
           <CardContent className="p-0">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-white/30 border-b border-white/[0.05]">
+                <tr className="text-xs text-[#94A3B8] border-b border-[#F1F5F9]">
                   <th className="px-5 py-2.5 text-left font-medium">Name</th>
                   <th className="px-3 py-2.5 text-left font-medium">Frequency</th>
                   <th className="px-3 py-2.5 text-left font-medium">Next Due</th>
@@ -363,29 +363,29 @@ export default function RecurringPage() {
                   <th className="px-5 py-2.5 text-right font-medium">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.03]">
+              <tbody className="divide-y divide-[#F8FAFC]">
                 {templates.map(tpl => {
                   const due = nextDueDate(tpl);
                   const overdue = tpl.status === "Active" && due <= todayISO();
                   return (
-                    <tr key={tpl.id} className="hover:bg-[#0e1017]">
-                      <td className="px-5 py-3 font-medium text-white/85 max-w-[160px] truncate">{tpl.name}</td>
+                    <tr key={tpl.id} className="hover:bg-[#F8FAFC]">
+                      <td className="px-5 py-3 font-medium text-[#0F172A] max-w-[160px] truncate">{tpl.name}</td>
                       <td className="px-3 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${freqBadge[tpl.frequency]}`}>
                           {tpl.frequency}
                         </span>
                       </td>
-                      <td className={`px-3 py-3 text-xs tabular-nums ${overdue ? "text-red-600 font-semibold" : "text-white/55"}`}>
+                      <td className={`px-3 py-3 text-xs tabular-nums ${overdue ? "text-red-600 font-semibold" : "text-[#475569]"}`}>
                         {due}
                         {overdue && " (overdue)"}
                       </td>
-                      <td className="px-3 py-3 text-xs text-white/40 max-w-[120px] truncate">{accountName(tpl.debit_account_id)}</td>
-                      <td className="px-3 py-3 text-xs text-white/40 max-w-[120px] truncate">{accountName(tpl.credit_account_id)}</td>
-                      <td className="px-3 py-3 text-right tabular-nums text-white/85 font-medium">
+                      <td className="px-3 py-3 text-xs text-[#64748B] max-w-[120px] truncate">{accountName(tpl.debit_account_id)}</td>
+                      <td className="px-3 py-3 text-xs text-[#64748B] max-w-[120px] truncate">{accountName(tpl.credit_account_id)}</td>
+                      <td className="px-3 py-3 text-right tabular-nums text-[#0F172A] font-medium">
                         {formatPaise(tpl.amount_paise)}
                       </td>
                       <td className="px-3 py-3">
-                        <Badge className={tpl.status === "Active" ? "bg-green-100 text-green-700" : "bg-white/[0.06] text-white/40"}>
+                        <Badge className={tpl.status === "Active" ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}>
                           {tpl.status}
                         </Badge>
                       </td>
@@ -402,14 +402,14 @@ export default function RecurringPage() {
                           </button>
                           <button
                             onClick={() => toggleStatus(tpl.id)}
-                            className="p-1.5 rounded hover:bg-white/[0.06] text-white/30 hover:text-white/65"
+                            className="p-1.5 rounded hover:bg-[#F1F5F9] text-[#94A3B8] hover:text-[#334155]"
                             title={tpl.status === "Active" ? "Pause" : "Resume"}
                           >
                             <Pause size={12} />
                           </button>
                           <button
                             onClick={() => deleteTemplate(tpl.id)}
-                            className="p-1.5 rounded hover:bg-red-50 text-white/30 hover:text-red-600"
+                            className="p-1.5 rounded hover:bg-red-50 text-[#94A3B8] hover:text-red-600"
                             title="Delete"
                           >
                             <Trash2 size={12} />
@@ -428,29 +428,29 @@ export default function RecurringPage() {
       {/* Add Template Modal */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-[#131620] rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <h2 className="text-sm font-semibold text-white/85 mb-4">New Recurring Template</h2>
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <h2 className="text-sm font-semibold text-[#0F172A] mb-4">New Recurring Template</h2>
             <div className="space-y-3">
 
               {/* Name */}
               <div>
-                <label className="text-xs text-white/40 font-medium">Name *</label>
+                <label className="text-xs text-[#64748B] font-medium">Name *</label>
                 <input
                   value={form.name}
                   onChange={e => setForm({ ...form, name: e.target.value })}
                   placeholder='e.g. "Monthly Office Rent"'
-                  className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               {/* Frequency + Day */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-white/40 font-medium">Frequency *</label>
+                  <label className="text-xs text-[#64748B] font-medium">Frequency *</label>
                   <select
                     value={form.frequency}
                     onChange={e => setForm({ ...form, frequency: e.target.value as Frequency })}
-                    className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option>Monthly</option>
                     <option>Quarterly</option>
@@ -458,14 +458,14 @@ export default function RecurringPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-white/40 font-medium">Day of Month (1–28) *</label>
+                  <label className="text-xs text-[#64748B] font-medium">Day of Month (1–28) *</label>
                   <input
                     type="number"
                     min={1}
                     max={28}
                     value={form.day_of_month}
                     onChange={e => setForm({ ...form, day_of_month: Math.min(28, Math.max(1, parseInt(e.target.value) || 1)) })}
-                    className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -473,11 +473,11 @@ export default function RecurringPage() {
               {/* Accounts */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-white/40 font-medium">Debit Account *</label>
+                  <label className="text-xs text-[#64748B] font-medium">Debit Account *</label>
                   <select
                     value={form.debit_account_id}
                     onChange={e => setForm({ ...form, debit_account_id: e.target.value })}
-                    className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     disabled={loadingAccounts}
                   >
                     <option value="">— Select account —</option>
@@ -487,11 +487,11 @@ export default function RecurringPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-white/40 font-medium">Credit Account *</label>
+                  <label className="text-xs text-[#64748B] font-medium">Credit Account *</label>
                   <select
                     value={form.credit_account_id}
                     onChange={e => setForm({ ...form, credit_account_id: e.target.value })}
-                    className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     disabled={loadingAccounts}
                   >
                     <option value="">— Select account —</option>
@@ -504,7 +504,7 @@ export default function RecurringPage() {
 
               {/* Amount */}
               <div>
-                <label className="text-xs text-white/40 font-medium">Amount (₹) *</label>
+                <label className="text-xs text-[#64748B] font-medium">Amount (₹) *</label>
                 <input
                   type="number"
                   min={0}
@@ -512,40 +512,40 @@ export default function RecurringPage() {
                   value={form.amount_rupees}
                   onChange={e => setForm({ ...form, amount_rupees: e.target.value })}
                   placeholder="e.g. 25000"
-                  className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <p className="text-xs text-white/30 mt-0.5">Stored as integer paise internally</p>
+                <p className="text-xs text-[#94A3B8] mt-0.5">Stored as integer paise internally</p>
               </div>
 
               {/* Narration */}
               <div>
-                <label className="text-xs text-white/40 font-medium">Narration</label>
+                <label className="text-xs text-[#64748B] font-medium">Narration</label>
                 <input
                   value={form.narration}
                   onChange={e => setForm({ ...form, narration: e.target.value })}
                   placeholder="e.g. Office rent for the month"
-                  className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               {/* Dates */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-white/40 font-medium">Start Date *</label>
+                  <label className="text-xs text-[#64748B] font-medium">Start Date *</label>
                   <input
                     type="date"
                     value={form.start_date}
                     onChange={e => setForm({ ...form, start_date: e.target.value })}
-                    className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-white/40 font-medium">End Date (optional)</label>
+                  <label className="text-xs text-[#64748B] font-medium">End Date (optional)</label>
                   <input
                     type="date"
                     value={form.end_date}
                     onChange={e => setForm({ ...form, end_date: e.target.value })}
-                    className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -559,7 +559,7 @@ export default function RecurringPage() {
             <div className="flex gap-2 mt-5">
               <button
                 onClick={closeModal}
-                className="flex-1 text-sm text-white/55 border border-white/[0.07] py-2 rounded-md hover:bg-[#0e1017]"
+                className="flex-1 text-sm text-[#475569] border border-[#E2E8F0] py-2 rounded-md hover:bg-[#F8FAFC]"
               >
                 Cancel
               </button>

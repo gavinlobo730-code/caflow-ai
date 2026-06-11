@@ -32,12 +32,12 @@ function rupees(paise: number) {
 type TDSTab = "dashboard" | "deductions" | "challans" | "returns" | "form26as" | "certificates";
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-white/[0.06] text-white/65",
+  pending: "bg-[#F1F5F9] text-[#334155]",
   deposited: "bg-blue-100 text-blue-700",
   prepared: "bg-amber-100 text-amber-700",
   ca_approved: "bg-green-100 text-green-700",
   filed: "bg-emerald-100 text-emerald-800",
-  draft: "bg-white/[0.06] text-white/65",
+  draft: "bg-[#F1F5F9] text-[#334155]",
 };
 
 const KYC_COLORS: Record<string, string> = {
@@ -58,7 +58,7 @@ function TDSDashboard({ clientId }: { clientId: string }) {
       .finally(() => setLoading(false));
   }, [clientId]);
 
-  if (loading) return <p className="text-sm text-white/40">Loading…</p>;
+  if (loading) return <p className="text-sm text-[#64748B]">Loading…</p>;
   if (!data) return <p className="text-sm text-red-500">Failed to load TDS dashboard.</p>;
 
   const summary = data.summary as Record<string, number>;
@@ -66,19 +66,19 @@ function TDSDashboard({ clientId }: { clientId: string }) {
   return (
     <div className="grid grid-cols-2 gap-4">
       <div className="rounded border p-4 bg-blue-50">
-        <p className="text-xs text-white/40">Total Challans</p>
+        <p className="text-xs text-[#64748B]">Total Challans</p>
         <p className="text-2xl font-bold">{summary?.total_challans ?? 0}</p>
       </div>
       <div className="rounded border p-4 bg-green-50">
-        <p className="text-xs text-white/40">Total Deposited</p>
+        <p className="text-xs text-[#64748B]">Total Deposited</p>
         <p className="text-2xl font-bold">{rupees(summary?.total_deposited_paise ?? 0)}</p>
       </div>
       <div className="rounded border p-4 bg-amber-50">
-        <p className="text-xs text-white/40">TDS Returns</p>
+        <p className="text-xs text-[#64748B]">TDS Returns</p>
         <p className="text-2xl font-bold">{summary?.total_returns ?? 0}</p>
       </div>
       <div className="rounded border p-4 bg-purple-50">
-        <p className="text-xs text-white/40">Certificates</p>
+        <p className="text-xs text-[#64748B]">Certificates</p>
         <p className="text-2xl font-bold">{summary?.total_certificates ?? 0}</p>
       </div>
     </div>
@@ -100,10 +100,10 @@ function DeductionsTab({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-4">
       <h3 className="font-medium">TDS Deductions Register</h3>
-      {loading ? <p className="text-sm text-white/40">Loading…</p> : (
+      {loading ? <p className="text-sm text-[#64748B]">Loading…</p> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-[#0e1017] text-left">
+            <tr className="bg-[#F8FAFC] text-left">
               <th className="px-3 py-2 border-b">Date</th>
               <th className="px-3 py-2 border-b">Party</th>
               <th className="px-3 py-2 border-b">Section</th>
@@ -114,7 +114,7 @@ function DeductionsTab({ clientId }: { clientId: string }) {
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={(r.id as string) ?? i} className="border-b hover:bg-[#0e1017]">
+              <tr key={(r.id as string) ?? i} className="border-b hover:bg-[#F8FAFC]">
                 <td className="px-3 py-2">{r.deduction_date as string ?? "—"}</td>
                 <td className="px-3 py-2">{r.deductee_name as string ?? "—"}</td>
                 <td className="px-3 py-2 font-mono text-xs">§{r.section as string}</td>
@@ -124,7 +124,7 @@ function DeductionsTab({ clientId }: { clientId: string }) {
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-white/30">No deductions recorded.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-4 text-center text-[#94A3B8]">No deductions recorded.</td></tr>
             )}
           </tbody>
         </table>
@@ -171,7 +171,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
       </div>
 
       {showNew && (
-        <div className="border rounded p-4 bg-[#0e1017] space-y-3">
+        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
           <p className="text-sm font-medium">New TDS Challan</p>
           <div className="grid grid-cols-2 gap-3">
             {[
@@ -199,10 +199,10 @@ function ChallansTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {loading ? <p className="text-sm text-white/40">Loading…</p> : (
+      {loading ? <p className="text-sm text-[#64748B]">Loading…</p> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-[#0e1017] text-left">
+            <tr className="bg-[#F8FAFC] text-left">
               <th className="px-3 py-2 border-b">Challan No.</th>
               <th className="px-3 py-2 border-b">Date</th>
               <th className="px-3 py-2 border-b">BSR Code</th>
@@ -214,7 +214,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id as string} className="border-b hover:bg-[#0e1017]">
+              <tr key={r.id as string} className="border-b hover:bg-[#F8FAFC]">
                 <td className="px-3 py-2 font-mono text-xs">{r.challan_no as string}</td>
                 <td className="px-3 py-2">{r.challan_date as string}</td>
                 <td className="px-3 py-2 font-mono text-xs">{r.bsr_code as string}</td>
@@ -229,7 +229,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-4 text-center text-white/30">No challans yet.</td></tr>
+              <tr><td colSpan={7} className="px-3 py-4 text-center text-[#94A3B8]">No challans yet.</td></tr>
             )}
           </tbody>
         </table>
@@ -283,7 +283,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
       </div>
 
       {showNew && (
-        <div className="border rounded p-4 bg-[#0e1017] space-y-3">
+        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
           <p className="text-sm font-medium">New TDS Return</p>
           <div className="grid grid-cols-3 gap-3">
             <select value={form.return_type} onChange={(e) => setForm((f) => ({ ...f, return_type: e.target.value }))}
@@ -305,10 +305,10 @@ function ReturnsTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {loading ? <p className="text-sm text-white/40">Loading…</p> : (
+      {loading ? <p className="text-sm text-[#64748B]">Loading…</p> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-[#0e1017] text-left">
+            <tr className="bg-[#F8FAFC] text-left">
               <th className="px-3 py-2 border-b">Type</th>
               <th className="px-3 py-2 border-b">Quarter</th>
               <th className="px-3 py-2 border-b">FY</th>
@@ -319,7 +319,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id as string} className="border-b hover:bg-[#0e1017]">
+              <tr key={r.id as string} className="border-b hover:bg-[#F8FAFC]">
                 <td className="px-3 py-2 font-medium">{r.return_type as string}</td>
                 <td className="px-3 py-2">{r.quarter as string}</td>
                 <td className="px-3 py-2">{r.financial_year as string}</td>
@@ -332,7 +332,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2 space-x-2">
                   {r.status === "pending" && (
                     <button onClick={() => updateStatus(r.id as string, "prepared")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-white/[0.06]">Prepare</button>
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-[#F1F5F9]">Prepare</button>
                   )}
                   {r.status === "prepared" && (
                     <button onClick={() => updateStatus(r.id as string, "ca_approved")}
@@ -342,7 +342,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-white/30">No TDS returns yet.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-4 text-center text-[#94A3B8]">No TDS returns yet.</td></tr>
             )}
           </tbody>
         </table>
@@ -410,7 +410,7 @@ function Form26ASTab({ clientId }: { clientId: string }) {
                   <span className="text-red-600">✗ Missing: {summary?.missing_count ?? 0}</span>
                 </div>
                 {(mismatched?.length ?? 0) > 0 && mismatched.map((m, i) => (
-                  <div key={i} className="text-xs text-white/65 border rounded p-2">
+                  <div key={i} className="text-xs text-[#334155] border rounded p-2">
                     PAN: {(m.key as string[])?.[0]} §{(m.key as string[])?.[1]} —
                     Book: {rupees(m.book_paise as number)}, 26AS: {rupees(m.form26as_paise as number)},
                     Diff: {rupees(m.diff_paise as number)}
@@ -465,7 +465,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
       </div>
 
       {showNew && (
-        <div className="border rounded p-4 bg-[#0e1017] space-y-3">
+        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
           <p className="text-sm font-medium">Generate Certificate Draft</p>
           <div className="grid grid-cols-2 gap-3">
             {[
@@ -494,10 +494,10 @@ function CertificatesTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {loading ? <p className="text-sm text-white/40">Loading…</p> : (
+      {loading ? <p className="text-sm text-[#64748B]">Loading…</p> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-[#0e1017] text-left">
+            <tr className="bg-[#F8FAFC] text-left">
               <th className="px-3 py-2 border-b">Type</th>
               <th className="px-3 py-2 border-b">Deductee</th>
               <th className="px-3 py-2 border-b">PAN</th>
@@ -508,7 +508,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id as string} className="border-b hover:bg-[#0e1017]">
+              <tr key={r.id as string} className="border-b hover:bg-[#F8FAFC]">
                 <td className="px-3 py-2">{r.certificate_type as string}</td>
                 <td className="px-3 py-2">{r.deductee_name as string}</td>
                 <td className="px-3 py-2 font-mono text-xs">{r.deductee_pan as string}</td>
@@ -522,7 +522,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-white/30">No certificates generated.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-4 text-center text-[#94A3B8]">No certificates generated.</td></tr>
             )}
           </tbody>
         </table>
@@ -547,7 +547,7 @@ export default function TDSWorkspacePage() {
   const [tab, setTab] = useState<TDSTab>("dashboard");
 
   if (!clientId || clientId === "_placeholder") {
-    return <p className="text-sm text-white/40 p-6">Select a client to view TDS workspace.</p>;
+    return <p className="text-sm text-[#64748B] p-6">Select a client to view TDS workspace.</p>;
   }
 
   return (
@@ -565,7 +565,7 @@ export default function TDSWorkspacePage() {
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id
                 ? "border-blue-600 text-blue-700"
-                : "border-transparent text-white/40 hover:text-white/65"
+                : "border-transparent text-[#64748B] hover:text-[#334155]"
             }`}>
             {t.label}
           </button>

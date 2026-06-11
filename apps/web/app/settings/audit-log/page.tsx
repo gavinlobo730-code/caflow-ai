@@ -32,7 +32,7 @@ function actionBadgeClass(action: ActionType): string {
     case "Update": return "bg-blue-100 text-blue-700";
     case "Delete": return "bg-red-100 text-red-700";
     case "Post":   return "bg-purple-100 text-purple-700";
-    default:       return "bg-white/[0.06] text-white/55";
+    default:       return "bg-[#F1F5F9] text-[#475569]";
   }
 }
 
@@ -239,43 +239,43 @@ function AuditLogContent() {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/settings" className="text-white/30 hover:text-white/55">
+        <Link href="/settings" className="text-[#94A3B8] hover:text-[#475569]">
           <ChevronLeft size={18} />
         </Link>
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <ShieldCheck size={16} className="text-blue-600" />
-            <h1 className="text-xl font-semibold text-white/85">Audit Log</h1>
+            <h1 className="text-xl font-semibold text-[#0F172A]">Audit Log</h1>
           </div>
-          <p className="text-sm text-white/40 mt-0.5">
+          <p className="text-sm text-[#64748B] mt-0.5">
             Partner-only view — timeline of all changes across clients, journals, compliance and accounts.
           </p>
         </div>
         <button
           onClick={handleExport}
           disabled={filtered.length === 0}
-          className="flex items-center gap-1.5 text-xs border border-white/[0.07] text-white/55 px-3 py-1.5 rounded-md hover:bg-[#0e1017] disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-md hover:bg-[#F8FAFC] disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Download size={13} /> Export CSV
         </button>
       </div>
 
       {/* Filters */}
-      <div className="bg-[#131620] border border-white/[0.05] rounded-xl px-5 py-4 grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="bg-white border border-[#F1F5F9] rounded-xl px-5 py-4 grid grid-cols-2 md:grid-cols-5 gap-3">
         <div>
-          <label className="text-xs text-white/40">From Date</label>
+          <label className="text-xs text-[#64748B]">From Date</label>
           <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
-            className="block w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="block w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
-          <label className="text-xs text-white/40">To Date</label>
+          <label className="text-xs text-[#64748B]">To Date</label>
           <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
-            className="block w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="block w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
-          <label className="text-xs text-white/40">Action</label>
+          <label className="text-xs text-[#64748B]">Action</label>
           <select value={filterAction} onChange={(e) => setFilterAction(e.target.value as ActionType | "")}
-            className="block w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            className="block w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="">All Actions</option>
             {(["Create", "Update", "Delete", "Post"] as ActionType[]).map((a) => (
               <option key={a} value={a}>{a}</option>
@@ -283,9 +283,9 @@ function AuditLogContent() {
           </select>
         </div>
         <div>
-          <label className="text-xs text-white/40">Entity Type</label>
+          <label className="text-xs text-[#64748B]">Entity Type</label>
           <select value={filterEntity} onChange={(e) => setFilterEntity(e.target.value as EntityType | "")}
-            className="block w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            className="block w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="">All Entities</option>
             {(["Client", "Journal Entry", "Compliance", "Account"] as EntityType[]).map((t) => (
               <option key={t} value={t}>{t}</option>
@@ -293,17 +293,17 @@ function AuditLogContent() {
           </select>
         </div>
         <div>
-          <label className="text-xs text-white/40">User (email)</label>
+          <label className="text-xs text-[#64748B]">User (email)</label>
           <input value={filterUser} onChange={(e) => setFilterUser(e.target.value)}
             placeholder="Search…"
-            className="block w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="block w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
       </div>
 
       {/* Table */}
-      <div className="bg-[#131620] border border-white/[0.05] rounded-xl overflow-hidden">
+      <div className="bg-white border border-[#F1F5F9] rounded-xl overflow-hidden">
         {/* Column headers */}
-        <div className="grid grid-cols-12 gap-2 px-5 py-2 text-xs font-semibold text-white/30 border-b border-white/[0.05] bg-[#0e1017]">
+        <div className="grid grid-cols-12 gap-2 px-5 py-2 text-xs font-semibold text-[#94A3B8] border-b border-[#F1F5F9] bg-[#F8FAFC]">
           <span className="col-span-2">Timestamp</span>
           <span className="col-span-2">User</span>
           <span className="col-span-1">Action</span>
@@ -314,50 +314,50 @@ function AuditLogContent() {
         </div>
 
         {loading && (
-          <div className="px-5 py-12 text-center text-sm text-white/30 animate-pulse">Loading audit log…</div>
+          <div className="px-5 py-12 text-center text-sm text-[#94A3B8] animate-pulse">Loading audit log…</div>
         )}
         {!loading && error && (
           <div className="px-5 py-6 text-center text-sm text-red-600">{error}</div>
         )}
         {!loading && !error && filtered.length === 0 && (
-          <div className="px-5 py-12 text-center text-sm text-white/30">
+          <div className="px-5 py-12 text-center text-sm text-[#94A3B8]">
             No audit events found for the selected filters.
           </div>
         )}
 
-        <div className="divide-y divide-white/[0.03]">
+        <div className="divide-y divide-[#F8FAFC]">
           {filtered.map((row) => (
-            <div key={row.id} className="grid grid-cols-12 gap-2 px-5 py-3 hover:bg-[#0e1017] transition-colors items-start text-xs">
-              <span className="col-span-2 text-white/40 tabular-nums">
+            <div key={row.id} className="grid grid-cols-12 gap-2 px-5 py-3 hover:bg-[#F8FAFC] transition-colors items-start text-xs">
+              <span className="col-span-2 text-[#64748B] tabular-nums">
                 {formatDate(row.timestamp.slice(0, 10))}
-                <span className="block text-white/30 font-mono">{row.timestamp.slice(11, 19)}</span>
+                <span className="block text-[#94A3B8] font-mono">{row.timestamp.slice(11, 19)}</span>
               </span>
-              <span className="col-span-2 text-white/65 truncate" title={row.user}>{row.user}</span>
+              <span className="col-span-2 text-[#334155] truncate" title={row.user}>{row.user}</span>
               <span className="col-span-1">
                 <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${actionBadgeClass(row.action)}`}>
                   {row.action}
                 </span>
               </span>
-              <span className="col-span-2 text-white/55">{row.entity_type}</span>
-              <span className="col-span-3 text-white/85 truncate font-medium" title={row.entity_name}>
+              <span className="col-span-2 text-[#475569]">{row.entity_type}</span>
+              <span className="col-span-3 text-[#0F172A] truncate font-medium" title={row.entity_name}>
                 {row.entity_name}
-                <span className="block font-mono text-white/30 text-[10px] truncate">{row.entity_id}</span>
+                <span className="block font-mono text-[#94A3B8] text-[10px] truncate">{row.entity_id}</span>
               </span>
-              <span className="col-span-1 text-white/30 font-mono">{row.ip_address}</span>
-              <span className="col-span-1 text-white/40 truncate" title={row.detail}>{row.detail}</span>
+              <span className="col-span-1 text-[#94A3B8] font-mono">{row.ip_address}</span>
+              <span className="col-span-1 text-[#64748B] truncate" title={row.detail}>{row.detail}</span>
             </div>
           ))}
         </div>
 
         {!loading && filtered.length > 0 && (
-          <div className="px-5 py-3 border-t border-gray-50 text-xs text-white/30">
+          <div className="px-5 py-3 border-t border-gray-50 text-xs text-[#94A3B8]">
             Showing {filtered.length} event{filtered.length !== 1 ? "s" : ""}
             {filtered.length !== rows.length ? ` (filtered from ${rows.length} total)` : ""}
           </div>
         )}
       </div>
 
-      <p className="text-xs text-white/30">
+      <p className="text-xs text-[#94A3B8]">
         Note: Audit events are reconstructed from table timestamps. IP address tracking requires a dedicated
         audit_log table with server-side logging. User attribution is available only where email is stored on the record.
       </p>

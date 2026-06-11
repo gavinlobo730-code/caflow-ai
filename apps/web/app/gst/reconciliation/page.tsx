@@ -408,14 +408,14 @@ function UploadPanel({
         : "border-blue-400 bg-blue-50/20"
       : error
       ? "border-red-300 bg-red-50/10"
-      : "border-white/[0.07] hover:border-blue-300 hover:bg-blue-50/10";
+      : "border-[#E2E8F0] hover:border-blue-300 hover:bg-blue-50/10";
 
   return (
-    <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-5 space-y-3">
+    <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold text-white/85">{title}</p>
-          <p className="text-xs text-white/30 mt-0.5">{subtitle}</p>
+          <p className="text-sm font-semibold text-[#0F172A]">{title}</p>
+          <p className="text-xs text-[#94A3B8] mt-0.5">{subtitle}</p>
         </div>
         <button
           type="button"
@@ -444,13 +444,13 @@ function UploadPanel({
         {fileName ? (
           <>
             <CheckCircle className={`w-6 h-6 ${accent === "green" ? "text-green-500" : "text-blue-500"}`} />
-            <p className="text-xs font-medium text-white/65">{fileName}</p>
-            <p className="text-[10px] text-white/30">{rowCount} invoices loaded · click to replace</p>
+            <p className="text-xs font-medium text-[#334155]">{fileName}</p>
+            <p className="text-[10px] text-[#94A3B8]">{rowCount} invoices loaded · click to replace</p>
           </>
         ) : (
           <>
-            <Upload className="w-6 h-6 text-white/20" />
-            <p className="text-xs text-white/40">Click or drag &amp; drop CSV</p>
+            <Upload className="w-6 h-6 text-[#CBD5E1]" />
+            <p className="text-xs text-[#64748B]">Click or drag &amp; drop CSV</p>
           </>
         )}
         {error && (
@@ -459,7 +459,7 @@ function UploadPanel({
       </div>
 
       {note && (
-        <p className="text-[10px] text-white/30 bg-[#0e1017] rounded-lg px-3 py-2 leading-relaxed">
+        <p className="text-[10px] text-[#94A3B8] bg-[#F8FAFC] rounded-lg px-3 py-2 leading-relaxed">
           {note}
         </p>
       )}
@@ -591,16 +591,16 @@ export default function GstReconciliationPage() {
           <div className="flex items-center gap-1.5 mb-1">
             <Link
               href="/gst"
-              className="text-white/30 hover:text-white/55 flex items-center gap-1 text-xs"
+              className="text-[#94A3B8] hover:text-[#475569] flex items-center gap-1 text-xs"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
               GST
             </Link>
           </div>
-          <h1 className="text-xl font-semibold text-white/85">
+          <h1 className="text-xl font-semibold text-[#0F172A]">
             GSTR-2A vs Purchase Reconciliation
           </h1>
-          <p className="text-sm text-white/40 mt-0.5">
+          <p className="text-sm text-[#64748B] mt-0.5">
             CGST Rule 36(4) · Section 16 — Reconcile purchase register against GSTR-2A to verify ITC claims
           </p>
         </div>
@@ -626,28 +626,28 @@ export default function GstReconciliationPage() {
       </div>
 
       {/* Step 1 — Select parameters */}
-      <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-5 space-y-4">
+      <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
         <div>
-          <p className="text-sm font-semibold text-white/85">Step 1 — Select Parameters</p>
-          <p className="text-xs text-white/30 mt-0.5">Choose client and return period, then upload files</p>
+          <p className="text-sm font-semibold text-[#0F172A]">Step 1 — Select Parameters</p>
+          <p className="text-xs text-[#94A3B8] mt-0.5">Choose client and return period, then upload files</p>
         </div>
 
         <div className="flex flex-wrap gap-4">
           {/* Client */}
           <div className="flex-1 min-w-[200px]">
-            <label className="text-xs font-medium text-white/65 block mb-1">
+            <label className="text-xs font-medium text-[#334155] block mb-1">
               <Users className="w-3 h-3 inline mr-1" />
               Client
             </label>
             {loadingClients ? (
-              <div className="h-9 rounded-lg bg-[#0e1017] animate-pulse" />
+              <div className="h-9 rounded-lg bg-[#F8FAFC] animate-pulse" />
             ) : clients.length === 0 ? (
-              <p className="text-xs text-white/30 italic">No clients found</p>
+              <p className="text-xs text-[#94A3B8] italic">No clients found</p>
             ) : (
               <select
                 value={selectedClientId}
                 onChange={(e) => setSelectedClientId(e.target.value)}
-                className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -660,11 +660,11 @@ export default function GstReconciliationPage() {
 
           {/* Month */}
           <div className="min-w-[150px]">
-            <label className="text-xs font-medium text-white/65 block mb-1">Month</label>
+            <label className="text-xs font-medium text-[#334155] block mb-1">Month</label>
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {MONTHS.map((m) => (
                 <option key={m.value} value={m.value}>{m.label}</option>
@@ -674,11 +674,11 @@ export default function GstReconciliationPage() {
 
           {/* Year */}
           <div className="min-w-[110px]">
-            <label className="text-xs font-medium text-white/65 block mb-1">Year</label>
+            <label className="text-xs font-medium text-[#334155] block mb-1">Year</label>
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(e.target.value)}
-              className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {YEAR_OPTIONS.map((y) => (
                 <option key={y} value={String(y)}>{y}</option>
@@ -710,7 +710,7 @@ export default function GstReconciliationPage() {
 
       {/* Step 2 — Upload files */}
       <div>
-        <p className="text-sm font-semibold text-white/85 mb-3">Step 2 — Upload Files</p>
+        <p className="text-sm font-semibold text-[#0F172A] mb-3">Step 2 — Upload Files</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <UploadPanel
             title="Purchase Register (Your Books)"
@@ -740,58 +740,58 @@ export default function GstReconciliationPage() {
       {reconRows.length > 0 && (
         <>
           <div>
-            <p className="text-sm font-semibold text-white/85 mb-3">Step 3 — Reconciliation Results</p>
+            <p className="text-sm font-semibold text-[#0F172A] mb-3">Step 3 — Reconciliation Results</p>
 
             {/* Summary cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
               {/* Total ITC in Books */}
-              <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
+              <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-lg bg-[#0e1017] flex items-center justify-center">
-                    <BookOpen className="w-4 h-4 text-white/55" />
+                  <div className="w-8 h-8 rounded-lg bg-[#F8FAFC] flex items-center justify-center">
+                    <BookOpen className="w-4 h-4 text-[#475569]" />
                   </div>
-                  <span className="text-xs text-white/40">ITC in Books</span>
+                  <span className="text-xs text-[#64748B]">ITC in Books</span>
                 </div>
-                <p className="text-base font-semibold text-white/85">₹{fmtRupees(totalBooksITC)}</p>
-                <p className="text-[10px] text-white/30 mt-0.5">{booksRows.length} purchase invoices</p>
+                <p className="text-base font-semibold text-[#0F172A]">₹{fmtRupees(totalBooksITC)}</p>
+                <p className="text-[10px] text-[#94A3B8] mt-0.5">{booksRows.length} purchase invoices</p>
               </div>
 
               {/* Total ITC in GSTR-2A */}
-              <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
+              <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
                     <FileText className="w-4 h-4 text-blue-600" />
                   </div>
-                  <span className="text-xs text-white/40">ITC in GSTR-2A</span>
+                  <span className="text-xs text-[#64748B]">ITC in GSTR-2A</span>
                 </div>
-                <p className="text-base font-semibold text-white/85">₹{fmtRupees(totalGstr2aITC)}</p>
-                <p className="text-[10px] text-white/30 mt-0.5">{gstr2aRows.length} supplier-filed invoices</p>
+                <p className="text-base font-semibold text-[#0F172A]">₹{fmtRupees(totalGstr2aITC)}</p>
+                <p className="text-[10px] text-[#94A3B8] mt-0.5">{gstr2aRows.length} supplier-filed invoices</p>
               </div>
 
               {/* Matched ITC */}
-              <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
+              <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
                     <CheckCircle className="w-4 h-4 text-green-600" />
                   </div>
-                  <span className="text-xs text-white/40">Matched ITC</span>
+                  <span className="text-xs text-[#64748B]">Matched ITC</span>
                 </div>
-                <p className="text-base font-semibold text-white/85">₹{fmtRupees(matchedITC)}</p>
-                <p className="text-[10px] text-white/30 mt-0.5">{matched.length} invoices matched</p>
+                <p className="text-base font-semibold text-[#0F172A]">₹{fmtRupees(matchedITC)}</p>
+                <p className="text-[10px] text-[#94A3B8] mt-0.5">{matched.length} invoices matched</p>
               </div>
 
               {/* Difference */}
-              <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-4">
+              <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${diffITC === 0 ? "bg-[#0e1017]" : diffITC > 0 ? "bg-red-50" : "bg-amber-50"}`}>
-                    <AlertCircle className={`w-4 h-4 ${diffITC === 0 ? "text-white/30" : diffITC > 0 ? "text-red-600" : "text-amber-600"}`} />
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${diffITC === 0 ? "bg-[#F8FAFC]" : diffITC > 0 ? "bg-red-50" : "bg-amber-50"}`}>
+                    <AlertCircle className={`w-4 h-4 ${diffITC === 0 ? "text-[#94A3B8]" : diffITC > 0 ? "text-red-600" : "text-amber-600"}`} />
                   </div>
-                  <span className="text-xs text-white/40">Difference (Books − 2A)</span>
+                  <span className="text-xs text-[#64748B]">Difference (Books − 2A)</span>
                 </div>
-                <p className={`text-base font-semibold ${diffITC === 0 ? "text-white/85" : diffITC > 0 ? "text-red-600" : "text-amber-600"}`}>
+                <p className={`text-base font-semibold ${diffITC === 0 ? "text-[#0F172A]" : diffITC > 0 ? "text-red-600" : "text-amber-600"}`}>
                   {diffITC >= 0 ? "" : "−"}₹{fmtRupees(Math.abs(diffITC))}
                 </p>
-                <p className="text-[10px] text-white/30 mt-0.5">
+                <p className="text-[10px] text-[#94A3B8] mt-0.5">
                   {diffITC > 0 ? "Books > 2A — ITC at risk" : diffITC < 0 ? "2A > Books — unclaimed ITC" : "Fully reconciled"}
                 </p>
               </div>
@@ -801,7 +801,7 @@ export default function GstReconciliationPage() {
             <div className="flex flex-wrap gap-2 mb-3">
               {(
                 [
-                  { status: "all" as const,           label: `All (${reconRows.length})`,          cls: "bg-white/[0.06] text-white/65" },
+                  { status: "all" as const,           label: `All (${reconRows.length})`,          cls: "bg-[#F1F5F9] text-[#334155]" },
                   { status: "matched" as ReconStatus,       label: `Matched ✓ (${matched.length})`,      cls: "bg-green-100 text-green-700" },
                   { status: "mismatch" as ReconStatus,      label: `Mismatch ⚠ (${mismatches.length})`, cls: "bg-amber-100 text-amber-700" },
                   { status: "missing_in_2a" as ReconStatus, label: `Missing in 2A (${missingIn2a.length})`, cls: "bg-red-100 text-red-700" },
@@ -819,22 +819,22 @@ export default function GstReconciliationPage() {
             </div>
 
             {/* Results table */}
-            <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
+            <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-gray-50 bg-[#0e1017]/50">
-                      <th className="text-left font-medium text-white/30 px-4 py-3">Status</th>
-                      <th className="text-left font-medium text-white/30 px-3 py-3">Supplier GSTIN</th>
-                      <th className="text-left font-medium text-white/30 px-3 py-3">Supplier Name</th>
-                      <th className="text-left font-medium text-white/30 px-3 py-3">Invoice No.</th>
-                      <th className="text-left font-medium text-white/30 px-3 py-3">Date</th>
-                      <th className="text-right font-medium text-white/30 px-3 py-3">Books Tax (₹)</th>
-                      <th className="text-right font-medium text-white/30 px-3 py-3">2A Tax (₹)</th>
-                      <th className="text-right font-medium text-white/30 px-4 py-3">Diff (₹)</th>
+                    <tr className="border-b border-gray-50 bg-[#F8FAFC]/50">
+                      <th className="text-left font-medium text-[#94A3B8] px-4 py-3">Status</th>
+                      <th className="text-left font-medium text-[#94A3B8] px-3 py-3">Supplier GSTIN</th>
+                      <th className="text-left font-medium text-[#94A3B8] px-3 py-3">Supplier Name</th>
+                      <th className="text-left font-medium text-[#94A3B8] px-3 py-3">Invoice No.</th>
+                      <th className="text-left font-medium text-[#94A3B8] px-3 py-3">Date</th>
+                      <th className="text-right font-medium text-[#94A3B8] px-3 py-3">Books Tax (₹)</th>
+                      <th className="text-right font-medium text-[#94A3B8] px-3 py-3">2A Tax (₹)</th>
+                      <th className="text-right font-medium text-[#94A3B8] px-4 py-3">Diff (₹)</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/[0.03]">
+                  <tbody className="divide-y divide-[#F8FAFC]">
                     {displayRows.map((r) => {
                       const booksTax =
                         r.books_igst !== null || r.books_cgst !== null || r.books_sgst !== null
@@ -855,26 +855,26 @@ export default function GstReconciliationPage() {
                               {STATUS_LABEL[r.status]}
                             </span>
                           </td>
-                          <td className="px-3 py-2.5 font-mono text-white/55">{r.supplier_gstin}</td>
-                          <td className="px-3 py-2.5 text-white/65 max-w-[160px] truncate" title={r.supplier_name}>
+                          <td className="px-3 py-2.5 font-mono text-[#475569]">{r.supplier_gstin}</td>
+                          <td className="px-3 py-2.5 text-[#334155] max-w-[160px] truncate" title={r.supplier_name}>
                             {r.supplier_name || "—"}
                           </td>
-                          <td className="px-3 py-2.5 text-white/65 font-medium">{r.invoice_number}</td>
-                          <td className="px-3 py-2.5 text-white/40">{r.invoice_date || "—"}</td>
-                          <td className="px-3 py-2.5 text-right text-white/65">
+                          <td className="px-3 py-2.5 text-[#334155] font-medium">{r.invoice_number}</td>
+                          <td className="px-3 py-2.5 text-[#64748B]">{r.invoice_date || "—"}</td>
+                          <td className="px-3 py-2.5 text-right text-[#334155]">
                             {booksTax !== null ? fmtRupees(booksTax) : "—"}
                           </td>
-                          <td className="px-3 py-2.5 text-right text-white/65">
+                          <td className="px-3 py-2.5 text-right text-[#334155]">
                             {gstr2aTax !== null ? fmtRupees(gstr2aTax) : "—"}
                           </td>
                           <td className="px-4 py-2.5 text-right font-medium">
                             {diffTax !== null ? (
-                              <span className={diffTax !== 0 ? "text-amber-600" : "text-white/30"}>
+                              <span className={diffTax !== 0 ? "text-amber-600" : "text-[#94A3B8]"}>
                                 {diffTax >= 0 ? "" : "−"}
                                 {fmtRupees(Math.abs(diffTax))}
                               </span>
                             ) : (
-                              <span className="text-white/20">—</span>
+                              <span className="text-[#CBD5E1]">—</span>
                             )}
                           </td>
                         </tr>
@@ -884,8 +884,8 @@ export default function GstReconciliationPage() {
                 </table>
               </div>
 
-              <div className="px-5 py-3 border-t border-gray-50 bg-[#0e1017]/30">
-                <p className="text-[10px] text-white/30">
+              <div className="px-5 py-3 border-t border-gray-50 bg-[#F8FAFC]/30">
+                <p className="text-[10px] text-[#94A3B8]">
                   {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
                   CGST Act Section 16 · Rule 36(4) — ITC subject to 105% cap of GSTR-2A eligible credit ·
                   PracticeSync does not auto-submit anything to the GST portal — CA must review and file manually.
@@ -898,14 +898,14 @@ export default function GstReconciliationPage() {
 
       {/* Empty state */}
       {reconRows.length === 0 && !booksError && !gstr2aError && (
-        <div className="bg-[#131620] rounded-xl border border-white/[0.05] px-6 py-16 text-center space-y-2">
-          <div className="w-12 h-12 rounded-xl bg-[#0e1017] flex items-center justify-center mx-auto">
+        <div className="bg-white rounded-xl border border-[#F1F5F9] px-6 py-16 text-center space-y-2">
+          <div className="w-12 h-12 rounded-xl bg-[#F8FAFC] flex items-center justify-center mx-auto">
             <FileText className="w-6 h-6 text-gray-200" />
           </div>
-          <p className="text-sm font-medium text-white/40">
+          <p className="text-sm font-medium text-[#64748B]">
             Upload both files to start reconciliation
           </p>
-          <p className="text-xs text-white/30">
+          <p className="text-xs text-[#94A3B8]">
             Upload your purchase register CSV and GSTR-2A CSV above — results appear automatically.
           </p>
         </div>

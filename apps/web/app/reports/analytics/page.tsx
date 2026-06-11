@@ -34,10 +34,10 @@ function UtilBar({ pct }: { pct: number }) {
   const color = clamped > 80 ? "bg-red-400" : clamped > 60 ? "bg-amber-400" : "bg-green-500";
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+      <div className="flex-1 h-1.5 bg-[#F1F5F9] rounded-full overflow-hidden">
         <div className={`h-full rounded-full ${color}`} style={{ width: `${clamped}%` }} />
       </div>
-      <span className="text-[11px] text-white/30 w-8 text-right">{clamped}%</span>
+      <span className="text-[11px] text-[#94A3B8] w-8 text-right">{clamped}%</span>
     </div>
   );
 }
@@ -95,8 +95,8 @@ export default function AnalyticsPage() {
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-white/85">Productivity Analytics</h1>
-          <p className="text-sm text-white/40 mt-0.5">Revenue, utilisation, and efficiency insights</p>
+          <h1 className="text-xl font-semibold text-[#0F172A]">Productivity Analytics</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">Revenue, utilisation, and efficiency insights</p>
         </div>
         <div className="flex gap-2">
           {(Object.keys(PERIOD_LABELS) as AnalyticsPeriod[]).map(p => (
@@ -127,8 +127,8 @@ export default function AnalyticsPage() {
             onClick={() => setTab(t.id)}
             className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id
-                ? "border-blue-500/20 text-blue-400"
-                : "border-transparent text-white/40 hover:text-white/65"
+                ? "border-blue-500/20 text-blue-600"
+                : "border-transparent text-[#64748B] hover:text-[#334155]"
             }`}
           >
             {t.icon} {t.label}
@@ -137,7 +137,7 @@ export default function AnalyticsPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20 text-white/30">
+        <div className="flex items-center justify-center py-20 text-[#94A3B8]">
           <Loader2 className="animate-spin mr-2" size={18} /> Loading analytics…
         </div>
       ) : (
@@ -148,38 +148,38 @@ export default function AnalyticsPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card>
                   <CardContent className="py-4">
-                    <div className="flex items-center gap-1.5 text-xs text-white/40 mb-1">
+                    <div className="flex items-center gap-1.5 text-xs text-[#64748B] mb-1">
                       <Clock size={11} /> Total Hours
                     </div>
-                    <p className="text-2xl font-bold text-white/85">{formatHours(firmData.total_minutes)}</p>
-                    <p className="text-[11px] text-white/30 mt-0.5">{formatHours(firmData.billable_minutes)} billable</p>
+                    <p className="text-2xl font-bold text-[#0F172A]">{formatHours(firmData.total_minutes)}</p>
+                    <p className="text-[11px] text-[#94A3B8] mt-0.5">{formatHours(firmData.billable_minutes)} billable</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="py-4">
-                    <div className="flex items-center gap-1.5 text-xs text-white/40 mb-1">
+                    <div className="flex items-center gap-1.5 text-xs text-[#64748B] mb-1">
                       <TrendingUp size={11} /> Utilisation
                     </div>
-                    <p className="text-2xl font-bold text-white/85">{firmData.utilisation_pct}%</p>
+                    <p className="text-2xl font-bold text-[#0F172A]">{firmData.utilisation_pct}%</p>
                     <UtilBar pct={firmData.utilisation_pct} />
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="py-4">
-                    <div className="flex items-center gap-1.5 text-xs text-white/40 mb-1">
+                    <div className="flex items-center gap-1.5 text-xs text-[#64748B] mb-1">
                       <IndianRupee size={11} /> Revenue
                     </div>
-                    <p className="text-2xl font-bold text-white/85">{formatRupees(firmData.revenue_paise)}</p>
-                    <p className="text-[11px] text-white/30 mt-0.5">{formatRupees(firmData.outstanding_paise)} outstanding</p>
+                    <p className="text-2xl font-bold text-[#0F172A]">{formatRupees(firmData.revenue_paise)}</p>
+                    <p className="text-[11px] text-[#94A3B8] mt-0.5">{formatRupees(firmData.outstanding_paise)} outstanding</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="py-4">
-                    <div className="flex items-center gap-1.5 text-xs text-white/40 mb-1">
+                    <div className="flex items-center gap-1.5 text-xs text-[#64748B] mb-1">
                       <BarChart3 size={11} /> Tasks
                     </div>
-                    <p className="text-2xl font-bold text-white/85">{firmData.tasks_completed}</p>
-                    <p className="text-[11px] text-white/30 mt-0.5">
+                    <p className="text-2xl font-bold text-[#0F172A]">{firmData.tasks_completed}</p>
+                    <p className="text-[11px] text-[#94A3B8] mt-0.5">
                       {firmData.tasks_active} active · {firmData.tasks_overdue > 0 ?
                         <span className="text-red-500">{firmData.tasks_overdue} overdue</span> :
                         "0 overdue"
@@ -195,15 +195,15 @@ export default function AnalyticsPage() {
                   </CardHeader>
                   <CardContent className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-white/40">Issued</span>
+                      <span className="text-[#64748B]">Issued</span>
                       <span className="font-medium">{firmData.invoices_issued}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-white/40">Paid</span>
+                      <span className="text-[#64748B]">Paid</span>
                       <span className="font-medium text-green-700">{firmData.invoices_paid}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-white/40">Outstanding</span>
+                      <span className="text-[#64748B]">Outstanding</span>
                       <span className="font-medium text-amber-700">{firmData.invoices_issued - firmData.invoices_paid}</span>
                     </div>
                   </CardContent>
@@ -214,15 +214,15 @@ export default function AnalyticsPage() {
                   </CardHeader>
                   <CardContent className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-white/40">Total Logged</span>
+                      <span className="text-[#64748B]">Total Logged</span>
                       <span className="font-medium">{formatHours(firmData.total_minutes)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-white/40">Billable</span>
-                      <span className="font-medium text-blue-400">{formatHours(firmData.billable_minutes)}</span>
+                      <span className="text-[#64748B]">Billable</span>
+                      <span className="font-medium text-blue-600">{formatHours(firmData.billable_minutes)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-white/40">Non-billable</span>
+                      <span className="text-[#64748B]">Non-billable</span>
                       <span className="font-medium">{formatHours(firmData.total_minutes - firmData.billable_minutes)}</span>
                     </div>
                   </CardContent>
@@ -237,20 +237,20 @@ export default function AnalyticsPage() {
               <div className="grid grid-cols-3 gap-4">
                 <Card>
                   <CardContent className="py-4">
-                    <p className="text-xs text-white/40">Total Hours</p>
-                    <p className="text-2xl font-bold text-white/85 mt-1">{formatHours(teamData.total_minutes)}</p>
+                    <p className="text-xs text-[#64748B]">Total Hours</p>
+                    <p className="text-2xl font-bold text-[#0F172A] mt-1">{formatHours(teamData.total_minutes)}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="py-4">
-                    <p className="text-xs text-white/40">Billable Hours</p>
-                    <p className="text-2xl font-bold text-blue-400 mt-1">{formatHours(teamData.billable_minutes)}</p>
+                    <p className="text-xs text-[#64748B]">Billable Hours</p>
+                    <p className="text-2xl font-bold text-blue-600 mt-1">{formatHours(teamData.billable_minutes)}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="py-4">
-                    <p className="text-xs text-white/40">Avg Utilisation</p>
-                    <p className="text-2xl font-bold text-white/85 mt-1">{teamData.avg_utilisation_pct}%</p>
+                    <p className="text-xs text-[#64748B]">Avg Utilisation</p>
+                    <p className="text-2xl font-bold text-[#0F172A] mt-1">{teamData.avg_utilisation_pct}%</p>
                   </CardContent>
                 </Card>
               </div>
@@ -262,7 +262,7 @@ export default function AnalyticsPage() {
                 <CardContent className="p-0">
                   <div className="divide-y">
                     {teamData.members.length === 0 ? (
-                      <p className="py-8 text-center text-sm text-white/30">No data for this period</p>
+                      <p className="py-8 text-center text-sm text-[#94A3B8]">No data for this period</p>
                     ) : (
                       teamData.members.map(m => (
                         <div key={m.user_id} className="px-5 py-3 flex items-center gap-4">
@@ -270,21 +270,21 @@ export default function AnalyticsPage() {
                             {m.user_name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-white/85 truncate">{m.user_name}</p>
+                            <p className="text-sm font-medium text-[#0F172A] truncate">{m.user_name}</p>
                             <UtilBar pct={m.utilisation_pct} />
                           </div>
                           <div className="grid grid-cols-3 gap-4 text-center shrink-0">
                             <div>
                               <p className="text-sm font-semibold">{formatHours(m.total_minutes)}</p>
-                              <p className="text-[10px] text-white/30">Total</p>
+                              <p className="text-[10px] text-[#94A3B8]">Total</p>
                             </div>
                             <div>
-                              <p className="text-sm font-semibold text-blue-400">{formatHours(m.billable_minutes)}</p>
-                              <p className="text-[10px] text-white/30">Billable</p>
+                              <p className="text-sm font-semibold text-blue-600">{formatHours(m.billable_minutes)}</p>
+                              <p className="text-[10px] text-[#94A3B8]">Billable</p>
                             </div>
                             <div>
                               <p className="text-sm font-semibold text-green-600">{m.tasks_completed}</p>
-                              <p className="text-[10px] text-white/30">Done</p>
+                              <p className="text-[10px] text-[#94A3B8]">Done</p>
                             </div>
                           </div>
                         </div>
@@ -302,14 +302,14 @@ export default function AnalyticsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <Card>
                   <CardContent className="py-4">
-                    <p className="text-xs text-white/40">Total Hours</p>
-                    <p className="text-2xl font-bold text-white/85 mt-1">{formatHours(clientData.total_minutes)}</p>
+                    <p className="text-xs text-[#64748B]">Total Hours</p>
+                    <p className="text-2xl font-bold text-[#0F172A] mt-1">{formatHours(clientData.total_minutes)}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="py-4">
-                    <p className="text-xs text-white/40">Total Revenue</p>
-                    <p className="text-2xl font-bold text-white/85 mt-1">{formatRupees(clientData.total_revenue_paise)}</p>
+                    <p className="text-xs text-[#64748B]">Total Revenue</p>
+                    <p className="text-2xl font-bold text-[#0F172A] mt-1">{formatRupees(clientData.total_revenue_paise)}</p>
                   </CardContent>
                 </Card>
               </div>
@@ -321,26 +321,26 @@ export default function AnalyticsPage() {
                 <CardContent className="p-0">
                   <div className="divide-y">
                     {clientData.clients.length === 0 ? (
-                      <p className="py-8 text-center text-sm text-white/30">No data for this period</p>
+                      <p className="py-8 text-center text-sm text-[#94A3B8]">No data for this period</p>
                     ) : (
                       clientData.clients
                         .sort((a, b) => b.total_minutes - a.total_minutes)
                         .map(c => (
                           <div key={c.client_id} className="px-5 py-3 flex items-center gap-4">
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-white/85 truncate">{c.client_name}</p>
-                              <p className="text-[11px] text-white/30">
+                              <p className="text-sm font-medium text-[#0F172A] truncate">{c.client_name}</p>
+                              <p className="text-[11px] text-[#94A3B8]">
                                 {c.tasks_completed} completed · {c.tasks_active} active
                               </p>
                             </div>
                             <div className="grid grid-cols-2 gap-4 text-right shrink-0">
                               <div>
                                 <p className="text-sm font-semibold">{formatHours(c.total_minutes)}</p>
-                                <p className="text-[10px] text-white/30">Hours</p>
+                                <p className="text-[10px] text-[#94A3B8]">Hours</p>
                               </div>
                               <div>
-                                <p className="text-sm font-semibold text-blue-400">{formatRupees(c.revenue_paise)}</p>
-                                <p className="text-[10px] text-white/30">Revenue</p>
+                                <p className="text-sm font-semibold text-blue-600">{formatRupees(c.revenue_paise)}</p>
+                                <p className="text-[10px] text-[#94A3B8]">Revenue</p>
                               </div>
                             </div>
                           </div>

@@ -31,7 +31,7 @@ const SEVERITY_ICONS: Record<InsightSeverity, React.ReactNode> = {
   high: <AlertTriangle size={14} className="text-orange-500" />,
   medium: <Clock size={14} className="text-amber-500" />,
   low: <Info size={14} className="text-blue-500" />,
-  info: <Info size={14} className="text-white/30" />,
+  info: <Info size={14} className="text-[#94A3B8]" />,
 };
 
 const SEVERITY_COLORS: Record<InsightSeverity, string> = {
@@ -139,11 +139,11 @@ export default function NotificationsPage() {
     <div className="p-6 space-y-5 max-w-3xl mx-auto">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <Bell size={18} className="text-white/65" />
+          <Bell size={18} className="text-[#334155]" />
           <div>
-            <h1 className="text-xl font-semibold text-white/85">Notifications</h1>
+            <h1 className="text-xl font-semibold text-[#0F172A]">Notifications</h1>
             {unreadCount > 0 && (
-              <p className="text-sm text-white/40">{unreadCount} unread</p>
+              <p className="text-sm text-[#64748B]">{unreadCount} unread</p>
             )}
           </div>
         </div>
@@ -176,8 +176,8 @@ export default function NotificationsPage() {
               onClick={() => setTab(t.id)}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                 tab === t.id
-                  ? "border-blue-500/20 text-blue-400"
-                  : "border-transparent text-white/40 hover:text-white/65"
+                  ? "border-blue-500/20 text-blue-600"
+                  : "border-transparent text-[#64748B] hover:text-[#334155]"
               }`}
             >
               {t.label}
@@ -185,11 +185,11 @@ export default function NotificationsPage() {
           ))}
         </div>
         <div className="flex items-center gap-1.5">
-          <Filter size={12} className="text-white/30" />
+          <Filter size={12} className="text-[#94A3B8]" />
           <select
             value={typeFilter}
             onChange={e => setTypeFilter(e.target.value)}
-            className="text-xs border rounded-lg px-2 py-1.5 text-white/55 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            className="text-xs border rounded-lg px-2 py-1.5 text-[#475569] focus:outline-none focus:ring-2 focus:ring-blue-500/30"
           >
             {typeOptions.map(o => (
               <option key={o} value={o}>
@@ -201,13 +201,13 @@ export default function NotificationsPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-white/30">
+        <div className="flex items-center justify-center py-16 text-[#94A3B8]">
           <Loader2 className="animate-spin mr-2" size={16} /> Loading…
         </div>
       ) : notifications.length === 0 ? (
-        <div className="py-16 text-center text-white/30">
+        <div className="py-16 text-center text-[#94A3B8]">
           <Bell size={32} className="mx-auto mb-3 opacity-20" />
-          <p className="font-medium text-white/40">
+          <p className="font-medium text-[#64748B]">
             {tab === "unread" ? "No unread notifications" :
              tab === "archived" ? "No archived notifications" :
              "No notifications"}
@@ -226,7 +226,7 @@ export default function NotificationsPage() {
                 SEVERITY_COLORS[n.severity as InsightSeverity ?? "info"]
               } ${
                 n.is_read
-                  ? "bg-[#131620] border border-white/[0.05] hover:bg-[#0e1017]/60"
+                  ? "bg-white border border-[#F1F5F9] hover:bg-[#F8FAFC]/60"
                   : "bg-blue-500/[0.08]/40 border border-blue-500/20 hover:bg-blue-500/[0.08]/60"
               }`}
             >
@@ -236,27 +236,27 @@ export default function NotificationsPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className={`text-sm leading-snug ${n.is_read ? "text-white/65" : "text-white/85 font-semibold"}`}>
+                    <p className={`text-sm leading-snug ${n.is_read ? "text-[#334155]" : "text-[#0F172A] font-semibold"}`}>
                       {n.title}
                     </p>
-                    <p className="text-[12px] text-white/40 mt-0.5 line-clamp-2">{n.body}</p>
+                    <p className="text-[12px] text-[#64748B] mt-0.5 line-clamp-2">{n.body}</p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     {!n.is_read && (
                       <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
                     )}
-                    <span className="text-[11px] text-white/30 whitespace-nowrap">{timeAgo(n.created_at)}</span>
+                    <span className="text-[11px] text-[#94A3B8] whitespace-nowrap">{timeAgo(n.created_at)}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 mt-1.5">
-                  <Badge className="text-[10px] px-1.5 py-0 bg-white/[0.06] text-white/40">
+                  <Badge className="text-[10px] px-1.5 py-0 bg-[#F1F5F9] text-[#64748B]">
                     {n.type.replace(/_/g, " ")}
                   </Badge>
                   {n.action_url && (
                     <a
                       href={n.action_url}
                       onClick={e => e.stopPropagation()}
-                      className="flex items-center gap-0.5 text-[11px] text-blue-400 hover:text-blue-400"
+                      className="flex items-center gap-0.5 text-[11px] text-blue-600 hover:text-blue-600"
                     >
                       View <ExternalLink size={9} />
                     </a>
@@ -267,7 +267,7 @@ export default function NotificationsPage() {
                 <button
                   onClick={e => { e.stopPropagation(); archiveOne(n.id); }}
                   title="Archive"
-                  className="p-1.5 rounded opacity-0 group-hover:opacity-100 text-white/30 hover:text-white/55 hover:bg-white/[0.06] transition-all shrink-0"
+                  className="p-1.5 rounded opacity-0 group-hover:opacity-100 text-[#94A3B8] hover:text-[#475569] hover:bg-[#F1F5F9] transition-all shrink-0"
                 >
                   <Archive size={13} />
                 </button>
