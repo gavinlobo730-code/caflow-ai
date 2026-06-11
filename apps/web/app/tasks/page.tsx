@@ -19,11 +19,11 @@ const PRIORITY_BADGE: Record<TaskPriority, string> = {
   critical: "bg-red-100 text-red-700 border border-red-200",
   high:     "bg-orange-100 text-orange-700 border border-orange-200",
   medium:   "bg-amber-100 text-amber-700 border border-amber-200",
-  low:      "bg-gray-100 text-gray-600 border border-gray-200",
+  low:      "bg-white/[0.06] text-white/55 border border-white/[0.07]",
 };
 
 const STATUS_BADGE: Record<TaskStatus, string> = {
-  todo:            "bg-gray-100 text-gray-700",
+  todo:            "bg-white/[0.06] text-white/65",
   in_progress:     "bg-blue-100 text-blue-700",
   waiting_client:  "bg-purple-100 text-purple-700",
   review_required: "bg-amber-100 text-amber-700",
@@ -138,23 +138,23 @@ function DependenciesSection({ taskId, allTasks }: { taskId: string; allTasks: T
 
   return (
     <div className="space-y-2">
-      <h5 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Blocked By</h5>
+      <h5 className="text-xs font-semibold text-white/55 uppercase tracking-wide">Blocked By</h5>
       {error && <p className="text-xs text-red-600">{error}</p>}
       {loading ? (
-        <p className="text-xs text-gray-400">Loading dependencies…</p>
+        <p className="text-xs text-white/30">Loading dependencies…</p>
       ) : deps.length === 0 ? (
-        <p className="text-xs text-gray-400">No dependencies</p>
+        <p className="text-xs text-white/30">No dependencies</p>
       ) : (
         <div className="space-y-1.5">
           {deps.map(d => (
-            <div key={d.id} className="flex items-center justify-between gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
-              <span className="text-xs text-gray-700 line-clamp-1">
+            <div key={d.id} className="flex items-center justify-between gap-2 bg-[#0e1017] border border-white/[0.05] rounded-lg px-3 py-2">
+              <span className="text-xs text-white/65 line-clamp-1">
                 {d.depends_on_title ?? titleMap.get(d.depends_on_task_id) ?? d.depends_on_task_id}
               </span>
               <button
                 onClick={() => handleRemove(d.id)}
                 disabled={busy}
-                className="p-0.5 rounded text-gray-400 hover:text-red-500 shrink-0"
+                className="p-0.5 rounded text-white/30 hover:text-red-500 shrink-0"
                 title="Remove dependency"
               >
                 <X size={12} />
@@ -167,7 +167,7 @@ function DependenciesSection({ taskId, allTasks }: { taskId: string; allTasks: T
         <select
           value={addId}
           onChange={e => setAddId(e.target.value)}
-          className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-500"
+          className="flex-1 border border-white/[0.07] rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-500"
         >
           <option value="">Add a blocking task…</option>
           {candidates.map(t => (
@@ -235,10 +235,10 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
   return (
     <div className="fixed inset-0 z-40 flex justify-end pointer-events-none">
       <div className="absolute inset-0 pointer-events-auto" onClick={onClose} />
-      <div className="relative w-96 h-full bg-white border-l border-gray-200 shadow-2xl pointer-events-auto flex flex-col overflow-hidden">
+      <div className="relative w-96 h-full bg-[#131620] border-l border-white/[0.07] shadow-2xl pointer-events-auto flex flex-col overflow-hidden">
         {/* Panel header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-900">Task Detail</h3>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.05]">
+          <h3 className="text-sm font-semibold text-white/85">Task Detail</h3>
           <div className="flex items-center gap-2">
             {!editing && (
               <button
@@ -248,7 +248,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                 Edit
               </button>
             )}
-            <button onClick={onClose} className="p-1 rounded text-gray-400 hover:text-gray-600">
+            <button onClick={onClose} className="p-1 rounded text-white/30 hover:text-white/55">
               <X size={16} />
             </button>
           </div>
@@ -259,7 +259,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
             /* Edit mode */
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
+                <label className="block text-xs font-medium text-white/55 mb-1">Title</label>
                 <input
                   value={form.title ?? ""}
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
@@ -267,7 +267,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Client</label>
+                <label className="block text-xs font-medium text-white/55 mb-1">Client</label>
                 <select
                   value={form.client_id ?? ""}
                   onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
@@ -277,7 +277,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Assign To</label>
+                <label className="block text-xs font-medium text-white/55 mb-1">Assign To</label>
                 <select
                   value={form.assignee_id ?? ""}
                   onChange={e => setForm(f => ({ ...f, assignee_id: e.target.value }))}
@@ -289,7 +289,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Priority</label>
+                  <label className="block text-xs font-medium text-white/55 mb-1">Priority</label>
                   <select
                     value={form.priority ?? "medium"}
                     onChange={e => setForm(f => ({ ...f, priority: e.target.value as TaskPriority }))}
@@ -301,7 +301,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+                  <label className="block text-xs font-medium text-white/55 mb-1">Status</label>
                   <select
                     value={form.status ?? "todo"}
                     onChange={e => setForm(f => ({ ...f, status: e.target.value as TaskStatus }))}
@@ -314,7 +314,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Due Date</label>
+                <label className="block text-xs font-medium text-white/55 mb-1">Due Date</label>
                 <input
                   type="date"
                   value={form.due_date ?? ""}
@@ -323,7 +323,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+                <label className="block text-xs font-medium text-white/55 mb-1">Description</label>
                 <textarea
                   rows={3}
                   value={form.description ?? ""}
@@ -334,7 +334,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => setEditing(false)}
-                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-white/65 hover:bg-[#0e1017]"
                 >
                   Cancel
                 </button>
@@ -351,9 +351,9 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
             /* View mode */
             <>
               <div>
-                <h4 className="text-base font-semibold text-gray-900 leading-tight">{task.title}</h4>
+                <h4 className="text-base font-semibold text-white/85 leading-tight">{task.title}</h4>
                 {task.description && (
-                  <p className="text-sm text-gray-500 mt-2 leading-relaxed">{task.description}</p>
+                  <p className="text-sm text-white/40 mt-2 leading-relaxed">{task.description}</p>
                 )}
               </div>
 
@@ -390,8 +390,8 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
 function Row({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div className="flex items-start justify-between gap-4">
-      <span className="text-xs text-gray-500 shrink-0 pt-0.5">{label}</span>
-      <span className={`text-sm font-medium text-right ${highlight ? "text-red-600" : "text-gray-800"}`}>{value}</span>
+      <span className="text-xs text-white/40 shrink-0 pt-0.5">{label}</span>
+      <span className={`text-sm font-medium text-right ${highlight ? "text-red-600" : "text-white/75"}`}>{value}</span>
     </div>
   );
 }
@@ -543,15 +543,15 @@ export default function TasksPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Tasks</h1>
-          <p className="text-gray-500 text-sm mt-0.5">
+          <h1 className="text-2xl font-bold text-white/85">Tasks</h1>
+          <p className="text-white/40 text-sm mt-0.5">
             {loading ? "Loading…" : `${filtered.length} task${filtered.length !== 1 ? "s" : ""} shown`}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={load}
-            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500"
+            className="p-2 rounded-lg border border-white/[0.07] hover:bg-[#0e1017] text-white/40"
             title="Refresh"
           >
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
@@ -573,7 +573,7 @@ export default function TasksPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
-        <SummaryCard label="Total" value={stats.total} color="bg-gray-50 border-gray-200 text-gray-700" />
+        <SummaryCard label="Total" value={stats.total} color="bg-[#0e1017] border-white/[0.07] text-white/65" />
         <SummaryCard label="Pending" value={stats.pending} color="bg-slate-50 border-slate-200 text-slate-700" />
         <SummaryCard label="In Progress" value={stats.in_progress} color="bg-blue-50 border-blue-200 text-blue-700" />
         <SummaryCard label="Completed" value={stats.completed} color="bg-green-50 border-green-200 text-green-700" />
@@ -582,12 +582,12 @@ export default function TasksPage() {
 
       {/* Filter + Sort bar */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <Filter size={14} className="text-gray-400 shrink-0" />
+        <Filter size={14} className="text-white/30 shrink-0" />
 
         <select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value as StatusFilter)}
-          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white outline-none focus:border-blue-400"
+          className="border border-white/[0.07] rounded-lg px-3 py-1.5 text-sm text-white/65 bg-[#131620] outline-none focus:border-blue-400"
         >
           <option value="all">All Statuses</option>
           {(Object.keys(STATUS_LABEL) as TaskStatus[]).map(s => (
@@ -598,7 +598,7 @@ export default function TasksPage() {
         <select
           value={priorityFilter}
           onChange={e => setPriorityFilter(e.target.value as PriorityFilter)}
-          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white outline-none focus:border-blue-400"
+          className="border border-white/[0.07] rounded-lg px-3 py-1.5 text-sm text-white/65 bg-[#131620] outline-none focus:border-blue-400"
         >
           <option value="all">All Priorities</option>
           {(["critical","high","medium","low"] as TaskPriority[]).map(p => (
@@ -610,7 +610,7 @@ export default function TasksPage() {
           <select
             value={assigneeFilter}
             onChange={e => setAssigneeFilter(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white outline-none focus:border-blue-400"
+            className="border border-white/[0.07] rounded-lg px-3 py-1.5 text-sm text-white/65 bg-[#131620] outline-none focus:border-blue-400"
           >
             <option value="all">All Assignees</option>
             {teamMembers.map(m => (
@@ -622,7 +622,7 @@ export default function TasksPage() {
         <select
           value={clientFilter}
           onChange={e => setClientFilter(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white outline-none focus:border-blue-400"
+          className="border border-white/[0.07] rounded-lg px-3 py-1.5 text-sm text-white/65 bg-[#131620] outline-none focus:border-blue-400"
         >
           <option value="all">All Clients</option>
           {clients.map(c => (
@@ -630,12 +630,12 @@ export default function TasksPage() {
           ))}
         </select>
 
-        <div className="ml-auto flex items-center gap-1 text-sm text-gray-500">
+        <div className="ml-auto flex items-center gap-1 text-sm text-white/40">
           <ArrowUpDown size={13} />
           <select
             value={sortField}
             onChange={e => setSortField(e.target.value as SortField)}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white outline-none focus:border-blue-400"
+            className="border border-white/[0.07] rounded-lg px-3 py-1.5 text-sm text-white/65 bg-[#131620] outline-none focus:border-blue-400"
           >
             <option value="due_date">Sort: Due Date</option>
             <option value="priority">Sort: Priority</option>
@@ -664,31 +664,31 @@ export default function TasksPage() {
       )}
 
       {/* Table */}
-      <div className="flex-1 overflow-x-auto rounded-xl border border-gray-200 bg-white min-h-0">
+      <div className="flex-1 overflow-x-auto rounded-xl border border-white/[0.07] bg-[#131620] min-h-0">
         <table className="w-full text-sm min-w-[600px]">
-          <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+          <thead className="bg-[#0e1017] border-b border-white/[0.07] sticky top-0">
             <tr>
               <th className="w-10 px-3 py-3">
-                <button onClick={toggleSelectAll} className="text-gray-400 hover:text-gray-600">
+                <button onClick={toggleSelectAll} className="text-white/30 hover:text-white/55">
                   {allSelected ? <CheckSquare size={15} className="text-blue-600" /> : <Square size={15} />}
                 </button>
               </th>
-              <th className="text-left px-3 py-3 font-medium text-gray-600">Task</th>
-              <th className="text-left px-3 py-3 font-medium text-gray-600">Client</th>
-              <th className="text-left px-3 py-3 font-medium text-gray-600">Assignee</th>
-              <th className="text-left px-3 py-3 font-medium text-gray-600">Priority</th>
-              <th className="text-left px-3 py-3 font-medium text-gray-600">Status</th>
-              <th className="text-left px-3 py-3 font-medium text-gray-600">Due Date</th>
+              <th className="text-left px-3 py-3 font-medium text-white/55">Task</th>
+              <th className="text-left px-3 py-3 font-medium text-white/55">Client</th>
+              <th className="text-left px-3 py-3 font-medium text-white/55">Assignee</th>
+              <th className="text-left px-3 py-3 font-medium text-white/55">Priority</th>
+              <th className="text-left px-3 py-3 font-medium text-white/55">Status</th>
+              <th className="text-left px-3 py-3 font-medium text-white/55">Due Date</th>
               <th className="w-12 px-3 py-3" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-white/[0.05]">
             {loading && (
               [...Array(5)].map((_, i) => (
                 <tr key={i}>
                   {[...Array(8)].map((__, j) => (
                     <td key={j} className="px-3 py-3">
-                      <div className="h-4 bg-gray-100 rounded animate-pulse" />
+                      <div className="h-4 bg-white/[0.06] rounded animate-pulse" />
                     </td>
                   ))}
                 </tr>
@@ -696,7 +696,7 @@ export default function TasksPage() {
             )}
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="text-center py-12 text-gray-400">
+                <td colSpan={8} className="text-center py-12 text-white/30">
                   No tasks match your filters
                 </td>
               </tr>
@@ -707,24 +707,24 @@ export default function TasksPage() {
               return (
                 <tr
                   key={task.id}
-                  className={`group hover:bg-gray-50 cursor-pointer transition-colors ${checked ? "bg-blue-50" : ""}`}
+                  className={`group hover:bg-[#0e1017] cursor-pointer transition-colors ${checked ? "bg-blue-50" : ""}`}
                   onClick={() => setDetailTask(task)}
                 >
                   <td className="px-3 py-3" onClick={e => { e.stopPropagation(); toggleSelect(task.id); }}>
                     {checked
                       ? <CheckSquare size={15} className="text-blue-600" />
-                      : <Square size={15} className="text-gray-300 group-hover:text-gray-400" />
+                      : <Square size={15} className="text-white/20 group-hover:text-white/30" />
                     }
                   </td>
                   <td className="px-3 py-3">
-                    <span className="font-medium text-gray-900 line-clamp-1">{task.title}</span>
+                    <span className="font-medium text-white/85 line-clamp-1">{task.title}</span>
                     {task.description && (
-                      <span className="block text-xs text-gray-400 mt-0.5 line-clamp-1">{task.description}</span>
+                      <span className="block text-xs text-white/30 mt-0.5 line-clamp-1">{task.description}</span>
                     )}
                   </td>
-                  <td className="px-3 py-3 text-gray-600 whitespace-nowrap">{task.client_name ?? "—"}</td>
-                  <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
-                    {task.assignee_name ?? <span className="text-gray-300">Unassigned</span>}
+                  <td className="px-3 py-3 text-white/55 whitespace-nowrap">{task.client_name ?? "—"}</td>
+                  <td className="px-3 py-3 text-white/55 whitespace-nowrap">
+                    {task.assignee_name ?? <span className="text-white/20">Unassigned</span>}
                   </td>
                   <td className="px-3 py-3">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRIORITY_BADGE[task.priority]}`}>
@@ -738,25 +738,25 @@ export default function TasksPage() {
                   </td>
                   <td className="px-3 py-3 whitespace-nowrap">
                     {task.due_date ? (
-                      <span className={`flex items-center gap-1 text-xs ${overdue ? "text-red-600 font-medium" : "text-gray-500"}`}>
+                      <span className={`flex items-center gap-1 text-xs ${overdue ? "text-red-600 font-medium" : "text-white/40"}`}>
                         {overdue && <AlertTriangle size={11} />}
                         {!overdue && <Clock size={11} />}
                         {fmt(task.due_date)}
                       </span>
-                    ) : <span className="text-gray-300">—</span>}
+                    ) : <span className="text-white/20">—</span>}
                   </td>
                   <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => setDetailTask(task)}
-                        className="p-1 rounded text-gray-400 hover:text-blue-500"
+                        className="p-1 rounded text-white/30 hover:text-blue-500"
                         title="View details"
                       >
                         <ChevronRight size={14} />
                       </button>
                       <button
                         onClick={() => handleDelete(task.id)}
-                        className="p-1 rounded text-gray-400 hover:text-red-500"
+                        className="p-1 rounded text-white/30 hover:text-red-500"
                         title="Delete"
                       >
                         <Trash2 size={13} />
@@ -772,7 +772,7 @@ export default function TasksPage() {
 
       {/* Move quick-action row (below table, for selected task) */}
       {detailTask && !selectedIds.size && (
-        <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+        <div className="mt-3 flex items-center gap-2 text-xs text-white/40">
           <span>Move {detailTask.title.slice(0, 30)}{detailTask.title.length > 30 ? "…" : ""}:</span>
           {(Object.keys(STATUS_LABEL) as TaskStatus[])
             .filter(s => s !== detailTask.status)
@@ -780,7 +780,7 @@ export default function TasksPage() {
               <button
                 key={s}
                 onClick={() => handleMove(detailTask.id, s)}
-                className="px-2 py-1 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 hover:text-gray-900"
+                className="px-2 py-1 border border-white/[0.07] rounded-lg hover:bg-[#0e1017] text-white/55 hover:text-white/85"
               >
                 {STATUS_LABEL[s]}
               </button>

@@ -20,8 +20,8 @@ const STATUS_COLORS: Record<string, string> = {
 function LoadingSkeleton() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-4 animate-pulse">
-      <div className="h-8 bg-gray-200 rounded w-64" />
-      <div className="h-64 bg-gray-100 rounded-xl" />
+      <div className="h-8 bg-white/[0.08] rounded w-64" />
+      <div className="h-64 bg-white/[0.06] rounded-xl" />
     </div>
   );
 }
@@ -133,8 +133,8 @@ export default function BankStatementsPage() {
     <div className="p-6 max-w-7xl mx-auto space-y-8">
       {/* ── Page header ──────────────────────────────────────────────────── */}
       <div>
-        <h1 className="text-xl font-semibold text-gray-900">Bank Statements</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
+        <h1 className="text-xl font-semibold text-white/85">Bank Statements</h1>
+        <p className="text-sm text-white/40 mt-0.5">
           Import CSV bank statements, allocate transactions to accounts, and post to the ledger.
         </p>
       </div>
@@ -149,11 +149,11 @@ export default function BankStatementsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Client dropdown */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-600">Client <span className="text-red-500">*</span></label>
+              <label className="text-xs font-medium text-white/55">Client <span className="text-red-500">*</span></label>
               <select
                 value={clientId}
                 onChange={e => setClientId(e.target.value)}
-                className="text-sm border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="text-sm border border-white/[0.07] rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">— Select client —</option>
                 {clients.map(c => (
@@ -164,25 +164,25 @@ export default function BankStatementsPage() {
 
             {/* Bank name */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-600">Bank Name <span className="text-red-500">*</span></label>
+              <label className="text-xs font-medium text-white/55">Bank Name <span className="text-red-500">*</span></label>
               <input
                 type="text"
                 placeholder="e.g. HDFC Bank"
                 value={bankName}
                 onChange={e => setBankName(e.target.value)}
-                className="text-sm border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="text-sm border border-white/[0.07] rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             {/* Account number */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-600">Account Number</label>
+              <label className="text-xs font-medium text-white/55">Account Number</label>
               <input
                 type="text"
                 placeholder="e.g. XXXX1234"
                 value={accountNumber}
                 onChange={e => setAccountNumber(e.target.value)}
-                className="text-sm border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="text-sm border border-white/[0.07] rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -195,14 +195,14 @@ export default function BankStatementsPage() {
               onDrop={onDrop}
               onClick={() => fileInputRef.current?.click()}
               className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl py-10 cursor-pointer transition-colors ${
-                dragOver ? "border-blue-400 bg-blue-50" : "border-gray-200 bg-gray-50 hover:bg-gray-100"
+                dragOver ? "border-blue-400 bg-blue-50" : "border-white/[0.07] bg-[#0e1017] hover:bg-white/[0.06]"
               }`}
             >
-              <Upload size={24} className="text-gray-400" />
-              <p className="text-sm font-medium text-gray-600">
+              <Upload size={24} className="text-white/30" />
+              <p className="text-sm font-medium text-white/55">
                 Drag & drop a CSV file, or <span className="text-blue-600">browse</span>
               </p>
-              <p className="text-xs text-gray-400">Supports HDFC, SBI, ICICI, and Axis Bank formats</p>
+              <p className="text-xs text-white/30">Supports HDFC, SBI, ICICI, and Axis Bank formats</p>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -213,19 +213,19 @@ export default function BankStatementsPage() {
             </div>
           ) : (
             /* Preview panel */
-            <div className="border border-gray-200 rounded-xl overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
-                <span className="text-xs font-medium text-gray-700">
+            <div className="border border-white/[0.07] rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2.5 bg-[#0e1017] border-b border-white/[0.05]">
+                <span className="text-xs font-medium text-white/65">
                   Preview — {fileName} · {parsedRows.length} transaction{parsedRows.length !== 1 ? "s" : ""} found
                 </span>
-                <button onClick={clearFile} className="text-gray-400 hover:text-gray-600">
+                <button onClick={clearFile} className="text-white/30 hover:text-white/55">
                   <X size={15} />
                 </button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-gray-100 text-gray-400">
+                    <tr className="border-b border-white/[0.05] text-white/30">
                       <th className="px-4 py-2 text-left font-semibold">Date</th>
                       <th className="px-3 py-2 text-left font-semibold">Description</th>
                       <th className="px-3 py-2 text-right font-semibold">Debit</th>
@@ -234,27 +234,27 @@ export default function BankStatementsPage() {
                       <th className="px-3 py-2 text-left font-semibold">Ref</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-white/[0.03]">
                     {parsedRows.slice(0, 5).map((row, i) => (
-                      <tr key={i} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{row.date}</td>
-                        <td className="px-3 py-2 text-gray-800 max-w-xs truncate" title={row.description}>{row.description}</td>
+                      <tr key={i} className="hover:bg-[#0e1017]">
+                        <td className="px-4 py-2 text-white/55 whitespace-nowrap">{row.date}</td>
+                        <td className="px-3 py-2 text-white/75 max-w-xs truncate" title={row.description}>{row.description}</td>
                         <td className="px-3 py-2 text-right tabular-nums text-red-600">
                           {row.debit_paise > 0 ? formatPaise(row.debit_paise) : ""}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums text-green-600">
                           {row.credit_paise > 0 ? formatPaise(row.credit_paise) : ""}
                         </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-gray-500">
+                        <td className="px-3 py-2 text-right tabular-nums text-white/40">
                           {row.balance_paise > 0 ? formatPaise(row.balance_paise) : ""}
                         </td>
-                        <td className="px-3 py-2 text-gray-400 font-mono truncate max-w-[100px]">{row.reference_no || "—"}</td>
+                        <td className="px-3 py-2 text-white/30 font-mono truncate max-w-[100px]">{row.reference_no || "—"}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
                 {parsedRows.length > 5 && (
-                  <p className="text-xs text-gray-400 px-4 py-2 border-t border-gray-100">
+                  <p className="text-xs text-white/30 px-4 py-2 border-t border-white/[0.05]">
                     …and {parsedRows.length - 5} more rows
                   </p>
                 )}
@@ -306,7 +306,7 @@ export default function BankStatementsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-100 text-xs text-gray-400">
+                <tr className="border-b border-white/[0.05] text-xs text-white/30">
                   <th className="px-5 py-3 text-left font-semibold">Bank</th>
                   <th className="px-3 py-3 text-left font-semibold">Client</th>
                   <th className="px-3 py-3 text-left font-semibold">Period</th>
@@ -317,24 +317,24 @@ export default function BankStatementsPage() {
                   <th className="px-5 py-3 text-left font-semibold">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-white/[0.03]">
                 {statements.map(s => (
-                  <tr key={s.id} className="hover:bg-gray-50">
+                  <tr key={s.id} className="hover:bg-[#0e1017]">
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2">
-                        <Building2 size={15} className="text-gray-400 shrink-0" />
+                        <Building2 size={15} className="text-white/30 shrink-0" />
                         <div>
-                          <p className="text-sm font-medium text-gray-900">{s.bank_name}</p>
+                          <p className="text-sm font-medium text-white/85">{s.bank_name}</p>
                           {s.account_number && (
-                            <p className="text-xs text-gray-400 font-mono">{s.account_number}</p>
+                            <p className="text-xs text-white/30 font-mono">{s.account_number}</p>
                           )}
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 py-3 text-xs text-gray-500">
+                    <td className="px-3 py-3 text-xs text-white/40">
                       {clients.find(c => c.id === s.client_id)?.client_name ?? s.client_id.slice(0, 8) + "…"}
                     </td>
-                    <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">
+                    <td className="px-3 py-3 text-xs text-white/40 whitespace-nowrap">
                       {formatDate(s.statement_from)} – {formatDate(s.statement_to)}
                     </td>
                     <td className="px-3 py-3 text-sm text-right tabular-nums text-red-600">
@@ -343,9 +343,9 @@ export default function BankStatementsPage() {
                     <td className="px-3 py-3 text-sm text-right tabular-nums text-green-600">
                       {formatPaise(s.total_credits_paise)}
                     </td>
-                    <td className="px-3 py-3 text-xs text-center text-gray-500">{s.row_count}</td>
+                    <td className="px-3 py-3 text-xs text-center text-white/40">{s.row_count}</td>
                     <td className="px-3 py-3">
-                      <Badge className={`text-xs ${STATUS_COLORS[s.import_status] ?? "bg-gray-100 text-gray-600"}`}>
+                      <Badge className={`text-xs ${STATUS_COLORS[s.import_status] ?? "bg-white/[0.06] text-white/55"}`}>
                         {s.import_status}
                       </Badge>
                     </td>
@@ -362,7 +362,7 @@ export default function BankStatementsPage() {
               </tbody>
             </table>
             {statements.length === 0 && (
-              <div className="text-center py-12 text-sm text-gray-400">
+              <div className="text-center py-12 text-sm text-white/30">
                 No bank statements imported yet. Upload one above to get started.
               </div>
             )}

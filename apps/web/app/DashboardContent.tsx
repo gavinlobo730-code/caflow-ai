@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   Users, Clock, AlertTriangle, FileCheck,
-  Calendar, Sparkles, CheckCircle2, Circle,
+  Calendar, Sparkles, CheckCircle2,
   ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
@@ -102,28 +102,28 @@ function Skeleton({ className }: { className?: string }) {
 
 function DeadlineBadge({ daysLeft }: { daysLeft: number }) {
   if (daysLeft === 0) return (
-    <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold ring-1 ring-red-200">Today</span>
+    <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 font-bold ring-1 ring-red-500/20">Today</span>
   );
   if (daysLeft <= 3) return (
-    <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-semibold">{daysLeft}d</span>
+    <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 font-semibold">{daysLeft}d</span>
   );
   if (daysLeft <= 7) return (
-    <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-semibold">{daysLeft}d</span>
+    <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 font-semibold">{daysLeft}d</span>
   );
   if (daysLeft <= 14) return (
-    <span className="text-[11px] px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700 font-medium">{daysLeft}d</span>
+    <span className="text-[11px] px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400 font-medium">{daysLeft}d</span>
   );
   return (
-    <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium">{daysLeft}d</span>
+    <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-medium">{daysLeft}d</span>
   );
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof Circle }> = {
-  completed:       { label: "Done",        color: "text-emerald-600 bg-emerald-50", icon: CheckCircle2 },
-  in_progress:     { label: "In Progress", color: "text-blue-600 bg-blue-50",       icon: Circle },
-  todo:            { label: "To Do",       color: "text-gray-500 bg-gray-100",      icon: Circle },
-  review_required: { label: "Review",      color: "text-amber-600 bg-amber-50",     icon: Circle },
-  waiting_client:  { label: "Waiting",     color: "text-purple-600 bg-purple-50",   icon: Circle },
+const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  completed:       { label: "Done",        color: "text-emerald-400 bg-emerald-500/10" },
+  in_progress:     { label: "In Progress", color: "text-blue-400 bg-blue-500/10" },
+  todo:            { label: "To Do",       color: "text-white/40 bg-white/[0.06]" },
+  review_required: { label: "Review",      color: "text-amber-400 bg-amber-500/10" },
+  waiting_client:  { label: "Waiting",     color: "text-purple-400 bg-purple-500/10" },
 };
 
 function StatusBadge({ status }: { status: string | null }) {
@@ -216,63 +216,63 @@ export default function DashboardContent() {
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{greeting}</h1>
-          <p className="text-sm text-gray-500 mt-1">{dateLabel}</p>
+          <h1 className="text-[22px] font-semibold text-white/90 tracking-tight">{greeting}</h1>
+          <p className="text-[13px] text-white/35 mt-1">{dateLabel}</p>
         </div>
         <Link href="/ai-assistant">
-          <div className="hidden sm:flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-medium px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-all hover:scale-105">
-            <Sparkles size={15} />
+          <div className="hidden sm:flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white text-[13px] font-medium px-3.5 py-2 rounded-lg shadow-[0_4px_12px_rgba(59,130,246,0.2)] transition-colors">
+            <Sparkles size={14} />
             Ask AI
           </div>
         </Link>
       </div>
 
-      {/* ── Compact Stats Strip ─────────────────────────────────────────── */}
-      <div className="flex items-center gap-6 py-3 px-5 bg-white rounded-xl border border-gray-100 shadow-sm flex-wrap">
+      {/* ── Stats Strip ─────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-6 py-3 px-5 bg-[#131620] rounded-xl border border-white/[0.07] flex-wrap">
         <Link href="/clients" className="flex items-center gap-2.5 group">
-          <div className="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center">
-            <Users size={13} className="text-indigo-600" />
+          <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
+            <Users size={13} className="text-blue-400" />
           </div>
           {loading ? <Skeleton className="h-5 w-10" /> : (
             <div>
-              <span className="text-xl font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">{kpis?.totalClients ?? 0}</span>
-              <span className="text-xs text-gray-400 ml-1.5">Clients</span>
+              <span className="text-xl font-bold text-white/85 group-hover:text-blue-400 transition-colors">{kpis?.totalClients ?? 0}</span>
+              <span className="text-xs text-white/30 ml-1.5">Clients</span>
             </div>
           )}
         </Link>
-        <div className="w-px h-8 bg-gray-100" />
+        <div className="w-px h-8 bg-[#131620]/[0.06]" />
         <Link href="/work" className="flex items-center gap-2.5 group">
-          <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center">
-            <Clock size={13} className="text-amber-600" />
+          <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
+            <Clock size={13} className="text-amber-400" />
           </div>
           {loading ? <Skeleton className="h-5 w-10" /> : (
             <div>
-              <span className="text-xl font-bold text-gray-900 group-hover:text-amber-600 transition-colors">{kpis?.pendingTasks ?? 0}</span>
-              <span className="text-xs text-gray-400 ml-1.5">Pending Tasks</span>
+              <span className="text-xl font-bold text-white/85 group-hover:text-amber-400 transition-colors">{kpis?.pendingTasks ?? 0}</span>
+              <span className="text-xs text-white/30 ml-1.5">Pending Tasks</span>
             </div>
           )}
         </Link>
-        <div className="w-px h-8 bg-gray-100" />
+        <div className="w-px h-8 bg-[#131620]/[0.06]" />
         <Link href="/deadlines" className="flex items-center gap-2.5 group">
-          <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center">
-            <FileCheck size={13} className="text-violet-600" />
+          <div className="w-7 h-7 rounded-lg bg-violet-500/10 flex items-center justify-center">
+            <FileCheck size={13} className="text-violet-400" />
           </div>
           {loading ? <Skeleton className="h-5 w-10" /> : (
             <div>
-              <span className="text-xl font-bold text-gray-900 group-hover:text-violet-600 transition-colors">{kpis?.filingsDueThisMonth ?? 0}</span>
-              <span className="text-xs text-gray-400 ml-1.5">Filings This Month</span>
+              <span className="text-xl font-bold text-white/85 group-hover:text-violet-400 transition-colors">{kpis?.filingsDueThisMonth ?? 0}</span>
+              <span className="text-xs text-white/30 ml-1.5">Filings This Month</span>
             </div>
           )}
         </Link>
-        <div className="w-px h-8 bg-gray-100" />
+        <div className="w-px h-8 bg-[#131620]/[0.06]" />
         <Link href="/deadlines" className="flex items-center gap-2.5 group">
-          <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center", (kpis?.overdueFilings ?? 0) > 0 ? "bg-red-100" : "bg-gray-100")}>
-            <AlertTriangle size={13} className={(kpis?.overdueFilings ?? 0) > 0 ? "text-red-600" : "text-gray-400"} />
+          <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center", (kpis?.overdueFilings ?? 0) > 0 ? "bg-red-500/10" : "bg-[#131620]/[0.04]")}>
+            <AlertTriangle size={13} className={(kpis?.overdueFilings ?? 0) > 0 ? "text-red-400" : "text-white/25"} />
           </div>
           {loading ? <Skeleton className="h-5 w-10" /> : (
             <div>
-              <span className={cn("text-xl font-bold transition-colors", (kpis?.overdueFilings ?? 0) > 0 ? "text-red-600" : "text-gray-900")}>{kpis?.overdueFilings ?? 0}</span>
-              <span className="text-xs text-gray-400 ml-1.5">Overdue</span>
+              <span className={cn("text-xl font-bold transition-colors", (kpis?.overdueFilings ?? 0) > 0 ? "text-red-400" : "text-white/85")}>{kpis?.overdueFilings ?? 0}</span>
+              <span className="text-xs text-white/30 ml-1.5">Overdue</span>
             </div>
           )}
         </Link>
@@ -282,33 +282,33 @@ export default function DashboardContent() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         {/* Column 1: Upcoming Deadlines */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.07] overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.05]">
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-                <Calendar size={14} className="text-white" />
+              <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                <Calendar size={14} className="text-amber-400" />
               </div>
-              <h2 className="text-sm font-semibold text-gray-900">Upcoming Deadlines</h2>
+              <h2 className="text-[13px] font-semibold text-white/80">Upcoming Deadlines</h2>
             </div>
-            <Link href="/deadlines" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1">
+            <Link href="/deadlines" className="text-[12px] text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1 transition-colors">
               View all <ChevronRight size={12} />
             </Link>
           </div>
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-white/[0.04]">
             {upcomingDeadlines.map((d) => (
               <Link key={d.name + d.date} href="/deadlines">
-                <div className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50/50 transition-colors">
+                <div className="flex items-center justify-between px-5 py-3.5 hover:bg-[#131620]/[0.025] transition-colors">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className={cn(
                       "w-1.5 h-1.5 rounded-full shrink-0",
-                      d.daysLeft === 0 ? "bg-red-500" :
+                      d.daysLeft === 0 ? "bg-red-400" :
                       d.daysLeft <= 3 ? "bg-red-400" :
                       d.daysLeft <= 7 ? "bg-amber-400" :
                       "bg-emerald-400"
                     )} />
                     <div className="min-w-0">
-                      <p className="text-sm text-gray-800 font-medium truncate">{d.name}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">
+                      <p className="text-[13px] text-white/75 font-medium truncate">{d.name}</p>
+                      <p className="text-[11px] text-white/30 mt-0.5">
                         {new Date(d.date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                       </p>
                     </div>
@@ -321,19 +321,19 @@ export default function DashboardContent() {
         </div>
 
         {/* Column 2: Recent Clients */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.07] overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.05]">
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center">
-                <Users size={14} className="text-white" />
+              <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                <Users size={14} className="text-blue-400" />
               </div>
-              <h2 className="text-sm font-semibold text-gray-900">Recent Clients</h2>
+              <h2 className="text-[13px] font-semibold text-white/80">Recent Clients</h2>
             </div>
-            <Link href="/clients" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1">
+            <Link href="/clients" className="text-[12px] text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1 transition-colors">
               View all <ChevronRight size={12} />
             </Link>
           </div>
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-white/[0.04]">
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-3 px-5 py-3.5">
@@ -347,16 +347,16 @@ export default function DashboardContent() {
             ) : recentClients && recentClients.length > 0 ? (
               recentClients.map((c) => (
                 <Link key={c.id} href={`/clients/${c.id}`}>
-                  <div className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50/50 transition-colors">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-indigo-700 text-xs font-bold shrink-0">
+                  <div className="flex items-center gap-3 px-5 py-3.5 hover:bg-[#131620]/[0.025] transition-colors">
+                    <div className="w-8 h-8 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-[11px] font-bold shrink-0">
                       {c.client_name.slice(0, 2).toUpperCase()}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-gray-900 truncate">{c.client_name}</p>
-                      {c.gstin && <p className="text-[11px] text-gray-400 font-mono">{c.gstin}</p>}
+                      <p className="text-[13px] font-semibold text-white/80 truncate">{c.client_name}</p>
+                      {c.gstin && <p className="text-[11px] text-white/30 font-mono">{c.gstin}</p>}
                     </div>
                     {c.entity_type && (
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium shrink-0">
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#131620]/[0.06] text-white/40 font-medium shrink-0">
                         {c.entity_type}
                       </span>
                     )}
@@ -365,28 +365,28 @@ export default function DashboardContent() {
               ))
             ) : (
               <div className="px-5 py-10 text-center">
-                <Users size={24} className="text-gray-200 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">No clients yet</p>
-                <Link href="/clients" className="text-xs text-indigo-600 font-medium mt-1 inline-block">Add your first client →</Link>
+                <Users size={24} className="text-white/10 mx-auto mb-2" />
+                <p className="text-[13px] text-white/35">No clients yet</p>
+                <Link href="/clients" className="text-[12px] text-blue-400 font-medium mt-1 inline-block">Add your first client →</Link>
               </div>
             )}
           </div>
         </div>
 
         {/* Column 3: Pending Tasks */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.07] overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.05]">
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-                <Clock size={14} className="text-white" />
+              <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                <Clock size={14} className="text-amber-400" />
               </div>
-              <h2 className="text-sm font-semibold text-gray-900">Pending Tasks</h2>
+              <h2 className="text-[13px] font-semibold text-white/80">Pending Tasks</h2>
             </div>
-            <Link href="/work" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1">
+            <Link href="/work" className="text-[12px] text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1 transition-colors">
               View all <ChevronRight size={12} />
             </Link>
           </div>
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-white/[0.04]">
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-3 px-5 py-3.5">
@@ -400,20 +400,20 @@ export default function DashboardContent() {
               ))
             ) : recentTasks && recentTasks.length > 0 ? (
               recentTasks.filter(t => t.status !== "completed").map((t) => (
-                <div key={t.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50/50 transition-colors">
+                <div key={t.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-[#131620]/[0.025] transition-colors">
                   <div className={cn(
                     "w-1.5 h-1.5 rounded-full shrink-0 mt-0.5",
                     t.status === "in_progress" ? "bg-blue-400" :
                     t.status === "review_required" ? "bg-amber-400" :
                     t.status === "waiting_client" ? "bg-purple-400" :
-                    "bg-gray-300"
+                    "bg-white/20"
                   )} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-900 truncate">{t.title}</p>
+                    <p className="text-[13px] font-medium text-white/75 truncate">{t.title}</p>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      {t.client_name && <span className="text-[11px] text-gray-400 truncate">{t.client_name}</span>}
+                      {t.client_name && <span className="text-[11px] text-white/30 truncate">{t.client_name}</span>}
                       {t.due_date && (
-                        <span className="text-[11px] text-gray-400">
+                        <span className="text-[11px] text-white/25">
                           · {new Date(t.due_date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                         </span>
                       )}
@@ -424,9 +424,9 @@ export default function DashboardContent() {
               ))
             ) : (
               <div className="px-5 py-10 text-center">
-                <CheckCircle2 size={24} className="text-gray-200 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">All caught up</p>
-                <Link href="/work" className="text-xs text-indigo-600 font-medium mt-1 inline-block">View work queue →</Link>
+                <CheckCircle2 size={24} className="text-white/10 mx-auto mb-2" />
+                <p className="text-[13px] text-white/35">All caught up</p>
+                <Link href="/work" className="text-[12px] text-blue-400 font-medium mt-1 inline-block">View work queue →</Link>
               </div>
             )}
           </div>

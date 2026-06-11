@@ -52,7 +52,7 @@ interface ClientDocument {
 }
 
 const TASK_STATUS_COLORS: Record<string, string> = {
-  todo: "bg-gray-100 text-gray-600",
+  todo: "bg-white/[0.06] text-white/55",
   in_progress: "bg-blue-100 text-blue-700",
   waiting_client: "bg-purple-100 text-purple-700",
   review_required: "bg-amber-100 text-amber-700",
@@ -64,19 +64,19 @@ const FILING_STATUS_COLORS: Record<string, string> = {
   in_progress: "bg-blue-100 text-blue-700",
   filed: "bg-green-100 text-green-700",
   overdue: "bg-red-100 text-red-700",
-  na: "bg-gray-100 text-gray-500",
+  na: "bg-white/[0.06] text-white/40",
 };
 
 function LoadingSkeleton() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6 animate-pulse">
-      <div className="h-8 bg-gray-200 rounded w-64" />
+      <div className="h-8 bg-white/[0.08] rounded w-64" />
       <div className="grid grid-cols-5 gap-3">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-20 bg-gray-100 rounded-lg" />
+          <div key={i} className="h-20 bg-white/[0.06] rounded-lg" />
         ))}
       </div>
-      <div className="h-64 bg-gray-100 rounded-xl" />
+      <div className="h-64 bg-white/[0.06] rounded-xl" />
     </div>
   );
 }
@@ -403,12 +403,12 @@ export default function ClientWorkspacePage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+          <div className="flex items-center gap-2 text-sm text-white/40 mb-1">
             <span>Clients</span>
             <ChevronRight size={14} />
-            <span className="text-gray-900 font-medium">{client.client_name}</span>
+            <span className="text-white/85 font-medium">{client.client_name}</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">{client.client_name}</h1>
+          <h1 className="text-2xl font-bold text-white/85">{client.client_name}</h1>
           <div className="flex items-center gap-2 mt-1">
             <Badge variant="secondary" className="text-xs">
               {ENTITY_TYPE_LABELS[client.entity_type] ?? client.entity_type}
@@ -426,7 +426,7 @@ export default function ClientWorkspacePage() {
           <p className="text-2xl font-bold">{openTasks}</p>
           <p className="text-xs mt-0.5 opacity-80">Open Tasks</p>
         </div>
-        <div className={`rounded-lg px-4 py-3 ${pendingFilings > 0 ? "bg-amber-50 text-amber-800" : "bg-gray-100 text-gray-600"}`}>
+        <div className={`rounded-lg px-4 py-3 ${pendingFilings > 0 ? "bg-amber-50 text-amber-800" : "bg-white/[0.06] text-white/55"}`}>
           <p className="text-2xl font-bold">{pendingFilings}</p>
           <p className="text-xs mt-0.5 opacity-80">Pending Filings</p>
         </div>
@@ -437,7 +437,7 @@ export default function ClientWorkspacePage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-gray-100">
+      <div className="flex gap-1 border-b border-white/[0.05]">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -445,7 +445,7 @@ export default function ClientWorkspacePage() {
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab.id
                 ? "border-blue-600 text-blue-700"
-                : "border-transparent text-gray-500 hover:text-gray-700"
+                : "border-transparent text-white/40 hover:text-white/65"
             }`}
           >
             {tab.label}
@@ -464,39 +464,39 @@ export default function ClientWorkspacePage() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div>
-                <p className="text-xs text-gray-500">PAN</p>
+                <p className="text-xs text-white/40">PAN</p>
                 <p className="font-mono font-medium">{client.pan}</p>
               </div>
               {client.gstin && (
                 <div>
-                  <p className="text-xs text-gray-500">GSTIN</p>
+                  <p className="text-xs text-white/40">GSTIN</p>
                   <p className="font-mono font-medium">{client.gstin}</p>
                 </div>
               )}
               {client.mobile && (
-                <div className="flex items-center gap-2 text-gray-700">
+                <div className="flex items-center gap-2 text-white/65">
                   <Phone size={13} /><span>{client.mobile}</span>
                 </div>
               )}
               {client.email && (
-                <div className="flex items-center gap-2 text-gray-700">
+                <div className="flex items-center gap-2 text-white/65">
                   <Mail size={13} /><span className="truncate">{client.email}</span>
                 </div>
               )}
               {client.city && (
-                <div className="flex items-center gap-2 text-gray-700">
+                <div className="flex items-center gap-2 text-white/65">
                   <MapPin size={13} />
                   <span>{client.city}{client.state ? `, ${client.state}` : ""}{client.pincode ? ` — ${client.pincode}` : ""}</span>
                 </div>
               )}
-              <div className="flex items-center gap-2 text-gray-700">
+              <div className="flex items-center gap-2 text-white/65">
                 <Calendar size={13} />
                 <span>GST filing: {client.gst_filing_frequency}</span>
               </div>
               {client.notes && (
                 <div>
-                  <p className="text-xs text-gray-500">Notes</p>
-                  <p className="text-xs text-gray-700">{client.notes}</p>
+                  <p className="text-xs text-white/40">Notes</p>
+                  <p className="text-xs text-white/65">{client.notes}</p>
                 </div>
               )}
             </CardContent>
@@ -509,16 +509,16 @@ export default function ClientWorkspacePage() {
               </CardHeader>
               <CardContent>
                 {tasks.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-4">No tasks</p>
+                  <p className="text-sm text-white/30 text-center py-4">No tasks</p>
                 ) : (
                   <div className="space-y-2">
                     {tasks.slice(0, 5).map(t => (
                       <div key={t.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-900">{t.title}</p>
-                          {t.due_date && <p className="text-xs text-gray-500">Due: {formatDate(t.due_date)}</p>}
+                          <p className="text-sm font-medium text-white/85">{t.title}</p>
+                          {t.due_date && <p className="text-xs text-white/40">Due: {formatDate(t.due_date)}</p>}
                         </div>
-                        <Badge className={`text-xs ${TASK_STATUS_COLORS[t.status] ?? "bg-gray-100 text-gray-600"}`}>
+                        <Badge className={`text-xs ${TASK_STATUS_COLORS[t.status] ?? "bg-white/[0.06] text-white/55"}`}>
                           {t.status.replace(/_/g, " ")}
                         </Badge>
                       </div>
@@ -534,16 +534,16 @@ export default function ClientWorkspacePage() {
               </CardHeader>
               <CardContent>
                 {compliance.filter(c => c.filing_status !== "filed" && c.due_date >= today).slice(0, 5).length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-4">No upcoming filings</p>
+                  <p className="text-sm text-white/30 text-center py-4">No upcoming filings</p>
                 ) : (
                   <div className="space-y-2">
                     {compliance.filter(c => c.filing_status !== "filed" && c.due_date >= today).slice(0, 5).map(c => (
                       <div key={c.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-900">{c.compliance_type}</p>
-                          <p className="text-xs text-gray-500">Due: {formatDate(c.due_date)}</p>
+                          <p className="text-sm font-medium text-white/85">{c.compliance_type}</p>
+                          <p className="text-xs text-white/40">Due: {formatDate(c.due_date)}</p>
                         </div>
-                        <Badge className={`text-xs ${FILING_STATUS_COLORS[c.filing_status] ?? "bg-gray-100 text-gray-600"}`}>
+                        <Badge className={`text-xs ${FILING_STATUS_COLORS[c.filing_status] ?? "bg-white/[0.06] text-white/55"}`}>
                           {c.filing_status}
                         </Badge>
                       </div>
@@ -566,21 +566,21 @@ export default function ClientWorkspacePage() {
           </CardHeader>
           <CardContent>
             {tasks.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-8">No tasks for this client</p>
+              <p className="text-sm text-white/30 text-center py-8">No tasks for this client</p>
             ) : (
-              <div className="divide-y divide-gray-50">
+              <div className="divide-y divide-white/[0.03]">
                 {tasks.map(t => (
                   <div key={t.id} className="flex items-center gap-4 py-3">
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">{t.title}</p>
-                      {t.description && <p className="text-xs text-gray-500 mt-0.5">{t.description}</p>}
+                      <p className="text-sm font-medium text-white/85">{t.title}</p>
+                      {t.description && <p className="text-xs text-white/40 mt-0.5">{t.description}</p>}
                     </div>
                     {t.due_date && (
-                      <p className={`text-xs shrink-0 ${t.due_date < today && t.status !== "completed" ? "text-red-600 font-medium" : "text-gray-500"}`}>
+                      <p className={`text-xs shrink-0 ${t.due_date < today && t.status !== "completed" ? "text-red-600 font-medium" : "text-white/40"}`}>
                         {formatDate(t.due_date)}
                       </p>
                     )}
-                    <Badge className={`text-xs shrink-0 ${TASK_STATUS_COLORS[t.status] ?? "bg-gray-100 text-gray-600"}`}>
+                    <Badge className={`text-xs shrink-0 ${TASK_STATUS_COLORS[t.status] ?? "bg-white/[0.06] text-white/55"}`}>
                       {t.status.replace(/_/g, " ")}
                     </Badge>
                   </div>
@@ -595,7 +595,7 @@ export default function ClientWorkspacePage() {
       {activeTab === "compliance" && (
         <div className="space-y-4">
           {/* Compliance sub-tabs */}
-          <div className="flex gap-0.5 bg-gray-50 rounded-lg p-1 w-fit">
+          <div className="flex gap-0.5 bg-[#0e1017] rounded-lg p-1 w-fit">
             {(
               [
                 { id: "all", label: "All" },
@@ -610,8 +610,8 @@ export default function ClientWorkspacePage() {
                 onClick={() => setComplianceSubTab(sub.id)}
                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                   complianceSubTab === sub.id
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
+                    ? "bg-[#131620] text-white/85 shadow-sm"
+                    : "text-white/40 hover:text-white/65"
                 }`}
               >
                 {sub.label}
@@ -629,7 +629,7 @@ export default function ClientWorkspacePage() {
                     value={markFiled.arn}
                     onChange={e => setMarkFiled({ ...markFiled, arn: e.target.value })}
                     placeholder="ARN Number (optional)"
-                    className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#131620]"
                   />
                   <button
                     onClick={handleMarkFiled}
@@ -640,7 +640,7 @@ export default function ClientWorkspacePage() {
                   </button>
                   <button
                     onClick={() => setMarkFiled(null)}
-                    className="text-xs px-3 py-1.5 border border-gray-200 rounded-md hover:bg-gray-100"
+                    className="text-xs px-3 py-1.5 border border-white/[0.07] rounded-md hover:bg-white/[0.06]"
                   >
                     Cancel
                   </button>
@@ -656,7 +656,7 @@ export default function ClientWorkspacePage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-100 text-xs text-gray-400">
+                  <tr className="border-b border-white/[0.05] text-xs text-white/30">
                     <th className="px-5 py-3 text-left font-semibold">Type</th>
                     <th className="px-3 py-3 text-left font-semibold">Period</th>
                     <th className="px-3 py-3 text-left font-semibold">Due Date</th>
@@ -665,7 +665,7 @@ export default function ClientWorkspacePage() {
                     <th className="px-5 py-3 text-left font-semibold">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-white/[0.03]">
                   {compliance.filter(c => {
                     if (complianceSubTab === "all") return true;
                     if (complianceSubTab === "gst") return /GSTR/i.test(c.compliance_type);
@@ -674,20 +674,20 @@ export default function ClientWorkspacePage() {
                     if (complianceSubTab === "mca") return /MCA|ROC|DIR/i.test(c.compliance_type);
                     return true;
                   }).map(c => (
-                    <tr key={c.id} className="hover:bg-gray-50">
-                      <td className="px-5 py-3 text-sm font-medium text-gray-900">{c.compliance_type}</td>
-                      <td className="px-3 py-3 text-xs text-gray-500">
+                    <tr key={c.id} className="hover:bg-[#0e1017]">
+                      <td className="px-5 py-3 text-sm font-medium text-white/85">{c.compliance_type}</td>
+                      <td className="px-3 py-3 text-xs text-white/40">
                         {formatDate(c.period_start)} – {formatDate(c.period_end)}
                       </td>
-                      <td className={`px-3 py-3 text-xs whitespace-nowrap ${c.due_date < today && c.filing_status !== "filed" ? "text-red-600 font-medium" : "text-gray-600"}`}>
+                      <td className={`px-3 py-3 text-xs whitespace-nowrap ${c.due_date < today && c.filing_status !== "filed" ? "text-red-600 font-medium" : "text-white/55"}`}>
                         {formatDate(c.due_date)}
                       </td>
                       <td className="px-3 py-3">
-                        <Badge className={`text-xs ${FILING_STATUS_COLORS[c.filing_status] ?? "bg-gray-100 text-gray-600"}`}>
+                        <Badge className={`text-xs ${FILING_STATUS_COLORS[c.filing_status] ?? "bg-white/[0.06] text-white/55"}`}>
                           {c.filing_status}
                         </Badge>
                       </td>
-                      <td className="px-3 py-3 text-xs text-gray-500 font-mono">{c.arn_number ?? "—"}</td>
+                      <td className="px-3 py-3 text-xs text-white/40 font-mono">{c.arn_number ?? "—"}</td>
                       <td className="px-5 py-3">
                         {c.filing_status !== "filed" && (
                           <button
@@ -708,7 +708,7 @@ export default function ClientWorkspacePage() {
                 </tbody>
               </table>
               {compliance.length === 0 && (
-                <div className="text-center py-8 text-sm text-gray-400">No compliance deadlines found</div>
+                <div className="text-center py-8 text-sm text-white/30">No compliance deadlines found</div>
               )}
             </div>
           </Card>
@@ -718,7 +718,7 @@ export default function ClientWorkspacePage() {
       {/* Accounts tab */}
       {activeTab === "accounts" && (
         <div className="space-y-4">
-          <div className="flex gap-0.5 bg-gray-50 rounded-lg p-1 w-fit">
+          <div className="flex gap-0.5 bg-[#0e1017] rounded-lg p-1 w-fit">
             {(
               [
                 { id: "transactions", label: "Transactions" },
@@ -730,8 +730,8 @@ export default function ClientWorkspacePage() {
                 onClick={() => setAccountsSubTab(sub.id)}
                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                   accountsSubTab === sub.id
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
+                    ? "bg-[#131620] text-white/85 shadow-sm"
+                    : "text-white/40 hover:text-white/65"
                 }`}
               >
                 {sub.label}
@@ -749,7 +749,7 @@ export default function ClientWorkspacePage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-100 text-xs text-gray-400">
+                    <tr className="border-b border-white/[0.05] text-xs text-white/30">
                       <th className="px-5 py-3 text-left font-semibold">Date</th>
                       <th className="px-3 py-3 text-left font-semibold">Type</th>
                       <th className="px-3 py-3 text-left font-semibold">Party</th>
@@ -758,14 +758,14 @@ export default function ClientWorkspacePage() {
                       <th className="px-5 py-3 text-left font-semibold">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-white/[0.03]">
                     {transactions.map(t => (
-                      <tr key={t.id} className="hover:bg-gray-50">
-                        <td className="px-5 py-3 text-xs text-gray-600 whitespace-nowrap">{formatDate(t.transaction_date)}</td>
-                        <td className="px-3 py-3 text-xs text-gray-600">{t.transaction_type.replace(/_/g, " ")}</td>
-                        <td className="px-3 py-3 text-sm font-medium text-gray-900">{t.party_name}</td>
-                        <td className="px-3 py-3 text-xs text-gray-500 font-mono">{t.reference_no ?? "—"}</td>
-                        <td className="px-3 py-3 text-sm text-right tabular-nums text-gray-700">{formatPaise(t.total_paise)}</td>
+                      <tr key={t.id} className="hover:bg-[#0e1017]">
+                        <td className="px-5 py-3 text-xs text-white/55 whitespace-nowrap">{formatDate(t.transaction_date)}</td>
+                        <td className="px-3 py-3 text-xs text-white/55">{t.transaction_type.replace(/_/g, " ")}</td>
+                        <td className="px-3 py-3 text-sm font-medium text-white/85">{t.party_name}</td>
+                        <td className="px-3 py-3 text-xs text-white/40 font-mono">{t.reference_no ?? "—"}</td>
+                        <td className="px-3 py-3 text-sm text-right tabular-nums text-white/65">{formatPaise(t.total_paise)}</td>
                         <td className="px-5 py-3">
                           <Badge className={`text-xs ${t.status === "posted" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
                             {t.status}
@@ -776,7 +776,7 @@ export default function ClientWorkspacePage() {
                   </tbody>
                 </table>
                 {transactions.length === 0 && (
-                  <div className="text-center py-8 text-sm text-gray-400">No transactions found</div>
+                  <div className="text-center py-8 text-sm text-white/30">No transactions found</div>
                 )}
               </div>
             </Card>
@@ -790,7 +790,7 @@ export default function ClientWorkspacePage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-100 text-xs text-gray-400">
+                    <tr className="border-b border-white/[0.05] text-xs text-white/30">
                       <th className="px-5 py-3 text-left font-semibold">Bank</th>
                       <th className="px-3 py-3 text-left font-semibold">Account</th>
                       <th className="px-3 py-3 text-left font-semibold">Period</th>
@@ -800,17 +800,17 @@ export default function ClientWorkspacePage() {
                       <th className="px-5 py-3 text-left font-semibold">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-white/[0.03]">
                     {bankStatements.map(bs => (
-                      <tr key={bs.id} className="hover:bg-gray-50">
-                        <td className="px-5 py-3 text-sm font-medium text-gray-900">{bs.bank_name}</td>
-                        <td className="px-3 py-3 text-xs text-gray-500 font-mono">{bs.account_number ?? "—"}</td>
-                        <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">
+                      <tr key={bs.id} className="hover:bg-[#0e1017]">
+                        <td className="px-5 py-3 text-sm font-medium text-white/85">{bs.bank_name}</td>
+                        <td className="px-3 py-3 text-xs text-white/40 font-mono">{bs.account_number ?? "—"}</td>
+                        <td className="px-3 py-3 text-xs text-white/40 whitespace-nowrap">
                           {formatDate(bs.statement_from)} – {formatDate(bs.statement_to)}
                         </td>
                         <td className="px-3 py-3 text-sm text-right tabular-nums text-red-600">{formatPaise(bs.total_debits_paise)}</td>
                         <td className="px-3 py-3 text-sm text-right tabular-nums text-green-600">{formatPaise(bs.total_credits_paise)}</td>
-                        <td className="px-3 py-3 text-xs text-center text-gray-500">{bs.row_count}</td>
+                        <td className="px-3 py-3 text-xs text-center text-white/40">{bs.row_count}</td>
                         <td className="px-5 py-3">
                           <Badge className={`text-xs ${bs.import_status === "posted" ? "bg-green-100 text-green-700" : bs.import_status === "reviewed" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}>
                             {bs.import_status}
@@ -821,7 +821,7 @@ export default function ClientWorkspacePage() {
                   </tbody>
                 </table>
                 {bankStatements.length === 0 && (
-                  <div className="text-center py-8 text-sm text-gray-400">No bank statements imported</div>
+                  <div className="text-center py-8 text-sm text-white/30">No bank statements imported</div>
                 )}
               </div>
             </Card>
@@ -833,7 +833,7 @@ export default function ClientWorkspacePage() {
       {activeTab === "documents" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">Documents ({documents.length})</h2>
+            <h2 className="text-sm font-semibold text-white/65">Documents ({documents.length})</h2>
             <button
               onClick={() => { setShowUploadModal(true); setUploadError(null); }}
               className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
@@ -843,19 +843,19 @@ export default function ClientWorkspacePage() {
           </div>
 
           {docsLoading ? (
-            <div className="text-sm text-gray-400 text-center py-8">Loading documents…</div>
+            <div className="text-sm text-white/30 text-center py-8">Loading documents…</div>
           ) : documents.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-100 px-5 py-12 text-center space-y-2">
+            <div className="bg-[#131620] rounded-xl border border-white/[0.05] px-5 py-12 text-center space-y-2">
               <FolderOpen className="w-8 h-8 text-gray-200 mx-auto" />
-              <p className="text-sm text-gray-400">No documents uploaded yet</p>
-              <p className="text-xs text-gray-300">Upload returns, notices, Form 16, and other files for this client</p>
+              <p className="text-sm text-white/30">No documents uploaded yet</p>
+              <p className="text-xs text-white/20">Upload returns, notices, Form 16, and other files for this client</p>
             </div>
           ) : (
             <Card>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-100 text-xs text-gray-400">
+                    <tr className="border-b border-white/[0.05] text-xs text-white/30">
                       <th className="px-5 py-3 text-left font-semibold">Label</th>
                       <th className="px-3 py-3 text-left font-semibold">File Name</th>
                       <th className="px-3 py-3 text-left font-semibold">Size</th>
@@ -863,23 +863,23 @@ export default function ClientWorkspacePage() {
                       <th className="px-5 py-3 text-left font-semibold">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-white/[0.03]">
                     {documents.map(doc => {
                       // Count versions for this label
                       const versionCount = documents.filter(d => d.label.toLowerCase() === doc.label.toLowerCase()).length;
                       return (
-                        <tr key={doc.id} className="hover:bg-gray-50">
-                          <td className="px-5 py-3 text-sm font-medium text-gray-900">
+                        <tr key={doc.id} className="hover:bg-[#0e1017]">
+                          <td className="px-5 py-3 text-sm font-medium text-white/85">
                             <div className="flex items-center gap-2">
                               {doc.label}
                               {(doc.version ?? 1) > 1 && (
-                                <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-mono">v{doc.version}</span>
+                                <span className="text-xs bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded font-mono">v{doc.version}</span>
                               )}
                             </div>
                           </td>
-                          <td className="px-3 py-3 text-xs text-gray-500 font-mono max-w-[200px] truncate">{doc.file_name}</td>
-                          <td className="px-3 py-3 text-xs text-gray-500">{formatFileSize(doc.file_size_bytes)}</td>
-                          <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">
+                          <td className="px-3 py-3 text-xs text-white/40 font-mono max-w-[200px] truncate">{doc.file_name}</td>
+                          <td className="px-3 py-3 text-xs text-white/40">{formatFileSize(doc.file_size_bytes)}</td>
+                          <td className="px-3 py-3 text-xs text-white/40 whitespace-nowrap">
                             {new Date(doc.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                           </td>
                           <td className="px-5 py-3">
@@ -893,7 +893,7 @@ export default function ClientWorkspacePage() {
                               {versionCount > 1 && (
                                 <button
                                   onClick={() => handleViewVersionHistory(doc.label)}
-                                  className="flex items-center gap-1 text-xs text-indigo-600 hover:underline"
+                                  className="flex items-center gap-1 text-xs text-blue-400 hover:underline"
                                 >
                                   History
                                 </button>
@@ -919,36 +919,36 @@ export default function ClientWorkspacePage() {
           {/* Upload Modal */}
           {showUploadModal && (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+              <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-gray-900">Upload Document</h3>
-                  <button onClick={() => { setShowUploadModal(false); setUploadFile(null); setUploadLabel(""); }} className="text-gray-400 hover:text-gray-600">
+                  <h3 className="text-sm font-semibold text-white/85">Upload Document</h3>
+                  <button onClick={() => { setShowUploadModal(false); setUploadFile(null); setUploadLabel(""); }} className="text-white/30 hover:text-white/55">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
 
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Label *</label>
+                    <label className="block text-xs font-medium text-white/65 mb-1">Label *</label>
                     <input
                       type="text"
                       value={uploadLabel}
                       onChange={e => setUploadLabel(e.target.value)}
                       placeholder="e.g. GSTR-9 FY 2024-25, ITR AY 2024-25, Form 16"
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 text-sm border border-white/[0.07] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">File * (max 50 MB)</label>
+                    <label className="block text-xs font-medium text-white/65 mb-1">File * (max 50 MB)</label>
                     <input
                       ref={fileInputRef}
                       type="file"
                       onChange={e => setUploadFile(e.target.files?.[0] ?? null)}
-                      className="w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                      className="w-full text-sm text-white/55 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                     />
                     {uploadFile && (
-                      <p className="text-xs text-gray-400 mt-1">{uploadFile.name} — {formatFileSize(uploadFile.size)}</p>
+                      <p className="text-xs text-white/30 mt-1">{uploadFile.name} — {formatFileSize(uploadFile.size)}</p>
                     )}
                   </div>
 
@@ -960,7 +960,7 @@ export default function ClientWorkspacePage() {
                 <div className="flex gap-3 justify-end">
                   <button
                     onClick={() => { setShowUploadModal(false); setUploadFile(null); setUploadLabel(""); }}
-                    className="text-xs px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+                    className="text-xs px-4 py-2 border border-white/[0.07] rounded-lg hover:bg-[#0e1017]"
                   >
                     Cancel
                   </button>
@@ -979,28 +979,28 @@ export default function ClientWorkspacePage() {
           {/* Version Prompt Modal */}
           {versionPromptDoc && (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
-                <h3 className="text-sm font-semibold text-gray-900">Document already exists</h3>
-                <p className="text-xs text-gray-600">
+              <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+                <h3 className="text-sm font-semibold text-white/85">Document already exists</h3>
+                <p className="text-xs text-white/55">
                   A document with the label <strong>{versionPromptDoc.label}</strong> already exists (v{versionPromptDoc.version ?? 1}).
                   Upload as a new version?
                 </p>
                 <div className="flex gap-3 justify-end">
                   <button
                     onClick={() => setVersionPromptDoc(null)}
-                    className="text-xs px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+                    className="text-xs px-4 py-2 border border-white/[0.07] rounded-lg hover:bg-[#0e1017]"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => { setVersionPromptDoc(null); handleUploadDocument(false, null); }}
-                    className="text-xs px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+                    className="text-xs px-4 py-2 border border-white/[0.07] rounded-lg hover:bg-[#0e1017]"
                   >
                     Upload as New
                   </button>
                   <button
                     onClick={() => { const doc = versionPromptDoc; setVersionPromptDoc(null); handleUploadDocument(true, doc); }}
-                    className="text-xs px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                    className="text-xs px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
                   >
                     New Version
                   </button>
@@ -1012,10 +1012,10 @@ export default function ClientWorkspacePage() {
           {/* Version History Modal */}
           {showVersionHistory && (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4">
+              <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-gray-900">Version History — {showVersionHistory}</h3>
-                  <button onClick={() => setShowVersionHistory(null)} className="text-gray-400 hover:text-gray-600">
+                  <h3 className="text-sm font-semibold text-white/85">Version History — {showVersionHistory}</h3>
+                  <button onClick={() => setShowVersionHistory(null)} className="text-white/30 hover:text-white/55">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -1023,10 +1023,10 @@ export default function ClientWorkspacePage() {
                   {versionHistory.map(v => (
                     <div key={v.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                       <div>
-                        <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-mono mr-2">v{v.version ?? 1}</span>
-                        <span className="text-xs text-gray-500">{v.file_name}</span>
+                        <span className="text-xs bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded font-mono mr-2">v{v.version ?? 1}</span>
+                        <span className="text-xs text-white/40">{v.file_name}</span>
                       </div>
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-white/30">
                         {new Date(v.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                       </span>
                     </div>
@@ -1039,13 +1039,13 @@ export default function ClientWorkspacePage() {
       )}
 
       {/* Portal Access section — always visible below tabs */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5">
+      <div className="bg-[#131620] rounded-xl border border-white/[0.05] p-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Globe className="w-4 h-4 text-blue-600" />
             <div>
-              <h3 className="text-sm font-semibold text-gray-900">Portal Access</h3>
-              <p className="text-xs text-gray-400 mt-0.5">
+              <h3 className="text-sm font-semibold text-white/85">Portal Access</h3>
+              <p className="text-xs text-white/30 mt-0.5">
                 {portal?.enabled
                   ? `Portal active${portal.invitedAt ? ` · Invited ${new Date(portal.invitedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : ""}`
                   : "Not enabled — client cannot log in yet"}
@@ -1053,7 +1053,7 @@ export default function ClientWorkspacePage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${portal?.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${portal?.enabled ? "bg-green-100 text-green-700" : "bg-white/[0.06] text-white/40"}`}>
               {portal?.enabled ? "Active" : "Not enabled"}
             </span>
             <button
@@ -1070,10 +1070,10 @@ export default function ClientWorkspacePage() {
       {/* Portal invite modal */}
       {showPortalModal && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+          <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-900">Share Portal Link</h3>
-              <button onClick={() => setShowPortalModal(false)} className="text-gray-400 hover:text-gray-600">
+              <h3 className="text-sm font-semibold text-white/85">Share Portal Link</h3>
+              <button onClick={() => setShowPortalModal(false)} className="text-white/30 hover:text-white/55">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -1096,7 +1096,7 @@ export default function ClientWorkspacePage() {
                 </button>
               </div>
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-white/40">
               Copy this link and share it with your client. They will need to sign up at this URL using the email address on their profile.
             </p>
             <button
@@ -1112,12 +1112,12 @@ export default function ClientWorkspacePage() {
       {/* Portal invite modal — sends magic link to client */}
       {showPortalInviteModal && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+          <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-900">
+              <h3 className="text-sm font-semibold text-white/85">
                 Invite {client?.client_name ?? "Client"} to Portal
               </h3>
-              <button onClick={() => setShowPortalInviteModal(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => setShowPortalInviteModal(false)} className="text-white/30 hover:text-white/55">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -1127,8 +1127,8 @@ export default function ClientWorkspacePage() {
                 <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center mx-auto">
                   <CheckCircle className="w-5 h-5 text-green-600" />
                 </div>
-                <p className="text-sm font-medium text-gray-900">Invite sent!</p>
-                <p className="text-xs text-gray-500">
+                <p className="text-sm font-medium text-white/85">Invite sent!</p>
+                <p className="text-xs text-white/40">
                   Magic link sent to <strong>{portalInviteEmail}</strong>
                 </p>
                 <button
@@ -1140,7 +1140,7 @@ export default function ClientWorkspacePage() {
               </div>
             ) : (
               <>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-white/40">
                   They&apos;ll receive a magic link to access their documents and filings.
                 </p>
                 {portalInviteError && (
@@ -1149,13 +1149,13 @@ export default function ClientWorkspacePage() {
                   </div>
                 )}
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Client Email</label>
+                  <label className="text-xs font-medium text-white/65 block mb-1">Client Email</label>
                   <input
                     type="email"
                     value={portalInviteEmail}
                     onChange={(e) => setPortalInviteEmail(e.target.value)}
                     placeholder="client@example.com"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <button
@@ -1174,16 +1174,16 @@ export default function ClientWorkspacePage() {
       {/* AI Insights tab */}
       {activeTab === "ai_insights" && (
         <div className="space-y-4">
-          <div className="bg-gradient-to-br from-indigo-50 to-violet-50 rounded-xl border border-indigo-100 p-8 text-center space-y-3">
-            <div className="w-12 h-12 rounded-xl bg-indigo-100 flex items-center justify-center mx-auto">
-              <Sparkles className="w-6 h-6 text-indigo-600" />
+          <div className="bg-gradient-to-br from-blue-600 to-blue-400 rounded-xl border border-blue-500/20 p-8 text-center space-y-3">
+            <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center mx-auto">
+              <Sparkles className="w-6 h-6 text-blue-400" />
             </div>
-            <h3 className="text-sm font-semibold text-gray-900">AI Insights</h3>
-            <p className="text-xs text-gray-500 max-w-sm mx-auto">
+            <h3 className="text-sm font-semibold text-white/85">AI Insights</h3>
+            <p className="text-xs text-white/40 max-w-sm mx-auto">
               AI-powered analysis for {client.client_name} — anomaly detection,
               missed deductions, advance tax projections, and compliance risk signals.
             </p>
-            <p className="text-xs text-indigo-500 font-medium">Coming soon</p>
+            <p className="text-xs text-blue-400 font-medium">Coming soon</p>
           </div>
         </div>
       )}

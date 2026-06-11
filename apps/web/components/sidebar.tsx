@@ -155,7 +155,7 @@ function SidebarContent({
                         "flex items-center gap-2.5 rounded-lg text-[12.5px] font-medium transition-all duration-100",
                         collapsed ? "justify-center px-0 py-2.5 mx-0" : "px-2.5 py-2",
                         active
-                          ? "bg-indigo-600 text-white shadow-sm shadow-indigo-900/50"
+                          ? "bg-blue-500/15 text-blue-400"
                           : "text-white/50 hover:text-white/90 hover:bg-white/5"
                       )}
                     >
@@ -184,7 +184,7 @@ function SidebarContent({
         "border-t border-white/5 p-3 flex items-center gap-2.5",
         collapsed ? "justify-center flex-col" : ""
       )}>
-        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center text-[11px] font-bold shrink-0">
+        <div className="w-7 h-7 rounded-full bg-blue-500 text-white flex items-center justify-center text-[11px] font-bold shrink-0">
           {initials}
         </div>
         {!collapsed && (

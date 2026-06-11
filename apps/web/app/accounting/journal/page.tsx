@@ -50,8 +50,8 @@ function emptyLine(): NewLine {
 function LoadingSpinner() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-4 animate-pulse">
-      <div className="h-6 bg-gray-200 rounded w-48" />
-      <div className="h-64 bg-gray-100 rounded-xl" />
+      <div className="h-6 bg-white/[0.08] rounded w-48" />
+      <div className="h-64 bg-white/[0.06] rounded-xl" />
     </div>
   );
 }
@@ -262,17 +262,17 @@ export default function JournalPage() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-gray-400 hover:text-gray-600">
+        <Link href="/accounting" className="text-white/30 hover:text-white/55">
           <ChevronLeft size={18} />
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-gray-900">Journal Entries</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{entries.length} entries</p>
+          <h1 className="text-xl font-semibold text-white/85">Journal Entries</h1>
+          <p className="text-sm text-white/40 mt-0.5">{entries.length} entries</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowImport(true)}
-            className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 px-3 py-1.5 rounded-md hover:bg-gray-50"
+            className="flex items-center gap-1.5 text-xs border border-white/[0.07] text-white/55 px-3 py-1.5 rounded-md hover:bg-[#0e1017]"
           >
             <Upload size={13} /> Import CSV
           </button>
@@ -288,21 +288,21 @@ export default function JournalPage() {
       {/* Filters */}
       <div className="flex gap-3">
         <div>
-          <label className="text-xs text-gray-500">From</label>
+          <label className="text-xs text-white/40">From</label>
           <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-            className="block mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="block mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
-          <label className="text-xs text-gray-500">To</label>
+          <label className="text-xs text-white/40">To</label>
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-            className="block mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="block mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
       </div>
 
       {/* Entry list */}
       <Card>
-        <div className="divide-y divide-gray-50">
-          <div className="grid grid-cols-12 gap-2 px-5 py-2 text-xs font-semibold text-gray-400 border-b border-gray-100">
+        <div className="divide-y divide-white/[0.03]">
+          <div className="grid grid-cols-12 gap-2 px-5 py-2 text-xs font-semibold text-white/30 border-b border-white/[0.05]">
             <span className="col-span-2">Date</span>
             <span className="col-span-2">Reference</span>
             <span className="col-span-3">Narration</span>
@@ -312,7 +312,7 @@ export default function JournalPage() {
             <span className="col-span-1"></span>
           </div>
           {filtered.length === 0 && (
-            <div className="px-5 py-8 text-center text-sm text-gray-400">No entries yet. Create your first journal entry.</div>
+            <div className="px-5 py-8 text-center text-sm text-white/30">No entries yet. Create your first journal entry.</div>
           )}
           {filtered.map((entry) => {
             // Parse forex metadata from narration if present: "[USD 1000 @ 83.5]"
@@ -322,17 +322,17 @@ export default function JournalPage() {
             const forexRate = forexMatch ? parseFloat(forexMatch[3]) : 0;
             const showForex = forexCurrency && forexCurrency !== "INR" && forexForeignAmt > 0;
             return (
-              <div key={entry.id} className="grid grid-cols-12 gap-2 px-5 py-3 hover:bg-gray-50 transition-colors items-center">
-                <button onClick={() => { setSelectedEntry(entry); setShowForm(false); }} className="col-span-2 text-xs text-gray-600 text-left">{formatDate(entry.entry_date)}</button>
-                <button onClick={() => { setSelectedEntry(entry); setShowForm(false); }} className="col-span-2 text-xs font-mono text-gray-500 truncate text-left">{entry.reference_no}</button>
-                <button onClick={() => { setSelectedEntry(entry); setShowForm(false); }} className="col-span-3 text-sm text-gray-900 truncate text-left">
+              <div key={entry.id} className="grid grid-cols-12 gap-2 px-5 py-3 hover:bg-[#0e1017] transition-colors items-center">
+                <button onClick={() => { setSelectedEntry(entry); setShowForm(false); }} className="col-span-2 text-xs text-white/55 text-left">{formatDate(entry.entry_date)}</button>
+                <button onClick={() => { setSelectedEntry(entry); setShowForm(false); }} className="col-span-2 text-xs font-mono text-white/40 truncate text-left">{entry.reference_no}</button>
+                <button onClick={() => { setSelectedEntry(entry); setShowForm(false); }} className="col-span-3 text-sm text-white/85 truncate text-left">
                   {entry.narration?.replace(/\[[A-Z]{3} [\d.]+ @ [\d.]+\]$/, "").trim()}
                 </button>
-                <span className="col-span-1 text-xs text-gray-500">{entry.entry_type}</span>
+                <span className="col-span-1 text-xs text-white/40">{entry.entry_type}</span>
                 <span className="col-span-1">
                   <Badge className={`text-xs ${statusBadge[entry.status]}`}>{entry.status}</Badge>
                 </span>
-                <span className="col-span-2 text-sm font-semibold tabular-nums text-right text-gray-700">
+                <span className="col-span-2 text-sm font-semibold tabular-nums text-right text-white/65">
                   {showForex
                     ? formatForexDisplay(forexCurrency, forexForeignAmt, forexRate, entry.total_debit_paise ?? 0)
                     : formatPaise(entry.total_debit_paise ?? 0)}
@@ -354,22 +354,22 @@ export default function JournalPage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center justify-between">
               <span>{selectedEntry.narration?.replace(/\[[A-Z]{3} [\d.]+ @ [\d.]+\]$/, "").trim()}</span>
-              <button onClick={() => setSelectedEntry(null)} className="text-xs text-gray-400 hover:text-gray-600">Close</button>
+              <button onClick={() => setSelectedEntry(null)} className="text-xs text-white/30 hover:text-white/55">Close</button>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-4 gap-3 text-xs text-gray-500 mb-4">
-              <div><span className="block font-medium text-gray-700">Date</span>{formatDate(selectedEntry.entry_date)}</div>
-              <div><span className="block font-medium text-gray-700">Reference</span>{selectedEntry.reference_no || "—"}</div>
-              <div><span className="block font-medium text-gray-700">Type</span>{selectedEntry.entry_type}</div>
-              <div><span className="block font-medium text-gray-700">Status</span>
+            <div className="grid grid-cols-4 gap-3 text-xs text-white/40 mb-4">
+              <div><span className="block font-medium text-white/65">Date</span>{formatDate(selectedEntry.entry_date)}</div>
+              <div><span className="block font-medium text-white/65">Reference</span>{selectedEntry.reference_no || "—"}</div>
+              <div><span className="block font-medium text-white/65">Type</span>{selectedEntry.entry_type}</div>
+              <div><span className="block font-medium text-white/65">Status</span>
                 <span className={`px-2 py-0.5 rounded-full ${statusBadge[selectedEntry.status]}`}>{selectedEntry.status}</span>
               </div>
             </div>
-            <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
-              Total Debit: <span className="font-semibold text-gray-900">{formatPaise(selectedEntry.total_debit_paise ?? 0)}</span>
+            <div className="text-xs text-white/40 bg-[#0e1017] rounded-lg p-3">
+              Total Debit: <span className="font-semibold text-white/85">{formatPaise(selectedEntry.total_debit_paise ?? 0)}</span>
               {" | "}
-              Total Credit: <span className="font-semibold text-gray-900">{formatPaise(selectedEntry.total_credit_paise ?? 0)}</span>
+              Total Credit: <span className="font-semibold text-white/85">{formatPaise(selectedEntry.total_credit_paise ?? 0)}</span>
             </div>
           </CardContent>
         </Card>
@@ -384,45 +384,45 @@ export default function JournalPage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div>
-                <label className="text-xs text-gray-500">Date *</label>
+                <label className="text-xs text-white/40">Date *</label>
                 <input type="date" value={formData.entry_date}
                   onChange={(e) => setFormData({ ...formData, entry_date: e.target.value })}
-                  className="w-full mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="text-xs text-gray-500">Reference No.</label>
+                <label className="text-xs text-white/40">Reference No.</label>
                 <input value={formData.reference_no}
                   onChange={(e) => setFormData({ ...formData, reference_no: e.target.value })}
-                  className="w-full mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="e.g. INV/2025-26/004" />
               </div>
               <div>
-                <label className="text-xs text-gray-500">Entry Type</label>
+                <label className="text-xs text-white/40">Entry Type</label>
                 <select value={formData.entry_type}
                   onChange={(e) => setFormData({ ...formData, entry_type: e.target.value as EntryType })}
-                  className="w-full mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                   {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div className="md:col-span-1 col-span-2">
-                <label className="text-xs text-gray-500">Narration *</label>
+                <label className="text-xs text-white/40">Narration *</label>
                 <input value={formData.narration}
                   onChange={(e) => setFormData({ ...formData, narration: e.target.value })}
-                  className="w-full mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Description of entry" />
               </div>
             </div>
 
             {/* ── Multi-currency fields ─────────────────────────────────── */}
-            <div className="border border-gray-100 rounded-lg p-3 bg-gray-50 space-y-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Currency</p>
+            <div className="border border-white/[0.05] rounded-lg p-3 bg-[#0e1017] space-y-3">
+              <p className="text-xs font-semibold text-white/40 uppercase tracking-wide">Currency</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div>
-                  <label className="text-xs text-gray-500">Currency</label>
+                  <label className="text-xs text-white/40">Currency</label>
                   <select
                     value={formData.currency}
                     onChange={(e) => setFormData({ ...formData, currency: e.target.value as Currency, exchange_rate: "", foreign_amount: "" })}
-                    className="w-full mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#131620]"
                   >
                     {CURRENCIES.map((c) => (
                       <option key={c} value={c}>{c}{c === "INR" ? " (default)" : ""}</option>
@@ -433,8 +433,8 @@ export default function JournalPage() {
                 {isForex && (
                   <>
                     <div>
-                      <label className="text-xs text-gray-500">
-                        Exchange Rate <span className="text-gray-400">(1 {formData.currency} = ? INR)</span>
+                      <label className="text-xs text-white/40">
+                        Exchange Rate <span className="text-white/30">(1 {formData.currency} = ? INR)</span>
                       </label>
                       <input
                         type="number"
@@ -442,14 +442,14 @@ export default function JournalPage() {
                         step="0.0001"
                         value={formData.exchange_rate}
                         onChange={(e) => setFormData({ ...formData, exchange_rate: e.target.value })}
-                        className="w-full mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#131620]"
                         placeholder="e.g. 83.50"
                       />
                     </div>
 
                     <div>
-                      <label className="text-xs text-gray-500">
-                        Foreign Amount <span className="text-gray-400">({formData.currency})</span>
+                      <label className="text-xs text-white/40">
+                        Foreign Amount <span className="text-white/30">({formData.currency})</span>
                       </label>
                       <input
                         type="number"
@@ -457,17 +457,17 @@ export default function JournalPage() {
                         step="0.01"
                         value={formData.foreign_amount}
                         onChange={(e) => setFormData({ ...formData, foreign_amount: e.target.value })}
-                        className="w-full mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#131620]"
                         placeholder="e.g. 1000"
                       />
                     </div>
 
                     <div>
-                      <label className="text-xs text-gray-500">INR Equivalent (paise)</label>
-                      <div className="w-full mt-1 px-3 py-1.5 text-sm border border-gray-100 rounded-md bg-white text-gray-700 font-mono tabular-nums">
+                      <label className="text-xs text-white/40">INR Equivalent (paise)</label>
+                      <div className="w-full mt-1 px-3 py-1.5 text-sm border border-white/[0.05] rounded-md bg-[#131620] text-white/65 font-mono tabular-nums">
                         {convertedInrPaise > 0 ? formatPaise(convertedInrPaise) : "—"}
                       </div>
-                      <p className="text-xs text-gray-400 mt-0.5">
+                      <p className="text-xs text-white/30 mt-0.5">
                         {parsedForeignAmount > 0 && parsedExchangeRate > 0
                           ? `${parsedForeignAmount} × ${parsedExchangeRate} × 100 = ${convertedInrPaise} paise`
                           : "Enter rate and amount above"}
@@ -491,7 +491,7 @@ export default function JournalPage() {
 
             {/* Lines */}
             <div>
-              <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-gray-400 mb-1">
+              <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-white/30 mb-1">
                 <span className="col-span-4">Account</span>
                 <span className="col-span-3">Debit (paise)</span>
                 <span className="col-span-3">Credit (paise)</span>
@@ -503,7 +503,7 @@ export default function JournalPage() {
                   <div className="col-span-4">
                     <select value={line.account_id}
                       onChange={(e) => updateLine(idx, "account_id", e.target.value)}
-                      className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500">
+                      className="w-full px-2 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500">
                       <option value="">Select account…</option>
                       {accounts.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}
                     </select>
@@ -511,19 +511,19 @@ export default function JournalPage() {
                   <div className="col-span-3">
                     <input type="number" min={0} value={line.debit_paise || ""}
                       onChange={(e) => updateLine(idx, "debit_paise", parseInt(e.target.value) || 0)}
-                      className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="w-full px-2 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                       placeholder="0" />
                   </div>
                   <div className="col-span-3">
                     <input type="number" min={0} value={line.credit_paise || ""}
                       onChange={(e) => updateLine(idx, "credit_paise", parseInt(e.target.value) || 0)}
-                      className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="w-full px-2 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                       placeholder="0" />
                   </div>
                   <div className="col-span-1">
                     <input value={line.narration}
                       onChange={(e) => updateLine(idx, "narration", e.target.value)}
-                      className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="w-full px-2 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                       placeholder="Note" />
                   </div>
                   <div className="col-span-1 flex justify-center">
@@ -547,7 +547,7 @@ export default function JournalPage() {
             </div>
 
             <div className="flex gap-2">
-              <button onClick={() => setShowForm(false)} className="text-sm text-gray-600 border border-gray-200 px-4 py-1.5 rounded-md hover:bg-gray-50">
+              <button onClick={() => setShowForm(false)} className="text-sm text-white/55 border border-white/[0.07] px-4 py-1.5 rounded-md hover:bg-[#0e1017]">
                 Cancel
               </button>
               <button

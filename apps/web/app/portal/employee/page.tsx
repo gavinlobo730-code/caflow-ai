@@ -70,7 +70,7 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   return (
     <div className="fixed bottom-4 right-4 z-50 bg-gray-900 text-white text-sm px-4 py-2.5 rounded-lg shadow-lg flex items-center gap-3">
       <span>{message}</span>
-      <button onClick={onClose} className="text-gray-400 hover:text-white">×</button>
+      <button onClick={onClose} className="text-white/30 hover:text-white">×</button>
     </div>
   );
 }
@@ -171,8 +171,8 @@ export default function EmployeePortalPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="flex items-center gap-3 text-gray-500">
+      <div className="min-h-screen bg-[#0e1017] flex items-center justify-center">
+        <div className="flex items-center gap-3 text-white/40">
           <Loader2 className="w-5 h-5 animate-spin" />
           <span className="text-sm">Loading your portal…</span>
         </div>
@@ -182,13 +182,13 @@ export default function EmployeePortalPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-8 max-w-md text-center space-y-3">
+      <div className="min-h-screen bg-[#0e1017] flex items-center justify-center p-4">
+        <div className="bg-[#131620] rounded-xl border border-white/[0.07] p-8 max-w-md text-center space-y-3">
           <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto">
             <User className="w-6 h-6 text-red-400" />
           </div>
-          <p className="text-sm font-semibold text-gray-900">Access Unavailable</p>
-          <p className="text-xs text-gray-500">{error}</p>
+          <p className="text-sm font-semibold text-white/85">Access Unavailable</p>
+          <p className="text-xs text-white/40">{error}</p>
         </div>
       </div>
     );
@@ -203,21 +203,21 @@ export default function EmployeePortalPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#0e1017]">
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
       {/* Header */}
-      <header className="bg-white border-b border-gray-100 px-6 py-4">
+      <header className="bg-[#131620] border-b border-white/[0.05] px-6 py-4">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-xs font-bold text-indigo-600 tracking-wide uppercase">PracticeSync</span>
-              <span className="text-xs text-gray-300">|</span>
-              <span className="text-xs text-gray-400">Employee Portal</span>
+              <span className="text-xs font-bold text-blue-400 tracking-wide uppercase">PracticeSync</span>
+              <span className="text-xs text-white/20">|</span>
+              <span className="text-xs text-white/30">Employee Portal</span>
             </div>
-            <h1 className="text-base font-semibold text-gray-900">Hello, {employee.name}</h1>
+            <h1 className="text-base font-semibold text-white/85">Hello, {employee.name}</h1>
             {employee.designation && (
-              <p className="text-xs text-gray-400 mt-0.5">{employee.designation}{employee.department ? ` · ${employee.department}` : ""}</p>
+              <p className="text-xs text-white/30 mt-0.5">{employee.designation}{employee.department ? ` · ${employee.department}` : ""}</p>
             )}
           </div>
         </div>
@@ -225,15 +225,15 @@ export default function EmployeePortalPage() {
 
       {/* Tabs */}
       <div className="max-w-3xl mx-auto px-4 pt-6">
-        <div className="flex gap-1 bg-white rounded-xl border border-gray-100 p-1 mb-6">
+        <div className="flex gap-1 bg-[#131620] rounded-xl border border-white/[0.05] p-1 mb-6">
           {TABS.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all ${
                 activeTab === tab.id
-                  ? "bg-indigo-600 text-white shadow-sm"
-                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                  ? "bg-blue-500 text-white shadow-sm"
+                  : "text-white/40 hover:text-white/65 hover:bg-[#0e1017]"
               }`}
             >
               {tab.icon}
@@ -246,32 +246,32 @@ export default function EmployeePortalPage() {
         {activeTab === "payslips" && (
           <div className="space-y-3">
             {payslipsLoading ? (
-              <div className="text-center py-10 text-sm text-gray-400 flex items-center justify-center gap-2">
+              <div className="text-center py-10 text-sm text-white/30 flex items-center justify-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" /> Loading payslips…
               </div>
             ) : payslips.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-100 px-5 py-12 text-center">
+              <div className="bg-[#131620] rounded-xl border border-white/[0.05] px-5 py-12 text-center">
                 <FileText className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">No payslips found</p>
+                <p className="text-sm text-white/30">No payslips found</p>
               </div>
             ) : (
-              <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+              <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-100 text-xs text-gray-400">
+                    <tr className="border-b border-white/[0.05] text-xs text-white/30">
                       <th className="px-5 py-3 text-left font-semibold">Period</th>
                       <th className="px-4 py-3 text-right font-semibold">Gross</th>
                       <th className="px-4 py-3 text-right font-semibold">Net Pay</th>
                       <th className="px-5 py-3 text-left font-semibold">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-white/[0.03]">
                     {payslips.map(slip => (
-                      <tr key={slip.id} className="hover:bg-gray-50">
-                        <td className="px-5 py-3 font-medium text-gray-900">
+                      <tr key={slip.id} className="hover:bg-[#0e1017]">
+                        <td className="px-5 py-3 font-medium text-white/85">
                           {MONTH_NAMES[(slip.month ?? 1) - 1]} {slip.year}
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-600 font-mono text-xs">
+                        <td className="px-4 py-3 text-right text-white/55 font-mono text-xs">
                           {formatPaise(slip.gross_salary_paise)}
                         </td>
                         <td className="px-4 py-3 text-right text-green-700 font-semibold font-mono text-xs">
@@ -298,32 +298,32 @@ export default function EmployeePortalPage() {
         {activeTab === "leave" && (
           <div className="space-y-3">
             {leaveLoading ? (
-              <div className="text-center py-10 text-sm text-gray-400 flex items-center justify-center gap-2">
+              <div className="text-center py-10 text-sm text-white/30 flex items-center justify-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" /> Loading leave balances…
               </div>
             ) : leaveBalances.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-100 px-5 py-12 text-center">
+              <div className="bg-[#131620] rounded-xl border border-white/[0.05] px-5 py-12 text-center">
                 <Calendar className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">No leave records found for current year</p>
+                <p className="text-sm text-white/30">No leave records found for current year</p>
               </div>
             ) : (
-              <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+              <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-100 text-xs text-gray-400">
+                    <tr className="border-b border-white/[0.05] text-xs text-white/30">
                       <th className="px-5 py-3 text-left font-semibold">Leave Type</th>
                       <th className="px-4 py-3 text-right font-semibold">Total Days</th>
                       <th className="px-4 py-3 text-right font-semibold">Used</th>
                       <th className="px-4 py-3 text-right font-semibold">Balance</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-white/[0.03]">
                     {leaveBalances.map(lb => {
                       const balance = lb.total_days - lb.used_days;
                       return (
-                        <tr key={lb.id} className="hover:bg-gray-50">
-                          <td className="px-5 py-3 font-medium text-gray-900 capitalize">{lb.leave_type}</td>
-                          <td className="px-4 py-3 text-right text-gray-600">{lb.total_days}</td>
+                        <tr key={lb.id} className="hover:bg-[#0e1017]">
+                          <td className="px-5 py-3 font-medium text-white/85 capitalize">{lb.leave_type}</td>
+                          <td className="px-4 py-3 text-right text-white/55">{lb.total_days}</td>
                           <td className="px-4 py-3 text-right text-amber-600">{lb.used_days}</td>
                           <td className={`px-4 py-3 text-right font-semibold ${balance > 0 ? "text-green-700" : "text-red-600"}`}>
                             {balance}
@@ -340,10 +340,10 @@ export default function EmployeePortalPage() {
 
         {/* Profile Tab */}
         {activeTab === "profile" && (
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="bg-[#131620] rounded-xl border border-white/[0.05] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50">
-              <h2 className="text-sm font-semibold text-gray-900">Employee Profile</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Read-only — contact HR to update your details</p>
+              <h2 className="text-sm font-semibold text-white/85">Employee Profile</h2>
+              <p className="text-xs text-white/30 mt-0.5">Read-only — contact HR to update your details</p>
             </div>
             <div className="px-5 py-4 space-y-4">
               {[
@@ -359,8 +359,8 @@ export default function EmployeePortalPage() {
                 { label: "IFSC Code", value: employee.ifsc_code ?? "—" },
               ].map(field => (
                 <div key={field.label} className="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
-                  <span className="text-xs text-gray-500">{field.label}</span>
-                  <span className="text-sm font-medium text-gray-900">{field.value}</span>
+                  <span className="text-xs text-white/40">{field.label}</span>
+                  <span className="text-sm font-medium text-white/85">{field.value}</span>
                 </div>
               ))}
             </div>

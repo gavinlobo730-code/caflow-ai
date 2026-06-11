@@ -96,10 +96,10 @@ function docTypeBadgeColor(value: string): string {
     BANK_STATEMENT: "bg-yellow-100 text-yellow-700",
     INVOICE: "bg-orange-100 text-orange-700",
     AUDIT_REPORT: "bg-red-100 text-red-700",
-    AGREEMENT: "bg-indigo-100 text-indigo-700",
-    OTHER: "bg-gray-100 text-gray-600",
+    AGREEMENT: "bg-blue-500/10 text-blue-400",
+    OTHER: "bg-white/[0.06] text-white/55",
   };
-  return map[value] ?? "bg-gray-100 text-gray-600";
+  return map[value] ?? "bg-white/[0.06] text-white/55";
 }
 
 // ─── Upload Modal ─────────────────────────────────────────────────────────────
@@ -180,13 +180,13 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
+      <div className="w-full max-w-md rounded-xl bg-[#131620] shadow-xl">
         {/* Modal header */}
-        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <h2 className="text-base font-semibold text-gray-900">Upload Document</h2>
+        <div className="flex items-center justify-between border-b border-white/[0.05] px-6 py-4">
+          <h2 className="text-base font-semibold text-white/85">Upload Document</h2>
           <button
             onClick={onClose}
-            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className="rounded p-1 text-white/30 hover:bg-white/[0.06] hover:text-white/55"
           >
             <X size={18} />
           </button>
@@ -203,7 +203,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
 
           {/* Client */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-white/65">
               Client <span className="text-red-500">*</span>
             </label>
             <select
@@ -223,7 +223,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
 
           {/* Document type */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-white/65">
               Document Type <span className="text-red-500">*</span>
             </label>
             <select
@@ -242,7 +242,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
 
           {/* Financial year */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-white/65">
               Financial Year
             </label>
             <select
@@ -261,7 +261,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
 
           {/* File picker */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-white/65">
               File <span className="text-red-500">*</span>
             </label>
             <div
@@ -269,7 +269,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
               className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 transition-colors ${
                 file
                   ? "border-blue-400 bg-blue-50"
-                  : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
+                  : "border-white/[0.07] hover:border-blue-300 hover:bg-[#0e1017]"
               } ${uploading ? "pointer-events-none opacity-60" : ""}`}
             >
               <input
@@ -283,15 +283,15 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
                 <>
                   <FileText className="h-6 w-6 text-blue-500" />
                   <p className="text-sm font-medium text-blue-700">{file.name}</p>
-                  <p className="text-xs text-gray-500">{formatBytes(file.size)}</p>
+                  <p className="text-xs text-white/40">{formatBytes(file.size)}</p>
                 </>
               ) : (
                 <>
-                  <Upload className="h-6 w-6 text-gray-400" />
-                  <p className="text-sm font-medium text-gray-600">
+                  <Upload className="h-6 w-6 text-white/30" />
+                  <p className="text-sm font-medium text-white/55">
                     Click to browse or drop a file
                   </p>
-                  <p className="text-xs text-gray-400">PDF, Excel, Word, Images</p>
+                  <p className="text-xs text-white/30">PDF, Excel, Word, Images</p>
                 </>
               )}
             </div>
@@ -299,11 +299,11 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
         </div>
 
         {/* Modal footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-gray-100 px-6 py-4">
+        <div className="flex items-center justify-end gap-3 border-t border-white/[0.05] px-6 py-4">
           <button
             onClick={onClose}
             disabled={uploading}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-white/65 hover:bg-[#0e1017] disabled:opacity-50"
           >
             Cancel
           </button>
@@ -429,8 +429,8 @@ export default function DocumentsPage() {
       {/* ── Header ── */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Documents</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-xl font-semibold text-white/85">Documents</h1>
+          <p className="text-sm text-white/40 mt-0.5">
             Manage client documents and files
           </p>
         </div>
@@ -451,7 +451,7 @@ export default function DocumentsPage() {
         <div className="relative flex-1 min-w-[200px] max-w-xs">
           <Search
             size={15}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30"
           />
           <input
             type="text"
@@ -521,12 +521,12 @@ export default function DocumentsPage() {
           </button>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-20 text-center">
-          <FileText className="h-12 w-12 text-gray-300 mb-3" />
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-white/[0.07] bg-[#0e1017] py-20 text-center">
+          <FileText className="h-12 w-12 text-white/20 mb-3" />
           {documents.length === 0 ? (
             <>
-              <p className="text-sm font-medium text-gray-600">No documents yet.</p>
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-sm font-medium text-white/55">No documents yet.</p>
+              <p className="text-xs text-white/30 mt-1">
                 Upload your first document to get started.
               </p>
               <button
@@ -538,7 +538,7 @@ export default function DocumentsPage() {
               </button>
             </>
           ) : (
-            <p className="text-sm text-gray-500">No documents match the current filters.</p>
+            <p className="text-sm text-white/40">No documents match the current filters.</p>
           )}
         </div>
       ) : (
@@ -546,25 +546,25 @@ export default function DocumentsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-100 bg-gray-50 text-left">
-                  <th className="px-4 py-3 font-medium text-gray-500">File Name</th>
-                  <th className="px-4 py-3 font-medium text-gray-500">Client</th>
-                  <th className="px-4 py-3 font-medium text-gray-500">Type</th>
-                  <th className="px-4 py-3 font-medium text-gray-500">Financial Year</th>
-                  <th className="px-4 py-3 font-medium text-gray-500">Uploaded</th>
-                  <th className="px-4 py-3 font-medium text-gray-500">Size</th>
-                  <th className="px-4 py-3 font-medium text-gray-500 text-right">Actions</th>
+                <tr className="border-b border-white/[0.05] bg-[#0e1017] text-left">
+                  <th className="px-4 py-3 font-medium text-white/40">File Name</th>
+                  <th className="px-4 py-3 font-medium text-white/40">Client</th>
+                  <th className="px-4 py-3 font-medium text-white/40">Type</th>
+                  <th className="px-4 py-3 font-medium text-white/40">Financial Year</th>
+                  <th className="px-4 py-3 font-medium text-white/40">Uploaded</th>
+                  <th className="px-4 py-3 font-medium text-white/40">Size</th>
+                  <th className="px-4 py-3 font-medium text-white/40 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-white/[0.03]">
                 {filtered.map((doc) => (
-                  <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={doc.id} className="hover:bg-[#0e1017] transition-colors">
                     {/* File name */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <FileText size={15} className="shrink-0 text-gray-400" />
+                        <FileText size={15} className="shrink-0 text-white/30" />
                         <span
-                          className="max-w-[220px] truncate font-medium text-gray-800"
+                          className="max-w-[220px] truncate font-medium text-white/75"
                           title={doc.file_name}
                         >
                           {doc.file_name}
@@ -573,7 +573,7 @@ export default function DocumentsPage() {
                     </td>
 
                     {/* Client */}
-                    <td className="px-4 py-3 text-gray-600">
+                    <td className="px-4 py-3 text-white/55">
                       {doc.client_id
                         ? (clientMap[doc.client_id] ?? "Unknown")
                         : "—"}
@@ -589,17 +589,17 @@ export default function DocumentsPage() {
                     </td>
 
                     {/* Financial year */}
-                    <td className="px-4 py-3 text-gray-600">
+                    <td className="px-4 py-3 text-white/55">
                       {doc.financial_year ?? "—"}
                     </td>
 
                     {/* Uploaded date */}
-                    <td className="px-4 py-3 text-gray-500">
+                    <td className="px-4 py-3 text-white/40">
                       {formatDate(doc.created_at)}
                     </td>
 
                     {/* Size */}
-                    <td className="px-4 py-3 text-gray-500">
+                    <td className="px-4 py-3 text-white/40">
                       {formatBytes(doc.file_size)}
                     </td>
 
@@ -609,7 +609,7 @@ export default function DocumentsPage() {
                         <button
                           onClick={() => handleDownload(doc)}
                           title="Download"
-                          className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-blue-600"
+                          className="rounded p-1.5 text-white/30 hover:bg-white/[0.06] hover:text-blue-600"
                         >
                           <Download size={15} />
                         </button>
@@ -617,7 +617,7 @@ export default function DocumentsPage() {
                           onClick={() => handleDelete(doc)}
                           disabled={deleting === doc.id}
                           title="Delete"
-                          className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                          className="rounded p-1.5 text-white/30 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
                         >
                           {deleting === doc.id ? (
                             <Loader2 size={15} className="animate-spin" />
@@ -634,7 +634,7 @@ export default function DocumentsPage() {
           </div>
 
           {/* Row count */}
-          <div className="border-t border-gray-100 px-4 py-2 text-xs text-gray-400">
+          <div className="border-t border-white/[0.05] px-4 py-2 text-xs text-white/30">
             {filtered.length} document{filtered.length !== 1 ? "s" : ""}
             {filtered.length !== documents.length && ` (filtered from ${documents.length})`}
           </div>

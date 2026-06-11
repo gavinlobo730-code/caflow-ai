@@ -227,7 +227,7 @@ export default function BudgetPage() {
    * For Expense: positive variance (actual > budget) = red (over budget); negative = green (under budget).
    */
   function varianceColor(type: "Revenue" | "Expense", variance: number): string {
-    if (variance === 0) return "text-gray-500";
+    if (variance === 0) return "text-white/40";
     if (type === "Revenue") return variance > 0 ? "text-green-700" : "text-red-600";
     return variance > 0 ? "text-red-600" : "text-green-700";
   }
@@ -243,12 +243,12 @@ export default function BudgetPage() {
     <div className="p-6 max-w-7xl mx-auto space-y-5">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-gray-400 hover:text-gray-600">
+        <Link href="/accounting" className="text-white/30 hover:text-white/55">
           <ChevronLeft size={18} />
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-gray-900">Budget vs Actuals</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Compare budgeted amounts with posted journal entries</p>
+          <h1 className="text-xl font-semibold text-white/85">Budget vs Actuals</h1>
+          <p className="text-sm text-white/40 mt-0.5">Compare budgeted amounts with posted journal entries</p>
         </div>
         <button
           onClick={() => {
@@ -274,7 +274,7 @@ export default function BudgetPage() {
             XLSX.writeFile(wb, `budget_vs_actuals_${fy}.xlsx`);
           }}
           disabled={rows.length === 0}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-40"
+          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md hover:bg-[#0e1017] disabled:opacity-40"
         >
           <Download size={14} /> Export
         </button>
@@ -282,7 +282,7 @@ export default function BudgetPage() {
         <select
           value={fy}
           onChange={e => setFy(e.target.value as FY)}
-          className="text-sm border border-gray-200 px-3 py-1.5 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="text-sm border border-white/[0.07] px-3 py-1.5 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="2025-26">FY 2025–26</option>
           <option value="2026-27">FY 2026–27</option>
@@ -302,7 +302,7 @@ export default function BudgetPage() {
           <Card key={s.label}>
             <CardContent className="pt-4 pb-3">
               <p className={`text-lg font-bold tabular-nums ${s.color}`}>{formatPaise(s.value)}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+              <p className="text-xs text-white/40 mt-0.5">{s.label}</p>
             </CardContent>
           </Card>
         ))}
@@ -316,7 +316,7 @@ export default function BudgetPage() {
       {/* Loading */}
       {loading ? (
         <div className="space-y-2 animate-pulse">
-          {[1, 2, 3].map(i => <div key={i} className="h-10 bg-gray-100 rounded" />)}
+          {[1, 2, 3].map(i => <div key={i} className="h-10 bg-white/[0.06] rounded" />)}
         </div>
       ) : (
         <>
@@ -351,7 +351,7 @@ export default function BudgetPage() {
           />
 
           {accounts.length === 0 && (
-            <div className="text-center py-10 text-sm text-gray-400">
+            <div className="text-center py-10 text-sm text-white/30">
               No Revenue or Expense accounts found. Add accounts in{" "}
               <Link href="/accounting/chart-of-accounts" className="text-blue-600 hover:underline">Chart of Accounts</Link>.
             </div>
@@ -397,13 +397,13 @@ function BudgetTable({
     <Card>
       <div className="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${accentClass}`}>{title}</span>
-        <span className="text-xs text-gray-400">{rows.length} accounts</span>
-        <span className="ml-2 text-xs text-gray-400">— Click the budget cell to edit</span>
+        <span className="text-xs text-white/30">{rows.length} accounts</span>
+        <span className="ml-2 text-xs text-white/30">— Click the budget cell to edit</span>
       </div>
       <CardContent className="p-0 overflow-x-auto">
         <table className="w-full text-sm min-w-[800px]">
           <thead>
-            <tr className="text-xs text-gray-400 border-b border-gray-100">
+            <tr className="text-xs text-white/30 border-b border-white/[0.05]">
               <th className="px-5 py-2.5 text-left font-medium w-48">Account</th>
               <th className="px-3 py-2.5 text-right font-medium">Annual Budget</th>
               <th className="px-3 py-2.5 text-right font-medium">Q1 Actual</th>
@@ -415,18 +415,18 @@ function BudgetTable({
               <th className="px-5 py-2.5 text-right font-medium">Var %</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-white/[0.03]">
             {rows.map(row => {
               const ytd = row.actuals.q1 + row.actuals.q2 + row.actuals.q3 + row.actuals.q4;
               const variance = ytd - row.budget_paise;
               const isEditing = editingId === row.account_id;
 
               return (
-                <tr key={row.account_id} className="hover:bg-gray-50 group">
+                <tr key={row.account_id} className="hover:bg-[#0e1017] group">
                   <td className="px-5 py-2.5">
                     <div>
-                      <p className="text-sm font-medium text-gray-900 truncate max-w-[180px]">{row.account_name}</p>
-                      <p className="text-xs text-gray-400 font-mono">{row.account_code}</p>
+                      <p className="text-sm font-medium text-white/85 truncate max-w-[180px]">{row.account_name}</p>
+                      <p className="text-xs text-white/30 font-mono">{row.account_code}</p>
                     </div>
                   </td>
                   {/* Annual Budget — inline editable */}
@@ -450,18 +450,18 @@ function BudgetTable({
                         <button onClick={() => onConfirmEdit(row.account_id)} className="text-green-600 hover:text-green-800">
                           <Check size={13} />
                         </button>
-                        <button onClick={onCancelEdit} className="text-gray-400 hover:text-gray-700">
+                        <button onClick={onCancelEdit} className="text-white/30 hover:text-white/65">
                           <X size={13} />
                         </button>
                       </div>
                     ) : (
                       <button
                         onClick={() => onStartEdit(row)}
-                        className="group/edit flex items-center gap-1 justify-end w-full text-gray-900 font-medium tabular-nums hover:text-blue-700"
+                        className="group/edit flex items-center gap-1 justify-end w-full text-white/85 font-medium tabular-nums hover:text-blue-700"
                         title="Click to edit budget"
                       >
                         {row.budget_paise === 0 ? (
-                          <span className="text-gray-300 text-xs">Set budget</span>
+                          <span className="text-white/20 text-xs">Set budget</span>
                         ) : (
                           formatPaise(row.budget_paise)
                         )}
@@ -469,11 +469,11 @@ function BudgetTable({
                       </button>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-gray-600">{formatPaise(row.actuals.q1)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-gray-600">{formatPaise(row.actuals.q2)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-gray-600">{formatPaise(row.actuals.q3)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-gray-600">{formatPaise(row.actuals.q4)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums font-medium text-gray-800">{formatPaise(ytd)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-white/55">{formatPaise(row.actuals.q1)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-white/55">{formatPaise(row.actuals.q2)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-white/55">{formatPaise(row.actuals.q3)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-white/55">{formatPaise(row.actuals.q4)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums font-medium text-white/75">{formatPaise(ytd)}</td>
                   <td className={`px-3 py-2.5 text-right tabular-nums font-medium ${varianceColor(row.account_type, variance)}`}>
                     {variance >= 0 ? "+" : ""}{formatPaise(variance)}
                   </td>

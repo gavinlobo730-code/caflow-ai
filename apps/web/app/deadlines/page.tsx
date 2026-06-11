@@ -16,7 +16,7 @@ const FILING_STATUS_COLORS: Record<string, string> = {
   in_progress: "bg-blue-100 text-blue-700",
   filed: "bg-green-100 text-green-700",
   overdue: "bg-red-100 text-red-700",
-  na: "bg-gray-100 text-gray-500",
+  na: "bg-white/[0.06] text-white/40",
 };
 
 const ALL_TYPES = ["GSTR1", "GSTR3B", "GSTR9", "ITR", "TDS24Q", "TDS26Q", "ADVANCE_TAX"];
@@ -25,11 +25,11 @@ const ALL_STATUSES = ["pending", "in_progress", "filed", "overdue", "na"];
 function LoadingSpinner() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-4 animate-pulse">
-      <div className="h-6 bg-gray-200 rounded w-48" />
+      <div className="h-6 bg-white/[0.08] rounded w-48" />
       <div className="grid grid-cols-5 gap-3">
-        {[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-20 bg-gray-100 rounded-lg" />)}
+        {[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-20 bg-white/[0.06] rounded-lg" />)}
       </div>
-      <div className="h-64 bg-gray-100 rounded-xl" />
+      <div className="h-64 bg-white/[0.06] rounded-xl" />
     </div>
   );
 }
@@ -132,8 +132,8 @@ export default function DeadlinesPage() {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Deadlines</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-xl font-semibold text-white/85">Deadlines</h1>
+          <p className="text-sm text-white/40 mt-0.5">
             Cross-client compliance calendar — triage here, file inside each client
           </p>
         </div>
@@ -146,8 +146,8 @@ export default function DeadlinesPage() {
               <div className={`w-8 h-8 rounded-lg ${s.bg} flex items-center justify-center mb-2`}>
                 <s.icon size={16} className={s.color} />
               </div>
-              <p className="text-2xl font-bold text-gray-900">{s.value}</p>
-              <p className="text-xs text-gray-500 mt-0.5 leading-tight">{s.label}</p>
+              <p className="text-2xl font-bold text-white/85">{s.value}</p>
+              <p className="text-xs text-white/40 mt-0.5 leading-tight">{s.label}</p>
             </CardContent>
           </Card>
         ))}
@@ -170,7 +170,7 @@ export default function DeadlinesPage() {
                 value={markFiled.arn}
                 onChange={e => setMarkFiled({ ...markFiled, arn: e.target.value })}
                 placeholder="ARN Number (optional)"
-                className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#131620]"
               />
               <button
                 onClick={handleMarkFiled}
@@ -181,7 +181,7 @@ export default function DeadlinesPage() {
               </button>
               <button
                 onClick={() => setMarkFiled(null)}
-                className="text-xs px-3 py-1.5 border border-gray-200 rounded-md hover:bg-gray-100 bg-white"
+                className="text-xs px-3 py-1.5 border border-white/[0.07] rounded-md hover:bg-white/[0.06] bg-[#131620]"
               >
                 Cancel
               </button>
@@ -192,26 +192,26 @@ export default function DeadlinesPage() {
 
       <div className="flex flex-wrap gap-3">
         <div>
-          <label className="text-xs text-gray-500">Status</label>
+          <label className="text-xs text-white/40">Status</label>
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-            className="block mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            className="block mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="">All statuses</option>
             {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-xs text-gray-500">Type</label>
+          <label className="text-xs text-white/40">Type</label>
           <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-            className="block mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            className="block mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="">All types</option>
             {ALL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-xs text-gray-500">Client</label>
+          <label className="text-xs text-white/40">Client</label>
           <input value={clientFilter} onChange={e => setClientFilter(e.target.value)}
             placeholder="Search client…"
-            className="block mt-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-48" />
+            className="block mt-1 px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-48" />
         </div>
       </div>
 
@@ -222,7 +222,7 @@ export default function DeadlinesPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 text-xs text-gray-400">
+              <tr className="border-b border-white/[0.05] text-xs text-white/30">
                 <th className="px-5 py-3 text-left font-semibold">Client</th>
                 <th className="px-3 py-3 text-left font-semibold">Type</th>
                 <th className="px-3 py-3 text-left font-semibold">Period</th>
@@ -232,9 +232,9 @@ export default function DeadlinesPage() {
                 <th className="px-5 py-3 text-left font-semibold">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-white/[0.03]">
               {filtered.map((r) => (
-                <tr key={r.id} className="hover:bg-gray-50">
+                <tr key={r.id} className="hover:bg-[#0e1017]">
                   <td className="px-5 py-3 text-sm font-medium">
                     <Link
                       href={`/clients/${r.client_id}`}
@@ -243,19 +243,19 @@ export default function DeadlinesPage() {
                       {clientMap[r.client_id] ?? r.client_id.slice(0, 8)}
                     </Link>
                   </td>
-                  <td className="px-3 py-3 text-xs text-gray-600">{r.compliance_type}</td>
-                  <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">
+                  <td className="px-3 py-3 text-xs text-white/55">{r.compliance_type}</td>
+                  <td className="px-3 py-3 text-xs text-white/40 whitespace-nowrap">
                     {formatDate(r.period_start)} – {formatDate(r.period_end)}
                   </td>
-                  <td className={`px-3 py-3 text-xs whitespace-nowrap ${r.due_date < today && r.filing_status !== "filed" ? "text-red-600 font-medium" : "text-gray-600"}`}>
+                  <td className={`px-3 py-3 text-xs whitespace-nowrap ${r.due_date < today && r.filing_status !== "filed" ? "text-red-600 font-medium" : "text-white/55"}`}>
                     {formatDate(r.due_date)}
                   </td>
                   <td className="px-3 py-3">
-                    <Badge className={`text-xs ${FILING_STATUS_COLORS[r.filing_status] ?? "bg-gray-100 text-gray-600"}`}>
+                    <Badge className={`text-xs ${FILING_STATUS_COLORS[r.filing_status] ?? "bg-white/[0.06] text-white/55"}`}>
                       {r.filing_status}
                     </Badge>
                   </td>
-                  <td className="px-3 py-3 text-xs text-gray-500 font-mono">{r.arn_number ?? "—"}</td>
+                  <td className="px-3 py-3 text-xs text-white/40 font-mono">{r.arn_number ?? "—"}</td>
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-3 flex-wrap">
                       {r.filing_status !== "filed" && r.filing_status !== "na" && (
@@ -273,7 +273,7 @@ export default function DeadlinesPage() {
                       )}
                       <Link
                         href={`/clients/${r.client_id}`}
-                        className="text-xs text-indigo-600 hover:underline flex items-center gap-1"
+                        className="text-xs text-blue-400 hover:underline flex items-center gap-1"
                       >
                         <ExternalLink size={11} /> Open Client
                       </Link>
@@ -284,7 +284,7 @@ export default function DeadlinesPage() {
             </tbody>
           </table>
           {filtered.length === 0 && (
-            <div className="text-center py-8 text-sm text-gray-400">No compliance records found</div>
+            <div className="text-center py-8 text-sm text-white/30">No compliance records found</div>
           )}
         </div>
       </Card>

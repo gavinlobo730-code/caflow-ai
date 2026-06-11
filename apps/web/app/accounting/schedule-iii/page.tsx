@@ -340,13 +340,13 @@ async function fetchScheduleData(
 function SectionTable({ section }: { section: ScheduleSection }) {
   return (
     <div className="mb-4">
-      <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
-        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{section.heading}</p>
+      <div className="bg-[#0e1017] px-4 py-2 border-b border-white/[0.07]">
+        <p className="text-xs font-semibold text-white/65 uppercase tracking-wide">{section.heading}</p>
       </div>
       {section.lines.map((line) => (
-        <div key={line.label} className="flex justify-between px-4 py-2 border-b border-gray-100 last:border-b-0">
-          <span className={`text-sm text-gray-700 ${line.indent ? "pl-4" : ""}`}>{line.label}</span>
-          <span className="text-sm tabular-nums text-gray-900 font-medium">
+        <div key={line.label} className="flex justify-between px-4 py-2 border-b border-white/[0.05] last:border-b-0">
+          <span className={`text-sm text-white/65 ${line.indent ? "pl-4" : ""}`}>{line.label}</span>
+          <span className="text-sm tabular-nums text-white/85 font-medium">
             {line.paise === 0 ? "—" : line.paise < 0
               ? `(${formatPaise(Math.abs(line.paise))})`
               : formatPaise(line.paise)}
@@ -364,11 +364,11 @@ function SectionTable({ section }: { section: ScheduleSection }) {
 function LoadingSpinner() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4 animate-pulse">
-      <div className="h-6 bg-gray-200 rounded w-64" />
-      <div className="h-10 bg-gray-100 rounded w-64" />
+      <div className="h-6 bg-white/[0.08] rounded w-64" />
+      <div className="h-10 bg-white/[0.06] rounded w-64" />
       <div className="grid grid-cols-2 gap-6">
-        <div className="h-96 bg-gray-100 rounded-xl" />
-        <div className="h-96 bg-gray-100 rounded-xl" />
+        <div className="h-96 bg-white/[0.06] rounded-xl" />
+        <div className="h-96 bg-white/[0.06] rounded-xl" />
       </div>
     </div>
   );
@@ -427,12 +427,12 @@ export default function ScheduleIIIPage() {
     <div className="p-6 max-w-5xl mx-auto space-y-6 print:p-2 print:space-y-4">
       {/* Header */}
       <div className="flex items-center gap-3 print:hidden">
-        <Link href="/accounting" className="text-gray-400 hover:text-gray-600">
+        <Link href="/accounting" className="text-white/30 hover:text-white/55">
           <ChevronLeft size={18} />
         </Link>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Schedule III — Financial Statements</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-xl font-semibold text-white/85">Schedule III — Financial Statements</h1>
+          <p className="text-sm text-white/40 mt-0.5">
             As per Companies Act 2013, Schedule III — {fy.label}
           </p>
         </div>
@@ -441,17 +441,17 @@ export default function ScheduleIIIPage() {
       {/* Print heading */}
       <div className="hidden print:block text-center mb-4">
         <h1 className="text-2xl font-bold">Schedule III Financial Statements</h1>
-        <p className="text-sm text-gray-600 mt-1">As per Companies Act 2013, Schedule III | {fy.label}</p>
+        <p className="text-sm text-white/55 mt-1">As per Companies Act 2013, Schedule III | {fy.label}</p>
       </div>
 
       {/* Controls */}
       <div className="flex flex-wrap gap-4 items-end print:hidden">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Financial Year</label>
+          <label className="block text-xs text-white/40 mb-1">Financial Year</label>
           <select
             value={fyIndex}
             onChange={(e) => setFyIndex(Number(e.target.value))}
-            className="px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {FY_OPTIONS.map((f, i) => (
               <option key={f.label} value={i}>{f.label}</option>
@@ -459,11 +459,11 @@ export default function ScheduleIIIPage() {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Client</label>
+          <label className="block text-xs text-white/40 mb-1">Client</label>
           <select
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-1.5 text-sm border border-white/[0.07] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Clients</option>
             {clients.map((c) => (
@@ -508,7 +508,7 @@ export default function ScheduleIIIPage() {
             XLSX.writeFile(wb, `schedule_iii_${fy.label}.xlsx`);
           }}
           disabled={!data}
-          className="flex items-center gap-2 px-4 py-1.5 text-sm border border-gray-200 text-gray-700 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-40"
+          className="flex items-center gap-2 px-4 py-1.5 text-sm border border-white/[0.07] text-white/65 rounded-md hover:bg-[#0e1017] transition-colors disabled:opacity-40"
         >
           <Download size={15} /> Export Excel
         </button>
@@ -528,14 +528,14 @@ export default function ScheduleIIIPage() {
               <CardTitle className="text-base">
                 Balance Sheet as at 31 March {Number(fy.start.split("-")[0]) + 1}
               </CardTitle>
-              <p className="text-xs text-gray-500">(Companies Act 2013, Schedule III, Part I)</p>
+              <p className="text-xs text-white/40">(Companies Act 2013, Schedule III, Part I)</p>
             </CardHeader>
             <CardContent className="pb-4 p-0">
               <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-200">
                 {/* Equity & Liabilities */}
                 <div>
-                  <div className="px-4 py-3 border-b border-gray-200 bg-gray-100">
-                    <p className="text-xs font-bold text-gray-800 uppercase tracking-wider">EQUITY AND LIABILITIES</p>
+                  <div className="px-4 py-3 border-b border-white/[0.07] bg-white/[0.06]">
+                    <p className="text-xs font-bold text-white/75 uppercase tracking-wider">EQUITY AND LIABILITIES</p>
                   </div>
                   {bs?.equityAndLiabilities.map((sec) => (
                     <SectionTable key={sec.heading} section={sec} />
@@ -548,8 +548,8 @@ export default function ScheduleIIIPage() {
 
                 {/* Assets */}
                 <div>
-                  <div className="px-4 py-3 border-b border-gray-200 bg-gray-100">
-                    <p className="text-xs font-bold text-gray-800 uppercase tracking-wider">ASSETS</p>
+                  <div className="px-4 py-3 border-b border-white/[0.07] bg-white/[0.06]">
+                    <p className="text-xs font-bold text-white/75 uppercase tracking-wider">ASSETS</p>
                   </div>
                   {bs?.assets.map((sec) => (
                     <SectionTable key={sec.heading} section={sec} />
@@ -578,7 +578,7 @@ export default function ScheduleIIIPage() {
               <CardTitle className="text-base">
                 Statement of Profit & Loss for the year ended 31 March {Number(fy.start.split("-")[0]) + 1}
               </CardTitle>
-              <p className="text-xs text-gray-500">(Companies Act 2013, Schedule III, Part II)</p>
+              <p className="text-xs text-white/40">(Companies Act 2013, Schedule III, Part II)</p>
             </CardHeader>
             <CardContent className="pb-4 p-0">
               {/* Revenue */}
@@ -592,18 +592,18 @@ export default function ScheduleIIIPage() {
               ))}
 
               {/* Profit summary */}
-              <div className="mx-4 mb-4 mt-2 border border-gray-200 rounded-lg overflow-hidden">
-                <div className="flex justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200">
-                  <span className="text-sm font-semibold text-gray-800">Profit Before Tax (I - II)</span>
+              <div className="mx-4 mb-4 mt-2 border border-white/[0.07] rounded-lg overflow-hidden">
+                <div className="flex justify-between px-4 py-2.5 bg-[#0e1017] border-b border-white/[0.07]">
+                  <span className="text-sm font-semibold text-white/75">Profit Before Tax (I - II)</span>
                   <span className={`text-sm tabular-nums font-bold ${(pl?.profitBeforeTax ?? 0) >= 0 ? "text-green-700" : "text-red-700"}`}>
                     {(pl?.profitBeforeTax ?? 0) < 0
                       ? `(${formatPaise(Math.abs(pl?.profitBeforeTax ?? 0))})`
                       : formatPaise(pl?.profitBeforeTax ?? 0)}
                   </span>
                 </div>
-                <div className="flex justify-between px-4 py-2.5 border-b border-gray-200">
-                  <span className="text-sm text-gray-700 pl-4">Tax Expense (Current + Deferred)</span>
-                  <span className="text-sm tabular-nums text-gray-900">{formatPaise(pl?.taxExpense ?? 0)}</span>
+                <div className="flex justify-between px-4 py-2.5 border-b border-white/[0.07]">
+                  <span className="text-sm text-white/65 pl-4">Tax Expense (Current + Deferred)</span>
+                  <span className="text-sm tabular-nums text-white/85">{formatPaise(pl?.taxExpense ?? 0)}</span>
                 </div>
                 <div className="flex justify-between px-4 py-3 bg-blue-700 text-white font-bold">
                   <span className="text-sm">Profit After Tax (PAT)</span>
@@ -618,7 +618,7 @@ export default function ScheduleIIIPage() {
           </Card>
 
           {/* Statutory note */}
-          <p className="text-xs text-gray-400 text-center print:mt-6">
+          <p className="text-xs text-white/30 text-center print:mt-6">
             Prepared as per Schedule III to the Companies Act, 2013. All figures in Indian Rupees (INR).
             This statement is for internal review only — CA sign-off required before filing with MCA/ROC.
           </p>

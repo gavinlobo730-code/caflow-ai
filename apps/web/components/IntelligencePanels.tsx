@@ -53,11 +53,11 @@ const RISK_BADGE: Record<string, string> = {
 const PRIORITY_BADGE: Record<string, string> = {
   high: "bg-red-100 text-red-700",
   medium: "bg-amber-100 text-amber-700",
-  low: "bg-gray-100 text-gray-600",
+  low: "bg-white/[0.06] text-white/55",
 };
 
 const CATEGORY_CHIP: Record<string, string> = {
-  compliance: "bg-indigo-50 text-indigo-600",
+  compliance: "bg-indigo-50 text-blue-400",
   client: "bg-violet-50 text-violet-600",
   operational: "bg-sky-50 text-sky-600",
 };
@@ -70,10 +70,10 @@ function fmtPaise(paise: number): string {
 
 function PanelShell({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+    <div className="bg-[#131620] rounded-2xl shadow-sm border border-white/[0.05] overflow-hidden">
       <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
         {icon}
-        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+        <h3 className="text-sm font-semibold text-white/85">{title}</h3>
       </div>
       <div className="px-5 py-3">{children}</div>
     </div>
@@ -113,7 +113,7 @@ export function IntelligencePanels() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-10 text-gray-400 text-sm">
+      <div className="flex items-center justify-center py-10 text-white/30 text-sm">
         <Loader2 className="animate-spin mr-2" size={16} /> Loading intelligence…
       </div>
     );
@@ -129,7 +129,7 @@ export function IntelligencePanels() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-base font-semibold text-gray-900">Intelligence</h2>
+      <h2 className="text-base font-semibold text-white/85">Intelligence</h2>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Compliance Risk */}
         <PanelShell
@@ -137,16 +137,16 @@ export function IntelligencePanels() {
           title="Compliance Risk"
         >
           {risk.length === 0 ? (
-            <p className="text-xs text-gray-400 py-3">No at-risk clients detected</p>
+            <p className="text-xs text-white/30 py-3">No at-risk clients detected</p>
           ) : (
-            <div className="divide-y divide-gray-50">
+            <div className="divide-y divide-white/[0.03]">
               {risk.map(c => (
                 <div key={c.client_id} className="flex items-center justify-between gap-3 py-2.5">
                   <div className="min-w-0">
-                    <Link href={`/clients/${c.client_id}`} className="text-sm font-medium text-gray-800 hover:text-indigo-600 truncate block">
+                    <Link href={`/clients/${c.client_id}`} className="text-sm font-medium text-white/75 hover:text-blue-400 truncate block">
                       {c.client_name}
                     </Link>
-                    <p className="text-[11px] text-gray-400">
+                    <p className="text-[11px] text-white/30">
                       {c.overdue_count} overdue · {c.due_soon_count} due soon
                     </p>
                   </div>
@@ -165,16 +165,16 @@ export function IntelligencePanels() {
           title="Relationship Health"
         >
           {health.length === 0 ? (
-            <p className="text-xs text-gray-400 py-3">No client health data yet</p>
+            <p className="text-xs text-white/30 py-3">No client health data yet</p>
           ) : (
-            <div className="divide-y divide-gray-50">
+            <div className="divide-y divide-white/[0.03]">
               {health.map(c => (
                 <div key={c.client_id} className="flex items-center justify-between gap-3 py-2.5">
                   <div className="min-w-0">
-                    <Link href={`/clients/${c.client_id}`} className="text-sm font-medium text-gray-800 hover:text-indigo-600 truncate block">
+                    <Link href={`/clients/${c.client_id}`} className="text-sm font-medium text-white/75 hover:text-blue-400 truncate block">
                       {c.client_name}
                     </Link>
-                    <p className="text-[11px] text-gray-400">
+                    <p className="text-[11px] text-white/30">
                       {fmtPaise(c.outstanding_paise)} outstanding
                       {c.overdue_invoices > 0 ? ` · ${c.overdue_invoices} overdue inv` : ""}
                     </p>
@@ -198,21 +198,21 @@ export function IntelligencePanels() {
           title="Recommendations"
         >
           {recommendations.length === 0 ? (
-            <p className="text-xs text-gray-400 py-3">No recommendations right now</p>
+            <p className="text-xs text-white/30 py-3">No recommendations right now</p>
           ) : (
-            <div className="divide-y divide-gray-50">
+            <div className="divide-y divide-white/[0.03]">
               {recommendations.map((r, i) => (
                 <div key={i} className="py-2.5 space-y-1">
                   <div className="flex items-center gap-1.5">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${CATEGORY_CHIP[r.category] ?? "bg-gray-50 text-gray-500"}`}>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${CATEGORY_CHIP[r.category] ?? "bg-[#0e1017] text-white/40"}`}>
                       {r.category}
                     </span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${PRIORITY_BADGE[r.priority]}`}>
                       {r.priority}
                     </span>
                   </div>
-                  <p className="text-sm font-medium text-gray-800 leading-snug">{r.title}</p>
-                  <p className="text-[11px] text-gray-400 leading-snug">{r.detail}</p>
+                  <p className="text-sm font-medium text-white/75 leading-snug">{r.title}</p>
+                  <p className="text-[11px] text-white/30 leading-snug">{r.detail}</p>
                 </div>
               ))}
             </div>

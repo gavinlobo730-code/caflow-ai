@@ -182,11 +182,11 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+      <div className="bg-[#131620] rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.05]">
+          <h2 className="text-base font-semibold text-white/85">{title}</h2>
+          <button onClick={onClose} className="text-white/30 hover:text-white/55">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -212,28 +212,28 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
               </div>
 
               {/* Template column reference */}
-              <div className="bg-gray-50 rounded-xl border border-gray-100 overflow-hidden">
-                <div className="px-4 py-2 border-b border-gray-100">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Template Columns</p>
+              <div className="bg-[#0e1017] rounded-xl border border-white/[0.05] overflow-hidden">
+                <div className="px-4 py-2 border-b border-white/[0.05]">
+                  <p className="text-xs font-semibold text-white/40 uppercase tracking-wide">Template Columns</p>
                 </div>
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="px-4 py-2 text-left font-medium text-gray-500">Column</th>
-                      <th className="px-4 py-2 text-left font-medium text-gray-500">Required</th>
-                      <th className="px-4 py-2 text-left font-medium text-gray-500">Notes</th>
+                    <tr className="border-b border-white/[0.05]">
+                      <th className="px-4 py-2 text-left font-medium text-white/40">Column</th>
+                      <th className="px-4 py-2 text-left font-medium text-white/40">Required</th>
+                      <th className="px-4 py-2 text-left font-medium text-white/40">Notes</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-white/[0.03]">
                     {columns.map(col => (
                       <tr key={col.key}>
-                        <td className="px-4 py-2 font-mono text-gray-900">{col.key}</td>
+                        <td className="px-4 py-2 font-mono text-white/85">{col.key}</td>
                         <td className="px-4 py-2">
                           {col.required
                             ? <span className="text-red-600 font-medium">Required</span>
-                            : <span className="text-gray-400">Optional</span>}
+                            : <span className="text-white/30">Optional</span>}
                         </td>
-                        <td className="px-4 py-2 text-gray-500">{col.hint ?? col.label}</td>
+                        <td className="px-4 py-2 text-white/40">{col.hint ?? col.label}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -242,16 +242,16 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
 
               {/* Upload area */}
               <div>
-                <p className="text-sm font-medium text-gray-700 mb-2">Step 2 — Upload your filled CSV</p>
+                <p className="text-sm font-medium text-white/65 mb-2">Step 2 — Upload your filled CSV</p>
                 <div
                   onClick={() => fileRef.current?.click()}
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-                  className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-colors"
+                  className="border-2 border-dashed border-white/[0.07] rounded-xl p-8 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-colors"
                 >
-                  <Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600">Click to browse or drag & drop your CSV file</p>
-                  <p className="text-xs text-gray-400 mt-1">Only .csv files are supported</p>
+                  <Upload className="w-8 h-8 text-white/20 mx-auto mb-2" />
+                  <p className="text-sm text-white/55">Click to browse or drag & drop your CSV file</p>
+                  <p className="text-xs text-white/30 mt-1">Only .csv files are supported</p>
                 </div>
                 <input ref={fileRef} type="file" accept=".csv" className="hidden"
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
@@ -268,7 +268,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
           {step === "preview" && (
             <div className="space-y-4">
               {/* Summary bar */}
-              <div className="flex items-center gap-4 bg-gray-50 rounded-xl px-4 py-3">
+              <div className="flex items-center gap-4 bg-[#0e1017] rounded-xl px-4 py-3">
                 <div className="flex items-center gap-1.5 text-sm text-green-700">
                   <CheckCircle className="w-4 h-4" />
                   <span><strong>{validCount}</strong> valid rows</span>
@@ -282,24 +282,24 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
               </div>
 
               {/* Preview table */}
-              <div className="overflow-x-auto rounded-xl border border-gray-100">
+              <div className="overflow-x-auto rounded-xl border border-white/[0.05]">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-100">
-                      <th className="px-3 py-2 text-left text-gray-500">#</th>
+                    <tr className="bg-[#0e1017] border-b border-white/[0.05]">
+                      <th className="px-3 py-2 text-left text-white/40">#</th>
                       {columns.map(c => (
-                        <th key={c.key} className="px-3 py-2 text-left text-gray-500">{c.label}</th>
+                        <th key={c.key} className="px-3 py-2 text-left text-white/40">{c.label}</th>
                       ))}
-                      <th className="px-3 py-2 text-left text-gray-500">Status</th>
+                      <th className="px-3 py-2 text-left text-white/40">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-white/[0.03]">
                     {rows.map(row => (
                       <tr key={row.index} className={row.errors.length > 0 ? "bg-red-50" : ""}>
-                        <td className="px-3 py-2 text-gray-400 tabular-nums">{row.index}</td>
+                        <td className="px-3 py-2 text-white/30 tabular-nums">{row.index}</td>
                         {columns.map(c => (
-                          <td key={c.key} className="px-3 py-2 text-gray-700 max-w-[120px] truncate" title={row.data[c.key.toLowerCase()]}>
-                            {row.data[c.key.toLowerCase()] || <span className="text-gray-300">—</span>}
+                          <td key={c.key} className="px-3 py-2 text-white/65 max-w-[120px] truncate" title={row.data[c.key.toLowerCase()]}>
+                            {row.data[c.key.toLowerCase()] || <span className="text-white/20">—</span>}
                           </td>
                         ))}
                         <td className="px-3 py-2">
@@ -316,7 +316,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
 
               <button
                 onClick={() => { setRows([]); setStep("upload"); }}
-                className="text-xs text-gray-500 hover:text-gray-700 underline"
+                className="text-xs text-white/40 hover:text-white/65 underline"
               >
                 ← Upload a different file
               </button>
@@ -327,7 +327,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
           {step === "importing" && (
             <div className="py-16 text-center space-y-3">
               <Loader className="w-8 h-8 text-blue-600 mx-auto animate-spin" />
-              <p className="text-sm text-gray-600">Importing {validCount} rows…</p>
+              <p className="text-sm text-white/55">Importing {validCount} rows…</p>
             </div>
           )}
 
@@ -336,7 +336,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
             <div className="py-8 space-y-4">
               <div className="text-center">
                 <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
-                <p className="text-lg font-semibold text-gray-900">{result.imported} rows imported successfully</p>
+                <p className="text-lg font-semibold text-white/85">{result.imported} rows imported successfully</p>
                 {result.errors.length > 0 && (
                   <p className="text-sm text-red-600 mt-1">{result.errors.length} rows failed</p>
                 )}
@@ -353,8 +353,8 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100 flex justify-between items-center">
-          <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700">
+        <div className="px-6 py-4 border-t border-white/[0.05] flex justify-between items-center">
+          <button onClick={onClose} className="text-sm text-white/40 hover:text-white/65">
             {step === "done" ? "Close" : "Cancel"}
           </button>
           {step === "preview" && validCount > 0 && (

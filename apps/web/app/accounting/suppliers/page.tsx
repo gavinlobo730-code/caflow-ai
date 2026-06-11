@@ -184,12 +184,12 @@ export default function SuppliersPage() {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-gray-400 hover:text-gray-600">
+        <Link href="/accounting" className="text-white/30 hover:text-white/55">
           <ChevronLeft className="w-4 h-4" />
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-gray-900">Supplier Master</h1>
-          <p className="text-sm text-gray-500 mt-0.5">TDS section mapping &amp; credit terms</p>
+          <h1 className="text-xl font-semibold text-white/85">Supplier Master</h1>
+          <p className="text-sm text-white/40 mt-0.5">TDS section mapping &amp; credit terms</p>
         </div>
         <Button onClick={openAdd} size="sm" className="flex items-center gap-1">
           <Plus className="w-4 h-4" /> Add Supplier
@@ -201,8 +201,8 @@ export default function SuppliersPage() {
       {/* Client selector */}
       <Card>
         <CardContent className="pt-4 pb-4">
-          <label className="text-xs font-medium text-gray-700 block mb-1">Select Client</label>
-          <select className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full max-w-xs focus:outline-none focus:ring-2 focus:ring-blue-500" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}>
+          <label className="text-xs font-medium text-white/65 block mb-1">Select Client</label>
+          <select className="border border-white/[0.07] rounded-lg px-3 py-2 text-sm w-full max-w-xs focus:outline-none focus:ring-2 focus:ring-blue-500" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}>
             {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
           </select>
         </CardContent>
@@ -217,12 +217,12 @@ export default function SuppliersPage() {
           </CardTitle>
         </CardHeader>
         {loading ? (
-          <div className="px-5 py-8 text-sm text-gray-400 text-center animate-pulse">Loading…</div>
+          <div className="px-5 py-8 text-sm text-white/30 text-center animate-pulse">Loading…</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+                <tr className="bg-[#0e1017] text-xs text-white/40 uppercase tracking-wide">
                   <th className="px-4 py-3 text-left">Supplier Name</th>
                   <th className="px-4 py-3 text-left">GSTIN</th>
                   <th className="px-4 py-3 text-left">PAN</th>
@@ -234,37 +234,37 @@ export default function SuppliersPage() {
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-white/[0.03]">
                 {suppliers.map(s => (
-                  <tr key={s.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{s.supplier_name}</td>
-                    <td className="px-4 py-3 text-gray-600 font-mono text-xs">{s.gstin ?? "—"}</td>
-                    <td className="px-4 py-3 text-gray-600 font-mono text-xs">{s.pan ?? "—"}</td>
+                  <tr key={s.id} className="hover:bg-[#0e1017]">
+                    <td className="px-4 py-3 font-medium text-white/85">{s.supplier_name}</td>
+                    <td className="px-4 py-3 text-white/55 font-mono text-xs">{s.gstin ?? "—"}</td>
+                    <td className="px-4 py-3 text-white/55 font-mono text-xs">{s.pan ?? "—"}</td>
                     <td className="px-4 py-3">
                       {s.tds_section ? (
                         <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">{s.tds_section}</span>
                       ) : (
-                        <span className="text-gray-400 text-xs">No TDS</span>
+                        <span className="text-white/30 text-xs">No TDS</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-700">{s.tds_rate_percent != null ? `${s.tds_rate_percent}%` : "—"}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{s.credit_limit_paise ? fmtRs(s.credit_limit_paise) : "—"}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{s.payment_terms_days} days</td>
+                    <td className="px-4 py-3 text-right text-white/65">{s.tds_rate_percent != null ? `${s.tds_rate_percent}%` : "—"}</td>
+                    <td className="px-4 py-3 text-right text-white/65">{s.credit_limit_paise ? fmtRs(s.credit_limit_paise) : "—"}</td>
+                    <td className="px-4 py-3 text-right text-white/65">{s.payment_terms_days} days</td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.is_active ? "bg-green-100 text-green-700" : "bg-white/[0.06] text-white/40"}`}>
                         {s.is_active ? "Active" : "Inactive"}
                       </span>
                     </td>
                     <td className="px-4 py-3 flex gap-2 justify-end">
                       <button onClick={() => openEdit(s)} className="text-xs text-blue-600 hover:underline">Edit</button>
-                      <button onClick={() => toggleActive(s.id, s.is_active)} className="text-xs text-gray-400 hover:underline">
+                      <button onClick={() => toggleActive(s.id, s.is_active)} className="text-xs text-white/30 hover:underline">
                         {s.is_active ? "Deactivate" : "Activate"}
                       </button>
                     </td>
                   </tr>
                 ))}
                 {suppliers.length === 0 && (
-                  <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400 text-sm">No suppliers yet. Add your first supplier.</td></tr>
+                  <tr><td colSpan={9} className="px-4 py-8 text-center text-white/30 text-sm">No suppliers yet. Add your first supplier.</td></tr>
                 )}
               </tbody>
             </table>
@@ -280,58 +280,58 @@ export default function SuppliersPage() {
       {/* Add/Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-5 py-4 border-b">
-              <h2 className="text-sm font-semibold text-gray-900">{editingId ? "Edit Supplier" : "Add Supplier"}</h2>
-              <button onClick={() => setShowModal(false)}><X className="w-4 h-4 text-gray-400" /></button>
+              <h2 className="text-sm font-semibold text-white/85">{editingId ? "Edit Supplier" : "Add Supplier"}</h2>
+              <button onClick={() => setShowModal(false)}><X className="w-4 h-4 text-white/30" /></button>
             </div>
             <div className="px-5 py-4 space-y-4">
               {error && <div className="bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg">{error}</div>}
 
               <div>
-                <label className="text-xs font-medium text-gray-700 block mb-1">Supplier Name *</label>
-                <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.supplier_name} onChange={e => setForm(f => ({ ...f, supplier_name: e.target.value }))} placeholder="e.g. ABC Contractors Pvt Ltd" />
+                <label className="text-xs font-medium text-white/65 block mb-1">Supplier Name *</label>
+                <input className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.supplier_name} onChange={e => setForm(f => ({ ...f, supplier_name: e.target.value }))} placeholder="e.g. ABC Contractors Pvt Ltd" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">GSTIN</label>
-                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" value={form.gstin} onChange={e => setForm(f => ({ ...f, gstin: e.target.value.toUpperCase() }))} placeholder="27AAAAA0000A1Z5" maxLength={15} />
+                  <label className="text-xs font-medium text-white/65 block mb-1">GSTIN</label>
+                  <input className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" value={form.gstin} onChange={e => setForm(f => ({ ...f, gstin: e.target.value.toUpperCase() }))} placeholder="27AAAAA0000A1Z5" maxLength={15} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">PAN</label>
-                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" value={form.pan} onChange={e => setForm(f => ({ ...f, pan: e.target.value.toUpperCase() }))} placeholder="AAAAA0000A" maxLength={10} />
+                  <label className="text-xs font-medium text-white/65 block mb-1">PAN</label>
+                  <input className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" value={form.pan} onChange={e => setForm(f => ({ ...f, pan: e.target.value.toUpperCase() }))} placeholder="AAAAA0000A" maxLength={10} />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-700 block mb-1">TDS Section</label>
-                <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.tds_section} onChange={e => onSectionChange(e.target.value)}>
+                <label className="text-xs font-medium text-white/65 block mb-1">TDS Section</label>
+                <select className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.tds_section} onChange={e => onSectionChange(e.target.value)}>
                   {TDS_SECTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
               </div>
 
               {form.tds_section && (
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">TDS Rate %</label>
-                  <input type="number" min="0" max="100" step="0.01" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.tds_rate_percent} onChange={e => setForm(f => ({ ...f, tds_rate_percent: e.target.value }))} placeholder="e.g. 10" />
+                  <label className="text-xs font-medium text-white/65 block mb-1">TDS Rate %</label>
+                  <input type="number" min="0" max="100" step="0.01" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.tds_rate_percent} onChange={e => setForm(f => ({ ...f, tds_rate_percent: e.target.value }))} placeholder="e.g. 10" />
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Credit Limit (₹)</label>
-                  <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.credit_limit_rs} onChange={e => setForm(f => ({ ...f, credit_limit_rs: e.target.value }))} placeholder="0" />
+                  <label className="text-xs font-medium text-white/65 block mb-1">Credit Limit (₹)</label>
+                  <input type="number" min="0" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.credit_limit_rs} onChange={e => setForm(f => ({ ...f, credit_limit_rs: e.target.value }))} placeholder="0" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Payment Terms (days)</label>
-                  <input type="number" min="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.payment_terms_days} onChange={e => setForm(f => ({ ...f, payment_terms_days: e.target.value }))} placeholder="30" />
+                  <label className="text-xs font-medium text-white/65 block mb-1">Payment Terms (days)</label>
+                  <input type="number" min="0" className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.payment_terms_days} onChange={e => setForm(f => ({ ...f, payment_terms_days: e.target.value }))} placeholder="30" />
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="is_active" checked={form.is_active} onChange={e => setForm(f => ({ ...f, is_active: e.target.checked }))} className="rounded" />
-                <label htmlFor="is_active" className="text-xs text-gray-700">Active supplier</label>
+                <label htmlFor="is_active" className="text-xs text-white/65">Active supplier</label>
               </div>
 
               {/* TDS Calculator */}
@@ -343,20 +343,20 @@ export default function SuppliersPage() {
                   </div>
                   <p className="text-xs text-amber-700">IT Act Section {form.tds_section} — deduct at source before payment to supplier</p>
                   <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1">Bill Amount (₹)</label>
-                    <input type="number" min="0" className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" value={billRs} onChange={e => setBillRs(e.target.value)} placeholder="0" />
+                    <label className="text-xs font-medium text-white/65 block mb-1">Bill Amount (₹)</label>
+                    <input type="number" min="0" className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-[#131620]" value={billRs} onChange={e => setBillRs(e.target.value)} placeholder="0" />
                   </div>
                   {billPaise > 0 && calcTdsRate > 0 && (
                     <div className="space-y-1">
-                      <div className="flex justify-between text-xs text-gray-600">
+                      <div className="flex justify-between text-xs text-white/55">
                         <span>Bill Amount</span>
                         <span className="font-medium">{fmtRs(billPaise)}</span>
                       </div>
-                      <div className="flex justify-between text-xs text-gray-600">
+                      <div className="flex justify-between text-xs text-white/55">
                         <span>TDS @ {calcTdsRate}% ({calcTdsSection?.label ?? form.tds_section})</span>
                         <span className="font-medium text-red-600">- {fmtRs(tdsAmount)}</span>
                       </div>
-                      <div className="flex justify-between text-xs font-semibold text-gray-900 border-t border-amber-200 pt-1">
+                      <div className="flex justify-between text-xs font-semibold text-white/85 border-t border-amber-200 pt-1">
                         <span>Net Payment to Supplier</span>
                         <span className="text-green-700">{fmtRs(billPaise - tdsAmount)}</span>
                       </div>

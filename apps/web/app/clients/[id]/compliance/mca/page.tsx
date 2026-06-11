@@ -33,7 +33,7 @@ function crore(paise: number) {
 type MCATab = "companies" | "directors" | "annual" | "events" | "history";
 
 const FILING_STATUS_COLORS: Record<string, string> = {
-  not_started: "bg-gray-100 text-gray-700",
+  not_started: "bg-white/[0.06] text-white/65",
   in_progress: "bg-blue-100 text-blue-700",
   filed: "bg-emerald-100 text-emerald-800",
   overdue: "bg-red-100 text-red-700",
@@ -90,7 +90,7 @@ function CompaniesTab({ clientId }: { clientId: string }) {
       </div>
 
       {showNew && (
-        <div className="border rounded p-4 bg-gray-50 space-y-3">
+        <div className="border rounded p-4 bg-[#0e1017] space-y-3">
           <p className="text-sm font-medium">Register Company</p>
           <div className="grid grid-cols-2 gap-3">
             {[
@@ -120,7 +120,7 @@ function CompaniesTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {loading ? <p className="text-sm text-gray-500">Loading…</p> : (
+      {loading ? <p className="text-sm text-white/40">Loading…</p> : (
         <div className="space-y-3">
           {rows.map((c) => (
             <div key={c.id as string} className="border rounded p-4 space-y-1">
@@ -128,16 +128,16 @@ function CompaniesTab({ clientId }: { clientId: string }) {
                 <p className="font-medium">{c.company_name as string}</p>
                 <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{c.company_type as string}</span>
               </div>
-              <p className="text-xs text-gray-500 font-mono">{c.cin as string}</p>
-              {!!c.incorporation_date && <p className="text-xs text-gray-500">Incorporated: {c.incorporation_date as string}</p>}
-              <div className="flex gap-6 text-xs text-gray-600 mt-2">
+              <p className="text-xs text-white/40 font-mono">{c.cin as string}</p>
+              {!!c.incorporation_date && <p className="text-xs text-white/40">Incorporated: {c.incorporation_date as string}</p>}
+              <div className="flex gap-6 text-xs text-white/55 mt-2">
                 <span>Auth. Capital: {crore((c.authorized_capital_paise as number) ?? 0)}</span>
                 <span>Paid-up: {crore((c.paid_up_capital_paise as number) ?? 0)}</span>
               </div>
-              {!!c.registered_address && <p className="text-xs text-gray-500 mt-1">{c.registered_address as string}</p>}
+              {!!c.registered_address && <p className="text-xs text-white/40 mt-1">{c.registered_address as string}</p>}
             </div>
           ))}
-          {rows.length === 0 && <p className="text-center text-gray-400 text-sm py-4">No companies registered.</p>}
+          {rows.length === 0 && <p className="text-center text-white/30 text-sm py-4">No companies registered.</p>}
         </div>
       )}
     </div>
@@ -189,7 +189,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
       </div>
 
       {showNew && (
-        <div className="border rounded p-4 bg-gray-50 space-y-3">
+        <div className="border rounded p-4 bg-[#0e1017] space-y-3">
           <p className="text-sm font-medium">Add Director</p>
           <div className="grid grid-cols-2 gap-3">
             {[
@@ -217,10 +217,10 @@ function DirectorsTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {loading ? <p className="text-sm text-gray-500">Loading…</p> : (
+      {loading ? <p className="text-sm text-white/40">Loading…</p> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-gray-50 text-left">
+            <tr className="bg-[#0e1017] text-left">
               <th className="px-3 py-2 border-b">DIN</th>
               <th className="px-3 py-2 border-b">Name</th>
               <th className="px-3 py-2 border-b">Designation</th>
@@ -231,7 +231,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id as string} className="border-b hover:bg-gray-50">
+              <tr key={r.id as string} className="border-b hover:bg-[#0e1017]">
                 <td className="px-3 py-2 font-mono text-xs">{r.din as string}</td>
                 <td className="px-3 py-2">{r.name as string}</td>
                 <td className="px-3 py-2 text-xs">{r.designation as string}</td>
@@ -252,7 +252,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-gray-400">No directors added.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-4 text-center text-white/30">No directors added.</td></tr>
             )}
           </tbody>
         </table>
@@ -313,7 +313,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
       </div>
 
       {showNew && (
-        <div className="border rounded p-4 bg-gray-50 space-y-3">
+        <div className="border rounded p-4 bg-[#0e1017] space-y-3">
           <p className="text-sm font-medium">Create Filing</p>
           <div className="grid grid-cols-2 gap-3">
             <select value={form.form_type} onChange={(e) => setForm((f) => ({ ...f, form_type: e.target.value }))}
@@ -339,10 +339,10 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
         </div>
       )}
 
-      {loading ? <p className="text-sm text-gray-500">Loading…</p> : (
+      {loading ? <p className="text-sm text-white/40">Loading…</p> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-gray-50 text-left">
+            <tr className="bg-[#0e1017] text-left">
               <th className="px-3 py-2 border-b">Form</th>
               <th className="px-3 py-2 border-b">FY</th>
               <th className="px-3 py-2 border-b">Due Date</th>
@@ -352,7 +352,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id as string} className="border-b hover:bg-gray-50">
+              <tr key={r.id as string} className="border-b hover:bg-[#0e1017]">
                 <td className="px-3 py-2 font-medium">{r.form_type as string}</td>
                 <td className="px-3 py-2">{r.financial_year as string ?? "—"}</td>
                 <td className="px-3 py-2 text-xs">{r.due_date as string ?? "—"}</td>
@@ -364,7 +364,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
                 <td className="px-3 py-2 space-x-2">
                   {r.status === "not_started" && (
                     <button onClick={() => updateStatus(r.id as string, "in_progress")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-gray-100">Start</button>
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-white/[0.06]">Start</button>
                   )}
                   {r.status === "in_progress" && (
                     <button onClick={() => updateStatus(r.id as string, "filed")}
@@ -376,7 +376,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={5} className="px-3 py-4 text-center text-gray-400">No {category} filings.</td></tr>
+              <tr><td colSpan={5} className="px-3 py-4 text-center text-white/30">No {category} filings.</td></tr>
             )}
           </tbody>
         </table>
@@ -401,10 +401,10 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-4">
       <h3 className="font-medium">Filing History</h3>
-      {loading ? <p className="text-sm text-gray-500">Loading…</p> : (
+      {loading ? <p className="text-sm text-white/40">Loading…</p> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-gray-50 text-left">
+            <tr className="bg-[#0e1017] text-left">
               <th className="px-3 py-2 border-b">Form</th>
               <th className="px-3 py-2 border-b">FY</th>
               <th className="px-3 py-2 border-b">SRN</th>
@@ -414,7 +414,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id as string} className="border-b hover:bg-gray-50">
+              <tr key={r.id as string} className="border-b hover:bg-[#0e1017]">
                 <td className="px-3 py-2 font-medium">{r.form_type as string}</td>
                 <td className="px-3 py-2">{r.financial_year as string ?? "—"}</td>
                 <td className="px-3 py-2 font-mono text-xs">{r.srn as string ?? "—"}</td>
@@ -427,7 +427,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={5} className="px-3 py-4 text-center text-gray-400">No filed records.</td></tr>
+              <tr><td colSpan={5} className="px-3 py-4 text-center text-white/30">No filed records.</td></tr>
             )}
           </tbody>
         </table>
@@ -451,7 +451,7 @@ export default function MCAWorkspacePage() {
   const [tab, setTab] = useState<MCATab>("companies");
 
   if (!clientId || clientId === "_placeholder") {
-    return <p className="text-sm text-gray-500 p-6">Select a client to view MCA workspace.</p>;
+    return <p className="text-sm text-white/40 p-6">Select a client to view MCA workspace.</p>;
   }
 
   return (
@@ -469,7 +469,7 @@ export default function MCAWorkspacePage() {
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id
                 ? "border-blue-600 text-blue-700"
-                : "border-transparent text-gray-500 hover:text-gray-700"
+                : "border-transparent text-white/40 hover:text-white/65"
             }`}>
             {t.label}
           </button>

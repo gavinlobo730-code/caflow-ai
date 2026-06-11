@@ -27,14 +27,14 @@ const ROLE_COLORS: Record<Role, string> = {
   Partner: "bg-purple-100 text-purple-700",
   Manager: "bg-blue-100 text-blue-700",
   Article: "bg-amber-100 text-amber-700",
-  Staff: "bg-gray-100 text-gray-600",
+  Staff: "bg-white/[0.06] text-white/55",
 };
 
 const PRIORITY_BADGE: Record<string, string> = {
   critical: "bg-red-100 text-red-700",
   high: "bg-orange-100 text-orange-700",
   medium: "bg-amber-100 text-amber-700",
-  low: "bg-gray-100 text-gray-600",
+  low: "bg-white/[0.06] text-white/55",
 };
 
 interface Member {
@@ -76,10 +76,10 @@ function WorkloadBar({ pct }: { pct: number }) {
   const color = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-green-500";
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+      <div className="flex-1 h-2 bg-white/[0.06] rounded-full overflow-hidden">
         <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${Math.min(pct, 100)}%` }} />
       </div>
-      <span className="text-xs text-gray-500 w-8 text-right">{pct}%</span>
+      <span className="text-xs text-white/40 w-8 text-right">{pct}%</span>
     </div>
   );
 }
@@ -112,17 +112,17 @@ function ReassignModal({ task, members, onClose, onReassigned }: ReassignModalPr
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+      <div className="bg-[#131620] rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900">Reassign Task</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+          <h3 className="text-sm font-semibold text-white/85">Reassign Task</h3>
+          <button onClick={onClose} className="text-white/30 hover:text-white/55"><X size={16} /></button>
         </div>
-        <p className="text-sm text-gray-600">{task.title}</p>
+        <p className="text-sm text-white/55">{task.title}</p>
         {error && <div className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</div>}
         <div>
-          <label className="text-xs font-medium text-gray-700 block mb-1">Reassign to:</label>
+          <label className="text-xs font-medium text-white/65 block mb-1">Reassign to:</label>
           <select value={targetId} onChange={e => setTargetId(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+            className="w-full border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
             {members.map(m => (
               <option key={m.id} value={m.id}>{m.full_name} ({m.role})</option>
             ))}
@@ -130,7 +130,7 @@ function ReassignModal({ task, members, onClose, onReassigned }: ReassignModalPr
         </div>
         <div className="flex gap-2">
           <button onClick={onClose}
-            className="flex-1 border border-gray-200 text-gray-700 rounded-lg py-2 text-sm hover:bg-gray-50">
+            className="flex-1 border border-white/[0.07] text-white/65 rounded-lg py-2 text-sm hover:bg-[#0e1017]">
             Cancel
           </button>
           <button onClick={handleConfirm} disabled={saving}
@@ -212,15 +212,15 @@ export default function WorkAllocationPage() {
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/team" className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500">
+          <Link href="/team" className="p-2 rounded-lg border border-white/[0.07] hover:bg-[#0e1017] text-white/40">
             <ArrowLeft size={15} />
           </Link>
           <div>
-            <h1 className="text-lg md:text-xl font-semibold text-gray-900">Work Allocation</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Team capacity and task distribution</p>
+            <h1 className="text-lg md:text-xl font-semibold text-white/85">Work Allocation</h1>
+            <p className="text-sm text-white/40 mt-0.5">Team capacity and task distribution</p>
           </div>
         </div>
-        <button onClick={load} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500">
+        <button onClick={load} className="p-2 rounded-lg border border-white/[0.07] hover:bg-[#0e1017] text-white/40">
           <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
         </button>
       </div>
@@ -232,39 +232,39 @@ export default function WorkAllocationPage() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <select value={roleFilter} onChange={e => setRoleFilter(e.target.value as Role | "all")}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+          className="border border-white/[0.07] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
           <option value="all">All Roles</option>
           {(["Partner","Manager","Article","Staff"] as Role[]).map(r => (
             <option key={r} value={r}>{r}</option>
           ))}
         </select>
-        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+        <label className="flex items-center gap-2 text-sm text-white/65 cursor-pointer">
           <input type="checkbox" checked={overdueOnly} onChange={e => setOverdueOnly(e.target.checked)} />
           Overdue only
         </label>
-        <span className="text-xs text-gray-400 ml-auto">{filtered.length} member{filtered.length !== 1 ? "s" : ""}</span>
+        <span className="text-xs text-white/30 ml-auto">{filtered.length} member{filtered.length !== 1 ? "s" : ""}</span>
       </div>
 
       {loading && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse h-48" />
+            <div key={i} className="bg-[#131620] rounded-xl border border-white/[0.07] p-4 animate-pulse h-48" />
           ))}
         </div>
       )}
 
       {!loading && filtered.length === 0 && (
-        <div className="text-center py-12 text-gray-400">No team members match the filter</div>
+        <div className="text-center py-12 text-white/30">No team members match the filter</div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {!loading && filtered.map(({ member, tasks, total, inProgress, overdue, capacity, pct }) => (
-          <div key={member.id} className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+          <div key={member.id} className="bg-[#131620] rounded-xl border border-white/[0.07] p-4 space-y-3">
             {/* Header */}
             <div className="flex items-start justify-between">
               <div>
-                <p className="font-semibold text-gray-900 text-sm">{member.full_name}</p>
-                <p className="text-xs text-gray-400">{member.email}</p>
+                <p className="font-semibold text-white/85 text-sm">{member.full_name}</p>
+                <p className="text-xs text-white/30">{member.email}</p>
               </div>
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[member.role]}`}>
                 {member.role}
@@ -273,14 +273,14 @@ export default function WorkAllocationPage() {
 
             {/* Stats */}
             <div className="flex gap-3 text-xs">
-              <span className="text-gray-600">{total} tasks</span>
+              <span className="text-white/55">{total} tasks</span>
               <span className="text-blue-600">{inProgress} active</span>
               {overdue > 0 && (
                 <span className="text-red-600 flex items-center gap-1">
                   <AlertTriangle size={11} /> {overdue} overdue
                 </span>
               )}
-              <span className="text-gray-400 ml-auto">cap: {capacity}</span>
+              <span className="text-white/30 ml-auto">cap: {capacity}</span>
             </div>
 
             {/* Workload bar */}
@@ -292,16 +292,16 @@ export default function WorkAllocationPage() {
                 const isOverdue = t.due_date && t.due_date < today;
                 return (
                   <button key={t.id} onClick={() => setReassignTask(t)}
-                    className="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-gray-50 group">
+                    className="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-[#0e1017] group">
                     <div className="min-w-0">
-                      <p className="text-xs text-gray-800 truncate">{t.title}</p>
-                      {t.client_name && <p className="text-xs text-gray-400 truncate">{t.client_name}</p>}
+                      <p className="text-xs text-white/75 truncate">{t.title}</p>
+                      {t.client_name && <p className="text-xs text-white/30 truncate">{t.client_name}</p>}
                     </div>
                     <div className="shrink-0 flex items-center gap-1">
-                      <span className={`text-xs ${isOverdue ? "text-red-500" : "text-gray-400"}`}>
+                      <span className={`text-xs ${isOverdue ? "text-red-500" : "text-white/30"}`}>
                         {fmtDate(t.due_date)}
                       </span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${PRIORITY_BADGE[t.priority] ?? "bg-gray-100 text-gray-600"}`}>
+                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${PRIORITY_BADGE[t.priority] ?? "bg-white/[0.06] text-white/55"}`}>
                         {t.priority?.[0]?.toUpperCase()}
                       </span>
                     </div>
@@ -309,10 +309,10 @@ export default function WorkAllocationPage() {
                 );
               })}
               {tasks.length > 8 && (
-                <p className="text-xs text-gray-400 text-center py-1">+{tasks.length - 8} more</p>
+                <p className="text-xs text-white/30 text-center py-1">+{tasks.length - 8} more</p>
               )}
               {tasks.length === 0 && (
-                <p className="text-xs text-gray-400 text-center py-2">No active tasks</p>
+                <p className="text-xs text-white/30 text-center py-2">No active tasks</p>
               )}
             </div>
           </div>

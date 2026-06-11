@@ -129,7 +129,7 @@ function overdueRiskLevel(days: number): "high" | "medium" | "low" {
 
 function riskColor(level: string) {
   const m: Record<string, string> = { critical: "text-red-700 bg-red-100", high: "text-red-700 bg-red-100", medium: "text-orange-700 bg-orange-100", low: "text-yellow-700 bg-yellow-100" };
-  return m[level] ?? "text-gray-700 bg-gray-100";
+  return m[level] ?? "text-white/65 bg-white/[0.06]";
 }
 
 function riskRowColor(level: string) {
@@ -384,11 +384,11 @@ export default function RisksPage() {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Risk Intelligence</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Real-time risk monitoring across all clients</p>
+          <h1 className="text-xl font-semibold text-white/85">Risk Intelligence</h1>
+          <p className="text-sm text-white/40 mt-0.5">Real-time risk monitoring across all clients</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={loadData} disabled={loading} className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+          <button onClick={loadData} disabled={loading} className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-white/65 hover:bg-[#0e1017] disabled:opacity-50">
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
             Refresh
           </button>
@@ -428,18 +428,18 @@ export default function RisksPage() {
             </CardHeader>
             <CardContent className="p-0">
               {overdueRisks.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-gray-500">No overdue filings detected.</p>
+                <p className="px-6 py-4 text-sm text-white/40">No overdue filings detected.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead><tr className="border-b border-gray-100 bg-gray-50 text-left"><th className="px-4 py-3 font-medium text-gray-500">Client</th><th className="px-4 py-3 font-medium text-gray-500">Filing Type</th><th className="px-4 py-3 font-medium text-gray-500">Due Date</th><th className="px-4 py-3 font-medium text-gray-500">Days Overdue</th><th className="px-4 py-3 font-medium text-gray-500">Risk Level</th></tr></thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <thead><tr className="border-b border-white/[0.05] bg-[#0e1017] text-left"><th className="px-4 py-3 font-medium text-white/40">Client</th><th className="px-4 py-3 font-medium text-white/40">Filing Type</th><th className="px-4 py-3 font-medium text-white/40">Due Date</th><th className="px-4 py-3 font-medium text-white/40">Days Overdue</th><th className="px-4 py-3 font-medium text-white/40">Risk Level</th></tr></thead>
+                    <tbody className="divide-y divide-white/[0.03]">
                       {overdueRisks.map((r, i) => (
-                        <tr key={i} className={`hover:bg-gray-50 transition-colors ${riskRowColor(r.riskLevel)}`}>
-                          <td className="px-4 py-3 font-medium text-gray-800">{r.clientName}</td>
-                          <td className="px-4 py-3 text-gray-600">{r.filingType}</td>
-                          <td className="px-4 py-3 text-gray-600">{r.dueDate}</td>
-                          <td className="px-4 py-3 font-semibold text-gray-900">{r.daysOverdue}</td>
+                        <tr key={i} className={`hover:bg-[#0e1017] transition-colors ${riskRowColor(r.riskLevel)}`}>
+                          <td className="px-4 py-3 font-medium text-white/75">{r.clientName}</td>
+                          <td className="px-4 py-3 text-white/55">{r.filingType}</td>
+                          <td className="px-4 py-3 text-white/55">{r.dueDate}</td>
+                          <td className="px-4 py-3 font-semibold text-white/85">{r.daysOverdue}</td>
                           <td className="px-4 py-3"><span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${riskColor(r.riskLevel)}`}>{r.riskLevel}</span></td>
                         </tr>
                       ))}
@@ -460,16 +460,16 @@ export default function RisksPage() {
             </CardHeader>
             <CardContent className="p-0">
               {gstinRisks.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-gray-500">All GSTINs are valid.</p>
+                <p className="px-6 py-4 text-sm text-white/40">All GSTINs are valid.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead><tr className="border-b border-gray-100 bg-gray-50 text-left"><th className="px-4 py-3 font-medium text-gray-500">Client</th><th className="px-4 py-3 font-medium text-gray-500">GSTIN</th><th className="px-4 py-3 font-medium text-gray-500">Issue</th></tr></thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <thead><tr className="border-b border-white/[0.05] bg-[#0e1017] text-left"><th className="px-4 py-3 font-medium text-white/40">Client</th><th className="px-4 py-3 font-medium text-white/40">GSTIN</th><th className="px-4 py-3 font-medium text-white/40">Issue</th></tr></thead>
+                    <tbody className="divide-y divide-white/[0.03]">
                       {gstinRisks.map((r, i) => (
-                        <tr key={i} className="hover:bg-gray-50 bg-orange-50 transition-colors">
-                          <td className="px-4 py-3 font-medium text-gray-800">{r.clientName}</td>
-                          <td className="px-4 py-3 font-mono text-gray-600">{r.gstin}</td>
+                        <tr key={i} className="hover:bg-[#0e1017] bg-orange-50 transition-colors">
+                          <td className="px-4 py-3 font-medium text-white/75">{r.clientName}</td>
+                          <td className="px-4 py-3 font-mono text-white/55">{r.gstin}</td>
                           <td className="px-4 py-3 text-orange-700">{r.reason}</td>
                         </tr>
                       ))}
@@ -490,17 +490,17 @@ export default function RisksPage() {
             </CardHeader>
             <CardContent className="p-0">
               {tdsRisks.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-gray-500">No TDS defaults detected.</p>
+                <p className="px-6 py-4 text-sm text-white/40">No TDS defaults detected.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead><tr className="border-b border-gray-100 bg-gray-50 text-left"><th className="px-4 py-3 font-medium text-gray-500">Client</th><th className="px-4 py-3 font-medium text-gray-500">Return Type</th><th className="px-4 py-3 font-medium text-gray-500">Due Date</th><th className="px-4 py-3 font-medium text-gray-500">Days Overdue</th></tr></thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <thead><tr className="border-b border-white/[0.05] bg-[#0e1017] text-left"><th className="px-4 py-3 font-medium text-white/40">Client</th><th className="px-4 py-3 font-medium text-white/40">Return Type</th><th className="px-4 py-3 font-medium text-white/40">Due Date</th><th className="px-4 py-3 font-medium text-white/40">Days Overdue</th></tr></thead>
+                    <tbody className="divide-y divide-white/[0.03]">
                       {tdsRisks.map((r, i) => (
-                        <tr key={i} className="hover:bg-gray-50 bg-red-50 transition-colors">
-                          <td className="px-4 py-3 font-medium text-gray-800">{r.clientName}</td>
-                          <td className="px-4 py-3 text-gray-600">{r.filingType}</td>
-                          <td className="px-4 py-3 text-gray-600">{r.dueDate}</td>
+                        <tr key={i} className="hover:bg-[#0e1017] bg-red-50 transition-colors">
+                          <td className="px-4 py-3 font-medium text-white/75">{r.clientName}</td>
+                          <td className="px-4 py-3 text-white/55">{r.filingType}</td>
+                          <td className="px-4 py-3 text-white/55">{r.dueDate}</td>
                           <td className="px-4 py-3 font-semibold text-red-700">{r.daysOverdue}</td>
                         </tr>
                       ))}
@@ -514,18 +514,18 @@ export default function RisksPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <Info size={16} className="text-gray-400" />
+                <Info size={16} className="text-white/30" />
                 Inactive Clients (no entries in 90 days)
-                {inactiveClients.length > 0 && <span className="ml-auto text-xs font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{inactiveClients.length} inactive</span>}
+                {inactiveClients.length > 0 && <span className="ml-auto text-xs font-medium bg-white/[0.06] text-white/55 px-2 py-0.5 rounded-full">{inactiveClients.length} inactive</span>}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               {inactiveClients.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-gray-500">All clients have recent activity.</p>
+                <p className="px-6 py-4 text-sm text-white/40">All clients have recent activity.</p>
               ) : (
                 <div className="flex flex-wrap gap-2 px-4 py-3">
                   {inactiveClients.map((c) => (
-                    <span key={c.clientId} className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-600">{c.clientName}</span>
+                    <span key={c.clientId} className="inline-flex items-center rounded-full border border-white/[0.07] bg-[#0e1017] px-3 py-1 text-xs font-medium text-white/55">{c.clientName}</span>
                   ))}
                 </div>
               )}
@@ -543,17 +543,17 @@ export default function RisksPage() {
             </CardHeader>
             <CardContent className="p-0">
               {advanceTaxRisks.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-gray-500">No advance tax defaults detected.</p>
+                <p className="px-6 py-4 text-sm text-white/40">No advance tax defaults detected.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead><tr className="border-b border-gray-100 bg-gray-50 text-left"><th className="px-4 py-3 font-medium text-gray-500">Client</th><th className="px-4 py-3 font-medium text-gray-500">Installment</th><th className="px-4 py-3 font-medium text-gray-500">Due Date</th><th className="px-4 py-3 font-medium text-gray-500">Days Overdue</th></tr></thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <thead><tr className="border-b border-white/[0.05] bg-[#0e1017] text-left"><th className="px-4 py-3 font-medium text-white/40">Client</th><th className="px-4 py-3 font-medium text-white/40">Installment</th><th className="px-4 py-3 font-medium text-white/40">Due Date</th><th className="px-4 py-3 font-medium text-white/40">Days Overdue</th></tr></thead>
+                    <tbody className="divide-y divide-white/[0.03]">
                       {advanceTaxRisks.map((r, i) => (
-                        <tr key={i} className="hover:bg-gray-50 bg-red-50 transition-colors">
-                          <td className="px-4 py-3 font-medium text-gray-800">{r.clientName}</td>
-                          <td className="px-4 py-3 text-gray-600">{r.installment}</td>
-                          <td className="px-4 py-3 text-gray-600">{r.dueDate}</td>
+                        <tr key={i} className="hover:bg-[#0e1017] bg-red-50 transition-colors">
+                          <td className="px-4 py-3 font-medium text-white/75">{r.clientName}</td>
+                          <td className="px-4 py-3 text-white/55">{r.installment}</td>
+                          <td className="px-4 py-3 text-white/55">{r.dueDate}</td>
                           <td className="px-4 py-3 font-semibold text-red-700">{r.daysOverdue}</td>
                         </tr>
                       ))}
@@ -575,17 +575,17 @@ export default function RisksPage() {
             </CardHeader>
             <CardContent className="p-0">
               {dscExpiryRisks.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-gray-500">No DSCs expiring in the next 60 days.</p>
+                <p className="px-6 py-4 text-sm text-white/40">No DSCs expiring in the next 60 days.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead><tr className="border-b border-gray-100 bg-gray-50 text-left"><th className="px-4 py-3 font-medium text-gray-500">Client</th><th className="px-4 py-3 font-medium text-gray-500">DSC Holder</th><th className="px-4 py-3 font-medium text-gray-500">Expiry Date</th><th className="px-4 py-3 font-medium text-gray-500">Days Left</th></tr></thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <thead><tr className="border-b border-white/[0.05] bg-[#0e1017] text-left"><th className="px-4 py-3 font-medium text-white/40">Client</th><th className="px-4 py-3 font-medium text-white/40">DSC Holder</th><th className="px-4 py-3 font-medium text-white/40">Expiry Date</th><th className="px-4 py-3 font-medium text-white/40">Days Left</th></tr></thead>
+                    <tbody className="divide-y divide-white/[0.03]">
                       {dscExpiryRisks.map((r, i) => (
-                        <tr key={i} className={`hover:bg-gray-50 transition-colors ${r.daysLeft <= 15 ? "bg-red-50" : "bg-orange-50"}`}>
-                          <td className="px-4 py-3 font-medium text-gray-800">{r.clientName}</td>
-                          <td className="px-4 py-3 text-gray-600">{r.dscHolder}</td>
-                          <td className="px-4 py-3 text-gray-600">{r.expiryDate}</td>
+                        <tr key={i} className={`hover:bg-[#0e1017] transition-colors ${r.daysLeft <= 15 ? "bg-red-50" : "bg-orange-50"}`}>
+                          <td className="px-4 py-3 font-medium text-white/75">{r.clientName}</td>
+                          <td className="px-4 py-3 text-white/55">{r.dscHolder}</td>
+                          <td className="px-4 py-3 text-white/55">{r.expiryDate}</td>
                           <td className={`px-4 py-3 font-semibold ${r.daysLeft <= 15 ? "text-red-700" : "text-orange-700"}`}>{r.daysLeft}</td>
                         </tr>
                       ))}
@@ -607,17 +607,17 @@ export default function RisksPage() {
             </CardHeader>
             <CardContent className="p-0">
               {loanOverdueRisks.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-gray-500">No overdue loans detected.</p>
+                <p className="px-6 py-4 text-sm text-white/40">No overdue loans detected.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead><tr className="border-b border-gray-100 bg-gray-50 text-left"><th className="px-4 py-3 font-medium text-gray-500">Client</th><th className="px-4 py-3 font-medium text-gray-500">Lender</th><th className="px-4 py-3 font-medium text-gray-500">Loan Type</th><th className="px-4 py-3 font-medium text-gray-500">Outstanding</th></tr></thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <thead><tr className="border-b border-white/[0.05] bg-[#0e1017] text-left"><th className="px-4 py-3 font-medium text-white/40">Client</th><th className="px-4 py-3 font-medium text-white/40">Lender</th><th className="px-4 py-3 font-medium text-white/40">Loan Type</th><th className="px-4 py-3 font-medium text-white/40">Outstanding</th></tr></thead>
+                    <tbody className="divide-y divide-white/[0.03]">
                       {loanOverdueRisks.map((r, i) => (
-                        <tr key={i} className="hover:bg-gray-50 bg-red-50 transition-colors">
-                          <td className="px-4 py-3 font-medium text-gray-800">{r.clientName}</td>
-                          <td className="px-4 py-3 text-gray-600">{r.lenderName}</td>
-                          <td className="px-4 py-3 text-gray-600 capitalize">{r.loanType.replace(/_/g, " ")}</td>
+                        <tr key={i} className="hover:bg-[#0e1017] bg-red-50 transition-colors">
+                          <td className="px-4 py-3 font-medium text-white/75">{r.clientName}</td>
+                          <td className="px-4 py-3 text-white/55">{r.lenderName}</td>
+                          <td className="px-4 py-3 text-white/55 capitalize">{r.loanType.replace(/_/g, " ")}</td>
                           <td className="px-4 py-3 font-semibold text-red-700">₹{(r.outstandingPaise / 100).toLocaleString("en-IN")}</td>
                         </tr>
                       ))}
@@ -639,19 +639,19 @@ export default function RisksPage() {
             </CardHeader>
             <CardContent className="p-0">
               {fdMaturityRisks.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-gray-500">No FDs maturing in the next 30 days.</p>
+                <p className="px-6 py-4 text-sm text-white/40">No FDs maturing in the next 30 days.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead><tr className="border-b border-gray-100 bg-gray-50 text-left"><th className="px-4 py-3 font-medium text-gray-500">Client</th><th className="px-4 py-3 font-medium text-gray-500">Bank</th><th className="px-4 py-3 font-medium text-gray-500">Maturity Date</th><th className="px-4 py-3 font-medium text-gray-500">Days Left</th><th className="px-4 py-3 font-medium text-gray-500">Amount</th></tr></thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <thead><tr className="border-b border-white/[0.05] bg-[#0e1017] text-left"><th className="px-4 py-3 font-medium text-white/40">Client</th><th className="px-4 py-3 font-medium text-white/40">Bank</th><th className="px-4 py-3 font-medium text-white/40">Maturity Date</th><th className="px-4 py-3 font-medium text-white/40">Days Left</th><th className="px-4 py-3 font-medium text-white/40">Amount</th></tr></thead>
+                    <tbody className="divide-y divide-white/[0.03]">
                       {fdMaturityRisks.map((r, i) => (
-                        <tr key={i} className="hover:bg-gray-50 bg-blue-50 transition-colors">
-                          <td className="px-4 py-3 font-medium text-gray-800">{r.clientName}</td>
-                          <td className="px-4 py-3 text-gray-600">{r.bankName}</td>
-                          <td className="px-4 py-3 text-gray-600">{r.maturityDate}</td>
+                        <tr key={i} className="hover:bg-[#0e1017] bg-blue-50 transition-colors">
+                          <td className="px-4 py-3 font-medium text-white/75">{r.clientName}</td>
+                          <td className="px-4 py-3 text-white/55">{r.bankName}</td>
+                          <td className="px-4 py-3 text-white/55">{r.maturityDate}</td>
                           <td className="px-4 py-3 font-semibold text-blue-700">{r.daysLeft}</td>
-                          <td className="px-4 py-3 text-gray-700">₹{(r.maturityAmountPaise / 100).toLocaleString("en-IN")}</td>
+                          <td className="px-4 py-3 text-white/65">₹{(r.maturityAmountPaise / 100).toLocaleString("en-IN")}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -672,7 +672,7 @@ export default function RisksPage() {
             </CardHeader>
             <CardContent className="p-0">
               {missingPanRisks.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-gray-500">All clients have PAN on record.</p>
+                <p className="px-6 py-4 text-sm text-white/40">All clients have PAN on record.</p>
               ) : (
                 <div className="flex flex-wrap gap-2 px-4 py-3">
                   {missingPanRisks.map((c) => (
@@ -694,30 +694,30 @@ export default function RisksPage() {
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead><tr className="border-b border-gray-100 bg-gray-50 text-left"><th className="px-4 py-3 font-medium text-gray-500">Client</th><th className="px-4 py-3 font-medium text-gray-500">Risk Type</th><th className="px-4 py-3 font-medium text-gray-500">Description</th><th className="px-4 py-3 font-medium text-gray-500">Severity</th><th className="px-4 py-3 font-medium text-gray-500">Recommended Action</th></tr></thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <thead><tr className="border-b border-white/[0.05] bg-[#0e1017] text-left"><th className="px-4 py-3 font-medium text-white/40">Client</th><th className="px-4 py-3 font-medium text-white/40">Risk Type</th><th className="px-4 py-3 font-medium text-white/40">Description</th><th className="px-4 py-3 font-medium text-white/40">Severity</th><th className="px-4 py-3 font-medium text-white/40">Recommended Action</th></tr></thead>
+                    <tbody className="divide-y divide-white/[0.03]">
                       {riskRegister.map((r, i) => (
-                        <tr key={i} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-3 font-medium text-gray-800">{r.clientName}</td>
-                          <td className="px-4 py-3 text-gray-600">{r.riskType}</td>
-                          <td className="px-4 py-3 text-gray-600 max-w-xs">{r.description}</td>
+                        <tr key={i} className="hover:bg-[#0e1017] transition-colors">
+                          <td className="px-4 py-3 font-medium text-white/75">{r.clientName}</td>
+                          <td className="px-4 py-3 text-white/55">{r.riskType}</td>
+                          <td className="px-4 py-3 text-white/55 max-w-xs">{r.description}</td>
                           <td className="px-4 py-3"><span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${riskColor(r.severity)}`}>{r.severity}</span></td>
-                          <td className="px-4 py-3 text-gray-600 max-w-xs text-xs">{r.action}</td>
+                          <td className="px-4 py-3 text-white/55 max-w-xs text-xs">{r.action}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-                <div className="border-t border-gray-100 px-4 py-2 text-xs text-gray-400">{riskRegister.length} risk{riskRegister.length !== 1 ? "s" : ""} in register</div>
+                <div className="border-t border-white/[0.05] px-4 py-2 text-xs text-white/30">{riskRegister.length} risk{riskRegister.length !== 1 ? "s" : ""} in register</div>
               </CardContent>
             </Card>
           )}
 
           {totalRisks === 0 && (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-20 text-center">
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-white/[0.07] bg-[#0e1017] py-20 text-center">
               <CheckCircle className="h-12 w-12 text-green-400 mb-3" />
-              <p className="text-sm font-medium text-gray-700">No risks detected</p>
-              <p className="text-xs text-gray-400 mt-1">All clients have valid GSTINs, no overdue filings, and recent activity.</p>
+              <p className="text-sm font-medium text-white/65">No risks detected</p>
+              <p className="text-xs text-white/30 mt-1">All clients have valid GSTINs, no overdue filings, and recent activity.</p>
             </div>
           )}
         </>
