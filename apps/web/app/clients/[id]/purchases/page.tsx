@@ -23,9 +23,34 @@ async function apiCall(
     },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok && res.status !== 200) {
-    const text = await res.text().catch(() => "Request failed");
-    return { success: false, data: null, error: text };
+  if (!res.ok) {
+    // Try to parse a structured error from the response body.
+    // FastAPI returns { detail: ... } for 422/4xx; our API returns { error: ... }.
+    const text = await res.text().catch(() => "");
+    let errorMsg = `Request failed (HTTP ${res.status})`;
+    if (text) {
+      try {
+        const json = JSON.parse(text);
+        if (typeof json.error === "string" && json.error) {
+          errorMsg = json.error;
+        } else if (json.detail) {
+          if (typeof json.detail === "string") {
+            errorMsg = json.detail;
+          } else if (Array.isArray(json.detail)) {
+            // FastAPI validation errors: [{ loc, msg, type }, ...]
+            errorMsg = json.detail
+              .map((e: { loc?: string[]; msg?: string }) =>
+                [e.loc?.slice(1).join("."), e.msg].filter(Boolean).join(": ")
+              )
+              .join("; ");
+          }
+        }
+      } catch {
+        // Not JSON — use the raw text if it's short enough to be meaningful
+        if (text.length < 300) errorMsg = text;
+      }
+    }
+    return { success: false, data: null, error: errorMsg };
   }
   return res.json();
 }
