@@ -155,10 +155,21 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
 
 # ── Core helpers ─────────────────────────────────────────────────────────────
 
+def _to_role(role: str) -> Role:
+    """Normalize role string to Role enum, accepting any case (e.g. 'partner' → Role.PARTNER)."""
+    # Try as-is first, then title-cased (handles 'Partner', 'partner', 'PARTNER')
+    for candidate in (role, role.title(), role.capitalize()):
+        try:
+            return Role(candidate)
+        except ValueError:
+            continue
+    raise ValueError(f"Unknown role: {role!r}")
+
+
 def can(role: str, resource: str, action: str) -> bool:
     """Return True if role is allowed to perform action on resource."""
     try:
-        r = Role(role)
+        r = _to_role(role)
     except ValueError:
         return False
     resource_perms = PERMISSIONS.get(resource, {})
@@ -175,7 +186,7 @@ def require_permission(role: str, resource: str, action: str) -> None:
 def is_at_least(role: str, minimum: str) -> bool:
     """Return True if role is at or above minimum in the hierarchy."""
     try:
-        return ROLE_HIERARCHY.index(Role(role)) >= ROLE_HIERARCHY.index(Role(minimum))
+        return ROLE_HIERARCHY.index(_to_role(role)) >= ROLE_HIERARCHY.index(_to_role(minimum))
     except ValueError:
         return False
 
