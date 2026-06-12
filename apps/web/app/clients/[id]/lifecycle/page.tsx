@@ -25,17 +25,16 @@ async function apiFetch(path: string, opts?: RequestInit) {
 
 interface OnboardingTask {
   id: string;
-  title: string;
-  status: "Pending" | "In Progress" | "Done" | "Skipped";
+  task_name: string;
+  status: "pending" | "in_progress" | "done" | "skipped";
   sort_order: number;
-  notes?: string;
+  description?: string;
 }
 
 interface OnboardingWorkflow {
   id: string;
   client_id: string;
-  status: "In Progress" | "Completed";
-  notes?: string;
+  status: "in_progress" | "completed" | "pending" | "cancelled";
   created_at: string;
   completed_at?: string;
   tasks?: OnboardingTask[];
@@ -44,9 +43,9 @@ interface OnboardingWorkflow {
 interface Renewal {
   id: string;
   financial_year: string;
-  service_type: string;
+  service_type?: string;
   renewal_date?: string;
-  value_paise: number;
+  fee_paise: number;
   status: string;
   assigned_to?: string;
 }
@@ -57,18 +56,19 @@ interface ApiResponse<T> {
   error: string | null;
 }
 
-const TASK_STATUS_COLORS: Record<OnboardingTask["status"], string> = {
-  Pending:      "bg-slate-700 text-slate-300",
-  "In Progress":"bg-blue-800 text-blue-300",
-  Done:         "bg-green-800 text-green-300",
-  Skipped:      "bg-gray-700 text-gray-400",
+const TASK_STATUS_COLORS: Record<string, string> = {
+  pending:     "bg-slate-700 text-slate-300",
+  in_progress: "bg-blue-800 text-blue-300",
+  done:        "bg-green-800 text-green-300",
+  skipped:     "bg-gray-700 text-gray-400",
 };
 
 const RENEWAL_STATUS_COLORS: Record<string, string> = {
-  Pending:   "bg-amber-800 text-amber-300",
-  Completed: "bg-green-800 text-green-300",
-  Overdue:   "bg-red-800 text-red-300",
-  Cancelled: "bg-gray-700 text-gray-400",
+  pending:  "bg-amber-800 text-amber-300",
+  accepted: "bg-green-800 text-green-300",
+  expired:  "bg-red-800 text-red-300",
+  rejected: "bg-gray-700 text-gray-400",
+  sent:     "bg-blue-800 text-blue-300",
 };
 
 function formatDate(d?: string | null) {
@@ -139,7 +139,7 @@ export default function ClientLifecyclePage() {
     }
   }
 
-  async function handleUpdateTask(workflowId: string, taskId: string, status: OnboardingTask["status"]) {
+  async function handleUpdateTask(workflowId: string, taskId: string, status: string) {
     try {
       const json: ApiResponse<OnboardingTask> = await apiFetch(
         `/api/lifecycle/onboarding/${workflowId}/tasks/${taskId}`,
@@ -231,18 +231,18 @@ export default function ClientLifecyclePage() {
         ) : (
           workflows.map((wf) => {
             const tasks = wf.tasks ?? [];
-            const done = tasks.filter((t) => t.status === "Done" || t.status === "Skipped").length;
+            const done = tasks.filter((t) => t.status === "done" || t.status === "skipped").length;
             const pct = tasks.length > 0 ? Math.round((done / tasks.length) * 100) : 0;
             return (
               <Card key={wf.id} className="bg-gray-800 border-gray-700 mb-3">
                 <CardContent className="p-5">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
-                      {wf.status === "Completed"
+                      {wf.status === "completed"
                         ? <CheckCircle size={16} className="text-green-400" />
                         : <Clock size={16} className="text-amber-400" />}
                       <span className="text-sm font-medium text-white">
-                        {wf.status === "Completed" ? "Onboarding Completed" : "Onboarding In Progress"}
+                        {wf.status === "completed" ? "Onboarding Completed" : "Onboarding In Progress"}
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
@@ -258,18 +258,18 @@ export default function ClientLifecyclePage() {
                         .sort((a, b) => a.sort_order - b.sort_order)
                         .map((task) => (
                           <div key={task.id} className="flex items-center justify-between px-3 py-2 rounded-md bg-gray-700/50">
-                            <span className={`text-xs ${task.status === "Done" || task.status === "Skipped" ? "text-slate-500 line-through" : "text-slate-300"}`}>
-                              {task.title}
+                            <span className={`text-xs ${task.status === "done" || task.status === "skipped" ? "text-slate-500 line-through" : "text-slate-300"}`}>
+                              {task.task_name}
                             </span>
-                            {task.status !== "Done" && task.status !== "Skipped" ? (
+                            {task.status !== "done" && task.status !== "skipped" ? (
                               <button
-                                onClick={() => handleUpdateTask(wf.id, task.id, "Done")}
+                                onClick={() => handleUpdateTask(wf.id, task.id, "done")}
                                 className="text-[10px] text-emerald-400 hover:text-emerald-300 ml-2 shrink-0"
                               >
                                 Mark Done
                               </button>
                             ) : (
-                              <Badge className={`text-[10px] ${TASK_STATUS_COLORS[task.status]}`}>
+                              <Badge className={`text-[10px] ${TASK_STATUS_COLORS[task.status] ?? "bg-slate-700 text-slate-300"}`}>
                                 {task.status}
                               </Badge>
                             )}
@@ -319,10 +319,10 @@ export default function ClientLifecyclePage() {
                 <tbody className="divide-y divide-gray-700/50">
                   {renewals.map((r) => (
                     <tr key={r.id} className="hover:bg-gray-700/30">
-                      <td className="px-5 py-3 text-white text-xs font-medium">{r.service_type}</td>
+                      <td className="px-5 py-3 text-white text-xs font-medium">{r.service_type ?? "—"}</td>
                       <td className="px-3 py-3 text-slate-400 text-xs">{r.financial_year}</td>
                       <td className="px-3 py-3 text-slate-400 text-xs">{formatDate(r.renewal_date)}</td>
-                      <td className="px-3 py-3 text-slate-300 text-xs">{paiseToCurrency(r.value_paise)}</td>
+                      <td className="px-3 py-3 text-slate-300 text-xs">{paiseToCurrency(r.fee_paise ?? 0)}</td>
                       <td className="px-3 py-3">
                         <Badge className={`text-[10px] ${RENEWAL_STATUS_COLORS[r.status] ?? "bg-slate-700 text-slate-300"}`}>
                           {r.status}
