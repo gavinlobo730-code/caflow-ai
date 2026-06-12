@@ -149,7 +149,7 @@ export default function ClientLifecyclePage() {
       setWorkflows((prev) =>
         prev.map((wf) =>
           wf.id === workflowId
-            ? { ...wf, tasks: (wf.tasks ?? []).map((t) => (t.id === taskId ? { ...t, status } : t)) }
+            ? { ...wf, tasks: (wf.tasks ?? []).map((t) => (t.id === taskId ? { ...t, status: status as OnboardingTask["status"] } : t)) }
             : wf
         )
       );
