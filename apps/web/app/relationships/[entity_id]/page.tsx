@@ -1,5 +1,9 @@
 "use client";
 
+export function generateStaticParams() {
+  return [{ entity_id: "_placeholder" }];
+}
+
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
