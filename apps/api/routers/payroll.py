@@ -161,7 +161,7 @@ def list_employees(
     db = _db()
     if not db:
         return api_response(True, [])
-    res = db.table("payroll_employees").select("*").eq("client_id", client_id).eq("status", "active").order("name").execute()
+    res = db.table("payroll_employees").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("status", "active").order("name").execute()
     return api_response(True, res.data or [])
 
 
@@ -193,7 +193,7 @@ def update_employee(
     update = data.model_dump(exclude_none=True)
     if not db:
         return api_response(True, update)
-    row = db.table("payroll_employees").update(update).eq("id", employee_id).execute()
+    row = db.table("payroll_employees").update(update).eq("id", employee_id).eq("firm_id", current_user["firm_id"]).execute()
     return api_response(True, (row.data or [{}])[0])
 
 
@@ -207,7 +207,7 @@ def list_salary_structures(
     db = _db()
     if not db:
         return api_response(True, [])
-    res = db.table("salary_structures").select("*").eq("client_id", client_id).order("name").execute()
+    res = db.table("salary_structures").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).order("name").execute()
     return api_response(True, res.data or [])
 
 
@@ -235,7 +235,7 @@ def list_runs(
     db = _db()
     if not db:
         return api_response(True, [])
-    res = db.table("payroll_runs").select("*").eq("client_id", client_id).order("month", desc=True).execute()
+    res = db.table("payroll_runs").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).order("month", desc=True).execute()
     return api_response(True, res.data or [])
 
 
@@ -256,7 +256,7 @@ def create_run(
         return api_response(True, {"id": "mock-run", "month": month, "status": "draft"})
 
     # Check for duplicate run
-    existing = db.table("payroll_runs").select("id").eq("client_id", client_id).eq("month", month).execute()
+    existing = db.table("payroll_runs").select("id").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("month", month).execute()
     if existing.data:
         raise HTTPException(status_code=409, detail=f"Payroll run for {month} already exists")
 
@@ -271,7 +271,7 @@ def create_run(
     run_id = run["id"]
 
     # Fetch active employees
-    emps = db.table("payroll_employees").select("*").eq("client_id", client_id).eq("status", "active").execute().data or []
+    emps = db.table("payroll_employees").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("status", "active").execute().data or []
 
     m, y = int(month.split("-")[1]), int(month.split("-")[0])
 
@@ -328,7 +328,7 @@ def get_run_slips(
     db = _db()
     if not db:
         return api_response(True, [])
-    slips = db.table("payroll_slips").select("*, payroll_employees(name, pan, designation, department)").eq("run_id", run_id).execute()
+    slips = db.table("payroll_slips").select("*, payroll_employees(name, pan, designation, department)").eq("run_id", run_id).eq("firm_id", current_user["firm_id"]).execute()
     return api_response(True, slips.data or [])
 
 
@@ -414,7 +414,7 @@ def salary_register(
     db = _db()
     if not db:
         return api_response(True, {"month": month, "slips": []})
-    run = db.table("payroll_runs").select("id, status, total_gross_paise, total_net_paise, headcount").eq("client_id", client_id).eq("month", month).execute()
+    run = db.table("payroll_runs").select("id, status, total_gross_paise, total_net_paise, headcount").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("month", month).execute()
     if not run.data:
         return api_response(True, {"month": month, "run": None, "slips": []})
     run_id = run.data[0]["id"]
@@ -431,7 +431,7 @@ def statutory_summary(
     db = _db()
     if not db:
         return api_response(True, {})
-    run = db.table("payroll_runs").select("*").eq("client_id", client_id).eq("month", month).execute()
+    run = db.table("payroll_runs").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("month", month).execute()
     if not run.data:
         return api_response(True, None)
     r = run.data[0]

@@ -79,7 +79,7 @@ def list_assets(
     db = _db()
     if not db:
         return api_response(True, [])
-    q = db.table("fixed_assets").select("*").eq("client_id", client_id)
+    q = db.table("fixed_assets").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
     if not include_disposed:
         q = q.eq("is_disposed", False)
     res = q.order("purchase_date", desc=True).execute()
@@ -102,7 +102,7 @@ def create_asset(
 
     # Generate asset code
     client_id = data.client_id
-    count_res = db.table("fixed_assets").select("id", count="exact").eq("client_id", client_id).execute()
+    count_res = db.table("fixed_assets").select("id", count="exact").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).execute()
     count = (count_res.count or 0) + 1
     asset_code = f"FA-{count:04d}"
 
@@ -155,7 +155,7 @@ def post_depreciation(
     if not db:
         return api_response(True, {"asset_id": asset_id, "period": period, "depreciation_paise": 0})
 
-    asset = db.table("fixed_assets").select("*").eq("id", asset_id).single().execute().data
+    asset = db.table("fixed_assets").select("*").eq("id", asset_id).eq("firm_id", current_user["firm_id"]).single().execute().data
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     if asset["is_disposed"]:
@@ -213,7 +213,7 @@ def dispose_asset(
     if not db:
         return api_response(True, {"asset_id": asset_id, "disposed": True})
 
-    asset = db.table("fixed_assets").select("*").eq("id", asset_id).single().execute().data
+    asset = db.table("fixed_assets").select("*").eq("id", asset_id).eq("firm_id", current_user["firm_id"]).single().execute().data
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     if asset["is_disposed"]:
