@@ -89,7 +89,7 @@ def list_receipts(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        q = db.table("receipts").select("*").eq("client_id", client_id)
+        q = db.table("receipts").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
         if customer_id:
             q = q.eq("customer_id", customer_id)
         if from_date:
@@ -207,6 +207,8 @@ def create_receipt(
             if inv_resp.data:
                 inv = inv_resp.data[0]
                 new_paid = int(inv.get("paid_paise", 0)) + alloc_amt
+                if new_paid > int(inv.get("total_paise", 0)):
+                    raise HTTPException(status_code=422, detail=f"Invoice {inv_id}: allocation would exceed invoice total")
                 new_status = "paid" if new_paid >= int(inv.get("total_paise", 0)) else "partially_paid"
                 db.table("client_sales_invoices").update({
                     "paid_paise": new_paid,
@@ -273,7 +275,7 @@ def get_receipt(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("receipts").select("*").eq("id", receipt_id).limit(1).execute()
+        resp = db.table("receipts").select("*").eq("id", receipt_id).eq("firm_id", current_user["firm_id"]).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Receipt {receipt_id} not found")
         receipt = resp.data[0]
