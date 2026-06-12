@@ -255,6 +255,8 @@ class AccountingService:
         enriched_lines = []
         for i, ln in enumerate(lines):
             acc = ACCOUNT_INDEX.get(ln["account_id"], {})
+            if acc and not acc.get("is_active", True):
+                raise ValidationError("lines", f"Account '{acc.get('account_name')}' is archived. Cannot post transactions.")
             enriched_lines.append({
                 "id": f"{entry_id}-l{i+1}",
                 "account_id": ln["account_id"],

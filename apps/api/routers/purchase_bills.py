@@ -111,7 +111,7 @@ def list_purchase_bills(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        q = db.table("purchase_bills").select("*").eq("client_id", client_id)
+        q = db.table("purchase_bills").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
         if vendor_id:
             q = q.eq("vendor_id", vendor_id)
         if status:
@@ -225,6 +225,8 @@ def create_purchase_bill(
             if tds_rate_bps > 0:
                 # TDS is on taxable amount (excluding GST) — IT Act §194C/194I/194J
                 tds_paise = (total_taxable * tds_rate_bps) // 10000
+                if tds_paise > total_taxable:
+                    raise HTTPException(status_code=422, detail="TDS cannot exceed taxable amount")
 
         net_payable_paise = total_paise - tds_paise
 
