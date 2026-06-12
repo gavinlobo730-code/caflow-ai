@@ -7,6 +7,7 @@ import { DeadlinesPanel } from "@/components/panels/DeadlinesPanel";
 import { WorkPanel } from "@/components/panels/WorkPanel";
 import { TeamPanel } from "@/components/panels/TeamPanel";
 import { AIPanel } from "@/components/panels/AIPanel";
+import { AccountingPanel } from "@/components/panels/AccountingPanel";
 
 interface ContextPanelProps {
   onOpenSearch: () => void;
@@ -25,6 +26,7 @@ export function ContextPanel({ onOpenSearch }: ContextPanelProps) {
       {activeWorkspace === "work" && <WorkPanel />}
       {activeWorkspace === "team" && <TeamPanel />}
       {activeWorkspace === "ai" && <AIPanel />}
+      {activeWorkspace === "accounting" && <AccountingPanel />}
     </div>
   );
 }

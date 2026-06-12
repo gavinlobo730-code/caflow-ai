@@ -5,10 +5,11 @@ import {
   CheckSquare,
   UserCheck,
   Sparkles,
+  BookOpen,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type WorkspaceId = "home" | "clients" | "deadlines" | "work" | "team" | "ai";
+export type WorkspaceId = "home" | "clients" | "deadlines" | "work" | "team" | "ai" | "accounting";
 
 export interface WorkspaceConfig {
   id: WorkspaceId;
@@ -61,6 +62,13 @@ export const WORKSPACE_CONFIGS: WorkspaceConfig[] = [
     defaultRoute: "/ai-assistant",
     icon: Sparkles,
   },
+  {
+    id: "accounting",
+    label: "Accounting",
+    description: "Chart of Accounts & firm accounting",
+    defaultRoute: "/accounting/chart-of-accounts",
+    icon: BookOpen,
+  },
 ];
 
 export const DEFAULT_WORKSPACE_ROUTES: Record<WorkspaceId, string> = {
@@ -70,6 +78,7 @@ export const DEFAULT_WORKSPACE_ROUTES: Record<WorkspaceId, string> = {
   work: "/work",
   team: "/team",
   ai: "/ai-assistant",
+  accounting: "/accounting/chart-of-accounts",
 };
 
 /**
@@ -105,10 +114,11 @@ export function getWorkspaceForPathname(pathname: string): WorkspaceId {
   if (
     pathname.startsWith("/accounting") ||
     pathname.startsWith("/billing") ||
-    pathname.startsWith("/payroll") ||
-    pathname.startsWith("/work") ||
-    pathname.startsWith("/tasks")
+    pathname.startsWith("/payroll")
   )
+    return "accounting";
+
+  if (pathname.startsWith("/work") || pathname.startsWith("/tasks"))
     return "work";
 
   if (pathname.startsWith("/team") || pathname.startsWith("/tasks"))
