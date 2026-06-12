@@ -114,6 +114,15 @@ class LeadUpdateIn(BaseModel):
 
 class LeadConvertIn(BaseModel):
     client_id: Optional[str] = None
+    # If client_id is None, these fields are used to create a new client
+    name: Optional[str] = None
+    company_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    pan: Optional[str] = None
+    gstin: Optional[str] = None
+    entity_type: Optional[str] = None
+    create_onboarding: bool = True
 
 
 class ProposalIn(BaseModel):
@@ -335,35 +344,100 @@ def convert_lead(
     if not existing:
         raise HTTPException(status_code=404, detail="Lead not found")
 
+    if existing.get("is_converted"):
+        raise HTTPException(status_code=409, detail="Lead already converted")
+
+    firm_id = current_user["firm_id"]
+    client_id = data.client_id
+
+    # Create new client if no client_id provided
+    if not client_id:
+        new_client = {
+            "id":          str(uuid.uuid4()),
+            "firm_id":     firm_id,
+            "name":        data.name or existing.get("contact_name") or existing.get("company_name", ""),
+            "company":     data.company_name or existing.get("company_name", ""),
+            "email":       data.email or existing.get("email"),
+            "phone":       data.phone or existing.get("phone"),
+            "pan":         (data.pan or "").upper() or None,
+            "gstin":       (data.gstin or "").upper() or None,
+            "entity_type": data.entity_type or "Company",
+            "status":      "Active",
+            "created_at":  now,
+            "updated_at":  now,
+        }
+        try:
+            client_res = db.table("clients").insert(new_client).execute()
+            client_id = (client_res.data or [new_client])[0]["id"]
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"Failed to create client: {e}")
+
+    # Create engagement
+    try:
+        db.table("engagements").insert({
+            "id":         str(uuid.uuid4()),
+            "firm_id":    firm_id,
+            "client_id":  client_id,
+            "title":      f"Engagement — {existing.get('company_name', '')}",
+            "status":     "Active",
+            "start_date": now[:10],
+            "created_at": now,
+            "updated_at": now,
+        }).execute()
+    except Exception:
+        pass
+
+    # Create onboarding workflow
+    if data.create_onboarding:
+        workflow_id = str(uuid.uuid4())
+        try:
+            db.table("onboarding_workflows").insert({
+                "id":         workflow_id,
+                "firm_id":    firm_id,
+                "client_id":  client_id,
+                "status":     "In Progress",
+                "created_at": now,
+                "updated_at": now,
+            }).execute()
+            tasks = [
+                {"id": str(uuid.uuid4()), "workflow_id": workflow_id, "firm_id": firm_id,
+                 "client_id": client_id, "title": t, "status": "Pending",
+                 "sort_order": i + 1, "created_at": now, "updated_at": now}
+                for i, t in enumerate(_DEFAULT_ONBOARDING_TASKS)
+            ]
+            db.table("onboarding_tasks").insert(tasks).execute()
+        except Exception:
+            pass
+
     res = db.table("leads").update({
         "is_converted":         True,
         "stage":                "Active",
         "converted_at":         now,
-        "converted_client_id":  data.client_id,
+        "converted_client_id":  client_id,
         "updated_at":           now,
-    }).eq("id", lead_id).eq("firm_id", current_user["firm_id"]).execute()
+    }).eq("id", lead_id).eq("firm_id", firm_id).execute()
 
     timeline_service.log(
-        lead_id, "lifecycle", "Lead Converted",
+        client_id, "lifecycle", "Lead Converted",
         f"Lead {existing.get('lead_no', '')} converted to active client", "success",
-        firm_id=current_user["firm_id"],
+        firm_id=firm_id,
         entity_type="lead", entity_id=lead_id,
         actor_id=current_user.get("auth_user_id"),
     )
     try:
         db.table("client_lifecycle_events").insert({
             "id":          str(uuid.uuid4()),
-            "firm_id":     current_user["firm_id"],
-            "entity_id":   lead_id,
-            "entity_type": "lead",
-            "event_type":  "lead_converted",
-            "description": f"Converted to client {data.client_id or '(new)'}",
+            "firm_id":     firm_id,
+            "entity_id":   client_id,
+            "entity_type": "client",
+            "event_type":  "client_created_from_lead",
+            "description": f"Client created from lead {existing.get('lead_no', lead_id)}",
             "created_at":  now,
         }).execute()
     except Exception:
         pass
 
-    return api_response(True, (res.data or [{}])[0])
+    return api_response(True, {**(res.data or [{}])[0], "converted_client_id": client_id})
 
 
 # ─── Proposals ────────────────────────────────────────────────────────────────

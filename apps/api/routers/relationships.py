@@ -368,16 +368,31 @@ def list_relationships(
 
 @router.get("/cross-client-matches")
 def list_cross_client_matches(
+    entity_id: Optional[str] = Query(None),
+    reviewed: Optional[bool] = Query(None),
     current_user: dict = Depends(rbac("clients", "read")),
 ):
     db = _db()
     firm_id = current_user["firm_id"]
 
     if not db:
-        unreviewed = [m for m in _MOCK_CROSS_MATCHES if not m.get("is_reviewed")]
-        return api_response(True, unreviewed)
+        result = list(_MOCK_CROSS_MATCHES)
+        if entity_id:
+            result = [m for m in result if m.get("entity_id") == entity_id]
+        if reviewed is None:
+            result = [m for m in result if not m.get("is_reviewed")]
+        elif reviewed:
+            result = [m for m in result if m.get("is_reviewed")]
+        return api_response(True, result)
 
-    res = db.table("cross_client_matches").select("*").eq("firm_id", firm_id).eq("is_reviewed", False).order("created_at", desc=True).execute()
+    q = db.table("cross_client_matches").select("*").eq("firm_id", firm_id)
+    if entity_id:
+        q = q.eq("entity_id", entity_id)
+    elif reviewed is None:
+        q = q.eq("is_reviewed", False)
+    elif reviewed:
+        q = q.eq("is_reviewed", True)
+    res = q.order("created_at", desc=True).execute()
     return api_response(True, res.data or [])
 
 

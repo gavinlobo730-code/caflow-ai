@@ -1,12 +1,47 @@
 "use client";
 
-
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Plus, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { getSupabaseClient } from "@/lib/supabase/client";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+async function apiFetch(path: string, opts?: RequestInit) {
+  const { data: { session } } = await getSupabaseClient().auth.getSession();
+  const token = session?.access_token ?? "";
+  const res = await fetch(`${API}${path}`, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(opts?.headers ?? {}),
+    },
+  });
+  return res.json();
+}
+
+function normalizeScore(raw: Record<string, unknown>): ClientHealthDetail {
+  return {
+    client_id: String(raw.client_id ?? ""),
+    client_name: String(raw.client_name ?? "—"),
+    overall_score: Number(raw.overall_score ?? 0),
+    grade: (raw.health_grade ?? "F") as Grade,
+    dimensions: {
+      compliance:        Number(raw.compliance_score ?? 0),
+      accounting:        Number(raw.accounting_score ?? 0),
+      documents:         Number(raw.documents_score ?? 0),
+      responsiveness:    Number(raw.responsiveness_score ?? 0),
+      relationship_risk: Number(raw.relationship_risk_score ?? 0),
+      financial_risk:    Number(raw.financial_risk_score ?? 0),
+      engagement_health: Number(raw.engagement_health_score ?? 0),
+    },
+    last_calculated: String(raw.calculated_at ?? ""),
+  };
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -162,25 +197,19 @@ export default function ClientHealthDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const [healthRes, historyRes, alertsRes, overridesRes] = await Promise.all([
-        fetch(`/api/health/scores/${clientId}`),
-        fetch(`/api/health/scores/${clientId}/history`),
-        fetch(`/api/health/alerts?client_id=${clientId}`),
-        fetch(`/api/health/overrides?client_id=${clientId}`),
-      ]);
       const [healthJson, historyJson, alertsJson, overridesJson]: [
-        ApiResponse<ClientHealthDetail>,
+        ApiResponse<Record<string, unknown>>,
         ApiResponse<HealthHistoryRecord[]>,
         ApiResponse<HealthAlert[]>,
         ApiResponse<HealthOverride[]>
       ] = await Promise.all([
-        healthRes.json(),
-        historyRes.json(),
-        alertsRes.json(),
-        overridesRes.json(),
+        apiFetch(`/api/health/scores/${clientId}`),
+        apiFetch(`/api/health/scores/${clientId}/history`),
+        apiFetch(`/api/health/alerts?client_id=${clientId}`),
+        apiFetch(`/api/health/overrides?client_id=${clientId}`),
       ]);
       if (!healthJson.success) throw new Error(healthJson.error ?? "Failed to load health data");
-      setHealth(healthJson.data);
+      setHealth(normalizeScore(healthJson.data));
       setHistory(historyJson.success ? historyJson.data : []);
       setAlerts(alertsJson.success ? alertsJson.data.filter((a) => !a.resolved_at) : []);
       setOverrides(overridesJson.success ? overridesJson.data : []);
@@ -200,18 +229,18 @@ export default function ClientHealthDetailPage() {
     setSavingOverride(true);
     setOverrideSaveError(null);
     try {
-      const res = await fetch("/api/health/overrides", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          client_id: clientId,
-          dimension: overrideForm.dimension,
-          override_score: parseInt(overrideForm.override_score, 10),
-          reason: overrideForm.reason.trim(),
-          expires_at: overrideForm.expires_at || null,
-        }),
-      });
-      const json: ApiResponse<HealthOverride> = await res.json();
+      const json: ApiResponse<HealthOverride> = await apiFetch(
+        `/api/health/scores/${clientId}/override`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            dimension: overrideForm.dimension,
+            override_score: parseInt(overrideForm.override_score, 10),
+            reason: overrideForm.reason.trim(),
+            expires_at: overrideForm.expires_at || null,
+          }),
+        }
+      );
       if (!json.success) throw new Error(json.error ?? "Failed to save override");
       setOverrides((prev) => [json.data, ...prev]);
       setOverrideModalOpen(false);

@@ -15,6 +15,23 @@ import {
   UserCheck,
 } from "lucide-react";
 import Link from "next/link";
+import { getSupabaseClient } from "@/lib/supabase/client";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+async function apiFetch(path: string, opts?: RequestInit) {
+  const { data: { session } } = await getSupabaseClient().auth.getSession();
+  const token = session?.access_token ?? "";
+  const res = await fetch(`${API}${path}`, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(opts?.headers ?? {}),
+    },
+  });
+  return res.json();
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -547,24 +564,51 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
 }
 
 // ---------------------------------------------------------------------------
-// Convert to Client confirmation modal
+// Convert to Client modal — creates client + engagement + onboarding via API
 // ---------------------------------------------------------------------------
 
 interface ConvertModalProps {
   lead: Lead | null;
   onClose: () => void;
+  onConverted: (leadId: string) => void;
 }
 
-function ConvertModal({ lead, onClose }: ConvertModalProps) {
+function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
+  const [pan, setPan] = useState("");
+  const [gstin, setGstin] = useState("");
+  const [converting, setConverting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
   if (!lead) return null;
 
-  const params = new URLSearchParams({
-    name: lead.name,
-    phone: lead.phone,
-    email: lead.email,
-    businessName: lead.businessName,
-    entityType: lead.entityType,
-  });
+  async function handleConvert() {
+    setConverting(true);
+    setErr(null);
+    try {
+      const json = await apiFetch(`/api/lifecycle/leads/${lead!.id}/convert`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: lead!.name,
+          company_name: lead!.businessName,
+          email: lead!.email || null,
+          phone: lead!.phone || null,
+          entity_type: lead!.entityType,
+          pan: pan.trim().toUpperCase() || null,
+          gstin: gstin.trim().toUpperCase() || null,
+          create_onboarding: true,
+        }),
+      });
+      if (!json.success) throw new Error(json.error ?? "Conversion failed");
+      const clientId = json.data?.converted_client_id ?? "";
+      setDone(clientId);
+      onConverted(lead!.id);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Conversion failed");
+    } finally {
+      setConverting(false);
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -574,36 +618,74 @@ function ConvertModal({ lead, onClose }: ConvertModalProps) {
             <UserCheck size={18} className="text-green-700" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-[#0F172A]">
-              Convert to Client
-            </h2>
-            <p className="text-xs text-[#64748B]">
-              {lead.name} · {lead.businessName}
-            </p>
+            <h2 className="text-base font-semibold text-[#0F172A]">Convert to Client</h2>
+            <p className="text-xs text-[#64748B]">{lead.name} · {lead.businessName}</p>
           </div>
         </div>
 
-        <p className="text-sm text-[#475569]">
-          This will pre-fill the Add Client form with{" "}
-          <strong>{lead.name}&apos;s</strong> details. You can complete the remaining
-          fields (PAN, GSTIN, etc.) on the Clients page.
-        </p>
-
-        <div className="flex gap-3 pt-2">
-          <button
-            onClick={onClose}
-            className="flex-1 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] transition-colors"
-          >
-            Cancel
-          </button>
-          <Link
-            href={`/clients?${params.toString()}&addNew=1`}
-            className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 transition-colors text-center"
-            onClick={onClose}
-          >
-            Go to Clients
-          </Link>
-        </div>
+        {done ? (
+          <div className="space-y-4">
+            <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">
+              ✓ Client created successfully. Onboarding workflow started.
+            </div>
+            <div className="flex gap-3">
+              <button onClick={onClose} className="flex-1 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC]">Close</button>
+              <Link
+                href={`/clients/${done}/lifecycle/`}
+                onClick={onClose}
+                className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 text-center"
+              >
+                View Onboarding
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-[#475569]">
+              Creates a new client, engagement, and onboarding workflow for <strong>{lead.name}</strong>.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-[#64748B] font-medium">PAN (optional)</label>
+                <input
+                  value={pan}
+                  onChange={(e) => setPan(e.target.value.toUpperCase())}
+                  maxLength={10}
+                  className="w-full mt-1 px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg text-[#0F172A] font-mono focus:outline-none focus:ring-2 focus:ring-green-500 uppercase"
+                  placeholder="AAAAA9999A"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[#64748B] font-medium">GSTIN (optional)</label>
+                <input
+                  value={gstin}
+                  onChange={(e) => setGstin(e.target.value.toUpperCase())}
+                  maxLength={15}
+                  className="w-full mt-1 px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg text-[#0F172A] font-mono focus:outline-none focus:ring-2 focus:ring-green-500 uppercase"
+                  placeholder="22AAAAA0000A1Z5"
+                />
+              </div>
+            </div>
+            {err && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-600">{err}</div>
+            )}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={onClose}
+                className="flex-1 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConvert}
+                disabled={converting}
+                className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+              >
+                {converting ? "Converting…" : "Convert to Client"}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -805,6 +887,14 @@ export default function PipelinePage() {
       <ConvertModal
         lead={convertLead}
         onClose={() => setConvertLead(null)}
+        onConverted={(leadId) => {
+          setLeads((prev) =>
+            prev.map((l) =>
+              l.id === leadId ? { ...l, stage: "Onboarded" as Stage } : l
+            )
+          );
+          setConvertLead(null);
+        }}
       />
     </div>
   );
