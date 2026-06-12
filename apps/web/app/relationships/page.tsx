@@ -2,6 +2,23 @@
 
 import { useState, useEffect } from "react";
 import { Plus, X, Search } from "lucide-react";
+import { getSupabaseClient } from "@/lib/supabase/client";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+async function apiFetch(path: string, opts?: RequestInit) {
+  const { data: { session } } = await getSupabaseClient().auth.getSession();
+  const token = session?.access_token ?? "";
+  const res = await fetch(`${API}${path}`, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(opts?.headers ?? {}),
+    },
+  });
+  return res.json();
+}
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -105,8 +122,7 @@ export default function RelationshipsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/relationships/entities");
-      const json: ApiResponse<Entity[]> = await res.json();
+      const json: ApiResponse<Entity[]> = await apiFetch("/api/relationships/entities");
       if (!json.success) throw new Error(json.error ?? "Failed to load entities");
       setEntities(json.data);
     } catch (e) {
@@ -121,19 +137,16 @@ export default function RelationshipsPage() {
     setSaving(true);
     setSaveError(null);
     try {
-      const res = await fetch("/api/relationships/entities", {
+      const json: ApiResponse<Entity> = await apiFetch("/api/relationships/entities", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           full_name: form.full_name.trim(),
           entity_type: form.entity_type,
           pan: form.pan.trim().toUpperCase() || null,
-          gstin: form.gstin.trim().toUpperCase() || null,
           email: form.email.trim() || null,
           phone: form.phone.trim() || null,
         }),
       });
-      const json: ApiResponse<Entity> = await res.json();
       if (!json.success) throw new Error(json.error ?? "Failed to create entity");
       setEntities((prev) => [json.data, ...prev]);
       setModalOpen(false);
@@ -149,14 +162,12 @@ export default function RelationshipsPage() {
     setDetectLoading(true);
     setDetectToast(null);
     try {
-      const res = await fetch("/api/relationships/cross-client-matches/detect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      const json: ApiResponse<{ matches_found: number }> = await res.json();
+      const json: ApiResponse<{ new_matches_detected: number }> = await apiFetch(
+        "/api/relationships/cross-client-matches/detect",
+        { method: "POST", body: JSON.stringify({}) }
+      );
       if (!json.success) throw new Error(json.error ?? "Detection failed");
-      setDetectToast(`Detection complete — ${json.data.matches_found} match(es) found`);
+      setDetectToast(`Detection complete — ${json.data.new_matches_detected} match(es) found`);
     } catch (e) {
       setDetectToast(e instanceof Error ? e.message : "Detection failed");
     } finally {

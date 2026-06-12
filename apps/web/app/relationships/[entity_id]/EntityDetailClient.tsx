@@ -1,12 +1,28 @@
 "use client";
 
-
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, CheckCircle, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { getSupabaseClient } from "@/lib/supabase/client";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+async function apiFetch(path: string, opts?: RequestInit) {
+  const { data: { session } } = await getSupabaseClient().auth.getSession();
+  const token = session?.access_token ?? "";
+  const res = await fetch(`${API}${path}`, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(opts?.headers ?? {}),
+    },
+  });
+  return res.json();
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -77,27 +93,18 @@ export default function EntityDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const [entityRes, rolesRes, relsRes, matchesRes] = await Promise.all([
-        fetch(`/api/relationships/entities/${entityId}`),
-        fetch(`/api/relationships/entities/${entityId}/roles`),
-        fetch(`/api/relationships/entities/${entityId}/relationships`),
-        fetch(`/api/relationships/entities/${entityId}/matches`),
-      ]);
-      const [entityJson, rolesJson, relsJson, matchesJson]: [
-        ApiResponse<Entity>,
-        ApiResponse<EntityRole[]>,
-        ApiResponse<EntityRelationship[]>,
-        ApiResponse<CrossClientMatch[]>
-      ] = await Promise.all([
-        entityRes.json(),
-        rolesRes.json(),
-        relsRes.json(),
-        matchesRes.json(),
-      ]);
+      // get_entity returns entity + embedded roles + embedded relationships
+      const entityJson: ApiResponse<Entity & { roles: EntityRole[]; relationships: EntityRelationship[] }> =
+        await apiFetch(`/api/relationships/entities/${entityId}`);
       if (!entityJson.success) throw new Error(entityJson.error ?? "Failed to load entity");
       setEntity(entityJson.data);
-      setRoles(rolesJson.success ? rolesJson.data : []);
-      setRelationships(relsJson.success ? relsJson.data : []);
+      setRoles(entityJson.data.roles ?? []);
+      setRelationships(entityJson.data.relationships ?? []);
+
+      // Cross-client matches filtered for this entity
+      const matchesJson: ApiResponse<CrossClientMatch[]> = await apiFetch(
+        `/api/relationships/cross-client-matches?entity_id=${entityId}`
+      );
       setMatches(matchesJson.success ? matchesJson.data : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -113,10 +120,13 @@ export default function EntityDetailPage() {
   async function handleMatchAction(matchId: string, action: "confirm" | "dismiss") {
     setProcessingMatchId(matchId);
     try {
-      const res = await fetch(`/api/relationships/cross-client-matches/${matchId}/${action}`, {
-        method: "POST",
-      });
-      const json: ApiResponse<CrossClientMatch> = await res.json();
+      const json: ApiResponse<CrossClientMatch> = await apiFetch(
+        `/api/relationships/cross-client-matches/${matchId}/review`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ is_confirmed: action === "confirm" }),
+        }
+      );
       if (!json.success) throw new Error(json.error ?? "Action failed");
       setMatches((prev) =>
         prev.map((m) => (m.id === matchId ? { ...m, status: action === "confirm" ? "confirmed" : "dismissed" } : m))
