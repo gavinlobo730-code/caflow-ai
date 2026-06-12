@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Plus, X } from "lucide-react";
@@ -157,11 +157,7 @@ export default function ClientHealthDetailPage() {
   const [savingOverride, setSavingOverride] = useState(false);
   const [overrideSaveError, setOverrideSaveError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (clientId) loadAll();
-  }, [clientId]);
-
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -192,7 +188,11 @@ export default function ClientHealthDetailPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [clientId]);
+
+  useEffect(() => {
+    if (clientId) loadAll();
+  }, [clientId, loadAll]);
 
   async function handleAddOverride() {
     if (!overrideForm.dimension || !overrideForm.reason.trim() || !overrideForm.override_score) return;
