@@ -36,7 +36,7 @@ interface HealthScore {
   relationship_risk_score: number;
   financial_risk_score: number;
   engagement_health_score: number;
-  calculated_at: string;
+  last_calculated_at: string;
   is_critical: boolean;
   is_at_risk: boolean;
 }
@@ -45,13 +45,13 @@ interface HistoryRecord {
   id: string;
   overall_score: number;
   health_grade: Grade;
-  calculated_at: string;
+  recorded_at: string;
 }
 
 interface HealthAlert {
   id: string;
   alert_type: string;
-  severity: "low" | "medium" | "high" | "critical";
+  severity: "info" | "warning" | "critical";
   message: string;
   is_resolved: boolean;
   created_at: string;
@@ -86,9 +86,8 @@ const DIMENSION_LABELS: Record<string, string> = {
 const DIMENSION_KEYS = Object.keys(DIMENSION_LABELS);
 
 const SEVERITY_COLORS: Record<string, string> = {
-  low:      "bg-blue-800 text-blue-300",
-  medium:   "bg-yellow-800 text-yellow-300",
-  high:     "bg-orange-800 text-orange-300",
+  info:     "bg-blue-800 text-blue-300",
+  warning:  "bg-yellow-800 text-yellow-300",
   critical: "bg-red-800 text-red-300",
 };
 
@@ -276,7 +275,7 @@ export default function ClientHealthPage() {
             <div className="space-y-1">
               {score.is_critical && <Badge className="bg-red-800 text-red-300 text-[10px]">CRITICAL</Badge>}
               {score.is_at_risk && !score.is_critical && <Badge className="bg-amber-800 text-amber-300 text-[10px]">AT RISK</Badge>}
-              <p className="text-[11px] text-slate-500">Last: {formatDate(score.calculated_at)}</p>
+              <p className="text-[11px] text-slate-500">Last: {formatDate(score.last_calculated_at)}</p>
             </div>
           </div>
         </CardContent>
@@ -345,7 +344,7 @@ export default function ClientHealthPage() {
                 <tbody className="divide-y divide-gray-700/50">
                   {history.slice(0, 10).map((h) => (
                     <tr key={h.id} className="hover:bg-gray-700/30">
-                      <td className="px-5 py-3 text-slate-400 text-xs">{formatDate(h.calculated_at)}</td>
+                      <td className="px-5 py-3 text-slate-400 text-xs">{formatDate(h.recorded_at)}</td>
                       <td className="px-3 py-3">
                         <span className={`font-bold ${scoreColor(h.overall_score)}`}>{h.overall_score}</span>
                         <span className="text-xs text-slate-500">/100</span>

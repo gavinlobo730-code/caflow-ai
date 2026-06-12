@@ -9,7 +9,7 @@ All monetary values stored in integer paise (₹1 = 100 paise) — never float.
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 import uuid
 
 from models.common import api_response
@@ -37,19 +37,9 @@ def _db():
 
 
 def _next_lead_no(db, firm_id: str) -> str:
-    """Generate sequential lead number like LEAD-0001."""
-    if not db:
-        n = len(_MOCK_LEADS) + 1
-        return f"LEAD-{n:04d}"
-    res = db.table("leads").select("lead_no").eq("firm_id", firm_id).order("created_at", desc=True).limit(1).execute()
-    rows = res.data or []
-    if rows:
-        try:
-            last_no = int(rows[0]["lead_no"].split("-")[1])
-            return f"LEAD-{last_no + 1:04d}"
-        except Exception:
-            pass
-    return "LEAD-0001"
+    """Generate sequential lead number like LEAD-0001. Mock only — leads table has no lead_no column."""
+    n = len(_MOCK_LEADS) + 1
+    return f"LEAD-{n:04d}"
 
 
 def _next_proposal_no(db, firm_id: str) -> str:
@@ -69,6 +59,45 @@ def _next_proposal_no(db, firm_id: str) -> str:
             pass
     return f"PROP-{year}-0001"
 
+
+# Map human-readable status values to DB-valid lowercase values
+_TASK_STATUS_MAP = {
+    "Pending": "pending",
+    "In Progress": "in_progress",
+    "Done": "done",
+    "Skipped": "skipped",
+    "pending": "pending",
+    "in_progress": "in_progress",
+    "done": "done",
+    "skipped": "skipped",
+}
+
+_WORKFLOW_STATUS_MAP = {
+    "Pending": "pending",
+    "In Progress": "in_progress",
+    "Completed": "completed",
+    "Cancelled": "cancelled",
+    "pending": "pending",
+    "in_progress": "in_progress",
+    "completed": "completed",
+    "cancelled": "cancelled",
+}
+
+_RENEWAL_STATUS_MAP = {
+    "Pending": "pending",
+    "Sent": "sent",
+    "Accepted": "accepted",
+    "Rejected": "rejected",
+    "Expired": "expired",
+    "Overdue": "expired",    # map legacy "Overdue" to "expired"
+    "Completed": "accepted", # map legacy "Completed" to "accepted"
+    "Cancelled": "rejected", # map legacy "Cancelled" to "rejected"
+    "pending": "pending",
+    "sent": "sent",
+    "accepted": "accepted",
+    "rejected": "rejected",
+    "expired": "expired",
+}
 
 _DEFAULT_ONBOARDING_TASKS = [
     "Obtain PAN copy",
@@ -146,17 +175,17 @@ class OnboardingIn(BaseModel):
 
 
 class TaskStatusIn(BaseModel):
-    status: str  # Pending | In Progress | Done | Skipped
+    status: str  # pending | in_progress | done | skipped (or title-cased variants)
     notes: Optional[str] = None
 
 
 class RenewalIn(BaseModel):
     client_id: str
     financial_year: str
-    service_type: str
+    service_type: Optional[str] = None  # kept in model for API compat, not stored in DB
     renewal_date: Optional[str] = None
-    value_paise: int = 0
-    status: str = "Pending"
+    value_paise: int = 0               # mapped to fee_paise in DB
+    status: str = "pending"
     assigned_to: Optional[str] = None
     notes: Optional[str] = None
 
@@ -200,10 +229,11 @@ def create_lead(
     current_user: dict = Depends(rbac("client", "write")),
 ):
     db = _db()
-    lead_no = _next_lead_no(db, current_user["firm_id"])
+    lead_no = _next_lead_no(db, current_user["firm_id"])  # for mock only
     now = datetime.now(timezone.utc).isoformat()
 
-    row = {
+    # Mock row includes lead_no for in-memory use
+    mock_row = {
         "id":                    str(uuid.uuid4()),
         "firm_id":               current_user["firm_id"],
         "lead_no":               lead_no,
@@ -223,37 +253,54 @@ def create_lead(
     }
 
     if not db:
-        _MOCK_LEADS.append(row)
+        _MOCK_LEADS.append(mock_row)
         timeline_service.log(
-            row["id"], "lifecycle", "Lead Created",
+            mock_row["id"], "lifecycle", "Lead Created",
             f"New lead {lead_no}: {data.company_name}", "info",
             firm_id=current_user["firm_id"],
         )
-        return api_response(True, row)
+        return api_response(True, mock_row)
 
-    db.table("leads").insert(row).execute()
-    # Log lifecycle event in the generic timeline
+    # DB row — leads table has no lead_no column
+    db_row = {
+        "id":                    mock_row["id"],
+        "firm_id":               current_user["firm_id"],
+        "company_name":          data.company_name,
+        "contact_name":          data.contact_name,
+        "email":                 data.email,
+        "phone":                 data.phone,
+        "source":                data.source,
+        "stage":                 data.stage,
+        "estimated_value_paise": int(data.estimated_value_paise),
+        "assigned_to":           data.assigned_to,
+        "expected_close_date":   data.expected_close_date,
+        "notes":                 data.notes,
+        "is_converted":          False,
+        "created_at":            now,
+        "updated_at":            now,
+    }
+    db.table("leads").insert(db_row).execute()
+
     timeline_service.log(
-        row["id"], "lifecycle", "Lead Created",
-        f"New lead {lead_no}: {data.company_name}", "info",
+        db_row["id"], "lifecycle", "Lead Created",
+        f"New lead: {data.company_name}", "info",
         firm_id=current_user["firm_id"],
-        entity_type="lead", entity_id=row["id"],
+        entity_type="lead", entity_id=db_row["id"],
         actor_id=current_user.get("auth_user_id"),
     )
-    # Also insert into client_lifecycle_events for CRM tracking
     try:
         db.table("client_lifecycle_events").insert({
             "id":          str(uuid.uuid4()),
             "firm_id":     current_user["firm_id"],
-            "entity_id":   row["id"],
+            "entity_id":   db_row["id"],
             "entity_type": "lead",
             "event_type":  "lead_created",
-            "description": f"Lead {lead_no} created for {data.company_name}",
+            "description": f"Lead created for {data.company_name}",
             "created_at":  now,
         }).execute()
     except Exception:
         pass
-    return api_response(True, row)
+    return api_response(True, db_row)
 
 
 @router.patch("/leads/{lead_id}")
@@ -280,7 +327,6 @@ def update_lead(
                 return api_response(True, lead)
         raise HTTPException(status_code=404, detail="Lead not found")
 
-    # Fetch current stage before update
     existing = db.table("leads").select("stage").eq("id", lead_id).eq("firm_id", current_user["firm_id"]).single().execute().data
     if not existing:
         raise HTTPException(status_code=404, detail="Lead not found")
@@ -334,18 +380,28 @@ def convert_lead(
                 lead["updated_at"] = now
                 timeline_service.log(
                     lead_id, "lifecycle", "Lead Converted",
-                    f"Lead converted to active client", "success",
+                    "Lead converted to active client", "success",
                     firm_id=current_user["firm_id"],
                 )
                 return api_response(True, lead)
         raise HTTPException(status_code=404, detail="Lead not found")
 
-    existing = db.table("leads").select("*").eq("id", lead_id).eq("firm_id", current_user["firm_id"]).single().execute().data
-    if not existing:
-        raise HTTPException(status_code=404, detail="Lead not found")
-
-    if existing.get("is_converted"):
-        raise HTTPException(status_code=409, detail="Lead already converted")
+    # Try to fetch lead from DB — if not found (e.g. localStorage lead), use request body data
+    existing = db.table("leads").select("*").eq("id", lead_id).eq("firm_id", current_user["firm_id"]).limit(1).execute().data
+    lead_in_db = bool(existing)
+    if lead_in_db:
+        existing = existing[0]
+        if existing.get("is_converted"):
+            raise HTTPException(status_code=409, detail="Lead already converted")
+    else:
+        # Lead was created in localStorage — synthesize from request body
+        existing = {
+            "company_name":  data.company_name or "",
+            "contact_name":  data.name or "",
+            "email":         data.email,
+            "phone":         data.phone,
+            "is_converted":  False,
+        }
 
     firm_id = current_user["firm_id"]
     client_id = data.client_id
@@ -395,31 +451,43 @@ def convert_lead(
                 "id":         workflow_id,
                 "firm_id":    firm_id,
                 "client_id":  client_id,
-                "status":     "In Progress",
+                "status":     "in_progress",   # lowercase — DB CHECK constraint
                 "created_at": now,
                 "updated_at": now,
             }).execute()
             tasks = [
-                {"id": str(uuid.uuid4()), "workflow_id": workflow_id, "firm_id": firm_id,
-                 "client_id": client_id, "title": t, "status": "Pending",
-                 "sort_order": i + 1, "created_at": now, "updated_at": now}
+                {
+                    "id":          str(uuid.uuid4()),
+                    "workflow_id": workflow_id,
+                    "firm_id":     firm_id,
+                    "task_name":   t,            # schema column is task_name (no title, no client_id)
+                    "status":      "pending",    # lowercase
+                    "sort_order":  i + 1,
+                    "created_at":  now,
+                    "updated_at":  now,
+                }
                 for i, t in enumerate(_DEFAULT_ONBOARDING_TASKS)
             ]
             db.table("onboarding_tasks").insert(tasks).execute()
         except Exception:
             pass
 
-    res = db.table("leads").update({
-        "is_converted":         True,
-        "stage":                "Active",
-        "converted_at":         now,
-        "converted_client_id":  client_id,
-        "updated_at":           now,
-    }).eq("id", lead_id).eq("firm_id", firm_id).execute()
+    # Update lead in DB only if it was there
+    if lead_in_db:
+        try:
+            db.table("leads").update({
+                "is_converted":         True,
+                "stage":                "Active",
+                "converted_at":         now,
+                "converted_client_id":  client_id,
+                "updated_at":           now,
+            }).eq("id", lead_id).eq("firm_id", firm_id).execute()
+        except Exception:
+            pass  # Non-fatal if lead update fails
 
     timeline_service.log(
         client_id, "lifecycle", "Lead Converted",
-        f"Lead {existing.get('lead_no', '')} converted to active client", "success",
+        f"Lead converted to active client", "success",
         firm_id=firm_id,
         entity_type="lead", entity_id=lead_id,
         actor_id=current_user.get("auth_user_id"),
@@ -431,13 +499,13 @@ def convert_lead(
             "entity_id":   client_id,
             "entity_type": "client",
             "event_type":  "client_created_from_lead",
-            "description": f"Client created from lead {existing.get('lead_no', lead_id)}",
+            "description": f"Client created from lead",
             "created_at":  now,
         }).execute()
     except Exception:
         pass
 
-    return api_response(True, {**(res.data or [{}])[0], "converted_client_id": client_id})
+    return api_response(True, {"converted_client_id": client_id, "lead_id": lead_id})
 
 
 # ─── Proposals ────────────────────────────────────────────────────────────────
@@ -490,7 +558,9 @@ def create_proposal(
         "client_id":          data.client_id,
         "title":              data.title,
         "description":        data.description,
+        "scope_of_work":      data.description,   # schema canonical column
         "total_value_paise":  int(data.total_value_paise),
+        "fee_paise":          int(data.total_value_paise),  # schema canonical column
         "valid_until":        data.valid_until,
         "status":             data.status,
         "created_at":         now,
@@ -594,8 +664,7 @@ def create_onboarding(
         "id":         workflow_id,
         "firm_id":    current_user["firm_id"],
         "client_id":  data.client_id,
-        "status":     "In Progress",
-        "notes":      data.notes,
+        "status":     "in_progress",   # lowercase — DB CHECK constraint
         "created_at": now,
         "updated_at": now,
     }
@@ -606,9 +675,8 @@ def create_onboarding(
             "id":          str(uuid.uuid4()),
             "workflow_id": workflow_id,
             "firm_id":     current_user["firm_id"],
-            "client_id":   data.client_id,
-            "title":       task_name,
-            "status":      "Pending",
+            "task_name":   task_name,   # schema column is task_name
+            "status":      "pending",   # lowercase
             "sort_order":  i + 1,
             "created_at":  now,
             "updated_at":  now,
@@ -649,14 +717,14 @@ def update_onboarding_task(
 ):
     db = _db()
     now = datetime.now(timezone.utc).isoformat()
+    # Normalise status to DB-valid lowercase value
+    db_status = _TASK_STATUS_MAP.get(data.status, data.status.lower().replace(" ", "_"))
 
     if not db:
         task_found = None
         for t in _MOCK_ONBOARDING_TASKS:
             if t["id"] == task_id and t["workflow_id"] == workflow_id:
-                t["status"] = data.status
-                if data.notes:
-                    t["notes"] = data.notes
+                t["status"] = db_status
                 t["updated_at"] = now
                 task_found = t
                 break
@@ -664,13 +732,12 @@ def update_onboarding_task(
         if not task_found:
             raise HTTPException(status_code=404, detail="Task not found")
 
-        # Check if all tasks for this workflow are done
         wf_tasks = [t for t in _MOCK_ONBOARDING_TASKS if t.get("workflow_id") == workflow_id]
-        all_done = all(t["status"] in ("Done", "Skipped") for t in wf_tasks)
+        all_done = all(t["status"] in ("done", "skipped") for t in wf_tasks)
         if all_done:
             for wf in _MOCK_ONBOARDING_WORKFLOWS:
                 if wf["id"] == workflow_id:
-                    wf["status"] = "Completed"
+                    wf["status"] = "completed"
                     wf["completed_at"] = now
                     timeline_service.log(
                         wf["client_id"], "lifecycle", "Onboarding Completed",
@@ -680,22 +747,23 @@ def update_onboarding_task(
                     break
         return api_response(True, task_found)
 
-    # Real DB path
     task = db.table("onboarding_tasks").select("*").eq("id", task_id).eq("workflow_id", workflow_id).eq("firm_id", current_user["firm_id"]).single().execute().data
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    update = {"status": data.status, "updated_at": now}
+    update: dict = {"status": db_status, "updated_at": now}
+    if db_status in ("done", "skipped"):
+        update["completed_at"] = now
+        update["completed_by"] = current_user.get("auth_user_id")
     if data.notes:
-        update["notes"] = data.notes
+        update["description"] = data.notes  # schema uses description, not notes
     db.table("onboarding_tasks").update(update).eq("id", task_id).execute()
 
-    # Check completion
     all_tasks = db.table("onboarding_tasks").select("status").eq("workflow_id", workflow_id).execute().data or []
-    all_done = all(t["status"] in ("Done", "Skipped") for t in all_tasks)
+    all_done = all(t["status"] in ("done", "skipped") for t in all_tasks)
     if all_done:
         wf = db.table("onboarding_workflows").select("client_id").eq("id", workflow_id).single().execute().data
-        db.table("onboarding_workflows").update({"status": "Completed", "completed_at": now, "updated_at": now}).eq("id", workflow_id).execute()
+        db.table("onboarding_workflows").update({"status": "completed", "completed_at": now, "updated_at": now}).eq("id", workflow_id).execute()
         if wf:
             timeline_service.log(
                 wf["client_id"], "lifecycle", "Onboarding Completed",
@@ -705,7 +773,6 @@ def update_onboarding_task(
                 actor_id=current_user.get("auth_user_id"),
             )
 
-    update["id"] = task_id
     return api_response(True, {**task, **update})
 
 
@@ -744,34 +811,40 @@ def create_renewal(
 ):
     db = _db()
     now = datetime.now(timezone.utc).isoformat()
+    # renewals.renewal_date is NOT NULL — default to 1 year from today if not provided
+    renewal_date = data.renewal_date or (date.today() + timedelta(days=365)).isoformat()
+    db_status = _RENEWAL_STATUS_MAP.get(data.status, "pending")
+
     row = {
         "id":             str(uuid.uuid4()),
         "firm_id":        current_user["firm_id"],
         "client_id":      data.client_id,
         "financial_year": data.financial_year,
-        "service_type":   data.service_type,
-        "renewal_date":   data.renewal_date,
-        "value_paise":    int(data.value_paise),
-        "status":         data.status,
-        "assigned_to":    data.assigned_to,
+        "renewal_date":   renewal_date,
+        "fee_paise":      int(data.value_paise),  # schema column is fee_paise
+        "status":         db_status,
         "notes":          data.notes,
         "created_at":     now,
         "updated_at":     now,
+        # service_type not stored in DB (no column) — kept in mock for display
+        "service_type":   data.service_type,
     }
 
     if not db:
         _MOCK_RENEWALS.append(row)
         timeline_service.log(
             data.client_id, "lifecycle", "Renewal Created",
-            f"Renewal created for {data.service_type} FY {data.financial_year}", "info",
+            f"Renewal created for FY {data.financial_year}", "info",
             firm_id=current_user["firm_id"],
         )
         return api_response(True, row)
 
-    db.table("renewals").insert(row).execute()
+    # DB insert — exclude service_type (no column in schema)
+    db_row = {k: v for k, v in row.items() if k not in ("service_type", "updated_at")}
+    db.table("renewals").insert(db_row).execute()
     timeline_service.log(
         data.client_id, "lifecycle", "Renewal Created",
-        f"Renewal created for {data.service_type} FY {data.financial_year}", "info",
+        f"Renewal created for FY {data.financial_year}", "info",
         firm_id=current_user["firm_id"],
         entity_type="renewal", entity_id=row["id"],
         actor_id=current_user.get("auth_user_id"),
@@ -787,12 +860,13 @@ def update_renewal_status(
 ):
     db = _db()
     now = datetime.now(timezone.utc).isoformat()
-    update = {"status": data.status, "updated_at": now}
+    db_status = _RENEWAL_STATUS_MAP.get(data.status, data.status.lower())
+    update: dict = {"status": db_status, "updated_at": now}
     if data.notes:
         update["notes"] = data.notes
 
-    severity_map = {"Completed": "success", "Cancelled": "warning", "Overdue": "critical"}
-    severity = severity_map.get(data.status, "info")
+    severity_map = {"accepted": "success", "rejected": "warning", "expired": "critical", "sent": "info"}
+    severity = severity_map.get(db_status, "info")
 
     if not db:
         for r in _MOCK_RENEWALS:
@@ -842,7 +916,7 @@ def lifecycle_dashboard(
         today = datetime.now(timezone.utc).date().isoformat()
         overdue_renewals = sum(
             1 for r in _MOCK_RENEWALS
-            if r.get("status") == "Pending" and r.get("renewal_date") and r["renewal_date"] < today
+            if r.get("status") == "pending" and r.get("renewal_date") and r["renewal_date"] < today
         )
         return api_response(True, {
             "stages":             list(stage_counts.values()),
@@ -855,7 +929,7 @@ def lifecycle_dashboard(
 
     leads = db.table("leads").select("stage, estimated_value_paise").eq("firm_id", firm_id).execute().data or []
     proposals = db.table("proposals").select("id").eq("firm_id", firm_id).execute().data or []
-    overdue_renewals_res = db.table("renewals").select("id", count="exact").eq("firm_id", firm_id).eq("status", "Pending").lt("renewal_date", today).execute()
+    overdue_renewals_res = db.table("renewals").select("id", count="exact").eq("firm_id", firm_id).eq("status", "pending").lt("renewal_date", today).execute()
 
     stage_counts: dict[str, dict] = {}
     for lead in leads:
