@@ -38,7 +38,7 @@ def list_bank_accounts(
     db = _db()
     if not db:
         return api_response(True, [])
-    res = db.table("bank_accounts").select("*").eq("client_id", client_id).eq("is_active", True).order("bank_name").execute()
+    res = db.table("bank_accounts").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("is_active", True).order("bank_name").execute()
     return api_response(True, res.data or [])
 
 
@@ -67,7 +67,7 @@ def update_bank_account(
     update = data.model_dump(exclude_none=True)
     if not db:
         return api_response(True, update)
-    row = db.table("bank_accounts").update(update).eq("id", account_id).execute()
+    row = db.table("bank_accounts").update(update).eq("id", account_id).eq("firm_id", current_user["firm_id"]).execute()
     return api_response(True, (row.data or [{}])[0])
 
 
@@ -141,7 +141,7 @@ def list_transactions(
     db = _db()
     if not db:
         return api_response(True, [])
-    q = db.table("bank_transactions").select("*").eq("client_id", client_id)
+    q = db.table("bank_transactions").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
     if bank_account_id:
         q = q.eq("bank_account_id", bank_account_id)
     if reconciled is not None:
@@ -168,7 +168,7 @@ def match_transaction(
         return api_response(True, {"matched": True, "txn_id": txn_id})
 
     # Validate both records belong to same firm
-    txn = db.table("bank_transactions").select("id, client_id, reconciled").eq("id", txn_id).single().execute().data
+    txn = db.table("bank_transactions").select("id, client_id, reconciled").eq("id", txn_id).eq("firm_id", current_user["firm_id"]).single().execute().data
     if not txn:
         raise HTTPException(status_code=404, detail="Bank transaction not found")
     if txn["reconciled"]:
@@ -200,7 +200,7 @@ def unmatch_transaction(
     db = _db()
     if not db:
         return api_response(True, {"unmatched": True})
-    txn = db.table("bank_transactions").select("id, client_id").eq("id", txn_id).single().execute().data
+    txn = db.table("bank_transactions").select("id, client_id").eq("id", txn_id).eq("firm_id", current_user["firm_id"]).single().execute().data
     db.table("bank_transactions").update({
         "reconciled":            False,
         "reconciled_journal_id": None,
@@ -233,7 +233,7 @@ def get_match_suggestions(
         return api_response(True, [])
 
     # Fetch unreconciled bank transactions
-    q = db.table("bank_transactions").select("*").eq("client_id", client_id).eq("reconciled", False)
+    q = db.table("bank_transactions").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("reconciled", False)
     if bank_account_id:
         q = q.eq("bank_account_id", bank_account_id)
     txns = q.order("txn_date", desc=True).limit(50).execute().data or []
@@ -241,7 +241,7 @@ def get_match_suggestions(
     # Fetch unmatched journal lines (not yet linked to any bank txn)
     journals = db.table("journal_entries").select(
         "id, entry_date, reference_no, narration, journal_lines(debit_paise, credit_paise)"
-    ).eq("client_id", client_id).eq("is_posted", True).limit(200).execute().data or []
+    ).eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("is_posted", True).limit(200).execute().data or []
 
     suggestions = []
     for txn in txns:
@@ -285,7 +285,7 @@ def list_rules(
     db = _db()
     if not db:
         return api_response(True, [])
-    res = db.table("bank_matching_rules").select("*").eq("client_id", client_id).eq("is_active", True).execute()
+    res = db.table("bank_matching_rules").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("is_active", True).execute()
     return api_response(True, res.data or [])
 
 

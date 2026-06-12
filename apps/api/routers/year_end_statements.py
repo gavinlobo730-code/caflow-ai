@@ -58,14 +58,7 @@ def _mock_engagement_meta(engagement_id: str) -> dict:
             raise HTTPException(status_code=404, detail="Engagement not found")
         return eng
     except ImportError:
-        return {
-            "id": engagement_id,
-            "firm_id": "firm-001",
-            "client_id": "client-001",
-            "financial_year": "2024-25",
-            "fy_start": "2024-04-01",
-            "fy_end": "2025-03-31",
-        }
+        raise HTTPException(status_code=503, detail="Engagement service unavailable")
 
 
 # ── Request models ────────────────────────────────────────────────────────────
