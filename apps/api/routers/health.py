@@ -74,15 +74,15 @@ def _grade(score: int) -> str:
 def _calculate_scores_mock(client_id: str) -> dict:
     """
     Mock calculation — uses default/dummy values since there's no DB.
-    All values are integers (paise or score points).
+    All values are integers (score points).
     """
-    compliance_score       = 80   # default — no real compliance_tasks in mock
-    accounting_score       = 100  # no unreconciled txns in mock
-    documents_score        = 80   # default per spec
-    responsiveness_score   = 75   # default per spec
-    relationship_risk_score = 100 # no confirmed cross_client_matches in mock
-    financial_risk_score   = 75   # default per spec
-    engagement_health_score = 60  # default: expired engagement letter
+    compliance_score       = 80
+    accounting_score       = 100
+    documents_score        = 80
+    responsiveness_score   = 75
+    relationship_risk_score = 100
+    financial_risk_score   = 75
+    engagement_health_score = 60
 
     # Equal-weight average using integer division — no float
     total = (
@@ -162,7 +162,8 @@ def _calculate_scores_db(db, client_id: str, firm_id: str) -> dict:
     # ── relationship_risk_score ──
     relationship_risk_score = 100
     try:
-        confirmed_matches = db.table("cross_client_matches").select("id").eq("firm_id", firm_id).or_(f"client_id_a.eq.{client_id},client_id_b.eq.{client_id}").eq("is_confirmed", True).execute().data or []
+        # schema column is "confirmed" not "is_confirmed"
+        confirmed_matches = db.table("cross_client_matches").select("id").eq("firm_id", firm_id).or_(f"client_id_a.eq.{client_id},client_id_b.eq.{client_id}").eq("confirmed", True).execute().data or []
         deduction = len(confirmed_matches) * 15
         relationship_risk_score = max(0, 100 - deduction)
     except Exception:
@@ -180,7 +181,6 @@ def _calculate_scores_db(db, client_id: str, firm_id: str) -> dict:
             if active:
                 engagement_health_score = 100
             else:
-                # Check if any expired
                 expired = [e for e in engagements if e.get("status") in ("Expired", "Completed")]
                 if expired:
                     engagement_health_score = 60
@@ -220,7 +220,7 @@ def _calculate_scores_db(db, client_id: str, firm_id: str) -> dict:
 def list_scores(
     is_critical: Optional[bool] = Query(None),
     is_at_risk: Optional[bool] = Query(None),
-    current_user: dict = Depends(rbac("clients", "read")),
+    current_user: dict = Depends(rbac("client", "read")),
 ):
     db = _db()
     if not db:
@@ -244,7 +244,7 @@ def list_scores(
 @router.get("/scores/{client_id}")
 def get_score(
     client_id: str,
-    current_user: dict = Depends(rbac("clients", "read")),
+    current_user: dict = Depends(rbac("client", "read")),
 ):
     db = _db()
     if not db:
@@ -262,7 +262,7 @@ def get_score(
 @router.post("/scores/{client_id}/calculate")
 def calculate_score(
     client_id: str,
-    current_user: dict = Depends(rbac("clients", "write")),
+    current_user: dict = Depends(rbac("client", "write")),
 ):
     """
     Calculate (or recalculate) health score for a client.
@@ -279,15 +279,13 @@ def calculate_score(
         old_overall = old.get("overall_score") if old else None
 
         row = {
-            "id":         str(uuid.uuid4()),
-            "client_id":  client_id,
-            "firm_id":    firm_id,
-            "calculated_at": now,
+            "id":                str(uuid.uuid4()),
+            "client_id":         client_id,
+            "firm_id":           firm_id,
+            "last_calculated_at": now,
             **scores,
         }
         _MOCK_SCORES[client_id] = row
-
-        # Save history
         _MOCK_HISTORY.append({**row, "id": str(uuid.uuid4()), "score_id": row["id"]})
 
         if old_overall is not None and old_overall != scores["overall_score"]:
@@ -300,56 +298,53 @@ def calculate_score(
 
         return api_response(True, row)
 
-    # Verify client belongs to firm
     client = db.table("clients").select("id, name").eq("id", client_id).eq("firm_id", firm_id).single().execute().data
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
     scores = _calculate_scores_db(db, client_id, firm_id)
 
-    # Fetch previous score for change detection
     old_row = db.table("health_scores").select("overall_score, id").eq("client_id", client_id).eq("firm_id", firm_id).limit(1).execute().data
     old_overall = (old_row[0]["overall_score"] if old_row else None)
 
     score_id = str(uuid.uuid4())
     upsert_payload = {
-        "id":            score_id,
-        "client_id":     client_id,
-        "firm_id":       firm_id,
-        "calculated_at": now,
-        "client_name":   client.get("name", ""),
+        "id":                 score_id,
+        "client_id":          client_id,
+        "firm_id":            firm_id,
+        "last_calculated_at": now,   # schema column is last_calculated_at
+        "client_name":        client.get("name", ""),
         **scores,
     }
 
-    # Upsert using on_conflict on (client_id, firm_id)
     try:
         res = db.table("health_scores").upsert(upsert_payload, on_conflict="client_id,firm_id").execute()
         saved = (res.data or [upsert_payload])[0]
     except Exception:
-        # Fallback: try insert then update
         try:
             res = db.table("health_scores").insert(upsert_payload).execute()
             saved = (res.data or [upsert_payload])[0]
         except Exception:
             res = db.table("health_scores").update({
-                "calculated_at": now,
+                "last_calculated_at": now,
                 **scores,
             }).eq("client_id", client_id).eq("firm_id", firm_id).execute()
             saved = (res.data or [upsert_payload])[0]
 
-    # Insert history row
+    # Insert history row — only columns that exist in health_score_history
     try:
         db.table("health_score_history").insert({
-            "id":            str(uuid.uuid4()),
-            "firm_id":       firm_id,
-            "client_id":     client_id,
-            "calculated_at": now,
-            **scores,
+            "id":           str(uuid.uuid4()),
+            "firm_id":      firm_id,
+            "client_id":    client_id,
+            "overall_score": scores["overall_score"],
+            "health_grade":  scores["health_grade"],
+            "recorded_at":   now,
+            "snapshot_data": {k: v for k, v in scores.items()},
         }).execute()
     except Exception:
         pass  # Non-fatal
 
-    # Log timeline event only if score changed
     if old_overall is not None and old_overall != scores["overall_score"]:
         timeline_service.log(
             client_id, "lifecycle", "Health Score Changed",
@@ -363,43 +358,47 @@ def calculate_score(
     return api_response(True, saved)
 
 
-# ─── Overrides ────────────────────────────────────────────────────────────────
+# ─── History ──────────────────────────────────────────────────────────────────
 
 @router.get("/scores/{client_id}/history")
 def get_score_history(
     client_id: str,
     limit: int = Query(20),
-    current_user: dict = Depends(rbac("clients", "read")),
+    current_user: dict = Depends(rbac("client", "read")),
 ):
     db = _db()
     if not db:
         result = [h for h in _MOCK_HISTORY if h.get("client_id") == client_id]
-        result.sort(key=lambda h: h.get("calculated_at", ""), reverse=True)
+        result.sort(key=lambda h: h.get("recorded_at", h.get("last_calculated_at", "")), reverse=True)
         return api_response(True, result[:limit])
 
+    # health_score_history only has: id, overall_score, health_grade, recorded_at, snapshot_data
     res = db.table("health_score_history").select(
-        "id, overall_score, health_grade, calculated_at, compliance_score, accounting_score, documents_score, responsiveness_score, relationship_risk_score, financial_risk_score, engagement_health_score"
-    ).eq("client_id", client_id).eq("firm_id", current_user["firm_id"]).order("calculated_at", desc=True).limit(limit).execute()
+        "id, overall_score, health_grade, recorded_at, snapshot_data"
+    ).eq("client_id", client_id).eq("firm_id", current_user["firm_id"]).order("recorded_at", desc=True).limit(limit).execute()
     return api_response(True, res.data or [])
 
+
+# ─── Overrides ────────────────────────────────────────────────────────────────
 
 @router.get("/overrides")
 def list_overrides(
     client_id: str = Query(...),
-    current_user: dict = Depends(rbac("clients", "read")),
+    current_user: dict = Depends(rbac("client", "read")),
 ):
     db = _db()
     if not db:
         result = [o for o in _MOCK_OVERRIDES if o.get("client_id") == client_id and o.get("is_active")]
         return api_response(True, result)
 
-    res = db.table("health_score_overrides").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("is_active", True).order("created_at", desc=True).execute()
+    # Table is health_overrides (not health_score_overrides)
+    res = db.table("health_overrides").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("is_active", True).order("created_at", desc=True).execute()
     return api_response(True, res.data or [])
 
 
 @router.post("/recalculate-all")
 def recalculate_all(
-    current_user: dict = Depends(rbac("clients", "write")),
+    current_user: dict = Depends(rbac("client", "write")),
 ):
     """Recalculate health scores for all clients in the firm."""
     db = _db()
@@ -417,12 +416,15 @@ def recalculate_all(
             score_id = str(uuid.uuid4())
             upsert_payload = {
                 "id": score_id, "client_id": client["id"], "firm_id": firm_id,
-                "calculated_at": now, **scores,
+                "last_calculated_at": now, **scores,
             }
             db.table("health_scores").upsert(upsert_payload, on_conflict="client_id,firm_id").execute()
             db.table("health_score_history").insert({
                 "id": str(uuid.uuid4()), "firm_id": firm_id, "client_id": client["id"],
-                "calculated_at": now, **scores,
+                "overall_score": scores["overall_score"],
+                "health_grade":  scores["health_grade"],
+                "recorded_at":   now,
+                "snapshot_data": {k: v for k, v in scores.items()},
             }).execute()
             updated += 1
         except Exception:
@@ -434,7 +436,7 @@ def recalculate_all(
 def create_override(
     client_id: str,
     data: OverrideIn,
-    current_user: dict = Depends(rbac("clients", "write")),
+    current_user: dict = Depends(rbac("client", "write")),
 ):
     db = _db()
     firm_id = current_user["firm_id"]
@@ -449,22 +451,23 @@ def create_override(
         "reason":         data.reason,
         "expires_at":     data.expires_at,
         "is_active":      True,
-        "created_at":     now,
-        "created_by":     current_user.get("auth_user_id"),
+        "override_by":    current_user.get("auth_user_id"),  # schema column is override_by
     }
 
     if not db:
         _MOCK_OVERRIDES.append(row)
         return api_response(True, row)
 
-    res = db.table("health_score_overrides").insert(row).execute()
+    # Table is health_overrides
+    db_row = {k: v for k, v in row.items() if k != "id"}
+    res = db.table("health_overrides").insert(db_row).execute()
     return api_response(True, (res.data or [row])[0])
 
 
 @router.delete("/overrides/{override_id}")
 def deactivate_override(
     override_id: str,
-    current_user: dict = Depends(rbac("clients", "write")),
+    current_user: dict = Depends(rbac("client", "write")),
 ):
     db = _db()
     firm_id = current_user["firm_id"]
@@ -476,13 +479,13 @@ def deactivate_override(
                 return api_response(True, {"override_id": override_id, "is_active": False})
         raise HTTPException(status_code=404, detail="Override not found")
 
-    existing = db.table("health_score_overrides").select("id").eq("id", override_id).eq("firm_id", firm_id).single().execute().data
+    existing = db.table("health_overrides").select("id").eq("id", override_id).eq("firm_id", firm_id).single().execute().data
     if not existing:
         raise HTTPException(status_code=404, detail="Override not found")
 
-    res = db.table("health_score_overrides").update({
-        "is_active":      False,
-        "deactivated_at": datetime.now(timezone.utc).isoformat(),
+    # Schema has no deactivated_at column — just set is_active = false
+    db.table("health_overrides").update({
+        "is_active": False,
     }).eq("id", override_id).eq("firm_id", firm_id).execute()
 
     return api_response(True, {"override_id": override_id, "is_active": False})
@@ -494,7 +497,7 @@ def deactivate_override(
 def list_alerts(
     client_id: Optional[str] = Query(None),
     severity: Optional[str] = Query(None),
-    current_user: dict = Depends(rbac("clients", "read")),
+    current_user: dict = Depends(rbac("client", "read")),
 ):
     db = _db()
     if not db:
@@ -518,7 +521,7 @@ def list_alerts(
 def resolve_alert(
     alert_id: str,
     data: AlertResolveIn,
-    current_user: dict = Depends(rbac("clients", "write")),
+    current_user: dict = Depends(rbac("client", "write")),
 ):
     db = _db()
     firm_id = current_user["firm_id"]
@@ -529,8 +532,6 @@ def resolve_alert(
             if a["id"] == alert_id:
                 _MOCK_ALERTS[i]["is_resolved"] = True
                 _MOCK_ALERTS[i]["resolved_at"] = now
-                if data.resolution_notes:
-                    _MOCK_ALERTS[i]["resolution_notes"] = data.resolution_notes
                 return api_response(True, _MOCK_ALERTS[i])
         raise HTTPException(status_code=404, detail="Alert not found")
 
@@ -538,13 +539,12 @@ def resolve_alert(
     if not existing:
         raise HTTPException(status_code=404, detail="Alert not found")
 
+    # Schema columns: is_resolved, resolved_at, resolved_by (no resolution_notes)
     update = {
         "is_resolved":  True,
         "resolved_at":  now,
         "resolved_by":  current_user.get("auth_user_id"),
     }
-    if data.resolution_notes:
-        update["resolution_notes"] = data.resolution_notes
 
     res = db.table("health_alerts").update(update).eq("id", alert_id).eq("firm_id", firm_id).execute()
     return api_response(True, (res.data or [{}])[0])
@@ -554,7 +554,7 @@ def resolve_alert(
 
 @router.get("/dashboard")
 def health_dashboard(
-    current_user: dict = Depends(rbac("clients", "read")),
+    current_user: dict = Depends(rbac("client", "read")),
 ):
     db = _db()
     firm_id = current_user["firm_id"]
@@ -564,7 +564,6 @@ def health_dashboard(
         critical = [s for s in scores if s.get("is_critical")]
         at_risk  = [s for s in scores if s.get("is_at_risk") and not s.get("is_critical")]
 
-        # Grade distribution — integer counts
         dist: dict[str, int] = {"A": 0, "B": 0, "C": 0, "D": 0, "F": 0}
         for s in scores:
             g = s.get("health_grade", "F")
@@ -583,15 +582,12 @@ def health_dashboard(
             "top_alerts":         top_alerts,
         })
 
-    # Critical clients (score < 40)
-    critical_res = db.table("health_scores").select("client_id, overall_score, health_grade, is_critical, is_at_risk").eq("firm_id", firm_id).eq("is_critical", True).order("overall_score").execute()
+    critical_res = db.table("health_scores").select("client_id, overall_score, health_grade, is_critical, is_at_risk, client_name").eq("firm_id", firm_id).eq("is_critical", True).order("overall_score").execute()
     critical_clients = critical_res.data or []
 
-    # At-risk clients (40 <= score < 60)
-    at_risk_res = db.table("health_scores").select("client_id, overall_score, health_grade, is_critical, is_at_risk").eq("firm_id", firm_id).eq("is_at_risk", True).eq("is_critical", False).order("overall_score").execute()
+    at_risk_res = db.table("health_scores").select("client_id, overall_score, health_grade, is_critical, is_at_risk, client_name").eq("firm_id", firm_id).eq("is_at_risk", True).eq("is_critical", False).order("overall_score").execute()
     at_risk_clients = at_risk_res.data or []
 
-    # All scores for distribution + average
     all_scores_res = db.table("health_scores").select("overall_score, health_grade").eq("firm_id", firm_id).execute()
     all_scores = all_scores_res.data or []
 
@@ -605,7 +601,6 @@ def health_dashboard(
     # Integer division for average — never float
     avg_score = total // len(all_scores) if all_scores else 0
 
-    # Top unresolved alerts
     alerts_res = db.table("health_alerts").select("*").eq("firm_id", firm_id).eq("is_resolved", False).order("created_at", desc=True).limit(10).execute()
     top_alerts = alerts_res.data or []
 

@@ -63,7 +63,7 @@ class EntityUpdateIn(BaseModel):
 class EntityRoleIn(BaseModel):
     client_id: str
     role_type: str  # Director | Shareholder | Partner | Trustee | Proprietor | Guarantor | Authorized Signatory
-    ownership_percent: Optional[int] = None  # integer percent, not float
+    ownership_percent: Optional[float] = None  # numeric(5,2) — stored as float, displayed as percent
     effective_from: Optional[str] = None
     effective_to: Optional[str] = None
     notes: Optional[str] = None
@@ -91,7 +91,7 @@ def list_entities(
     search: Optional[str] = Query(None),
     limit: int = Query(50),
     offset: int = Query(0),
-    current_user: dict = Depends(rbac("clients", "read")),
+    current_user: dict = Depends(rbac("client", "read")),
 ):
     db = _db()
     if not db:
@@ -112,7 +112,6 @@ def list_entities(
     if entity_type:
         q = q.eq("entity_type", entity_type)
     if search:
-        # Supabase full-text or ilike — use or_ for multi-field
         q = q.or_(f"full_name.ilike.%{search}%,pan.ilike.%{search}%,email.ilike.%{search}%")
     res = q.order("full_name").range(offset, offset + limit - 1).execute()
     return api_response(True, res.data or [])
@@ -121,7 +120,7 @@ def list_entities(
 @router.post("/entities")
 def create_entity(
     data: EntityIn,
-    current_user: dict = Depends(rbac("clients", "write")),
+    current_user: dict = Depends(rbac("client", "write")),
 ):
     db = _db()
     firm_id = current_user["firm_id"]
@@ -164,7 +163,7 @@ def create_entity(
 def update_entity(
     entity_id: str,
     data: EntityUpdateIn,
-    current_user: dict = Depends(rbac("clients", "write")),
+    current_user: dict = Depends(rbac("client", "write")),
 ):
     db = _db()
     firm_id = current_user["firm_id"]
@@ -189,7 +188,7 @@ def update_entity(
 @router.get("/entities/{entity_id}")
 def get_entity(
     entity_id: str,
-    current_user: dict = Depends(rbac("clients", "read")),
+    current_user: dict = Depends(rbac("client", "read")),
 ):
     db = _db()
     firm_id = current_user["firm_id"]
@@ -223,7 +222,7 @@ def get_entity(
 def add_entity_role(
     entity_id: str,
     data: EntityRoleIn,
-    current_user: dict = Depends(rbac("clients", "write")),
+    current_user: dict = Depends(rbac("client", "write")),
 ):
     db = _db()
     firm_id = current_user["firm_id"]
@@ -234,7 +233,7 @@ def add_entity_role(
         "firm_id":           firm_id,
         "entity_id":         entity_id,
         "client_id":         data.client_id,
-        "role_type":         data.role_type,
+        "role":              data.role_type,   # schema column is "role"
         "ownership_percent": data.ownership_percent,
         "effective_from":    data.effective_from,
         "effective_to":      data.effective_to,
@@ -252,12 +251,21 @@ def add_entity_role(
         )
         return api_response(True, row)
 
-    # Verify entity belongs to firm
     entity = db.table("entities").select("id, full_name").eq("id", entity_id).eq("firm_id", firm_id).single().execute().data
     if not entity:
         raise HTTPException(status_code=404, detail="Entity not found")
 
-    res = db.table("entity_roles").insert(row).execute()
+    db_row = {
+        "firm_id":           firm_id,
+        "entity_id":         entity_id,
+        "client_id":         data.client_id,
+        "role":              data.role_type,
+        "ownership_percent": data.ownership_percent,
+        "effective_from":    data.effective_from,
+        "effective_to":      data.effective_to,
+        "notes":             data.notes,
+    }
+    res = db.table("entity_roles").insert(db_row).execute()
     created = (res.data or [row])[0]
 
     timeline_service.log(
@@ -273,7 +281,7 @@ def add_entity_role(
 @router.delete("/roles/{role_id}")
 def remove_entity_role(
     role_id: str,
-    current_user: dict = Depends(rbac("clients", "write")),
+    current_user: dict = Depends(rbac("client", "write")),
 ):
     db = _db()
     firm_id = current_user["firm_id"]
@@ -296,7 +304,7 @@ def remove_entity_role(
 @router.post("/relationships")
 def create_relationship(
     data: RelationshipIn,
-    current_user: dict = Depends(rbac("clients", "write")),
+    current_user: dict = Depends(rbac("client", "write")),
 ):
     db = _db()
     firm_id = current_user["firm_id"]
@@ -324,7 +332,6 @@ def create_relationship(
         )
         return api_response(True, row)
 
-    # Verify both entities belong to firm
     from_e = db.table("entities").select("id").eq("id", data.from_entity_id).eq("firm_id", firm_id).single().execute().data
     to_e   = db.table("entities").select("id").eq("id", data.to_entity_id).eq("firm_id", firm_id).single().execute().data
     if not from_e or not to_e:
@@ -346,7 +353,7 @@ def create_relationship(
 @router.get("/relationships")
 def list_relationships(
     entity_id: str = Query(...),
-    current_user: dict = Depends(rbac("clients", "read")),
+    current_user: dict = Depends(rbac("client", "read")),
 ):
     db = _db()
     firm_id = current_user["firm_id"]
@@ -370,7 +377,7 @@ def list_relationships(
 def list_cross_client_matches(
     entity_id: Optional[str] = Query(None),
     reviewed: Optional[bool] = Query(None),
-    current_user: dict = Depends(rbac("clients", "read")),
+    current_user: dict = Depends(rbac("client", "read")),
 ):
     db = _db()
     firm_id = current_user["firm_id"]
@@ -380,25 +387,25 @@ def list_cross_client_matches(
         if entity_id:
             result = [m for m in result if m.get("entity_id") == entity_id]
         if reviewed is None:
-            result = [m for m in result if not m.get("is_reviewed")]
+            result = [m for m in result if not m.get("reviewed")]
         elif reviewed:
-            result = [m for m in result if m.get("is_reviewed")]
+            result = [m for m in result if m.get("reviewed")]
         return api_response(True, result)
 
     q = db.table("cross_client_matches").select("*").eq("firm_id", firm_id)
     if entity_id:
         q = q.eq("entity_id", entity_id)
     elif reviewed is None:
-        q = q.eq("is_reviewed", False)
+        q = q.eq("reviewed", False)
     elif reviewed:
-        q = q.eq("is_reviewed", True)
+        q = q.eq("reviewed", True)
     res = q.order("created_at", desc=True).execute()
     return api_response(True, res.data or [])
 
 
 @router.post("/cross-client-matches/detect")
 def detect_cross_client_matches(
-    current_user: dict = Depends(rbac("clients", "write")),
+    current_user: dict = Depends(rbac("client", "write")),
 ):
     """
     Scan entities for cross-client PAN/email matches.
@@ -409,7 +416,6 @@ def detect_cross_client_matches(
     firm_id = current_user["firm_id"]
 
     if not db:
-        # Mock mode: scan _MOCK_ENTITY_ROLES for duplicate PANs across clients
         pan_map: dict[str, list[dict]] = {}
         for role in _MOCK_ENTITY_ROLES:
             entity = next((e for e in _MOCK_ENTITIES if e["id"] == role.get("entity_id")), None)
@@ -425,15 +431,13 @@ def detect_cross_client_matches(
             client_ids = list({e["role"]["client_id"] for e in entries})
             if len(client_ids) < 2:
                 continue
-            # Create match pairs
             for i in range(len(entries)):
                 for j in range(i + 1, len(entries)):
                     a, b = entries[i], entries[j]
                     if a["role"]["client_id"] == b["role"]["client_id"]:
                         continue
-                    # Check not already in mock store
                     already = any(
-                        m.get("pan") == pan
+                        m.get("match_value") == pan
                         and m.get("client_id_a") == a["role"]["client_id"]
                         and m.get("client_id_b") == b["role"]["client_id"]
                         for m in _MOCK_CROSS_MATCHES
@@ -442,28 +446,25 @@ def detect_cross_client_matches(
                         _MOCK_CROSS_MATCHES.append({
                             "id":           str(uuid.uuid4()),
                             "firm_id":      firm_id,
-                            "pan":          pan,
+                            "match_value":  pan,
                             "entity_id":    a["entity"]["id"],
                             "client_id_a":  a["role"]["client_id"],
                             "client_id_b":  b["role"]["client_id"],
                             "match_type":   "pan",
-                            "is_reviewed":  False,
-                            "is_confirmed": None,
+                            "reviewed":     False,
+                            "confirmed":    None,
                             "created_at":   now,
                         })
                         new_count += 1
         return api_response(True, {"new_matches_detected": new_count})
 
-    # Real DB path: scan entities with PAN, find duplicates across clients via entity_roles
     entities_with_pan = db.table("entities").select("id, pan, full_name").eq("firm_id", firm_id).not_.is_("pan", "null").execute().data or []
 
-    # Build PAN → list of (entity_id, client_ids)
     pan_entity_map: dict[str, list[dict]] = {}
     for entity in entities_with_pan:
         pan = (entity.get("pan") or "").upper().strip()
         if not pan:
             continue
-        # Get all roles (client_ids) for this entity
         roles = db.table("entity_roles").select("client_id").eq("entity_id", entity["id"]).eq("firm_id", firm_id).execute().data or []
         for role in roles:
             if pan not in pan_entity_map:
@@ -477,7 +478,6 @@ def detect_cross_client_matches(
     new_count = 0
 
     for pan, entries in pan_entity_map.items():
-        # Only care about entries spanning multiple client_ids
         client_ids = list({e["client_id"] for e in entries})
         if len(client_ids) < 2:
             continue
@@ -487,20 +487,19 @@ def detect_cross_client_matches(
                 a, b = entries[i], entries[j]
                 if a["client_id"] == b["client_id"]:
                     continue
-                # Check if match already exists
-                existing_check = db.table("cross_client_matches").select("id").eq("firm_id", firm_id).eq("pan", pan).eq("client_id_a", a["client_id"]).eq("client_id_b", b["client_id"]).execute().data
+                existing_check = db.table("cross_client_matches").select("id").eq("firm_id", firm_id).eq("match_value", pan).eq("client_id_a", a["client_id"]).eq("client_id_b", b["client_id"]).execute().data
                 if existing_check:
                     continue
                 try:
                     db.table("cross_client_matches").insert({
                         "id":          str(uuid.uuid4()),
                         "firm_id":     firm_id,
-                        "pan":         pan,
+                        "match_value": pan,
                         "entity_id":   a["entity_id"],
                         "client_id_a": a["client_id"],
                         "client_id_b": b["client_id"],
                         "match_type":  "pan",
-                        "is_reviewed": False,
+                        "reviewed":    False,
                         "created_at":  now,
                     }).execute()
                     new_count += 1
@@ -514,7 +513,7 @@ def detect_cross_client_matches(
 def review_cross_client_match(
     match_id: str,
     data: CrossMatchReviewIn,
-    current_user: dict = Depends(rbac("clients", "write")),
+    current_user: dict = Depends(rbac("client", "write")),
 ):
     db = _db()
     firm_id = current_user["firm_id"]
@@ -523,9 +522,8 @@ def review_cross_client_match(
     if not db:
         for i, m in enumerate(_MOCK_CROSS_MATCHES):
             if m["id"] == match_id:
-                _MOCK_CROSS_MATCHES[i]["is_reviewed"] = True
-                _MOCK_CROSS_MATCHES[i]["is_confirmed"] = data.is_confirmed
-                _MOCK_CROSS_MATCHES[i]["reviewed_at"] = now
+                _MOCK_CROSS_MATCHES[i]["reviewed"] = True
+                _MOCK_CROSS_MATCHES[i]["confirmed"] = data.is_confirmed
                 return api_response(True, _MOCK_CROSS_MATCHES[i])
         raise HTTPException(status_code=404, detail="Match not found")
 
@@ -533,11 +531,12 @@ def review_cross_client_match(
     if not existing:
         raise HTTPException(status_code=404, detail="Match not found")
 
-    res = db.table("cross_client_matches").update({
-        "is_reviewed":  True,
-        "is_confirmed": data.is_confirmed,
-        "reviewed_at":  now,
-        "reviewed_by":  current_user.get("auth_user_id"),
-    }).eq("id", match_id).eq("firm_id", firm_id).execute()
+    update: dict = {
+        "reviewed":  True,
+        "confirmed": data.is_confirmed,
+    }
+    if data.notes:
+        update["notes"] = data.notes
 
+    res = db.table("cross_client_matches").update(update).eq("id", match_id).eq("firm_id", firm_id).execute()
     return api_response(True, (res.data or [{}])[0])
