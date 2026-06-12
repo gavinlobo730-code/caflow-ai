@@ -23,7 +23,10 @@ export type ClientSection =
   | "tasks"
   | "reports"
   | "portal"
-  | "ai-insights";
+  | "ai-insights"
+  | "lifecycle"
+  | "relationships"
+  | "health";
 
 export interface ClientSectionConfig {
   id: ClientSection;
@@ -43,8 +46,11 @@ export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   { id: "documents",    label: "Documents",     href: (id) => `/clients/${id}/documents/` },
   { id: "tasks",        label: "Tasks",         href: (id) => `/clients/${id}/tasks/` },
   { id: "reports",      label: "Reports",       href: (id) => `/clients/${id}/reports/` },
-  { id: "portal",       label: "Portal",        href: (id) => `/clients/${id}/portal/` },
-  { id: "ai-insights",  label: "AI Insights",   href: (id) => `/clients/${id}/ai-insights/` },
+  { id: "portal",        label: "Portal",         href: (id) => `/clients/${id}/portal/` },
+  { id: "ai-insights",  label: "AI Insights",    href: (id) => `/clients/${id}/ai-insights/` },
+  { id: "lifecycle",    label: "Lifecycle",      href: (id) => `/clients/${id}/lifecycle/` },
+  { id: "relationships",label: "Relationships",  href: (id) => `/clients/${id}/relationships/` },
+  { id: "health",       label: "Health",         href: (id) => `/clients/${id}/health/` },
 ];
 
 export function getCurrentFinancialYear(): string {

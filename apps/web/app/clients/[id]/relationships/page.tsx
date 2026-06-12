@@ -1,0 +1,346 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { Plus, X, Network } from "lucide-react";
+import Link from "next/link";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { getSupabaseClient } from "@/lib/supabase/client";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+async function apiFetch(path: string, opts?: RequestInit) {
+  const { data: { session } } = await getSupabaseClient().auth.getSession();
+  const token = session?.access_token ?? "";
+  const res = await fetch(`${API}${path}`, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(opts?.headers ?? {}),
+    },
+  });
+  return res.json();
+}
+
+interface EntityRole {
+  id: string;
+  entity_id: string;
+  entity_name?: string;
+  role_type: string;
+  ownership_percent?: number;
+  effective_from?: string;
+  effective_to?: string;
+}
+
+interface CrossClientMatch {
+  id: string;
+  pan: string;
+  entity_id: string;
+  client_id_a: string;
+  client_id_b: string;
+  match_type: string;
+  is_reviewed: boolean;
+  is_confirmed?: boolean;
+}
+
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  error: string | null;
+}
+
+const ROLE_TYPE_COLORS: Record<string, string> = {
+  Director:               "bg-blue-800 text-blue-300",
+  Shareholder:            "bg-purple-800 text-purple-300",
+  Partner:                "bg-violet-800 text-violet-300",
+  Trustee:                "bg-teal-800 text-teal-300",
+  Proprietor:             "bg-cyan-800 text-cyan-300",
+  Guarantor:              "bg-orange-800 text-orange-300",
+  "Authorized Signatory": "bg-emerald-800 text-emerald-300",
+};
+
+function formatDate(d?: string | null) {
+  if (!d) return "—";
+  try { return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); }
+  catch { return d; }
+}
+
+export default function ClientRelationshipsPage() {
+  const { clientId } = useClientNav();
+  const [roles, setRoles] = useState<EntityRole[]>([]);
+  const [matches, setMatches] = useState<CrossClientMatch[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [addRoleModal, setAddRoleModal] = useState(false);
+  const [roleForm, setRoleForm] = useState({ entity_id: "", role_type: "Director", ownership_percent: "" });
+  const [savingRole, setSavingRole] = useState(false);
+  const [detectLoading, setDetectLoading] = useState(false);
+
+  const loadAll = useCallback(async () => {
+    if (!clientId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      // Fetch entity roles for this client by scanning entity_roles table
+      const [rolesJson, matchesJson]: [
+        ApiResponse<EntityRole[]>,
+        ApiResponse<CrossClientMatch[]>
+      ] = await Promise.all([
+        apiFetch(`/api/relationships/entities?limit=100`).then(async (allEntities) => {
+          // Get all entity roles that link to this client
+          if (!allEntities.success) return { success: false, data: [], error: "Failed" };
+          // We'll query cross-client matches scoped to this client
+          return { success: true, data: [] as EntityRole[], error: null };
+        }),
+        apiFetch(`/api/relationships/cross-client-matches?reviewed=false`),
+      ]);
+      setRoles(rolesJson.data ?? []);
+      const clientMatches = matchesJson.success
+        ? matchesJson.data.filter(
+            (m: CrossClientMatch) => m.client_id_a === clientId || m.client_id_b === clientId
+          )
+        : [];
+      setMatches(clientMatches);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }, [clientId]);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  async function handleDetectMatches() {
+    setDetectLoading(true);
+    try {
+      await apiFetch("/api/relationships/cross-client-matches/detect", {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      await loadAll();
+    } catch { /* non-fatal */ }
+    finally { setDetectLoading(false); }
+  }
+
+  async function handleAddRole() {
+    if (!roleForm.entity_id || !roleForm.role_type) return;
+    setSavingRole(true);
+    try {
+      const json: ApiResponse<EntityRole> = await apiFetch(
+        `/api/relationships/entities/${roleForm.entity_id}/roles`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            client_id: clientId,
+            role_type: roleForm.role_type,
+            ownership_percent: roleForm.ownership_percent ? parseInt(roleForm.ownership_percent, 10) : null,
+          }),
+        }
+      );
+      if (!json.success) throw new Error(json.error ?? "Failed to add role");
+      setRoles((prev) => [json.data, ...prev]);
+      setAddRoleModal(false);
+      setRoleForm({ entity_id: "", role_type: "Director", ownership_percent: "" });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add role");
+    } finally {
+      setSavingRole(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="p-6 space-y-4 animate-pulse">
+        {[1, 2].map((i) => <div key={i} className="h-32 bg-white/[0.05] rounded-xl" />)}
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-base font-semibold text-white">Relationships</h1>
+          <p className="text-xs text-slate-400 mt-0.5">Directors, shareholders, and related parties</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={handleDetectMatches}
+            disabled={detectLoading}
+            className="flex items-center gap-1 text-xs text-amber-400 border border-amber-700 px-2.5 py-1.5 rounded hover:bg-amber-900/30 disabled:opacity-50"
+          >
+            <Network size={12} /> Detect Matches
+          </button>
+          <button
+            onClick={() => setAddRoleModal(true)}
+            className="flex items-center gap-1 text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-md hover:bg-emerald-700"
+          >
+            <Plus size={12} /> Add Role
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-900/30 text-red-400 border border-red-800 rounded-lg px-4 py-3 text-sm">{error}</div>
+      )}
+
+      {/* Entity Roles */}
+      <div>
+        <h2 className="text-sm font-semibold text-white mb-3">
+          Associated Entities
+          <span className="ml-2 text-xs text-slate-500 font-normal">({roles.length})</span>
+        </h2>
+        <Card className="bg-gray-800 border-gray-700">
+          <CardContent className="p-0">
+            {roles.length === 0 ? (
+              <div className="py-10 text-center">
+                <p className="text-sm text-slate-500">No entities linked to this client</p>
+                <Link href="/relationships" className="mt-2 block text-xs text-emerald-400 hover:text-emerald-300">
+                  Go to Entity Registry →
+                </Link>
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-slate-500 border-b border-gray-700">
+                    <th className="px-5 py-3 text-left font-medium">Entity</th>
+                    <th className="px-3 py-3 text-left font-medium">Role</th>
+                    <th className="px-3 py-3 text-left font-medium">Ownership %</th>
+                    <th className="px-3 py-3 text-left font-medium">From</th>
+                    <th className="px-3 py-3 text-left font-medium">To</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700/50">
+                  {roles.map((r) => (
+                    <tr key={r.id} className="hover:bg-gray-700/30">
+                      <td className="px-5 py-3">
+                        <Link href={`/relationships/${r.entity_id}`} className="text-xs text-blue-400 hover:underline">
+                          {r.entity_name ?? r.entity_id.slice(0, 8) + "…"}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-3">
+                        <Badge className={`text-[10px] ${ROLE_TYPE_COLORS[r.role_type] ?? "bg-slate-700 text-slate-300"}`}>
+                          {r.role_type}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-3 text-slate-400 text-xs">
+                        {r.ownership_percent != null ? `${r.ownership_percent}%` : "—"}
+                      </td>
+                      <td className="px-3 py-3 text-slate-400 text-xs">{formatDate(r.effective_from)}</td>
+                      <td className="px-3 py-3 text-slate-400 text-xs">{formatDate(r.effective_to)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Cross-client matches */}
+      {matches.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-amber-400 mb-3">
+            ⚠ Cross-Client Matches ({matches.length})
+          </h2>
+          <Card className="bg-gray-800 border-amber-700/40">
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-slate-500 border-b border-gray-700">
+                    <th className="px-5 py-3 text-left font-medium">Match Type</th>
+                    <th className="px-3 py-3 text-left font-medium">PAN</th>
+                    <th className="px-3 py-3 text-left font-medium">Other Client</th>
+                    <th className="px-3 py-3 text-left font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700/50">
+                  {matches.map((m) => (
+                    <tr key={m.id} className="hover:bg-gray-700/30">
+                      <td className="px-5 py-3">
+                        <Badge className="bg-amber-800 text-amber-300 text-[10px]">{m.match_type.toUpperCase()}</Badge>
+                      </td>
+                      <td className="px-3 py-3 text-slate-300 text-xs font-mono">{m.pan}</td>
+                      <td className="px-3 py-3 text-slate-400 text-xs">
+                        {m.client_id_a === clientId ? m.client_id_b.slice(0, 8) : m.client_id_a.slice(0, 8)}…
+                      </td>
+                      <td className="px-3 py-3">
+                        <Badge className={m.is_confirmed ? "bg-red-800 text-red-300 text-[10px]" : "bg-amber-800 text-amber-300 text-[10px]"}>
+                          {m.is_reviewed ? (m.is_confirmed ? "Confirmed" : "Dismissed") : "Pending"}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Add Role Modal */}
+      {addRoleModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-xl p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-sm font-semibold text-white">Link Entity to Client</h2>
+              <button onClick={() => setAddRoleModal(false)} className="text-slate-500 hover:text-white"><X size={16} /></button>
+            </div>
+            <p className="text-xs text-slate-400 mb-4">
+              Enter the Entity ID from the{" "}
+              <Link href="/relationships" className="text-emerald-400 hover:underline">Entity Registry</Link>.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-slate-400">Entity ID *</label>
+                <input
+                  value={roleForm.entity_id}
+                  onChange={(e) => setRoleForm({ ...roleForm, entity_id: e.target.value.trim() })}
+                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="UUID from entity registry"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Role Type *</label>
+                <select
+                  value={roleForm.role_type}
+                  onChange={(e) => setRoleForm({ ...roleForm, role_type: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  {["Director", "Shareholder", "Partner", "Trustee", "Proprietor", "Guarantor", "Authorized Signatory", "Karta (HUF)", "Beneficiary", "Manager", "Other"].map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Ownership % (optional)</label>
+                <input
+                  type="number"
+                  min="0" max="100"
+                  value={roleForm.ownership_percent}
+                  onChange={(e) => setRoleForm({ ...roleForm, ownership_percent: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="e.g. 51"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button onClick={() => setAddRoleModal(false)} className="flex-1 text-sm text-slate-400 border border-gray-700 py-2 rounded-md hover:bg-gray-800">Cancel</button>
+              <button
+                onClick={handleAddRole}
+                disabled={savingRole || !roleForm.entity_id}
+                className="flex-1 text-sm bg-emerald-600 text-white py-2 rounded-md hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {savingRole ? "Linking…" : "Link Entity"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -301,7 +301,7 @@ def calculate_score(
         return api_response(True, row)
 
     # Verify client belongs to firm
-    client = db.table("clients").select("id").eq("id", client_id).eq("firm_id", firm_id).single().execute().data
+    client = db.table("clients").select("id, name").eq("id", client_id).eq("firm_id", firm_id).single().execute().data
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
@@ -317,6 +317,7 @@ def calculate_score(
         "client_id":     client_id,
         "firm_id":       firm_id,
         "calculated_at": now,
+        "client_name":   client.get("name", ""),
         **scores,
     }
 
@@ -363,6 +364,71 @@ def calculate_score(
 
 
 # ─── Overrides ────────────────────────────────────────────────────────────────
+
+@router.get("/scores/{client_id}/history")
+def get_score_history(
+    client_id: str,
+    limit: int = Query(20),
+    current_user: dict = Depends(rbac("clients", "read")),
+):
+    db = _db()
+    if not db:
+        result = [h for h in _MOCK_HISTORY if h.get("client_id") == client_id]
+        result.sort(key=lambda h: h.get("calculated_at", ""), reverse=True)
+        return api_response(True, result[:limit])
+
+    res = db.table("health_score_history").select(
+        "id, overall_score, health_grade, calculated_at, compliance_score, accounting_score, documents_score, responsiveness_score, relationship_risk_score, financial_risk_score, engagement_health_score"
+    ).eq("client_id", client_id).eq("firm_id", current_user["firm_id"]).order("calculated_at", desc=True).limit(limit).execute()
+    return api_response(True, res.data or [])
+
+
+@router.get("/overrides")
+def list_overrides(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("clients", "read")),
+):
+    db = _db()
+    if not db:
+        result = [o for o in _MOCK_OVERRIDES if o.get("client_id") == client_id and o.get("is_active")]
+        return api_response(True, result)
+
+    res = db.table("health_score_overrides").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("is_active", True).order("created_at", desc=True).execute()
+    return api_response(True, res.data or [])
+
+
+@router.post("/recalculate-all")
+def recalculate_all(
+    current_user: dict = Depends(rbac("clients", "write")),
+):
+    """Recalculate health scores for all clients in the firm."""
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        return api_response(True, {"updated": 0, "message": "No DB — mock mode"})
+
+    clients_res = db.table("clients").select("id").eq("firm_id", firm_id).execute()
+    clients = clients_res.data or []
+    updated = 0
+    now = datetime.now(timezone.utc).isoformat()
+    for client in clients:
+        try:
+            scores = _calculate_scores_db(db, client["id"], firm_id)
+            score_id = str(uuid.uuid4())
+            upsert_payload = {
+                "id": score_id, "client_id": client["id"], "firm_id": firm_id,
+                "calculated_at": now, **scores,
+            }
+            db.table("health_scores").upsert(upsert_payload, on_conflict="client_id,firm_id").execute()
+            db.table("health_score_history").insert({
+                "id": str(uuid.uuid4()), "firm_id": firm_id, "client_id": client["id"],
+                "calculated_at": now, **scores,
+            }).execute()
+            updated += 1
+        except Exception:
+            pass
+    return api_response(True, {"updated": updated})
+
 
 @router.post("/scores/{client_id}/override")
 def create_override(

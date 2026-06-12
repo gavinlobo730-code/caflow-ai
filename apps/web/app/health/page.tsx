@@ -5,6 +5,44 @@ import { RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { getSupabaseClient } from "@/lib/supabase/client";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+async function apiFetch(path: string, opts?: RequestInit) {
+  const { data: { session } } = await getSupabaseClient().auth.getSession();
+  const token = session?.access_token ?? "";
+  const res = await fetch(`${API}${path}`, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(opts?.headers ?? {}),
+    },
+  });
+  return res.json();
+}
+
+// Normalize backend shape to frontend shape
+function normalizeScore(raw: Record<string, unknown>): ClientHealth {
+  return {
+    id: String(raw.id ?? ""),
+    client_id: String(raw.client_id ?? ""),
+    client_name: String(raw.client_name ?? "—"),
+    overall_score: Number(raw.overall_score ?? 0),
+    grade: (raw.health_grade ?? "F") as Grade,
+    dimensions: {
+      compliance:        Number(raw.compliance_score ?? 0),
+      accounting:        Number(raw.accounting_score ?? 0),
+      documents:         Number(raw.documents_score ?? 0),
+      responsiveness:    Number(raw.responsiveness_score ?? 0),
+      relationship_risk: Number(raw.relationship_risk_score ?? 0),
+      financial_risk:    Number(raw.financial_risk_score ?? 0),
+      engagement_health: Number(raw.engagement_health_score ?? 0),
+    },
+    last_calculated: String(raw.calculated_at ?? raw.last_calculated ?? ""),
+  };
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -119,10 +157,9 @@ export default function HealthPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/health/scores");
-      const json: ApiResponse<ClientHealth[]> = await res.json();
+      const json: ApiResponse<Record<string, unknown>[]> = await apiFetch("/api/health/scores");
       if (!json.success) throw new Error(json.error ?? "Failed to load health data");
-      setClients(json.data);
+      setClients((json.data || []).map(normalizeScore));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -133,8 +170,9 @@ export default function HealthPage() {
   async function handleRecalculateAll() {
     setRecalculating(true);
     try {
-      const res = await fetch("/api/health/recalculate", { method: "POST" });
-      const json: ApiResponse<{ updated: number }> = await res.json();
+      const json: ApiResponse<{ updated: number }> = await apiFetch(
+        "/api/health/recalculate-all", { method: "POST" }
+      );
       if (!json.success) throw new Error(json.error ?? "Recalculation failed");
       await loadHealthData();
     } catch (e) {
