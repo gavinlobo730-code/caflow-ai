@@ -12,7 +12,6 @@ import { usePathname } from "next/navigation";
 export type ClientSection =
   | "overview"
   | "accounting"
-  | "coa"
   | "sales"
   | "purchases"
   | "compliance"
@@ -35,7 +34,6 @@ export interface ClientSectionConfig {
 export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   { id: "overview",     label: "Overview",      href: (id) => `/clients/${id}/overview/` },
   { id: "accounting",   label: "Accounting",    href: (id) => `/clients/${id}/accounting/` },
-  { id: "coa",          label: "Chart of Accounts", href: (id) => `/clients/${id}/coa/` },
   { id: "sales",        label: "Sales",         href: (id) => `/clients/${id}/sales/` },
   { id: "purchases",    label: "Purchases",     href: (id) => `/clients/${id}/purchases/` },
   { id: "compliance",   label: "Compliance",    href: (id) => `/clients/${id}/compliance/` },
