@@ -4,6 +4,20 @@ from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from core.exceptions import PermissionDeniedError
 
+load_dotenv()
+
+import os
+import sentry_sdk
+
+_SENTRY_DSN = os.environ.get("SENTRY_DSN")
+if _SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=_SENTRY_DSN,
+        environment=os.environ.get("ENVIRONMENT", "production"),
+        traces_sample_rate=1.0,
+        send_default_pii=False,
+    )
+
 from routers import clients, compliance, documents, assistant, insights, tasks, workflows, reminders, team
 from routers import accounting, compliance_records
 from routers import document_intelligence, risks, ai_insights, automation, notifications, ai_copilot
@@ -25,8 +39,6 @@ from routers import year_end_exports, year_end_mappings
 from routers.lifecycle import router as lifecycle_router
 from routers.relationships import router as relationships_router
 from routers.health import router as health_router
-
-load_dotenv()
 
 app = FastAPI(title="CAflow AI API", version="2.0.0")
 
