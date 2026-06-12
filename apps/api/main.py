@@ -21,6 +21,10 @@ from routers import timeline
 from routers import year_end, year_end_checklist, year_end_adjustments
 from routers import year_end_statements, year_end_notes, year_end_reviews
 from routers import year_end_exports, year_end_mappings
+# Phase 7 — Unified Intelligence Layer
+from routers.lifecycle import router as lifecycle_router
+from routers.relationships import router as relationships_router
+from routers.health import router as health_router
 
 load_dotenv()
 
@@ -102,6 +106,10 @@ app.include_router(year_end_notes.router, prefix="/api")
 app.include_router(year_end_reviews.router, prefix="/api")
 app.include_router(year_end_exports.router, prefix="/api")
 app.include_router(year_end_mappings.router, prefix="/api")
+# Phase 7 — Unified Intelligence Layer
+app.include_router(lifecycle_router)
+app.include_router(relationships_router)
+app.include_router(health_router)
 
 
 @app.get("/")
