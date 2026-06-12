@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, X, CheckCircle, XCircle } from "lucide-react";
+import { ChevronLeft, CheckCircle, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -72,11 +72,7 @@ export default function EntityDetailPage() {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [processingMatchId, setProcessingMatchId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (entityId) loadAll();
-  }, [entityId]);
-
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -107,7 +103,11 @@ export default function EntityDetailPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [entityId]);
+
+  useEffect(() => {
+    if (entityId) loadAll();
+  }, [entityId, loadAll]);
 
   async function handleMatchAction(matchId: string, action: "confirm" | "dismiss") {
     setProcessingMatchId(matchId);
