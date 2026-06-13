@@ -279,6 +279,33 @@ export const api = {
     runPipeline: () =>
       request("/api/memory/pipeline/run", { method: "POST" }),
   },
+  // Client Portal
+  portal: {
+    getDocumentRequests: (firmId: string, clientId: string) =>
+      request(`/api/portal/document-requests?firm_id=${firmId}&client_id=${clientId}`),
+    createDocumentRequest: (data: {
+      firm_id: string;
+      client_id: string;
+      title: string;
+      description?: string;
+      due_date?: string;
+      is_urgent?: boolean;
+    }) =>
+      request("/api/portal/document-requests", { method: "POST", body: JSON.stringify(data) }),
+    completeDocumentRequest: (id: string) =>
+      request(`/api/portal/document-requests/${id}/complete`, { method: "PUT" }),
+    getMessages: (firmId: string, clientId: string) =>
+      request(`/api/portal/messages?firm_id=${firmId}&client_id=${clientId}`),
+    sendMessage: (data: {
+      firm_id: string;
+      client_id: string;
+      text: string;
+      from_ca?: boolean;
+    }) =>
+      request("/api/portal/messages", { method: "POST", body: JSON.stringify(data) }),
+    getDues: (firmId: string, clientId: string) =>
+      request(`/api/portal/dues?firm_id=${firmId}&client_id=${clientId}`),
+  },
   // Phase 11 — AI Copilot Platform
   copilotV2: {
     listConversations: (params?: Record<string, string>) =>

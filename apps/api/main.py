@@ -68,14 +68,8 @@ from routers.workflow_builder import router as workflow_builder_router
 from routers.ai_copilot_v2 import router as ai_copilot_v2_router
 # Phase 13 — AI Memory & Intelligence
 from routers.memory_intelligence import router as memory_intelligence_router
-# Phase 14 — Tax, XBRL & External Integrations
-from routers.itr_workspace import router as itr_workspace_router
-from routers.xbrl_engine import router as xbrl_engine_router
-from routers.einvoice import router as einvoice_router
-from routers.eway_bill import router as eway_bill_router
-from routers.form_26as import router as form_26as_router
-from routers.tally_migration import router as tally_migration_router
-from routers.gst_portal import router as gst_portal_router
+# Client Portal
+from routers.portal import router as portal_router
 
 app = FastAPI(title="CAflow AI API", version="2.0.0")
 
@@ -175,14 +169,8 @@ app.include_router(workflow_builder_router)
 app.include_router(ai_copilot_v2_router)
 # Phase 13 — AI Memory & Intelligence
 app.include_router(memory_intelligence_router)
-# Phase 14 — Tax, XBRL & External Integrations
-app.include_router(itr_workspace_router)
-app.include_router(xbrl_engine_router)
-app.include_router(einvoice_router)
-app.include_router(eway_bill_router)
-app.include_router(form_26as_router)
-app.include_router(tally_migration_router)
-app.include_router(gst_portal_router)
+# Client Portal
+app.include_router(portal_router)
 
 
 # Phase 10B — Workflow Scheduler (daily jobs + workflow schedule runner)
