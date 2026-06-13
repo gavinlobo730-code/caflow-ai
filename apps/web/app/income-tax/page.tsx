@@ -761,7 +761,7 @@ export default function IncomeTaxPage() {
       {/* MODAL: Add ITR Deadline                                             */}
       {/* ================================================================== */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-5 border-b border-[#F1F5F9]">
               <h3 className="text-base font-semibold text-[#0F172A]">
@@ -884,7 +884,7 @@ export default function IncomeTaxPage() {
       {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT                            */}
       {/* ================================================================== */}
       {filedModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-5 border-b border-[#F1F5F9]">
               <h3 className="text-base font-semibold text-[#0F172A]">

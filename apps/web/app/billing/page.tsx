@@ -151,7 +151,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-[#0F172A]">Add Fee Engagement</h3>
@@ -249,7 +249,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-[#0F172A]">Record Receipt</h3>

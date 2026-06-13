@@ -165,7 +165,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
 
   if (success) {
     return (
-      <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4 text-center">
           <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto">
             <Mail className="w-6 h-6 text-green-600" />
@@ -183,7 +183,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-[#0F172A]">Invite Team Member</h3>
@@ -272,7 +272,7 @@ function EditRoleModal({ member, onClose, onSave }: EditRoleModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-[#0F172A]">Edit Role</h3>

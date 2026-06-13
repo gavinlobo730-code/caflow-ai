@@ -247,7 +247,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#F1F5F9]">
           <h2 className="text-base font-semibold text-[#0F172A]">
@@ -611,7 +611,7 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">

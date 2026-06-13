@@ -152,7 +152,7 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-[#F1F5F9]">
           <h3 className="text-sm font-semibold text-[#0F172A]">{editAudit ? "Edit Tax Audit" : "Add Tax Audit"}</h3>

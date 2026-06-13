@@ -449,7 +449,7 @@ function AddEmployeeModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-[#0F172A]">Add Employee</h2>
@@ -515,7 +515,7 @@ function PayslipModal({ slip, onClose }: { slip: PayrollSlip; onClose: () => voi
   const emp = slip.employee!;
   const run = slip.run!;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="font-semibold">Payslip</h2>

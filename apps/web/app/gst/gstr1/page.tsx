@@ -690,7 +690,7 @@ export default function GSTR1Page() {
 
       {/* Mark as Filed modal */}
       {showFiledModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-[#0F172A]">Mark GSTR-1 as Filed</h3>

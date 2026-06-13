@@ -332,7 +332,7 @@ export default function RelationshipsPage() {
 
       {/* Add Entity Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-[#0F172A]/75 flex items-center justify-center z-50 px-4">
           <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-sm font-semibold text-white">Add Entity</h2>
