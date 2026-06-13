@@ -40,7 +40,7 @@ export default function NotFound() {
       <div className="text-center space-y-3">
         <p className="text-5xl font-bold text-[#182350]/10">404</p>
         <p className="text-base font-semibold text-[#182350]">Page not found</p>
-        <p className="text-sm text-gray-400">The page you're looking for doesn't exist.</p>
+        <p className="text-sm text-gray-400">The page you&apos;re looking for doesn&apos;t exist.</p>
         <a
           href="/"
           className="inline-flex items-center text-sm font-medium text-[#182350] hover:text-[#182350]/70 underline underline-offset-4"
