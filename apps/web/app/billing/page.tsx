@@ -552,7 +552,7 @@ export default function BillingPage() {
               <p className="text-sm font-semibold text-[#334155]">Revenue Pipeline</p>
               <div className="space-y-2">
                 {[
-                  { label: "Draft", paise: dash.draftPaise, count: dash.draftCount, color: "bg-white/[0.08]" },
+                  { label: "Draft", paise: dash.draftPaise, count: dash.draftCount, color: "bg-gray-300" },
                   { label: "Sent / Issued", paise: dash.outstandingPaise, count: dash.sentCount, color: "bg-blue-400" },
                   { label: "Overdue", paise: dash.overduePaise, count: dash.overdueCount, color: "bg-red-400" },
                   { label: "Paid", paise: dash.totalRevenuePaise, count: dash.paidCount, color: "bg-green-500" },
@@ -624,7 +624,7 @@ export default function BillingPage() {
                   <tr key={e.id} className="hover:bg-[#F8FAFC]">
                     <td className="px-4 py-3 font-medium text-[#0F172A]">{e.client_name ?? "—"}</td>
                     <td className="px-4 py-3 text-[#475569]">{e.service_type}</td>
-                    <td className="px-4 py-3 text-[#1E293B] font-mono">{fmtPaise(e.fee_paise)}</td>
+                    <td className="px-4 py-3 text-gray-800 font-mono">{fmtPaise(e.fee_paise)}</td>
                     <td className="px-4 py-3 text-[#475569]">{e.billing_cycle}</td>
                     <td className="px-4 py-3 text-[#64748B]">{fmtDate(e.start_date)}</td>
                     <td className="px-4 py-3">

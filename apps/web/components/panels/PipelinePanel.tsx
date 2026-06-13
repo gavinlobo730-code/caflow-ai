@@ -23,15 +23,15 @@ export function PipelinePanel() {
   const pathname = usePathname();
 
   return (
-    <div className="flex flex-col h-full text-white">
+    <div className="flex flex-col h-full text-[#182350]">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-4 border-b border-white/10 shrink-0">
-        <div className="w-6 h-6 rounded-md bg-violet-600/30 flex items-center justify-center">
-          <Users2 size={12} className="text-violet-400" />
+      <div className="flex items-center gap-2 px-4 py-4 border-b border-gray-200 shrink-0">
+        <div className="w-6 h-6 rounded-md bg-[#182350]/10 flex items-center justify-center">
+          <Users2 size={12} className="text-[#182350]" />
         </div>
         <div>
-          <p className="text-[12px] font-semibold text-white leading-none">Pipeline</p>
-          <p className="text-[10px] text-slate-400 mt-0.5 leading-none">Leads &amp; proposals</p>
+          <p className="text-[12px] font-semibold text-[#182350] leading-none">Pipeline</p>
+          <p className="text-[10px] text-gray-500 mt-0.5 leading-none">Leads &amp; proposals</p>
         </div>
       </div>
 
@@ -49,8 +49,8 @@ export function PipelinePanel() {
               className={cn(
                 "flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium transition-colors mb-0.5",
                 isActive
-                  ? "bg-violet-600 text-white"
-                  : "text-slate-400 hover:text-white hover:bg-white/10"
+                  ? "bg-[#182350] text-white"
+                  : "text-gray-600 hover:text-[#182350] hover:bg-[#F8FAFC]"
               )}
             >
               <Icon size={13} className="shrink-0" />

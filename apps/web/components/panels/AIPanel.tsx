@@ -26,7 +26,7 @@ export function AIPanel() {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-2 px-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 px-2 mb-1.5 mt-1">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5 mt-1">
           Tools
         </p>
         <div className="space-y-0.5">
@@ -40,15 +40,15 @@ export function AIPanel() {
                 className={cn(
                   "flex items-center gap-2.5 px-2.5 py-2 rounded-[7px] text-[12.5px] font-medium transition-all duration-75",
                   active
-                    ? "bg-blue-600 text-white"
-                    : "text-slate-400 hover:text-white hover:bg-white/10"
+                    ? "bg-[#182350] text-white"
+                    : "text-gray-600 hover:bg-[#F8FAFC] hover:text-[#182350]"
                 )}
               >
                 <Icon
                   size={15}
                   className={cn(
                     "shrink-0",
-                    active ? "text-blue-600" : "text-slate-500"
+                    active ? "text-white" : "text-gray-500"
                   )}
                 />
                 <span className="truncate">{label}</span>
@@ -57,10 +57,10 @@ export function AIPanel() {
           })}
         </div>
 
-        <div className="mt-4 mx-2 p-2.5 rounded-[7px] bg-violet-50 border border-violet-500/20">
-          <p className="text-[11px] text-violet-300/70 leading-relaxed">
+        <div className="mt-4 mx-2 p-2.5 rounded-[7px] bg-[#FEFAEF] border border-[#B9915E]/20">
+          <p className="text-[11px] text-[#B9915E] leading-relaxed">
             Powered by{" "}
-            <span className="text-violet-300 font-medium">
+            <span className="text-[#B9915E] font-medium">
               Groq llama-3.3-70b
             </span>
           </p>

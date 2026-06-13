@@ -183,7 +183,7 @@ function AddModal({ clients, onClose, onAdded }: {
           </div>
         </div>
         <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-[#F1F5F9] flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-white/[0.08]">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
           <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
             {saving ? "Saving…" : "Add Notice"}
           </button>

@@ -555,7 +555,7 @@ export default function BankReconciliationPage() {
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-xs text-[#64748B]">
-                    Reconciled: <span className="font-semibold text-[#1E293B]">{reconciledCount}</span> / {totalCount} transactions
+                    Reconciled: <span className="font-semibold text-gray-800">{reconciledCount}</span> / {totalCount} transactions
                   </p>
                   {differencePaise !== 0 && (
                     <p className="text-xs text-red-600 flex items-center gap-1">

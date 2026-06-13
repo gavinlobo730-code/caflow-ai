@@ -391,7 +391,7 @@ function Row({ label, value, highlight }: { label: string; value: string; highli
   return (
     <div className="flex items-start justify-between gap-4">
       <span className="text-xs text-[#64748B] shrink-0 pt-0.5">{label}</span>
-      <span className={`text-sm font-medium text-right ${highlight ? "text-red-600" : "text-[#1E293B]"}`}>{value}</span>
+      <span className={`text-sm font-medium text-right ${highlight ? "text-red-600" : "text-gray-800"}`}>{value}</span>
     </div>
   );
 }

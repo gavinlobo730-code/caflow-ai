@@ -476,7 +476,7 @@ export default function SettingsPage() {
           </div>
           <Link
             href="/settings/scheduled-reports"
-            className="px-4 py-1.5 border border-blue-500/20 text-blue-600 text-sm font-medium rounded-lg hover:bg-blue-500/[0.08] transition-colors whitespace-nowrap"
+            className="px-4 py-1.5 border border-blue-200 text-blue-600 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors whitespace-nowrap"
           >
             Manage Schedules →
           </Link>

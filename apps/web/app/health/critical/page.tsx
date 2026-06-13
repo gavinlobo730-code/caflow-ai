@@ -25,10 +25,10 @@ interface ClientScore {
   overall_score: number; health_grade: Grade; is_critical: boolean; calculated_at?: string;
 }
 
-function scoreColor(s: number) { return s >= 70 ? "text-green-400" : s >= 40 ? "text-yellow-400" : "text-red-400"; }
+function scoreColor(s: number) { return s >= 70 ? "text-green-600" : s >= 40 ? "text-amber-600" : "text-red-600"; }
 function gradeBadge(g: Grade) {
-  const m: Record<Grade, string> = { A: "bg-green-800 text-green-300", B: "bg-blue-800 text-blue-300", C: "bg-yellow-800 text-yellow-300", D: "bg-orange-800 text-orange-300", F: "bg-red-800 text-red-300" };
-  return m[g] ?? "bg-gray-700 text-gray-300";
+  const m: Record<Grade, string> = { A: "bg-green-100 text-green-700", B: "bg-blue-100 text-blue-700", C: "bg-yellow-100 text-yellow-700", D: "bg-orange-100 text-orange-700", F: "bg-red-100 text-red-700" };
+  return m[g] ?? "bg-gray-100 text-gray-600";
 }
 function formatDate(d?: string | null) { if (!d) return "—"; try { return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); } catch { return d; } }
 
@@ -49,38 +49,38 @@ export default function CriticalClientsPage() {
   }, []);
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-6 space-y-5 bg-[#F8FAFC] min-h-full">
       <div className="flex items-center gap-3">
-        <AlertOctagon size={20} className="text-red-400" />
+        <AlertOctagon size={20} className="text-red-500" />
         <div>
-          <h1 className="text-base font-semibold text-white">Critical Clients</h1>
-          <p className="text-xs text-slate-400">Health score below 40 — requires immediate attention</p>
+          <h1 className="text-2xl font-bold text-[#182350]">Critical Clients</h1>
+          <p className="text-sm text-gray-500">Health score below 40 — requires immediate attention</p>
         </div>
       </div>
-      {error && <div className="bg-red-900/30 text-red-400 border border-red-800 rounded-lg px-4 py-3 text-sm">{error}</div>}
+      {error && <div className="bg-red-50 text-red-600 border border-red-200 rounded-lg px-4 py-3 text-sm">{error}</div>}
       {loading ? (
-        <div className="space-y-2 animate-pulse">{[1,2,3].map(i => <div key={i} className="h-14 bg-white/[0.05] rounded-xl" />)}</div>
+        <div className="space-y-2 animate-pulse">{[1,2,3].map(i => <div key={i} className="h-14 bg-gray-100 rounded-xl" />)}</div>
       ) : clients.length === 0 ? (
-        <Card className="bg-gray-800 border-gray-700"><CardContent className="py-12 text-center"><p className="text-sm text-slate-500">No critical clients — all scores are 40 or above</p></CardContent></Card>
+        <Card className="bg-white border-gray-200 shadow-sm"><CardContent className="py-12 text-center"><p className="text-sm text-gray-500">No critical clients — all scores are 40 or above</p></CardContent></Card>
       ) : (
-        <Card className="bg-gray-800 border-gray-700">
+        <Card className="bg-white border-gray-200 shadow-sm">
           <CardContent className="p-0">
             <table className="w-full text-sm">
-              <thead><tr className="text-xs text-slate-500 border-b border-gray-700">
+              <thead><tr className="text-xs text-gray-500 border-b border-gray-200">
                 <th className="px-5 py-3 text-left font-medium">Client</th>
                 <th className="px-3 py-3 text-left font-medium">Score</th>
                 <th className="px-3 py-3 text-left font-medium">Grade</th>
                 <th className="px-3 py-3 text-left font-medium">Last Calculated</th>
                 <th className="px-3 py-3 text-left font-medium"></th>
               </tr></thead>
-              <tbody className="divide-y divide-gray-700/50">
+              <tbody className="divide-y divide-gray-100">
                 {clients.map((c) => (
-                  <tr key={c.id} className="hover:bg-gray-700/30">
-                    <td className="px-5 py-3 text-white text-xs font-medium">{c.client_name ?? c.client_id.slice(0,12)}</td>
-                    <td className="px-3 py-3"><span className={`font-bold ${scoreColor(c.overall_score)}`}>{c.overall_score}</span><span className="text-xs text-slate-500">/100</span></td>
+                  <tr key={c.id} className="hover:bg-[#AFD2FA]/10">
+                    <td className="px-5 py-3 text-gray-800 text-xs font-medium">{c.client_name ?? c.client_id.slice(0,12)}</td>
+                    <td className="px-3 py-3"><span className={`font-bold ${scoreColor(c.overall_score)}`}>{c.overall_score}</span><span className="text-xs text-gray-400">/100</span></td>
                     <td className="px-3 py-3"><Badge className={`text-[10px] ${gradeBadge(c.health_grade)}`}>{c.health_grade}</Badge></td>
-                    <td className="px-3 py-3 text-slate-400 text-xs">{formatDate(c.calculated_at)}</td>
-                    <td className="px-3 py-3"><Link href={`/health/${c.client_id}`} className="text-xs text-blue-400 hover:underline">View →</Link></td>
+                    <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(c.calculated_at)}</td>
+                    <td className="px-3 py-3"><Link href={`/health/${c.client_id}`} className="text-xs text-[#182350] hover:text-[#182350]/70 hover:underline">View →</Link></td>
                   </tr>
                 ))}
               </tbody>

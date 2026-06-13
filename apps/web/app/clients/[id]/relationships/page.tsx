@@ -155,7 +155,7 @@ export default function ClientRelationshipsPage() {
   if (loading) {
     return (
       <div className="p-6 space-y-4 animate-pulse">
-        {[1, 2].map((i) => <div key={i} className="h-32 bg-white/[0.05] rounded-xl" />)}
+        {[1, 2].map((i) => <div key={i} className="h-32 bg-gray-100 rounded-xl" />)}
       </div>
     );
   }
@@ -164,20 +164,20 @@ export default function ClientRelationshipsPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-base font-semibold text-white">Relationships</h1>
-          <p className="text-xs text-slate-400 mt-0.5">Directors, shareholders, and related parties</p>
+          <h1 className="text-base font-semibold text-[#182350]">Relationships</h1>
+          <p className="text-xs text-gray-500 mt-0.5">Directors, shareholders, and related parties</p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={handleDetectMatches}
             disabled={detectLoading}
-            className="flex items-center gap-1 text-xs text-amber-400 border border-amber-700 px-2.5 py-1.5 rounded hover:bg-amber-900/30 disabled:opacity-50"
+            className="flex items-center gap-1 text-xs text-amber-700 border border-amber-300 px-2.5 py-1.5 rounded hover:bg-amber-50 disabled:opacity-50"
           >
             <Network size={12} /> Detect Matches
           </button>
           <button
             onClick={() => setAddRoleModal(true)}
-            className="flex items-center gap-1 text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-md hover:bg-emerald-700"
+            className="flex items-center gap-1 text-xs bg-[#182350] text-white px-3 py-1.5 rounded-md hover:bg-[#0D1635]"
           >
             <Plus size={12} /> Add Role
           </button>
@@ -185,28 +185,28 @@ export default function ClientRelationshipsPage() {
       </div>
 
       {error && (
-        <div className="bg-red-900/30 text-red-400 border border-red-800 rounded-lg px-4 py-3 text-sm">{error}</div>
+        <div className="bg-red-50 text-red-700 border border-red-200 rounded-lg px-4 py-3 text-sm">{error}</div>
       )}
 
       {/* Entity Roles */}
       <div>
-        <h2 className="text-sm font-semibold text-white mb-3">
+        <h2 className="text-sm font-semibold text-[#182350] mb-3">
           Associated Entities
-          <span className="ml-2 text-xs text-slate-500 font-normal">({roles.length})</span>
+          <span className="ml-2 text-xs text-gray-500 font-normal">({roles.length})</span>
         </h2>
-        <Card className="bg-gray-800 border-gray-700">
+        <Card className="bg-white border border-gray-200">
           <CardContent className="p-0">
             {roles.length === 0 ? (
               <div className="py-10 text-center">
-                <p className="text-sm text-slate-500">No entities linked to this client</p>
-                <Link href="/relationships" className="mt-2 block text-xs text-emerald-400 hover:text-emerald-300">
+                <p className="text-sm text-gray-500">No entities linked to this client</p>
+                <Link href="/relationships" className="mt-2 block text-xs text-[#182350] hover:text-[#0D1635]">
                   Go to Entity Registry →
                 </Link>
               </div>
             ) : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-xs text-slate-500 border-b border-gray-700">
+                  <tr className="text-xs text-gray-500 border-b border-gray-200">
                     <th className="px-5 py-3 text-left font-medium">Entity</th>
                     <th className="px-3 py-3 text-left font-medium">Role</th>
                     <th className="px-3 py-3 text-left font-medium">Ownership %</th>
@@ -214,24 +214,24 @@ export default function ClientRelationshipsPage() {
                     <th className="px-3 py-3 text-left font-medium">To</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-700/50">
+                <tbody className="divide-y divide-gray-100">
                   {roles.map((r) => (
-                    <tr key={r.id} className="hover:bg-gray-700/30">
+                    <tr key={r.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3">
-                        <Link href={`/relationships/${r.entity_id}`} className="text-xs text-blue-400 hover:underline">
+                        <Link href={`/relationships/${r.entity_id}`} className="text-xs text-blue-600 hover:underline">
                           {r.entity_name ?? r.entity_id.slice(0, 8) + "…"}
                         </Link>
                       </td>
                       <td className="px-3 py-3">
-                        <Badge className={`text-[10px] ${ROLE_TYPE_COLORS[r.role_type] ?? "bg-slate-700 text-slate-300"}`}>
+                        <Badge className={`text-[10px] ${ROLE_TYPE_COLORS[r.role_type] ?? "bg-gray-100 text-gray-600"}`}>
                           {r.role_type}
                         </Badge>
                       </td>
-                      <td className="px-3 py-3 text-slate-400 text-xs">
+                      <td className="px-3 py-3 text-gray-500 text-xs">
                         {r.ownership_percent != null ? `${r.ownership_percent}%` : "—"}
                       </td>
-                      <td className="px-3 py-3 text-slate-400 text-xs">{formatDate(r.effective_from)}</td>
-                      <td className="px-3 py-3 text-slate-400 text-xs">{formatDate(r.effective_to)}</td>
+                      <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(r.effective_from)}</td>
+                      <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(r.effective_to)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -244,14 +244,14 @@ export default function ClientRelationshipsPage() {
       {/* Cross-client matches */}
       {matches.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-amber-400 mb-3">
+          <h2 className="text-sm font-semibold text-amber-700 mb-3">
             ⚠ Cross-Client Matches ({matches.length})
           </h2>
-          <Card className="bg-gray-800 border-amber-700/40">
+          <Card className="bg-white border border-amber-200">
             <CardContent className="p-0">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-xs text-slate-500 border-b border-gray-700">
+                  <tr className="text-xs text-gray-500 border-b border-gray-200">
                     <th className="px-5 py-3 text-left font-medium">Match Type</th>
                     <th className="px-3 py-3 text-left font-medium">PAN</th>
                     <th className="px-3 py-3 text-left font-medium">Other Client</th>
@@ -265,7 +265,7 @@ export default function ClientRelationshipsPage() {
                         <Badge className="bg-amber-800 text-amber-300 text-[10px]">{m.match_type.toUpperCase()}</Badge>
                       </td>
                       <td className="px-3 py-3 text-slate-300 text-xs font-mono">{m.pan}</td>
-                      <td className="px-3 py-3 text-slate-400 text-xs">
+                      <td className="px-3 py-3 text-gray-500 text-xs">
                         {m.client_id_a === clientId ? m.client_id_b.slice(0, 8) : m.client_id_a.slice(0, 8)}…
                       </td>
                       <td className="px-3 py-3">
