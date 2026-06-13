@@ -821,6 +821,326 @@ def update_onboarding_task(
     return api_response(True, {**task, **update})
 
 
+# ─── Onboarding Checklist (10-step Product Bible Chapter 7) ──────────────────
+
+_CHECKLIST_STATUS_MAP = {
+    "Pending":     "pending",
+    "In Progress": "in_progress",
+    "Done":        "done",
+    "Skipped":     "skipped",
+    "pending":     "pending",
+    "in_progress": "in_progress",
+    "done":        "done",
+    "skipped":     "skipped",
+}
+
+# Mandatory steps that must all be done/skipped for go-live
+_MANDATORY_CHECKLIST_STEPS = {1, 2, 3, 4, 5, 8, 9, 10}
+
+
+def _build_checklist_workflow(
+    workflow_id: str,
+    firm_id: str,
+    client_id: str,
+    entity_type: str,
+    now: str,
+    notes: Optional[str] = None,
+) -> tuple[dict, list[dict]]:
+    """Construct workflow dict and 10 step dicts for mock or DB insert."""
+    avg_days = _AVG_DAYS_BY_ENTITY.get(entity_type, 14)
+    workflow = {
+        "id":                    workflow_id,
+        "firm_id":               firm_id,
+        "client_id":             client_id,
+        "entity_type":           entity_type,
+        "status":                "in_progress",
+        "progress_pct":          0,
+        "avg_days_for_entity_type": avg_days,
+        "notes":                 notes,
+        "started_at":            now,
+        "completed_at":          None,
+        "created_at":            now,
+        "updated_at":            now,
+    }
+    steps = [
+        {
+            "id":           str(uuid.uuid4()),
+            "workflow_id":  workflow_id,
+            "firm_id":      firm_id,
+            "step_number":  step_no,
+            "title":        title,
+            "description":  desc,
+            "status":       "pending",
+            "notes":        None,
+            "completed_at": None,
+            "created_at":   now,
+            "updated_at":   now,
+        }
+        for step_no, title, desc in _ONBOARDING_CHECKLIST_STEPS
+    ]
+    return workflow, steps
+
+
+def _calc_progress(steps: list[dict]) -> int:
+    """Integer progress percentage — 0-100."""
+    if not steps:
+        return 0
+    done = sum(1 for s in steps if s.get("status") in ("done", "skipped"))
+    return (done * 100) // len(steps)
+
+
+def _enrich_workflow(workflow: dict, steps: list[dict]) -> dict:
+    """Attach steps, progress_pct, days_in_progress to workflow dict."""
+    now_dt = datetime.now(timezone.utc)
+    started = workflow.get("started_at") or workflow.get("created_at")
+    days_in_progress = 0
+    if started:
+        try:
+            start_dt = datetime.fromisoformat(started.replace("Z", "+00:00"))
+            days_in_progress = (now_dt - start_dt).days
+        except Exception:
+            days_in_progress = 0
+
+    return {
+        **workflow,
+        "steps":            steps,
+        "progress_pct":     _calc_progress(steps),
+        "days_in_progress": days_in_progress,
+    }
+
+
+@router.post("/onboarding/checklist")
+def start_onboarding_checklist(
+    data: ChecklistStartIn,
+    current_user: dict = Depends(rbac("client", "write")),
+):
+    """Start a 10-step onboarding checklist for a client (Product Bible Ch. 7)."""
+    db = _db()
+    now = datetime.now(timezone.utc).isoformat()
+    workflow_id = str(uuid.uuid4())
+    firm_id = current_user["firm_id"]
+
+    workflow, steps = _build_checklist_workflow(
+        workflow_id, firm_id, data.client_id,
+        data.entity_type or "Individual", now, data.notes,
+    )
+
+    if not db:
+        _MOCK_ONBOARDING_WORKFLOWS.append(workflow)
+        _MOCK_ONBOARDING_TASKS.extend(steps)
+        timeline_service.log(
+            data.client_id, "lifecycle", "Checklist Onboarding Started",
+            f"10-step onboarding checklist started ({data.entity_type})", "info",
+            firm_id=firm_id,
+        )
+        return api_response(True, _enrich_workflow(workflow, steps))
+
+    db.table("onboarding_checklists").insert(workflow).execute()
+    if steps:
+        db.table("onboarding_checklist_steps").insert(steps).execute()
+
+    timeline_service.log(
+        data.client_id, "lifecycle", "Checklist Onboarding Started",
+        f"10-step onboarding checklist started ({data.entity_type})", "info",
+        firm_id=firm_id,
+        entity_type="onboarding_checklist", entity_id=workflow_id,
+        actor_id=current_user.get("auth_user_id"),
+    )
+    return api_response(True, _enrich_workflow(workflow, steps))
+
+
+@router.get("/onboarding/checklist/active")
+def list_active_onboardings(
+    firm_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    """List all active (non-completed) onboarding checklists for the firm."""
+    db = _db()
+    effective_firm_id = firm_id or current_user["firm_id"]
+
+    if not db:
+        workflows = [
+            w for w in _MOCK_ONBOARDING_WORKFLOWS
+            if w.get("firm_id") == effective_firm_id
+            and w.get("status") != "completed"
+            # Only return checklist workflows (have entity_type field)
+            and "entity_type" in w
+        ]
+        result = []
+        for wf in workflows:
+            wf_steps = [s for s in _MOCK_ONBOARDING_TASKS if s.get("workflow_id") == wf["id"] and "step_number" in s]
+            result.append(_enrich_workflow(wf, wf_steps))
+        return api_response(True, result)
+
+    wf_res = db.table("onboarding_checklists").select("*").eq("firm_id", effective_firm_id).neq("status", "completed").order("started_at", desc=True).execute()
+    workflows = wf_res.data or []
+    result = []
+    for wf in workflows:
+        steps_res = db.table("onboarding_checklist_steps").select("*").eq("workflow_id", wf["id"]).order("step_number").execute()
+        result.append(_enrich_workflow(wf, steps_res.data or []))
+    return api_response(True, result)
+
+
+@router.get("/onboarding/checklist/{workflow_id}")
+def get_onboarding_checklist(
+    workflow_id: str,
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    """Get full onboarding progress for a specific checklist workflow."""
+    db = _db()
+
+    if not db:
+        wf = next((w for w in _MOCK_ONBOARDING_WORKFLOWS if w["id"] == workflow_id), None)
+        if not wf:
+            raise HTTPException(status_code=404, detail="Onboarding workflow not found")
+        steps = [s for s in _MOCK_ONBOARDING_TASKS if s.get("workflow_id") == workflow_id and "step_number" in s]
+        return api_response(True, _enrich_workflow(wf, steps))
+
+    wf = db.table("onboarding_checklists").select("*").eq("id", workflow_id).eq("firm_id", current_user["firm_id"]).single().execute().data
+    if not wf:
+        raise HTTPException(status_code=404, detail="Onboarding workflow not found")
+    steps = db.table("onboarding_checklist_steps").select("*").eq("workflow_id", workflow_id).order("step_number").execute().data or []
+    return api_response(True, _enrich_workflow(wf, steps))
+
+
+@router.put("/onboarding/checklist/{workflow_id}/step/{step_number}")
+def update_checklist_step(
+    workflow_id: str,
+    step_number: int,
+    data: ChecklistStepIn,
+    current_user: dict = Depends(rbac("client", "write")),
+):
+    """Update a single step's status in an onboarding checklist."""
+    db = _db()
+    now = datetime.now(timezone.utc).isoformat()
+    db_status = _CHECKLIST_STATUS_MAP.get(data.status, data.status.lower().replace(" ", "_"))
+
+    if not db:
+        step_found = None
+        for s in _MOCK_ONBOARDING_TASKS:
+            if s.get("workflow_id") == workflow_id and s.get("step_number") == step_number:
+                s["status"] = db_status
+                s["notes"] = data.notes or s.get("notes")
+                if db_status in ("done", "skipped"):
+                    s["completed_at"] = now
+                s["updated_at"] = now
+                step_found = s
+                break
+        if not step_found:
+            raise HTTPException(status_code=404, detail="Step not found")
+
+        # Recalculate progress
+        wf_steps = [s for s in _MOCK_ONBOARDING_TASKS if s.get("workflow_id") == workflow_id and "step_number" in s]
+        pct = _calc_progress(wf_steps)
+        for wf in _MOCK_ONBOARDING_WORKFLOWS:
+            if wf["id"] == workflow_id:
+                wf["progress_pct"] = pct
+                wf["updated_at"] = now
+                break
+        return api_response(True, step_found)
+
+    step = db.table("onboarding_checklist_steps").select("*").eq("workflow_id", workflow_id).eq("step_number", step_number).eq("firm_id", current_user["firm_id"]).single().execute().data
+    if not step:
+        raise HTTPException(status_code=404, detail="Step not found")
+
+    update: dict[str, Any] = {"status": db_status, "updated_at": now}
+    if db_status in ("done", "skipped"):
+        update["completed_at"] = now
+    if data.notes is not None:
+        update["notes"] = data.notes
+    db.table("onboarding_checklist_steps").update(update).eq("id", step["id"]).execute()
+
+    # Update progress on workflow
+    all_steps = db.table("onboarding_checklist_steps").select("status").eq("workflow_id", workflow_id).execute().data or []
+    pct = _calc_progress(all_steps)
+    db.table("onboarding_checklists").update({"progress_pct": pct, "updated_at": now}).eq("id", workflow_id).execute()
+
+    return api_response(True, {**step, **update})
+
+
+@router.post("/onboarding/checklist/{workflow_id}/complete")
+def complete_onboarding_checklist(
+    workflow_id: str,
+    current_user: dict = Depends(rbac("client", "write")),
+):
+    """
+    Trigger go-live verification — checks all mandatory steps are done/skipped,
+    marks workflow completed, fires timeline event: client_activated.
+    Mandatory steps: 1 (Engagement Letter), 2 (Client Profile), 3 (KYC),
+    4 (Services & Fees), 5 (Compliance Calendar), 8 (Team Assignment),
+    9 (Portal Invitation), 10 (Go-Live Verification).
+    """
+    db = _db()
+    now = datetime.now(timezone.utc).isoformat()
+
+    if not db:
+        wf = next((w for w in _MOCK_ONBOARDING_WORKFLOWS if w["id"] == workflow_id), None)
+        if not wf:
+            raise HTTPException(status_code=404, detail="Onboarding workflow not found")
+        steps = [s for s in _MOCK_ONBOARDING_TASKS if s.get("workflow_id") == workflow_id and "step_number" in s]
+        step_map = {s["step_number"]: s["status"] for s in steps}
+        incomplete = [n for n in _MANDATORY_CHECKLIST_STEPS if step_map.get(n) not in ("done", "skipped")]
+        if incomplete:
+            step_titles = {sn: t for sn, t, _ in _ONBOARDING_CHECKLIST_STEPS}
+            missing = [step_titles[n] for n in sorted(incomplete)]
+            raise HTTPException(status_code=422, detail=f"Mandatory steps incomplete: {', '.join(missing)}")
+        wf["status"] = "completed"
+        wf["completed_at"] = now
+        wf["progress_pct"] = 100
+        wf["updated_at"] = now
+        timeline_service.log(
+            wf["client_id"], "lifecycle", "Client Activated",
+            "All onboarding steps verified — client activated", "success",
+            firm_id=current_user["firm_id"],
+        )
+        return api_response(True, _enrich_workflow(wf, steps))
+
+    wf = db.table("onboarding_checklists").select("*").eq("id", workflow_id).eq("firm_id", current_user["firm_id"]).single().execute().data
+    if not wf:
+        raise HTTPException(status_code=404, detail="Onboarding workflow not found")
+
+    steps = db.table("onboarding_checklist_steps").select("step_number,status,title").eq("workflow_id", workflow_id).execute().data or []
+    step_map = {s["step_number"]: s["status"] for s in steps}
+    incomplete = [n for n in _MANDATORY_CHECKLIST_STEPS if step_map.get(n) not in ("done", "skipped")]
+    if incomplete:
+        step_titles = {s["step_number"]: s.get("title", str(s["step_number"])) for s in steps}
+        missing = [step_titles.get(n, str(n)) for n in sorted(incomplete)]
+        raise HTTPException(status_code=422, detail=f"Mandatory steps incomplete: {', '.join(missing)}")
+
+    db.table("onboarding_checklists").update({
+        "status": "completed", "completed_at": now, "progress_pct": 100, "updated_at": now,
+    }).eq("id", workflow_id).execute()
+
+    # Mark client as active
+    try:
+        db.table("clients").update({"status": "active", "updated_at": now}).eq("id", wf["client_id"]).eq("firm_id", current_user["firm_id"]).execute()
+    except Exception:
+        pass
+
+    timeline_service.log(
+        wf["client_id"], "lifecycle", "Client Activated",
+        "All onboarding steps verified — client activated", "success",
+        firm_id=current_user["firm_id"],
+        entity_type="onboarding_checklist", entity_id=workflow_id,
+        actor_id=current_user.get("auth_user_id"),
+    )
+    try:
+        db.table("client_lifecycle_events").insert({
+            "id":          str(uuid.uuid4()),
+            "firm_id":     current_user["firm_id"],
+            "entity_id":   wf["client_id"],
+            "entity_type": "client",
+            "event_type":  "client_activated",
+            "description": "Client activated after completing onboarding checklist",
+            "created_at":  now,
+        }).execute()
+    except Exception:
+        pass
+
+    all_steps = db.table("onboarding_checklist_steps").select("*").eq("workflow_id", workflow_id).order("step_number").execute().data or []
+    return api_response(True, _enrich_workflow({**wf, "status": "completed", "completed_at": now, "progress_pct": 100}, all_steps))
+
+
 # ─── Renewals ─────────────────────────────────────────────────────────────────
 
 @router.get("/renewals")

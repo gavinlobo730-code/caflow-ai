@@ -17,14 +17,12 @@ import os
 
 from models.common import api_response
 from core.permissions import rbac  # noqa: F401 — available for future auth gating
+import domain.portal_service as portal_svc
 
 router = APIRouter(prefix="/api/portal", tags=["portal"])
 
 # ── Dual-path: use in-memory mock when SUPABASE_URL is not set ────────────────
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
-
-_MOCK_DOC_REQUESTS: list[dict] = []
-_MOCK_MESSAGES: list[dict] = []
 
 
 def _db():
@@ -66,11 +64,7 @@ def list_document_requests(
     """List all document requests for a client."""
     db = _db()
     if db is None:
-        rows = [
-            r for r in _MOCK_DOC_REQUESTS
-            if r["firm_id"] == firm_id and r["client_id"] == client_id
-        ]
-        rows = sorted(rows, key=lambda r: r["created_at"], reverse=True)
+        rows = portal_svc.list_document_requests(firm_id, client_id)
         return api_response(True, rows)
 
     res = (
@@ -88,6 +82,17 @@ def list_document_requests(
 def create_document_request(body: CreateDocRequestBody):
     """Create a new document request from CA to client."""
     db = _db()
+    if db is None:
+        record = portal_svc.create_document_request(
+            firm_id=body.firm_id,
+            client_id=body.client_id,
+            title=body.title,
+            description=body.description,
+            due_date=body.due_date,
+            is_urgent=body.is_urgent,
+        )
+        return api_response(True, record)
+
     now = _now()
     record = {
         "id": str(uuid.uuid4()),
@@ -102,10 +107,6 @@ def create_document_request(body: CreateDocRequestBody):
         "created_at": now,
     }
 
-    if db is None:
-        _MOCK_DOC_REQUESTS.append(record)
-        return api_response(True, record)
-
     res = db.table("document_requests").insert(record).execute()
     return api_response(True, res.data[0] if res.data else record)
 
@@ -117,12 +118,10 @@ def complete_document_request(request_id: str):
     now = _now()
 
     if db is None:
-        for r in _MOCK_DOC_REQUESTS:
-            if r["id"] == request_id:
-                r["status"] = "fulfilled"
-                r["fulfilled_at"] = now
-                return api_response(True, r)
-        return api_response(False, None, "Document request not found")
+        updated = portal_svc.complete_document_request(request_id)
+        if updated is None:
+            return api_response(False, None, "Document request not found")
+        return api_response(True, updated)
 
     res = (
         db.table("document_requests")
@@ -143,11 +142,7 @@ def list_messages(
     """List all portal messages for a client (CA → client broadcasts)."""
     db = _db()
     if db is None:
-        rows = [
-            r for r in _MOCK_MESSAGES
-            if r["firm_id"] == firm_id and r["client_id"] == client_id
-        ]
-        rows = sorted(rows, key=lambda r: r["created_at"], reverse=True)
+        rows = portal_svc.list_messages(firm_id, client_id)
         return api_response(True, rows)
 
     res = (
@@ -165,6 +160,15 @@ def list_messages(
 def send_message(body: SendMessageBody):
     """Send a portal message from CA to client."""
     db = _db()
+    if db is None:
+        record = portal_svc.send_message(
+            firm_id=body.firm_id,
+            client_id=body.client_id,
+            text=body.text,
+            from_ca=body.from_ca,
+        )
+        return api_response(True, record)
+
     now = _now()
     record = {
         "id": str(uuid.uuid4()),
@@ -174,10 +178,6 @@ def send_message(body: SendMessageBody):
         "from_ca": body.from_ca,
         "created_at": now,
     }
-
-    if db is None:
-        _MOCK_MESSAGES.append(record)
-        return api_response(True, record)
 
     res = db.table("portal_messages").insert(record).execute()
     return api_response(True, res.data[0] if res.data else record)
@@ -210,6 +210,5 @@ def get_dues(
         .execute()
     )
     dues = res.data or []
-    total_paise = sum(int(d.get("total_paise") or 0) for d in dues)
-    overdue_count = sum(1 for d in dues if d.get("status") == "overdue")
-    return api_response(True, {"dues": dues, "total_paise": total_paise, "overdue_count": overdue_count})
+    summary = portal_svc.compute_dues_summary(dues)
+    return api_response(True, summary)

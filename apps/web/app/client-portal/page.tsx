@@ -225,6 +225,52 @@ export default function ClientPortalPage() {
     }
   }
 
+  async function loadPortalMessages(clientId: string) {
+    setMessagesLoading(true);
+    try {
+      const firmId = await getFirmId();
+      const res = await api.portal.getMessages(firmId, clientId) as { success: boolean; data: PortalMessage[] };
+      setPortalMessages(res.data ?? []);
+    } catch {
+      setPortalMessages([]);
+    } finally {
+      setMessagesLoading(false);
+    }
+  }
+
+  async function loadDues(clientId: string) {
+    setDuesLoading(true);
+    try {
+      const firmId = await getFirmId();
+      const res = await api.portal.getDues(firmId, clientId) as { success: boolean; data: DuesResponse };
+      setApiDues(res.data?.dues ?? []);
+    } catch {
+      setApiDues([]);
+    } finally {
+      setDuesLoading(false);
+    }
+  }
+
+  async function handleSendMessage() {
+    if (!newMessageText.trim() || !selectedClientId) return;
+    setSendingMessage(true);
+    try {
+      const firmId = await getFirmId();
+      await api.portal.sendMessage({
+        firm_id: firmId,
+        client_id: selectedClientId,
+        text: newMessageText.trim(),
+        from_ca: true,
+      });
+      setNewMessageText("");
+      await loadPortalMessages(selectedClientId);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to send message");
+    } finally {
+      setSendingMessage(false);
+    }
+  }
+
   async function handleCreateRequest() {
     if (!newRequest.title.trim() || !selectedClientId) return;
     setSavingRequest(true);
@@ -735,8 +781,43 @@ export default function ClientPortalPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    {unpaidInvoices.length > 0 ? (
-                      unpaidInvoices.map((t) => (
+                    {duesLoading ? (
+                      <div className="text-center py-6 text-sm text-[#94A3B8] animate-pulse">Loading…</div>
+                    ) : (() => {
+                      const duesData = apiDues.length > 0 ? apiDues : unpaidInvoices;
+                      if (duesData.length === 0) {
+                        return (
+                          <div className="text-center py-10 space-y-2">
+                            <Receipt size={32} className="text-gray-200 mx-auto" />
+                            <p className="text-sm text-[#94A3B8]">No outstanding dues for this client</p>
+                          </div>
+                        );
+                      }
+                      if (apiDues.length > 0) {
+                        return apiDues.map((due) => (
+                          <div
+                            key={due.id}
+                            className="flex items-center gap-4 p-3 rounded-lg border border-[#F1F5F9] hover:bg-[#F8FAFC]"
+                          >
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-[#0F172A]">{due.party_name}</p>
+                              <p className="text-xs text-[#64748B] mt-0.5">
+                                {formatDate(due.transaction_date)}
+                                {due.reference_no ? ` · Ref: ${due.reference_no}` : ""}
+                              </p>
+                            </div>
+                            <span className="text-sm font-semibold text-[#1E293B]">
+                              {formatPaise(due.total_paise)}
+                            </span>
+                            <Badge
+                              className={`text-xs ${due.status === "overdue" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}
+                            >
+                              {due.status}
+                            </Badge>
+                          </div>
+                        ));
+                      }
+                      return unpaidInvoices.map((t) => (
                         <div
                           key={t.id}
                           className="flex items-center gap-4 p-3 rounded-lg border border-[#F1F5F9] hover:bg-[#F8FAFC]"
@@ -753,28 +834,8 @@ export default function ClientPortalPage() {
                           </span>
                           <Badge className="text-xs bg-amber-100 text-amber-700">{t.status}</Badge>
                         </div>
-                      ))
-                    ) : (
-                      MOCK_DUES.map((due) => (
-                        <div
-                          key={due.id}
-                          className="flex items-center gap-4 p-3 rounded-lg border border-[#F1F5F9] hover:bg-[#F8FAFC]"
-                        >
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-[#0F172A]">{due.description}</p>
-                            <p className="text-xs text-[#64748B] mt-0.5">Due: {due.due}</p>
-                          </div>
-                          <span className="text-sm font-semibold text-[#1E293B]">{due.amount}</span>
-                          <Badge
-                            className={`text-xs ${
-                              due.status === "Overdue" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
-                            }`}
-                          >
-                            {due.status}
-                          </Badge>
-                        </div>
-                      ))
-                    )}
+                      ));
+                    })()}
                   </CardContent>
                 </Card>
               )}
@@ -788,21 +849,44 @@ export default function ClientPortalPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {MOCK_MESSAGES.map((msg) => (
-                      <div key={msg.id} className="flex gap-3">
-                        <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
-                          CA
-                        </div>
-                        <div className="flex-1 bg-[#F8FAFC] rounded-lg px-4 py-3">
-                          <p className="text-sm text-[#1E293B]">{msg.text}</p>
-                          <p className="text-xs text-[#94A3B8] mt-1">{msg.time}</p>
-                        </div>
+                    {messagesLoading ? (
+                      <div className="text-center py-6 text-sm text-[#94A3B8] animate-pulse">Loading…</div>
+                    ) : portalMessages.length === 0 ? (
+                      <div className="text-center py-10 space-y-2">
+                        <MessageSquare size={32} className="text-gray-200 mx-auto" />
+                        <p className="text-sm text-[#94A3B8]">No messages yet — send a message to your client below</p>
                       </div>
-                    ))}
-                    <div className="pt-2 border-t border-[#F1F5F9]">
-                      <p className="text-xs text-[#94A3B8] text-center">
-                        To reply or send documents, contact your CA directly via phone or email.
-                      </p>
+                    ) : (
+                      portalMessages.map((msg) => (
+                        <div key={msg.id} className="flex gap-3">
+                          <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+                            {msg.from_ca ? "CA" : "C"}
+                          </div>
+                          <div className="flex-1 bg-[#F8FAFC] rounded-lg px-4 py-3">
+                            <p className="text-sm text-[#1E293B]">{msg.text}</p>
+                            <p className="text-xs text-[#94A3B8] mt-1">{formatDate(msg.created_at)}</p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                    <div className="pt-2 border-t border-[#F1F5F9] space-y-2">
+                      <textarea
+                        rows={2}
+                        placeholder="Type a message to send to this client…"
+                        value={newMessageText}
+                        onChange={(e) => setNewMessageText(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      />
+                      <div className="flex justify-end">
+                        <button
+                          onClick={handleSendMessage}
+                          disabled={!newMessageText.trim() || sendingMessage}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                        >
+                          <MessageSquare size={12} />
+                          {sendingMessage ? "Sending…" : "Send Message"}
+                        </button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
