@@ -128,3 +128,9 @@ app.include_router(health_router)
 def root():
     from models.common import api_response
     return api_response(True, {"message": "CAflow AI API v2.0", "docs": "/docs"})
+
+
+@app.get("/health")
+def healthcheck():
+    from models.common import api_response
+    return api_response(True, {"status": "ok"})

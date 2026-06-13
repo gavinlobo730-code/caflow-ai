@@ -163,7 +163,7 @@ def _calculate_scores_db(db, client_id: str, firm_id: str) -> dict:
     relationship_risk_score = 100
     try:
         # schema column is "confirmed" not "is_confirmed"
-        confirmed_matches = db.table("cross_client_matches").select("id").eq("firm_id", firm_id).or_(f"client_id_a.eq.{client_id},client_id_b.eq.{client_id}").eq("confirmed", True).execute().data or []
+        confirmed_matches = db.table("cross_client_matches").select("id").eq("firm_id", firm_id).or_(f"client_id_a.eq.{client_id},client_id_b.eq.{client_id}").eq("is_confirmed", True).execute().data or []
         deduction = len(confirmed_matches) * 15
         relationship_risk_score = max(0, 100 - deduction)
     except Exception:
@@ -298,7 +298,7 @@ def calculate_score(
 
         return api_response(True, row)
 
-    client = db.table("clients").select("id, name").eq("id", client_id).eq("firm_id", firm_id).single().execute().data
+    client = db.table("clients").select("id, client_name").eq("id", client_id).eq("firm_id", firm_id).single().execute().data
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
@@ -313,7 +313,7 @@ def calculate_score(
         "client_id":          client_id,
         "firm_id":            firm_id,
         "last_calculated_at": now,   # schema column is last_calculated_at
-        "client_name":        client.get("name", ""),
+        "client_name":        client.get("client_name", ""),
         **scores,
     }
 
