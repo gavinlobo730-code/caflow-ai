@@ -209,4 +209,75 @@ export const api = {
     removeDependency: (taskId: string, dependencyId: string) =>
       request(`/api/tasks/${taskId}/dependencies/${dependencyId}`, { method: "DELETE" }),
   },
+  // Phase 10 — Workflow Automation Engine
+  workflowEngine: {
+    listTemplates: (params?: Record<string, string>) =>
+      request(`/api/workflows/templates${params ? "?" + new URLSearchParams(params) : ""}`),
+    getTemplate: (id: string) => request(`/api/workflows/templates/${id}`),
+    createTemplate: (body: unknown) =>
+      request("/api/workflows/templates", { method: "POST", body: JSON.stringify(body) }),
+    updateTemplate: (id: string, body: unknown) =>
+      request(`/api/workflows/templates/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    deleteTemplate: (id: string) =>
+      request(`/api/workflows/templates/${id}`, { method: "DELETE" }),
+    toggleTemplate: (id: string) =>
+      request(`/api/workflows/templates/${id}/toggle`, { method: "POST" }),
+    triggerTemplate: (id: string, body?: unknown) =>
+      request(`/api/workflows/templates/${id}/trigger`, { method: "POST", body: JSON.stringify(body || {}) }),
+    listInstances: (params?: Record<string, string>) =>
+      request(`/api/workflows/instances${params ? "?" + new URLSearchParams(params) : ""}`),
+    getInstance: (id: string) => request(`/api/workflows/instances/${id}`),
+    cancelInstance: (id: string) =>
+      request(`/api/workflows/instances/${id}/cancel`, { method: "POST" }),
+    listApprovals: (params?: Record<string, string>) =>
+      request(`/api/workflows/approvals${params ? "?" + new URLSearchParams(params) : ""}`),
+    respondApproval: (id: string, body: { decision: string; response_notes?: string }) =>
+      request(`/api/workflows/approvals/${id}/respond`, { method: "POST", body: JSON.stringify(body) }),
+    listSchedules: (params?: Record<string, string>) =>
+      request(`/api/workflows/schedules${params ? "?" + new URLSearchParams(params) : ""}`),
+    createSchedule: (body: unknown) =>
+      request("/api/workflows/schedules", { method: "POST", body: JSON.stringify(body) }),
+    toggleSchedule: (id: string) =>
+      request(`/api/workflows/schedules/${id}/toggle`, { method: "PATCH" }),
+    deleteSchedule: (id: string) =>
+      request(`/api/workflows/schedules/${id}`, { method: "DELETE" }),
+    analytics: (params?: Record<string, string>) =>
+      request(`/api/workflows/analytics${params ? "?" + new URLSearchParams(params) : ""}`),
+    listFailures: (params?: Record<string, string>) =>
+      request(`/api/workflows/failures${params ? "?" + new URLSearchParams(params) : ""}`),
+    resolveFailure: (id: string) =>
+      request(`/api/workflows/failures/${id}/resolve`, { method: "POST" }),
+    executions: (params?: Record<string, string>) =>
+      request(`/api/workflows/executions${params ? "?" + new URLSearchParams(params) : ""}`),
+  },
+  // Phase 11 — AI Copilot Platform
+  copilotV2: {
+    listConversations: (params?: Record<string, string>) =>
+      request(`/api/copilot/conversations${params ? "?" + new URLSearchParams(params) : ""}`),
+    createConversation: (body: unknown) =>
+      request("/api/copilot/conversations", { method: "POST", body: JSON.stringify(body) }),
+    getConversation: (id: string) => request(`/api/copilot/conversations/${id}`),
+    archiveConversation: (id: string) =>
+      request(`/api/copilot/conversations/${id}/archive`, { method: "POST" }),
+    sendMessage: (conversationId: string, body: unknown) =>
+      request(`/api/copilot/conversations/${conversationId}/messages`, { method: "POST", body: JSON.stringify(body) }),
+    rateMessage: (messageId: string, body: unknown) =>
+      request(`/api/copilot/messages/${messageId}/feedback`, { method: "POST", body: JSON.stringify(body) }),
+    quickChat: (body: unknown) =>
+      request("/api/copilot/chat", { method: "POST", body: JSON.stringify(body) }),
+    suggestions: (context_type?: string) =>
+      request(`/api/copilot/suggestions${context_type ? `?context_type=${context_type}` : ""}`),
+    clientIntelligence: (clientId: string) =>
+      request(`/api/copilot/intelligence/client/${clientId}`),
+    complianceIntelligence: () => request("/api/copilot/intelligence/compliance"),
+    workflowIntelligence: () => request("/api/copilot/intelligence/workflows"),
+    relationshipIntelligence: () => request("/api/copilot/intelligence/relationships"),
+    executiveDashboard: () => request("/api/copilot/executive-dashboard"),
+    listRecommendations: (params?: Record<string, string>) =>
+      request(`/api/copilot/recommendations${params ? "?" + new URLSearchParams(params) : ""}`),
+    actRecommendation: (id: string, body: unknown) =>
+      request(`/api/copilot/recommendations/${id}/action`, { method: "POST", body: JSON.stringify(body) }),
+    executeAction: (body: unknown) =>
+      request("/api/copilot/actions", { method: "POST", body: JSON.stringify(body) }),
+  },
 };
