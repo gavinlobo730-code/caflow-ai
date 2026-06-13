@@ -181,3 +181,82 @@ def stop_scheduler() -> None:
     if _scheduler is not None:
         _scheduler.shutdown(wait=False)
         _scheduler = None
+
+
+# ── Phase 10B — Workflow Schedule Runner ──────────────────────────────────────
+
+def _compute_next_run(cron_expression: str, timezone_str: str = "Asia/Kolkata") -> str:
+    """Compute next run time from a cron expression using croniter."""
+    try:
+        import pytz
+        from croniter import croniter
+        tz = pytz.timezone(timezone_str)
+        now = datetime.now(tz)
+        cron = croniter(cron_expression, now)
+        next_dt = cron.get_next(datetime)
+        return next_dt.astimezone(timezone.utc).isoformat()
+    except Exception as e:
+        logger.error("Failed to compute next run for cron %s: %s", cron_expression, e)
+        from datetime import timedelta
+        return (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+
+
+# Re-export as public name for tests and external callers
+compute_next_run = _compute_next_run
+
+
+def run_due_schedules() -> None:
+    """
+    Workflow scheduler tick — called every minute when ENABLE_SCHEDULER=true.
+
+    Finds all active workflow_schedules with next_run_at <= now, fires the
+    corresponding workflow template via the engine, then updates schedule
+    metadata (last_run_at, last_run_status, next_run_at).
+
+    NOT safe for multi-worker deployments — use a dedicated single-worker
+    process or an external cron job.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    from repositories.workflow_repository import workflow_repo as repo
+    from domain.workflow_engine_v2 import workflow_engine as engine
+
+    try:
+        schedules = repo.list_schedules_due(now_iso)
+    except Exception as e:
+        logger.error("Failed to fetch due workflow schedules: %s", e)
+        return
+
+    if not schedules:
+        return
+
+    logger.info("Workflow scheduler tick: %d due schedule(s)", len(schedules))
+
+    for schedule in schedules:
+        firm_id = schedule["firm_id"]
+        schedule_id = schedule["id"]
+        cron_expr = schedule.get("cron_expression", "0 9 * * *")
+        tz_str = schedule.get("timezone", "Asia/Kolkata")
+
+        try:
+            engine.fire_trigger(
+                firm_id=firm_id,
+                trigger_type="scheduled",
+                trigger_data={
+                    "schedule_id": schedule_id,
+                    "schedule_name": schedule.get("name"),
+                    "fired_at": now_iso,
+                },
+                client_id=None,
+            )
+            run_status = "success"
+            logger.info("Workflow schedule %s fired for firm %s", schedule_id, firm_id)
+        except Exception as e:
+            run_status = "failed"
+            logger.error("Workflow schedule %s failed for firm %s: %s", schedule_id, firm_id, e)
+
+        next_run = _compute_next_run(cron_expr, tz_str)
+        try:
+            repo.update_schedule_run(schedule_id, run_status, next_run)
+        except Exception as e:
+            logger.error("Failed to update schedule metadata for %s: %s", schedule_id, e)
