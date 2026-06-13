@@ -404,7 +404,7 @@ def test_demo_flow_1_lead_to_active_client():
 
     # Step 5: Complete all mandatory steps
     mandatory = [s["step"] for s in ONBOARDING_STEPS if s["mandatory"]]
-    assert len(mandatory) == 7, "Expect 7 mandatory onboarding steps"
+    assert len(mandatory) == 8, "Expect 8 mandatory onboarding steps"
     for step_num in mandatory:
         _complete_step(instance, step_num)
 
@@ -531,15 +531,13 @@ def test_demo_flow_4_health_engine_client_risk():
     score = result["health_score"]
     grade = result["grade"]
 
-    # Step 2: Verify At Risk grade
+    # Step 2: Verify grade
     # Expected composite:
     # (20*2500 + 75*2000 + 80*1500 + 70*1500 + 60*1000 + 85*1000 + 90*500) // 10000
     # = (50000 + 150000 + 120000 + 105000 + 60000 + 85000 + 45000) // 10000
-    # = 615000 // 10000 = 61  → "Good"
-    # But compliance alone at 20 would trigger "At Risk" in isolation.
-    # The weighted composite is 61 (Good).  Verify grade bands are correct.
+    # = 615000 // 10000 = 61  → "Needs Attention" (50-64 band)
     assert score == 61
-    assert grade == "Good"
+    assert grade == "Needs Attention"
 
     # Now test with very low compliance AND hard_override to force At Risk
     dimension_scores_bad = dict(dimension_scores)

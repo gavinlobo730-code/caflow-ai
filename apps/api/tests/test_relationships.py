@@ -51,24 +51,15 @@ def _mock_user():
 @pytest.fixture(autouse=True)
 def clear_mock_stores():
     """Reset all in-memory stores between tests."""
-    import apps.api.routers.relationships as rel  # type: ignore
-    # Allow import from either path
-    try:
-        import routers.relationships as rel  # type: ignore
-    except ImportError:
-        pass
+    import routers.relationships as rel  # type: ignore
     yield
-    # Clear after test
-    try:
-        rel._MOCK_ENTITIES.clear()
-        rel._MOCK_ENTITY_ROLES.clear()
-        rel._MOCK_RELATIONSHIPS.clear()
-        rel._MOCK_CROSS_MATCHES.clear()
-        rel._MOCK_ENTITY_TO_ENTITY_RELS.clear()
-        rel._MOCK_LOANS.clear()
-        rel._MOCK_PROPERTIES.clear()
-    except Exception:
-        pass  # Store might not exist in partial import scenarios
+    rel._MOCK_ENTITIES.clear()
+    rel._MOCK_ENTITY_ROLES.clear()
+    rel._MOCK_RELATIONSHIPS.clear()
+    rel._MOCK_CROSS_MATCHES.clear()
+    rel._MOCK_ENTITY_TO_ENTITY_RELS.clear()
+    rel._MOCK_LOANS.clear()
+    rel._MOCK_PROPERTIES.clear()
 
 
 # ─── Test helpers that operate directly on router logic ──────────────────────
@@ -143,7 +134,7 @@ class TestEntityCreation:
 
     def test_create_person_entity(self):
         """Test 1: Create an Individual entity with PAN."""
-        import routers.relationships as rel
+        import routers.relationships as rel  # type: ignore  # noqa: F811
         entity = _make_entity("Amit Sharma", "Individual", "ABCDE1234F")
         rel._MOCK_ENTITIES.append(entity)
 
@@ -154,7 +145,7 @@ class TestEntityCreation:
 
     def test_create_company_entity(self):
         """Test 2: Create a Company entity."""
-        import routers.relationships as rel
+        import routers.relationships as rel  # type: ignore  # noqa: F811
         entity = _make_entity("ABC Pvt Ltd", "Company", "ZZZZZ9999Z")
         rel._MOCK_ENTITIES.append(entity)
 
@@ -168,7 +159,7 @@ class TestDirectorRelationship:
 
     def test_create_director_relationship(self):
         """Test 3: Assign an Individual as Director of a client."""
-        import routers.relationships as rel
+        import routers.relationships as rel  # type: ignore  # noqa: F811
         entity = _make_entity("Priya Nair", "Individual", "PQRST5678U")
         rel._MOCK_ENTITIES.append(entity)
 
@@ -185,7 +176,7 @@ class TestCrossClientDetection:
 
     def test_cross_client_detection_same_pan(self):
         """Test 4: Entity with same PAN linked to two clients → cross-client match detected."""
-        import routers.relationships as rel
+        import routers.relationships as rel  # type: ignore  # noqa: F811
 
         shared_pan = "CROSS1234P"
         entity = _make_entity("Cross Person", "Individual", shared_pan)
@@ -242,7 +233,7 @@ class TestSection185Loan:
 
     def test_section_185_flag_on_director_loan(self):
         """Test 5: Loan of type 'to_director' must set section_185_flagged = True."""
-        import routers.relationships as rel
+        import routers.relationships as rel  # type: ignore  # noqa: F811
 
         entity = _make_entity("Director Person", "Individual", "DIREC5678D")
         rel._MOCK_ENTITIES.append(entity)
@@ -260,7 +251,7 @@ class TestSection185Loan:
 
     def test_non_director_loan_not_flagged(self):
         """Test 6: Loan of type 'other' must NOT set section_185_flagged."""
-        import routers.relationships as rel
+        import routers.relationships as rel  # type: ignore  # noqa: F811
 
         entity = _make_entity("Vendor Entity", "Company", "VNDOR9999V")
         rel._MOCK_ENTITIES.append(entity)
@@ -295,7 +286,7 @@ class TestPropertyCreation:
 
     def test_create_property_with_paise(self):
         """Test 9: Property cost and rent stored in integer paise (IT Act Sec 48, Sec 23)."""
-        import routers.relationships as rel
+        import routers.relationships as rel  # type: ignore  # noqa: F811
 
         # ₹50,00,000 cost = 50_00_000 * 100 = 5_00_00_00_000? No:
         # ₹50,00,000 = 5_000_000 rupees = 5_000_000 * 100 paise? No:
@@ -333,7 +324,7 @@ class TestPropertyCreation:
 
     def test_retrieve_property_by_client(self):
         """Test 10: Filter properties by client_id."""
-        import routers.relationships as rel
+        import routers.relationships as rel  # type: ignore  # noqa: F811
 
         now = "2026-06-13T00:00:00+00:00"
         for i, cid in enumerate([CLIENT_A, CLIENT_B, CLIENT_A]):
@@ -361,7 +352,7 @@ class TestRelatedPartyReport:
 
     def test_related_party_report_includes_directors(self):
         """Test 11: Report for a client must include all Director and Shareholder roles."""
-        import routers.relationships as rel
+        import routers.relationships as rel  # type: ignore  # noqa: F811
 
         entity1 = _make_entity("Director One", "Individual", "DIR001111D")
         entity2 = _make_entity("Shareholder Co", "Company", "SHR002222S")
@@ -392,7 +383,7 @@ class TestTransferPricingThreshold:
         Test 12: IT Act Sec 92 — inter-company loan > ₹1 crore (10_000_000_00 paise)
         must be flagged for transfer pricing documentation.
         """
-        import routers.relationships as rel
+        import routers.relationships as rel  # type: ignore  # noqa: F811
 
         # ₹1,00,00,000 = 1 crore = 1_00_00_000 rupees
         # In paise: 1_00_00_000 * 100 = 10_000_000_00?
