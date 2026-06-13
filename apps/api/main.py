@@ -7,7 +7,11 @@ from core.exceptions import PermissionDeniedError
 load_dotenv()
 
 import os
+import logging
 import sentry_sdk
+
+_logger = logging.getLogger("caflow.main")
+logging.basicConfig(level=logging.INFO)
 
 _SENTRY_DSN = os.environ.get("SENTRY_DSN")
 if _SENTRY_DSN:
@@ -17,6 +21,25 @@ if _SENTRY_DSN:
         traces_sample_rate=1.0,
         send_default_pii=False,
     )
+
+# ── CORS origins — parse before router imports so value is fixed early ─────────
+# Handles comma-separated values, accidental newlines, surrounding quotes,
+# and trailing slashes that would cause silent origin mismatches.
+def _parse_origins(raw: str) -> list[str]:
+    origins = []
+    for part in raw.replace("\n", ",").replace(";", ",").split(","):
+        o = part.strip().strip('"').strip("'").rstrip("/")
+        if o:
+            origins.append(o)
+    return origins
+
+_ALLOWED_ORIGINS = _parse_origins(
+    os.environ.get(
+        "ALLOWED_ORIGINS",
+        "http://localhost:3000,https://caflow-ai.pages.dev",
+    )
+)
+_logger.info("CORS allowed origins: %s", _ALLOWED_ORIGINS)
 
 from routers import clients, compliance, documents, assistant, insights, tasks, workflows, reminders, team
 from routers import accounting, compliance_records
@@ -42,8 +65,16 @@ from routers.health import router as health_router
 
 app = FastAPI(title="CAflow AI API", version="2.0.0")
 
-import os
-_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,https://caflow-ai.pages.dev").split(",") if o.strip()]
+# CORSMiddleware MUST be registered first so it wraps all response paths,
+# including error responses produced by exception handlers below.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.exception_handler(PermissionDeniedError)
 async def permission_denied_handler(request: Request, exc: PermissionDeniedError):
@@ -53,13 +84,15 @@ async def permission_denied_handler(request: Request, exc: PermissionDeniedError
     )
 
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    # Catch-all: ensures unhandled 500s are returned as JSONResponse so they
+    # travel back through CORSMiddleware and carry the CORS header.
+    _logger.exception("Unhandled exception for %s %s", request.method, request.url)
+    return JSONResponse(
+        status_code=500,
+        content={"success": False, "data": None, "error": "Internal server error"},
+    )
 
 app.include_router(clients.router)
 app.include_router(compliance.router)
