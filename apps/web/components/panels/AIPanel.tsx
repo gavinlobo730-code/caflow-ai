@@ -17,9 +17,9 @@ export function AIPanel() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-white/10 shrink-0">
-        <p className="text-[13px] font-semibold text-white">AI</p>
-        <p className="text-[11px] text-slate-500 mt-0.5">
+      <div className="px-4 py-3 border-b border-gray-200 shrink-0">
+        <p className="text-[13px] font-semibold text-[#182350]">AI</p>
+        <p className="text-[11px] text-gray-500 mt-0.5">
           Intelligence & reports
         </p>
       </div>

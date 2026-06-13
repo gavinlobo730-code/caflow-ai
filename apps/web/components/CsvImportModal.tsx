@@ -181,7 +181,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
   const errorCount = rows.filter(r => r.errors.length > 0).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#F8FAFC]/60 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#F1F5F9]">
@@ -204,7 +204,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
                   <p className="text-xs text-blue-600 mt-0.5">Fill in your data and save as CSV. Required fields are marked.</p>
                   <button
                     onClick={downloadTemplate}
-                    className="mt-2 text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                    className="mt-2 text-xs px-3 py-1.5 bg-blue-600 text-gray-900 rounded-lg hover:bg-blue-700 font-medium"
                   >
                     Download Template CSV
                   </button>
@@ -360,7 +360,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
           {step === "preview" && validCount > 0 && (
             <button
               onClick={handleImport}
-              className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+              className="px-5 py-2 bg-blue-600 text-gray-900 text-sm font-medium rounded-lg hover:bg-blue-700"
             >
               Import {validCount} row{validCount !== 1 ? "s" : ""}
             </button>

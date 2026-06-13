@@ -164,7 +164,7 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-[#0F172A]/75 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-[#F8FAFC]/75 backdrop-blur-sm"
       onClick={onClose}
     >
       <div

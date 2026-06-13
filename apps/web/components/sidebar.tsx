@@ -90,7 +90,7 @@ function SidebarContent({
     <aside
       className={cn(
         "flex flex-col h-full transition-all duration-200 shrink-0",
-        "bg-[#0F172A]",
+        "bg-[#182350]",
         collapsed ? "w-[60px]" : "w-[220px]"
       )}
     >
@@ -223,7 +223,7 @@ export function Sidebar() {
       {/* Mobile backdrop */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-40 bg-[#0F172A]/75 backdrop-blur-sm"
+          className="md:hidden fixed inset-0 z-40 bg-[#182350]/75 backdrop-blur-sm"
           onClick={() => setMobileOpen(false)}
         />
       )}

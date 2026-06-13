@@ -18,9 +18,9 @@ export function TeamPanel() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-white/10 shrink-0">
-        <p className="text-[13px] font-semibold text-white">Team</p>
-        <p className="text-[11px] text-slate-500 mt-0.5">
+      <div className="px-4 py-3 border-b border-gray-200 shrink-0">
+        <p className="text-[13px] font-semibold text-[#182350]">Team</p>
+        <p className="text-[11px] text-gray-500 mt-0.5">
           Staff & task management
         </p>
       </div>

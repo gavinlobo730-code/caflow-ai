@@ -79,9 +79,9 @@ type FilterTab = "All" | "Critical" | "At-Risk" | "Healthy";
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function scoreColor(score: number): string {
-  if (score >= 70) return "text-green-400";
-  if (score >= 40) return "text-yellow-400";
-  return "text-red-400";
+  if (score >= 70) return "text-green-600";
+  if (score >= 40) return "text-amber-600";
+  return "text-red-600";
 }
 
 function scoreBg(score: number): string {
@@ -92,11 +92,11 @@ function scoreBg(score: number): string {
 
 function gradeBadge(grade: Grade): string {
   const map: Record<Grade, string> = {
-    A: "bg-green-800 text-green-300",
-    B: "bg-blue-800 text-blue-300",
-    C: "bg-yellow-800 text-yellow-300",
-    D: "bg-orange-800 text-orange-300",
-    F: "bg-red-800 text-red-300",
+    A: "bg-green-100 text-green-700",
+    B: "bg-blue-100 text-blue-700",
+    C: "bg-yellow-100 text-yellow-700",
+    D: "bg-orange-100 text-orange-700",
+    F: "bg-red-100 text-red-700",
   };
   return map[grade];
 }
@@ -206,16 +206,16 @@ export default function HealthPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4 animate-pulse">
-        <div className="h-6 bg-white/[0.08] rounded w-48" />
+      <div className="p-6 space-y-4 animate-pulse bg-[#F8FAFC] min-h-full">
+        <div className="h-6 bg-gray-200 rounded w-48" />
         <div className="grid grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-20 bg-white/[0.05] rounded-xl" />
+            <div key={i} className="h-20 bg-gray-100 rounded-xl" />
           ))}
         </div>
-        <div className="h-32 bg-white/[0.05] rounded-xl" />
+        <div className="h-32 bg-gray-100 rounded-xl" />
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-14 bg-white/[0.05] rounded-xl" />
+          <div key={i} className="h-14 bg-gray-100 rounded-xl" />
         ))}
       </div>
     );
@@ -223,8 +223,8 @@ export default function HealthPage() {
 
   if (error) {
     return (
-      <div className="p-6">
-        <div className="bg-red-900/30 text-red-400 rounded-lg px-5 py-4 text-sm border border-red-800">
+      <div className="p-6 bg-[#F8FAFC] min-h-full">
+        <div className="bg-red-50 text-red-600 rounded-lg px-5 py-4 text-sm border border-red-200">
           {error}
         </div>
       </div>
@@ -232,19 +232,19 @@ export default function HealthPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-6 space-y-5 bg-[#F8FAFC] min-h-full">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-white">Client Health Monitor</h1>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <h1 className="text-2xl font-bold text-[#182350]">Client Health Monitor</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
             {clients.length} clients tracked
           </p>
         </div>
         <button
           onClick={handleRecalculateAll}
           disabled={recalculating}
-          className="flex items-center gap-1.5 text-sm text-emerald-400 border border-emerald-700 px-3 py-1.5 rounded-md hover:bg-emerald-900/30 disabled:opacity-50"
+          className="flex items-center gap-1.5 text-sm text-emerald-700 border border-emerald-300 px-3 py-1.5 rounded-md hover:bg-emerald-50 disabled:opacity-50"
         >
           <RefreshCw size={13} className={recalculating ? "animate-spin" : ""} />
           {recalculating ? "Recalculating…" : "Recalculate All"}
@@ -253,36 +253,36 @@ export default function HealthPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4">
-        <Card className="bg-gray-800 border-gray-700">
+        <Card className="bg-white border-gray-200 shadow-sm">
           <CardContent className="p-4 text-center">
             <p className={`text-3xl font-bold ${scoreColor(avgScore)}`}>{avgScore}</p>
-            <p className="text-xs text-slate-400 mt-1">Avg Score</p>
+            <p className="text-xs text-gray-500 mt-1">Avg Score</p>
           </CardContent>
         </Card>
-        <Card className="bg-red-900/30 border-red-800">
+        <Card className="bg-red-50 border-red-200 shadow-sm">
           <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-red-400">{criticalCount}</p>
-            <p className="text-xs text-red-400/70 mt-1">Critical (&lt;40)</p>
+            <p className="text-3xl font-bold text-red-600">{criticalCount}</p>
+            <p className="text-xs text-red-500 mt-1">Critical (&lt;40)</p>
           </CardContent>
         </Card>
-        <Card className="bg-yellow-900/30 border-yellow-800">
+        <Card className="bg-amber-50 border-amber-200 shadow-sm">
           <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-yellow-400">{atRiskCount}</p>
-            <p className="text-xs text-yellow-400/70 mt-1">At-Risk (40–69)</p>
+            <p className="text-3xl font-bold text-amber-600">{atRiskCount}</p>
+            <p className="text-xs text-amber-500 mt-1">At-Risk (40–69)</p>
           </CardContent>
         </Card>
-        <Card className="bg-green-900/30 border-green-800">
+        <Card className="bg-green-50 border-green-200 shadow-sm">
           <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-green-400">{healthyCount}</p>
-            <p className="text-xs text-green-400/70 mt-1">Healthy (≥70)</p>
+            <p className="text-3xl font-bold text-green-600">{healthyCount}</p>
+            <p className="text-xs text-green-500 mt-1">Healthy (≥70)</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Score distribution bar chart */}
-      <Card className="bg-gray-800 border-gray-700">
+      <Card className="bg-white border-gray-200 shadow-sm">
         <CardContent className="p-5">
-          <p className="text-xs text-slate-400 font-medium mb-4">Score Distribution</p>
+          <p className="text-xs text-gray-500 font-medium mb-4">Score Distribution</p>
           <div className="flex items-end gap-4 h-20">
             {(["A", "B", "C", "D", "F"] as Grade[]).map((grade) => {
               const count = gradeCounts[grade];
@@ -296,14 +296,14 @@ export default function HealthPage() {
               };
               return (
                 <div key={grade} className="flex flex-col items-center gap-1 flex-1">
-                  <span className="text-xs text-slate-400">{count}</span>
+                  <span className="text-xs text-gray-500">{count}</span>
                   <div className="w-full flex items-end" style={{ height: "60px" }}>
                     <div
                       className={`w-full rounded-t ${colors[grade]} transition-all`}
                       style={{ height: `${Math.max(heightPct, 4)}%` }}
                     />
                   </div>
-                  <span className="text-xs font-bold text-slate-300">{grade}</span>
+                  <span className="text-xs font-bold text-gray-700">{grade}</span>
                 </div>
               );
             })}
@@ -312,19 +312,19 @@ export default function HealthPage() {
       </Card>
 
       {/* Filter tabs */}
-      <div className="flex gap-1 border-b border-gray-700">
+      <div className="flex gap-1 border-b border-gray-200">
         {(["All", "Critical", "At-Risk", "Healthy"] as FilterTab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setFilterTab(tab)}
             className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
               filterTab === tab
-                ? "border-emerald-500 text-emerald-400"
-                : "border-transparent text-slate-500 hover:text-slate-300"
+                ? "border-[#182350] text-[#182350]"
+                : "border-transparent text-gray-500 hover:text-gray-700"
             }`}
           >
             {tab}
-            <span className="ml-1 text-slate-600">
+            <span className="ml-1 text-gray-400">
               (
               {tab === "All"
                 ? clients.length
@@ -340,16 +340,16 @@ export default function HealthPage() {
       </div>
 
       {/* Table */}
-      <Card className="bg-gray-800 border-gray-700">
+      <Card className="bg-white border-gray-200 shadow-sm">
         <CardContent className="p-0">
           {filtered.length === 0 ? (
             <div className="text-center py-16">
-              <p className="text-sm text-slate-500">No clients in this category</p>
+              <p className="text-sm text-gray-500">No clients in this category</p>
             </div>
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-slate-500 border-b border-gray-700">
+                <tr className="text-xs text-gray-500 border-b border-gray-200">
                   <th className="px-5 py-3 text-left font-medium">Client</th>
                   <th className="px-3 py-3 text-left font-medium">Score</th>
                   <th className="px-3 py-3 text-left font-medium">Grade</th>
@@ -358,15 +358,15 @@ export default function HealthPage() {
                   <th className="px-5 py-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-700/50">
+              <tbody className="divide-y divide-gray-100">
                 {filtered.map((client) => (
-                  <tr key={client.id} className="hover:bg-gray-700/30 group">
-                    <td className="px-5 py-3 text-white font-medium">{client.client_name}</td>
+                  <tr key={client.id} className="hover:bg-[#AFD2FA]/10 group">
+                    <td className="px-5 py-3 text-gray-800 font-medium">{client.client_name}</td>
                     <td className="px-3 py-3">
                       <span className={`text-lg font-bold ${scoreColor(client.overall_score)}`}>
                         {client.overall_score}
                       </span>
-                      <span className="text-xs text-slate-500">/100</span>
+                      <span className="text-xs text-gray-400">/100</span>
                     </td>
                     <td className="px-3 py-3">
                       <Badge className={`text-xs font-bold ${gradeBadge(client.grade)}`}>
@@ -376,13 +376,13 @@ export default function HealthPage() {
                     <td className="px-3 py-3">
                       <DimensionDots dimensions={client.dimensions} />
                     </td>
-                    <td className="px-3 py-3 text-slate-400 text-xs">
+                    <td className="px-3 py-3 text-gray-500 text-xs">
                       {formatDate(client.last_calculated)}
                     </td>
                     <td className="px-5 py-3 text-right">
                       <Link
                         href={`/health/${client.client_id}`}
-                        className="text-xs text-emerald-400 hover:text-emerald-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="text-xs text-[#182350] hover:text-[#182350]/70 opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         View →
                       </Link>

@@ -52,13 +52,13 @@ interface ApiResponse<T> {
 }
 
 const ROLE_TYPE_COLORS: Record<string, string> = {
-  Director:               "bg-blue-800 text-blue-300",
-  Shareholder:            "bg-purple-800 text-purple-300",
-  Partner:                "bg-violet-800 text-violet-300",
-  Trustee:                "bg-teal-800 text-teal-300",
-  Proprietor:             "bg-cyan-800 text-cyan-300",
-  Guarantor:              "bg-orange-800 text-orange-300",
-  "Authorized Signatory": "bg-emerald-800 text-emerald-300",
+  Director:               "bg-blue-100 text-blue-700",
+  Shareholder:            "bg-purple-100 text-purple-700",
+  Partner:                "bg-violet-100 text-violet-700",
+  Trustee:                "bg-teal-100 text-teal-700",
+  Proprietor:             "bg-cyan-100 text-cyan-700",
+  Guarantor:              "bg-orange-100 text-orange-700",
+  "Authorized Signatory": "bg-emerald-100 text-emerald-700",
 };
 
 function formatDate(d?: string | null) {

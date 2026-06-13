@@ -57,18 +57,18 @@ interface ApiResponse<T> {
 }
 
 const TASK_STATUS_COLORS: Record<string, string> = {
-  pending:     "bg-slate-700 text-slate-300",
-  in_progress: "bg-blue-800 text-blue-300",
-  done:        "bg-green-800 text-green-300",
-  skipped:     "bg-gray-700 text-gray-400",
+  pending:     "bg-gray-100 text-gray-600",
+  in_progress: "bg-blue-100 text-blue-700",
+  done:        "bg-green-100 text-green-700",
+  skipped:     "bg-gray-100 text-gray-500",
 };
 
 const RENEWAL_STATUS_COLORS: Record<string, string> = {
-  pending:  "bg-amber-800 text-amber-300",
-  accepted: "bg-green-800 text-green-300",
-  expired:  "bg-red-800 text-red-300",
-  rejected: "bg-gray-700 text-gray-400",
-  sent:     "bg-blue-800 text-blue-300",
+  pending:  "bg-amber-100 text-amber-700",
+  accepted: "bg-green-100 text-green-700",
+  expired:  "bg-red-100 text-red-700",
+  rejected: "bg-gray-100 text-gray-500",
+  sent:     "bg-blue-100 text-blue-700",
 };
 
 function formatDate(d?: string | null) {
@@ -185,7 +185,7 @@ export default function ClientLifecyclePage() {
   if (loading) {
     return (
       <div className="p-6 space-y-4 animate-pulse">
-        {[1, 2].map((i) => <div key={i} className="h-32 bg-white/[0.05] rounded-xl" />)}
+        {[1, 2].map((i) => <div key={i} className="h-32 bg-gray-100 rounded-xl" />)}
       </div>
     );
   }
@@ -194,20 +194,20 @@ export default function ClientLifecyclePage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-base font-semibold text-white">Lifecycle</h1>
-          <p className="text-xs text-slate-400 mt-0.5">Onboarding workflows and renewals</p>
+          <h1 className="text-base font-semibold text-[#182350]">Lifecycle</h1>
+          <p className="text-xs text-gray-500 mt-0.5">Onboarding workflows and renewals</p>
         </div>
         <button
           onClick={handleCreateWorkflow}
           disabled={creatingWorkflow}
-          className="flex items-center gap-1.5 text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-md hover:bg-emerald-700 disabled:opacity-50"
+          className="flex items-center gap-1.5 text-xs bg-[#182350] text-white px-3 py-1.5 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
         >
           <Plus size={12} /> New Onboarding
         </button>
       </div>
 
       {error && (
-        <div className="bg-red-900/30 text-red-400 border border-red-800 rounded-lg px-4 py-3 text-sm">{error}</div>
+        <div className="bg-red-50 text-red-700 border border-red-200 rounded-lg px-4 py-3 text-sm">{error}</div>
       )}
 
       {/* Onboarding Workflows */}
