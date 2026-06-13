@@ -785,7 +785,7 @@ export default function ClientPortalPage() {
 
       {/* New Request Modal */}
       {showNewRequestModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-[#0F172A]/60 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
             <h3 className="text-base font-semibold text-[#0F172A]">New Document Request</h3>
             <div className="space-y-3">

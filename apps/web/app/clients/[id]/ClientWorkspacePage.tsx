@@ -918,7 +918,7 @@ export default function ClientWorkspacePage() {
 
           {/* Upload Modal */}
           {showUploadModal && (
-            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-[#0F172A]">Upload Document</h3>
@@ -978,7 +978,7 @@ export default function ClientWorkspacePage() {
 
           {/* Version Prompt Modal */}
           {versionPromptDoc && (
-            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
                 <h3 className="text-sm font-semibold text-[#0F172A]">Document already exists</h3>
                 <p className="text-xs text-[#475569]">
@@ -1011,7 +1011,7 @@ export default function ClientWorkspacePage() {
 
           {/* Version History Modal */}
           {showVersionHistory && (
-            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-[#0F172A]">Version History — {showVersionHistory}</h3>
@@ -1069,7 +1069,7 @@ export default function ClientWorkspacePage() {
 
       {/* Portal invite modal */}
       {showPortalModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-[#0F172A]">Share Portal Link</h3>
@@ -1111,7 +1111,7 @@ export default function ClientWorkspacePage() {
 
       {/* Portal invite modal — sends magic link to client */}
       {showPortalInviteModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-[#0F172A]">

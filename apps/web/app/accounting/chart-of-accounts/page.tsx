@@ -474,7 +474,7 @@ export default function ChartOfAccountsPage() {
 
       {/* Add / Edit Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-[#0F172A]/60 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <h2 className="text-sm font-semibold text-[#0F172A] mb-4">
               {editTarget ? "Edit Account" : "New Account"}

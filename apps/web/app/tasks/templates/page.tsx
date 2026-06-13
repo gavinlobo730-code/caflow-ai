@@ -284,7 +284,7 @@ export default function TaskTemplatesPage() {
 
       {/* Create / Edit dialog */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-[#0F172A]">{editingId ? "Edit Template" : "New Template"}</h2>
@@ -373,7 +373,7 @@ export default function TaskTemplatesPage() {
 
       {/* Instantiate dialog */}
       {instantiateId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-[#0F172A]">Create Task from Template</h2>

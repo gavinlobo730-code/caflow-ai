@@ -181,7 +181,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
   const errorCount = rows.filter(r => r.errors.length > 0).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#F1F5F9]">

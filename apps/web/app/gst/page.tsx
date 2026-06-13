@@ -226,7 +226,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-[#0F172A]">Add GST Filing</h3>
@@ -706,7 +706,7 @@ export default function GSTPage() {
       )}
 
       {showAddModal && clients.length === 0 && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4 text-center">
             <p className="text-sm text-[#334155] font-medium">No clients found</p>
             <p className="text-xs text-[#64748B]">
