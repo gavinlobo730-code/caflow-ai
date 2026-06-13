@@ -156,7 +156,7 @@ class TestWorkflowRepository:
             "firm-001", "wfi-001", "step-002",
             "Test Approval", "Manager", "Approve", "Please review", {}
         )
-        responded = repo.respond_approval("firm-001", approval["id"], "approved", "user-001", "Looks good")
+        responded = repo.respond_approval("firm-001", approval["id"], "approved", "Looks good", "user-001")
         assert responded["status"] == "approved"
         assert responded["response_notes"] == "Looks good"
 
