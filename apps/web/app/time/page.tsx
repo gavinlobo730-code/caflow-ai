@@ -351,7 +351,7 @@ export default function TimeTrackingPage() {
                 <div key={e.id} className="flex items-center gap-4 px-5 py-3 hover:bg-[#F8FAFC]">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-[#1E293B] truncate">
+                      <span className="text-sm font-medium text-gray-800 truncate">
                         {e.client_id ? (clientMap.get(e.client_id) ?? "Unknown") : "No client"}
                       </span>
                       {e.is_billable ? (
@@ -370,7 +370,7 @@ export default function TimeTrackingPage() {
                   </div>
                   <div className="text-right shrink-0 flex items-center gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-[#1E293B]">
+                      <p className="text-sm font-semibold text-gray-800">
                         {e.duration_minutes ? formatDuration(e.duration_minutes) : "—"}
                       </p>
                       {e.is_billable && e.hourly_rate_paise && e.duration_minutes && (

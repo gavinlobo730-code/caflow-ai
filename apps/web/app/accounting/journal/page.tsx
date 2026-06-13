@@ -50,7 +50,7 @@ function emptyLine(): NewLine {
 function LoadingSpinner() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-4 animate-pulse">
-      <div className="h-6 bg-white/[0.08] rounded w-48" />
+      <div className="h-6 bg-gray-100 rounded w-48" />
       <div className="h-64 bg-[#F1F5F9] rounded-xl" />
     </div>
   );

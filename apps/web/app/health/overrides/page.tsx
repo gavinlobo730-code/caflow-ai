@@ -7,35 +7,35 @@ export default function OverrideControlsPage() {
 
   // Overrides are per-client — this page shows a brief explanation and links to health dashboard
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-6 space-y-5 bg-[#F8FAFC] min-h-full">
       <div className="flex items-center gap-3">
-        <SlidersHorizontal size={20} className="text-emerald-400" />
+        <SlidersHorizontal size={20} className="text-[#182350]" />
         <div>
-          <h1 className="text-base font-semibold text-white">Override Controls</h1>
-          <p className="text-xs text-slate-400">Manage health score overrides per client</p>
+          <h1 className="text-2xl font-bold text-[#182350]">Override Controls</h1>
+          <p className="text-sm text-gray-500">Manage health score overrides per client</p>
         </div>
       </div>
-      <Card className="bg-gray-800 border-gray-700">
+      <Card className="bg-white border-gray-200 shadow-sm">
         <CardContent className="p-6 space-y-4">
-          <p className="text-sm text-slate-300">
+          <p className="text-sm text-gray-700">
             Health score overrides are managed at the individual client level.
             Navigate to a client&apos;s Health tab to add or remove overrides for specific dimensions.
           </p>
-          <ul className="space-y-2 text-sm text-slate-400">
+          <ul className="space-y-2 text-sm text-gray-600">
             <li className="flex items-start gap-2">
-              <span className="text-emerald-400 mt-0.5">→</span>
-              Go to <strong className="text-white">Clients</strong> and select a client
+              <span className="text-[#182350] mt-0.5">→</span>
+              Go to <strong className="text-gray-800">Clients</strong> and select a client
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-emerald-400 mt-0.5">→</span>
-              Navigate to the <strong className="text-white">Health</strong> tab
+              <span className="text-[#182350] mt-0.5">→</span>
+              Navigate to the <strong className="text-gray-800">Health</strong> tab
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-emerald-400 mt-0.5">→</span>
-              Click <strong className="text-white">Add Override</strong> to set a dimension-level override with a reason and expiry
+              <span className="text-[#182350] mt-0.5">→</span>
+              Click <strong className="text-gray-800">Add Override</strong> to set a dimension-level override with a reason and expiry
             </li>
           </ul>
-          <p className="text-xs text-slate-500 mt-2">
+          <p className="text-xs text-gray-500 mt-2">
             Overrides allow CAs to manually adjust health dimension scores when the automated calculation doesn&apos;t reflect the true client risk — e.g., a compliance issue is already being resolved.
           </p>
         </CardContent>

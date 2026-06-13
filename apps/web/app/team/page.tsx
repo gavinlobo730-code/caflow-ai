@@ -391,7 +391,7 @@ function RolePermissionsCard() {
                 ))}
                 {denied.map(m => (
                   <div key={m} className="flex items-center gap-1.5 text-xs text-[#94A3B8]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-white/[0.08] shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-200 shrink-0" />
                     {m}
                   </div>
                 ))}

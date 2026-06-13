@@ -284,7 +284,7 @@ export default function ChartOfAccountsPage() {
   if (loading) {
     return (
       <div className="p-6 max-w-5xl mx-auto space-y-4 animate-pulse">
-        <div className="h-6 bg-white/[0.08] rounded w-48" />
+        <div className="h-6 bg-gray-100 rounded w-48" />
         {[1,2,3].map(i => <div key={i} className="h-32 bg-[#F1F5F9] rounded-xl" />)}
       </div>
     );
@@ -453,10 +453,10 @@ export default function ChartOfAccountsPage() {
                           </td>
                           <td className="px-5 py-2.5 text-right">
                             <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => openEdit(acc)} className="p-1.5 rounded hover:bg-white/[0.08] text-[#94A3B8] hover:text-[#334155]" title="Edit">
+                              <button onClick={() => openEdit(acc)} className="p-1.5 rounded hover:bg-[#F8FAFC] text-[#94A3B8] hover:text-[#334155]" title="Edit">
                                 <Pencil size={12} />
                               </button>
-                              <button onClick={() => toggleArchive(acc)} className="p-1.5 rounded hover:bg-white/[0.08] text-[#94A3B8] hover:text-[#334155]" title={acc.is_active ? "Archive" : "Restore"}>
+                              <button onClick={() => toggleArchive(acc)} className="p-1.5 rounded hover:bg-[#F8FAFC] text-[#94A3B8] hover:text-[#334155]" title={acc.is_active ? "Archive" : "Restore"}>
                                 {acc.is_active ? <Archive size={12} /> : <ArchiveRestore size={12} />}
                               </button>
                             </div>

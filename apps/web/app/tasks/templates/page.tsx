@@ -222,7 +222,7 @@ export default function TaskTemplatesPage() {
                     <button
                       onClick={() => openInstantiate(t.id)}
                       title="Create task from template"
-                      className="p-1.5 rounded text-[#94A3B8] hover:text-blue-600 hover:bg-blue-500/[0.08] transition-colors"
+                      className="p-1.5 rounded text-[#94A3B8] hover:text-blue-600 hover:bg-blue-50 transition-colors"
                     >
                       <Copy size={14} />
                     </button>

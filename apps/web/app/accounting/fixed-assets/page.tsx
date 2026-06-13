@@ -410,7 +410,7 @@ export default function FixedAssetsPage() {
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       {asset.is_disposed ? (
                         <div>
-                          <span className="px-1.5 py-0.5 rounded text-xs bg-white/[0.08] text-[#475569]">Disposed</span>
+                          <span className="px-1.5 py-0.5 rounded text-xs bg-gray-100 text-[#475569]">Disposed</span>
                           {gainLoss !== null && (
                             <span className={`ml-1 px-1.5 py-0.5 rounded text-xs ${gainLoss >= 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                               {gainLoss >= 0 ? "Gain" : "Loss"} {fmtRs(Math.abs(gainLoss))}

@@ -252,7 +252,7 @@ export default function GSTR3BPage() {
               {filingStatus === "ca_approved" && (
                 <button
                   onClick={() => setShowFiledModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#F1F5F9] hover:bg-white/[0.08] text-[#334155] text-sm font-medium rounded-lg transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-[#F1F5F9] hover:bg-[#F8FAFC] text-[#334155] text-sm font-medium rounded-lg transition-colors"
                 >
                   <FileCheck className="w-4 h-4" />
                   Mark as Filed

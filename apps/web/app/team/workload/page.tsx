@@ -146,7 +146,7 @@ function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEdit
             <button
               onClick={() => onEditCapacity(member)}
               title="Edit capacity"
-              className="p-1 rounded text-[#CBD5E1] hover:text-blue-600 hover:bg-blue-500/[0.08] transition-colors"
+              className="p-1 rounded text-[#CBD5E1] hover:text-blue-600 hover:bg-blue-50 transition-colors"
             >
               <Pencil size={12} />
             </button>

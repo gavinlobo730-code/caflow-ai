@@ -294,7 +294,7 @@ export default function WorkAllocationPage() {
                   <button key={t.id} onClick={() => setReassignTask(t)}
                     className="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-[#F8FAFC] group">
                     <div className="min-w-0">
-                      <p className="text-xs text-[#1E293B] truncate">{t.title}</p>
+                      <p className="text-xs text-gray-800 truncate">{t.title}</p>
                       {t.client_name && <p className="text-xs text-[#94A3B8] truncate">{t.client_name}</p>}
                     </div>
                     <div className="shrink-0 flex items-center gap-1">

@@ -212,17 +212,17 @@ export default function ClientLifecyclePage() {
 
       {/* Onboarding Workflows */}
       <div>
-        <h2 className="text-sm font-semibold text-white mb-3">
+        <h2 className="text-sm font-semibold text-[#182350] mb-3">
           Onboarding Workflows
-          <span className="ml-2 text-xs text-slate-500 font-normal">({workflows.length})</span>
+          <span className="ml-2 text-xs text-gray-500 font-normal">({workflows.length})</span>
         </h2>
         {workflows.length === 0 ? (
-          <Card className="bg-gray-800 border-gray-700">
+          <Card className="bg-white border border-gray-200">
             <CardContent className="py-10 text-center">
-              <p className="text-sm text-slate-500">No onboarding workflows yet</p>
+              <p className="text-sm text-gray-500">No onboarding workflows yet</p>
               <button
                 onClick={handleCreateWorkflow}
-                className="mt-3 text-xs text-emerald-400 hover:text-emerald-300 underline"
+                className="mt-3 text-xs text-[#182350] hover:text-[#0D1635] underline"
               >
                 Create one now
               </button>
@@ -234,20 +234,20 @@ export default function ClientLifecyclePage() {
             const done = tasks.filter((t) => t.status === "done" || t.status === "skipped").length;
             const pct = tasks.length > 0 ? Math.round((done / tasks.length) * 100) : 0;
             return (
-              <Card key={wf.id} className="bg-gray-800 border-gray-700 mb-3">
+              <Card key={wf.id} className="bg-white border border-gray-200 mb-3">
                 <CardContent className="p-5">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       {wf.status === "completed"
                         ? <CheckCircle size={16} className="text-green-400" />
                         : <Clock size={16} className="text-amber-400" />}
-                      <span className="text-sm font-medium text-white">
+                      <span className="text-sm font-medium text-gray-800">
                         {wf.status === "completed" ? "Onboarding Completed" : "Onboarding In Progress"}
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs text-slate-400">{done}/{tasks.length} tasks</span>
-                      <div className="w-24 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                      <span className="text-xs text-gray-500">{done}/{tasks.length} tasks</span>
+                      <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                         <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${pct}%` }} />
                       </div>
                     </div>
@@ -257,19 +257,19 @@ export default function ClientLifecyclePage() {
                       {tasks
                         .sort((a, b) => a.sort_order - b.sort_order)
                         .map((task) => (
-                          <div key={task.id} className="flex items-center justify-between px-3 py-2 rounded-md bg-gray-700/50">
-                            <span className={`text-xs ${task.status === "done" || task.status === "skipped" ? "text-slate-500 line-through" : "text-slate-300"}`}>
+                          <div key={task.id} className="flex items-center justify-between px-3 py-2 rounded-md bg-gray-50">
+                            <span className={`text-xs ${task.status === "done" || task.status === "skipped" ? "text-gray-400 line-through" : "text-gray-700"}`}>
                               {task.task_name}
                             </span>
                             {task.status !== "done" && task.status !== "skipped" ? (
                               <button
                                 onClick={() => handleUpdateTask(wf.id, task.id, "done")}
-                                className="text-[10px] text-emerald-400 hover:text-emerald-300 ml-2 shrink-0"
+                                className="text-[10px] text-[#182350] hover:text-[#0D1635] ml-2 shrink-0"
                               >
                                 Mark Done
                               </button>
                             ) : (
-                              <Badge className={`text-[10px] ${TASK_STATUS_COLORS[task.status] ?? "bg-slate-700 text-slate-300"}`}>
+                              <Badge className={`text-[10px] ${TASK_STATUS_COLORS[task.status] ?? "bg-gray-100 text-gray-600"}`}>
                                 {task.status}
                               </Badge>
                             )}
@@ -277,7 +277,7 @@ export default function ClientLifecyclePage() {
                         ))}
                     </div>
                   )}
-                  <p className="text-[11px] text-slate-500 mt-3">Started {formatDate(wf.created_at)}</p>
+                  <p className="text-[11px] text-gray-500 mt-3">Started {formatDate(wf.created_at)}</p>
                 </CardContent>
               </Card>
             );
@@ -288,27 +288,27 @@ export default function ClientLifecyclePage() {
       {/* Renewals */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-white">
+          <h2 className="text-sm font-semibold text-[#182350]">
             Renewals
-            <span className="ml-2 text-xs text-slate-500 font-normal">({renewals.length})</span>
+            <span className="ml-2 text-xs text-gray-500 font-normal">({renewals.length})</span>
           </h2>
           <button
             onClick={() => setRenewalModal(true)}
-            className="flex items-center gap-1 text-xs text-emerald-400 border border-emerald-700 px-2.5 py-1 rounded hover:bg-emerald-900/30"
+            className="flex items-center gap-1 text-xs text-[#182350] border border-[#182350] px-2.5 py-1 rounded hover:bg-[#AFD2FA]/20"
           >
             <Plus size={12} /> Add Renewal
           </button>
         </div>
-        <Card className="bg-gray-800 border-gray-700">
+        <Card className="bg-white border border-gray-200">
           <CardContent className="p-0">
             {renewals.length === 0 ? (
               <div className="py-10 text-center">
-                <p className="text-sm text-slate-500">No renewals tracked</p>
+                <p className="text-sm text-gray-500">No renewals tracked</p>
               </div>
             ) : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-xs text-slate-500 border-b border-gray-700">
+                  <tr className="text-xs text-gray-500 border-b border-gray-200">
                     <th className="px-5 py-3 text-left font-medium">Service</th>
                     <th className="px-3 py-3 text-left font-medium">FY</th>
                     <th className="px-3 py-3 text-left font-medium">Renewal Date</th>
@@ -316,15 +316,15 @@ export default function ClientLifecyclePage() {
                     <th className="px-3 py-3 text-left font-medium">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-700/50">
+                <tbody className="divide-y divide-gray-100">
                   {renewals.map((r) => (
-                    <tr key={r.id} className="hover:bg-gray-700/30">
-                      <td className="px-5 py-3 text-white text-xs font-medium">{r.service_type ?? "—"}</td>
-                      <td className="px-3 py-3 text-slate-400 text-xs">{r.financial_year}</td>
-                      <td className="px-3 py-3 text-slate-400 text-xs">{formatDate(r.renewal_date)}</td>
-                      <td className="px-3 py-3 text-slate-300 text-xs">{paiseToCurrency(r.fee_paise ?? 0)}</td>
+                    <tr key={r.id} className="hover:bg-gray-50">
+                      <td className="px-5 py-3 text-gray-800 text-xs font-medium">{r.service_type ?? "—"}</td>
+                      <td className="px-3 py-3 text-gray-500 text-xs">{r.financial_year}</td>
+                      <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(r.renewal_date)}</td>
+                      <td className="px-3 py-3 text-gray-700 text-xs">{paiseToCurrency(r.fee_paise ?? 0)}</td>
                       <td className="px-3 py-3">
-                        <Badge className={`text-[10px] ${RENEWAL_STATUS_COLORS[r.status] ?? "bg-slate-700 text-slate-300"}`}>
+                        <Badge className={`text-[10px] ${RENEWAL_STATUS_COLORS[r.status] ?? "bg-gray-100 text-gray-600"}`}>
                           {r.status}
                         </Badge>
                       </td>
@@ -339,11 +339,11 @@ export default function ClientLifecyclePage() {
 
       {/* Renewal Modal */}
       {renewalModal && (
-        <div className="fixed inset-0 bg-[#0F172A]/75 flex items-center justify-center z-50 px-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 px-4">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-white">Add Renewal</h2>
-              <button onClick={() => setRenewalModal(false)} className="text-slate-500 hover:text-white"><X size={16} /></button>
+              <h2 className="text-sm font-semibold text-[#182350]">Add Renewal</h2>
+              <button onClick={() => setRenewalModal(false)} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>
             </div>
             <div className="space-y-3">
               <div>

@@ -863,7 +863,7 @@ export default function IncomeTaxPage() {
             <div className="px-6 py-4 border-t border-[#F1F5F9] flex gap-3 justify-end">
               <button
                 onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-white/[0.08] transition-colors"
+                className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-[#F8FAFC] transition-colors"
               >
                 Cancel
               </button>
@@ -963,7 +963,7 @@ export default function IncomeTaxPage() {
             <div className="px-6 py-4 border-t border-[#F1F5F9] flex gap-3 justify-end">
               <button
                 onClick={() => setFiledModal(null)}
-                className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-white/[0.08] transition-colors"
+                className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-[#F8FAFC] transition-colors"
               >
                 Cancel
               </button>
