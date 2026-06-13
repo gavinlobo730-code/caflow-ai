@@ -431,7 +431,7 @@ export default function TDSReturnsPage() {
       {/* Mark as Filed Modal */}
       {showFiledModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowFiledModal(false)} />
+          <div className="absolute inset-0 bg-[#0F172A]/60" onClick={() => setShowFiledModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4">
             <h3 className="font-semibold text-[#0F172A]">Mark {returnType} as Filed</h3>
             <p className="text-sm text-[#64748B]">Enter the details from TRACES after successful submission.</p>

@@ -223,7 +223,7 @@ export function Sidebar() {
       {/* Mobile backdrop */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+          className="md:hidden fixed inset-0 z-40 bg-[#0F172A]/75 backdrop-blur-sm"
           onClick={() => setMobileOpen(false)}
         />
       )}

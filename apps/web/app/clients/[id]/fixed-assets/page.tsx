@@ -307,7 +307,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex justify-end" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex justify-end" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="bg-white w-[440px] h-full overflow-y-auto shadow-2xl flex flex-col">
         <div className="px-6 py-4 border-b border-[#E2E8F0] flex items-center justify-between shrink-0">
           <h2 className="text-sm font-semibold text-[#1E293B]">Add Fixed Asset</h2>
