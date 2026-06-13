@@ -229,7 +229,7 @@ export default function ClientHealthPage() {
             <button
               onClick={handleRecalculate}
               disabled={recalculating}
-              className="inline-flex items-center gap-2 text-sm bg-emerald-600 text-white px-4 py-2 rounded-md hover:bg-emerald-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 text-sm bg-[#182350] text-white px-4 py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
             >
               <RefreshCw size={14} className={recalculating ? "animate-spin" : ""} />
               {recalculating ? "Calculating…" : "Calculate Now"}

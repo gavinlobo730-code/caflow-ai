@@ -284,32 +284,32 @@ export default function ClientRelationshipsPage() {
 
       {/* Add Role Modal */}
       {addRoleModal && (
-        <div className="fixed inset-0 bg-[#0F172A]/75 flex items-center justify-center z-50 px-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 px-4">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-white">Link Entity to Client</h2>
-              <button onClick={() => setAddRoleModal(false)} className="text-slate-500 hover:text-white"><X size={16} /></button>
+              <h2 className="text-sm font-semibold text-[#182350]">Link Entity to Client</h2>
+              <button onClick={() => setAddRoleModal(false)} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>
             </div>
-            <p className="text-xs text-slate-400 mb-4">
+            <p className="text-xs text-gray-600 mb-4">
               Enter the Entity ID from the{" "}
-              <Link href="/relationships" className="text-emerald-400 hover:underline">Entity Registry</Link>.
+              <Link href="/relationships" className="text-[#182350] hover:underline">Entity Registry</Link>.
             </p>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-slate-400">Entity ID *</label>
+                <label className="text-xs text-gray-600">Entity ID *</label>
                 <input
                   value={roleForm.entity_id}
                   onChange={(e) => setRoleForm({ ...roleForm, entity_id: e.target.value.trim() })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#182350]"
                   placeholder="UUID from entity registry"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400">Role Type *</label>
+                <label className="text-xs text-gray-600">Role Type *</label>
                 <select
                   value={roleForm.role_type}
                   onChange={(e) => setRoleForm({ ...roleForm, role_type: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
                 >
                   {["Director", "Shareholder", "Partner", "Trustee", "Proprietor", "Guarantor", "Authorized Signatory", "Karta (HUF)", "Beneficiary", "Manager", "Other"].map((r) => (
                     <option key={r} value={r}>{r}</option>
@@ -317,23 +317,23 @@ export default function ClientRelationshipsPage() {
                 </select>
               </div>
               <div>
-                <label className="text-xs text-slate-400">Ownership % (optional)</label>
+                <label className="text-xs text-gray-600">Ownership % (optional)</label>
                 <input
                   type="number"
                   min="0" max="100"
                   value={roleForm.ownership_percent}
                   onChange={(e) => setRoleForm({ ...roleForm, ownership_percent: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
                   placeholder="e.g. 51"
                 />
               </div>
             </div>
             <div className="flex gap-2 mt-5">
-              <button onClick={() => setAddRoleModal(false)} className="flex-1 text-sm text-slate-400 border border-gray-700 py-2 rounded-md hover:bg-gray-800">Cancel</button>
+              <button onClick={() => setAddRoleModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50">Cancel</button>
               <button
                 onClick={handleAddRole}
                 disabled={savingRole || !roleForm.entity_id}
-                className="flex-1 text-sm bg-emerald-600 text-white py-2 rounded-md hover:bg-emerald-700 disabled:opacity-50"
+                className="flex-1 text-sm bg-[#182350] text-white py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
               >
                 {savingRole ? "Linking…" : "Link Entity"}
               </button>

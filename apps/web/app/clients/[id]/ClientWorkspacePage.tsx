@@ -1174,16 +1174,16 @@ export default function ClientWorkspacePage() {
       {/* AI Insights tab */}
       {activeTab === "ai_insights" && (
         <div className="space-y-4">
-          <div className="bg-gradient-to-br from-blue-600 to-blue-400 rounded-xl border border-blue-500/20 p-8 text-center space-y-3">
-            <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mx-auto">
-              <Sparkles className="w-6 h-6 text-blue-600" />
+          <div className="bg-[#FEFAEF] rounded-xl border border-[#B9915E]/20 p-8 text-center space-y-3">
+            <div className="w-12 h-12 rounded-xl bg-white border border-[#B9915E]/20 flex items-center justify-center mx-auto">
+              <Sparkles className="w-6 h-6 text-[#B9915E]" />
             </div>
-            <h3 className="text-sm font-semibold text-[#0F172A]">AI Insights</h3>
-            <p className="text-xs text-[#64748B] max-w-sm mx-auto">
+            <h3 className="text-sm font-semibold text-[#182350]">AI Insights</h3>
+            <p className="text-xs text-gray-600 max-w-sm mx-auto">
               AI-powered analysis for {client.client_name} — anomaly detection,
               missed deductions, advance tax projections, and compliance risk signals.
             </p>
-            <p className="text-xs text-blue-600 font-medium">Coming soon</p>
+            <p className="text-xs text-[#B9915E] font-medium">Coming soon</p>
           </div>
         </div>
       )}

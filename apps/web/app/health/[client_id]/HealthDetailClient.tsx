@@ -114,10 +114,10 @@ const DIMENSION_LABELS: Record<keyof HealthDimensions, string> = {
 const DIMENSION_KEYS = Object.keys(DIMENSION_LABELS) as (keyof HealthDimensions)[];
 
 const SEVERITY_COLORS: Record<HealthAlert["severity"], string> = {
-  low:      "bg-blue-800 text-blue-300",
-  medium:   "bg-yellow-800 text-yellow-300",
-  high:     "bg-orange-800 text-orange-300",
-  critical: "bg-red-800 text-red-300",
+  low:      "bg-blue-100 text-blue-700",
+  medium:   "bg-yellow-100 text-yellow-700",
+  high:     "bg-orange-100 text-orange-700",
+  critical: "bg-red-100 text-red-700",
 };
 
 const EMPTY_OVERRIDE_FORM = {
@@ -130,9 +130,9 @@ const EMPTY_OVERRIDE_FORM = {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function scoreColor(score: number): string {
-  if (score >= 70) return "text-green-400";
-  if (score >= 40) return "text-yellow-400";
-  return "text-red-400";
+  if (score >= 70) return "text-green-600";
+  if (score >= 40) return "text-amber-600";
+  return "text-red-600";
 }
 
 function scoreBarColor(score: number): string {
@@ -143,22 +143,22 @@ function scoreBarColor(score: number): string {
 
 function gradeBadgeColor(grade: Grade): string {
   const map: Record<Grade, string> = {
-    A: "bg-green-800 text-green-300",
-    B: "bg-blue-800 text-blue-300",
-    C: "bg-yellow-800 text-yellow-300",
-    D: "bg-orange-800 text-orange-300",
-    F: "bg-red-800 text-red-300",
+    A: "bg-green-100 text-green-700",
+    B: "bg-blue-100 text-blue-700",
+    C: "bg-yellow-100 text-yellow-700",
+    D: "bg-orange-100 text-orange-700",
+    F: "bg-red-100 text-red-700",
   };
   return map[grade];
 }
 
 function gradeLargeColor(grade: Grade): string {
   const map: Record<Grade, string> = {
-    A: "text-green-400",
-    B: "text-blue-400",
-    C: "text-yellow-400",
-    D: "text-orange-400",
-    F: "text-red-400",
+    A: "text-green-600",
+    B: "text-blue-600",
+    C: "text-amber-600",
+    D: "text-orange-600",
+    F: "text-red-600",
   };
   return map[grade];
 }
@@ -255,11 +255,11 @@ export default function ClientHealthDetailPage() {
   if (loading) {
     return (
       <div className="p-6 space-y-4 animate-pulse">
-        <div className="h-5 bg-white/[0.08] rounded w-24" />
-        <div className="h-40 bg-white/[0.05] rounded-xl" />
+        <div className="h-5 bg-gray-100 rounded w-24" />
+        <div className="h-40 bg-gray-100 rounded-xl" />
         <div className="grid grid-cols-2 gap-4">
           {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-            <div key={i} className="h-20 bg-white/[0.05] rounded-xl" />
+            <div key={i} className="h-20 bg-gray-100 rounded-xl" />
           ))}
         </div>
       </div>
@@ -269,10 +269,10 @@ export default function ClientHealthDetailPage() {
   if (error || !health) {
     return (
       <div className="p-6">
-        <Link href="/health" className="flex items-center gap-1 text-xs text-slate-400 hover:text-white mb-4">
+        <Link href="/health" className="flex items-center gap-1 text-xs text-gray-500 hover:text-[#182350] mb-4">
           <ChevronLeft size={14} /> Back
         </Link>
-        <div className="bg-red-900/30 text-red-400 rounded-lg px-5 py-4 text-sm border border-red-800">
+        <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm border border-red-200">
           {error ?? "Client not found"}
         </div>
       </div>
@@ -282,31 +282,31 @@ export default function ClientHealthDetailPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Back nav */}
-      <Link href="/health" className="flex items-center gap-1 text-xs text-slate-400 hover:text-white">
+      <Link href="/health" className="flex items-center gap-1 text-xs text-gray-500 hover:text-[#182350]">
         <ChevronLeft size={14} /> Health Monitor
       </Link>
 
       {/* Hero — overall score */}
-      <Card className="bg-gray-800 border-gray-700">
+      <Card className="bg-white border border-gray-200">
         <CardContent className="p-6">
           <div className="flex items-center gap-6">
             <div className="text-center">
               <p className={`text-6xl font-black ${scoreColor(health.overall_score)}`}>
                 {health.overall_score}
               </p>
-              <p className="text-xs text-slate-500 mt-1">/ 100</p>
+              <p className="text-xs text-gray-500 mt-1">/ 100</p>
             </div>
-            <div className="w-px h-16 bg-gray-700" />
+            <div className="w-px h-16 bg-gray-200" />
             <div>
-              <p className="text-xs text-slate-400 mb-1">Grade</p>
+              <p className="text-xs text-gray-500 mb-1">Grade</p>
               <span className={`text-4xl font-black ${gradeLargeColor(health.grade)}`}>
                 {health.grade}
               </span>
             </div>
-            <div className="w-px h-16 bg-gray-700" />
+            <div className="w-px h-16 bg-gray-200" />
             <div>
-              <h2 className="text-lg font-semibold text-white">{health.client_name}</h2>
-              <p className="text-xs text-slate-400 mt-1">
+              <h2 className="text-lg font-semibold text-[#182350]">{health.client_name}</h2>
+              <p className="text-xs text-gray-500 mt-1">
                 Last calculated: {formatDate(health.last_calculated)}
               </p>
               <Badge className={`mt-2 text-xs ${gradeBadgeColor(health.grade)}`}>
@@ -322,18 +322,18 @@ export default function ClientHealthDetailPage() {
 
       {/* 7 dimension cards */}
       <div>
-        <h3 className="text-sm font-semibold text-white mb-3">Dimension Scores</h3>
+        <h3 className="text-sm font-semibold text-[#182350] mb-3">Dimension Scores</h3>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {DIMENSION_KEYS.map((key) => {
             const score = health.dimensions[key];
             return (
-              <Card key={key} className="bg-gray-800 border-gray-700">
+              <Card key={key} className="bg-white border border-gray-200">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs text-slate-400 font-medium">{DIMENSION_LABELS[key]}</p>
+                    <p className="text-xs text-gray-500 font-medium">{DIMENSION_LABELS[key]}</p>
                     <span className={`text-sm font-bold ${scoreColor(score)}`}>{score}</span>
                   </div>
-                  <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all ${scoreBarColor(score)}`}
                       style={{ width: `${score}%` }}
@@ -348,31 +348,31 @@ export default function ClientHealthDetailPage() {
 
       {/* Score history */}
       <div>
-        <h3 className="text-sm font-semibold text-white mb-3">Score History</h3>
-        <Card className="bg-gray-800 border-gray-700">
+        <h3 className="text-sm font-semibold text-[#182350] mb-3">Score History</h3>
+        <Card className="bg-white border border-gray-200">
           <CardContent className="p-0">
             {history.length === 0 ? (
               <div className="text-center py-10">
-                <p className="text-sm text-slate-500">No history records</p>
+                <p className="text-sm text-gray-500">No history records</p>
               </div>
             ) : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-xs text-slate-500 border-b border-gray-700">
+                  <tr className="text-xs text-gray-500 border-b border-gray-200">
                     <th className="px-5 py-3 text-left font-medium">Calculated At</th>
                     <th className="px-3 py-3 text-left font-medium">Overall Score</th>
                     <th className="px-3 py-3 text-left font-medium">Grade</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-700/50">
+                <tbody className="divide-y divide-gray-100">
                   {history.slice(0, 10).map((record) => (
-                    <tr key={record.id} className="hover:bg-gray-700/30">
-                      <td className="px-5 py-3 text-slate-400 text-xs">{formatDate(record.calculated_at)}</td>
+                    <tr key={record.id} className="hover:bg-gray-50">
+                      <td className="px-5 py-3 text-gray-500 text-xs">{formatDate(record.calculated_at)}</td>
                       <td className="px-3 py-3">
                         <span className={`font-bold ${scoreColor(record.overall_score)}`}>
                           {record.overall_score}
                         </span>
-                        <span className="text-xs text-slate-500">/100</span>
+                        <span className="text-xs text-gray-400">/100</span>
                       </td>
                       <td className="px-3 py-3">
                         <Badge className={`text-[11px] ${gradeBadgeColor(record.grade)}`}>
@@ -390,18 +390,18 @@ export default function ClientHealthDetailPage() {
 
       {/* Active alerts */}
       <div>
-        <h3 className="text-sm font-semibold text-white mb-3">
+        <h3 className="text-sm font-semibold text-[#182350] mb-3">
           Active Alerts{" "}
           {alerts.length > 0 && (
-            <span className="text-xs text-red-400 font-normal">({alerts.length})</span>
+            <span className="text-xs text-red-600 font-normal">({alerts.length})</span>
           )}
         </h3>
         <div className="space-y-2">
           {alerts.length === 0 ? (
-            <p className="text-sm text-slate-500 py-4 text-center">No active alerts</p>
+            <p className="text-sm text-gray-500 py-4 text-center">No active alerts</p>
           ) : (
             alerts.map((alert) => (
-              <Card key={alert.id} className="bg-gray-800 border-gray-700">
+              <Card key={alert.id} className="bg-white border border-gray-200">
                 <CardContent className="p-4 flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -409,11 +409,11 @@ export default function ClientHealthDetailPage() {
                         {alert.severity.toUpperCase()}
                       </Badge>
                       {alert.dimension && (
-                        <span className="text-[10px] text-slate-500">{alert.dimension}</span>
+                        <span className="text-[10px] text-gray-500">{alert.dimension}</span>
                       )}
                     </div>
-                    <p className="text-sm text-white">{alert.message}</p>
-                    <p className="text-xs text-slate-500 mt-1">{formatDate(alert.created_at)}</p>
+                    <p className="text-sm text-gray-800">{alert.message}</p>
+                    <p className="text-xs text-gray-500 mt-1">{formatDate(alert.created_at)}</p>
                   </div>
                 </CardContent>
               </Card>
@@ -425,28 +425,28 @@ export default function ClientHealthDetailPage() {
       {/* Active overrides */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-white">Active Overrides</h3>
+          <h3 className="text-sm font-semibold text-[#182350]">Active Overrides</h3>
           <button
             onClick={() => {
               setOverrideForm(EMPTY_OVERRIDE_FORM);
               setOverrideSaveError(null);
               setOverrideModalOpen(true);
             }}
-            className="flex items-center gap-1 text-xs text-emerald-400 border border-emerald-700 px-2.5 py-1 rounded hover:bg-emerald-900/30"
+            className="flex items-center gap-1 text-xs text-[#182350] border border-[#182350] px-2.5 py-1 rounded hover:bg-[#AFD2FA]/20"
           >
             <Plus size={12} /> Add Override
           </button>
         </div>
-        <Card className="bg-gray-800 border-gray-700">
+        <Card className="bg-white border border-gray-200">
           <CardContent className="p-0">
             {overrides.length === 0 ? (
               <div className="text-center py-10">
-                <p className="text-sm text-slate-500">No active overrides</p>
+                <p className="text-sm text-gray-500">No active overrides</p>
               </div>
             ) : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-xs text-slate-500 border-b border-gray-700">
+                  <tr className="text-xs text-gray-500 border-b border-gray-200">
                     <th className="px-5 py-3 text-left font-medium">Dimension</th>
                     <th className="px-3 py-3 text-left font-medium">Override Score</th>
                     <th className="px-3 py-3 text-left font-medium">Reason</th>
@@ -454,11 +454,11 @@ export default function ClientHealthDetailPage() {
                     <th className="px-3 py-3 text-left font-medium">Created By</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-700/50">
+                <tbody className="divide-y divide-gray-100">
                   {overrides.map((override) => (
-                    <tr key={override.id} className="hover:bg-gray-700/30">
+                    <tr key={override.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3">
-                        <Badge className="bg-emerald-800 text-emerald-300 text-[11px]">
+                        <Badge className="bg-emerald-100 text-emerald-700 text-[11px]">
                           {DIMENSION_LABELS[override.dimension as keyof HealthDimensions] ?? override.dimension}
                         </Badge>
                       </td>
@@ -467,11 +467,11 @@ export default function ClientHealthDetailPage() {
                           {override.override_score}
                         </span>
                       </td>
-                      <td className="px-3 py-3 text-slate-300 text-xs max-w-xs truncate">
+                      <td className="px-3 py-3 text-gray-700 text-xs max-w-xs truncate">
                         {override.reason}
                       </td>
-                      <td className="px-3 py-3 text-slate-400 text-xs">{formatDate(override.expires_at)}</td>
-                      <td className="px-3 py-3 text-slate-400 text-xs">{override.created_by}</td>
+                      <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(override.expires_at)}</td>
+                      <td className="px-3 py-3 text-gray-500 text-xs">{override.created_by}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -483,24 +483,24 @@ export default function ClientHealthDetailPage() {
 
       {/* Add Override Modal */}
       {overrideModalOpen && (
-        <div className="fixed inset-0 bg-[#0F172A]/75 flex items-center justify-center z-50 px-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 px-4">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-white">Add Score Override</h2>
+              <h2 className="text-sm font-semibold text-[#182350]">Add Score Override</h2>
               <button
                 onClick={() => setOverrideModalOpen(false)}
-                className="text-slate-500 hover:text-white"
+                className="text-gray-400 hover:text-gray-700"
               >
                 <X size={16} />
               </button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-slate-400 font-medium">Dimension *</label>
+                <label className="text-xs text-gray-600 font-medium">Dimension *</label>
                 <select
                   value={overrideForm.dimension}
                   onChange={(e) => setOverrideForm({ ...overrideForm, dimension: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
                 >
                   {DIMENSION_KEYS.map((key) => (
                     <option key={key} value={key}>
@@ -510,46 +510,46 @@ export default function ClientHealthDetailPage() {
                 </select>
               </div>
               <div>
-                <label className="text-xs text-slate-400 font-medium">Override Score (0–100) *</label>
+                <label className="text-xs text-gray-600 font-medium">Override Score (0–100) *</label>
                 <input
                   type="number"
                   min="0"
                   max="100"
                   value={overrideForm.override_score}
                   onChange={(e) => setOverrideForm({ ...overrideForm, override_score: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350]"
                   placeholder="e.g. 75"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400 font-medium">Reason *</label>
+                <label className="text-xs text-gray-600 font-medium">Reason *</label>
                 <textarea
                   rows={3}
                   value={overrideForm.reason}
                   onChange={(e) => setOverrideForm({ ...overrideForm, reason: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350] resize-none"
                   placeholder="Explain why this score is being overridden…"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400 font-medium">Expires At (optional)</label>
+                <label className="text-xs text-gray-600 font-medium">Expires At (optional)</label>
                 <input
                   type="date"
                   value={overrideForm.expires_at}
                   onChange={(e) => setOverrideForm({ ...overrideForm, expires_at: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
                 />
               </div>
             </div>
             {overrideSaveError && (
-              <p className="mt-3 text-xs text-red-400 bg-red-900/30 px-3 py-2 rounded-md border border-red-800">
+              <p className="mt-3 text-xs text-red-700 bg-red-50 px-3 py-2 rounded-md border border-red-200">
                 {overrideSaveError}
               </p>
             )}
             <div className="flex gap-2 mt-5">
               <button
                 onClick={() => setOverrideModalOpen(false)}
-                className="flex-1 text-sm text-slate-400 border border-gray-700 py-2 rounded-md hover:bg-gray-800"
+                className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50"
               >
                 Cancel
               </button>
@@ -561,7 +561,7 @@ export default function ClientHealthDetailPage() {
                   !overrideForm.reason.trim() ||
                   !overrideForm.override_score
                 }
-                className="flex-1 text-sm bg-emerald-600 text-white py-2 rounded-md hover:bg-emerald-700 disabled:opacity-50"
+                className="flex-1 text-sm bg-[#182350] text-white py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
               >
                 {savingOverride ? "Saving…" : "Add Override"}
               </button>
