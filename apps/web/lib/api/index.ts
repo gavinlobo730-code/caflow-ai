@@ -187,6 +187,26 @@ export const api = {
       return downloadFile(`/api/time-entries/export?${q}`, `time-entries.${params.fmt}`);
     },
   },
+  onboarding: {
+    /** Start a 10-step Product Bible Ch. 7 onboarding checklist for a client. */
+    start: (body: { client_id: string; entity_type?: string; notes?: string }) =>
+      request("/api/lifecycle/onboarding/checklist", { method: "POST", body: JSON.stringify(body) }),
+    /** Get full onboarding progress for a specific checklist workflow. */
+    get: (workflowId: string) =>
+      request(`/api/lifecycle/onboarding/checklist/${workflowId}`),
+    /** Update a single step in an onboarding checklist. */
+    updateStep: (workflowId: string, stepNumber: number, data: { status: string; notes?: string }) =>
+      request(`/api/lifecycle/onboarding/checklist/${workflowId}/step/${stepNumber}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    /** Trigger go-live verification — completes the onboarding and activates the client. */
+    complete: (workflowId: string) =>
+      request(`/api/lifecycle/onboarding/checklist/${workflowId}/complete`, { method: "POST" }),
+    /** List all active (non-completed) onboarding checklists for the firm. */
+    listActive: (firmId?: string) =>
+      request(`/api/lifecycle/onboarding/checklist/active${firmId ? `?firm_id=${firmId}` : ""}`),
+  },
   workload: {
     capacityList: () => request("/api/workload/capacity"),
     setCapacity: (body: { user_id: string; weekly_capacity_hours: number; max_concurrent_tasks: number }) =>
