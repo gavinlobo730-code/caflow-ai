@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -425,6 +425,98 @@ def get_filing(filing_id: str, current_user: dict = Depends(rbac("mca", "read"))
         return api_response(True, rec)
     except Exception as e:
         return api_response(False, None, "Unable to complete MCA operation. Please try again.")
+
+
+@router.put("/filings/{filing_id}/complete")
+def complete_filing(
+    filing_id: str,
+    body: UpdateFilingStatusRequest,
+    current_user: dict = Depends(rbac("mca", "write")),
+):
+    """
+    Mark a filing as complete with SRN and acknowledgement.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to MCA21 or any government portal.
+    Companies Act §92/137/139/165: CA must explicitly confirm before marking filed.
+    """
+    # # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    body_with_filed = UpdateFilingStatusRequest(
+        status="filed",
+        ca_approved=body.ca_approved,
+        srn=body.srn,
+        filing_date=body.filing_date or date.today().isoformat(),
+        acknowledgement_url=body.acknowledgement_url,
+    )
+    return update_filing_status(filing_id, body_with_filed, current_user)
+
+
+@router.get("/calendar")
+def mca_calendar(
+    client_id: str = Query(...),
+    agm_date: str = Query(..., description="AGM date in YYYY-MM-DD format"),
+    current_user: dict = Depends(rbac("mca", "read")),
+):
+    """
+    Generate upcoming MCA deadlines based on AGM date.
+    Companies Act 2013:
+      §92  — MGT-7: AGM + 60 days
+      §137 — AOC-4: AGM + 30 days
+      §139 — ADT-1: AGM + 15 days
+
+    Returns filing calendar with form, due date, days remaining, and status.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to MCA21.
+    """
+    try:
+        try:
+            agm_dt = date.fromisoformat(agm_date)
+        except ValueError:
+            return api_response(False, None, "Invalid agm_date format. Use YYYY-MM-DD.")
+
+        today = date.today()
+
+        # Companies Act §92/137/139 — deadline computation from AGM date
+        annual_forms = [
+            {
+                "form_type": "ADT-1",
+                "description": "Auditor Appointment — Companies Act 2013 §139",
+                "due_date": (agm_dt + timedelta(days=15)).isoformat(),
+                "days_from_agm": 15,
+            },
+            {
+                "form_type": "AOC-4",
+                "description": "Financial Statements — Companies Act 2013 §137",
+                "due_date": (agm_dt + timedelta(days=30)).isoformat(),
+                "days_from_agm": 30,
+            },
+            {
+                "form_type": "MGT-7",
+                "description": "Annual Return — Companies Act 2013 §92",
+                "due_date": (agm_dt + timedelta(days=60)).isoformat(),
+                "days_from_agm": 60,
+            },
+        ]
+
+        # Enrich with days_remaining and status
+        calendar = []
+        for entry in annual_forms:
+            due_dt = date.fromisoformat(entry["due_date"])
+            days_remaining = (due_dt - today).days
+            status = "overdue" if days_remaining < 0 else ("due_soon" if days_remaining <= 30 else "upcoming")
+            calendar.append({
+                **entry,
+                "client_id": client_id,
+                "agm_date": agm_date,
+                "days_remaining": days_remaining,
+                "status": status,
+            })
+
+        return api_response(True, {
+            "agm_date": agm_date,
+            "client_id": client_id,
+            "calendar": calendar,
+        })
+    except Exception as e:
+        _logger.exception("mca_calendar error")
+        return api_response(False, None, "Unable to compute MCA calendar. Please try again.")
 
 
 @router.get("/filing-history")

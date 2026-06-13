@@ -187,6 +187,26 @@ export const api = {
       return downloadFile(`/api/time-entries/export?${q}`, `time-entries.${params.fmt}`);
     },
   },
+  onboarding: {
+    /** Start a 10-step Product Bible Ch. 7 onboarding checklist for a client. */
+    start: (body: { client_id: string; entity_type?: string; notes?: string }) =>
+      request("/api/lifecycle/onboarding/checklist", { method: "POST", body: JSON.stringify(body) }),
+    /** Get full onboarding progress for a specific checklist workflow. */
+    get: (workflowId: string) =>
+      request(`/api/lifecycle/onboarding/checklist/${workflowId}`),
+    /** Update a single step in an onboarding checklist. */
+    updateStep: (workflowId: string, stepNumber: number, data: { status: string; notes?: string }) =>
+      request(`/api/lifecycle/onboarding/checklist/${workflowId}/step/${stepNumber}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    /** Trigger go-live verification — completes the onboarding and activates the client. */
+    complete: (workflowId: string) =>
+      request(`/api/lifecycle/onboarding/checklist/${workflowId}/complete`, { method: "POST" }),
+    /** List all active (non-completed) onboarding checklists for the firm. */
+    listActive: (firmId?: string) =>
+      request(`/api/lifecycle/onboarding/checklist/active${firmId ? `?firm_id=${firmId}` : ""}`),
+  },
   workload: {
     capacityList: () => request("/api/workload/capacity"),
     setCapacity: (body: { user_id: string; weekly_capacity_hours: number; max_concurrent_tasks: number }) =>
@@ -278,6 +298,33 @@ export const api = {
       request(`/api/memory/year-end-reports/${clientId}/${fy}`),
     runPipeline: () =>
       request("/api/memory/pipeline/run", { method: "POST" }),
+  },
+  // Client Portal
+  portal: {
+    getDocumentRequests: (firmId: string, clientId: string) =>
+      request(`/api/portal/document-requests?firm_id=${firmId}&client_id=${clientId}`),
+    createDocumentRequest: (data: {
+      firm_id: string;
+      client_id: string;
+      title: string;
+      description?: string;
+      due_date?: string;
+      is_urgent?: boolean;
+    }) =>
+      request("/api/portal/document-requests", { method: "POST", body: JSON.stringify(data) }),
+    completeDocumentRequest: (id: string) =>
+      request(`/api/portal/document-requests/${id}/complete`, { method: "PUT" }),
+    getMessages: (firmId: string, clientId: string) =>
+      request(`/api/portal/messages?firm_id=${firmId}&client_id=${clientId}`),
+    sendMessage: (data: {
+      firm_id: string;
+      client_id: string;
+      text: string;
+      from_ca?: boolean;
+    }) =>
+      request("/api/portal/messages", { method: "POST", body: JSON.stringify(data) }),
+    getDues: (firmId: string, clientId: string) =>
+      request(`/api/portal/dues?firm_id=${firmId}&client_id=${clientId}`),
   },
   // Phase 11 — AI Copilot Platform
   copilotV2: {

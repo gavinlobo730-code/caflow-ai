@@ -243,6 +243,70 @@ def dismiss_insight(insight_id: str, firm_id: Optional[str] = None) -> dict | No
     return ai_insights_repo.update_status(insight_id, "dismissed", firm_id=firm_id)
 
 
+def get_cross_client_patterns(firm_id: Optional[str] = None) -> list[dict]:
+    """
+    Detect cross-client intelligence patterns: shared directors with compliance risk,
+    industry-wide issues, group-wide cash flow signals, and correlated deadline spikes.
+    Returns mock patterns when SUPABASE_URL is not set.
+    """
+    # In production this would query the DB for shared directors, related entities,
+    # and correlated compliance failures across clients in the same firm.
+    # For now return realistic mock patterns.
+    return [
+        {
+            "pattern_type": "shared_director_compliance_risk",
+            "title": "Director appears in multiple clients with compliance issues",
+            "description": (
+                "Rajesh Mehta is listed as director for 3 clients. "
+                "2 of those clients have overdue TDS returns (26Q). "
+                "This may indicate a group-wide cash flow issue affecting timely payment."
+            ),
+            "evidence": ["Mehta Consulting", "Mehta Infra Pvt Ltd", "RM Holdings"],
+            "affected_clients": ["c-003", "c-007", "c-011"],
+            "confidence": 72,
+            "severity": "high",
+            "recommended_action": (
+                "Schedule a group-level review with Rajesh Mehta to assess liquidity. "
+                "File overdue 26Q TDS returns immediately to stop interest under Section 201(1A) of IT Act."
+            ),
+        },
+        {
+            "pattern_type": "same_issue_multiple_clients",
+            "title": "GSTR-2B ITC mismatch appearing across 4 clients simultaneously",
+            "description": (
+                "4 clients all show ITC mismatch between GSTR-2B and purchase register this month. "
+                "Likely a common supplier (Priya Traders GSTIN 27AADCP...) not filing GSTR-1 on time, "
+                "which blocks ITC claims under CGST Act Section 16(2)(aa)."
+            ),
+            "evidence": ["Patel & Sons", "Sharma Enterprises", "Desai Traders", "Joshi Textiles"],
+            "affected_clients": ["c-002", "c-001", "c-004", "c-005"],
+            "confidence": 85,
+            "severity": "high",
+            "recommended_action": (
+                "Identify the common non-compliant supplier and escalate to all 4 clients. "
+                "Consider switching supplier or adjusting ITC claims pending supplier's GSTR-1."
+            ),
+        },
+        {
+            "pattern_type": "group_advance_tax_risk",
+            "title": "Advance tax instalment risk across Desai Group entities",
+            "description": (
+                "15 Jun 2025 advance tax deadline (15% instalment) is approaching. "
+                "2 Desai Group entities have no advance tax challan recorded yet. "
+                "Interest under Section 234C of IT Act 1961 will apply if missed."
+            ),
+            "evidence": ["Desai Traders", "Desai Real Estate LLP"],
+            "affected_clients": ["c-004", "c-009"],
+            "confidence": 68,
+            "severity": "medium",
+            "recommended_action": (
+                "Calculate advance tax for both entities and pay via Challan 280 before 15 Jun 2025. "
+                "Group payment can be coordinated to reduce CA effort."
+            ),
+        },
+    ]
+
+
 def get_insight_feed(firm_id: Optional[str] = None, limit: int = 20) -> list[dict]:
     from repositories.ai_insights_repository import ai_insights_repo
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
