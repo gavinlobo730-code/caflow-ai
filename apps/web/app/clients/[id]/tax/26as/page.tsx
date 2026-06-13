@@ -53,7 +53,7 @@ export default function Form26ASPage() {
   const [fy, setFy] = useState(FY_OPTIONS[0]);
   const [uploads, setUploads] = useState<Upload26AS[]>([]);
   const [recon, setRecon] = useState<Reconciliation | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [_loading, setLoading] = useState(true);
 
   const [showUpload, setShowUpload] = useState(false);
   const [rawText, setRawText] = useState("");
