@@ -157,6 +157,30 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "approve":       _AT_LEAST_MANAGER,   # approve adjustments, lock notes
         "final_approve": _PARTNER_ONLY,       # Partner-only: lock engagement
     },
+    # ── XBRL Engine ──────────────────────────────────────────────────────────
+    "xbrl": {
+        "read":    _AT_LEAST_EXECUTIVE,
+        "write":   _AT_LEAST_EXECUTIVE,
+        "approve": _AT_LEAST_MANAGER,
+    },
+    # ── E-Invoice ────────────────────────────────────────────────────────────
+    "einvoice": {
+        "read":    _ALL_STAFF,
+        "write":   _AT_LEAST_EXECUTIVE,
+        "approve": _AT_LEAST_MANAGER,
+    },
+    # ── E-Way Bill ───────────────────────────────────────────────────────────
+    "eway_bill": {
+        "read":    _ALL_STAFF,
+        "write":   _AT_LEAST_EXECUTIVE,
+        "approve": _AT_LEAST_MANAGER,
+    },
+    # ── Tally Migration ──────────────────────────────────────────────────────
+    "tally_migration": {
+        "read":    _AT_LEAST_MANAGER,
+        "write":   _AT_LEAST_MANAGER,
+        "approve": _PARTNER_ONLY,
+    },
 }
 
 
