@@ -1,7 +1,7 @@
 """Tests for Phase 13 AI Memory Pipeline."""
 import pytest
 from domain.memory_pipeline import MemoryPipeline
-from repositories.memory_repository import MemoryRepository
+from repositories.memory_repository import MemoryRepository, MOCK_CLIENT_PROFILES
 
 @pytest.fixture
 def pipeline():
@@ -37,7 +37,7 @@ class TestClientProfileGeneration:
         assert current is not None
         assert current["compliance_score"] == 75.0
         # Old profile should be marked non-current
-        history = [p for p in repo._mock_profiles if p["client_id"] == "client-v" and not p["is_current"]]
+        history = [p for p in MOCK_CLIENT_PROFILES if p["client_id"] == "client-v" and not p["is_current"]]
         assert len(history) >= 1
 
     def test_nonexistent_profile_returns_none(self, repo):

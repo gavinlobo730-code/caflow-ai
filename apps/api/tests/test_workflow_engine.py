@@ -144,32 +144,29 @@ class TestWorkflowRepository:
         assert fetched["id"] == created["id"]
 
     def test_create_approval(self, repo):
-        approval = repo.create_approval("firm-001", "wfi-001", {
-            "step_name": "Test Approval",
-            "approver_role": "Partner",
-            "title": "Approve this",
-            "context_data": {},
-        })
+        approval = repo.create_approval(
+            "firm-001", "wfi-001", "step-001",
+            "Test Approval", "Partner", "Approve this", "Please review", {}
+        )
         assert approval["id"] is not None
         assert approval["status"] == "pending"
 
     def test_respond_approval(self, repo):
-        approval = repo.create_approval("firm-001", "wfi-001", {
-            "approver_role": "Manager",
-            "title": "Approve",
-            "context_data": {},
-        })
+        approval = repo.create_approval(
+            "firm-001", "wfi-001", "step-002",
+            "Test Approval", "Manager", "Approve", "Please review", {}
+        )
         responded = repo.respond_approval("firm-001", approval["id"], "approved", "user-001", "Looks good")
         assert responded["status"] == "approved"
         assert responded["response_notes"] == "Looks good"
 
     def test_log_failure(self, repo):
-        failure = repo.log_failure("wfi-001", "firm-001", "ActionFailed", "Task creation failed", step_name="Create Task")
+        failure = repo.log_failure("firm-001", "wfi-001", "step-001", "ActionFailed", "Task creation failed")
         assert failure["id"] is not None
         assert failure["resolved"] is False
 
     def test_resolve_failure(self, repo):
-        failure = repo.log_failure("wfi-001", "firm-001", "NetworkError", "Timeout")
+        failure = repo.log_failure("firm-001", "wfi-001", None, "NetworkError", "Timeout")
         resolved = repo.resolve_failure("firm-001", failure["id"], "user-001")
         assert resolved["resolved"] is True
         assert resolved["resolved_by"] == "user-001"
