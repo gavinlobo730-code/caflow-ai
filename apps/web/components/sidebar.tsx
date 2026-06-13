@@ -10,7 +10,7 @@ import {
   ChevronLeft, ChevronRight, Landmark, Shield,
   ShieldAlert, Sparkles, Bell, LogOut,
   ExternalLink, Menu, X, KanbanSquare, MessageSquare, KeyRound,
-  Search, Briefcase, Clock, LayoutList, Activity, Zap, Bot,
+  Search, Briefcase, Clock, LayoutList, Activity, Zap, Bot, Brain,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -58,6 +58,7 @@ const NAV_GROUPS = [
     label: "Tools & AI",
     items: [
       { href: "/copilot", label: "AI Copilot", icon: Bot },
+      { href: "/memory", label: "AI Memory", icon: Brain },
       { href: "/executive-dashboard", label: "Executive Dashboard", icon: BarChart3 },
       { href: "/workflows", label: "Workflows", icon: Zap },
       { href: "/workflows/approvals", label: "Approvals", icon: CheckSquare },

@@ -66,6 +66,8 @@ from routers.health import router as health_router
 from routers.workflow_builder import router as workflow_builder_router
 # Phase 11 — AI Copilot Platform
 from routers.ai_copilot_v2 import router as ai_copilot_v2_router
+# Phase 13 — AI Memory & Intelligence
+from routers.memory_intelligence import router as memory_intelligence_router
 
 app = FastAPI(title="CAflow AI API", version="2.0.0")
 
@@ -163,6 +165,17 @@ app.include_router(health_router)
 app.include_router(workflow_builder_router)
 # Phase 11 — AI Copilot Platform
 app.include_router(ai_copilot_v2_router)
+# Phase 13 — AI Memory & Intelligence
+app.include_router(memory_intelligence_router)
+
+
+# Phase 10B — Workflow Scheduler (daily jobs + workflow schedule runner)
+from jobs.scheduler import start_scheduler, run_due_schedules
+start_scheduler()
+
+# Phase 13 — AI Memory Scheduler
+from jobs.memory_job import start_memory_scheduler
+start_memory_scheduler()
 
 
 @app.get("/")
