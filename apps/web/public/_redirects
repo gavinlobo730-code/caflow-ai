@@ -32,12 +32,49 @@
 /clients/:id/portal/              /clients/_placeholder/portal/               200
 /clients/:id/ai-insights          /clients/_placeholder/ai-insights/          200
 /clients/:id/ai-insights/         /clients/_placeholder/ai-insights/          200
+/clients/:id/fixed-assets         /clients/_placeholder/fixed-assets/         200
+/clients/:id/fixed-assets/        /clients/_placeholder/fixed-assets/         200
+/clients/:id/coa                  /clients/_placeholder/coa/                  200
+/clients/:id/coa/                 /clients/_placeholder/coa/                  200
+/clients/:id/lifecycle            /clients/_placeholder/lifecycle/            200
+/clients/:id/lifecycle/           /clients/_placeholder/lifecycle/            200
+/clients/:id/relationships        /clients/_placeholder/relationships/        200
+/clients/:id/relationships/       /clients/_placeholder/relationships/        200
+/clients/:id/health               /clients/_placeholder/health/               200
+/clients/:id/health/              /clients/_placeholder/health/               200
+
+# Year-end deep subroutes (engagementId is also dynamic)
+/clients/:id/year-end/:eid/dashboard             /clients/_placeholder/year-end/_placeholder/dashboard/             200
+/clients/:id/year-end/:eid/dashboard/            /clients/_placeholder/year-end/_placeholder/dashboard/             200
+/clients/:id/year-end/:eid/checklist             /clients/_placeholder/year-end/_placeholder/checklist/             200
+/clients/:id/year-end/:eid/checklist/            /clients/_placeholder/year-end/_placeholder/checklist/             200
+/clients/:id/year-end/:eid/adjustments           /clients/_placeholder/year-end/_placeholder/adjustments/           200
+/clients/:id/year-end/:eid/adjustments/          /clients/_placeholder/year-end/_placeholder/adjustments/           200
+/clients/:id/year-end/:eid/financial-statements  /clients/_placeholder/year-end/_placeholder/financial-statements/  200
+/clients/:id/year-end/:eid/financial-statements/ /clients/_placeholder/year-end/_placeholder/financial-statements/  200
+/clients/:id/year-end/:eid/notes                 /clients/_placeholder/year-end/_placeholder/notes/                 200
+/clients/:id/year-end/:eid/notes/                /clients/_placeholder/year-end/_placeholder/notes/                 200
+/clients/:id/year-end/:eid/review                /clients/_placeholder/year-end/_placeholder/review/                200
+/clients/:id/year-end/:eid/review/               /clients/_placeholder/year-end/_placeholder/review/                200
+/clients/:id/year-end/:eid/exports               /clients/_placeholder/year-end/_placeholder/exports/               200
+/clients/:id/year-end/:eid/exports/              /clients/_placeholder/year-end/_placeholder/exports/               200
+/clients/:id/year-end/:eid/schedules             /clients/_placeholder/year-end/_placeholder/schedules/             200
+/clients/:id/year-end/:eid/schedules/            /clients/_placeholder/year-end/_placeholder/schedules/             200
+
 /clients/:id/year-end             /clients/_placeholder/year-end/             200
 /clients/:id/year-end/            /clients/_placeholder/year-end/             200
 
 # Root client URL — with and without trailing slash
 /clients/:id/                     /clients/_placeholder/                      200
 /clients/:id                      /clients/_placeholder/                      200
+
+# Dynamic health detail pages
+/health/:client_id/               /health/_placeholder/                       200
+/health/:client_id                /health/_placeholder/                       200
+
+# Dynamic entity detail pages
+/relationships/:entity_id/        /relationships/_placeholder/                200
+/relationships/:entity_id         /relationships/_placeholder/                200
 
 # Accounting bank-statement detail routes
 /accounting/bank-statements/:id/  /accounting/bank-statements/_placeholder/   200
