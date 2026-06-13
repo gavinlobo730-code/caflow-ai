@@ -250,6 +250,35 @@ export const api = {
     executions: (params?: Record<string, string>) =>
       request(`/api/workflows/executions${params ? "?" + new URLSearchParams(params) : ""}`),
   },
+  // Phase 13 — AI Memory & Intelligence
+  memory: {
+    getClientProfile: (clientId: string) =>
+      request(`/api/memory/clients/${clientId}/profile`),
+    computeClientProfile: (clientId: string) =>
+      request(`/api/memory/clients/${clientId}/profile/compute`, { method: "POST" }),
+    listProfiles: (params?: Record<string, string>) =>
+      request("/api/memory/profiles", { params } as RequestInit),
+    getFirmProfile: () =>
+      request("/api/memory/firm/profile"),
+    listTriggers: (params?: Record<string, string>) =>
+      request(`/api/memory/triggers${params ? "?" + new URLSearchParams(params) : ""}`),
+    acknowledgeTrigger: (id: string) =>
+      request(`/api/memory/triggers/${id}/acknowledge`, { method: "POST" }),
+    dismissTrigger: (id: string) =>
+      request(`/api/memory/triggers/${id}/dismiss`, { method: "POST" }),
+    detectClientTriggers: (clientId: string) =>
+      request(`/api/memory/clients/${clientId}/detect`, { method: "POST" }),
+    listAnomalies: (params?: Record<string, string>) =>
+      request(`/api/memory/anomalies${params ? "?" + new URLSearchParams(params) : ""}`),
+    updateAnomalyStatus: (id: string, status: string) =>
+      request(`/api/memory/anomalies/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
+    listYearEndReports: () =>
+      request("/api/memory/year-end-reports"),
+    getYearEndReport: (clientId: string, fy: string) =>
+      request(`/api/memory/year-end-reports/${clientId}/${fy}`),
+    runPipeline: () =>
+      request("/api/memory/pipeline/run", { method: "POST" }),
+  },
   // Phase 11 — AI Copilot Platform
   copilotV2: {
     listConversations: (params?: Record<string, string>) =>
