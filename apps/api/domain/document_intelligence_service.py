@@ -250,6 +250,90 @@ MOCK_EXTRA_DOCUMENTS: list[dict] = [
 ]
 
 _EXTRACTION_INDEX = {e["document_id"]: e for e in MOCK_DOCUMENT_EXTRACTIONS}
+
+
+# ---------------------------------------------------------------------------
+# Real file extraction — never invents values
+# ---------------------------------------------------------------------------
+
+def _extract_from_file(file_path: str, mime_type: str) -> dict:
+    """Extract real data from an uploaded file. Never invents values.
+
+    Returns a dict describing the extracted content, or an error/ocr_status
+    dict when extraction is not possible.
+    """
+    import os
+    if not os.path.exists(file_path):
+        return {"error": "File not found"}
+
+    if mime_type in ("text/csv", "application/csv"):
+        try:
+            import pandas as pd
+            df = pd.read_csv(file_path)
+            return {
+                "type": "csv",
+                "rows": len(df),
+                "columns": list(df.columns),
+                "preview": df.head(5).to_dict(orient="records"),
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    if mime_type in (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel",
+    ):
+        try:
+            import pandas as pd
+            df = pd.read_excel(file_path)
+            return {
+                "type": "excel",
+                "rows": len(df),
+                "columns": list(df.columns),
+                "preview": df.head(5).to_dict(orient="records"),
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    if mime_type == "application/pdf":
+        try:
+            import pdfplumber
+            with pdfplumber.open(file_path) as pdf:
+                pages = pdf.pages
+                text = "\n".join(page.extract_text() or "" for page in pages)
+                page_count = len(pages)
+            if text.strip():
+                return {"type": "pdf_text", "text": text, "page_count": page_count}
+            # No embedded text — image-only scan
+            return {
+                "type": "pdf_image",
+                "ocr_status": "not_configured",
+                "message": "OCR not yet configured — please upload a text-based PDF or enable OCR integration",
+            }
+        except ImportError:
+            # Fallback to PyPDF2
+            try:
+                import PyPDF2
+                with open(file_path, "rb") as f:
+                    reader = PyPDF2.PdfReader(f)
+                    text = "\n".join(page.extract_text() or "" for page in reader.pages)
+                    page_count = len(reader.pages)
+                if text.strip():
+                    return {"type": "pdf_text", "text": text, "page_count": page_count}
+                return {
+                    "type": "pdf_image",
+                    "ocr_status": "not_configured",
+                    "message": "OCR not yet configured — please upload a text-based PDF or enable OCR integration",
+                }
+            except ImportError:
+                return {"error": "No PDF extraction library installed. Run: pip install pdfplumber"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    return {
+        "ocr_status": "not_configured",
+        "message": f"Unsupported file type: {mime_type}. OCR not yet configured.",
+    }
 _RISK_INDEX: dict[str, list[dict]] = {}
 for _r in MOCK_DOCUMENT_RISKS:
     _RISK_INDEX.setdefault(_r["document_id"], []).append(_r)
@@ -322,35 +406,70 @@ def classify_document(filename: str, file_type: str) -> str:
     return "OTHER"
 
 
-def extract_document(document_id: str, document_type: str, provider: str = "mock") -> dict:
-    """Run mock extraction and return extracted_data dict."""
-    extraction = _EXTRACTION_INDEX.get(document_id)
-    if extraction:
-        extraction["extraction_status"] = "completed"
-        extraction["provider"] = provider
-        if extraction["extracted_data"] is None:
-            extraction["extracted_data"] = _MOCK_EXTRACTED.get(document_type, {})
-            extraction["confidence_score"] = 0.85
-        return extraction
+def extract_document(document_id: str, document_type: str, provider: str = "real", file_path: str | None = None, mime_type: str | None = None) -> dict:
+    """Run real extraction from the uploaded file and return an extraction record.
 
-    # Create new extraction record
+    Mock extraction has been disabled — values are never invented.
+    If file_path is not supplied (storage not yet configured), returns a
+    pending record so the caller can retry once storage is available.
+    """
     import uuid
     from datetime import datetime
-    new_ext = {
-        "id": f"ext-{str(uuid.uuid4())[:8]}",
+
+    existing = _EXTRACTION_INDEX.get(document_id)
+
+    if not file_path or not mime_type:
+        # Storage not yet wired up — return pending, do NOT invent data
+        if existing:
+            return existing
+        pending = {
+            "id": f"ext-{str(uuid.uuid4())[:8]}",
+            "document_id": document_id,
+            "extraction_status": "pending",
+            "provider": "none",
+            "confidence_score": None,
+            "extracted_data": None,
+            "validation_results": None,
+            "error_message": None,
+            "status_message": (
+                "File extraction will run when storage is configured. "
+                "Mock extraction has been disabled."
+            ),
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        MOCK_DOCUMENT_EXTRACTIONS.append(pending)
+        _EXTRACTION_INDEX[document_id] = pending
+        return pending
+
+    # Real extraction path
+    raw = _extract_from_file(file_path, mime_type)
+    has_error = "error" in raw
+    has_ocr_pending = raw.get("ocr_status") == "not_configured"
+
+    status = "failed" if has_error else ("pending" if has_ocr_pending else "completed")
+    error_msg = raw.get("error") if has_error else (raw.get("message") if has_ocr_pending else None)
+
+    record = {
+        "id": existing["id"] if existing else f"ext-{str(uuid.uuid4())[:8]}",
         "document_id": document_id,
-        "extraction_status": "completed",
+        "extraction_status": status,
         "provider": provider,
-        "confidence_score": 0.85,
-        "extracted_data": _MOCK_EXTRACTED.get(document_type, {}),
-        "validation_results": {"valid": True, "missing_fields": [], "warnings": []},
-        "error_message": None,
-        "created_at": datetime.utcnow().isoformat(),
+        "confidence_score": None if (has_error or has_ocr_pending) else 1.0,
+        "extracted_data": None if (has_error or has_ocr_pending) else raw,
+        "validation_results": None,
+        "error_message": error_msg,
+        "created_at": existing["created_at"] if existing else datetime.utcnow().isoformat(),
         "updated_at": datetime.utcnow().isoformat(),
     }
-    MOCK_DOCUMENT_EXTRACTIONS.append(new_ext)
-    _EXTRACTION_INDEX[document_id] = new_ext
-    return new_ext
+
+    if existing:
+        existing.update(record)
+        return existing
+
+    MOCK_DOCUMENT_EXTRACTIONS.append(record)
+    _EXTRACTION_INDEX[document_id] = record
+    return record
 
 
 def validate_extraction(document_id: str, extracted_data: dict, document_type: str) -> dict:
