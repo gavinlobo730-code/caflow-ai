@@ -271,19 +271,19 @@ export default function HealthPage() {
         <Card className="bg-red-50 border-red-200 shadow-sm">
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-red-600">{criticalCount}</p>
-            <p className="text-xs text-red-500 mt-1">Critical (&lt;40)</p>
+            <p className="text-xs text-red-500 mt-1">Critical (0–34)</p>
           </CardContent>
         </Card>
         <Card className="bg-amber-50 border-amber-200 shadow-sm">
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-amber-600">{atRiskCount}</p>
-            <p className="text-xs text-amber-500 mt-1">At-Risk (40–69)</p>
+            <p className="text-xs text-amber-500 mt-1">At Risk (35–49)</p>
           </CardContent>
         </Card>
         <Card className="bg-green-50 border-green-200 shadow-sm">
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-green-600">{healthyCount}</p>
-            <p className="text-xs text-green-500 mt-1">Healthy (≥70)</p>
+            <p className="text-xs text-green-500 mt-1">Healthy (80–100)</p>
           </CardContent>
         </Card>
       </div>
@@ -292,19 +292,26 @@ export default function HealthPage() {
       <Card className="bg-white border-gray-200 shadow-sm">
         <CardContent className="p-5">
           <p className="text-xs text-gray-500 font-medium mb-4">Score Distribution</p>
-          <div className="flex items-end gap-4 h-20">
-            {(["A", "B", "C", "D", "F"] as Grade[]).map((grade) => {
+          <div className="flex items-end gap-2 h-20">
+            {(["Healthy", "Good", "Needs Attention", "At Risk", "Critical"] as Grade[]).map((grade) => {
               const count = gradeCounts[grade];
               const heightPct = maxGradeCount > 0 ? (count / maxGradeCount) * 100 : 0;
               const colors: Record<Grade, string> = {
-                A: "bg-green-500",
-                B: "bg-blue-500",
-                C: "bg-yellow-500",
-                D: "bg-orange-500",
-                F: "bg-red-500",
+                "Healthy":         "bg-green-500",
+                "Good":            "bg-blue-500",
+                "Needs Attention": "bg-yellow-500",
+                "At Risk":         "bg-orange-500",
+                "Critical":        "bg-red-500",
+              };
+              const shortLabel: Record<Grade, string> = {
+                "Healthy":         "H",
+                "Good":            "G",
+                "Needs Attention": "N",
+                "At Risk":         "R",
+                "Critical":        "C",
               };
               return (
-                <div key={grade} className="flex flex-col items-center gap-1 flex-1">
+                <div key={grade} className="flex flex-col items-center gap-1 flex-1" title={grade}>
                   <span className="text-xs text-gray-500">{count}</span>
                   <div className="w-full flex items-end" style={{ height: "60px" }}>
                     <div
@@ -312,7 +319,7 @@ export default function HealthPage() {
                       style={{ height: `${Math.max(heightPct, 4)}%` }}
                     />
                   </div>
-                  <span className="text-xs font-bold text-gray-700">{grade}</span>
+                  <span className="text-xs font-bold text-gray-700">{shortLabel[grade]}</span>
                 </div>
               );
             })}
@@ -382,6 +389,7 @@ export default function HealthPage() {
                         {client.grade}
                       </Badge>
                     </td>
+
                     <td className="px-3 py-3">
                       <DimensionDots dimensions={client.dimensions} />
                     </td>
