@@ -408,17 +408,24 @@ def convert_lead(
 
     # Create new client if no client_id provided
     if not client_id:
+        client_name = (
+            data.name
+            or data.company_name
+            or existing.get("contact_name")
+            or existing.get("company_name", "")
+        )
+        # entity_type CHECK: Proprietorship|Partnership|LLP|Private Limited|Public Limited|Trust|Society|Individual
+        entity_type = data.entity_type or "Individual"
         new_client = {
             "id":          str(uuid.uuid4()),
             "firm_id":     firm_id,
-            "name":        data.name or existing.get("contact_name") or existing.get("company_name", ""),
-            "company":     data.company_name or existing.get("company_name", ""),
+            "client_name": client_name,
+            "entity_type": entity_type,
             "email":       data.email or existing.get("email"),
-            "phone":       data.phone or existing.get("phone"),
+            "mobile":      data.phone or existing.get("phone"),
             "pan":         (data.pan or "").upper() or None,
             "gstin":       (data.gstin or "").upper() or None,
-            "entity_type": data.entity_type or "Company",
-            "status":      "Active",
+            "status":      "active",
             "created_at":  now,
             "updated_at":  now,
         }
@@ -428,17 +435,18 @@ def convert_lead(
         except Exception as e:
             raise HTTPException(status_code=422, detail=f"Failed to create client: {e}")
 
-    # Create engagement
+    # Create fee engagement (table: fee_engagements, not engagements)
     try:
-        db.table("engagements").insert({
-            "id":         str(uuid.uuid4()),
-            "firm_id":    firm_id,
-            "client_id":  client_id,
-            "title":      f"Engagement — {existing.get('company_name', '')}",
-            "status":     "Active",
-            "start_date": now[:10],
-            "created_at": now,
-            "updated_at": now,
+        db.table("fee_engagements").insert({
+            "id":           str(uuid.uuid4()),
+            "firm_id":      firm_id,
+            "client_id":    client_id,
+            "service_type": "General",
+            "fee_paise":    0,
+            "status":       "Active",
+            "start_date":   now[:10],
+            "created_at":   now,
+            "updated_at":   now,
         }).execute()
     except Exception:
         pass
