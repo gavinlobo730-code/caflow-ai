@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api";
 import { User, FileText, Calendar, Download, Loader2 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -87,6 +88,20 @@ export default function EmployeePortalPage() {
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
   const [leaveLoading, setLeaveLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [downloadingSlipId, setDownloadingSlipId] = useState<string | null>(null);
+
+  const downloadPayslip = useCallback(async (slip: SalarySlip) => {
+    setDownloadingSlipId(slip.id);
+    try {
+      const period = `${slip.year}-${String(slip.month).padStart(2, "0")}`;
+      await api.payroll.downloadPayslip(slip.id, `payslip-${period}.pdf`);
+    } catch (e) {
+      console.error("downloadPayslip:", e);
+      setToast("Failed to download payslip. Please try again.");
+    } finally {
+      setDownloadingSlipId(null);
+    }
+  }, []);
 
   // Detect employee by auth_user_id
   useEffect(() => {
@@ -279,10 +294,15 @@ export default function EmployeePortalPage() {
                         </td>
                         <td className="px-5 py-3">
                           <button
-                            onClick={() => setToast("Payslip PDF generation coming soon")}
-                            className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                            onClick={() => downloadPayslip(slip)}
+                            disabled={downloadingSlipId === slip.id}
+                            className="flex items-center gap-1 text-xs text-blue-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
                           >
-                            <Download size={12} /> Download
+                            {downloadingSlipId === slip.id ? (
+                              <><Loader2 size={12} className="animate-spin" /> Downloading…</>
+                            ) : (
+                              <><Download size={12} /> Download</>
+                            )}
                           </button>
                         </td>
                       </tr>
