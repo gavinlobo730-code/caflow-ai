@@ -98,6 +98,86 @@ class WorkflowEngineV2:
 
     # ── Condition evaluation ──────────────────────────────────────────────────
 
+    # ── Trigger type evaluation ───────────────────────────────────────────────
+
+    # Product Bible Chapter 17 — all 7 recognised trigger types.
+    SUPPORTED_TRIGGER_TYPES: set[str] = {
+        "client_event",        # client lifecycle events (created, status_changed, etc.)
+        "compliance_deadline", # compliance due dates approaching or missed
+        "ai_signal",           # AI insights trigger workflows
+        "scheduled",           # cron-based recurring triggers
+        "health_change",       # health score crosses a threshold
+        "document_uploaded",   # document ingestion completes
+        "portal_activity",     # client portal actions (login, document view, etc.)
+    }
+
+    def _evaluate_trigger(self, trigger_type: str, trigger_data: dict) -> bool:
+        """
+        Validate and pre-process a trigger event before template matching.
+
+        Each trigger type can enrich trigger_data with derived fields so that
+        _matches_trigger_config and _evaluate_conditions have a consistent data
+        shape regardless of caller convention.
+
+        Returns True when the trigger is valid and should proceed to template
+        matching.  Returns False to silently drop unrecognised trigger types.
+        """
+        if trigger_type == "client_event":
+            # Expected keys: event_name, client_id, client_status
+            # No transformation needed — passed through as-is.
+            return True
+
+        elif trigger_type == "compliance_deadline":
+            # Expected keys: compliance_type, due_date, days_remaining
+            # Ensure days_remaining is computed if not provided.
+            if "due_date" in trigger_data and "days_remaining" not in trigger_data:
+                try:
+                    from datetime import date
+                    due = date.fromisoformat(trigger_data["due_date"])
+                    trigger_data["days_remaining"] = (due - date.today()).days
+                except Exception:
+                    pass
+            return True
+
+        elif trigger_type == "ai_signal":
+            # Expected keys: insight_id, severity, category
+            # Map severity to numeric priority for condition rules.
+            _severity_priority = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
+            if "severity" in trigger_data and "severity_priority" not in trigger_data:
+                trigger_data["severity_priority"] = _severity_priority.get(
+                    trigger_data["severity"], 0
+                )
+            return True
+
+        elif trigger_type == "scheduled":
+            # Expected keys: schedule_id, cron_expression, last_run_at
+            # Scheduled triggers are always valid.
+            return True
+
+        elif trigger_type == "health_change":
+            # Expected keys: client_id, old_score, new_score, old_grade, new_grade
+            # Add derived field for score delta.
+            if "old_score" in trigger_data and "new_score" in trigger_data:
+                trigger_data.setdefault(
+                    "score_delta",
+                    trigger_data["new_score"] - trigger_data["old_score"],
+                )
+            return True
+
+        elif trigger_type == "document_uploaded":
+            # Expected keys: document_id, doc_type, client_id, extraction_confidence
+            return True
+
+        elif trigger_type == "portal_activity":
+            # Expected keys: client_id, activity_type, portal_user_id
+            return True
+
+        else:
+            _logger.warning(
+                "WF: unrecognised trigger_type '%s' — dropping trigger", trigger_type
+            )
+            return False
+
     def _matches_trigger_config(self, config: dict, data: dict) -> bool:
         """Check trigger_config constraints (e.g., days_before, threshold)."""
         if not config:

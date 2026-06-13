@@ -278,8 +278,15 @@ def delete_schedule(
 @router.get("/analytics")
 def get_analytics(
     template_id: Optional[str] = None,
+    days: int = Query(30, ge=1, le=365),
     current_user: dict = Depends(rbac("task", "read")),
 ):
+    """
+    GET /api/workflows/analytics?firm_id=&days=30
+    Returns workflow performance analytics: execution counts, success rate,
+    avg duration, top templates, and common failure patterns.
+    Product Bible Chapter 17 — Workflow Engine analytics.
+    """
     firm_id = current_user["firm_id"]
     analytics = _repo().get_analytics(firm_id, template_id=template_id)
     pending_approvals = len(_repo().list_approvals(firm_id, status="pending"))
@@ -287,7 +294,51 @@ def get_analytics(
     total_executions = sum(a["total_executions"] for a in analytics)
     total_successful = sum(a["successful"] for a in analytics)
     overall_success_rate = (total_successful * 100 // total_executions) if total_executions > 0 else 0
+
+    # Build top_templates sorted by execution count descending
+    top_templates = sorted(
+        [
+            {
+                "template_id": a.get("template_id"),
+                "template_name": a.get("template_name", "Unknown"),
+                "executions": a["total_executions"],
+                "success_rate": (
+                    (a["successful"] * 100 // a["total_executions"])
+                    if a["total_executions"] > 0 else 0
+                ),
+                "avg_duration_ms": a.get("avg_duration_ms", 0),
+            }
+            for a in analytics
+        ],
+        key=lambda x: x["executions"],
+        reverse=True,
+    )[:10]
+
+    # Aggregate common failure patterns from failure records
+    failures = _repo().list_failures(firm_id, resolved=False, limit=200)
+    failure_counts: dict[str, int] = {}
+    for f in failures:
+        error_type = f.get("error_type") or f.get("failure_type") or "unknown"
+        failure_counts[error_type] = failure_counts.get(error_type, 0) + 1
+    common_failures = [
+        {"error_type": k, "count": v}
+        for k, v in sorted(failure_counts.items(), key=lambda x: -x[1])
+    ][:5]
+
+    # avg_duration_ms: weighted average across all templates
+    total_weighted_ms = sum(
+        (a.get("avg_duration_ms") or 0) * a["total_executions"]
+        for a in analytics
+    )
+    avg_duration_ms = (total_weighted_ms // total_executions) if total_executions > 0 else 0
+
     return api_response(True, {
+        "total_executions": total_executions,
+        "success_rate": overall_success_rate,
+        "avg_duration_ms": avg_duration_ms,
+        "top_templates": top_templates,
+        "common_failures": common_failures,
+        # Legacy summary block kept for backward compatibility
         "summary": {
             "total_templates": len(analytics),
             "total_executions": total_executions,
@@ -296,6 +347,7 @@ def get_analytics(
             "unresolved_failures": unresolved_failures,
         },
         "by_template": analytics,
+        "days": days,
     })
 
 
