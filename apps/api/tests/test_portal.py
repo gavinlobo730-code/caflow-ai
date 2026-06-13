@@ -1,134 +1,138 @@
 """
-Tests for the client portal router — document requests, messages, and dues.
+Tests for the client portal domain service — document requests, messages, and dues.
 
-These tests call the router functions directly (no HTTP layer required),
-consistent with the project's unit test pattern.
+Tests call domain.portal_service directly (no FastAPI/HTTP layer needed),
+consistent with the project's unit test pattern (see test_accounting_journal.py).
 
 Financial calculations use integer paise — never float.
 """
 import pytest
-import os
-
-# Ensure SUPABASE_URL is unset so the in-memory mock path is used
-os.environ.pop("SUPABASE_URL", None)
-
-import routers.portal as portal_mod
-from routers.portal import (
-    list_document_requests,
+from domain.portal_service import (
+    reset_mock_stores,
     create_document_request,
+    list_document_requests,
     complete_document_request,
-    list_messages,
     send_message,
-    get_dues,
-    CreateDocRequestBody,
-    SendMessageBody,
+    list_messages,
+    compute_dues_summary,
 )
-
 
 FIRM_ID = "firm-unit-001"
 CLIENT_ID = "client-unit-001"
 
 
-def _make_doc_req_body(title: str = "Upload bank statement", is_urgent: bool = False) -> CreateDocRequestBody:
-    return CreateDocRequestBody(
-        firm_id=FIRM_ID,
-        client_id=CLIENT_ID,
-        title=title,
-        description="For the period Jan–Mar 2026",
-        is_urgent=is_urgent,
-    )
-
-
-def _make_msg_body(text: str = "GSTR-1 filed.", from_ca: bool = True) -> SendMessageBody:
-    return SendMessageBody(
-        firm_id=FIRM_ID,
-        client_id=CLIENT_ID,
-        text=text,
-        from_ca=from_ca,
-    )
+@pytest.fixture(autouse=True)
+def clear_stores():
+    """Reset in-memory mock stores before each test to isolate state."""
+    reset_mock_stores()
+    yield
+    reset_mock_stores()
 
 
 # ── Document Request tests ────────────────────────────────────────────────────
 
-def test_create_document_request_returns_success():
-    """Creating a document request should return success=True with correct fields."""
-    result = create_document_request(_make_doc_req_body("Upload GST certificate"))
-    assert result["success"] is True
-    assert result["data"]["title"] == "Upload GST certificate"
-    assert result["data"]["status"] == "pending"
-    assert result["data"]["fulfilled_at"] is None
-    assert result["error"] is None
+def test_create_document_request_returns_correct_fields():
+    """Created document request must have correct fields and pending status."""
+    record = create_document_request(
+        firm_id=FIRM_ID,
+        client_id=CLIENT_ID,
+        title="Upload bank statement",
+        description="For the period Jan–Mar 2026",
+    )
+    assert record["title"] == "Upload bank statement"
+    assert record["status"] == "pending"
+    assert record["fulfilled_at"] is None
+    assert record["firm_id"] == FIRM_ID
+    assert record["client_id"] == CLIENT_ID
+    assert "id" in record
+    assert "created_at" in record
 
 
 def test_list_document_requests_includes_created_record():
     """A created document request must appear in the list for the same firm/client."""
-    create_document_request(_make_doc_req_body("Upload Form 16 for FY 2025-26"))
-    result = list_document_requests(firm_id=FIRM_ID, client_id=CLIENT_ID)
-    assert result["success"] is True
-    titles = [r["title"] for r in result["data"]]
+    create_document_request(FIRM_ID, CLIENT_ID, "Upload Form 16 for FY 2025-26")
+    rows = list_document_requests(FIRM_ID, CLIENT_ID)
+    titles = [r["title"] for r in rows]
     assert "Upload Form 16 for FY 2025-26" in titles
 
 
 def test_complete_document_request_marks_fulfilled():
     """
     Completing a request must update status to 'fulfilled' and set fulfilled_at.
-    This verifies the CRUD cycle: create → complete → verify.
+    Verifies the CRUD cycle: create → complete → verify.
     """
-    created = create_document_request(_make_doc_req_body("Upload ITR acknowledgement"))
-    req_id = created["data"]["id"]
+    record = create_document_request(FIRM_ID, CLIENT_ID, "Upload ITR acknowledgement")
+    req_id = record["id"]
 
-    result = complete_document_request(req_id)
-    assert result["success"] is True
-    assert result["data"]["status"] == "fulfilled"
-    assert result["data"]["fulfilled_at"] is not None
+    updated = complete_document_request(req_id)
+    assert updated is not None
+    assert updated["status"] == "fulfilled"
+    assert updated["fulfilled_at"] is not None
 
 
 def test_urgent_flag_is_persisted():
     """is_urgent=True should be stored and returned in the record."""
-    result = create_document_request(_make_doc_req_body("Urgent: Upload invoices", is_urgent=True))
-    assert result["data"]["is_urgent"] is True
+    record = create_document_request(FIRM_ID, CLIENT_ID, "Urgent: Upload invoices", is_urgent=True)
+    assert record["is_urgent"] is True
 
 
 def test_list_document_requests_filters_by_client():
     """Requests created for CLIENT_ID must not appear in another client's list."""
-    create_document_request(_make_doc_req_body("Upload PAN card copy"))
-    result = list_document_requests(firm_id=FIRM_ID, client_id="other-client-999")
-    titles = [r["title"] for r in result["data"]]
+    create_document_request(FIRM_ID, CLIENT_ID, "Upload PAN card copy")
+    rows = list_document_requests(FIRM_ID, "other-client-999")
+    titles = [r["title"] for r in rows]
     assert "Upload PAN card copy" not in titles
+
+
+def test_complete_nonexistent_request_returns_none():
+    """Completing a non-existent request must return None without raising."""
+    result = complete_document_request("does-not-exist")
+    assert result is None
 
 
 # ── Message tests ─────────────────────────────────────────────────────────────
 
-def test_send_message_returns_success():
-    """Sending a portal message should return success=True with the message text."""
-    result = send_message(_make_msg_body("Advance tax due on 15 Sep — pay 45% of estimated liability."))
-    assert result["success"] is True
-    assert result["data"]["text"] == "Advance tax due on 15 Sep — pay 45% of estimated liability."
-    assert result["data"]["from_ca"] is True
-    assert result["error"] is None
+def test_send_message_returns_record_with_correct_fields():
+    """Sending a portal message should return a record with from_ca=True."""
+    record = send_message(FIRM_ID, CLIENT_ID, "Advance tax due on 15 Sep.", from_ca=True)
+    assert record["text"] == "Advance tax due on 15 Sep."
+    assert record["from_ca"] is True
+    assert record["firm_id"] == FIRM_ID
+    assert record["client_id"] == CLIENT_ID
+    assert "id" in record
+    assert "created_at" in record
 
 
 def test_list_messages_includes_sent_message():
     """A sent message must appear when listing messages for the same client."""
-    send_message(_make_msg_body("Your TDS return 26Q for Q1 has been filed."))
-    result = list_messages(firm_id=FIRM_ID, client_id=CLIENT_ID)
-    assert result["success"] is True
-    texts = [m["text"] for m in result["data"]]
+    send_message(FIRM_ID, CLIENT_ID, "Your TDS return 26Q for Q1 has been filed.")
+    rows = list_messages(FIRM_ID, CLIENT_ID)
+    texts = [m["text"] for m in rows]
     assert "Your TDS return 26Q for Q1 has been filed." in texts
 
 
 # ── Dues tests ────────────────────────────────────────────────────────────────
 
-def test_get_dues_returns_success_with_integer_paise():
+def test_compute_dues_summary_integer_paise_arithmetic():
     """
-    Dues endpoint must return success=True. In mock mode dues list is empty.
-    Critical rule: total_paise MUST be an integer — never a float.
-    (Every rupee calculation must use integer paise arithmetic.)
+    compute_dues_summary must use integer paise arithmetic — never float.
+    (CAflow rule: every rupee calculation must use integer paise.)
     """
-    result = get_dues(firm_id=FIRM_ID, client_id=CLIENT_ID)
-    assert result["success"] is True
-    assert isinstance(result["data"]["dues"], list)
-    # All monetary totals must be integers, not floats
-    assert isinstance(result["data"]["total_paise"], int), "total_paise must be int, not float"
-    assert result["data"]["total_paise"] >= 0
-    assert isinstance(result["data"]["overdue_count"], int)
+    dues = [
+        {"id": "1", "total_paise": 1800000, "status": "unpaid"},   # ₹18,000
+        {"id": "2", "total_paise": 250000,  "status": "overdue"},  # ₹2,500
+    ]
+    summary = compute_dues_summary(dues)
+    assert isinstance(summary["total_paise"], int), "total_paise must be int, not float"
+    assert summary["total_paise"] == 2050000  # ₹20,500 in paise
+    assert summary["overdue_count"] == 1
+    assert len(summary["dues"]) == 2
+
+
+def test_compute_dues_summary_empty_list():
+    """Empty dues list must yield total_paise=0 and overdue_count=0, both ints."""
+    summary = compute_dues_summary([])
+    assert summary["total_paise"] == 0
+    assert isinstance(summary["total_paise"], int)
+    assert summary["overdue_count"] == 0
+    assert summary["dues"] == []
