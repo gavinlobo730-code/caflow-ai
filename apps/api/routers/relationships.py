@@ -1,15 +1,17 @@
 """
 Relationships router — Entity management, roles, cross-entity relationships,
-and cross-client PAN/email match detection.
+cross-client PAN/email match detection, loan intelligence (Sec 185/186),
+property intelligence, and related party report generation.
 
 Phase 7: Unified Intelligence Layer — PracticeSync
+Chapter 15: Relationship Intelligence
 
 All monetary values in integer paise — never float.
 CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
 
@@ -22,10 +24,16 @@ router = APIRouter(prefix="/api/relationships", tags=["relationships"])
 
 # ─── In-memory mock stores ────────────────────────────────────────────────────
 
-_MOCK_ENTITIES:           list[dict] = []
-_MOCK_ENTITY_ROLES:       list[dict] = []
-_MOCK_RELATIONSHIPS:      list[dict] = []
-_MOCK_CROSS_MATCHES:      list[dict] = []
+_MOCK_ENTITIES:              list[dict] = []
+_MOCK_ENTITY_ROLES:          list[dict] = []
+_MOCK_RELATIONSHIPS:         list[dict] = []
+_MOCK_CROSS_MATCHES:         list[dict] = []
+_MOCK_ENTITY_TO_ENTITY_RELS: list[dict] = []
+_MOCK_LOANS:                 list[dict] = []
+_MOCK_PROPERTIES:            list[dict] = []
+
+# Transfer pricing threshold: ₹1 crore = 1,00,00,000 paise (Sec 92 IT Act)
+TRANSFER_PRICING_THRESHOLD_PAISE = 1_00_00_000_00  # ₹1,00,00,000 in paise
 
 
 def _db():
