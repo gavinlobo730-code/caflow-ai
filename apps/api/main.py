@@ -165,6 +165,11 @@ app.include_router(workflow_builder_router)
 app.include_router(ai_copilot_v2_router)
 
 
+# Phase 10B — Workflow Scheduler (daily jobs + workflow schedule runner)
+from jobs.scheduler import start_scheduler, run_due_schedules
+start_scheduler()
+
+
 @app.get("/")
 def root():
     from models.common import api_response

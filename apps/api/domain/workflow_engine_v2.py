@@ -1,15 +1,30 @@
 """
 Phase 10 Workflow Automation Engine.
 Evaluates triggers, conditions, and executes multi-step workflow actions.
-Supports: tasks, notifications, lifecycle, health, AI actions, approvals, delays, branches.
+Supports: tasks, notifications, lifecycle, health, AI actions, approvals,
+delays, branches.
+
+Key production features:
+- Step-map-based execution with O(1) branch resolution
+- Cycle detection (visited-set) and MAX_STEPS guard
+- Per-step retry with exponential back-off (skipped for approval pauses)
+- SHA-256 idempotency key on fire_trigger to prevent duplicate runs
 """
 from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import time
 import uuid
 from datetime import datetime, timedelta
 from typing import Optional, Any
-import logging
 
 _logger = logging.getLogger("caflow.workflow_engine")
+
+MAX_RETRIES = 3
+RETRY_DELAYS = [2, 4, 8]   # seconds between attempts
+MAX_STEPS = 100             # absolute cycle-protection cap
 
 
 class WorkflowEngineV2:
@@ -18,6 +33,11 @@ class WorkflowEngineV2:
     def __init__(self) -> None:
         from repositories.workflow_repository import workflow_repo
         self._repo = workflow_repo
+
+    # Convenience alias used internally
+    @property
+    def repo(self):
+        return self._repo
 
     # ── Public: Trigger event ─────────────────────────────────────────────────
 
@@ -28,9 +48,18 @@ class WorkflowEngineV2:
         trigger_data: dict,
         client_id: Optional[str] = None,
     ) -> list[dict]:
-        """Evaluate all active templates for this trigger; start instances for matches."""
+        """Evaluate all active templates for this trigger; start instances for matches.
+
+        An idempotency key (SHA-256 of firm+trigger+client+data) prevents
+        duplicate instances when the same event fires more than once.
+        """
+        # Generate idempotency key from trigger inputs
+        key_data = f"{firm_id}:{trigger_type}:{client_id}:{json.dumps(trigger_data, sort_keys=True)}"
+        idempotency_key = hashlib.sha256(key_data.encode()).hexdigest()[:32]
+
         templates = self._repo.list_templates(firm_id=firm_id, is_active=True)
         started: list[dict] = []
+
         for template in templates:
             if template["trigger_type"] != trigger_type:
                 continue
@@ -38,17 +67,33 @@ class WorkflowEngineV2:
                 continue
             if template.get("conditions") and not self._evaluate_conditions(template["conditions"], trigger_data):
                 continue
+
+            # Idempotency check — skip if already running/completed for this key
+            existing = self._repo.check_idempotency(firm_id, template["id"], trigger_type, idempotency_key)
+            if existing:
+                _logger.info(
+                    "WF: duplicate trigger skipped — instance %s already exists for key %s",
+                    existing["id"], idempotency_key,
+                )
+                started.append({"instance_id": existing["id"], "status": "duplicate_skipped"})
+                continue
+
             instance = self._repo.create_instance(
                 firm_id=firm_id,
                 template_id=template["id"],
                 trigger_event=trigger_type,
                 trigger_data=trigger_data,
                 client_id=client_id,
+                idempotency_key=idempotency_key,
             )
             self._repo.log_execution(instance["id"], firm_id, "started", {"template_name": template["name"]})
-            self._repo.update_instance_status(instance["id"], "running", started_at=datetime.utcnow().isoformat())
-            result = self._execute_steps(template, instance, trigger_data, firm_id)
+            self._repo.update_instance_status(
+                firm_id, instance["id"], "running",
+                started_at=datetime.utcnow().isoformat(),
+            )
+            result = self._execute_steps(template, instance, dict(trigger_data), firm_id)
             started.append(result)
+
         return started
 
     # ── Condition evaluation ──────────────────────────────────────────────────
@@ -87,9 +132,7 @@ class WorkflowEngineV2:
 
         if not results:
             return True
-        if logic == "AND":
-            return all(results)
-        return any(results)
+        return all(results) if logic == "AND" else any(results)
 
     def _eval_rule(self, rule: dict, data: dict) -> bool:
         field = rule.get("field", "")
@@ -101,12 +144,12 @@ class WorkflowEngineV2:
         try:
             if value_type == "number":
                 expected = float(expected_raw)
-                actual = float(actual) if actual is not None else 0.0
-                if op == ">":  return actual > expected
-                if op == "<":  return actual < expected
-                if op == "=":  return actual == expected
-                if op == ">=": return actual >= expected
-                if op == "<=": return actual <= expected
+                actual_f = float(actual) if actual is not None else 0.0
+                if op == ">":  return actual_f > expected
+                if op == "<":  return actual_f < expected
+                if op == "=":  return actual_f == expected
+                if op == ">=": return actual_f >= expected
+                if op == "<=": return actual_f <= expected
             elif value_type == "date":
                 from datetime import date
                 today = date.today()
@@ -129,63 +172,191 @@ class WorkflowEngineV2:
     # ── Step execution ────────────────────────────────────────────────────────
 
     def _execute_steps(self, template: dict, instance: dict, context: dict, firm_id: str) -> dict:
-        steps = sorted(template.get("steps", []), key=lambda s: s["step_order"])
-        # Build step map for branching
-        step_map = {s["id"]: s for s in steps}
-        current = next((s for s in steps if s["step_type"] != "trigger"), None)
-        max_steps = 50  # guard against infinite loops
-        executed = 0
+        """Drive the workflow using a step-map for O(1) branch resolution.
 
-        while current and executed < max_steps:
-            executed += 1
-            log = self._repo.log_action(instance["id"], {
-                "step_id": current["id"],
-                "step_name": current["name"],
-                "action_type": current["step_type"],
-                "action_config": current.get("config", {}),
-                "status": "running",
-                "started_at": datetime.utcnow().isoformat(),
-            })
-            try:
-                result, next_step_id = self._execute_step(current, instance, context, firm_id)
-                # Update log
-                for l in __import__('repositories.workflow_repository', fromlist=['MOCK_ACTION_LOGS']).MOCK_ACTION_LOGS:
-                    if l["id"] == log["id"]:
-                        l["status"] = "success"
-                        l["completed_at"] = datetime.utcnow().isoformat()
-                        l["result_data"] = result
-                        break
-                context.update(result or {})
-                self._repo.log_execution(instance["id"], firm_id, "step_completed", {"step": current["name"], "result": result})
-                current = step_map.get(next_step_id) if next_step_id else None
-            except Exception as exc:
-                _logger.exception("Workflow step failed: %s", exc)
+        Uses a visited-set for cycle detection and a MAX_STEPS hard cap.
+        Each step is wrapped with retry logic (_execute_step_with_retry).
+        Returns a summary dict (not the instance object).
+        """
+        steps = self._repo.list_steps(template["id"])
+        if not steps:
+            self._repo.update_instance_status(
+                firm_id, instance["id"], "completed",
+                completed_at=datetime.utcnow().isoformat(),
+            )
+            self._repo.log_execution(instance["id"], firm_id, "completed", {"steps_executed": 0})
+            return {"status": "completed", "steps_executed": 0}
+
+        # Build step map for O(1) lookup by id
+        step_map: dict[str, dict] = {s["id"]: s for s in steps}
+
+        # Skip trigger step — begin at first non-trigger step
+        first_non_trigger = next(
+            (s for s in sorted(steps, key=lambda s: s["step_order"]) if s["step_type"] != "trigger"),
+            None,
+        )
+        current_step = first_non_trigger
+        visited: set[str] = set()
+        steps_executed = 0
+
+        while current_step and steps_executed < MAX_STEPS:
+            step_id = current_step["id"]
+
+            # Cycle detection
+            if step_id in visited:
                 self._repo.log_failure(
-                    instance["id"], firm_id,
-                    error_type=type(exc).__name__,
-                    error_message=str(exc),
-                    step_id=current["id"],
-                    step_name=current["name"],
+                    firm_id, instance["id"], step_id,
+                    "cycle_detected",
+                    f"Cycle detected at step {current_step['name']}",
                 )
                 self._repo.update_instance_status(
-                    instance["id"], "failed",
+                    firm_id, instance["id"], "failed",
+                    error_message="Cycle detected in workflow",
+                    failed_at=datetime.utcnow().isoformat(),
+                )
+                self._repo.log_execution(instance["id"], firm_id, "failed", {"error": "cycle_detected"})
+                return {"status": "failed", "error": "cycle_detected"}
+
+            visited.add(step_id)
+            steps_executed += 1
+
+            # Update instance to reflect current running step
+            self._repo.update_instance_status(firm_id, instance["id"], "running", current_step_id=step_id)
+
+            # Log action start
+            log = self._repo.log_action(
+                instance_id=instance["id"],
+                step_id=step_id,
+                step_name=current_step["name"],
+                action_type=current_step["step_type"],
+                config=current_step.get("config", {}),
+                status="running",
+            )
+
+            try:
+                result, next_step_id = self._execute_step_with_retry(current_step, instance, context, firm_id)
+
+                # Update action log to success
+                self._repo.update_action_log(log["id"], "success", result_data=result)
+
+                context.update(result or {})
+                self._repo.log_execution(
+                    instance["id"], firm_id, "step_completed",
+                    {"step": current_step["name"], "result": result},
+                )
+
+                # Branch logic: step result next_step_id takes precedence over step config
+                if next_step_id:
+                    current_step = step_map.get(next_step_id)
+                elif current_step.get("next_step_id"):
+                    current_step = step_map.get(current_step["next_step_id"])
+                else:
+                    current_step = None  # end of flow
+
+            except _ApprovalPause as pause:
+                self._repo.update_action_log(log["id"], "paused")
+                self._repo.log_execution(
+                    instance["id"], firm_id, "approval_requested",
+                    {"approval_id": pause.approval_id},
+                )
+                # Execution deliberately halted — will resume via resume_after_approval
+                return {"status": "waiting_approval", "approval_id": pause.approval_id, "steps_executed": steps_executed}
+
+            except Exception as exc:
+                _logger.exception("Workflow step permanently failed after retries: %s", exc)
+                self._repo.update_action_log(log["id"], "failed", error_message=str(exc))
+                self._repo.update_instance_status(
+                    firm_id, instance["id"], "failed",
                     failed_at=datetime.utcnow().isoformat(),
                     error_message=str(exc),
                 )
-                self._repo.log_execution(instance["id"], firm_id, "failed", {"step": current["name"], "error": str(exc)})
-                return instance
+                self._repo.log_execution(
+                    instance["id"], firm_id, "failed",
+                    {"step": current_step["name"], "error": str(exc)},
+                )
+                return {"status": "failed", "error": str(exc), "steps_executed": steps_executed}
 
-        if instance["status"] == "running":
-            self._repo.update_instance_status(
-                instance["id"], "completed",
-                completed_at=datetime.utcnow().isoformat(),
-                context_data=context,
+        if steps_executed >= MAX_STEPS:
+            self._repo.log_failure(
+                firm_id, instance["id"], None,
+                "max_steps_exceeded",
+                f"Workflow exceeded {MAX_STEPS} steps",
             )
-            self._repo.log_execution(instance["id"], firm_id, "completed", {"steps_executed": executed})
-        return instance
+            self._repo.update_instance_status(
+                firm_id, instance["id"], "failed",
+                error_message="Max steps exceeded",
+                failed_at=datetime.utcnow().isoformat(),
+            )
+            self._repo.log_execution(instance["id"], firm_id, "failed", {"error": "max_steps_exceeded"})
+            return {"status": "failed", "error": "max_steps_exceeded"}
 
-    def _execute_step(self, step: dict, instance: dict, context: dict, firm_id: str) -> tuple[dict, Optional[str]]:
-        """Execute a single step. Returns (result_dict, next_step_id)."""
+        self._repo.update_instance_status(
+            firm_id, instance["id"], "completed",
+            completed_at=datetime.utcnow().isoformat(),
+            context_data=context,
+        )
+        self._repo.log_execution(instance["id"], firm_id, "completed", {"steps_executed": steps_executed})
+        return {"status": "completed", "steps_executed": steps_executed}
+
+    def _execute_step_with_retry(
+        self,
+        step: dict,
+        instance: dict,
+        context: dict,
+        firm_id: str,
+    ) -> tuple[dict, Optional[str]]:
+        """Execute a step with up to MAX_RETRIES attempts on failure.
+
+        Approval pauses (_ApprovalPause) are never retried — they bubble up
+        immediately. Each failed attempt logs a workflow_failure row with the
+        attempt number. After all attempts are exhausted the last exception
+        is re-raised to the caller.
+        """
+        last_error: Exception = RuntimeError("No attempt made")
+        for attempt in range(MAX_RETRIES):
+            try:
+                result, next_step_id = self._execute_step(step, instance, context, firm_id)
+                if attempt > 0:
+                    self._repo.log_execution(
+                        instance["id"], instance.get("firm_id", firm_id),
+                        "step_retried_success",
+                        {"step_id": step["id"], "step_name": step["name"], "attempt": attempt + 1},
+                    )
+                return result, next_step_id
+            except _ApprovalPause:
+                raise  # never retry approval pauses
+            except Exception as exc:
+                last_error = exc
+                retry_delay = RETRY_DELAYS[attempt] if attempt < len(RETRY_DELAYS) else 8
+                self._repo.log_failure(
+                    instance.get("firm_id", firm_id),
+                    instance["id"],
+                    step["id"],
+                    type(exc).__name__,
+                    str(exc),
+                    {"attempt": attempt + 1, "retry_delay_s": retry_delay},
+                    retry_count=attempt + 1,
+                )
+                _logger.warning(
+                    "WF step '%s' attempt %d/%d failed: %s — retrying in %ds",
+                    step["name"], attempt + 1, MAX_RETRIES, exc, retry_delay,
+                )
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(retry_delay)
+        raise last_error
+
+    def _execute_step(
+        self,
+        step: dict,
+        instance: dict,
+        context: dict,
+        firm_id: str,
+    ) -> tuple[dict, Optional[str]]:
+        """Execute a single step. Returns (result_dict, next_step_id).
+
+        For branch/condition steps next_step_id reflects the taken branch.
+        Approval steps raise _ApprovalPause to halt execution.
+        """
         step_type = step["step_type"]
         config = step.get("config", {})
 
@@ -193,40 +364,54 @@ class WorkflowEngineV2:
             result = self._execute_action(config, instance, context, firm_id)
             return result, step.get("next_step_id")
 
-        elif step_type == "condition":
-            # condition step acts as a branch point
-            matched = self._evaluate_conditions(config.get("condition", {}), {**context, **instance["trigger_data"]})
-            next_id = step.get("true_branch_step_id") if matched else step.get("false_branch_step_id")
-            return {"condition_matched": matched}, next_id
-
-        elif step_type == "branch":
-            matched = self._evaluate_conditions(config.get("condition", {}), {**context, **instance["trigger_data"]})
-            next_id = step.get("true_branch_step_id") if matched else step.get("false_branch_step_id")
-            return {"branch_taken": "true" if matched else "false"}, next_id
+        elif step_type in ("condition", "branch"):
+            merged_data = {**context, **(instance.get("trigger_data") or {})}
+            condition_matched = self._evaluate_conditions(config.get("condition", {}), merged_data)
+            next_id = (
+                step.get("true_branch_step_id") if condition_matched
+                else step.get("false_branch_step_id")
+            )
+            self._repo.log_execution(
+                instance["id"], firm_id, "branch_taken",
+                {
+                    "step_id": step["id"],
+                    "step_name": step["name"],
+                    "condition_result": condition_matched,
+                    "branch": "true" if condition_matched else "false",
+                    "next_step_id": next_id,
+                },
+            )
+            return {"branch_taken": "true" if condition_matched else "false", "next_step_id": next_id}, next_id
 
         elif step_type == "approval":
-            # Create approval record and pause instance
             due_hours = config.get("due_hours", 48)
             due_at = (datetime.utcnow() + timedelta(hours=due_hours)).isoformat()
-            escalation_at = (datetime.utcnow() + timedelta(hours=due_hours + 24)).isoformat()
-            approval = self._repo.create_approval(firm_id, instance["id"], {
-                "step_id": step["id"],
-                "step_name": step["name"],
-                "approver_role": config.get("approver_role", "Partner"),
-                "title": config.get("title", "Approval Required"),
-                "description": config.get("description", ""),
-                "context_data": context,
-                "due_at": due_at,
-                "escalation_at": escalation_at,
-                "escalated_to": config.get("escalate_to"),
-            })
-            self._repo.update_instance_status(instance["id"], "waiting_approval", current_step_id=step.get("next_step_id"))
-            # Halt execution here — will resume when approved
+            approval = self._repo.create_approval(
+                firm_id=firm_id,
+                instance_id=instance["id"],
+                step_id=step["id"],
+                step_name=step["name"],
+                approver_role=config.get("approver_role", "Partner"),
+                title=config.get("title", "Approval Required"),
+                description=config.get("description", ""),
+                context_data=context,
+                due_at=due_at,
+            )
+            # Store the next step to resume from once approved
+            self._repo.update_instance_status(
+                firm_id, instance["id"],
+                "waiting_approval",
+                current_step_id=step.get("next_step_id"),
+            )
             raise _ApprovalPause(approval["id"])
 
         elif step_type == "delay":
-            # In production this would schedule a job; in mock we skip the actual delay
+            # In production this schedules a deferred job; here we log and move on.
             delay_hours = config.get("delay_hours", 1)
+            self._repo.log_execution(
+                instance["id"], firm_id, "delay_skipped",
+                {"step_id": step["id"], "delay_hours": delay_hours},
+            )
             return {"delayed_hours": delay_hours}, step.get("next_step_id")
 
         return {}, step.get("next_step_id")
@@ -277,40 +462,93 @@ class WorkflowEngineV2:
 
     # ── Resume after approval ─────────────────────────────────────────────────
 
-    def resume_after_approval(self, firm_id: str, instance_id: str, approved: bool, user_id: str) -> Optional[dict]:
-        """Continue workflow execution after an approval decision."""
+    def resume_after_approval(
+        self,
+        firm_id: str,
+        instance_id: str,
+        approved: bool,
+        user_id: str,
+    ) -> Optional[dict]:
+        """Continue workflow execution after an approval decision.
+
+        If rejected the instance is cancelled. If approved, execution
+        resumes from the step stored in instance.current_step_id (set by
+        the approval step handler before raising _ApprovalPause).
+        """
         instance = self._repo.get_instance(firm_id, instance_id)
         if not instance or instance["status"] != "waiting_approval":
             return None
+
         if not approved:
-            self._repo.update_instance_status(instance_id, "cancelled")
-            self._repo.log_execution(instance_id, firm_id, "cancelled", {"reason": "approval_rejected", "by": user_id})
+            self._repo.update_instance_status(firm_id, instance_id, "cancelled")
+            self._repo.log_execution(
+                instance_id, firm_id, "cancelled",
+                {"reason": "approval_rejected", "by": user_id},
+            )
             return instance
-        # Get template steps from the stored next_step_id
+
         template = self._repo.get_template(firm_id, instance["template_id"])
         if not template:
             return None
-        self._repo.update_instance_status(instance_id, "running")
+
+        self._repo.update_instance_status(firm_id, instance_id, "running")
         self._repo.log_execution(instance_id, firm_id, "approved", {"by": user_id})
-        # Continue from current_step_id
-        next_step = next((s for s in template.get("steps", []) if s["id"] == instance.get("current_step_id")), None)
-        if next_step:
-            context = instance.get("context_data", {})
-            step_map = {s["id"]: s for s in template.get("steps", [])}
-            current = next_step
-            executed = 0
-            while current and executed < 50:
-                executed += 1
-                try:
-                    result, next_id = self._execute_step(current, instance, context, firm_id)
-                    context.update(result or {})
-                    current = step_map.get(next_id) if next_id else None
-                except _ApprovalPause:
-                    return instance
-                except Exception as exc:
-                    self._repo.update_instance_status(instance_id, "failed", error_message=str(exc))
-                    return instance
-        self._repo.update_instance_status(instance_id, "completed", completed_at=datetime.utcnow().isoformat())
+
+        resume_step_id = instance.get("current_step_id")
+        if not resume_step_id:
+            # Nothing left to run — mark complete
+            self._repo.update_instance_status(
+                firm_id, instance_id, "completed",
+                completed_at=datetime.utcnow().isoformat(),
+            )
+            return instance
+
+        steps = self._repo.list_steps(template["id"])
+        step_map: dict[str, dict] = {s["id"]: s for s in steps}
+        current_step = step_map.get(resume_step_id)
+        context = dict(instance.get("context_data") or {})
+        visited: set[str] = set()
+        steps_executed = 0
+
+        while current_step and steps_executed < MAX_STEPS:
+            step_id = current_step["id"]
+            if step_id in visited:
+                self._repo.update_instance_status(
+                    firm_id, instance_id, "failed",
+                    error_message="Cycle detected during approval resume",
+                )
+                return instance
+            visited.add(step_id)
+            steps_executed += 1
+
+            try:
+                result, next_step_id = self._execute_step_with_retry(current_step, instance, context, firm_id)
+                context.update(result or {})
+                if next_step_id:
+                    current_step = step_map.get(next_step_id)
+                elif current_step.get("next_step_id"):
+                    current_step = step_map.get(current_step["next_step_id"])
+                else:
+                    current_step = None
+            except _ApprovalPause as pause:
+                self._repo.log_execution(
+                    instance_id, firm_id, "approval_requested",
+                    {"approval_id": pause.approval_id},
+                )
+                return instance
+            except Exception as exc:
+                self._repo.update_instance_status(
+                    firm_id, instance_id, "failed",
+                    error_message=str(exc),
+                    failed_at=datetime.utcnow().isoformat(),
+                )
+                return instance
+
+        self._repo.update_instance_status(
+            firm_id, instance_id, "completed",
+            completed_at=datetime.utcnow().isoformat(),
+            context_data=context,
+        )
         return instance
 
 
