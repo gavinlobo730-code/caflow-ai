@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   CheckCircle2, XCircle, Clock, AlertTriangle, ChevronLeft,
-  User, Building2, RefreshCw, Filter,
+  Building2, RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
@@ -17,7 +17,7 @@ interface Approval {
   status: string;
   title: string;
   description?: string;
-  context_data: Record<string, any>;
+  context_data: Record<string, unknown>;
   due_at?: string;
   escalation_at?: string;
   escalated_to?: string;
@@ -51,7 +51,7 @@ export default function ApprovalsPage() {
     try {
       const params: Record<string, string> = {};
       if (status !== "all") params.status = status;
-      const res = await api.workflowEngine.listApprovals(params) as any;
+      const res = (await api.workflowEngine.listApprovals(params)) as { data: { approvals: Approval[] } };
       setApprovals(res.data?.approvals || []);
     } finally {
       setLoading(false);
@@ -70,8 +70,8 @@ export default function ApprovalsPage() {
     }
   };
 
-  const pendingCount = approvals.filter(a => a.status === "pending").length;
-  const overdueCount = approvals.filter(a => a.status === "pending" && isOverdue(a.due_at)).length;
+  const pendingCount = approvals.filter((a: Approval) => a.status === "pending").length;
+  const overdueCount = approvals.filter((a: Approval) => a.status === "pending" && isOverdue(a.due_at)).length;
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -115,7 +115,7 @@ export default function ApprovalsPage() {
         <div className="flex items-center gap-3">
           <select
             value={status}
-            onChange={e => setStatus(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStatus(e.target.value)}
             className="px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg bg-white"
           >
             <option value="pending">Pending</option>
@@ -139,7 +139,7 @@ export default function ApprovalsPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {approvals.map(approval => {
+            {approvals.map((approval: Approval) => {
               const overdue = approval.status === "pending" && isOverdue(approval.due_at);
               return (
                 <div
@@ -169,7 +169,7 @@ export default function ApprovalsPage() {
                         <p className="text-xs text-[#64748B] mt-1">{approval.description}</p>
                       )}
 
-                      {approval.context_data?.client_name && (
+                      {typeof approval.context_data?.client_name === "string" && (
                         <div className="flex items-center gap-1 mt-2 text-xs text-[#475569]">
                           <Building2 size={11} />
                           <span>{approval.context_data.client_name}</span>
@@ -211,7 +211,7 @@ export default function ApprovalsPage() {
                       <textarea
                         placeholder="Optional notes..."
                         value={notes[approval.id] || ""}
-                        onChange={e => setNotes(prev => ({ ...prev, [approval.id]: e.target.value }))}
+                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes((prev: Record<string, string>) => ({ ...prev, [approval.id]: e.target.value }))}
                         rows={2}
                         className="w-full px-3 py-2 text-xs border border-[#E2E8F0] rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#182350]/20 mb-3"
                       />

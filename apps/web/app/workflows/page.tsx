@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
-  Play, Pause, Plus, Settings, BarChart2, AlertTriangle,
-  CheckCircle2, Clock, Search, Filter, Zap, RefreshCw,
-  ChevronRight, MoreHorizontal, Trash2, Activity,
+  Play, Pause, Plus, Settings, CheckCircle2, Search, Zap, RefreshCw, Activity,
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
@@ -25,6 +23,15 @@ interface WorkflowTemplate {
   avg_duration_ms?: number;
   created_at: string;
   updated_at: string;
+}
+
+interface WorkflowInstance {
+  id: string;
+  template_id: string;
+  trigger_event: string;
+  status: string;
+  started_at?: string;
+  completed_at?: string;
 }
 
 interface WorkflowAnalytics {
@@ -124,8 +131,8 @@ export default function WorkflowsPage() {
       if (category !== "all") params.category = category;
       if (search) params.search = search;
       const [tplRes, analyticsRes] = await Promise.all([
-        api.workflowEngine.listTemplates(params) as Promise<any>,
-        api.workflowEngine.analytics() as Promise<any>,
+        api.workflowEngine.listTemplates(params) as Promise<{ data: { templates: WorkflowTemplate[] } }>,
+        api.workflowEngine.analytics() as Promise<{ data: WorkflowAnalytics }>,
       ]);
       setTemplates(tplRes.data?.templates || []);
       setAnalytics(analyticsRes.data || null);
@@ -142,13 +149,13 @@ export default function WorkflowsPage() {
     setToggling(id);
     try {
       await api.workflowEngine.toggleTemplate(id);
-      setTemplates(prev => prev.map(t => t.id === id ? { ...t, is_active: !t.is_active } : t));
+      setTemplates((prev: WorkflowTemplate[]) => prev.map((t: WorkflowTemplate) => t.id === id ? { ...t, is_active: !t.is_active } : t));
     } finally {
       setToggling(null);
     }
   };
 
-  const filtered = templates.filter(t => {
+  const filtered = templates.filter((t: WorkflowTemplate) => {
     const q = search.toLowerCase();
     return !q || t.name.toLowerCase().includes(q) || (t.description || "").toLowerCase().includes(q);
   });
@@ -230,13 +237,13 @@ export default function WorkflowsPage() {
                 type="text"
                 placeholder="Search workflows..."
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 text-sm border border-[#E2E8F0] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#182350]/20"
               />
             </div>
             <select
               value={category}
-              onChange={e => setCategory(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setCategory(e.target.value)}
               className="px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg bg-white focus:outline-none"
             >
               <option value="all">All Categories</option>
@@ -259,8 +266,8 @@ export default function WorkflowsPage() {
             </div>
           ) : (
             <div className="grid gap-4">
-              {filtered.map(template => {
-                const analyticsRow = analytics?.by_template.find(a => a.template_id === template.id);
+              {filtered.map((template: WorkflowTemplate) => {
+                const analyticsRow = analytics?.by_template.find((a: WorkflowAnalytics["by_template"][number]) => a.template_id === template.id);
                 return (
                   <div key={template.id} className="bg-white border border-[#E2E8F0] rounded-xl p-5 hover:shadow-sm transition-shadow">
                     <div className="flex items-start justify-between gap-4">
@@ -346,7 +353,7 @@ export default function WorkflowsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {analytics.by_template.map((row, i) => (
+                  {analytics.by_template.map((row: WorkflowAnalytics["by_template"][number], i: number) => (
                     <tr key={row.template_id} className={`border-b border-[#F1F5F9] hover:bg-[#FAFBFD] ${i % 2 === 0 ? "" : "bg-[#FAFBFD]"}`}>
                       <td className="px-4 py-3 font-medium text-[#182350]">{row.template_name}</td>
                       <td className="px-4 py-3 text-[#334155]">{row.total_executions}</td>
@@ -358,7 +365,7 @@ export default function WorkflowsPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-[#64748B]">
-                        {fmtDuration(templates.find(t => t.id === row.template_id)?.avg_duration_ms)}
+                        {fmtDuration(templates.find((t: WorkflowTemplate) => t.id === row.template_id)?.avg_duration_ms)}
                       </td>
                       <td className="px-4 py-3 text-[#334155]">{row.executions_last_7_days}</td>
                     </tr>
@@ -377,7 +384,7 @@ export default function WorkflowsPage() {
 }
 
 function WorkflowInstancesTab() {
-  const [instances, setInstances] = useState<any[]>([]);
+  const [instances, setInstances] = useState<WorkflowInstance[]>([]);
   const [status, setStatus] = useState("all");
   const [loading, setLoading] = useState(true);
 
@@ -387,7 +394,7 @@ function WorkflowInstancesTab() {
       try {
         const params: Record<string, string> = {};
         if (status !== "all") params.status = status;
-        const res = await api.workflowEngine.listInstances(params) as any;
+        const res = (await api.workflowEngine.listInstances(params)) as { data: { instances: WorkflowInstance[] } };
         setInstances(res.data?.instances || []);
       } finally {
         setLoading(false);
@@ -410,7 +417,7 @@ function WorkflowInstancesTab() {
       <div className="flex items-center gap-3">
         <select
           value={status}
-          onChange={e => setStatus(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStatus(e.target.value)}
           className="px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg bg-white"
         >
           <option value="all">All Statuses</option>
@@ -434,7 +441,7 @@ function WorkflowInstancesTab() {
               </tr>
             </thead>
             <tbody>
-              {instances.map(inst => (
+              {instances.map((inst: WorkflowInstance) => (
                 <tr key={inst.id} className="border-b border-[#F1F5F9] hover:bg-[#FAFBFD]">
                   <td className="px-4 py-3 font-mono text-xs text-[#475569]">{inst.id.slice(0,12)}...</td>
                   <td className="px-4 py-3 text-[#334155]">{TRIGGER_LABELS[inst.trigger_event] || inst.trigger_event}</td>
@@ -459,15 +466,3 @@ function WorkflowInstancesTab() {
   );
 }
 
-const TRIGGER_LABELS: Record<string, string> = {
-  gst_due: "GST Due", tds_due: "TDS Due", itr_due: "ITR Due", roc_due: "ROC Due",
-  client_created: "Client Created", client_archived: "Client Archived",
-  client_health_changed: "Health Changed", client_risk_detected: "Risk Detected",
-  lead_created: "Lead Created", proposal_sent: "Proposal Sent",
-  onboarding_started: "Onboarding Started", onboarding_completed: "Onboarding Completed",
-  renewal_due: "Renewal Due", relationship_created: "Relationship Created",
-  conflict_detected: "Conflict Detected", ownership_changed: "Ownership Changed",
-  health_score_below_threshold: "Low Health Score", health_alert_created: "Health Alert",
-  ai_risk_detected: "AI Risk Detected", ai_opportunity_detected: "AI Opportunity",
-  scheduled: "Scheduled",
-};
