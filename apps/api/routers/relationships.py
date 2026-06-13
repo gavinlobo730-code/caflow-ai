@@ -532,8 +532,8 @@ def review_cross_client_match(
         raise HTTPException(status_code=404, detail="Match not found")
 
     update: dict = {
-        "reviewed":  True,
-        "confirmed": data.is_confirmed,
+        "reviewed":     True,
+        "is_confirmed": data.is_confirmed,
     }
     if data.notes:
         update["notes"] = data.notes
