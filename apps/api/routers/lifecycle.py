@@ -112,6 +112,33 @@ _DEFAULT_ONBOARDING_TASKS = [
     "Welcome call scheduled",
 ]
 
+# 10-step Product Bible onboarding checklist (Chapter 7)
+_ONBOARDING_CHECKLIST_STEPS = [
+    (1,  "Engagement Letter",          "Generate, partner approve, send to client, client signs, archive"),
+    (2,  "Client Profile",             "Legal name, entity type, incorporation date, address, industry, PAN, CIN/GSTIN, FY start"),
+    (3,  "KYC",                        "PAN verification, GSTIN verification, CIN verification, directors, bank account"),
+    (4,  "Services & Fees",            "Services confirmed, fee structure, billing frequency, billing start date"),
+    (5,  "Compliance Calendar Setup",  "Auto-identified obligations, due dates, CA reviews and confirms"),
+    (6,  "Accounting Setup",           "CoA from Schedule III, customisations, bank accounts, opening balances"),
+    (7,  "Relationship Intelligence",  "Directors with DINs, shareholders, related parties, group companies, cross-client links"),
+    (8,  "Team Assignment",            "Partner, Manager, Staff, internal briefing note, Timeline event"),
+    (9,  "Portal Invitation",          "Primary contact invited, accepts, welcome message, first portal task"),
+    (10, "Go-Live Verification",       "System checks all steps complete, first work item created, partner signs off"),
+]
+
+# Average days to complete onboarding by entity type
+_AVG_DAYS_BY_ENTITY = {
+    "Individual":      7,
+    "Proprietorship":  7,
+    "Partnership":    10,
+    "LLP":            14,
+    "Private Limited": 21,
+    "Public Limited":  30,
+    "Trust":          14,
+    "Society":        14,
+    "HUF":             7,
+}
+
 
 # ─── Pydantic Models ──────────────────────────────────────────────────────────
 
@@ -176,6 +203,17 @@ class OnboardingIn(BaseModel):
 
 class TaskStatusIn(BaseModel):
     status: str  # pending | in_progress | done | skipped (or title-cased variants)
+    notes: Optional[str] = None
+
+
+class ChecklistStepIn(BaseModel):
+    status: str   # pending | in_progress | done | skipped
+    notes: Optional[str] = None
+
+
+class ChecklistStartIn(BaseModel):
+    client_id: str
+    entity_type: Optional[str] = "Individual"
     notes: Optional[str] = None
 
 

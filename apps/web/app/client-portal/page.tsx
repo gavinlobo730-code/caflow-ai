@@ -12,6 +12,7 @@ import { getComplianceCalendar } from "@/lib/data/compliance";
 import { getTransactions } from "@/lib/data/transactions";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api";
 import type { Client } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import type { Transaction } from "@/lib/data/transactions";
@@ -29,16 +30,6 @@ const PORTAL_TABS: { id: PortalTab; label: string; icon: React.ElementType }[] =
   { id: "messages", label: "Messages", icon: MessageSquare },
 ];
 
-const MOCK_DUES = [
-  { id: "1", description: "Professional fees — FY 2025-26 Q4", amount: "₹18,000", due: "15 Jun 2026", status: "Unpaid" },
-  { id: "2", description: "GSTR filing charges — Mar 2026", amount: "₹2,500", due: "30 May 2026", status: "Overdue" },
-];
-
-const MOCK_MESSAGES = [
-  { id: "1", from: "CA", text: "Your GSTR-1 for March 2026 has been filed successfully. ✓", time: "2 days ago" },
-  { id: "2", from: "CA", text: "Please upload your Q4 bank statement at the earliest so we can reconcile before the audit.", time: "5 days ago" },
-  { id: "3", from: "CA", text: "Advance tax instalment of 15% was due on 15 Jun. Please confirm payment made.", time: "1 week ago" },
-];
 
 const FILING_STATUS_COLORS: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
@@ -84,6 +75,30 @@ interface NewRequestForm {
   is_urgent: boolean;
 }
 
+interface PortalMessage {
+  id: string;
+  firm_id: string;
+  client_id: string;
+  text: string;
+  from_ca: boolean;
+  created_at: string;
+}
+
+interface ApiDue {
+  id: string;
+  party_name: string;
+  transaction_date: string;
+  reference_no: string | null;
+  total_paise: number;
+  status: string;
+}
+
+interface DuesResponse {
+  dues: ApiDue[];
+  total_paise: number;
+  overdue_count: number;
+}
+
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return "";
   if (bytes < 1024) return `${bytes} B`;
@@ -117,6 +132,16 @@ export default function ClientPortalPage() {
   const [uploadLabel, setUploadLabel] = useState("");
   const sharedUploadRef = useRef<HTMLInputElement | null>(null);
 
+  // Portal messages state
+  const [portalMessages, setPortalMessages] = useState<PortalMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [newMessageText, setNewMessageText] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
+
+  // Dues state
+  const [apiDues, setApiDues] = useState<ApiDue[]>([]);
+  const [duesLoading, setDuesLoading] = useState(false);
+
   // Load clients list on mount
   useEffect(() => {
     getClients()
@@ -133,6 +158,8 @@ export default function ClientPortalPage() {
       setTransactions([]);
       setDocRequests([]);
       setSharedDocs([]);
+      setPortalMessages([]);
+      setApiDues([]);
       return;
     }
     const client = clients.find((c) => c.id === selectedClientId) ?? null;
@@ -151,6 +178,8 @@ export default function ClientPortalPage() {
 
     loadDocRequests(selectedClientId);
     loadSharedDocs(selectedClientId);
+    loadPortalMessages(selectedClientId);
+    loadDues(selectedClientId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClientId, clients]);
 
