@@ -347,49 +347,49 @@ export default function ClientLifecyclePage() {
             </div>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-slate-400">Service Type *</label>
+                <label className="text-xs text-gray-600">Service Type *</label>
                 <input
                   value={renewalForm.service_type}
                   onChange={(e) => setRenewalForm({ ...renewalForm, service_type: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
                   placeholder="e.g. GST Filing, ITR, Audit"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400">Financial Year *</label>
+                <label className="text-xs text-gray-600">Financial Year *</label>
                 <input
                   value={renewalForm.financial_year}
                   onChange={(e) => setRenewalForm({ ...renewalForm, financial_year: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
                   placeholder="e.g. 2025-26"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400">Renewal Date</label>
+                <label className="text-xs text-gray-600">Renewal Date</label>
                 <input
                   type="date"
                   value={renewalForm.renewal_date}
                   onChange={(e) => setRenewalForm({ ...renewalForm, renewal_date: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400">Value (₹)</label>
+                <label className="text-xs text-gray-600">Value (₹)</label>
                 <input
                   type="number"
                   value={renewalForm.value_paise}
                   onChange={(e) => setRenewalForm({ ...renewalForm, value_paise: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
                   placeholder="e.g. 15000"
                 />
               </div>
             </div>
             <div className="flex gap-2 mt-5">
-              <button onClick={() => setRenewalModal(false)} className="flex-1 text-sm text-slate-400 border border-gray-700 py-2 rounded-md hover:bg-gray-800">Cancel</button>
+              <button onClick={() => setRenewalModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50">Cancel</button>
               <button
                 onClick={handleSaveRenewal}
                 disabled={savingRenewal || !renewalForm.service_type || !renewalForm.financial_year}
-                className="flex-1 text-sm bg-emerald-600 text-white py-2 rounded-md hover:bg-emerald-700 disabled:opacity-50"
+                className="flex-1 text-sm bg-[#182350] text-white py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
               >
                 {savingRenewal ? "Saving…" : "Save"}
               </button>

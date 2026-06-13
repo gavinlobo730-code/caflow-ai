@@ -258,18 +258,18 @@ export default function ClientRelationshipsPage() {
                     <th className="px-3 py-3 text-left font-medium">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-700/50">
+                <tbody className="divide-y divide-gray-100">
                   {matches.map((m) => (
-                    <tr key={m.id} className="hover:bg-gray-700/30">
+                    <tr key={m.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3">
-                        <Badge className="bg-amber-800 text-amber-300 text-[10px]">{m.match_type.toUpperCase()}</Badge>
+                        <Badge className="bg-amber-100 text-amber-700 text-[10px]">{m.match_type.toUpperCase()}</Badge>
                       </td>
-                      <td className="px-3 py-3 text-slate-300 text-xs font-mono">{m.pan}</td>
+                      <td className="px-3 py-3 text-gray-700 text-xs font-mono">{m.pan}</td>
                       <td className="px-3 py-3 text-gray-500 text-xs">
                         {m.client_id_a === clientId ? m.client_id_b.slice(0, 8) : m.client_id_a.slice(0, 8)}…
                       </td>
                       <td className="px-3 py-3">
-                        <Badge className={m.is_confirmed ? "bg-red-800 text-red-300 text-[10px]" : "bg-amber-800 text-amber-300 text-[10px]"}>
+                        <Badge className={m.is_confirmed ? "bg-red-100 text-red-700 text-[10px]" : "bg-amber-100 text-amber-700 text-[10px]"}>
                           {m.is_reviewed ? (m.is_confirmed ? "Confirmed" : "Dismissed") : "Pending"}
                         </Badge>
                       </td>
