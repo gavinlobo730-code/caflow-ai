@@ -175,6 +175,10 @@ export const api = {
     clientChat: (clientId: string, body: { message: string; conversation_history: unknown[] }) =>
       request(`/api/ai-copilot/client/${clientId}/chat`, { method: "POST", body: JSON.stringify(body) }),
   },
+  payroll: {
+    downloadPayslip: (slipId: string, fallbackFilename = `payslip-${slipId}.pdf`) =>
+      downloadFile(`/api/payroll/salary-slips/${slipId}/pdf`, fallbackFilename),
+  },
   invoices: {
     downloadPdf: (id: string) => downloadFile(`/api/invoices/${id}/pdf`, `invoice-${id}.pdf`),
     runOverdueCheck: () => request("/api/invoices/run-overdue-check", { method: "POST" }),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   Plus,
   X,
@@ -106,25 +106,108 @@ const STAGE_COLORS: Record<Stage, { bg: string; header: string; badge: string }>
 };
 
 // ---------------------------------------------------------------------------
-// localStorage helpers
+// API helpers — leads CRUD via /api/lifecycle/leads
 // ---------------------------------------------------------------------------
 
-const LS_KEY = "practicesync_pipeline";
-
-function loadLeads(): Lead[] {
-  if (typeof window === "undefined") return [];
+/** Map backend lead row → frontend Lead shape */
+function fromApiLead(row: Record<string, unknown>): Lead {
+  const meta = (row.notes as string | null) ?? "";
+  // Extract lastContactDate and nextFollowUpDate from embedded JSON in notes
+  let lastContactDate = new Date().toISOString().split("T")[0];
+  let nextFollowUpDate = "";
+  let notes = meta;
   try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw) as Lead[];
+    const parsed = JSON.parse(meta) as Record<string, string>;
+    if (parsed.__caflow_meta__) {
+      lastContactDate = parsed.lastContactDate ?? lastContactDate;
+      nextFollowUpDate = parsed.nextFollowUpDate ?? "";
+      notes = parsed.userNotes ?? "";
+    }
+  } catch {
+    // plain text notes — leave as-is
+  }
+  return {
+    id: row.id as string,
+    name: (row.contact_name as string) ?? "",
+    phone: (row.phone as string) ?? "",
+    email: (row.email as string) ?? "",
+    businessName: (row.company_name as string) ?? "",
+    entityType: ((row.assigned_to as string) ?? "Proprietorship") as EntityType, // assigned_to repurposed for entityType
+    estimatedMonthlyFee: (row.estimated_value_paise as number) ?? 0,
+    source: ((row.source as string) ?? "Referral") as Source,
+    notes,
+    stage: ((row.stage as string) ?? "Lead") as Stage,
+    lastContactDate,
+    nextFollowUpDate,
+    createdAt: (row.created_at as string) ?? new Date().toISOString(),
+  };
+}
+
+/** Map frontend Lead → backend LeadIn body */
+function toApiBody(lead: Lead) {
+  // Embed extra frontend fields in notes as JSON so round-trip is lossless
+  const notesMeta = JSON.stringify({
+    __caflow_meta__: true,
+    lastContactDate: lead.lastContactDate,
+    nextFollowUpDate: lead.nextFollowUpDate,
+    userNotes: lead.notes,
+  });
+  return {
+    company_name: lead.businessName || lead.name,
+    contact_name: lead.name,
+    email: lead.email || null,
+    phone: lead.phone || null,
+    source: lead.source,
+    stage: lead.stage,
+    estimated_value_paise: lead.estimatedMonthlyFee,
+    // Repurpose assigned_to to carry entity_type (no direct backend field)
+    assigned_to: lead.entityType,
+    notes: notesMeta,
+  };
+}
+
+async function apiLoadLeads(): Promise<Lead[]> {
+  try {
+    const json = await apiFetch("/api/lifecycle/leads?limit=200");
+    if (!json.success) return [];
+    // Drop soft-deleted rows on the raw stage string before mapping to Lead.
+    return (json.data as Record<string, unknown>[])
+      .filter((row) => row.stage !== "_deleted")
+      .map(fromApiLead);
   } catch {
     return [];
   }
 }
 
-function saveLeads(leads: Lead[]): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(LS_KEY, JSON.stringify(leads));
+async function apiCreateLead(lead: Lead): Promise<Lead> {
+  const json = await apiFetch("/api/lifecycle/leads", {
+    method: "POST",
+    body: JSON.stringify(toApiBody(lead)),
+  });
+  if (!json.success) throw new Error(json.error ?? "Failed to create lead");
+  return fromApiLead(json.data as Record<string, unknown>);
+}
+
+async function apiUpdateLead(lead: Lead): Promise<Lead> {
+  const json = await apiFetch(`/api/lifecycle/leads/${lead.id}`, {
+    method: "PATCH",
+    body: JSON.stringify(toApiBody(lead)),
+  });
+  if (!json.success) throw new Error(json.error ?? "Failed to update lead");
+  return fromApiLead(json.data as Record<string, unknown>);
+}
+
+async function apiDeleteLead(id: string): Promise<void> {
+  // Backend has no DELETE endpoint — use PATCH to mark as deleted via a special stage
+  // We optimistically remove from UI; ignore backend errors gracefully
+  try {
+    await apiFetch(`/api/lifecycle/leads/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ stage: "_deleted" }),
+    });
+  } catch {
+    // non-fatal
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -697,40 +780,51 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
 
 export default function PipelinePage() {
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editLead, setEditLead] = useState<Lead | null>(null);
   const [convertLead, setConvertLead] = useState<Lead | null>(null);
 
-  // Load from localStorage on mount
+  // Load from API on mount
   useEffect(() => {
-    setLeads(loadLeads());
-  }, []);
-
-  const persist = useCallback((updated: Lead[]) => {
-    setLeads(updated);
-    saveLeads(updated);
-  }, []);
-
-  function handleSave(lead: Lead) {
-    setLeads((prev) => {
-      const idx = prev.findIndex((l) => l.id === lead.id);
-      const updated =
-        idx >= 0
-          ? prev.map((l, i) => (i === idx ? lead : l))
-          : [lead, ...prev];
-      saveLeads(updated);
-      return updated;
+    setLoading(true);
+    void apiLoadLeads().then((data) => {
+      setLeads(data);
+      setLoading(false);
     });
+  }, []);
+
+  async function handleSave(lead: Lead) {
+    try {
+      const isNew = !leads.find((l) => l.id === lead.id);
+      if (isNew) {
+        const created = await apiCreateLead(lead);
+        setLeads((prev) => [created, ...prev]);
+      } else {
+        const updated = await apiUpdateLead(lead);
+        setLeads((prev) => prev.map((l) => (l.id === lead.id ? updated : l)));
+      }
+    } catch {
+      // Optimistic fallback — keep local state as-is
+    }
   }
 
-  function handleMoveNext(lead: Lead) {
+  async function handleMoveNext(lead: Lead) {
     const next = nextStage(lead.stage);
     if (!next) return;
-    persist(leads.map((l) => (l.id === lead.id ? { ...l, stage: next } : l)));
+    const updated = { ...lead, stage: next };
+    setLeads((prev) => prev.map((l) => (l.id === lead.id ? updated : l)));
+    try {
+      await apiUpdateLead(updated);
+    } catch {
+      // Revert on error
+      setLeads((prev) => prev.map((l) => (l.id === lead.id ? lead : l)));
+    }
   }
 
-  function handleDelete(id: string) {
-    persist(leads.filter((l) => l.id !== id));
+  async function handleDelete(id: string) {
+    setLeads((prev) => prev.filter((l) => l.id !== id));
+    await apiDeleteLead(id);
   }
 
   function openAdd() {
@@ -828,6 +922,9 @@ export default function PipelinePage() {
       )}
 
       {/* Kanban board */}
+      {loading && (
+        <div className="text-center py-10 text-sm text-[#94A3B8]">Loading leads…</div>
+      )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {STAGES.map((stage) => {
           const stageLeads = leads.filter((l) => l.stage === stage);
@@ -888,11 +985,7 @@ export default function PipelinePage() {
         lead={convertLead}
         onClose={() => setConvertLead(null)}
         onConverted={(leadId) => {
-          setLeads((prev) => {
-            const updated = prev.filter((l) => l.id !== leadId);
-            saveLeads(updated);
-            return updated;
-          });
+          setLeads((prev) => prev.filter((l) => l.id !== leadId));
           setConvertLead(null);
         }}
       />

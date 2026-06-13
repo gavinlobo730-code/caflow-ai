@@ -470,13 +470,13 @@ export default function WhatsAppPage() {
               Notifications
             </Link>
             <ChevronRight size={12} />
-            <span>WhatsApp Reminders</span>
+            <span>WhatsApp Quick-Compose</span>
           </div>
           <h1 className="text-xl font-semibold text-[#0F172A]">
-            WhatsApp Reminder Templates
+            WhatsApp Quick-Compose
           </h1>
           <p className="text-sm text-[#64748B] mt-0.5">
-            Compose and send WhatsApp messages to clients via WhatsApp Web
+            Opens WhatsApp Web with a pre-filled message. Requires the recipient to have WhatsApp.
           </p>
         </div>
       </div>

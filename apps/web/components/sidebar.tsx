@@ -5,12 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, CheckSquare, UserCheck,
-  Receipt, Calculator, Building2,
-  Calendar, BarChart3, Settings,
-  ChevronLeft, ChevronRight, Landmark, Shield,
-  ShieldAlert, Sparkles, Bell, LogOut,
-  ExternalLink, Menu, X, KanbanSquare, MessageSquare, KeyRound,
-  Search, Briefcase, Clock, LayoutList, Activity, Zap, Bot, Brain,
+  Receipt, Calendar, BarChart3, Settings,
+  ChevronLeft, ChevronRight, Shield,
+  ShieldAlert, Bell, LogOut,
+  ExternalLink, Menu, X, KanbanSquare,
+  Search, Briefcase, Clock, LayoutList, Zap, Bot, Brain,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -26,51 +25,51 @@ const NAV_GROUPS = [
       { href: "/work", label: "My Work", icon: LayoutList },
       { href: "/clients", label: "Clients", icon: Users },
       { href: "/pipeline", label: "Pipeline", icon: KanbanSquare },
-      { href: "/client-portal", label: "Client Portal", icon: ExternalLink },
+    ],
+  },
+  {
+    label: "Practice",
+    items: [
       { href: "/tasks", label: "Tasks", icon: CheckSquare },
-      { href: "/tasks/templates", label: "Task Templates", icon: CheckSquare },
-      { href: "/time", label: "Time Tracking", icon: Clock },
+      { href: "/time", label: "Time & Workload", icon: Clock },
       { href: "/team", label: "Team", icon: UserCheck },
-      { href: "/team/workload", label: "Workload", icon: Activity },
     ],
   },
   {
-    label: "Tax & Compliance",
+    label: "Compliance",
     items: [
-      { href: "/compliance", label: "Compliance", icon: Shield },
-      { href: "/gst", label: "GST", icon: Receipt },
-      { href: "/gst/gstr3b", label: "GSTR-3B", icon: Receipt },
-      { href: "/gst/gstr1", label: "GSTR-1", icon: Receipt },
-      { href: "/income-tax", label: "Income Tax", icon: Calculator },
-      { href: "/tds", label: "TDS", icon: Landmark },
-      { href: "/tds/returns", label: "TDS Returns", icon: Landmark },
-      { href: "/mca", label: "MCA", icon: Building2 },
+      { href: "/compliance", label: "Compliance Overview", icon: Shield },
+      { href: "/calendar", label: "Calendar", icon: Calendar },
     ],
   },
   {
-    label: "Payroll & Billing",
+    label: "Billing & Payroll",
     items: [
-      { href: "/payroll", label: "Payroll", icon: Briefcase },
       { href: "/billing", label: "Fee Billing", icon: Receipt },
+      { href: "/payroll", label: "Payroll", icon: Briefcase },
     ],
   },
   {
-    label: "Tools & AI",
+    label: "AI & Insights",
     items: [
       { href: "/copilot", label: "AI Copilot", icon: Bot },
       { href: "/memory", label: "AI Memory", icon: Brain },
-      { href: "/executive-dashboard", label: "Executive Dashboard", icon: BarChart3 },
-      { href: "/workflows", label: "Workflows", icon: Zap },
-      { href: "/workflows/approvals", label: "Approvals", icon: CheckSquare },
-      { href: "/ai-assistant", label: "AI Assistant", icon: Sparkles },
       { href: "/risks", label: "Risk Intelligence", icon: ShieldAlert },
-      { href: "/calendar", label: "Calendar", icon: Calendar },
-      { href: "/reports", label: "Reports", icon: BarChart3 },
-      { href: "/reports/analytics", label: "Analytics", icon: BarChart3 },
-      { href: "/notifications/whatsapp", label: "WhatsApp", icon: MessageSquare },
+      { href: "/executive-dashboard", label: "Exec Dashboard", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "Workflows",
+    items: [
+      { href: "/workflows", label: "Workflows", icon: Zap },
+    ],
+  },
+  {
+    label: "Settings & Tools",
+    items: [
       { href: "/notifications", label: "Notifications", icon: Bell },
       { href: "/settings", label: "Settings", icon: Settings },
-      { href: "/settings/dsc-tracker", label: "DSC Tracker", icon: KeyRound },
+      { href: "/client-portal", label: "Client Portal", icon: ExternalLink },
     ],
   },
 ];
