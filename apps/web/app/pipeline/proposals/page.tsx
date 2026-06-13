@@ -33,11 +33,11 @@ interface ApiResponse<T> {
 const ALL_STATUSES: ProposalStatus[] = ["Draft", "Sent", "Accepted", "Rejected", "Expired"];
 
 const STATUS_BADGE: Record<ProposalStatus, string> = {
-  Draft:    "bg-gray-700 text-gray-300",
-  Sent:     "bg-blue-800 text-blue-300",
-  Accepted: "bg-green-800 text-green-300",
-  Rejected: "bg-red-800 text-red-300",
-  Expired:  "bg-orange-800 text-orange-300",
+  Draft:    "bg-gray-100 text-gray-600",
+  Sent:     "bg-blue-100 text-blue-700",
+  Accepted: "bg-green-100 text-green-700",
+  Rejected: "bg-red-100 text-red-700",
+  Expired:  "bg-orange-100 text-orange-700",
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -136,11 +136,11 @@ export default function ProposalsPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4 animate-pulse">
-        <div className="h-6 bg-white/[0.08] rounded w-48" />
-        <div className="h-10 bg-white/[0.05] rounded" />
+      <div className="p-6 space-y-4 animate-pulse bg-[#F8FAFC] min-h-full">
+        <div className="h-6 bg-gray-200 rounded w-48" />
+        <div className="h-10 bg-gray-100 rounded" />
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-14 bg-white/[0.05] rounded-xl" />
+          <div key={i} className="h-14 bg-gray-100 rounded-xl" />
         ))}
       </div>
     );
@@ -148,8 +148,8 @@ export default function ProposalsPage() {
 
   if (error) {
     return (
-      <div className="p-6">
-        <div className="bg-red-900/30 text-red-400 rounded-lg px-5 py-4 text-sm border border-red-800">
+      <div className="p-6 bg-[#F8FAFC] min-h-full">
+        <div className="bg-red-50 text-red-600 rounded-lg px-5 py-4 text-sm border border-red-200">
           {error}
         </div>
       </div>
@@ -157,12 +157,12 @@ export default function ProposalsPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-6 space-y-5 bg-[#F8FAFC] min-h-full">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-white">Proposals</h1>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <h1 className="text-2xl font-bold text-[#182350]">Proposals</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
             {proposals.length} total · {proposals.filter((p) => p.status === "Accepted").length} accepted
           </p>
         </div>
@@ -172,7 +172,7 @@ export default function ProposalsPage() {
             setSaveError(null);
             setModalOpen(true);
           }}
-          className="flex items-center gap-1.5 text-sm bg-violet-600 text-white px-3 py-1.5 rounded-md hover:bg-violet-700"
+          className="flex items-center gap-1.5 text-sm bg-[#182350] text-white px-3 py-1.5 rounded-md hover:bg-[#0D1635]"
         >
           <Plus size={14} /> New Proposal
         </button>
@@ -181,24 +181,24 @@ export default function ProposalsPage() {
       {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search proposals…"
-            className="w-full pl-8 pr-4 py-2 text-sm bg-gray-800 border border-gray-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            className="w-full pl-8 pr-4 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
           />
         </div>
-        <div className="flex items-center gap-1 bg-gray-800 border border-gray-700 rounded-md p-1">
-          <Filter size={12} className="text-slate-500 ml-1" />
+        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-md p-1">
+          <Filter size={12} className="text-gray-400 ml-1" />
           {(["All", ...ALL_STATUSES] as const).map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s as ProposalStatus | "All")}
               className={`text-xs px-3 py-1 rounded transition-colors ${
                 statusFilter === s
-                  ? "bg-violet-600 text-white"
-                  : "text-slate-400 hover:text-white"
+                  ? "bg-[#182350] text-white"
+                  : "text-gray-500 hover:text-[#182350]"
               }`}
             >
               {s}
@@ -208,16 +208,16 @@ export default function ProposalsPage() {
       </div>
 
       {/* Table */}
-      <Card className="bg-gray-800 border-gray-700">
+      <Card className="bg-white border-gray-200 shadow-sm">
         <CardContent className="p-0">
           {filtered.length === 0 ? (
             <div className="text-center py-16">
-              <p className="text-sm text-slate-500">No proposals found</p>
+              <p className="text-sm text-gray-500">No proposals found</p>
             </div>
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-slate-500 border-b border-gray-700">
+                <tr className="text-xs text-gray-500 border-b border-gray-200">
                   <th className="px-5 py-3 text-left font-medium">Proposal No</th>
                   <th className="px-3 py-3 text-left font-medium">Title</th>
                   <th className="px-3 py-3 text-left font-medium">Lead / Client</th>
@@ -227,19 +227,19 @@ export default function ProposalsPage() {
                   <th className="px-5 py-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-700/50">
+              <tbody className="divide-y divide-gray-100">
                 {filtered.map((proposal) => (
-                  <tr key={proposal.id} className="hover:bg-gray-700/30 group">
-                    <td className="px-5 py-3 font-mono text-xs text-slate-400">
+                  <tr key={proposal.id} className="hover:bg-[#AFD2FA]/10 group">
+                    <td className="px-5 py-3 font-mono text-xs text-gray-500">
                       {proposal.proposal_no}
                     </td>
-                    <td className="px-3 py-3 text-white font-medium">
+                    <td className="px-3 py-3 text-gray-800 font-medium">
                       {proposal.title}
                     </td>
-                    <td className="px-3 py-3 text-slate-300">
+                    <td className="px-3 py-3 text-gray-700">
                       {proposal.lead_name || proposal.client_name || "—"}
                     </td>
-                    <td className="px-3 py-3 text-emerald-400 font-medium">
+                    <td className="px-3 py-3 text-emerald-700 font-medium">
                       {formatRupees(proposal.fee_paise)}
                     </td>
                     <td className="px-3 py-3">
@@ -247,11 +247,11 @@ export default function ProposalsPage() {
                         {proposal.status}
                       </Badge>
                     </td>
-                    <td className="px-3 py-3 text-slate-400 text-xs">
+                    <td className="px-3 py-3 text-gray-500 text-xs">
                       {formatDate(proposal.sent_date)}
                     </td>
                     <td className="px-5 py-3 text-right">
-                      <button className="text-xs text-slate-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 rounded hover:bg-gray-700">
+                      <button className="text-xs text-gray-500 hover:text-[#182350] opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 rounded hover:bg-gray-100">
                         View
                       </button>
                     </td>
@@ -265,62 +265,62 @@ export default function ProposalsPage() {
 
       {/* New Proposal Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-[#0F172A]/75 flex items-center justify-center z-50 px-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-[#182350]/60 flex items-center justify-center z-50 px-4">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-white">New Proposal</h2>
-              <button onClick={() => setModalOpen(false)} className="text-slate-500 hover:text-white">
+              <h2 className="text-sm font-semibold text-[#182350]">New Proposal</h2>
+              <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-700">
                 <X size={16} />
               </button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-slate-400 font-medium">Proposal Title *</label>
+                <label className="text-xs text-gray-600 font-medium">Proposal Title *</label>
                 <input
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
                   placeholder="e.g. GST Compliance Package — FY 2025-26"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400 font-medium">Lead / Client Name</label>
+                <label className="text-xs text-gray-600 font-medium">Lead / Client Name</label>
                 <input
                   value={form.lead_name}
                   onChange={(e) => setForm({ ...form, lead_name: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
                   placeholder="Company or contact name"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400 font-medium">Fee (₹)</label>
+                <label className="text-xs text-gray-600 font-medium">Fee (₹)</label>
                 <input
                   type="number"
                   min="0"
                   step="500"
                   value={form.fee_rupees}
                   onChange={(e) => setForm({ ...form, fee_rupees: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
                   placeholder="e.g. 25000"
                 />
               </div>
             </div>
             {saveError && (
-              <p className="mt-3 text-xs text-red-400 bg-red-900/30 px-3 py-2 rounded-md border border-red-800">
+              <p className="mt-3 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-md border border-red-200">
                 {saveError}
               </p>
             )}
             <div className="flex gap-2 mt-5">
               <button
                 onClick={() => setModalOpen(false)}
-                className="flex-1 text-sm text-slate-400 border border-gray-700 py-2 rounded-md hover:bg-gray-800"
+                className="flex-1 text-sm text-gray-600 border border-gray-300 py-2 rounded-md hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCreateProposal}
                 disabled={saving || !form.title.trim()}
-                className="flex-1 text-sm bg-violet-600 text-white py-2 rounded-md hover:bg-violet-700 disabled:opacity-50"
+                className="flex-1 text-sm bg-[#182350] text-white py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
               >
                 {saving ? "Creating…" : "Create Proposal"}
               </button>

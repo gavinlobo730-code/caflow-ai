@@ -100,29 +100,29 @@ export default function CrossClientMatchesPage() {
 
   const statusBadge = (m: CrossClientMatch) => {
     if (m.is_confirmed === null)
-      return <Badge className="bg-yellow-800 text-yellow-300">Pending</Badge>;
+      return <Badge className="bg-yellow-100 text-yellow-700">Pending</Badge>;
     if (m.is_confirmed)
-      return <Badge className="bg-emerald-800 text-emerald-300">Confirmed</Badge>;
-    return <Badge className="bg-red-900 text-red-300">Rejected</Badge>;
+      return <Badge className="bg-emerald-100 text-emerald-700">Confirmed</Badge>;
+    return <Badge className="bg-red-100 text-red-700">Rejected</Badge>;
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 bg-[#F8FAFC] min-h-full">
       <div>
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Copy className="w-6 h-6 text-violet-400" />
+        <h1 className="text-2xl font-bold text-[#182350] flex items-center gap-2">
+          <Copy className="w-6 h-6 text-[#182350]" />
           Cross-Client Matches
         </h1>
-        <p className="text-sm text-white/50 mt-1">
+        <p className="text-sm text-gray-500 mt-1">
           Entities appearing across multiple clients — confirm or reject each match.
         </p>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
-            className="w-full bg-[#1E293B] border border-white/10 rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-violet-500"
+            className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#182350]"
             placeholder="Search entity name…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -135,8 +135,8 @@ export default function CrossClientMatchesPage() {
               onClick={() => setFilter(f)}
               className={`px-3 py-2 rounded-lg text-xs font-medium capitalize transition-colors ${
                 filter === f
-                  ? "bg-violet-600 text-white"
-                  : "bg-[#1E293B] text-white/50 hover:text-white"
+                  ? "bg-[#182350] text-white"
+                  : "bg-white border border-gray-200 text-gray-500 hover:text-[#182350]"
               }`}
             >
               {f}
@@ -147,18 +147,18 @@ export default function CrossClientMatchesPage() {
 
       {loading && (
         <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-[#182350] border-t-transparent rounded-full animate-spin" />
         </div>
       )}
 
       {error && (
-        <Card className="bg-red-950/30 border-red-800/40">
-          <CardContent className="p-4 text-sm text-red-300">{error}</CardContent>
+        <Card className="bg-red-50 border-red-200">
+          <CardContent className="p-4 text-sm text-red-600">{error}</CardContent>
         </Card>
       )}
 
       {!loading && !error && filtered.length === 0 && (
-        <div className="text-center py-16 text-white/30 text-sm">
+        <div className="text-center py-16 text-gray-400 text-sm">
           No cross-client matches found.
         </div>
       )}
@@ -166,24 +166,24 @@ export default function CrossClientMatchesPage() {
       {!loading && !error && filtered.length > 0 && (
         <div className="space-y-3">
           {filtered.map((m) => (
-            <Card key={m.id} className="bg-[#1E293B] border-white/10">
+            <Card key={m.id} className="bg-white border-gray-200 shadow-sm">
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-white font-medium truncate">
+                      <span className="text-gray-800 font-medium truncate">
                         {m.entity?.full_name ?? m.entity_id}
                       </span>
                       {statusBadge(m)}
-                      <Badge className="bg-slate-700 text-slate-300 capitalize">
+                      <Badge className="bg-gray-100 text-gray-600 capitalize">
                         {m.match_type?.replace(/_/g, " ")}
                       </Badge>
                     </div>
-                    <p className="text-xs text-white/40 mt-1">
+                    <p className="text-xs text-gray-400 mt-1">
                       Confidence: {Math.round((m.confidence_score ?? 0) * 100)}%
                     </p>
                     {m.notes && (
-                      <p className="text-xs text-white/50 mt-1">{m.notes}</p>
+                      <p className="text-xs text-gray-500 mt-1">{m.notes}</p>
                     )}
                   </div>
 
@@ -192,7 +192,7 @@ export default function CrossClientMatchesPage() {
                       <button
                         disabled={updating === m.id}
                         onClick={() => handleReview(m.id, true)}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-800/40 text-emerald-300 hover:bg-emerald-700/50 text-xs font-medium transition-colors disabled:opacity-50"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-medium transition-colors disabled:opacity-50 border border-emerald-200"
                       >
                         <CheckCircle className="w-3.5 h-3.5" />
                         Confirm
@@ -200,7 +200,7 @@ export default function CrossClientMatchesPage() {
                       <button
                         disabled={updating === m.id}
                         onClick={() => handleReview(m.id, false)}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-900/40 text-red-300 hover:bg-red-800/50 text-xs font-medium transition-colors disabled:opacity-50"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 text-xs font-medium transition-colors disabled:opacity-50 border border-red-200"
                       >
                         <XCircle className="w-3.5 h-3.5" />
                         Reject
