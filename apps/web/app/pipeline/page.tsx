@@ -888,11 +888,11 @@ export default function PipelinePage() {
         lead={convertLead}
         onClose={() => setConvertLead(null)}
         onConverted={(leadId) => {
-          setLeads((prev) =>
-            prev.map((l) =>
-              l.id === leadId ? { ...l, stage: "Onboarded" as Stage } : l
-            )
-          );
+          setLeads((prev) => {
+            const updated = prev.filter((l) => l.id !== leadId);
+            saveLeads(updated);
+            return updated;
+          });
           setConvertLead(null);
         }}
       />

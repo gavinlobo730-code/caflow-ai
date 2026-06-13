@@ -486,7 +486,6 @@ def convert_lead(
             db.table("leads").update({
                 "is_converted":         True,
                 "stage":                "Active",
-                "converted_at":         now,
                 "converted_client_id":  client_id,
                 "updated_at":           now,
             }).eq("id", lead_id).eq("firm_id", firm_id).execute()
