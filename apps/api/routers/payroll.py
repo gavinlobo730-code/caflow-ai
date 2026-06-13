@@ -334,6 +334,39 @@ def get_run_slips(
     return api_response(True, slips.data or [])
 
 
+@router.get("/salary-slips/{slip_id}/pdf")
+def download_salary_slip_pdf(
+    slip_id: str,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """
+    Render and download a salary slip (payslip) PDF.
+
+    Shows firm/employer header, employee name + PAN, pay period, an earnings
+    table, a deductions table (PF/ESI/PT/TDS), gross & net pay, and a footer.
+    All rupee amounts are formatted from integer paise — no float arithmetic.
+    Firm-scoped: the slip's payroll run must belong to the caller's firm.
+    """
+    from fastapi.responses import Response
+    from services.payslip_pdf_service import get_payslip_pdf
+
+    if not _db():
+        raise HTTPException(status_code=503, detail="Payslip PDF unavailable in mock mode")
+
+    try:
+        pdf_bytes, filename = get_payslip_pdf(slip_id, current_user.get("firm_id"))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Salary slip not found")
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.patch("/runs/{run_id}/status")
 def update_run_status(
     run_id: str,

@@ -70,7 +70,7 @@ def list_clients(
 @router.get("/{client_id}")
 def get_client_workspace(client_id: str = Path(...), current_user: dict = Depends(rbac("client", "read"))):
     firm_id = current_user.get("firm_id")
-    client = client_repo.find_by_id(client_id)
+    client = client_repo.find_by_id(client_id, firm_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     _assert_firm(client, firm_id)
@@ -132,7 +132,7 @@ def create_client(body: ClientCreate, current_user: dict = Depends(rbac("client"
 @router.patch("/{client_id}")
 def update_client(client_id: str, body: ClientUpdate, current_user: dict = Depends(rbac("client", "write"))):
     firm_id = current_user.get("firm_id")
-    existing = client_repo.find_by_id(client_id)
+    existing = client_repo.find_by_id(client_id, firm_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Client not found")
     _assert_firm(existing, firm_id)
@@ -152,7 +152,7 @@ def update_client(client_id: str, body: ClientUpdate, current_user: dict = Depen
 @router.post("/{client_id}/archive")
 def archive_client(client_id: str, current_user: dict = Depends(rbac("client", "write"))):
     firm_id = current_user.get("firm_id")
-    client = client_repo.find_by_id(client_id)
+    client = client_repo.find_by_id(client_id, firm_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     _assert_firm(client, firm_id)
@@ -165,7 +165,7 @@ def archive_client(client_id: str, current_user: dict = Depends(rbac("client", "
 @router.post("/{client_id}/restore")
 def restore_client(client_id: str, current_user: dict = Depends(rbac("client", "write"))):
     firm_id = current_user.get("firm_id")
-    client = client_repo.find_by_id(client_id)
+    client = client_repo.find_by_id(client_id, firm_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     _assert_firm(client, firm_id)
@@ -183,7 +183,7 @@ def delete_client(client_id: str, current_user: dict = Depends(rbac("client", "d
     Historical data is never removed — only the client row is hidden.
     """
     firm_id = current_user.get("firm_id")
-    client = client_repo.find_by_id(client_id)
+    client = client_repo.find_by_id(client_id, firm_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     _assert_firm(client, firm_id)
