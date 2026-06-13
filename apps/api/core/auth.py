@@ -86,17 +86,24 @@ def get_current_user(
     if not auth_user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing sub claim")
 
-    # Resolve firm_id from users table
+    # Resolve firm_id from users table.
+    # supabase-py 2.x raises postgrest.exceptions.APIError (406) when
+    # .single() finds no matching row instead of returning result.data=None,
+    # so we catch that and convert it to a clean 403.
     supabase = get_supabase()
-    result = (
-        supabase.table("users")
-        .select("firm_id, role, full_name")
-        .eq("auth_user_id", auth_user_id)
-        .single()
-        .execute()
-    )
+    try:
+        result = (
+            supabase.table("users")
+            .select("firm_id, role, full_name")
+            .eq("auth_user_id", auth_user_id)
+            .single()
+            .execute()
+        )
+        user_data = result.data
+    except Exception:
+        user_data = None
 
-    if not result.data:
+    if not user_data:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User not found in firm. Contact your firm administrator.",
@@ -104,10 +111,10 @@ def get_current_user(
 
     return {
         "auth_user_id": auth_user_id,
-        "firm_id": result.data["firm_id"],
+        "firm_id": user_data["firm_id"],
         "email": payload.get("email", ""),
-        "role": result.data.get("role", "Executive"),
-        "full_name": result.data.get("full_name", ""),
+        "role": user_data.get("role", "Executive"),
+        "full_name": user_data.get("full_name", ""),
     }
 
 
