@@ -57,6 +57,10 @@ class WorkflowEngineV2:
         key_data = f"{firm_id}:{trigger_type}:{client_id}:{json.dumps(trigger_data, sort_keys=True)}"
         idempotency_key = hashlib.sha256(key_data.encode()).hexdigest()[:32]
 
+        # Validate and enrich trigger_data for the given trigger_type
+        if not self._evaluate_trigger(trigger_type, trigger_data):
+            return []
+
         templates = self._repo.list_templates(firm_id=firm_id, is_active=True)
         started: list[dict] = []
 
