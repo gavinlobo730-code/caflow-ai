@@ -62,6 +62,10 @@ from routers import year_end_exports, year_end_mappings
 from routers.lifecycle import router as lifecycle_router
 from routers.relationships import router as relationships_router
 from routers.health import router as health_router
+# Phase 10 — Workflow Automation Engine
+from routers.workflow_builder import router as workflow_builder_router
+# Phase 11 — AI Copilot Platform
+from routers.ai_copilot_v2 import router as ai_copilot_v2_router
 
 app = FastAPI(title="CAflow AI API", version="2.0.0")
 
@@ -155,6 +159,10 @@ app.include_router(year_end_mappings.router, prefix="/api")
 app.include_router(lifecycle_router)
 app.include_router(relationships_router)
 app.include_router(health_router)
+# Phase 10 — Workflow Automation Engine
+app.include_router(workflow_builder_router)
+# Phase 11 — AI Copilot Platform
+app.include_router(ai_copilot_v2_router)
 
 
 @app.get("/")
