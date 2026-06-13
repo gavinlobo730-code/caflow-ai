@@ -53,8 +53,6 @@ export default function Form26ASPage() {
   const [fy, setFy] = useState(FY_OPTIONS[0]);
   const [uploads, setUploads] = useState<Upload26AS[]>([]);
   const [recon, setRecon] = useState<Reconciliation | null>(null);
-  const [_loading, setLoading] = useState(true);
-
   const [showUpload, setShowUpload] = useState(false);
   const [rawText, setRawText] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -64,14 +62,12 @@ export default function Form26ASPage() {
   const [reconError, setReconError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
     const [uploadRes, reconRes] = await Promise.all([
       apiFetch(`/api/form-26as/uploads?client_id=${clientId}&financial_year=${fy}`),
       apiFetch(`/api/form-26as/reconciliation?client_id=${clientId}&financial_year=${fy}`),
     ]);
     setUploads(uploadRes.data ?? []);
     setRecon(reconRes.data ?? null);
-    setLoading(false);
   }, [clientId, fy]);
 
   useEffect(() => { load(); }, [load]);

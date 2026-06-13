@@ -77,7 +77,6 @@ export default function TaxComputationPage() {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [disallowances, setDisallowances] = useState<Disallowance[]>([]);
   const [bfLosses, setBfLosses] = useState<BFLoss[]>([]);
-  const [_loading, setLoading] = useState(false);
   const [activeSection, setActiveSection] = useState<string | null>("overview");
 
   // Computation inputs
@@ -99,7 +98,6 @@ export default function TaxComputationPage() {
   const [savingDisall, setSavingDisall] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
     const [snapsRes, disallRes, lossRes] = await Promise.all([
       apiFetch(`/api/itr/snapshots?client_id=${clientId}&financial_year=${fy}`),
       apiFetch(`/api/itr/disallowances?client_id=${clientId}&financial_year=${fy}`),
@@ -108,7 +106,6 @@ export default function TaxComputationPage() {
     setSnapshots(snapsRes.data ?? []);
     setDisallowances(disallRes.data ?? []);
     setBfLosses(lossRes.data ?? []);
-    setLoading(false);
   }, [clientId, fy]);
 
   useEffect(() => { load(); }, [load]);
