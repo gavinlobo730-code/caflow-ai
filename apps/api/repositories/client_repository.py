@@ -16,12 +16,22 @@ def _get_db():
 
 class ClientRepository(BaseRepository[dict]):
 
-    def find_by_id(self, id: str) -> Optional[dict]:
+    def find_by_id(self, id: str, firm_id: Optional[str] = None) -> Optional[dict]:
+        # firm_id is an optional defense-in-depth scope. Callers SHOULD pass it
+        # so a single forgotten check cannot leak another firm's client. When
+        # omitted, callers MUST themselves enforce firm membership (e.g. via
+        # _assert_firm in the router) — see SECURITY.md for the isolation model.
         if _USE_MOCK:
             c = CLIENT_INDEX.get(id)
-            # Exclude soft-deleted rows even in mock mode
-            return c if (c and not c.get("deleted_at")) else None
-        result = _get_db().table("clients").select("*").eq("id", id).is_("deleted_at", None).maybe_single().execute()
+            if not c or c.get("deleted_at"):
+                return None
+            if firm_id and c.get("firm_id") != firm_id:
+                return None
+            return c
+        query = _get_db().table("clients").select("*").eq("id", id).is_("deleted_at", None)
+        if firm_id:
+            query = query.eq("firm_id", firm_id)
+        result = query.maybe_single().execute()
         return result.data
 
     def find_all(

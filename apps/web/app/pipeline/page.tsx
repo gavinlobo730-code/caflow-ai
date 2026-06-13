@@ -170,7 +170,10 @@ async function apiLoadLeads(): Promise<Lead[]> {
   try {
     const json = await apiFetch("/api/lifecycle/leads?limit=200");
     if (!json.success) return [];
-    return (json.data as Record<string, unknown>[]).map(fromApiLead);
+    // Drop soft-deleted rows on the raw stage string before mapping to Lead.
+    return (json.data as Record<string, unknown>[])
+      .filter((row) => row.stage !== "_deleted")
+      .map(fromApiLead);
   } catch {
     return [];
   }
@@ -786,8 +789,7 @@ export default function PipelinePage() {
   useEffect(() => {
     setLoading(true);
     void apiLoadLeads().then((data) => {
-      // Filter out soft-deleted leads
-      setLeads(data.filter((l) => l.stage !== "_deleted"));
+      setLeads(data);
       setLoading(false);
     });
   }, []);
