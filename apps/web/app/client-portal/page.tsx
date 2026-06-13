@@ -12,6 +12,7 @@ import { getComplianceCalendar } from "@/lib/data/compliance";
 import { getTransactions } from "@/lib/data/transactions";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api";
 import type { Client } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import type { Transaction } from "@/lib/data/transactions";
@@ -29,16 +30,6 @@ const PORTAL_TABS: { id: PortalTab; label: string; icon: React.ElementType }[] =
   { id: "messages", label: "Messages", icon: MessageSquare },
 ];
 
-const MOCK_DUES = [
-  { id: "1", description: "Professional fees — FY 2025-26 Q4", amount: "₹18,000", due: "15 Jun 2026", status: "Unpaid" },
-  { id: "2", description: "GSTR filing charges — Mar 2026", amount: "₹2,500", due: "30 May 2026", status: "Overdue" },
-];
-
-const MOCK_MESSAGES = [
-  { id: "1", from: "CA", text: "Your GSTR-1 for March 2026 has been filed successfully. ✓", time: "2 days ago" },
-  { id: "2", from: "CA", text: "Please upload your Q4 bank statement at the earliest so we can reconcile before the audit.", time: "5 days ago" },
-  { id: "3", from: "CA", text: "Advance tax instalment of 15% was due on 15 Jun. Please confirm payment made.", time: "1 week ago" },
-];
 
 const FILING_STATUS_COLORS: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
@@ -84,6 +75,30 @@ interface NewRequestForm {
   is_urgent: boolean;
 }
 
+interface PortalMessage {
+  id: string;
+  firm_id: string;
+  client_id: string;
+  text: string;
+  from_ca: boolean;
+  created_at: string;
+}
+
+interface ApiDue {
+  id: string;
+  party_name: string;
+  transaction_date: string;
+  reference_no: string | null;
+  total_paise: number;
+  status: string;
+}
+
+interface DuesResponse {
+  dues: ApiDue[];
+  total_paise: number;
+  overdue_count: number;
+}
+
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return "";
   if (bytes < 1024) return `${bytes} B`;
@@ -117,6 +132,16 @@ export default function ClientPortalPage() {
   const [uploadLabel, setUploadLabel] = useState("");
   const sharedUploadRef = useRef<HTMLInputElement | null>(null);
 
+  // Portal messages state
+  const [portalMessages, setPortalMessages] = useState<PortalMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [newMessageText, setNewMessageText] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
+
+  // Dues state
+  const [apiDues, setApiDues] = useState<ApiDue[]>([]);
+  const [duesLoading, setDuesLoading] = useState(false);
+
   // Load clients list on mount
   useEffect(() => {
     getClients()
@@ -133,6 +158,8 @@ export default function ClientPortalPage() {
       setTransactions([]);
       setDocRequests([]);
       setSharedDocs([]);
+      setPortalMessages([]);
+      setApiDues([]);
       return;
     }
     const client = clients.find((c) => c.id === selectedClientId) ?? null;
@@ -151,6 +178,8 @@ export default function ClientPortalPage() {
 
     loadDocRequests(selectedClientId);
     loadSharedDocs(selectedClientId);
+    loadPortalMessages(selectedClientId);
+    loadDues(selectedClientId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClientId, clients]);
 
@@ -193,6 +222,52 @@ export default function ClientPortalPage() {
       setSharedDocs([]);
     } finally {
       setSharedLoading(false);
+    }
+  }
+
+  async function loadPortalMessages(clientId: string) {
+    setMessagesLoading(true);
+    try {
+      const firmId = await getFirmId();
+      const res = await api.portal.getMessages(firmId, clientId) as { success: boolean; data: PortalMessage[] };
+      setPortalMessages(res.data ?? []);
+    } catch {
+      setPortalMessages([]);
+    } finally {
+      setMessagesLoading(false);
+    }
+  }
+
+  async function loadDues(clientId: string) {
+    setDuesLoading(true);
+    try {
+      const firmId = await getFirmId();
+      const res = await api.portal.getDues(firmId, clientId) as { success: boolean; data: DuesResponse };
+      setApiDues(res.data?.dues ?? []);
+    } catch {
+      setApiDues([]);
+    } finally {
+      setDuesLoading(false);
+    }
+  }
+
+  async function handleSendMessage() {
+    if (!newMessageText.trim() || !selectedClientId) return;
+    setSendingMessage(true);
+    try {
+      const firmId = await getFirmId();
+      await api.portal.sendMessage({
+        firm_id: firmId,
+        client_id: selectedClientId,
+        text: newMessageText.trim(),
+        from_ca: true,
+      });
+      setNewMessageText("");
+      await loadPortalMessages(selectedClientId);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to send message");
+    } finally {
+      setSendingMessage(false);
     }
   }
 
@@ -706,8 +781,43 @@ export default function ClientPortalPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    {unpaidInvoices.length > 0 ? (
-                      unpaidInvoices.map((t) => (
+                    {duesLoading ? (
+                      <div className="text-center py-6 text-sm text-[#94A3B8] animate-pulse">Loading…</div>
+                    ) : (() => {
+                      const duesData = apiDues.length > 0 ? apiDues : unpaidInvoices;
+                      if (duesData.length === 0) {
+                        return (
+                          <div className="text-center py-10 space-y-2">
+                            <Receipt size={32} className="text-gray-200 mx-auto" />
+                            <p className="text-sm text-[#94A3B8]">No outstanding dues for this client</p>
+                          </div>
+                        );
+                      }
+                      if (apiDues.length > 0) {
+                        return apiDues.map((due) => (
+                          <div
+                            key={due.id}
+                            className="flex items-center gap-4 p-3 rounded-lg border border-[#F1F5F9] hover:bg-[#F8FAFC]"
+                          >
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-[#0F172A]">{due.party_name}</p>
+                              <p className="text-xs text-[#64748B] mt-0.5">
+                                {formatDate(due.transaction_date)}
+                                {due.reference_no ? ` · Ref: ${due.reference_no}` : ""}
+                              </p>
+                            </div>
+                            <span className="text-sm font-semibold text-[#1E293B]">
+                              {formatPaise(due.total_paise)}
+                            </span>
+                            <Badge
+                              className={`text-xs ${due.status === "overdue" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}
+                            >
+                              {due.status}
+                            </Badge>
+                          </div>
+                        ));
+                      }
+                      return unpaidInvoices.map((t) => (
                         <div
                           key={t.id}
                           className="flex items-center gap-4 p-3 rounded-lg border border-[#F1F5F9] hover:bg-[#F8FAFC]"
@@ -724,28 +834,8 @@ export default function ClientPortalPage() {
                           </span>
                           <Badge className="text-xs bg-amber-100 text-amber-700">{t.status}</Badge>
                         </div>
-                      ))
-                    ) : (
-                      MOCK_DUES.map((due) => (
-                        <div
-                          key={due.id}
-                          className="flex items-center gap-4 p-3 rounded-lg border border-[#F1F5F9] hover:bg-[#F8FAFC]"
-                        >
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-[#0F172A]">{due.description}</p>
-                            <p className="text-xs text-[#64748B] mt-0.5">Due: {due.due}</p>
-                          </div>
-                          <span className="text-sm font-semibold text-[#1E293B]">{due.amount}</span>
-                          <Badge
-                            className={`text-xs ${
-                              due.status === "Overdue" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
-                            }`}
-                          >
-                            {due.status}
-                          </Badge>
-                        </div>
-                      ))
-                    )}
+                      ));
+                    })()}
                   </CardContent>
                 </Card>
               )}
@@ -759,21 +849,44 @@ export default function ClientPortalPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {MOCK_MESSAGES.map((msg) => (
-                      <div key={msg.id} className="flex gap-3">
-                        <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
-                          CA
-                        </div>
-                        <div className="flex-1 bg-[#F8FAFC] rounded-lg px-4 py-3">
-                          <p className="text-sm text-[#1E293B]">{msg.text}</p>
-                          <p className="text-xs text-[#94A3B8] mt-1">{msg.time}</p>
-                        </div>
+                    {messagesLoading ? (
+                      <div className="text-center py-6 text-sm text-[#94A3B8] animate-pulse">Loading…</div>
+                    ) : portalMessages.length === 0 ? (
+                      <div className="text-center py-10 space-y-2">
+                        <MessageSquare size={32} className="text-gray-200 mx-auto" />
+                        <p className="text-sm text-[#94A3B8]">No messages yet — send a message to your client below</p>
                       </div>
-                    ))}
-                    <div className="pt-2 border-t border-[#F1F5F9]">
-                      <p className="text-xs text-[#94A3B8] text-center">
-                        To reply or send documents, contact your CA directly via phone or email.
-                      </p>
+                    ) : (
+                      portalMessages.map((msg) => (
+                        <div key={msg.id} className="flex gap-3">
+                          <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+                            {msg.from_ca ? "CA" : "C"}
+                          </div>
+                          <div className="flex-1 bg-[#F8FAFC] rounded-lg px-4 py-3">
+                            <p className="text-sm text-[#1E293B]">{msg.text}</p>
+                            <p className="text-xs text-[#94A3B8] mt-1">{formatDate(msg.created_at)}</p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                    <div className="pt-2 border-t border-[#F1F5F9] space-y-2">
+                      <textarea
+                        rows={2}
+                        placeholder="Type a message to send to this client…"
+                        value={newMessageText}
+                        onChange={(e) => setNewMessageText(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      />
+                      <div className="flex justify-end">
+                        <button
+                          onClick={handleSendMessage}
+                          disabled={!newMessageText.trim() || sendingMessage}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                        >
+                          <MessageSquare size={12} />
+                          {sendingMessage ? "Sending…" : "Send Message"}
+                        </button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>

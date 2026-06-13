@@ -1,15 +1,17 @@
 """
 Relationships router — Entity management, roles, cross-entity relationships,
-and cross-client PAN/email match detection.
+cross-client PAN/email match detection, loan intelligence (Sec 185/186),
+property intelligence, and related party report generation.
 
 Phase 7: Unified Intelligence Layer — PracticeSync
+Chapter 15: Relationship Intelligence
 
 All monetary values in integer paise — never float.
 CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
 
@@ -22,10 +24,16 @@ router = APIRouter(prefix="/api/relationships", tags=["relationships"])
 
 # ─── In-memory mock stores ────────────────────────────────────────────────────
 
-_MOCK_ENTITIES:           list[dict] = []
-_MOCK_ENTITY_ROLES:       list[dict] = []
-_MOCK_RELATIONSHIPS:      list[dict] = []
-_MOCK_CROSS_MATCHES:      list[dict] = []
+_MOCK_ENTITIES:              list[dict] = []
+_MOCK_ENTITY_ROLES:          list[dict] = []
+_MOCK_RELATIONSHIPS:         list[dict] = []
+_MOCK_CROSS_MATCHES:         list[dict] = []
+_MOCK_ENTITY_TO_ENTITY_RELS: list[dict] = []
+_MOCK_LOANS:                 list[dict] = []
+_MOCK_PROPERTIES:            list[dict] = []
+
+# Transfer pricing threshold: ₹1 crore = 1,00,00,000 paise (Sec 92 IT Act)
+TRANSFER_PRICING_THRESHOLD_PAISE = 1_00_00_000_00  # ₹1,00,00,000 in paise
 
 
 def _db():
@@ -80,6 +88,50 @@ class RelationshipIn(BaseModel):
 
 class CrossMatchReviewIn(BaseModel):
     is_confirmed: bool
+    notes: Optional[str] = None
+
+
+class EntityToEntityRelIn(BaseModel):
+    """Holding / subsidiary / associate / JV relationships between entities."""
+    from_entity_id: str
+    to_entity_id: str
+    # CGST Act Sec 2(76) — related party; Companies Act Sec 2(87) — subsidiary
+    relationship_type: str  # holding | subsidiary | associate | joint_venture | related_party
+    ownership_percent: Optional[float] = None
+    effective_from: Optional[str] = None
+    effective_to: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class LoanIn(BaseModel):
+    """
+    Loan from a client to an entity.
+    Section 185 IT Act — loans to directors require CA review.
+    All amounts in integer paise. Never float.
+    """
+    client_id: str
+    entity_id: str          # borrower entity
+    loan_type: str          # to_director | from_director | inter_company | other
+    principal_paise: int    # integer paise — CGST Act Sec 15 arithmetic rules apply
+    interest_rate: float    # annual % (stored as float, display only — not used in calculations)
+    sanction_date: Optional[str] = None
+    due_date: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class PropertyIn(BaseModel):
+    """
+    Property linked to a client and optionally an entity.
+    Annual rent tracked for Schedule HP (IT Act Sec 22-27).
+    All amounts in integer paise.
+    """
+    client_id: str
+    entity_id: Optional[str] = None
+    address: str
+    property_type: str      # residential | commercial | land | industrial
+    cost_paise: int         # integer paise — IT Act Sec 48 cost of acquisition
+    annual_rent_paise: int = 0  # integer paise — IT Act Sec 23 annual value
+    acquisition_date: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -540,3 +592,348 @@ def review_cross_client_match(
 
     res = db.table("cross_client_matches").update(update).eq("id", match_id).eq("firm_id", firm_id).execute()
     return api_response(True, (res.data or [{}])[0])
+
+
+# ─── Entity-to-Entity Relationships ──────────────────────────────────────────
+# Companies Act Sec 2(87): subsidiary; Sec 2(6): associate company
+# CGST Act Sec 2(76): related party
+
+@router.post("/entity-to-entity")
+def create_entity_to_entity_relationship(
+    data: EntityToEntityRelIn,
+    current_user: dict = Depends(rbac("client", "write")),
+):
+    """Create a holding/subsidiary/associate/JV relationship between two entities."""
+    db = _db()
+    firm_id = current_user["firm_id"]
+    now = datetime.now(timezone.utc).isoformat()
+
+    row = {
+        "id":                str(uuid.uuid4()),
+        "firm_id":           firm_id,
+        "from_entity_id":    data.from_entity_id,
+        "to_entity_id":      data.to_entity_id,
+        "relationship_type": data.relationship_type,
+        "ownership_percent": data.ownership_percent,
+        "effective_from":    data.effective_from,
+        "effective_to":      data.effective_to,
+        "notes":             data.notes,
+        "created_at":        now,
+        "updated_at":        now,
+    }
+
+    if not db:
+        _MOCK_ENTITY_TO_ENTITY_RELS.append(row)
+        return api_response(True, row)
+
+    res = db.table("entity_to_entity_relationships").insert(row).execute()
+    return api_response(True, (res.data or [row])[0])
+
+
+@router.get("/entity-to-entity")
+def list_entity_to_entity_relationships(
+    entity_id: str = Query(...),
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    db = _db()
+    firm_id = current_user["firm_id"]
+
+    if not db:
+        result = [
+            r for r in _MOCK_ENTITY_TO_ENTITY_RELS
+            if r.get("from_entity_id") == entity_id or r.get("to_entity_id") == entity_id
+        ]
+        return api_response(True, result)
+
+    res = db.table("entity_to_entity_relationships").select("*").eq("firm_id", firm_id).or_(
+        f"from_entity_id.eq.{entity_id},to_entity_id.eq.{entity_id}"
+    ).execute()
+    return api_response(True, res.data or [])
+
+
+# ─── Loan Intelligence ────────────────────────────────────────────────────────
+# Section 185 Companies Act: loans/advances to directors — requires CA review
+# Section 186 Companies Act: loans to other companies — requires CA review
+# Section 92 IT Act: transfer pricing for international related party transactions
+
+@router.post("/loans")
+def create_loan(
+    data: LoanIn,
+    current_user: dict = Depends(rbac("client", "write")),
+):
+    """
+    Create a loan record. Automatically flags Section 185 violations.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    db = _db()
+    firm_id = current_user["firm_id"]
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Section 185 Companies Act — loan to director auto-flag
+    section_185_flagged = data.loan_type == "to_director"
+    # Section 186 Companies Act — inter-company loan flag
+    section_186_flagged = data.loan_type == "inter_company"
+
+    row = {
+        "id":                    str(uuid.uuid4()),
+        "firm_id":               firm_id,
+        "client_id":             data.client_id,
+        "entity_id":             data.entity_id,
+        "loan_type":             data.loan_type,
+        "principal_paise":       data.principal_paise,  # integer paise — never float
+        "interest_rate":         data.interest_rate,
+        "sanction_date":         data.sanction_date,
+        "due_date":              data.due_date,
+        "notes":                 data.notes,
+        "section_185_flagged":   section_185_flagged,
+        "section_186_flagged":   section_186_flagged,
+        "created_at":            now,
+        "updated_at":            now,
+    }
+
+    if not db:
+        _MOCK_LOANS.append(row)
+        if section_185_flagged:
+            timeline_service.log(
+                data.client_id, "compliance", "Section 185 Flag",
+                f"Loan to director entity flagged — Section 185 Companies Act. "
+                f"Principal: ₹{data.principal_paise // 100:,}",
+                "warning", firm_id=firm_id,
+            )
+        return api_response(True, row)
+
+    res = db.table("loans").insert(row).execute()
+    created = (res.data or [row])[0]
+
+    if section_185_flagged:
+        timeline_service.log(
+            data.client_id, "compliance", "Section 185 Flag",
+            f"Loan to director flagged under Section 185 Companies Act. "
+            f"Principal: ₹{data.principal_paise // 100:,}",
+            "warning", firm_id=firm_id,
+            entity_type="loan", entity_id=created["id"],
+            actor_id=current_user.get("auth_user_id"),
+        )
+
+    return api_response(True, created)
+
+
+@router.get("/loans")
+def list_loans(
+    client_id: Optional[str] = Query(None),
+    flagged_only: bool = Query(False),
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    db = _db()
+    firm_id = current_user["firm_id"]
+
+    if not db:
+        result = list(_MOCK_LOANS)
+        if client_id:
+            result = [l for l in result if l.get("client_id") == client_id]
+        if flagged_only:
+            result = [l for l in result if l.get("section_185_flagged") or l.get("section_186_flagged")]
+        return api_response(True, result)
+
+    q = db.table("loans").select("*").eq("firm_id", firm_id)
+    if client_id:
+        q = q.eq("client_id", client_id)
+    if flagged_only:
+        q = q.or_("section_185_flagged.eq.true,section_186_flagged.eq.true")
+    res = q.order("created_at", desc=True).execute()
+    return api_response(True, res.data or [])
+
+
+@router.get("/loans/section-185-report")
+def section_185_report(
+    client_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    """
+    Return all Section 185 flagged loans.
+    Section 185 Companies Act prohibits companies from advancing loans to directors.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    db = _db()
+    firm_id = current_user["firm_id"]
+
+    if not db:
+        result = [l for l in _MOCK_LOANS if l.get("section_185_flagged")]
+        if client_id:
+            result = [l for l in result if l.get("client_id") == client_id]
+        total_paise = sum(l["principal_paise"] for l in result)
+        return api_response(True, {
+            "flagged_loans": result,
+            "count": len(result),
+            "total_principal_paise": total_paise,  # integer paise
+        })
+
+    q = db.table("loans").select("*").eq("firm_id", firm_id).eq("section_185_flagged", True)
+    if client_id:
+        q = q.eq("client_id", client_id)
+    rows = q.execute().data or []
+    total_paise = sum(r["principal_paise"] for r in rows)
+    return api_response(True, {
+        "flagged_loans": rows,
+        "count": len(rows),
+        "total_principal_paise": total_paise,  # integer paise
+    })
+
+
+# ─── Property Intelligence ────────────────────────────────────────────────────
+# IT Act Sec 22-27: income from house property
+# IT Act Sec 48: cost of acquisition for capital gains
+
+@router.post("/properties")
+def create_property(
+    data: PropertyIn,
+    current_user: dict = Depends(rbac("client", "write")),
+):
+    """
+    Create a property record with rental income tracking.
+    IT Act Sec 22: annual value of property chargeable as income from house property.
+    """
+    db = _db()
+    firm_id = current_user["firm_id"]
+    now = datetime.now(timezone.utc).isoformat()
+
+    if data.cost_paise < 0 or data.annual_rent_paise < 0:
+        raise HTTPException(status_code=422, detail="cost_paise and annual_rent_paise must be non-negative integers")
+
+    row = {
+        "id":                 str(uuid.uuid4()),
+        "firm_id":            firm_id,
+        "client_id":          data.client_id,
+        "entity_id":          data.entity_id,
+        "address":            data.address,
+        "property_type":      data.property_type,
+        "cost_paise":         data.cost_paise,         # integer paise — IT Act Sec 48
+        "annual_rent_paise":  data.annual_rent_paise,  # integer paise — IT Act Sec 23
+        "acquisition_date":   data.acquisition_date,
+        "notes":              data.notes,
+        "created_at":         now,
+        "updated_at":         now,
+    }
+
+    if not db:
+        _MOCK_PROPERTIES.append(row)
+        return api_response(True, row)
+
+    res = db.table("properties").insert(row).execute()
+    return api_response(True, (res.data or [row])[0])
+
+
+@router.get("/properties")
+def list_properties(
+    client_id: Optional[str] = Query(None),
+    entity_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    db = _db()
+    firm_id = current_user["firm_id"]
+
+    if not db:
+        result = list(_MOCK_PROPERTIES)
+        if client_id:
+            result = [p for p in result if p.get("client_id") == client_id]
+        if entity_id:
+            result = [p for p in result if p.get("entity_id") == entity_id]
+        return api_response(True, result)
+
+    q = db.table("properties").select("*").eq("firm_id", firm_id)
+    if client_id:
+        q = q.eq("client_id", client_id)
+    if entity_id:
+        q = q.eq("entity_id", entity_id)
+    res = q.order("created_at", desc=True).execute()
+    return api_response(True, res.data or [])
+
+
+# ─── Related Party Report ─────────────────────────────────────────────────────
+# CGST Act Sec 2(76): definition of related party
+# Companies Act Sec 188: related party transactions
+# AS 18 / Ind AS 24: related party disclosures
+
+@router.get("/related-party-report")
+def related_party_report(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    """
+    Auto-generate related party disclosure summary for a client.
+    CGST Act Sec 2(76) — related party definition.
+    Companies Act Sec 188 — related party transactions requiring board approval.
+    AS 18 / Ind AS 24 — related party disclosures in financial statements.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    db = _db()
+    firm_id = current_user["firm_id"]
+
+    if not db:
+        # Collect all entity roles for this client
+        client_roles = [r for r in _MOCK_ENTITY_ROLES if r.get("client_id") == client_id]
+        entity_ids = [r["entity_id"] for r in client_roles]
+
+        # Get related party role types — CGST Act Sec 2(76)
+        related_party_roles = {"Director", "Shareholder", "Partner", "Trustee", "Guarantor", "related_party"}
+        related_parties = [r for r in client_roles if r.get("role") in related_party_roles]
+
+        # Entity-to-entity relationships involving these entities
+        e2e_rels = [
+            r for r in _MOCK_ENTITY_TO_ENTITY_RELS
+            if r.get("from_entity_id") in entity_ids or r.get("to_entity_id") in entity_ids
+        ]
+
+        # Section 185 loans for this client
+        sec185_loans = [l for l in _MOCK_LOANS if l.get("client_id") == client_id and l.get("section_185_flagged")]
+
+        # Transfer pricing: inter-company loans > ₹1 crore (Sec 92 IT Act)
+        # TRANSFER_PRICING_THRESHOLD_PAISE = 1_00_00_000_00 paise
+        transfer_pricing_flags = [
+            l for l in _MOCK_LOANS
+            if l.get("client_id") == client_id
+            and l.get("loan_type") == "inter_company"
+            and l.get("principal_paise", 0) >= TRANSFER_PRICING_THRESHOLD_PAISE
+        ]
+
+        return api_response(True, {
+            "client_id":              client_id,
+            "related_parties":        related_parties,
+            "related_party_count":    len(related_parties),
+            "entity_to_entity_rels":  e2e_rels,
+            "section_185_loans":      sec185_loans,
+            "transfer_pricing_flags": transfer_pricing_flags,
+            "transfer_pricing_count": len(transfer_pricing_flags),
+            # AS 18 / Ind AS 24 — disclosures required if any related parties exist
+            "disclosure_required":    len(related_parties) > 0,
+        })
+
+    # DB path
+    client_roles = db.table("entity_roles").select("*").eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
+    entity_ids = [r["entity_id"] for r in client_roles]
+
+    related_party_roles = {"Director", "Shareholder", "Partner", "Trustee", "Guarantor", "related_party"}
+    related_parties = [r for r in client_roles if r.get("role") in related_party_roles]
+
+    e2e_rels: list[dict] = []
+    for eid in entity_ids:
+        rows = db.table("entity_to_entity_relationships").select("*").eq("firm_id", firm_id).or_(
+            f"from_entity_id.eq.{eid},to_entity_id.eq.{eid}"
+        ).execute().data or []
+        e2e_rels.extend(rows)
+
+    sec185_loans = db.table("loans").select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("section_185_flagged", True).execute().data or []
+
+    # Transfer pricing threshold: Sec 92 IT Act — international related party > ₹1 crore
+    tp_rows = db.table("loans").select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("loan_type", "inter_company").gte("principal_paise", TRANSFER_PRICING_THRESHOLD_PAISE).execute().data or []
+
+    return api_response(True, {
+        "client_id":              client_id,
+        "related_parties":        related_parties,
+        "related_party_count":    len(related_parties),
+        "entity_to_entity_rels":  e2e_rels,
+        "section_185_loans":      sec185_loans,
+        "transfer_pricing_flags": tp_rows,
+        "transfer_pricing_count": len(tp_rows),
+        "disclosure_required":    len(related_parties) > 0,
+    })
