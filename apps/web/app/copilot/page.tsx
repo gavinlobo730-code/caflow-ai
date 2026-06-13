@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
-  Send, Plus, Archive, ChevronRight, Sparkles, ThumbsUp, ThumbsDown,
-  BarChart2, Users, Shield, Zap, GitBranch, RefreshCw, X,
+  Send, Plus, Sparkles, ThumbsUp, ThumbsDown,
+  BarChart2, Users, Shield, Zap, GitBranch, RefreshCw,
   MessageSquare, Clock, Star,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -45,7 +45,7 @@ interface Recommendation {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const CONTEXT_ICONS: Record<string, React.ReactNode> = {
+const CONTEXT_ICONS: Record<string, JSX.Element> = {
   global: <Sparkles size={14} />,
   client: <Users size={14} />,
   compliance: <Shield size={14} />,
@@ -147,21 +147,21 @@ export default function CopilotPage() {
 
   const loadConversations = useCallback(async () => {
     try {
-      const res = await api.copilotV2.listConversations() as any;
+      const res = (await api.copilotV2.listConversations()) as { data: { conversations: Conversation[] } };
       setConversations(res.data?.conversations || []);
     } catch {}
   }, []);
 
   const loadRecommendations = useCallback(async () => {
     try {
-      const res = await api.copilotV2.listRecommendations({ status: "pending" }) as any;
+      const res = (await api.copilotV2.listRecommendations({ status: "pending" })) as { data: { recommendations: Recommendation[] } };
       setRecommendations(res.data?.recommendations || []);
     } catch {}
   }, []);
 
   const loadSuggestions = useCallback(async () => {
     try {
-      const res = await api.copilotV2.suggestions(contextType) as any;
+      const res = (await api.copilotV2.suggestions(contextType)) as { data: { suggestions: string[] } };
       setSuggestions(res.data?.suggestions || []);
     } catch {}
   }, [contextType]);
@@ -177,16 +177,16 @@ export default function CopilotPage() {
   const openConversation = async (convId: string) => {
     setActiveConv(convId);
     try {
-      const res = await api.copilotV2.getConversation(convId) as any;
+      const res = (await api.copilotV2.getConversation(convId)) as { data: Conversation & { messages: Message[] } };
       setMessages(res.data?.messages || []);
     } catch {}
   };
 
   const newConversation = async () => {
     try {
-      const res = await api.copilotV2.createConversation({ context_type: contextType }) as any;
+      const res = (await api.copilotV2.createConversation({ context_type: contextType })) as { data: Conversation };
       const conv = res.data;
-      setConversations(prev => [conv, ...prev]);
+      setConversations((prev: Conversation[]) => [conv, ...prev]);
       setActiveConv(conv.id);
       setMessages([]);
     } catch {}
@@ -198,9 +198,9 @@ export default function CopilotPage() {
 
     let convId = activeConv;
     if (!convId) {
-      const res = await api.copilotV2.createConversation({ context_type: contextType }) as any;
+      const res = (await api.copilotV2.createConversation({ context_type: contextType })) as { data: Conversation };
       convId = res.data.id;
-      setConversations(prev => [res.data, ...prev]);
+      setConversations((prev: Conversation[]) => [res.data, ...prev]);
       setActiveConv(convId);
     }
 
@@ -211,25 +211,25 @@ export default function CopilotPage() {
       content: text,
       created_at: new Date().toISOString(),
     };
-    setMessages(prev => [...prev, optimistic]);
+    setMessages((prev: Message[]) => [...prev, optimistic]);
     setInput("");
     setSending(true);
 
     try {
-      const res = await api.copilotV2.sendMessage(convId!, { content: text, context_type: contextType }) as any;
+      const res = (await api.copilotV2.sendMessage(convId!, { content: text, context_type: contextType })) as { data: { message: Message; suggested_questions: string[] } };
       const { message: assistantMsg, suggested_questions } = res.data;
-      setMessages(prev => [...prev.filter(m => m.id !== optimistic.id), optimistic, assistantMsg]);
+      setMessages((prev: Message[]) => [...prev.filter((m: Message) => m.id !== optimistic.id), optimistic, assistantMsg]);
       if (suggested_questions?.length) setSuggestions(suggested_questions);
       loadConversations();
-    } catch (err) {
-      setMessages(prev => prev.filter(m => m.id !== optimistic.id));
+    } catch {
+      setMessages((prev: Message[]) => prev.filter((m: Message) => m.id !== optimistic.id));
     } finally {
       setSending(false);
     }
   };
 
   const rateMessage = async (messageId: string, rating: number) => {
-    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, feedback_rating: rating } : m));
+    setMessages((prev: Message[]) => prev.map((m: Message) => m.id === messageId ? { ...m, feedback_rating: rating } : m));
     try {
       await api.copilotV2.rateMessage(messageId, { rating });
     } catch {}
@@ -239,7 +239,7 @@ export default function CopilotPage() {
     setActingRec(recId);
     try {
       await api.copilotV2.actRecommendation(recId, { action });
-      setRecommendations(prev => prev.filter(r => r.id !== recId));
+      setRecommendations((prev: Recommendation[]) => prev.filter((r: Recommendation) => r.id !== recId));
     } finally {
       setActingRec(null);
     }
@@ -263,7 +263,7 @@ export default function CopilotPage() {
             {/* Context type selector */}
             <select
               value={contextType}
-              onChange={e => setContextType(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setContextType(e.target.value)}
               className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#475569]"
             >
               <option value="global">Global</option>
@@ -313,7 +313,7 @@ export default function CopilotPage() {
             {conversations.length === 0 ? (
               <p className="text-xs text-[#94A3B8] text-center py-6">No conversations yet</p>
             ) : (
-              conversations.map(conv => (
+              conversations.map((conv: Conversation) => (
                 <button
                   key={conv.id}
                   onClick={() => openConversation(conv.id)}
@@ -361,7 +361,7 @@ export default function CopilotPage() {
                       Get instant answers about clients, compliance, GST, TDS, and more.
                     </p>
                     <div className="grid grid-cols-2 gap-2 max-w-lg">
-                      {suggestions.slice(0, 6).map((q, i) => (
+                      {suggestions.slice(0, 6).map((q: string, i: number) => (
                         <button
                           key={i}
                           onClick={() => sendMessage(q)}
@@ -374,8 +374,8 @@ export default function CopilotPage() {
                   </div>
                 ) : (
                   <div className="max-w-3xl mx-auto">
-                    {messages.map(msg => (
-                      <MessageBubble key={msg.id} msg={msg} onRate={rateMessage} />
+                    {messages.map((msg: Message) => (
+                      <MessageBubble key={msg.id} msg={msg} onRate={(id, rating) => { void rateMessage(id, rating); }} />
                     ))}
                     {sending && (
                       <div className="flex justify-start mb-4">
@@ -402,7 +402,7 @@ export default function CopilotPage() {
               {messages.length > 0 && suggestions.length > 0 && (
                 <div className="px-6 py-2 border-t border-[#F1F5F9] bg-white">
                   <div className="flex gap-2 overflow-x-auto pb-1 max-w-3xl mx-auto">
-                    {suggestions.slice(0,4).map((q, i) => (
+                    {suggestions.slice(0,4).map((q: string, i: number) => (
                       <button
                         key={i}
                         onClick={() => sendMessage(q)}
@@ -421,8 +421,8 @@ export default function CopilotPage() {
                   <div className="flex-1 relative">
                     <textarea
                       value={input}
-                      onChange={e => setInput(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value)}
+                      onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                       placeholder="Ask anything about your clients, compliance, GST, TDS..."
                       rows={1}
                       className="w-full px-4 py-3 text-sm border border-[#E2E8F0] rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#AFD2FA] leading-relaxed"
@@ -463,7 +463,7 @@ export default function CopilotPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {recommendations.map(rec => (
+                    {recommendations.map((rec: Recommendation) => (
                       <div key={rec.id} className="bg-white border border-[#E2E8F0] rounded-xl p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">

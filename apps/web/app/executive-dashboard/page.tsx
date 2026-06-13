@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   TrendingUp, Users, AlertTriangle, TrendingDown, Sparkles,
-  RefreshCw, DollarSign, Zap, BarChart2, Heart, ChevronRight,
+  RefreshCw, DollarSign, BarChart2,
   ArrowUpRight, ArrowDownRight, ShieldAlert, Clock, Star,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -152,7 +152,7 @@ export default function ExecutiveDashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.copilotV2.executiveDashboard() as any;
+      const res = (await api.copilotV2.executiveDashboard()) as { data: ExecutiveDashboard };
       setData(res.data);
     } catch {
       setError("Failed to load executive dashboard");
@@ -358,7 +358,7 @@ export default function ExecutiveDashboardPage() {
               <p className="text-sm text-[#94A3B8] text-center py-6">No churn signals detected</p>
             ) : (
               <div className="space-y-3">
-                {churn_signals.map((sig, i) => (
+                {churn_signals.map((sig: { client_name: string; signal: string; risk: string }, i: number) => (
                   <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-[#FFF7F7] border border-[#FEE2E2]">
                     <AlertTriangle size={14} className="text-red-400 mt-0.5 flex-shrink-0" />
                     <div>
@@ -387,7 +387,7 @@ export default function ExecutiveDashboardPage() {
               <p className="text-sm text-[#94A3B8] text-center py-6">No opportunities detected</p>
             ) : (
               <div className="space-y-3">
-                {growth_opportunities.map((opp, i) => (
+                {growth_opportunities.map((opp: { type: string; description: string; estimated_value_paise?: number }, i: number) => (
                   <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-[#F0FDF4] border border-[#BBF7D0]">
                     <Star size={14} className="text-green-500 mt-0.5 flex-shrink-0" />
                     <div className="flex-1">
@@ -417,7 +417,7 @@ export default function ExecutiveDashboardPage() {
               </span>
             </div>
             <div className="prose prose-sm max-w-none text-[#334155] text-sm leading-relaxed">
-              {ai_summary.split("\n").filter(Boolean).map((para, i) => (
+              {ai_summary.split("\n").filter(Boolean).map((para: string, i: number) => (
                 <p key={i} className="mb-2">{para}</p>
               ))}
             </div>
