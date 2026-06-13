@@ -24,38 +24,43 @@ async function apiFetch(path: string, opts?: RequestInit) {
 }
 
 // Normalize backend shape to frontend shape
+// Supports both legacy flat columns and new Product Bible Chapter 16 dimensions dict
 function normalizeScore(raw: Record<string, unknown>): ClientHealth {
+  // New shape: raw.dimensions is an object keyed by dimension name
+  const dims = raw.dimensions as Record<string, { score: number }> | undefined;
   return {
     id: String(raw.id ?? ""),
     client_id: String(raw.client_id ?? ""),
     client_name: String(raw.client_name ?? "—"),
     overall_score: Number(raw.overall_score ?? 0),
-    grade: (raw.health_grade ?? "F") as Grade,
+    grade: (raw.grade ?? raw.health_grade ?? "Critical") as Grade,
     dimensions: {
-      compliance:        Number(raw.compliance_score ?? 0),
-      accounting:        Number(raw.accounting_score ?? 0),
-      documents:         Number(raw.documents_score ?? 0),
-      responsiveness:    Number(raw.responsiveness_score ?? 0),
-      relationship_risk: Number(raw.relationship_risk_score ?? 0),
-      financial_risk:    Number(raw.financial_risk_score ?? 0),
-      engagement_health: Number(raw.engagement_health_score ?? 0),
+      compliance_health:     Number(dims?.compliance_health?.score     ?? raw.compliance_score        ?? 0),
+      accounting_quality:    Number(dims?.accounting_quality?.score    ?? raw.accounting_score        ?? 0),
+      work_progress:         Number(dims?.work_progress?.score         ?? raw.engagement_health_score ?? 0),
+      document_health:       Number(dims?.document_health?.score       ?? raw.documents_score         ?? 0),
+      ai_risk_signals:       Number(dims?.ai_risk_signals?.score       ?? 100),
+      open_notices:          Number(dims?.open_notices?.score          ?? raw.financial_risk_score    ?? 0),
+      client_responsiveness: Number(dims?.client_responsiveness?.score ?? raw.responsiveness_score   ?? 0),
     },
-    last_calculated: String(raw.calculated_at ?? raw.last_calculated ?? ""),
+    last_calculated: String(raw.last_calculated_at ?? raw.calculated_at ?? raw.last_calculated ?? ""),
   };
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type Grade = "A" | "B" | "C" | "D" | "F";
+// Product Bible Chapter 16 score bands
+type Grade = "Healthy" | "Good" | "Needs Attention" | "At Risk" | "Critical";
 
+// Product Bible Chapter 16 — 7 dimensions
 interface HealthDimensions {
-  compliance: number;
-  accounting: number;
-  documents: number;
-  responsiveness: number;
-  relationship_risk: number;
-  financial_risk: number;
-  engagement_health: number;
+  compliance_health: number;
+  accounting_quality: number;
+  work_progress: number;
+  document_health: number;
+  ai_risk_signals: number;
+  open_notices: number;
+  client_responsiveness: number;
 }
 
 interface ClientHealth {
@@ -92,13 +97,13 @@ function scoreBg(score: number): string {
 
 function gradeBadge(grade: Grade): string {
   const map: Record<Grade, string> = {
-    A: "bg-green-100 text-green-700",
-    B: "bg-blue-100 text-blue-700",
-    C: "bg-yellow-100 text-yellow-700",
-    D: "bg-orange-100 text-orange-700",
-    F: "bg-red-100 text-red-700",
+    "Healthy":         "bg-green-100 text-green-700",
+    "Good":            "bg-blue-100 text-blue-700",
+    "Needs Attention": "bg-yellow-100 text-yellow-700",
+    "At Risk":         "bg-orange-100 text-orange-700",
+    "Critical":        "bg-red-100 text-red-700",
   };
-  return map[grade];
+  return map[grade] ?? "bg-gray-100 text-gray-700";
 }
 
 function formatDate(dateStr: string | null): string {
@@ -118,13 +123,13 @@ function formatDate(dateStr: string | null): string {
 
 function DimensionDots({ dimensions }: { dimensions: HealthDimensions }) {
   const scores = [
-    dimensions.compliance,
-    dimensions.accounting,
-    dimensions.documents,
-    dimensions.responsiveness,
-    dimensions.relationship_risk,
-    dimensions.financial_risk,
-    dimensions.engagement_health,
+    dimensions.compliance_health,
+    dimensions.accounting_quality,
+    dimensions.work_progress,
+    dimensions.document_health,
+    dimensions.ai_risk_signals,
+    dimensions.open_notices,
+    dimensions.client_responsiveness,
   ];
 
   return (
@@ -182,25 +187,29 @@ export default function HealthPage() {
     }
   }
 
-  // ─── Derived stats ─────────────────────────────────────────────────────────
+  // ─── Derived stats — Product Bible Chapter 16 score bands ─────────────────
+  // Healthy: 80-100, Good: 65-79, Needs Attention: 50-64, At Risk: 35-49, Critical: 0-34
 
   const avgScore =
     clients.length > 0
       ? Math.round(clients.reduce((s, c) => s + c.overall_score, 0) / clients.length)
       : 0;
-  const criticalCount = clients.filter((c) => c.overall_score < 40).length;
-  const atRiskCount = clients.filter((c) => c.overall_score >= 40 && c.overall_score < 70).length;
-  const healthyCount = clients.filter((c) => c.overall_score >= 70).length;
+  const criticalCount = clients.filter((c) => c.overall_score < 35).length;
+  const atRiskCount = clients.filter((c) => c.overall_score >= 35 && c.overall_score < 50).length;
+  const healthyCount = clients.filter((c) => c.overall_score >= 80).length;
 
-  // Score distribution (A/B/C/D/F)
-  const gradeCounts: Record<Grade, number> = { A: 0, B: 0, C: 0, D: 0, F: 0 };
-  for (const c of clients) gradeCounts[c.grade]++;
+  // Score distribution (Product Bible bands)
+  const gradeCounts: Record<Grade, number> = { "Healthy": 0, "Good": 0, "Needs Attention": 0, "At Risk": 0, "Critical": 0 };
+  for (const c of clients) {
+    if (gradeCounts[c.grade] !== undefined) gradeCounts[c.grade]++;
+    else gradeCounts["Critical"]++;
+  }
   const maxGradeCount = Math.max(...Object.values(gradeCounts), 1);
 
   const filtered = clients.filter((c) => {
-    if (filterTab === "Critical") return c.overall_score < 40;
-    if (filterTab === "At-Risk") return c.overall_score >= 40 && c.overall_score < 70;
-    if (filterTab === "Healthy") return c.overall_score >= 70;
+    if (filterTab === "Critical") return c.overall_score < 35;
+    if (filterTab === "At-Risk") return c.overall_score >= 35 && c.overall_score < 50;
+    if (filterTab === "Healthy") return c.overall_score >= 80;
     return true;
   });
 
