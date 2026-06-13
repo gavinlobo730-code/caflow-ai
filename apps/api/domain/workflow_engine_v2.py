@@ -177,10 +177,9 @@ class WorkflowEngineV2:
             return True
 
         else:
-            _logger.warning(
-                "WF: unrecognised trigger_type '%s' — dropping trigger", trigger_type
-            )
-            return False
+            # Allow legacy and custom trigger types through — template matching
+            # will filter to only those templates that subscribe to this type.
+            return True
 
     def _matches_trigger_config(self, config: dict, data: dict) -> bool:
         """Check trigger_config constraints (e.g., days_before, threshold)."""

@@ -158,16 +158,6 @@ function gradeBadgeColor(grade: Grade): string {
   return map[grade] ?? "bg-gray-100 text-gray-700";
 }
 
-function gradeLargeColor(grade: Grade): string {
-  const map: Record<Grade, string> = {
-    "Healthy":          "text-green-600",
-    "Good":             "text-blue-600",
-    "Needs Attention":  "text-amber-600",
-    "At Risk":          "text-orange-600",
-    "Critical":         "text-red-600",
-  };
-  return map[grade] ?? "text-gray-600";
-}
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
