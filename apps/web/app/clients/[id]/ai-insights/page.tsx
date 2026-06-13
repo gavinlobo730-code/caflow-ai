@@ -52,7 +52,7 @@ export default function AiInsightsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-sm flex items-center gap-2">
-            <Sparkles size={15} className="text-violet-500" />
+            <Sparkles size={15} className="text-[#B9915E]" />
             AI Insights
           </CardTitle>
         </CardHeader>

@@ -71,16 +71,16 @@ const ENTITY_TYPES: EntityType[] = [
 ];
 
 const ENTITY_TYPE_COLORS: Record<EntityType, string> = {
-  Individual:       "bg-slate-700 text-slate-300",
-  Proprietorship:   "bg-blue-800 text-blue-300",
-  Partnership:      "bg-violet-800 text-violet-300",
-  LLP:              "bg-purple-800 text-purple-300",
-  "Private Limited":"bg-cyan-800 text-cyan-300",
-  "Public Limited": "bg-teal-800 text-teal-300",
-  Trust:            "bg-emerald-800 text-emerald-300",
-  Society:          "bg-green-800 text-green-300",
-  HUF:              "bg-yellow-800 text-yellow-300",
-  Other:            "bg-gray-700 text-gray-300",
+  Individual:       "bg-gray-100 text-gray-600",
+  Proprietorship:   "bg-blue-100 text-blue-700",
+  Partnership:      "bg-violet-100 text-violet-700",
+  LLP:              "bg-purple-100 text-purple-700",
+  "Private Limited":"bg-cyan-100 text-cyan-700",
+  "Public Limited": "bg-teal-100 text-teal-700",
+  Trust:            "bg-emerald-100 text-emerald-700",
+  Society:          "bg-green-100 text-green-700",
+  HUF:              "bg-yellow-100 text-yellow-700",
+  Other:            "bg-gray-100 text-gray-600",
 };
 
 const EMPTY_FORM = {
@@ -188,11 +188,11 @@ export default function RelationshipsPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4 animate-pulse">
-        <div className="h-6 bg-white/[0.08] rounded w-48" />
-        <div className="h-10 bg-white/[0.05] rounded" />
+      <div className="p-6 space-y-4 animate-pulse bg-[#F8FAFC] min-h-full">
+        <div className="h-6 bg-gray-200 rounded w-48" />
+        <div className="h-10 bg-gray-100 rounded" />
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-14 bg-white/[0.05] rounded-xl" />
+          <div key={i} className="h-14 bg-gray-100 rounded-xl" />
         ))}
       </div>
     );
@@ -200,8 +200,8 @@ export default function RelationshipsPage() {
 
   if (error) {
     return (
-      <div className="p-6">
-        <div className="bg-red-900/30 text-red-400 rounded-lg px-5 py-4 text-sm border border-red-800">
+      <div className="p-6 bg-[#F8FAFC] min-h-full">
+        <div className="bg-red-50 text-red-600 rounded-lg px-5 py-4 text-sm border border-red-200">
           {error}
         </div>
       </div>
@@ -209,10 +209,10 @@ export default function RelationshipsPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-6 space-y-5 bg-[#F8FAFC] min-h-full">
       {/* Toast */}
       {detectToast && (
-        <div className="fixed top-4 right-4 z-50 bg-gray-800 border border-gray-600 text-white text-sm px-4 py-3 rounded-lg shadow-xl max-w-sm">
+        <div className="fixed top-4 right-4 z-50 bg-white border border-gray-200 text-gray-800 text-sm px-4 py-3 rounded-lg shadow-xl max-w-sm">
           {detectToast}
         </div>
       )}
@@ -220,8 +220,8 @@ export default function RelationshipsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-white">Entity Registry</h1>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <h1 className="text-2xl font-bold text-[#182350]">Entity Registry</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
             {entities.length} entities across all clients
           </p>
         </div>
@@ -229,7 +229,7 @@ export default function RelationshipsPage() {
           <button
             onClick={handleDetectMatches}
             disabled={detectLoading}
-            className="text-sm text-cyan-400 border border-cyan-700 px-3 py-1.5 rounded-md hover:bg-cyan-900/30 disabled:opacity-50"
+            className="text-sm text-[#182350] border border-[#182350]/30 px-3 py-1.5 rounded-md hover:bg-[#AFD2FA]/20 disabled:opacity-50"
           >
             {detectLoading ? "Detecting…" : "Detect Matches"}
           </button>
@@ -239,7 +239,7 @@ export default function RelationshipsPage() {
               setSaveError(null);
               setModalOpen(true);
             }}
-            className="flex items-center gap-1.5 text-sm bg-cyan-600 text-white px-3 py-1.5 rounded-md hover:bg-cyan-700"
+            className="flex items-center gap-1.5 text-sm bg-[#182350] text-white px-3 py-1.5 rounded-md hover:bg-[#0D1635]"
           >
             <Plus size={14} /> Add Entity
           </button>
@@ -249,18 +249,18 @@ export default function RelationshipsPage() {
       {/* Search & Filter */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name, PAN, or email…"
-            className="w-full pl-8 pr-4 py-2 text-sm bg-gray-800 border border-gray-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            className="w-full pl-8 pr-4 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
           />
         </div>
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value as EntityType | "All")}
-          className="px-3 py-2 text-sm bg-gray-800 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+          className="px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
         >
           <option value="All">All Types</option>
           {ENTITY_TYPES.map((t) => (
@@ -272,16 +272,16 @@ export default function RelationshipsPage() {
       </div>
 
       {/* Table */}
-      <Card className="bg-gray-800 border-gray-700">
+      <Card className="bg-white border-gray-200 shadow-sm">
         <CardContent className="p-0">
           {filtered.length === 0 ? (
             <div className="text-center py-16">
-              <p className="text-sm text-slate-500">No entities found</p>
+              <p className="text-sm text-gray-500">No entities found</p>
             </div>
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-slate-500 border-b border-gray-700">
+                <tr className="text-xs text-gray-500 border-b border-gray-200">
                   <th className="px-5 py-3 text-left font-medium">Name</th>
                   <th className="px-3 py-3 text-left font-medium">Type</th>
                   <th className="px-3 py-3 text-left font-medium">PAN</th>
@@ -291,33 +291,33 @@ export default function RelationshipsPage() {
                   <th className="px-5 py-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-700/50">
+              <tbody className="divide-y divide-gray-100">
                 {filtered.map((entity) => (
-                  <tr key={entity.id} className="hover:bg-gray-700/30 group">
-                    <td className="px-5 py-3 text-white font-medium">{entity.full_name}</td>
+                  <tr key={entity.id} className="hover:bg-[#AFD2FA]/10 group">
+                    <td className="px-5 py-3 text-gray-800 font-medium">{entity.full_name}</td>
                     <td className="px-3 py-3">
                       <Badge className={`text-[11px] ${ENTITY_TYPE_COLORS[entity.entity_type]}`}>
                         {entity.entity_type}
                       </Badge>
                     </td>
-                    <td className="px-3 py-3 font-mono text-xs text-slate-400">
+                    <td className="px-3 py-3 font-mono text-xs text-gray-500">
                       {entity.pan || "—"}
                     </td>
-                    <td className="px-3 py-3 text-slate-400 text-xs">{entity.email || "—"}</td>
+                    <td className="px-3 py-3 text-gray-500 text-xs">{entity.email || "—"}</td>
                     <td className="px-3 py-3 text-center">
-                      <span className="text-xs bg-gray-700 text-slate-300 px-2 py-0.5 rounded-full">
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
                         {entity.roles_count}
                       </span>
                     </td>
                     <td className="px-3 py-3 text-center">
-                      <span className="text-xs bg-gray-700 text-slate-300 px-2 py-0.5 rounded-full">
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
                         {entity.linked_clients_count}
                       </span>
                     </td>
                     <td className="px-5 py-3 text-right">
                       <a
                         href={`/relationships/${entity.id}`}
-                        className="text-xs text-cyan-400 hover:text-cyan-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="text-xs text-[#182350] hover:text-[#182350]/70 opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         View →
                       </a>
@@ -332,30 +332,30 @@ export default function RelationshipsPage() {
 
       {/* Add Entity Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-[#0F172A]/75 flex items-center justify-center z-50 px-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-[#182350]/60 flex items-center justify-center z-50 px-4">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-white">Add Entity</h2>
-              <button onClick={() => setModalOpen(false)} className="text-slate-500 hover:text-white">
+              <h2 className="text-sm font-semibold text-[#182350]">Add Entity</h2>
+              <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-700">
                 <X size={16} />
               </button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-slate-400 font-medium">Full Name *</label>
+                <label className="text-xs text-gray-600 font-medium">Full Name *</label>
                 <input
                   value={form.full_name}
                   onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
                   placeholder="Individual or entity name"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400 font-medium">Entity Type</label>
+                <label className="text-xs text-gray-600 font-medium">Entity Type</label>
                 <select
                   value={form.entity_type}
                   onChange={(e) => setForm({ ...form, entity_type: e.target.value as EntityType })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
                 >
                   {ENTITY_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -366,21 +366,21 @@ export default function RelationshipsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-slate-400 font-medium">PAN</label>
+                  <label className="text-xs text-gray-600 font-medium">PAN</label>
                   <input
                     value={form.pan}
                     onChange={(e) => setForm({ ...form, pan: e.target.value.toUpperCase() })}
-                    className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white placeholder-slate-500 font-mono focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 font-mono focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
                     placeholder="AAAAA9999A"
                     maxLength={10}
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400 font-medium">GSTIN</label>
+                  <label className="text-xs text-gray-600 font-medium">GSTIN</label>
                   <input
                     value={form.gstin}
                     onChange={(e) => setForm({ ...form, gstin: e.target.value.toUpperCase() })}
-                    className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white placeholder-slate-500 font-mono focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 font-mono focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
                     placeholder="22AAAAA0000A1Z5"
                     maxLength={15}
                   />
@@ -388,43 +388,43 @@ export default function RelationshipsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-slate-400 font-medium">Email</label>
+                  <label className="text-xs text-gray-600 font-medium">Email</label>
                   <input
                     type="email"
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
                     placeholder="contact@example.com"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400 font-medium">Phone</label>
+                  <label className="text-xs text-gray-600 font-medium">Phone</label>
                   <input
                     type="tel"
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    className="w-full mt-1 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
                     placeholder="+91 98765 43210"
                   />
                 </div>
               </div>
             </div>
             {saveError && (
-              <p className="mt-3 text-xs text-red-400 bg-red-900/30 px-3 py-2 rounded-md border border-red-800">
+              <p className="mt-3 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-md border border-red-200">
                 {saveError}
               </p>
             )}
             <div className="flex gap-2 mt-5">
               <button
                 onClick={() => setModalOpen(false)}
-                className="flex-1 text-sm text-slate-400 border border-gray-700 py-2 rounded-md hover:bg-gray-800"
+                className="flex-1 text-sm text-gray-600 border border-gray-300 py-2 rounded-md hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleAddEntity}
                 disabled={saving || !form.full_name.trim()}
-                className="flex-1 text-sm bg-cyan-600 text-white py-2 rounded-md hover:bg-cyan-700 disabled:opacity-50"
+                className="flex-1 text-sm bg-[#182350] text-white py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
               >
                 {saving ? "Adding…" : "Add Entity"}
               </button>
