@@ -43,7 +43,7 @@ from routers.health import router as health_router
 app = FastAPI(title="CAflow AI API", version="2.0.0")
 
 import os
-_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
+_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,https://caflow-ai.pages.dev").split(",") if o.strip()]
 
 @app.exception_handler(PermissionDeniedError)
 async def permission_denied_handler(request: Request, exc: PermissionDeniedError):
