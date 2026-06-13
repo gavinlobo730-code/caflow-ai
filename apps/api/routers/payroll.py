@@ -18,7 +18,9 @@ from services.timeline_service import timeline_service
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
 
-_USE_MOCK = True  # switched off when SUPABASE_URL is set
+# Mock mode is determined per-request by _db() returning None when SUPABASE_URL
+# is unset (dev/test). No module-level flag — the live backend always uses the
+# real Supabase client. _MOCK_FINALIZED_RUNS only holds state under that fallback.
 _MOCK_FINALIZED_RUNS: set[str] = set()  # tracks finalized run IDs in mock mode
 
 
