@@ -71,7 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile backdrop */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-40 bg-[#0F172A]/75 backdrop-blur-sm"
+          className="md:hidden fixed inset-0 z-40 bg-[#182350]/70 backdrop-blur-sm"
           onClick={() => setMobileOpen(false)}
         />
       )}

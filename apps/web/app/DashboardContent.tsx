@@ -365,7 +365,7 @@ export default function DashboardContent() {
               ))
             ) : (
               <div className="px-5 py-10 text-center">
-                <Users size={24} className="text-white/10 mx-auto mb-2" />
+                <Users size={24} className="text-gray-300 mx-auto mb-2" />
                 <p className="text-[13px] text-[#94A3B8]">No clients yet</p>
                 <Link href="/clients" className="text-[12px] text-blue-600 font-medium mt-1 inline-block">Add your first client →</Link>
               </div>
@@ -406,7 +406,7 @@ export default function DashboardContent() {
                     t.status === "in_progress" ? "bg-blue-400" :
                     t.status === "review_required" ? "bg-amber-400" :
                     t.status === "waiting_client" ? "bg-purple-400" :
-                    "bg-white/20"
+                    "bg-gray-300"
                   )} />
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px] font-medium text-[#1E293B] truncate">{t.title}</p>
@@ -424,7 +424,7 @@ export default function DashboardContent() {
               ))
             ) : (
               <div className="px-5 py-10 text-center">
-                <CheckCircle2 size={24} className="text-white/10 mx-auto mb-2" />
+                <CheckCircle2 size={24} className="text-gray-300 mx-auto mb-2" />
                 <p className="text-[13px] text-[#94A3B8]">All caught up</p>
                 <Link href="/work" className="text-[12px] text-blue-600 font-medium mt-1 inline-block">View work queue →</Link>
               </div>

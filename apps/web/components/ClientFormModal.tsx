@@ -118,7 +118,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-[#0F172A]/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-[#F8FAFC]/60" onClick={onClose} />
 
       {/* Modal */}
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
@@ -288,7 +288,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
             </button>
             <button
               type="submit" disabled={saving}
-              className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-gray-900 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {saving ? "Saving…" : editClient ? "Save Changes" : "Add Client"}
             </button>

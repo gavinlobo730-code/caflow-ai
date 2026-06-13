@@ -2,54 +2,66 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── Design Tokens ─────────────────────────────────────────────────────────── */
+/* ─── PracticeSync Design Tokens ──────────────────────────────────────────────
+   Brand palette:
+     Deep Blue      #182350  — sidebar, primary actions, identity
+     Powder Blue    #AFD2FA  — hover, selection, charts
+     Background     #F8FAFC  — application background (light)
+     Premium Gold   #B9915E  — AI / intelligence accents
+     Premium Surface #FEFAEF — insight panels, AI outputs
+   ──────────────────────────────────────────────────────────────────────────── */
 :root {
-  /* Backgrounds */
-  --background:           210 40% 98%;    /* #F8FAFC */
-  --surface:              0 0% 100%;      /* #FFFFFF */
-  --surface-elevated:     210 40% 96%;    /* #F1F5F9 */
-  --surface-hover:        210 40% 94%;
+  /* ── Application surfaces ── */
+  --background:            210 40% 98%;    /* #F8FAFC */
+  --surface:               0 0% 100%;      /* #FFFFFF */
+  --surface-elevated:      210 40% 96%;    /* #F1F5F9 */
+  --surface-hover:         210 40% 94%;    /* #E9EFF6 */
 
-  /* Sidebar (kept dark) */
-  --sidebar-bg:           222 47% 11%;    /* #0F172A */
-  --sidebar-fg:           215 20% 55%;
-  --sidebar-active-bg:    213 94% 48%;    /* #2563EB */
-  --sidebar-active-fg:    0 0% 100%;
-  --sidebar-hover-bg:     222 40% 16%;
-  --sidebar-border:       222 40% 14%;
-  --sidebar-group-label:  215 14% 40%;
+  /* ── Sidebar / navigation rails (always dark) ── */
+  --sidebar-bg:            228 54% 20%;    /* #182350 */
+  --sidebar-fg:            212 30% 60%;    /* mid-grey on dark */
+  --sidebar-active-bg:     212 90% 83%;    /* #AFD2FA powder */
+  --sidebar-active-fg:     228 54% 18%;    /* deep blue text on powder */
+  --sidebar-hover-bg:      228 54% 26%;    /* lighter #182350 */
+  --sidebar-border:        228 40% 16%;
+  --sidebar-group-label:   215 14% 42%;
 
-  /* Foreground */
-  --foreground:           222 47% 11%;    /* #0F172A */
-  --foreground-secondary: 215 16% 47%;   /* #64748B */
-  --foreground-muted:     215 14% 58%;   /* #94A3B8 */
+  /* ── Typography ── */
+  --foreground:            228 54% 15%;    /* #0D1635 — near-black navy */
+  --foreground-secondary:  215 16% 40%;   /* #5A6A80 */
+  --foreground-muted:      215 14% 58%;   /* #8FA0B4 */
 
-  /* shadcn/ui tokens */
-  --card:                 0 0% 100%;
-  --card-foreground:      222 47% 11%;
-  --popover:              0 0% 100%;
-  --popover-foreground:   222 47% 11%;
-  --primary:              213 94% 48%;    /* #2563EB */
-  --primary-foreground:   0 0% 100%;
-  --secondary:            210 40% 96%;
-  --secondary-foreground: 222 47% 11%;
-  --muted:                210 40% 96%;
-  --muted-foreground:     215 16% 47%;
-  --accent:               210 40% 94%;
-  --accent-foreground:    222 47% 11%;
-  --destructive:          0 84% 60%;
+  /* ── Brand ── */
+  --brand:                 228 54% 20%;    /* #182350 */
+  --brand-hover:           228 54% 16%;
+  --brand-light:           212 90% 83%;    /* #AFD2FA */
+  --gold:                  33 40% 55%;     /* #B9915E */
+  --gold-surface:          46 88% 97%;     /* #FEFAEF */
+
+  /* ── shadcn/ui tokens ── */
+  --card:                  0 0% 100%;
+  --card-foreground:       228 54% 15%;
+  --popover:               0 0% 100%;
+  --popover-foreground:    228 54% 15%;
+  --primary:               228 54% 20%;   /* #182350 */
+  --primary-foreground:    0 0% 100%;
+  --secondary:             210 40% 96%;
+  --secondary-foreground:  228 54% 20%;
+  --muted:                 210 40% 96%;
+  --muted-foreground:      215 16% 40%;
+  --accent:                212 90% 83%;   /* #AFD2FA */
+  --accent-foreground:     228 54% 20%;
+  --destructive:           0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-  --border:               214 32% 91%;    /* #E2E8F0 */
-  --input:                214 32% 91%;
-  --ring:                 213 94% 48%;
-  --radius:               0.5rem;
+  --border:                214 32% 91%;   /* #E2E8F0 */
+  --input:                 214 32% 91%;
+  --ring:                  228 54% 20%;
+  --radius:                0.5rem;
 }
 
-/* ─── Base ───────────────────────────────────────────────────────────────────── */
+/* ─── Base reset ──────────────────────────────────────────────────────────── */
 *, *::before, *::after { border-color: hsl(var(--border)); }
-
 html { color-scheme: light; }
-
 body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
@@ -60,13 +72,13 @@ body {
   line-height: 1.5;
 }
 
-/* ─── Scrollbar ──────────────────────────────────────────────────────────────── */
+/* ─── Scrollbar ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar             { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track       { background: transparent; }
 ::-webkit-scrollbar-thumb       { background: hsl(214 32% 85%); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: hsl(214 32% 74%); }
+::-webkit-scrollbar-thumb:hover { background: hsl(214 32% 72%); }
 
-/* ─── Skeleton shimmer ────────────────────────────────────────────────────────── */
+/* ─── Skeleton shimmer ────────────────────────────────────────────────────── */
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
   100% { background-position:  200% 0; }
@@ -82,7 +94,26 @@ body {
   animation: shimmer 1.6s ease-in-out infinite;
 }
 
-/* ─── Status pill ────────────────────────────────────────────────────────────── */
+/* ─── Premium card ────────────────────────────────────────────────────────── */
+.ps-card {
+  background: white;
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) + 2px);
+  box-shadow: 0 1px 3px rgba(24, 35, 80, 0.05), 0 1px 2px rgba(24, 35, 80, 0.03);
+}
+.ps-card:hover {
+  box-shadow: 0 4px 16px rgba(24, 35, 80, 0.08);
+  border-color: hsl(212 90% 83% / 0.5);
+}
+
+/* ─── Premium insight panel ───────────────────────────────────────────────── */
+.ps-insight {
+  background: hsl(var(--gold-surface));
+  border: 1px solid hsl(33 40% 80%);
+  border-radius: calc(var(--radius) + 2px);
+}
+
+/* ─── Status pill ─────────────────────────────────────────────────────────── */
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -95,19 +126,10 @@ body {
   line-height: 1.6;
 }
 
-/* ─── Card hover ─────────────────────────────────────────────────────────────── */
-.card-hover {
-  transition: box-shadow 0.15s ease, border-color 0.15s ease;
-}
-.card-hover:hover {
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
-  border-color: hsl(213 94% 48% / 0.2);
-}
-
-/* ─── Input base ─────────────────────────────────────────────────────────────── */
+/* ─── Input base ──────────────────────────────────────────────────────────── */
 .input-base {
   width: 100%;
-  background: hsl(var(--surface));
+  background: white;
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius);
   padding: 0.625rem 0.875rem;
@@ -118,11 +140,11 @@ body {
 }
 .input-base::placeholder { color: hsl(var(--foreground-muted)); }
 .input-base:focus {
-  border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 3px hsl(213 94% 48% / 0.12);
+  border-color: hsl(var(--brand));
+  box-shadow: 0 0 0 3px hsl(228 54% 20% / 0.10);
 }
 
-/* ─── Data table ─────────────────────────────────────────────────────────────── */
+/* ─── Data table ──────────────────────────────────────────────────────────── */
 .data-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
 .data-table th {
   padding: 0.625rem 1rem;
@@ -143,8 +165,43 @@ body {
 }
 .data-table tr:hover td { background: hsl(var(--surface-elevated)); }
 
-/* ─── Motion ─────────────────────────────────────────────────────────────────── */
-@keyframes fade-in  { from { opacity: 0; }              to { opacity: 1; transform: none; } }
+/* ─── Primary button ──────────────────────────────────────────────────────── */
+.ps-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  background: hsl(var(--brand));
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.ps-btn-primary:hover { background: hsl(var(--brand-hover)); box-shadow: 0 2px 8px rgba(24,35,80,0.20); }
+
+/* ─── Page header ─────────────────────────────────────────────────────────── */
+.ps-page-header {
+  border-bottom: 1px solid hsl(var(--border));
+  background: white;
+  padding: 1.25rem 1.5rem;
+}
+.ps-page-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: hsl(var(--brand));
+  letter-spacing: -0.01em;
+}
+.ps-page-subtitle {
+  font-size: 0.8125rem;
+  color: hsl(var(--foreground-muted));
+  margin-top: 0.125rem;
+}
+
+/* ─── Motion ──────────────────────────────────────────────────────────────── */
+@keyframes fade-in  { from { opacity: 0; }                       to { opacity: 1; transform: none; } }
 @keyframes slide-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-.animate-in    { animation: fade-in  0.15s ease; }
-.slide-up-in   { animation: slide-up 0.18s ease; }
+.animate-in  { animation: fade-in  0.15s ease; }
+.slide-up-in { animation: slide-up 0.18s ease; }

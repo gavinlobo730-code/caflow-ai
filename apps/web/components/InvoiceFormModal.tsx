@@ -153,7 +153,7 @@ export function InvoiceFormModal({ open, onClose, onSaved, clients, type }: Prop
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-[#0F172A]/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-[#F8FAFC]/60" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b sticky top-0 bg-white z-10">
           <div>
@@ -378,7 +378,7 @@ export function InvoiceFormModal({ open, onClose, onSaved, clients, type }: Prop
               Cancel
             </button>
             <button type="submit" disabled={saving}
-              className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60">
+              className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-gray-900 hover:bg-blue-700 disabled:opacity-60">
               {saving ? "Saving…" : `Post ${type === "sales_invoice" ? "Invoice" : "Expense"}`}
             </button>
           </div>

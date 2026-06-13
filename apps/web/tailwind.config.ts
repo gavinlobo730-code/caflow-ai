@@ -43,11 +43,32 @@ const config: Config = {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
         },
+        /* ── PracticeSync brand tokens ── */
+        brand: {
+          DEFAULT: "#182350",
+          light:   "#AFD2FA",
+          dark:    "#0D1635",
+        },
+        gold: {
+          DEFAULT: "#B9915E",
+          surface: "#FEFAEF",
+        },
+        ps: {
+          bg:      "#F8FAFC",
+          surface: "#FFFFFF",
+          border:  "#E2E8F0",
+          muted:   "#F1F5F9",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      boxShadow: {
+        card:        "0 1px 3px rgba(24,35,80,0.06), 0 1px 2px rgba(24,35,80,0.04)",
+        "card-hover":"0 4px 16px rgba(24,35,80,0.10)",
+        modal:       "0 20px 60px rgba(24,35,80,0.20)",
       },
     },
   },

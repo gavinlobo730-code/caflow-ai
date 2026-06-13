@@ -92,7 +92,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-[#0F172A]/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-[#F8FAFC]/60" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#F1F5F9]">
@@ -217,7 +217,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
             </button>
             <button
               type="submit" disabled={saving}
-              className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+              className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-gray-900 hover:bg-blue-700 disabled:opacity-60"
             >
               {saving ? "Creating…" : "Create Task"}
             </button>

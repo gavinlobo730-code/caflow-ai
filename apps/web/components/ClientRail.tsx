@@ -52,7 +52,7 @@ export function ClientRail() {
   const { clientId } = useClientNav();
 
   return (
-    <div className="flex flex-col h-full w-[52px] shrink-0 bg-[#0F172A] border-r border-white/10">
+    <div className="flex flex-col h-full w-[52px] shrink-0 bg-[#182350] border-r border-white/10">
       {/* Back to Firm */}
       <Link
         href="/clients"

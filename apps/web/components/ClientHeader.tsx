@@ -51,20 +51,20 @@ export function ClientHeader() {
   const fyOptions = getFYOptions();
 
   return (
-    <header className="flex items-center gap-4 h-12 px-4 bg-[#0F172A] border-b border-white/10 shrink-0">
-      <Building2 size={15} className="text-slate-500 shrink-0" />
+    <header className="flex items-center gap-4 h-12 px-4 bg-white border-b border-gray-200 shrink-0">
+      <Building2 size={15} className="text-gray-400 shrink-0" />
 
       <div className="flex items-center gap-3 min-w-0 flex-1">
-        <span className="text-[13px] font-semibold text-white truncate">
+        <span className="text-[13px] font-semibold text-[#182350] truncate">
           {client?.client_name ?? "Loading…"}
         </span>
         {client?.entity_type && (
-          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white/10 text-slate-400 shrink-0">
+          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 shrink-0">
             {client.entity_type}
           </span>
         )}
         {client?.gstin && (
-          <span className="text-[10px] font-mono text-slate-500 shrink-0 hidden lg:inline">
+          <span className="text-[10px] font-mono text-gray-500 shrink-0 hidden lg:inline">
             {client.gstin}
           </span>
         )}
@@ -79,7 +79,7 @@ export function ClientHeader() {
       <div className="relative shrink-0">
         <button
           onClick={() => setFyOpen((o) => !o)}
-          className="flex items-center gap-1.5 text-[11px] font-medium text-slate-400 hover:text-white bg-white/10 hover:bg-white/20 px-2.5 py-1.5 rounded-lg transition-colors"
+          className="flex items-center gap-1.5 text-[11px] font-medium text-gray-500 hover:text-[#182350] bg-gray-100 hover:bg-gray-200 px-2.5 py-1.5 rounded-lg transition-colors"
         >
           FY {financialYear}
           <ChevronDown size={11} className={cn("transition-transform", fyOpen && "rotate-180")} />
@@ -88,7 +88,7 @@ export function ClientHeader() {
         {fyOpen && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setFyOpen(false)} />
-            <div className="absolute right-0 top-full mt-1 z-20 bg-[#1E293B] border border-white/10 rounded-lg shadow-xl py-1 min-w-[120px]">
+            <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-[120px]">
               {fyOptions.map((fy) => (
                 <button
                   key={fy}
@@ -96,8 +96,8 @@ export function ClientHeader() {
                   className={cn(
                     "w-full text-left px-3 py-1.5 text-[11px] transition-colors",
                     fy === financialYear
-                      ? "text-white bg-blue-600"
-                      : "text-slate-400 hover:text-white hover:bg-white/10"
+                      ? "text-white bg-[#182350]"
+                      : "text-gray-500 hover:text-[#182350] hover:bg-[#F8FAFC]"
                   )}
                 >
                   FY {fy}
