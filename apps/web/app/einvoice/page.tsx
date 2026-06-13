@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Plus, Loader2, AlertTriangle, Zap, XCircle } from "lucide-react";
+import { useState } from "react";
+import { Plus, Loader2, AlertTriangle, Zap } from "lucide-react";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 

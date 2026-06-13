@@ -52,6 +52,13 @@ interface Disallowance {
   auto_detected: boolean;
 }
 
+interface ComputeResult {
+  income: { taxable_income_paise: number };
+  tax: { total_tax_paise: number; rebate_87a_paise: number };
+  payable: { net_payable_paise: number; is_refund: boolean };
+  warnings: string[];
+}
+
 interface BFLoss {
   id: string;
   assessment_year: string;
@@ -70,7 +77,7 @@ export default function TaxComputationPage() {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [disallowances, setDisallowances] = useState<Disallowance[]>([]);
   const [bfLosses, setBfLosses] = useState<BFLoss[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [_loading, setLoading] = useState(false);
   const [activeSection, setActiveSection] = useState<string | null>("overview");
 
   // Computation inputs
@@ -81,7 +88,7 @@ export default function TaxComputationPage() {
   const [tds, setTds] = useState("");
   const [advanceTax, setAdvanceTax] = useState("");
   const [computing, setComputing] = useState(false);
-  const [computeResult, setComputeResult] = useState<Record<string, unknown> | null>(null);
+  const [computeResult, setComputeResult] = useState<ComputeResult | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
 
   // Disallowance form
@@ -316,26 +323,26 @@ export default function TaxComputationPage() {
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div>
                     <p className="text-[#94A3B8]">Taxable Income</p>
-                    <p className="font-medium">{paise((computeResult as any).income?.taxable_income_paise ?? 0)}</p>
+                    <p className="font-medium">{paise(computeResult.income?.taxable_income_paise ?? 0)}</p>
                   </div>
                   <div>
                     <p className="text-[#94A3B8]">Tax Liability</p>
-                    <p className="font-medium">{paise((computeResult as any).tax?.total_tax_paise ?? 0)}</p>
+                    <p className="font-medium">{paise(computeResult.tax?.total_tax_paise ?? 0)}</p>
                   </div>
                   <div>
                     <p className="text-[#94A3B8]">Rebate 87A</p>
-                    <p className="font-medium">{paise((computeResult as any).tax?.rebate_87a_paise ?? 0)}</p>
+                    <p className="font-medium">{paise(computeResult.tax?.rebate_87a_paise ?? 0)}</p>
                   </div>
                   <div>
-                    <p className="text-[#94A3B8]">{(computeResult as any).payable?.is_refund ? "Refund" : "Net Payable"}</p>
-                    <p className={`font-medium ${(computeResult as any).payable?.is_refund ? "text-green-600" : "text-red-600"}`}>
-                      {paise(Math.abs((computeResult as any).payable?.net_payable_paise ?? 0))}
+                    <p className="text-[#94A3B8]">{computeResult.payable?.is_refund ? "Refund" : "Net Payable"}</p>
+                    <p className={`font-medium ${computeResult.payable?.is_refund ? "text-green-600" : "text-red-600"}`}>
+                      {paise(Math.abs(computeResult.payable?.net_payable_paise ?? 0))}
                     </p>
                   </div>
                 </div>
-                {((computeResult as any).warnings?.length > 0) && (
+                {(computeResult.warnings?.length > 0) && (
                   <div className="mt-2 space-y-1">
-                    {(computeResult as any).warnings.map((w: string, i: number) => (
+                    {computeResult.warnings.map((w: string, i: number) => (
                       <p key={i} className="text-[10px] text-amber-600">⚠ {w}</p>
                     ))}
                   </div>

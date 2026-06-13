@@ -48,11 +48,26 @@ interface MigrationJob {
   created_at: string;
 }
 
+interface ParseResult {
+  parsed_counts: Record<string, number>;
+}
+
+interface MigrationPreview {
+  error_count: number;
+  [key: string]: unknown;
+}
+
+interface ImportResult {
+  is_dry_run: boolean;
+  imported: number;
+  failed: number;
+  skipped: number;
+}
+
 export default function MigrationPage() {
   const [jobs, setJobs] = useState<MigrationJob[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<MigrationJob | null>(null);
-  const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
+  const [preview, setPreview] = useState<MigrationPreview | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
   // Create form
@@ -64,8 +79,8 @@ export default function MigrationPage() {
   const [step, setStep] = useState<"create" | "parse" | "preview" | "import">("create");
   const [jobId, setJobId] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
-  const [parseResult, setParseResult] = useState<Record<string, unknown> | null>(null);
-  const [importResult, setImportResult] = useState<Record<string, unknown> | null>(null);
+  const [parseResult, setParseResult] = useState<ParseResult | null>(null);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [isDryRun, setIsDryRun] = useState(true);
 
   async function load() {
@@ -227,7 +242,7 @@ export default function MigrationPage() {
               <p className="text-xs font-medium text-[#334155]">Import Preview</p>
               {parseResult && (
                 <div className="grid grid-cols-3 gap-3">
-                  {Object.entries((parseResult as any).parsed_counts ?? {}).map(([k, v]) => (
+                  {Object.entries(parseResult.parsed_counts ?? {}).map(([k, v]) => (
                     <div key={k} className="bg-[#F8FAFC] rounded-lg p-3 text-center">
                       <p className="text-sm font-bold text-[#1E293B]">{v as number}</p>
                       <p className="text-[10px] text-[#64748B] capitalize">{k}</p>
@@ -235,10 +250,10 @@ export default function MigrationPage() {
                   ))}
                 </div>
               )}
-              {(preview as any).error_count > 0 && (
+              {preview.error_count > 0 && (
                 <div className="flex items-center gap-2 bg-red-50 p-3 rounded-lg">
                   <XCircle size={14} className="text-red-500" />
-                  <p className="text-xs text-red-700">{(preview as any).error_count} items have errors — fix before importing</p>
+                  <p className="text-xs text-red-700">{preview.error_count} items have errors — fix before importing</p>
                 </div>
               )}
               <div className="flex items-center gap-3">
@@ -253,7 +268,7 @@ export default function MigrationPage() {
                   <p className="text-xs text-red-700 font-medium">Live import — data will be written. Ensure you have reviewed the preview.</p>
                 </div>
               )}
-              <button onClick={handleImport} disabled={working || ((preview as any).error_count > 0 && !isDryRun)}
+              <button onClick={handleImport} disabled={working || (preview.error_count > 0 && !isDryRun)}
                 className={`text-xs px-4 py-2 text-white rounded-lg disabled:opacity-50 flex items-center gap-1 ${isDryRun ? "bg-blue-600 hover:bg-blue-700" : "bg-red-600 hover:bg-red-700"}`}>
                 {working && <Loader2 size={10} className="animate-spin" />}
                 {isDryRun ? "Run Dry Run →" : "Execute Import →"}
@@ -267,14 +282,14 @@ export default function MigrationPage() {
                 <CheckCircle size={16} className="text-green-500" />
                 <div>
                   <p className="text-xs font-semibold text-green-800">
-                    {(importResult as any).is_dry_run ? "Dry Run Completed" : "Import Completed"}
+                    {importResult.is_dry_run ? "Dry Run Completed" : "Import Completed"}
                   </p>
                   <p className="text-[10px] text-green-600">
-                    {(importResult as any).imported ?? 0} imported · {(importResult as any).failed ?? 0} failed · {(importResult as any).skipped ?? 0} skipped
+                    {importResult.imported ?? 0} imported · {importResult.failed ?? 0} failed · {importResult.skipped ?? 0} skipped
                   </p>
                 </div>
               </div>
-              {(importResult as any).is_dry_run && (
+              {importResult.is_dry_run && (
                 <button onClick={() => { setIsDryRun(false); setStep("preview"); }}
                   className="text-xs px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
                   Proceed with Live Import →
@@ -294,7 +309,7 @@ export default function MigrationPage() {
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-2">
           <Database size={28} className="text-gray-200 mx-auto" />
           <p className="text-sm text-[#64748B]">No migration jobs yet</p>
-          <p className="text-xs text-[#94A3B8]">Click "New Import" to migrate data from Tally.</p>
+          <p className="text-xs text-[#94A3B8]">Click &quot;New Import&quot; to migrate data from Tally.</p>
         </div>
       ) : (
         <div className="space-y-2">
