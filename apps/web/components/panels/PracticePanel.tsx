@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Building2, LayoutDashboard, IndianRupee, Receipt, Wallet, ClipboardList,
-  Library, StickyNote,
+  StickyNote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -15,7 +15,8 @@ const NAV_ITEMS = [
   { label: "Billing",      href: "/practice/billing",     icon: Receipt },
   { label: "Collections",  href: "/practice/collections", icon: Wallet },
   { label: "AR Aging",     href: "/practice/ar",          icon: ClipboardList },
-  { label: "Knowledge Base", href: "/practice/knowledge", icon: Library },
+  // Knowledge Base intentionally omitted here — it lives in the dedicated,
+  // all-staff Knowledge workspace (/knowledge), not under Partner-only Practice.
   { label: "Instructions", href: "/practice/instructions", icon: StickyNote },
 ];
 

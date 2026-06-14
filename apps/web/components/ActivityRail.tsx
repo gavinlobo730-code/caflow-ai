@@ -33,8 +33,9 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
         </div>
       </div>
 
-      {/* Workspace icons */}
-      <nav className="flex flex-col items-center gap-1.5 py-3 flex-1 overflow-hidden">
+      {/* Workspace icons — scroll when they exceed the rail height (min-h-0 lets this
+          flex child shrink; scrollbar hidden to keep the 52px rail clean) */}
+      <nav className="flex flex-col items-center gap-1.5 py-3 flex-1 min-h-0 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {visibleWorkspaces.map((ws) => {
           const Icon = ws.icon;
           const isActive = ws.id === activeWorkspace;
