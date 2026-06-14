@@ -124,11 +124,13 @@ class ReceiptAllocationIn(BaseModel):
 
 
 class ReceiptIn(BaseModel):
-    """Create a customer receipt. Auto-creates journal Dr Bank / Cr Trade Receivables."""
+    """Create a customer receipt. Auto-creates journal Dr Bank (+ Dr TDS Receivable
+    when tds_paise > 0) / Cr Trade Receivables. Settlement = amount_paise + tds_paise."""
     client_id: str
     customer_id: str
     receipt_date: str  # YYYY-MM-DD
     amount_paise: int
+    tds_paise: int = 0          # TDS deducted by the client on the firm fee (IT Act §194J)
     payment_mode: str = "bank_transfer"
     bank_account_id: Optional[str] = None
     reference_no: Optional[str] = None
@@ -142,12 +144,22 @@ class ReceiptIn(BaseModel):
             raise ValueError("Receipt amount must be positive.")
         return v
 
+    @field_validator("tds_paise")
+    @classmethod
+    def tds_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("tds_paise must be non-negative.")
+        return v
+
     @model_validator(mode="after")
-    def allocations_dont_exceed_amount(self) -> "ReceiptIn":
+    def allocations_dont_exceed_settlement(self) -> "ReceiptIn":
+        # Settlement capacity includes TDS deducted at source.
         total = sum(a.allocated_paise for a in self.allocations)
-        if total > self.amount_paise:
+        settlement = self.amount_paise + self.tds_paise
+        if total > settlement:
             raise ValueError(
-                f"Total allocated ({total} paise) exceeds receipt amount ({self.amount_paise} paise)."
+                f"Total allocated ({total} paise) exceeds settlement value "
+                f"({settlement} paise = amount {self.amount_paise} + TDS {self.tds_paise})."
             )
         return self
 
