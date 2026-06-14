@@ -1,4 +1,4 @@
-# CAflow AI — Tenant Isolation & Security Model
+# PracticeSync AI — Tenant Isolation & Security Model
 
 ## Current model (production today)
 

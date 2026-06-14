@@ -51,7 +51,7 @@ def _get_workflow_repo():
 
 # ── System prompt ──────────────────────────────────────────────────────────────
 
-_SYSTEM_PROMPT = """You are CAflow AI Copilot — an expert assistant for Indian Chartered Accountants.
+_SYSTEM_PROMPT = """You are PracticeSync AI Copilot — an expert assistant for Indian Chartered Accountants.
 You have deep knowledge of:
 - Indian Income Tax Act (IT Act 1961) and all amendments through AY 2026-27
 - CGST Act 2017 and GST Rules — all sections and notifications
@@ -310,7 +310,7 @@ class AICopilotService:
                 "letter approval. Assign dedicated follow-up tasks and enable the onboarding workflow automation."
             )
         return (
-            "I'm your CAflow AI Copilot. I can help you with client compliance status, GST/TDS filings, "
+            "I'm your PracticeSync AI Copilot. I can help you with client compliance status, GST/TDS filings, "
             "health scores, workflow analysis, and more. What would you like to know?"
         )
 
