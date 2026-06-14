@@ -102,6 +102,15 @@ def create_firm(
         "role": "Partner",
     }).execute()
 
+    # Batch 3.1: seed the firm-wide master Chart of Accounts (Migration-057
+    # architecture; client_id NULL) so posting can always resolve its accounts.
+    # Idempotent + non-fatal (re-runnable); firm creation must still succeed.
+    try:
+        from services.coa_seed_service import seed_firm_coa
+        seed_firm_coa(firm_id)
+    except Exception as e:  # pragma: no cover - defensive
+        _logger.error("Firm CoA seeding failed for firm %s: %s", firm_id, e)
+
     # Amendment v1.1: provision the firm-as-internal-client (idempotent). Reuses
     # the firm's own PAN/GSTIN. Non-fatal — firm creation must still succeed even
     # if provisioning is skipped (it can be re-run later via POST /api/practice/provision).
