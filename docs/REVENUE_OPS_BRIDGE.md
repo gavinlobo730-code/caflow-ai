@@ -67,9 +67,21 @@ debt the compatibility layer carries. It is updated as each batch lands.
   invoice screens still read `fee_*`. New Revenue Operations dues live in
   `client_sales_invoices` (internal client). A read-adapter to unify the two
   surfaces is **deferred** (no dual-write; `fee_*` stays read-only legacy).
-- **B3-4 · Internal-client CoA.** Posting the JE on issue needs the internal
-  client's GL accounts (firm-wide or seeded). Reuse existing per-client CoA
-  seeding at provisioning — tracked for Batch 4/deployment.
+- **B3-4 · Internal-client CoA.** RESOLVED in Batch 3.1: firm-wide master CoA is
+  seeded at onboarding (`services/coa_seed_service.seed_firm_coa`, client_id NULL,
+  Migration-057 architecture) with names matching the posting patterns. The
+  internal client posts via the shared firm CoA. Existing firms: re-run the seed
+  (idempotent) as a deployment step.
+
+### Batch 3.1 (accounting hardening)
+- **B3.1-1 · Atomic issue.** `issue_invoice` posts the journal before flipping to
+  `issued` (stores `journal_entry_id`, migration 076). Missing CoA → invoice stays
+  a re-tryable draft. *Residual:* status update + journal insert are two statements
+  (not one SQL txn); a crash between them leaves a posted journal with a draft
+  invoice — re-issue is safe (`_create_journal` de-dups). Full txn wrapping deferred.
+- **B3.1-2 · Recovery.** `GET /api/sales-invoices/maintenance/unposted` +
+  `POST /api/sales-invoices/{id}/repost-journal` detect/remediate any legacy
+  issued-but-unposted invoices (idempotent, Partner-only for the internal client).
 
 ## Rule
 
