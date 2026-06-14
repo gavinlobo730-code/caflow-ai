@@ -50,8 +50,12 @@ DROP POLICY IF EXISTS "client_sales_invoices_own_firm" ON client_sales_invoices;
 CREATE POLICY "client_sales_invoices_own_firm" ON client_sales_invoices
   FOR ALL USING (firm_id = get_my_firm_id()) WITH CHECK (firm_id = get_my_firm_id());
 
+-- client_id::text IS DISTINCT FROM my_internal_client_id()::text: cast both sides
+-- for the same type-safety reason documented in migration 074 (uuid helper vs.
+-- mixed uuid/text client_id columns). client_sales_invoices.client_id is uuid, so
+-- the cast is a no-op here, but it is applied for cross-migration consistency.
 DROP POLICY IF EXISTS "client_sales_invoices_internal_partner_only" ON client_sales_invoices;
 CREATE POLICY "client_sales_invoices_internal_partner_only" ON client_sales_invoices
   AS RESTRICTIVE FOR ALL
-  USING (get_my_role() = 'Partner' OR client_id IS DISTINCT FROM my_internal_client_id())
-  WITH CHECK (get_my_role() = 'Partner' OR client_id IS DISTINCT FROM my_internal_client_id());
+  USING (get_my_role() = 'Partner' OR client_id::text IS DISTINCT FROM my_internal_client_id()::text)
+  WITH CHECK (get_my_role() = 'Partner' OR client_id::text IS DISTINCT FROM my_internal_client_id()::text);
