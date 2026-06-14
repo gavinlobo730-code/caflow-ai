@@ -5,8 +5,6 @@ import { usePathname } from "next/navigation";
 import {
   CheckSquare,
   ListTodo,
-  Receipt,
-  Briefcase,
   BarChart3,
   Users,
 } from "lucide-react";
@@ -18,13 +16,6 @@ const WORK_SECTIONS = [
     items: [
       { href: "/work", label: "All Work", icon: CheckSquare },
       { href: "/tasks", label: "Tasks", icon: ListTodo },
-    ],
-  },
-  {
-    label: "Payroll & Billing",
-    items: [
-      { href: "/payroll", label: "Payroll", icon: Briefcase },
-      { href: "/billing", label: "Fee Billing", icon: Receipt },
     ],
   },
   {
