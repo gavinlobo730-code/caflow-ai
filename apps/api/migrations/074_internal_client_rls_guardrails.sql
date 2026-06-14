@@ -46,6 +46,9 @@ DECLARE
     'advance_tax_payments','compliance_records','compliance_tasks',
     'year_end_engagements',
     'payroll_employees','payroll_runs','salary_structures','attendance','leave_balances',
+    -- client-scoped read surfaces (Batch 2.1 defence-in-depth)
+    'client_timeline_events','documents','document_extractions','document_requests',
+    'ai_insights','government_notices','it_notices','tax_notices',
     'billing_schedules','client_firm_customer_links','client_instructions'
   ];
 BEGIN
