@@ -126,3 +126,31 @@ def run_overdue_sweep(current_user: dict = Depends(rbac("billing", "write"))):
 def send_reminders(current_user: dict = Depends(rbac("billing", "write"))):
     """Send collections reminders for overdue invoices (cadence-gated, idempotent)."""
     return api_response(True, collections_service.send_overdue_reminders(current_user["firm_id"]))
+
+
+# ── Batch 5: billable / cost-rate capture + unbilled-work visibility (Partner-only) ─
+
+class StaffCostRateIn(BaseModel):
+    cost_rate_paise: Optional[int] = None   # integer paise; None clears
+
+
+@router.get("/unbilled-work")
+def unbilled_work(client_id: Optional[str] = Query(None),
+                  current_user: dict = Depends(rbac("billing", "read"))):
+    """Unbilled (billable, not-yet-billed) work grouped by client/work item with
+    billable value. Capture/visibility only — no realization/margin/profitability."""
+    return api_response(True, billing_service.unbilled_work(current_user["firm_id"], client_id))
+
+
+@router.get("/staff-cost-rates")
+def list_staff_cost_rates(current_user: dict = Depends(rbac("billing", "read"))):
+    """Staff cost rates (Partner-only, capture/display only)."""
+    return api_response(True, billing_service.list_staff_cost_rates(current_user["firm_id"]))
+
+
+@router.put("/staff-cost-rates/{user_id}")
+def set_staff_cost_rate(user_id: str, body: StaffCostRateIn,
+                        current_user: dict = Depends(rbac("billing", "write"))):
+    """Capture a staff member's cost rate (integer paise)."""
+    return api_response(True, billing_service.set_staff_cost_rate(
+        current_user["firm_id"], user_id, body.cost_rate_paise))

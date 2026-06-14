@@ -30,6 +30,7 @@ class ManualEntryCreate(BaseModel):
     duration_minutes: Optional[int] = None
     is_billable: bool = True
     hourly_rate_paise: Optional[int] = None
+    billable_rate_paise: Optional[int] = None   # Amd v1.1 FR-REV-07 (capture)
 
 
 class StartTimerBody(BaseModel):
@@ -46,6 +47,10 @@ class EntryUpdate(BaseModel):
     ended_at: Optional[str] = None
     duration_minutes: Optional[int] = None
     hourly_rate_paise: Optional[int] = None
+    billable_rate_paise: Optional[int] = None   # Amd v1.1 FR-REV-07 (capture)
+    # NOTE: is_billed / billed_invoice_id are intentionally NOT editable here —
+    # they are system-controlled (billed_invoice_id is authoritative; is_billed is
+    # a GENERATED column). See migration 078.
 
 
 @router.get("")
@@ -169,6 +174,7 @@ def create_manual_entry(body: ManualEntryCreate, current_user: dict = Depends(rb
         "duration_minutes": duration,
         "is_billable": body.is_billable,
         "hourly_rate_paise": body.hourly_rate_paise,
+        "billable_rate_paise": body.billable_rate_paise,
     })
     return api_response(True, {"entry": entry})
 

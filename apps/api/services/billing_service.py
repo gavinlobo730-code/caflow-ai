@@ -296,6 +296,98 @@ def preview_due(firm_id: str, as_of: Optional[str] = None) -> list[dict]:
     return due
 
 
+# ── Batch 5: billable / cost-rate capture + unbilled-work visibility ─────────
+# Data-capture only. NO realization / margin / profitability / forecasting /
+# utilization. cost_rate_paise is captured + partner-visible but is NEVER used in
+# any computation here.
+
+MOCK_COST_RATES: dict = {}   # mock-mode staff cost rates {user_id: paise}
+
+
+def unbilled_value_paise(minutes: Optional[int], billable_rate_paise: Optional[int],
+                         hourly_rate_paise: Optional[int]) -> int:
+    """Billable value of a time entry in integer paise (minutes x rate / 60).
+    Prefers billable_rate_paise; falls back to the legacy hourly_rate_paise."""
+    rate = billable_rate_paise if billable_rate_paise else (hourly_rate_paise or 0)
+    return (int(minutes or 0) * int(rate)) // 60
+
+
+def group_unbilled(entries: list[dict]) -> dict:
+    """Group billable, not-yet-billed time entries by client and by work item.
+    Pure: filters is_billable AND billed_invoice_id IS NULL. No cost, no margin."""
+    by_client: dict = {}
+    by_work_item: dict = {}
+    total_value = 0
+    total_minutes = 0
+    for e in entries:
+        if not e.get("is_billable") or e.get("billed_invoice_id"):
+            continue
+        minutes = int(e.get("duration_minutes") or 0)
+        if minutes <= 0:
+            continue
+        value = unbilled_value_paise(minutes, e.get("billable_rate_paise"), e.get("hourly_rate_paise"))
+        cid = e.get("client_id") or "unassigned"
+        wid = e.get("task_id") or "unassigned"
+        for bucket, key in ((by_client, cid), (by_work_item, wid)):
+            slot = bucket.setdefault(key, {"minutes": 0, "value_paise": 0, "count": 0})
+            slot["minutes"] += minutes
+            slot["value_paise"] += value
+            slot["count"] += 1
+        total_value += value
+        total_minutes += minutes
+    return {"by_client": by_client, "by_work_item": by_work_item,
+            "total_value_paise": total_value, "total_minutes": total_minutes}
+
+
+def unbilled_work(firm_id: str, client_id: Optional[str] = None) -> dict:
+    """Unbilled-work view: billable, not-yet-billed time entries grouped by
+    client/work item with their billable value (integer paise)."""
+    if _USE_MOCK:
+        entries: list[dict] = []   # time-entry repo is DB-only; mock returns empty
+    else:
+        q = (_db().table("time_entries").select("*")
+             .eq("firm_id", firm_id).eq("is_billable", True).is_("billed_invoice_id", None))
+        if client_id:
+            q = q.eq("client_id", client_id)
+        entries = q.execute().data or []
+    return group_unbilled(entries)
+
+
+def list_staff_cost_rates(firm_id: str) -> list[dict]:
+    """Staff cost rates (partner-visible). Capture/display only."""
+    if _USE_MOCK:
+        return [{"user_id": uid, "cost_rate_paise": rate} for uid, rate in MOCK_COST_RATES.items()]
+    rows = (_db().table("users").select("id, full_name, role, cost_rate_paise")
+            .eq("firm_id", firm_id).execute().data or [])
+    return rows
+
+
+def set_staff_cost_rate(firm_id: str, user_id: str, cost_rate_paise: Optional[int]) -> dict:
+    """Set a staff member's cost rate (integer paise, or None to clear)."""
+    if cost_rate_paise is not None and int(cost_rate_paise) < 0:
+        raise HTTPException(status_code=422, detail="cost_rate_paise must be non-negative")
+    if _USE_MOCK:
+        MOCK_COST_RATES[user_id] = cost_rate_paise
+        return {"user_id": user_id, "cost_rate_paise": cost_rate_paise}
+    row = (_db().table("users").update({"cost_rate_paise": cost_rate_paise})
+           .eq("id", user_id).eq("firm_id", firm_id).execute())
+    return row.data[0] if row.data else {"user_id": user_id, "cost_rate_paise": cost_rate_paise}
+
+
+def mark_time_entries_billed(firm_id: str, entry_ids: list[str], invoice_id: str) -> dict:
+    """System-controlled billed linkage for future time-based billing. Sets
+    billed_invoice_id (authoritative); is_billed derives automatically (generated
+    column). Not exposed for manual editing."""
+    if _USE_MOCK or not entry_ids:
+        return {"marked": 0}
+    db = _db()
+    count = 0
+    for eid in entry_ids:
+        db.table("time_entries").update({"billed_invoice_id": invoice_id}).eq("id", eid).eq("firm_id", firm_id).execute()
+        count += 1
+    return {"marked": count}
+
+
 def run_due(firm_id: str, current_user: dict, as_of: Optional[str] = None) -> dict:
     """Generate drafts for all due schedules. Idempotent: already-generated
     schedules are skipped (counted separately)."""
