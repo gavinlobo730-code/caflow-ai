@@ -8,7 +8,7 @@ from typing import Optional
 
 _logger = logging.getLogger("caflow.email")
 _RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-_FROM_EMAIL = os.environ.get("EMAIL_FROM", "CAflow AI <noreply@caflow.ai>")
+_FROM_EMAIL = os.environ.get("EMAIL_FROM", "PracticeSync AI <noreply@caflow.ai>")
 
 
 def _send(to: str, subject: str, html: str) -> bool:
@@ -43,7 +43,7 @@ def send_task_assigned(to: str, assignee_name: str, task_title: str, client_name
       <tr><td><strong>Client</strong></td><td>{client_name}</td></tr>
       <tr><td><strong>Due Date</strong></td><td>{due_date or 'Not set'}</td></tr>
     </table>
-    <p>Log in to CAflow AI to view and manage this task.</p>
+    <p>Log in to PracticeSync AI to view and manage this task.</p>
     """
     return _send(to, subject, html)
 
@@ -107,10 +107,10 @@ def send_escalation_alert(to: str, manager_name: str, task_title: str, assignee_
 
 
 def send_firm_invite(to: str, firm_name: str, inviter_name: str, role: str, invite_link: str) -> bool:
-    subject = f"You've been invited to {firm_name} on CAflow AI"
+    subject = f"You've been invited to {firm_name} on PracticeSync AI"
     html = f"""
     <p>Hi,</p>
-    <p><strong>{inviter_name}</strong> has invited you to join <strong>{firm_name}</strong> on CAflow AI as <strong>{role}</strong>.</p>
+    <p><strong>{inviter_name}</strong> has invited you to join <strong>{firm_name}</strong> on PracticeSync AI as <strong>{role}</strong>.</p>
     <p><a href="{invite_link}" style="background:#4f46e5;color:white;padding:10px 20px;text-decoration:none;border-radius:6px;">Accept Invitation</a></p>
     <p>This link expires in 7 days.</p>
     """

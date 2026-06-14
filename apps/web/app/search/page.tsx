@@ -37,7 +37,7 @@ async function runSearch(query: string, firmId: string): Promise<SearchResult[]>
   const results: SearchResult[] = [];
 
   const [clientsRes, tasksRes, complianceRes, journalsRes] = await Promise.all([
-    sb.from("clients").select("id, client_name, entity_type, pan, gstin").eq("firm_id", firmId),
+    sb.from("clients").select("id, client_name, entity_type, pan, gstin").eq("firm_id", firmId).eq("is_internal", false),
     sb.from("tasks").select("id, title, status, due_date, client_id").eq("firm_id", firmId),
     sb.from("compliance_items").select("id, compliance_type, due_date, client_id, clients(client_name)").eq("firm_id", firmId),
     sb.from("journal_entries").select("id, narration, entry_date, reference_no").eq("firm_id", firmId),

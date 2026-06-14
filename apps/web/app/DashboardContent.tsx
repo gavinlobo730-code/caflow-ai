@@ -180,11 +180,11 @@ export default function DashboardContent() {
           { data: clientsData },
           { data: tasksRaw },
         ] = await Promise.all([
-          supabase.from("clients").select("id", { count: "exact", head: true }).eq("firm_id", firmId),
+          supabase.from("clients").select("id", { count: "exact", head: true }).eq("firm_id", firmId).eq("is_internal", false),
           supabase.from("tasks").select("id", { count: "exact", head: true }).eq("firm_id", firmId).neq("status", "completed"),
           supabase.from("compliance_entries").select("id", { count: "exact", head: true }).eq("firm_id", firmId).gte("due_date", monthStart).lte("due_date", monthEnd).neq("status", "filed"),
           supabase.from("compliance_entries").select("id", { count: "exact", head: true }).eq("firm_id", firmId).lt("due_date", todayStr).neq("status", "filed"),
-          supabase.from("clients").select("id, client_name, gstin, entity_type").eq("firm_id", firmId).order("created_at", { ascending: false }).limit(5),
+          supabase.from("clients").select("id, client_name, gstin, entity_type").eq("firm_id", firmId).eq("is_internal", false).order("created_at", { ascending: false }).limit(5),
           supabase.from("tasks").select("id, title, due_date, status, client_name").eq("firm_id", firmId).order("created_at", { ascending: false }).limit(6),
         ]);
 

@@ -10,6 +10,8 @@ import { AIPanel } from "@/components/panels/AIPanel";
 import { AccountingPanel } from "@/components/panels/AccountingPanel";
 import { RelationshipsPanel } from "@/components/panels/RelationshipsPanel";
 import { HealthPanel } from "@/components/panels/HealthPanel";
+import { PracticePanel } from "@/components/panels/PracticePanel";
+import { KnowledgePanel } from "@/components/panels/KnowledgePanel";
 
 interface ContextPanelProps {
   onOpenSearch: () => void;
@@ -31,6 +33,8 @@ export function ContextPanel({ onOpenSearch }: ContextPanelProps) {
       {activeWorkspace === "accounting" && <AccountingPanel />}
       {activeWorkspace === "relationships" && <RelationshipsPanel />}
       {activeWorkspace === "health" && <HealthPanel />}
+      {activeWorkspace === "practice" && <PracticePanel />}
+      {activeWorkspace === "knowledge" && <KnowledgePanel />}
     </div>
   );
 }

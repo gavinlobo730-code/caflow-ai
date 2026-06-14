@@ -46,6 +46,29 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "write":  _AT_LEAST_MANAGER,
         "delete": _PARTNER_ONLY,
     },
+    # ── Practice (firm-as-internal-client) — Partner/Owner only (Amendment v1.1, G1) ─
+    "practice": {
+        "read":  _PARTNER_ONLY,
+        "write": _PARTNER_ONLY,
+    },
+    # ── Billing / Revenue Operations — Partner/Owner only (exposes fee economics) ─
+    "billing": {
+        "read":  _PARTNER_ONLY,
+        "write": _PARTNER_ONLY,
+    },
+    # ── Knowledge Base articles (Amendment v1.1 Batch 6) ─────────────────────
+    # Read by all staff (client-scoped rows further assignment-gated in service/RLS);
+    # authoring governed: Manager+.
+    "knowledge": {
+        "read":  _ALL_STAFF,
+        "write": _AT_LEAST_MANAGER,
+    },
+    # ── Client instructions — read all staff (assignment-gated); write Executive+
+    # (Executive only for assigned clients, enforced in service/RLS). Reviewer read-only.
+    "client_instruction": {
+        "read":  _ALL_STAFF,
+        "write": _AT_LEAST_EXECUTIVE,
+    },
     # ── Compliance records ───────────────────────────────────────────────────
     "compliance_record": {
         "read":   _ALL_STAFF,

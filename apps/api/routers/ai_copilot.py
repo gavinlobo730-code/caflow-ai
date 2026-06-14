@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/ai-copilot", tags=["ai-copilot"])
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
-COPILOT_SYSTEM_PROMPT = """You are CAflow AI Copilot — an intelligent assistant for Indian Chartered Accountants.
+COPILOT_SYSTEM_PROMPT = """You are PracticeSync AI Copilot — an intelligent assistant for Indian Chartered Accountants.
 
 You have access to the following firm context:
 {firm_context}
