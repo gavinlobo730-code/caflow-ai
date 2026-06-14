@@ -185,6 +185,11 @@ app.include_router(practice_router)
 # Amendment v1.1 Batch 3 — Billing / Revenue Operations, Partner-only
 from routers.billing import router as billing_router
 app.include_router(billing_router)
+# Amendment v1.1 Batch 6 — Knowledge Base + Client Instructions. The client-scoped
+# endpoints (/api/clients/{client_id}/...) are gated by require_client_access (G1);
+# firm /api/knowledge endpoints carry no client_id so the guard is a no-op there.
+from routers.knowledge import router as knowledge_router
+app.include_router(knowledge_router, dependencies=_CLIENT_GUARD)
 
 
 # Phase 10B — Workflow Scheduler (daily jobs + workflow schedule runner)

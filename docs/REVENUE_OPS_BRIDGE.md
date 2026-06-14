@@ -111,6 +111,19 @@ debt the compatibility layer carries. It is updated as each batch lands.
   helpers (`unbilled_value_paise`, `group_unbilled`) so it is unit-testable, with
   the migration verified via the SQL harness.
 
+### Batch 6 (Knowledge Base + Client Instructions)
+- **B6-1 · Assignment-gated RLS.** Migration 079 adds `get_my_user_id()` + RESTRICTIVE
+  policies (Manager/Partner firm-wide; Executive/Reviewer assigned-only; internal
+  partner-only). The RLS subquery reads `user_client_assignments` (authenticated has
+  the grant from 041). API layer is primary (service-role bypasses RLS).
+- **B6-2 · Timeline split.** Client-scoped article + instruction events → client
+  Timeline; firm/department article events → `audit_log` (per-client Timeline can't
+  hold firm-level events).
+- **B6-3 · DB-only KB tables.** No mock store; security logic is in pure helpers
+  (`can_view_client_content`, `can_write_instruction`) + the RLS harness.
+- **B6-4 · No ack/complete.** Client instructions are standing guidance only
+  (create/edit/pin/archive); execution tracking belongs to work items, not KB.
+
 ## Rule
 
 New Revenue Operations functionality MUST target the Amendment stack. The `fee_*`
