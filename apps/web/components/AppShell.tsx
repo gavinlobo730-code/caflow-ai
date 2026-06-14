@@ -104,10 +104,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         )}
 
-        {/* Work area — full height when in client workspace (client layout owns its rails) */}
+        {/* Work area — full height when in client workspace (client layout owns its rails).
+            Firm-level pages scroll here: min-h-0 lets this flex child shrink below its
+            content height so overflow-y-auto produces a scrollbar (classic flexbox gotcha);
+            overflow is set per-branch only — no conflicting overflow-hidden on the base. */}
         <main className={cn(
-          "flex-1 min-w-0 overflow-hidden",
-          isClientWorkspace ? "h-screen" : "overflow-auto pt-12 md:pt-0"
+          "flex-1 min-w-0 min-h-0",
+          isClientWorkspace ? "h-screen overflow-hidden" : "h-full overflow-y-auto pt-12 md:pt-0"
         )}>
           {children}
         </main>
