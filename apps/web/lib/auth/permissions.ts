@@ -34,11 +34,13 @@ const ARTICLE_STAFF_HIDDEN_HREFS = new Set([
   "/documents",
   "/risks",
   "/billing",
+  "/practice",
 ]);
 
 /** Routes hidden from Manager */
 const MANAGER_HIDDEN_HREFS = new Set([
   "/settings",
+  "/practice",   // Practice / Revenue Operations is Partner-only (G1)
 ]);
 
 /**
@@ -77,6 +79,13 @@ const ARTICLE_STAFF_HIDDEN_WORKSPACES = new Set<WorkspaceId>([
 ]);
 
 /**
+ * Workspaces restricted to Partner/Owner only (Amendment v1.1 Guardrail G1).
+ * The Practice workspace exposes firm revenue / fee economics and the internal
+ * client; the nav entry must NOT render for non-partners.
+ */
+const PARTNER_ONLY_WORKSPACES = new Set<WorkspaceId>(["practice"]);
+
+/**
  * Returns true if the given workspace should be visible for the given role.
  * Mirrors the same role logic as canAccessHref but at workspace granularity.
  */
@@ -85,16 +94,26 @@ export function canAccessWorkspace(
   role: UserRole | null
 ): boolean {
   const effectiveRole: UserRole = role ?? "Partner";
+  // G1: Practice (revenue/fee economics) is Partner-only for every other role.
+  if (PARTNER_ONLY_WORKSPACES.has(workspaceId)) {
+    return effectiveRole === "Partner";
+  }
   switch (effectiveRole) {
     case "Partner":
     case "Manager":
       return true;
     case "Article":
     case "Staff":
+      // Knowledge Base is visible to all staff; only deadlines/work are hidden.
       return !ARTICLE_STAFF_HIDDEN_WORKSPACES.has(workspaceId);
     default:
       return true;
   }
+}
+
+/** True only for Partner (route-level guard for Practice / Revenue Operations). */
+export function isPartnerOnlyAllowed(role: UserRole | null): boolean {
+  return (role ?? "Partner") === "Partner";
 }
 
 export { ALWAYS_VISIBLE };
