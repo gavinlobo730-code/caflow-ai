@@ -8,7 +8,6 @@ import { WorkPanel } from "@/components/panels/WorkPanel";
 import { TeamPanel } from "@/components/panels/TeamPanel";
 import { AIPanel } from "@/components/panels/AIPanel";
 import { AccountingPanel } from "@/components/panels/AccountingPanel";
-import { PipelinePanel } from "@/components/panels/PipelinePanel";
 import { RelationshipsPanel } from "@/components/panels/RelationshipsPanel";
 import { HealthPanel } from "@/components/panels/HealthPanel";
 
@@ -30,7 +29,6 @@ export function ContextPanel({ onOpenSearch }: ContextPanelProps) {
       {activeWorkspace === "team" && <TeamPanel />}
       {activeWorkspace === "ai" && <AIPanel />}
       {activeWorkspace === "accounting" && <AccountingPanel />}
-      {activeWorkspace === "pipeline" && <PipelinePanel />}
       {activeWorkspace === "relationships" && <RelationshipsPanel />}
       {activeWorkspace === "health" && <HealthPanel />}
     </div>
