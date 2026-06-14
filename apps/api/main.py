@@ -182,6 +182,9 @@ app.include_router(portal_router)
 # Amendment v1.1 — Practice (firm-as-internal-client), Partner-only
 from routers.practice import router as practice_router
 app.include_router(practice_router)
+# Amendment v1.1 Batch 3 — Billing / Revenue Operations, Partner-only
+from routers.billing import router as billing_router
+app.include_router(billing_router)
 
 
 # Phase 10B — Workflow Scheduler (daily jobs + workflow schedule runner)
