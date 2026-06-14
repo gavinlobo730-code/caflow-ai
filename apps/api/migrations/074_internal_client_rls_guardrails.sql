@@ -31,6 +31,15 @@ CREATE POLICY "clients_internal_partner_only" ON clients
 -- Applied to every listed table that exists AND has a client_id column. Uses
 -- IS DISTINCT FROM so a NULL internal_client_id (unprovisioned firm) never hides
 -- ordinary client rows.
+--
+-- TYPE-SAFETY (repository consistency fix, 2026-06-14): client_id is uuid on every
+-- table in this list EXCEPT client_timeline_events, whose client_id is TEXT. The
+-- helper my_internal_client_id() returns uuid, so a bare
+--   client_id IS DISTINCT FROM my_internal_client_id()
+-- raised `ERROR: operator does not exist: text = uuid` on client_timeline_events
+-- and rolled the entire migration back. Both sides are cast to ::text below; that
+-- comparison is valid for uuid and text client_id columns alike, so a fresh
+-- environment applies 073–080 in sequence with no manual intervention.
 DO $$
 DECLARE
   t    text;
@@ -60,10 +69,12 @@ BEGIN
       EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
       EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I',
                      t || '_internal_partner_only', t);
+      -- ::text on both sides: works for uuid client_id and the lone text one
+      -- (client_timeline_events). See TYPE-SAFETY note above.
       EXECUTE format(
         'CREATE POLICY %I ON public.%I AS RESTRICTIVE FOR ALL '
-        || 'USING (get_my_role() = ''Partner'' OR client_id IS DISTINCT FROM my_internal_client_id()) '
-        || 'WITH CHECK (get_my_role() = ''Partner'' OR client_id IS DISTINCT FROM my_internal_client_id())',
+        || 'USING (get_my_role() = ''Partner'' OR client_id::text IS DISTINCT FROM my_internal_client_id()::text) '
+        || 'WITH CHECK (get_my_role() = ''Partner'' OR client_id::text IS DISTINCT FROM my_internal_client_id()::text)',
         t || '_internal_partner_only', t);
     END IF;
   END LOOP;
