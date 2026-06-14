@@ -242,4 +242,22 @@ inline CRUD in large pages.
    changes; feature-gated by role; ship behind the Partner role (no flag needed since
    backend already enforces). Reversible (remove nav entries + routes).
 
-**Open decisions to validate (chat).**
+---
+
+## Validated decisions (2026-06-14) — locked
+
+1. **New Rail-1 "Practice"** entry (Partner-only; the nav entry **does not render**
+   for non-partners — not disabled). Context-switches into the internal client,
+   reusing the client-workspace shell. **Practice sections:** Overview · Revenue ·
+   Billing · Collections · AR Aging · Knowledge Base · Instructions. Revenue Operations
+   is **not** nested under Accounting.
+2. **New Rail-1 "Knowledge"** entry (all staff: Partner/Manager/Executive/Reviewer
+   visible; Client hidden). **Knowledge sections:** Firm Articles · Department Articles ·
+   Search · Tags · Recent Updates. Client-scoped KB + instructions remain in the client
+   workspace. Authoring: Articles = Manager+; Instructions = Executive+ (assigned only).
+3. **Legacy `/billing` (fee_*) kept exactly as-is** (Partner+Manager, unchanged
+   workflows/permissions). New Revenue Operations is separate, Partner-only, internal-
+   client based, under Practice. **Optional:** relabel the legacy page "Legacy Billing
+   (fee_*)" for clarity.
+
+These are additive; no backend changes; no regression to legacy billing.
