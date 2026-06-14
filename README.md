@@ -1,4 +1,4 @@
-# CAflow AI
+# PracticeSync AI
 
 AI-powered practice management platform for Indian Chartered Accountants.
 

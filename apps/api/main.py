@@ -71,7 +71,7 @@ from routers.memory_intelligence import router as memory_intelligence_router
 # Client Portal
 from routers.portal import router as portal_router
 
-app = FastAPI(title="CAflow AI API", version="2.0.0")
+app = FastAPI(title="PracticeSync AI API", version="2.0.0")
 
 # CORSMiddleware MUST be registered first so it wraps all response paths,
 # including error responses produced by exception handlers below.
@@ -185,7 +185,7 @@ start_memory_scheduler()
 @app.get("/")
 def root():
     from models.common import api_response
-    return api_response(True, {"message": "CAflow AI API v2.0", "docs": "/docs"})
+    return api_response(True, {"message": "PracticeSync AI API v2.0", "docs": "/docs"})
 
 
 @app.get("/health")
