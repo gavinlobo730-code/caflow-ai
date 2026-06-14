@@ -9,15 +9,22 @@ import {
   Upload,
   Download,
   BookOpen,
+  Receipt,
+  Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// Payroll & Fee Billing live in the Accounting workspace (their /payroll and
+// /billing routes map to "accounting"); they are surfaced here rather than in
+// the Work panel so selecting them doesn't jump the user to another workspace.
 const NAV_ITEMS = [
   { label: "Chart of Accounts",   href: "/accounting/chart-of-accounts",    icon: List },
   { label: "Schedule III Mapping", href: "/accounting/schedule-iii-mapping", icon: GitBranch },
   { label: "Account Groups",      href: "/accounting/account-groups",        icon: Layers },
   { label: "Import COA",          href: "/accounting/coa-import",            icon: Upload },
   { label: "Export COA",          href: "/accounting/coa-export",            icon: Download },
+  { label: "Fee Billing",         href: "/billing",                          icon: Receipt },
+  { label: "Payroll",             href: "/payroll",                          icon: Briefcase },
 ];
 
 export function AccountingPanel() {
