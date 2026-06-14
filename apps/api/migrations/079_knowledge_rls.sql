@@ -31,11 +31,14 @@ CREATE POLICY "knowledge_articles_assignment" ON knowledge_articles
   );
 
 -- ── knowledge_articles: internal practice client -> Partner-only (G1) ────────
+-- client_id::text on both sides for the same type-safety reason documented in
+-- migration 074. knowledge_articles.client_id is uuid (cast is a no-op here);
+-- applied for cross-migration consistency.
 DROP POLICY IF EXISTS "knowledge_articles_internal_partner_only" ON knowledge_articles;
 CREATE POLICY "knowledge_articles_internal_partner_only" ON knowledge_articles
   AS RESTRICTIVE FOR ALL
-  USING (get_my_role() = 'Partner' OR client_id IS DISTINCT FROM my_internal_client_id())
-  WITH CHECK (get_my_role() = 'Partner' OR client_id IS DISTINCT FROM my_internal_client_id());
+  USING (get_my_role() = 'Partner' OR client_id::text IS DISTINCT FROM my_internal_client_id()::text)
+  WITH CHECK (get_my_role() = 'Partner' OR client_id::text IS DISTINCT FROM my_internal_client_id()::text);
 
 -- ── client_instructions: assignment-gate (always client-scoped) ──────────────
 -- (internal-client partner-only already added for client_instructions in 074)
