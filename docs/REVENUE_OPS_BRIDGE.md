@@ -99,6 +99,18 @@ debt the compatibility layer carries. It is updated as each batch lands.
   client's fee invoices (Partner-only). DSO/realization remain deferred Revenue
   Intelligence.
 
+### Batch 5 (billable / cost-rate capture)
+- **B5-1 · System-controlled billed linkage.** `time_entries.billed_invoice_id`
+  is authoritative; `is_billed` is a GENERATED column (manual write rejected).
+  Future time-based billing sets `billed_invoice_id` via
+  `billing_service.mark_time_entries_billed`; no endpoint edits `is_billed`.
+- **B5-2 · Capture only.** `cost_rate_paise` is partner-visible capture/display
+  only — never used in computation. Realization/margin/profitability/forecasting/
+  utilization remain deferred (Revenue Intelligence, Phase 13+).
+- **B5-3 · Time repo is DB-only.** No mock path; unbilled-work logic lives in pure
+  helpers (`unbilled_value_paise`, `group_unbilled`) so it is unit-testable, with
+  the migration verified via the SQL harness.
+
 ## Rule
 
 New Revenue Operations functionality MUST target the Amendment stack. The `fee_*`
