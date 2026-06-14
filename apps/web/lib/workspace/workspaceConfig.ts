@@ -8,10 +8,15 @@ import {
   BookOpen,
   Network,
   Activity,
+  Building2,
+  Library,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type WorkspaceId = "home" | "clients" | "deadlines" | "work" | "team" | "ai" | "accounting" | "relationships" | "health";
+export type WorkspaceId =
+  | "home" | "clients" | "deadlines" | "work" | "team" | "ai"
+  | "accounting" | "relationships" | "health"
+  | "practice" | "knowledge";
 
 export interface WorkspaceConfig {
   id: WorkspaceId;
@@ -85,6 +90,22 @@ export const WORKSPACE_CONFIGS: WorkspaceConfig[] = [
     defaultRoute: "/health",
     icon: Activity,
   },
+  {
+    // Amendment v1.1 — firm-as-internal-client + Revenue Operations (Partner-only).
+    id: "practice",
+    label: "Practice",
+    description: "Firm revenue & practice operations",
+    defaultRoute: "/practice",
+    icon: Building2,
+  },
+  {
+    // Amendment v1.1 — Knowledge Base (all staff).
+    id: "knowledge",
+    label: "Knowledge",
+    description: "Firm SOPs & knowledge base",
+    defaultRoute: "/knowledge",
+    icon: Library,
+  },
 ];
 
 export const DEFAULT_WORKSPACE_ROUTES: Record<WorkspaceId, string> = {
@@ -97,6 +118,8 @@ export const DEFAULT_WORKSPACE_ROUTES: Record<WorkspaceId, string> = {
   accounting: "/accounting/chart-of-accounts",
   relationships: "/relationships",
   health: "/health",
+  practice: "/practice",
+  knowledge: "/knowledge",
 };
 
 /**
@@ -141,6 +164,12 @@ export function getWorkspaceForPathname(pathname: string): WorkspaceId {
 
   if (pathname.startsWith("/health"))
     return "health";
+
+  if (pathname.startsWith("/practice"))
+    return "practice";
+
+  if (pathname.startsWith("/knowledge"))
+    return "knowledge";
 
   if (pathname.startsWith("/work") || pathname.startsWith("/tasks"))
     return "work";
