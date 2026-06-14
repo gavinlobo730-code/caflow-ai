@@ -46,6 +46,11 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "write":  _AT_LEAST_MANAGER,
         "delete": _PARTNER_ONLY,
     },
+    # ── Practice (firm-as-internal-client) — Partner/Owner only (Amendment v1.1, G1) ─
+    "practice": {
+        "read":  _PARTNER_ONLY,
+        "write": _PARTNER_ONLY,
+    },
     # ── Compliance records ───────────────────────────────────────────────────
     "compliance_record": {
         "read":   _ALL_STAFF,

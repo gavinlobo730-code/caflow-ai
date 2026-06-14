@@ -7,6 +7,7 @@ GET  /api/onboarding/status     — onboarding completeness check (Partner/Manag
 import os
 import re
 import secrets
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from typing import Optional
@@ -16,6 +17,7 @@ from core.auth import get_jwt_user
 from core.permissions import rbac
 
 router = APIRouter(prefix="/api/onboarding", tags=["onboarding"])
+_logger = logging.getLogger("caflow.onboarding")
 
 # PAN validation (AAAAA9999A) — IT Act format
 _PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
@@ -33,6 +35,9 @@ class FirmCreate(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     partner_name: str
+    # Entity type of the CA firm itself, used only to provision the internal
+    # practice client (Amendment v1.1). Optional; defaults to Partnership.
+    entity_type: Optional[str] = None
 
 
 class InviteUser(BaseModel):
@@ -97,6 +102,18 @@ def create_firm(
         "role": "Partner",
     }).execute()
 
+    # Amendment v1.1: provision the firm-as-internal-client (idempotent). Reuses
+    # the firm's own PAN/GSTIN. Non-fatal — firm creation must still succeed even
+    # if provisioning is skipped (it can be re-run later via POST /api/practice/provision).
+    try:
+        from services.internal_client_service import provision as _provision_internal
+        _provision_internal(
+            firm_id, body.firm_name, pan,
+            entity_type=(body.entity_type or "Partnership"), gstin=gstin,
+        )
+    except Exception as e:  # pragma: no cover - defensive
+        _logger.error("Internal-client provisioning failed for firm %s: %s", firm_id, e)
+
     return api_response(True, {"firm": firm, "message": "Firm created successfully"})
 
 
@@ -157,7 +174,8 @@ def onboarding_status(
         raise HTTPException(status_code=404, detail="Firm not found")
 
     users = db.table("users").select("id").eq("firm_id", firm_id).execute().data or []
-    clients = db.table("clients").select("id").eq("firm_id", firm_id).execute().data or []
+    # Guardrail G2: the internal practice client does not count as an onboarded client.
+    clients = db.table("clients").select("id").eq("firm_id", firm_id).eq("is_internal", False).execute().data or []
 
     checks = {
         "firm_created": True,
