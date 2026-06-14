@@ -152,6 +152,24 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         else:
             firm_result["invoice_overdue"] = {"skipped": "already ran today"}
 
+        # 4. Collections — AR overdue sweep + reminders (Amendment v1.1 Batch 4).
+        #    Operates on the firm's internal-client fee invoices. Sweep is
+        #    idempotent; reminders are cadence-gated (anti-spam).
+        if force or not _already_ran_today("collections", fid):
+            try:
+                from services.collections_service import sweep_overdue, send_overdue_reminders
+                swept = sweep_overdue(fid)
+                reminders = send_overdue_reminders(fid)
+                outcome = {**swept, **reminders}
+                firm_result["collections"] = outcome
+                _log_run("collections", fid, "success", outcome)
+            except Exception as e:
+                logger.error(f"Collections job failed for firm {fid}: {e}", exc_info=True)
+                firm_result["collections"] = {"error": str(e)}
+                _log_run("collections", fid, "failed", {"error": str(e)})
+        else:
+            firm_result["collections"] = {"skipped": "already ran today"}
+
         results["firms"][fid] = firm_result
 
     logger.info(f"Daily scheduler run completed for {len(firm_ids)} firm(s)")

@@ -121,16 +121,20 @@ def create_receipt(
         firm_id      = current_user.get("firm_id")
         client_id    = data["client_id"]
         amount_paise = data["amount_paise"]
+        tds_paise    = int(data.get("tds_paise", 0) or 0)   # TDS deducted by client (§194J)
+        settlement   = amount_paise + tds_paise              # value applied against invoices
         allocations  = data.get("allocations", [])
 
-        # Validate allocation totals — integer arithmetic (also enforced by ReceiptIn)
+        # Validate allocation totals — integer arithmetic (also enforced by ReceiptIn).
+        # Settlement capacity includes TDS deducted at source.
         total_allocated = sum(int(a.get("allocated_paise", 0)) for a in allocations)
-        if total_allocated > amount_paise:
+        if total_allocated > settlement:
             raise HTTPException(
                 status_code=422,
-                detail=f"Total allocated ({total_allocated} paise) exceeds receipt amount ({amount_paise} paise)",
+                detail=f"Total allocated ({total_allocated} paise) exceeds settlement value "
+                       f"({settlement} paise = amount {amount_paise} + TDS {tds_paise})",
             )
-        unallocated_paise = amount_paise - total_allocated
+        unallocated_paise = settlement - total_allocated
 
         # Validate posting date is not in a locked financial year (migration 020)
         period_validation_service.validate_posting_date(firm_id or "", data["receipt_date"])
@@ -149,6 +153,7 @@ def create_receipt(
                 "receipt_no":        receipt_no,
                 "receipt_date":      data["receipt_date"],
                 "amount_paise":      amount_paise,
+                "tds_paise":         tds_paise,
                 "unallocated_paise": unallocated_paise,
                 "payment_mode":      data.get("payment_mode", ""),
                 "reference_no":      data.get("reference_no", ""),
@@ -172,6 +177,7 @@ def create_receipt(
             "receipt_no":        receipt_no,
             "receipt_date":      data["receipt_date"],
             "amount_paise":      amount_paise,
+            "tds_paise":         tds_paise,
             "unallocated_paise": unallocated_paise,
             "payment_mode":      data.get("payment_mode", ""),
             "reference_no":      data.get("reference_no", ""),

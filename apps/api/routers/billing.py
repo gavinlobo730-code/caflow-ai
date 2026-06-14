@@ -18,6 +18,7 @@ from pydantic import BaseModel, field_validator
 from models.common import api_response
 from core.permissions import rbac
 from services import billing_service
+from services import collections_service
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 
@@ -94,3 +95,34 @@ def run(as_of: Optional[str] = Query(None),
         current_user: dict = Depends(rbac("billing", "write"))):
     """Idempotently generate drafts for all due schedules."""
     return api_response(True, billing_service.run_due(current_user["firm_id"], current_user, as_of))
+
+
+# ── Collections & AR (Batch 4) — Partner-only ───────────────────────────────
+
+@router.get("/ar-aging")
+def ar_aging(current_user: dict = Depends(rbac("billing", "read"))):
+    """Due-date based AR aging across the firm's fee invoices (internal client)."""
+    return api_response(True, collections_service.ar_aging(current_user["firm_id"]))
+
+
+@router.get("/collections/dashboard")
+def collections_dashboard(
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("billing", "read")),
+):
+    """Firm Collections/AR KPIs: total receivable, aging, overdue, TDS receivable,
+    collected cash. (DSO/realization are deferred Revenue Intelligence.)"""
+    return api_response(True, collections_service.dashboard(current_user["firm_id"], date_from, date_to))
+
+
+@router.post("/collections/sweep")
+def run_overdue_sweep(current_user: dict = Depends(rbac("billing", "write"))):
+    """Recompute is_overdue/days_overdue/aging_bucket for open invoices (idempotent)."""
+    return api_response(True, collections_service.sweep_overdue(current_user["firm_id"]))
+
+
+@router.post("/collections/send-reminders")
+def send_reminders(current_user: dict = Depends(rbac("billing", "write"))):
+    """Send collections reminders for overdue invoices (cadence-gated, idempotent)."""
+    return api_response(True, collections_service.send_overdue_reminders(current_user["firm_id"]))

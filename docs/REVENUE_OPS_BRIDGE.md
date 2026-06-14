@@ -83,6 +83,22 @@ debt the compatibility layer carries. It is updated as each batch lands.
   `POST /api/sales-invoices/{id}/repost-journal` detect/remediate any legacy
   issued-but-unposted invoices (idempotent, Partner-only for the internal client).
 
+### Batch 4 (collections & AR)
+- **B4-1 · Overdue is derived, not a status.** `is_overdue`/`days_overdue`/
+  `aging_bucket` (migration 077) are maintained by a daily sweep; payment status
+  is never mutated to `overdue`. Legacy `fee_*` overdue (status-based, via
+  `invoice_lifecycle_service`) is untouched — the two models coexist on different
+  tables.
+- **B4-2 · TDS on fees via the receipts engine.** `receipts.tds_paise` extends the
+  existing receipt; `journal_for_receipt` posts the `Dr TDS Receivable` leg.
+  Single receipts/accounting path (no separate TDS workflow).
+- **B4-3 · Aging fallback.** When `due_date` is absent, aging derives
+  `invoice_date + 30` (default credit days). Refining with `customers.credit_days`
+  per invoice is a minor future enhancement.
+- **B4-4 · Dashboard scope.** Firm Collections/AR KPIs aggregate the internal
+  client's fee invoices (Partner-only). DSO/realization remain deferred Revenue
+  Intelligence.
+
 ## Rule
 
 New Revenue Operations functionality MUST target the Amendment stack. The `fee_*`
