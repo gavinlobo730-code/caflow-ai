@@ -24,7 +24,8 @@ import os
 import logging
 from typing import Optional
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request, Depends
+from core.auth import get_current_user
 
 _logger = logging.getLogger("caflow.internal_client")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -89,6 +90,23 @@ def assert_not_internal_for_payroll(client_id: Optional[str], firm_id: Optional[
             status_code=403,
             detail="Payroll/HR is not available for the firm's internal practice client.",
         )
+
+
+def require_client_access(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """G1 router-level guard (Batch 2.1). Applied via include_router(dependencies=[...])
+    to every client-scoped router. Reads client_id from the path OR query string;
+    when it targets the firm's internal practice client and the caller is not a
+    Partner, returns 404 (existence not disclosed). No-op for requests without a
+    client_id (firm-level endpoints). The portal router is intentionally NOT
+    guarded here — it uses a separate auth audience.
+    """
+    client_id = request.path_params.get("client_id") or request.query_params.get("client_id")
+    if client_id:
+        assert_partner_for_internal_id(client_id, current_user)
+    return current_user
 
 
 # ── Provisioning (idempotent) ────────────────────────────────────────────────
