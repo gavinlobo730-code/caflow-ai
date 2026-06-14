@@ -6,13 +6,12 @@ import {
   UserCheck,
   Sparkles,
   BookOpen,
-  Users2,
   Network,
   Activity,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type WorkspaceId = "home" | "clients" | "deadlines" | "work" | "team" | "ai" | "accounting" | "pipeline" | "relationships" | "health";
+export type WorkspaceId = "home" | "clients" | "deadlines" | "work" | "team" | "ai" | "accounting" | "relationships" | "health";
 
 export interface WorkspaceConfig {
   id: WorkspaceId;
@@ -73,13 +72,6 @@ export const WORKSPACE_CONFIGS: WorkspaceConfig[] = [
     icon: BookOpen,
   },
   {
-    id: "pipeline",
-    label: "Pipeline",
-    description: "Leads & proposals",
-    defaultRoute: "/pipeline",
-    icon: Users2,
-  },
-  {
     id: "relationships",
     label: "Relationships",
     description: "Entity intelligence",
@@ -103,7 +95,6 @@ export const DEFAULT_WORKSPACE_ROUTES: Record<WorkspaceId, string> = {
   team: "/team",
   ai: "/ai-assistant",
   accounting: "/accounting/chart-of-accounts",
-  pipeline: "/pipeline",
   relationships: "/relationships",
   health: "/health",
 };
@@ -144,9 +135,6 @@ export function getWorkspaceForPathname(pathname: string): WorkspaceId {
     pathname.startsWith("/payroll")
   )
     return "accounting";
-
-  if (pathname.startsWith("/pipeline"))
-    return "pipeline";
 
   if (pathname.startsWith("/relationships"))
     return "relationships";
