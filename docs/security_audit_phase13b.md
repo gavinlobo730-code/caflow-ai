@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-13
 **Auditor:** Claude Code (automated)
-**Scope:** Row-Level Security coverage across all CAflow AI database tables
+**Scope:** Row-Level Security coverage across all PracticeSync AI database tables
 
 ---
 

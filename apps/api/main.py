@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
@@ -71,7 +71,7 @@ from routers.memory_intelligence import router as memory_intelligence_router
 # Client Portal
 from routers.portal import router as portal_router
 
-app = FastAPI(title="CAflow AI API", version="2.0.0")
+app = FastAPI(title="PracticeSync AI API", version="2.0.0")
 
 # CORSMiddleware MUST be registered first so it wraps all response paths,
 # including error responses produced by exception handlers below.
@@ -102,25 +102,33 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"success": False, "data": None, "error": "Internal server error"},
     )
 
-app.include_router(clients.router)
+# Amendment v1.1 Batch 2.1 — Guardrail G1 (by-id): client-scoped routers reject
+# non-Partner access to the internal practice client (client_id in path/query).
+# Applied at include time (the only reliable mechanism — router.dependencies
+# post-hoc does not apply to already-decorated routes). Portal is excluded
+# (separate auth audience); firm-level routers are excluded (no client_id surface).
+from services.internal_client_service import require_client_access
+_CLIENT_GUARD = [Depends(require_client_access)]
+
+app.include_router(clients.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance.router)
-app.include_router(documents.router)
+app.include_router(documents.router, dependencies=_CLIENT_GUARD)
 app.include_router(assistant.router)
 app.include_router(insights.router)
 app.include_router(tasks.router)
 app.include_router(workflows.router)
 app.include_router(reminders.router)
 app.include_router(team.router)
-app.include_router(accounting.router)
-app.include_router(compliance_records.router)
+app.include_router(accounting.router, dependencies=_CLIENT_GUARD)
+app.include_router(compliance_records.router, dependencies=_CLIENT_GUARD)
 app.include_router(document_intelligence.router)
-app.include_router(risks.router)
-app.include_router(ai_insights.router)
+app.include_router(risks.router, dependencies=_CLIENT_GUARD)
+app.include_router(ai_insights.router, dependencies=_CLIENT_GUARD)
 app.include_router(automation.router)
 app.include_router(notifications.router)
-app.include_router(ai_copilot.router)
+app.include_router(ai_copilot.router, dependencies=_CLIENT_GUARD)
 app.include_router(gst.router)
-app.include_router(tds.router)
+app.include_router(tds.router, dependencies=_CLIENT_GUARD)
 app.include_router(income_tax.router)
 app.include_router(task_templates.router)
 app.include_router(task_extras.router)
@@ -129,48 +137,59 @@ app.include_router(time_tracking.router)
 app.include_router(workload.router)
 app.include_router(analytics.router)
 app.include_router(engagements.router)
-app.include_router(invoices.router)
+app.include_router(invoices.router, dependencies=_CLIENT_GUARD)
 app.include_router(intelligence.router)
 app.include_router(scheduler_status.router)
 app.include_router(audit.router)
 app.include_router(onboarding.router)
-app.include_router(customers.router)
-app.include_router(vendors.router)
-app.include_router(sales_invoices.router)
-app.include_router(receipts.router)
-app.include_router(credit_notes.router)
-app.include_router(purchase_bills.router)
-app.include_router(purchase_payments.router)
+app.include_router(customers.router, dependencies=_CLIENT_GUARD)
+app.include_router(vendors.router, dependencies=_CLIENT_GUARD)
+app.include_router(sales_invoices.router, dependencies=_CLIENT_GUARD)
+app.include_router(receipts.router, dependencies=_CLIENT_GUARD)
+app.include_router(credit_notes.router, dependencies=_CLIENT_GUARD)
+app.include_router(purchase_bills.router, dependencies=_CLIENT_GUARD)
+app.include_router(purchase_payments.router, dependencies=_CLIENT_GUARD)
 app.include_router(document_intelligence_v1.router)
-app.include_router(gst_workspace.router)
-app.include_router(tds_workspace.router)
-app.include_router(mca_workspace.router)
-app.include_router(document_intelligence_v2.router)
-app.include_router(payroll.router)
-app.include_router(fixed_assets.router)
-app.include_router(banking.router)
-app.include_router(timeline.router)
-# Phase 6 — Year End routers
-app.include_router(year_end.router, prefix="/api")
+app.include_router(gst_workspace.router, dependencies=_CLIENT_GUARD)
+app.include_router(tds_workspace.router, dependencies=_CLIENT_GUARD)
+app.include_router(mca_workspace.router, dependencies=_CLIENT_GUARD)
+app.include_router(document_intelligence_v2.router, dependencies=_CLIENT_GUARD)
+app.include_router(payroll.router, dependencies=_CLIENT_GUARD)
+app.include_router(fixed_assets.router, dependencies=_CLIENT_GUARD)
+app.include_router(banking.router, dependencies=_CLIENT_GUARD)
+app.include_router(timeline.router, dependencies=_CLIENT_GUARD)
+# Phase 6 — Year End routers (client-scoped reads guarded by G1)
+app.include_router(year_end.router, prefix="/api", dependencies=_CLIENT_GUARD)
 app.include_router(year_end_checklist.router, prefix="/api")
 app.include_router(year_end_adjustments.router, prefix="/api")
 app.include_router(year_end_statements.router, prefix="/api")
 app.include_router(year_end_notes.router, prefix="/api")
 app.include_router(year_end_reviews.router, prefix="/api")
-app.include_router(year_end_exports.router, prefix="/api")
+app.include_router(year_end_exports.router, prefix="/api", dependencies=_CLIENT_GUARD)
 app.include_router(year_end_mappings.router, prefix="/api")
 # Phase 7 — Unified Intelligence Layer
 app.include_router(lifecycle_router)
-app.include_router(relationships_router)
-app.include_router(health_router)
+app.include_router(relationships_router, dependencies=_CLIENT_GUARD)
+app.include_router(health_router, dependencies=_CLIENT_GUARD)
 # Phase 10 — Workflow Automation Engine
 app.include_router(workflow_builder_router)
 # Phase 11 — AI Copilot Platform
-app.include_router(ai_copilot_v2_router)
+app.include_router(ai_copilot_v2_router, dependencies=_CLIENT_GUARD)
 # Phase 13 — AI Memory & Intelligence
-app.include_router(memory_intelligence_router)
+app.include_router(memory_intelligence_router, dependencies=_CLIENT_GUARD)
 # Client Portal
 app.include_router(portal_router)
+# Amendment v1.1 — Practice (firm-as-internal-client), Partner-only
+from routers.practice import router as practice_router
+app.include_router(practice_router)
+# Amendment v1.1 Batch 3 — Billing / Revenue Operations, Partner-only
+from routers.billing import router as billing_router
+app.include_router(billing_router)
+# Amendment v1.1 Batch 6 — Knowledge Base + Client Instructions. The client-scoped
+# endpoints (/api/clients/{client_id}/...) are gated by require_client_access (G1);
+# firm /api/knowledge endpoints carry no client_id so the guard is a no-op there.
+from routers.knowledge import router as knowledge_router
+app.include_router(knowledge_router, dependencies=_CLIENT_GUARD)
 
 
 # Phase 10B — Workflow Scheduler (daily jobs + workflow schedule runner)
@@ -185,7 +204,7 @@ start_memory_scheduler()
 @app.get("/")
 def root():
     from models.common import api_response
-    return api_response(True, {"message": "CAflow AI API v2.0", "docs": "/docs"})
+    return api_response(True, {"message": "PracticeSync AI API v2.0", "docs": "/docs"})
 
 
 @app.get("/health")

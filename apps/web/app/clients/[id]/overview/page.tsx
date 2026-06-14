@@ -8,6 +8,7 @@ import { getComplianceCalendar, seedComplianceCalendar } from "@/lib/data/compli
 import { getFirmId } from "@/lib/data/getFirmId";
 import { snapshotHealthScore, getLatestHealthScore, deriveHealthAlerts, type HealthAlert } from "@/lib/services/health-score-compute";
 import { ClientTimeline } from "@/components/ClientTimeline";
+import { ClientInstructions } from "@/components/knowledge/ClientInstructions";
 import { HealthBadge } from "@/components/HealthBadge";
 import type { Client } from "@/lib/types";
 import type { Task } from "@/lib/types";
@@ -115,6 +116,9 @@ export default function OverviewPage() {
     <div className="flex h-full overflow-hidden">
       {/* ── Main feed (left) ─────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto p-5 space-y-4 min-w-0">
+
+        {/* Pinned client instructions (Amendment v1.1 FR-KB-02) */}
+        <ClientInstructions clientId={clientId} pinnedOnly />
 
         {/* Stat strip */}
         <div className="grid grid-cols-3 gap-3">

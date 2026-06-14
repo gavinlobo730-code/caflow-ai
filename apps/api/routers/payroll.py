@@ -15,6 +15,7 @@ from models.common import api_response
 from models.payroll import EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn, RunStatusIn
 from core.permissions import rbac
 from services.timeline_service import timeline_service
+from services.internal_client_service import assert_not_internal_for_payroll
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
 
@@ -175,6 +176,8 @@ def create_employee(
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
+    # Guardrail G4: no payroll/HR for the internal practice client.
+    assert_not_internal_for_payroll(data.client_id, current_user["firm_id"])
     payload = data.model_dump()
     payload["firm_id"] = current_user["firm_id"]
     payload["status"] = "active"
@@ -221,6 +224,8 @@ def create_salary_structure(
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
+    # Guardrail G4: no payroll/HR for the internal practice client.
+    assert_not_internal_for_payroll(data.client_id, current_user["firm_id"])
     payload = data.model_dump()
     payload["firm_id"] = current_user["firm_id"]
     row = db.table("salary_structures").insert(payload).execute()
@@ -256,6 +261,9 @@ def create_run(
 
     if not db:
         return api_response(True, {"id": "mock-run", "month": month, "status": "draft"})
+
+    # Guardrail G4: no payroll/HR for the internal practice client.
+    assert_not_internal_for_payroll(client_id, current_user["firm_id"])
 
     # Check for duplicate run
     existing = db.table("payroll_runs").select("id").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("month", month).execute()

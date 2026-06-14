@@ -1,4 +1,4 @@
-CAflow AI — AI-powered practice management platform for Indian Chartered Accountants.
+PracticeSync (formerly CAflow AI) — AI-powered practice management platform for Indian Chartered Accountants.
 Replaces Tally + ClearTax + Winman + WhatsApp with one unified AI-first platform.
 
 Tech stack:

@@ -11,6 +11,7 @@ from repositories.ai_insights_repository import ai_insights_repo
 from mock_data import MOCK_ACTIVITY_LOGS
 from datetime import date
 from services.audit_service import log_event
+from services.internal_client_service import assert_can_view_client
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
@@ -74,6 +75,8 @@ def get_client_workspace(client_id: str = Path(...), current_user: dict = Depend
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     _assert_firm(client, firm_id)
+    # Guardrail G1: the internal practice client is Partner-only (404 to non-partners).
+    assert_can_view_client(client, current_user)
 
     tasks = compliance_repo.find_all(firm_id=firm_id, client_id=client_id)
     docs = document_repo.find_all(firm_id=firm_id, client_id=client_id)

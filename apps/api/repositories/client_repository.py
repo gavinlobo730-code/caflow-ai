@@ -40,10 +40,17 @@ class ClientRepository(BaseRepository[dict]):
         status: Optional[str] = None,
         include_archived: bool = False,
         include_test: bool = True,
+        include_internal: bool = False,
         **filters,
     ) -> list[dict]:
+        # Guardrail G2 (Amendment v1.1): the firm-as-internal-client is excluded
+        # from every client-population surface by default. Partner-scoped callers
+        # that genuinely need it (e.g. the Practice workspace) pass
+        # include_internal=True explicitly.
         if _USE_MOCK:
             clients = [c for c in MOCK_CLIENTS if not c.get("deleted_at")]
+            if not include_internal:
+                clients = [c for c in clients if not c.get("is_internal", False)]
             if not include_archived:
                 clients = [c for c in clients if c.get("status") != "archived"]
             if not include_test:
@@ -55,6 +62,8 @@ class ClientRepository(BaseRepository[dict]):
         query = _get_db().table("clients").select("*").is_("deleted_at", None)
         if firm_id:
             query = query.eq("firm_id", firm_id)
+        if not include_internal:
+            query = query.eq("is_internal", False)
         if not include_archived:
             query = query.neq("status", "archived")
         if not include_test:
@@ -126,8 +135,9 @@ class ClientRepository(BaseRepository[dict]):
         result = _get_db().table("clients").update({"deleted_at": self.now_iso()}).eq("id", id).execute()
         return bool(result.data)
 
-    def count(self, firm_id: Optional[str] = None) -> int:
-        return len(self.find_all(firm_id=firm_id))
+    def count(self, firm_id: Optional[str] = None, include_internal: bool = False) -> int:
+        # Excludes the internal client by default (Guardrail G2).
+        return len(self.find_all(firm_id=firm_id, include_internal=include_internal))
 
 
 client_repo = ClientRepository()

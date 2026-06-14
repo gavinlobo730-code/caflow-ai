@@ -2,6 +2,9 @@ import { supabase } from "@/lib/supabase/client";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+/** Standard backend response envelope: { success, data, error }. */
+export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
@@ -359,5 +362,73 @@ export const api = {
       request(`/api/copilot/recommendations/${id}/action`, { method: "POST", body: JSON.stringify(body) }),
     executeAction: (body: unknown) =>
       request("/api/copilot/actions", { method: "POST", body: JSON.stringify(body) }),
+  },
+
+  // ── Amendment v1.1 (Batch 7) — Practice / Revenue Operations / Knowledge ──
+  // Thin fetch wrappers only. All computation (aging, GST, overdue, visibility)
+  // is performed server-side; the frontend fetches + displays.
+  practice: {
+    get: () => request("/api/practice"),
+    provision: () => request("/api/practice/provision", { method: "POST" }),
+  },
+  billing: {
+    listSchedules: (activeOnly?: boolean) =>
+      request(`/api/billing/schedules${activeOnly ? "?active_only=true" : ""}`),
+    createSchedule: (body: unknown) =>
+      request("/api/billing/schedules", { method: "POST", body: JSON.stringify(body) }),
+    previewRun: (asOf?: string) =>
+      request(`/api/billing/preview-run${asOf ? `?as_of=${asOf}` : ""}`, { method: "POST" }),
+    generate: (scheduleId: string) =>
+      request(`/api/billing/schedules/${scheduleId}/generate`, { method: "POST" }),
+    run: () => request("/api/billing/run", { method: "POST" }),
+    arAging: () => request("/api/billing/ar-aging"),
+    dashboard: (params?: Record<string, string>) =>
+      request(`/api/billing/collections/dashboard${params ? "?" + new URLSearchParams(params) : ""}`),
+    sweep: () => request("/api/billing/collections/sweep", { method: "POST" }),
+    sendReminders: () => request("/api/billing/collections/send-reminders", { method: "POST" }),
+    unbilledWork: (clientId?: string) =>
+      request(`/api/billing/unbilled-work${clientId ? `?client_id=${clientId}` : ""}`),
+    listCostRates: () => request("/api/billing/staff-cost-rates"),
+    setCostRate: (userId: string, costRatePaise: number | null) =>
+      request(`/api/billing/staff-cost-rates/${userId}`, {
+        method: "PUT", body: JSON.stringify({ cost_rate_paise: costRatePaise }),
+      }),
+  },
+  salesInvoices: {
+    list: (clientId: string, params?: Record<string, string>) =>
+      request(`/api/sales-invoices/?client_id=${clientId}${params ? "&" + new URLSearchParams(params) : ""}`),
+    get: (id: string) => request(`/api/sales-invoices/${id}`),
+    issue: (id: string) => request(`/api/sales-invoices/${id}/issue`, { method: "POST" }),
+    unposted: (clientId?: string) =>
+      request(`/api/sales-invoices/maintenance/unposted${clientId ? `?client_id=${clientId}` : ""}`),
+  },
+  receipts: {
+    create: (body: unknown) =>
+      request("/api/receipts/", { method: "POST", body: JSON.stringify(body) }),
+  },
+  knowledge: {
+    listArticles: (params?: Record<string, string>) =>
+      request(`/api/knowledge/articles${params ? "?" + new URLSearchParams(params) : ""}`),
+    createArticle: (body: unknown) =>
+      request("/api/knowledge/articles", { method: "POST", body: JSON.stringify(body) }),
+    getArticle: (id: string) => request(`/api/knowledge/articles/${id}`),
+    listVersions: (id: string) => request(`/api/knowledge/articles/${id}/versions`),
+    editArticle: (id: string, content: string) =>
+      request(`/api/knowledge/articles/${id}/versions`, { method: "POST", body: JSON.stringify({ content }) }),
+    restoreVersion: (id: string, version: number) =>
+      request(`/api/knowledge/articles/${id}/restore/${version}`, { method: "POST" }),
+    archiveArticle: (id: string) =>
+      request(`/api/knowledge/articles/${id}/archive`, { method: "POST" }),
+    clientArticles: (clientId: string, query?: string) =>
+      request(`/api/clients/${clientId}/knowledge${query ? `?query=${encodeURIComponent(query)}` : ""}`),
+  },
+  instructions: {
+    list: (clientId: string) => request(`/api/clients/${clientId}/instructions`),
+    create: (clientId: string, body: unknown) =>
+      request(`/api/clients/${clientId}/instructions`, { method: "POST", body: JSON.stringify(body) }),
+    update: (clientId: string, id: string, body: unknown) =>
+      request(`/api/clients/${clientId}/instructions/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    archive: (clientId: string, id: string) =>
+      request(`/api/clients/${clientId}/instructions/${id}/archive`, { method: "POST" }),
   },
 };

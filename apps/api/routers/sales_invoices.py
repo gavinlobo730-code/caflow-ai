@@ -17,6 +17,7 @@ from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
+from services.internal_client_service import is_internal_client, assert_partner_for_internal_id, is_partner
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.sales_invoices")
@@ -547,8 +548,11 @@ def issue_invoice(
 ):
     """
     Transition invoice from draft → issued.
-    Auto-creates a posted journal entry via Phase2JournalService.
-    CGST Act §31: Invoice must be issued before GST reporting.
+    ATOMIC (Batch 3.1): the posted journal entry is created FIRST; the invoice
+    only becomes 'issued' once the journal succeeds. A posting failure (e.g.
+    missing Chart of Accounts) leaves the invoice a re-tryable DRAFT — never an
+    issued-but-unposted state.
+    CGST Act §31: Invoice must be issued before GST reporting. §9: GST on supply.
     """
     try:
         from services.phase2_journal_service import phase2_journal_service
@@ -558,13 +562,16 @@ def issue_invoice(
                 if inv["id"] == invoice_id:
                     if inv.get("status") != "draft":
                         raise HTTPException(status_code=422, detail="Only draft invoices can be issued")
+                    # Post journal FIRST — failure keeps the invoice a draft.
+                    try:
+                        jid = phase2_journal_service.journal_for_sales_invoice(
+                            inv, current_user.get("firm_id", ""), inv["client_id"])
+                    except ValueError as ve:
+                        return api_response(False, None,
+                                            f"Cannot issue — {ve} Invoice remains a draft; retry after setup.")
                     MOCK_SALES_INVOICES[i]["status"] = "issued"
                     MOCK_SALES_INVOICES[i]["issued_at"] = datetime.now(timezone.utc).isoformat()
-                    phase2_journal_service.journal_for_sales_invoice(
-                        MOCK_SALES_INVOICES[i],
-                        current_user.get("firm_id", ""),
-                        MOCK_SALES_INVOICES[i]["client_id"],
-                    )
+                    MOCK_SALES_INVOICES[i]["journal_entry_id"] = jid or "mock-journal"
                     return api_response(True, MOCK_SALES_INVOICES[i])
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
 
@@ -577,19 +584,28 @@ def issue_invoice(
         if inv.get("status") != "draft":
             raise HTTPException(status_code=422, detail="Only draft invoices can be issued")
 
+        # Auto-create journal entry FIRST — CGST Act §9. If the Chart of Accounts
+        # is not set up, this raises ValueError and the invoice stays a draft.
+        try:
+            journal_id = phase2_journal_service.journal_for_sales_invoice(
+                invoice=inv,
+                firm_id=current_user.get("firm_id", ""),
+                client_id=inv.get("client_id", ""),
+            )
+        except ValueError as ve:
+            return api_response(False, None,
+                                f"Cannot issue — {ve} Invoice remains a draft; seed the Chart of Accounts and retry.")
+        if not journal_id:
+            return api_response(False, None,
+                                "Cannot issue — journal posting failed. Invoice remains a draft; retry.")
+
         now_iso = datetime.now(timezone.utc).isoformat()
         upd = db.table("client_sales_invoices").update({
-            "status":    "issued",
-            "issued_at": now_iso,
+            "status":           "issued",
+            "issued_at":        now_iso,
+            "journal_entry_id": journal_id,
         }).eq("id", invoice_id).execute()
-        updated_inv = upd.data[0] if upd.data else {**inv, "status": "issued"}
-
-        # Auto-create journal entry — CGST Act §9
-        journal_id = phase2_journal_service.journal_for_sales_invoice(
-            invoice=updated_inv,
-            firm_id=current_user.get("firm_id", ""),
-            client_id=updated_inv.get("client_id", ""),
-        )
+        updated_inv = upd.data[0] if upd.data else {**inv, "status": "issued", "journal_entry_id": journal_id}
 
         log_event(
             current_user.get("firm_id", ""), "sales_invoice", invoice_id,
@@ -665,4 +681,96 @@ def cancel_invoice(
         raise
     except Exception as e:
         _logger.error("cancel_invoice: %s", e)
+        return api_response(False, None, "Unable to complete invoice operation. Please try again.")
+
+
+# ---------------------------------------------------------------------------
+# Batch 3.1 — issued-but-unposted detection + remediation
+# ---------------------------------------------------------------------------
+
+@router.get("/maintenance/unposted")
+def list_unposted(
+    client_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """List issued-but-unposted invoices (status='issued' AND journal_entry_id IS NULL).
+    These are legacy/edge invoices that need a journal reposted. The internal
+    practice client's invoices are visible only to Partners (G1)."""
+    try:
+        firm_id = current_user.get("firm_id", "")
+        partner = is_partner(current_user)
+        if _USE_MOCK:
+            rows = [i for i in MOCK_SALES_INVOICES
+                    if i.get("status") == "issued" and not i.get("journal_entry_id")
+                    and (client_id is None or i.get("client_id") == client_id)]
+        else:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+            q = (db.table("client_sales_invoices").select("*")
+                 .eq("firm_id", firm_id).eq("status", "issued").is_("journal_entry_id", None))
+            if client_id:
+                q = q.eq("client_id", client_id)
+            rows = q.execute().data or []
+        # G1: hide the internal client's invoices from non-Partners.
+        if not partner:
+            rows = [r for r in rows if not is_internal_client(r.get("client_id"), firm_id)]
+        return api_response(True, {"unposted": rows, "count": len(rows)})
+    except Exception as e:
+        _logger.error("list_unposted: %s", e)
+        return api_response(False, None, "Unable to complete invoice operation. Please try again.")
+
+
+@router.post("/{invoice_id}/repost-journal")
+def repost_journal(
+    invoice_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Remediate an issued-but-unposted invoice by posting its journal.
+    Idempotent: if a journal already exists it is reused (_create_journal de-dups
+    by reference_no+date+client) and the link is set. Returns the journal id."""
+    try:
+        from services.phase2_journal_service import phase2_journal_service
+        firm_id = current_user.get("firm_id", "")
+
+        if _USE_MOCK:
+            inv = next((i for i in MOCK_SALES_INVOICES if i["id"] == invoice_id), None)
+            if not inv:
+                raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+            assert_partner_for_internal_id(inv.get("client_id"), current_user)
+            if inv.get("status") != "issued":
+                raise HTTPException(status_code=422, detail="Only issued invoices can be reposted")
+            if inv.get("journal_entry_id"):
+                return api_response(True, {"invoice_id": invoice_id, "journal_entry_id": inv["journal_entry_id"], "already_posted": True})
+            jid = phase2_journal_service.journal_for_sales_invoice(inv, firm_id, inv["client_id"]) or "mock-journal"
+            inv["journal_entry_id"] = jid
+            return api_response(True, {"invoice_id": invoice_id, "journal_entry_id": jid, "already_posted": False})
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        resp = db.table("client_sales_invoices").select("*").eq("id", invoice_id).eq("firm_id", firm_id).limit(1).execute()
+        if not resp.data:
+            raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+        inv = resp.data[0]
+        assert_partner_for_internal_id(inv.get("client_id"), current_user)
+        if inv.get("status") != "issued":
+            raise HTTPException(status_code=422, detail="Only issued invoices can be reposted")
+        if inv.get("journal_entry_id"):
+            return api_response(True, {"invoice_id": invoice_id, "journal_entry_id": inv["journal_entry_id"], "already_posted": True})
+
+        try:
+            journal_id = phase2_journal_service.journal_for_sales_invoice(inv, firm_id, inv.get("client_id", ""))
+        except ValueError as ve:
+            return api_response(False, None, f"Cannot repost — {ve} Seed the Chart of Accounts and retry.")
+        if not journal_id:
+            return api_response(False, None, "Cannot repost — journal posting failed. Retry after setup.")
+
+        db.table("client_sales_invoices").update({"journal_entry_id": journal_id}).eq("id", invoice_id).execute()
+        log_event(firm_id, "sales_invoice", invoice_id, "repost_journal",
+                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                  new_data={"journal_entry_id": journal_id})
+        return api_response(True, {"invoice_id": invoice_id, "journal_entry_id": journal_id, "already_posted": False})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("repost_journal: %s", e)
         return api_response(False, None, "Unable to complete invoice operation. Please try again.")

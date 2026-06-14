@@ -102,8 +102,12 @@ class Phase2JournalService:
         self, receipt: dict, firm_id: str, client_id: str
     ) -> Optional[str]:
         """
-        Dr Bank Account      = amount_paise
-        Cr Trade Receivables = amount_paise
+        Dr Bank Account      = amount_paise (cash received)
+        Dr TDS Receivable    = tds_paise    (if the client deducted TDS — IT Act §194J)
+        Cr Trade Receivables = amount_paise + tds_paise (total settlement)
+        The invoice can be fully settled even when cash < invoice value because the
+        TDS portion is recorded as a receivable (claimable against the firm's IT,
+        reconcilable to 26AS/AIS).
         """
         if _USE_MOCK:
             _logger.info("[MOCK] journal_for_receipt: %s", receipt.get("receipt_no"))
@@ -113,23 +117,35 @@ class Phase2JournalService:
             from core.supabase_client import get_supabase
             db = get_supabase()
 
+            cash_paise = int(receipt["amount_paise"])
+            tds_paise  = int(receipt.get("tds_paise", 0) or 0)
+            settlement = cash_paise + tds_paise
+
             bank_id        = self._find_account(db, firm_id, client_id, "%Bank%")
             receivables_id = self._find_account(db, firm_id, client_id, "%Trade Receivable%")
 
             lines = [
                 {
                     "account_id": bank_id,
-                    "debit_paise": receipt["amount_paise"],
+                    "debit_paise": cash_paise,
                     "credit_paise": 0,
                     "narration": "Cash/bank received from customer",
                 },
-                {
-                    "account_id": receivables_id,
-                    "debit_paise": 0,
-                    "credit_paise": receipt["amount_paise"],
-                    "narration": "Trade receivable cleared",
-                },
             ]
+            if tds_paise > 0:
+                tds_recv_id = self._find_account(db, firm_id, client_id, "%TDS Receivable%")
+                lines.append({
+                    "account_id": tds_recv_id,
+                    "debit_paise": tds_paise,
+                    "credit_paise": 0,
+                    "narration": "TDS deducted by client — receivable (IT Act §194J)",
+                })
+            lines.append({
+                "account_id": receivables_id,
+                "debit_paise": 0,
+                "credit_paise": settlement,
+                "narration": "Trade receivable cleared (cash + TDS)",
+            })
 
             return self._create_journal(
                 db=db,

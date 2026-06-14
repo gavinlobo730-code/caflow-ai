@@ -27,6 +27,7 @@ export async function getClients(): Promise<Client[]> {
     .from("clients")
     .select("*")
     .is("deleted_at", null)
+    .eq("is_internal", false)   // Guardrail G2: exclude the firm-as-internal-client from client lists
     .order("client_name");
 
   if (error) throw new Error(error.message);
