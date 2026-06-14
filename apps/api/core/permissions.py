@@ -51,6 +51,11 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "read":  _PARTNER_ONLY,
         "write": _PARTNER_ONLY,
     },
+    # ── Billing / Revenue Operations — Partner/Owner only (exposes fee economics) ─
+    "billing": {
+        "read":  _PARTNER_ONLY,
+        "write": _PARTNER_ONLY,
+    },
     # ── Compliance records ───────────────────────────────────────────────────
     "compliance_record": {
         "read":   _ALL_STAFF,

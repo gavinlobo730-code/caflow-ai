@@ -55,9 +55,21 @@ debt the compatibility layer carries. It is updated as each batch lands.
   function (migration 073) remains a DB-callable foundation. *Debt:* keep the two
   in step (both idempotent, same insert + link).
 
-### Batch 3+ (billing orchestration) — *pending*
-- To be recorded: the adapter that lets existing fee/dues screens read from the
-  new internal-client `sales_*` data, and any dual-write/compat shims.
+### Batch 3 (billing orchestration)
+- **B3-1 · Real table is `client_sales_invoices`** (not Doc-5 `sales_invoices`).
+  Billing reuses it; migration 075 added `billing_schedule_id`, `billing_period`,
+  `source` + the unique idempotency index + the G1 restrictive policy (which 074
+  had missed because it referenced the non-existent `sales_invoices`).
+- **B3-2 · Billing reuses `create_invoice`** (the router function) rather than a
+  service, to guarantee a single GST/insert path. *Debt:* if the Sales engine is
+  later refactored into a service, billing should call that service instead.
+- **B3-3 · `fee_*` dues vs new billing.** `GET /api/portal/dues` and the legacy
+  invoice screens still read `fee_*`. New Revenue Operations dues live in
+  `client_sales_invoices` (internal client). A read-adapter to unify the two
+  surfaces is **deferred** (no dual-write; `fee_*` stays read-only legacy).
+- **B3-4 · Internal-client CoA.** Posting the JE on issue needs the internal
+  client's GL accounts (firm-wide or seeded). Reuse existing per-client CoA
+  seeding at provisioning — tracked for Batch 4/deployment.
 
 ## Rule
 
