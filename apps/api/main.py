@@ -171,6 +171,9 @@ app.include_router(ai_copilot_v2_router)
 app.include_router(memory_intelligence_router)
 # Client Portal
 app.include_router(portal_router)
+# Amendment v1.1 — Practice (firm-as-internal-client), Partner-only
+from routers.practice import router as practice_router
+app.include_router(practice_router)
 
 
 # Phase 10B — Workflow Scheduler (daily jobs + workflow schedule runner)

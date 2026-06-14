@@ -34,9 +34,26 @@ debt the compatibility layer carries. It is updated as each batch lands.
   is schema-only; no code yet writes `billing_schedules` or internal-client
   `sales_invoices`. Existing `fee_*` endpoints/screens are unchanged.
 
-### Batch 2 (provisioning + guardrails) — *pending*
-- To be recorded: how existing client-population queries are switched to
-  `clients_external`; how `firms.pan`/entity-type feed provisioning.
+### Batch 2 (provisioning + guardrails)
+- **B2-1 · Service-role bypasses RLS.** The backend uses the Supabase
+  SERVICE_ROLE key, so RLS is *not* the effective control for the app. G1/G2/G4
+  are enforced in the Python repo/API layer; migration `074` RLS restrictive
+  policies are defence-in-depth for direct/PostgREST access. *Debt:* two
+  enforcement layers must be kept in sync if new client-scoped tables/endpoints
+  are added.
+- **B2-2 · G2 via repository default + targeted patches.** `client_repo.find_all`
+  excludes internal by default; a few direct `db.table("clients")` queries
+  (Health recalc, Analytics, Onboarding status) were patched individually.
+  *Debt:* any *new* direct `clients` query must remember to exclude
+  `is_internal` (or use `client_repo`/`clients_external`).
+- **B2-3 · Provisioning inputs.** Internal-client `entity_type` defaults to
+  `Partnership` (CA-firm typical) and PAN comes from `firms.pan`; provisioning is
+  skipped (logged) when no valid PAN exists. Re-runnable via
+  `POST /api/practice/provision`.
+- **B2-4 · `provision()` duplicates the SQL `provision_internal_client()`.** The
+  Python service is the runtime path (works with service-role + mock); the SQL
+  function (migration 073) remains a DB-callable foundation. *Debt:* keep the two
+  in step (both idempotent, same insert + link).
 
 ### Batch 3+ (billing orchestration) — *pending*
 - To be recorded: the adapter that lets existing fee/dues screens read from the

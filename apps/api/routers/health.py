@@ -867,9 +867,12 @@ def calculate_score(
 
         return api_response(True, row)
 
-    client = db.table("clients").select("id, client_name").eq("id", client_id).eq("firm_id", firm_id).single().execute().data
+    client = db.table("clients").select("id, client_name, is_internal").eq("id", client_id).eq("firm_id", firm_id).single().execute().data
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
+    # Guardrail G2: Health scoring is not applicable to the internal practice client.
+    if client.get("is_internal"):
+        raise HTTPException(status_code=400, detail="Health scoring does not apply to the internal practice client.")
 
     scores = _calculate_scores_db(db, client_id, firm_id)
 
@@ -974,7 +977,8 @@ def recalculate_all(
     if not db:
         return api_response(True, {"updated": 0, "message": "No DB — mock mode"})
 
-    clients_res = db.table("clients").select("id").eq("firm_id", firm_id).execute()
+    # Guardrail G2: the internal practice client is never health-scored / triaged.
+    clients_res = db.table("clients").select("id").eq("firm_id", firm_id).eq("is_internal", False).execute()
     clients = clients_res.data or []
     updated = 0
     now = datetime.now(timezone.utc).isoformat()

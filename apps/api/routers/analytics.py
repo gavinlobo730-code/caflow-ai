@@ -131,7 +131,8 @@ def client_analytics(
     date_from, date_to, label = _period_range(period)
     today = date.today().isoformat()
 
-    clients_result = db.table("clients").select("id, client_name").eq("firm_id", firm_id).execute()
+    # Guardrail G2: exclude the internal practice client from analytics.
+    clients_result = db.table("clients").select("id, client_name").eq("firm_id", firm_id).eq("is_internal", False).execute()
     clients = clients_result.data or []
 
     all_tasks_result = db.table("tasks").select("id, client_id, status, due_date, updated_at").eq("firm_id", firm_id).execute()
@@ -195,7 +196,8 @@ def firm_analytics(
     all_tasks_result = db.table("tasks").select("id, client_id, status, due_date, updated_at, assigned_to").eq("firm_id", firm_id).execute()
     all_tasks = all_tasks_result.data or []
 
-    clients_result = db.table("clients").select("id").eq("firm_id", firm_id).eq("status", "active").execute()
+    # Guardrail G2: the internal practice client is not part of the active-client KPI.
+    clients_result = db.table("clients").select("id").eq("firm_id", firm_id).eq("status", "active").eq("is_internal", False).execute()
     active_clients = len(clients_result.data or [])
 
     completed = [t for t in all_tasks if t["status"] == "completed" and t.get("updated_at", "") >= date_from]
