@@ -144,16 +144,31 @@ def provision(
         _logger.warning("Skipping internal-client provisioning for firm %s: no valid PAN", firm_id)
         return None
 
-    row = db.table("clients").insert({
-        "firm_id": firm_id,
-        "client_name": legal_name,
-        "legal_name": legal_name,
-        "entity_type": entity_type if entity_type else DEFAULT_INTERNAL_ENTITY_TYPE,
-        "pan": pan_norm,
-        "gstin": gstin,
-        "is_internal": True,
-        "status": "active",
-    }).execute()
+    try:
+        row = db.table("clients").insert({
+            "firm_id": firm_id,
+            "client_name": legal_name,
+            "legal_name": legal_name,
+            "entity_type": entity_type if entity_type else DEFAULT_INTERNAL_ENTITY_TYPE,
+            "pan": pan_norm,
+            "gstin": gstin,
+            "is_internal": True,
+            "status": "active",
+        }).execute()
+    except Exception as e:
+        # Concurrency: the partial unique index uq_clients_one_internal_per_firm
+        # (migration 080) rejects a duplicate internal client — another call won
+        # the race. Re-read and return the winner (idempotent, no duplicate).
+        _logger.warning("Internal-client insert race for firm %s: %s", firm_id, e)
+        existing = get_internal_client_id(firm_id)
+        if existing:
+            return existing
+        chk = db.table("clients").select("id").eq("firm_id", firm_id).eq("is_internal", True).limit(1).execute()
+        if chk.data:
+            won = chk.data[0]["id"]
+            db.table("firms").update({"internal_client_id": won}).eq("id", firm_id).execute()
+            return won
+        raise
     new_id = row.data[0]["id"]
     db.table("firms").update({"internal_client_id": new_id}).eq("id", firm_id).execute()
     _logger.info("Provisioned internal client %s for firm %s", new_id, firm_id)
