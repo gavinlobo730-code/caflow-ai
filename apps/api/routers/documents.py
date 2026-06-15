@@ -5,6 +5,16 @@ from models.common import api_response
 from repositories.document_repository import document_repo
 from services.activity_service import log_activity
 from core.permissions import rbac
+from core.authz import assert_client_access
+from services.internal_client_service import assert_partner_for_internal_id
+
+
+def _scope_client(client_id, current_user):
+    """Explicit client-scope check for multipart writes (the central JSON guard
+    cannot see form-data client_id). Internal-client G1 + assignment (M2)."""
+    if client_id:
+        assert_partner_for_internal_id(client_id, current_user)
+        assert_client_access(current_user, client_id)
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -72,6 +82,7 @@ async def upload_document(
     Upload a document to Supabase Storage and persist metadata.
     Returns a signed download URL valid for 1 hour.
     """
+    _scope_client(client_id, current_user)  # block upload to an unassigned client
     firm_id = current_user["firm_id"]
     file_id = str(uuid.uuid4())
     safe_name = file.filename or "upload"
@@ -166,6 +177,7 @@ async def parse_document(
     if document_type not in allowed:
         raise HTTPException(status_code=400, detail=f"Unsupported document_type: {document_type}")
 
+    _scope_client(client_id, current_user)  # block parsing against an unassigned client
     doc_type = allowed[document_type]
     fields = MOCK_FORM16_EXTRACTION if doc_type == "FORM16" else MOCK_GST_INVOICE_EXTRACTION
 
