@@ -96,6 +96,21 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
   const [fileError, setFileError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  function downloadCsvTemplate() {
+    // A plain CSV the user can open in Excel / Google Sheets / Tally export tools.
+    // Row 1 = headers, row 2 = a commented hint line (starts with #, skipped on parse).
+    const headerRow = columns.map(c => c.key).join(",");
+    const hintRow = "# " + columns.map(c => c.hint ?? (c.required ? "REQUIRED" : "optional")).join(" | ");
+    const csv = `${headerRow}\n${hintRow}\n`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = templateFilename.endsWith(".csv") ? templateFilename : templateFilename.replace(/\.(xlsx|xls)$/, "") + ".csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function downloadTemplate() {
     // Build worksheet: row 1 = headers, row 2 = hints, row 3 = example placeholder
     const headerRow = columns.map(c => c.key);
@@ -129,7 +144,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
       ["1. Do NOT modify the header row (Row 1)"],
       ["2. Delete Row 2 (hints) before uploading"],
       ["3. Enter your data from Row 3 onwards"],
-      ["4. Save as CSV (comma-separated) before uploading"],
+      ["4. Upload this file directly (.xlsx) or save as CSV — both are accepted"],
       [""],
       ["Column Guide:"],
       ...columns.map(c => [c.key, c.required ? "REQUIRED" : "optional", c.hint ?? c.label]),
@@ -141,31 +156,53 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
     XLSX.writeFile(wb, templateFilename.replace(".csv", ".xlsx"));
   }
 
+  function processText(text: string) {
+    let parsed = parseCsv(text, columns);
+    // Run custom validation if provided
+    if (validateRow) {
+      parsed = parsed.map(r => ({
+        ...r,
+        errors: [...r.errors, ...validateRow(r.data)],
+      }));
+    }
+    if (parsed.length === 0) {
+      setFileError("No data rows found. Make sure your file has at least one data row after the header.");
+      return;
+    }
+    setRows(parsed);
+    setStep("preview");
+  }
+
   function handleFile(file: File) {
     setFileError(null);
-    if (!file.name.endsWith(".csv")) {
-      setFileError("Please upload a .csv file");
+    const name = file.name.toLowerCase();
+    const isCsv = name.endsWith(".csv");
+    const isXlsx = name.endsWith(".xlsx") || name.endsWith(".xls");
+    if (!isCsv && !isXlsx) {
+      setFileError("Please upload a .csv, .xlsx or .xls file");
       return;
     }
     const reader = new FileReader();
     reader.onload = (e) => {
-      const text = e.target?.result as string;
-      let parsed = parseCsv(text, columns);
-      // Run custom validation if provided
-      if (validateRow) {
-        parsed = parsed.map(r => ({
-          ...r,
-          errors: [...r.errors, ...validateRow(r.data)],
-        }));
+      try {
+        if (isXlsx) {
+          // Parse the first sheet of the workbook into CSV text, then reuse the
+          // same CSV pipeline so validation/preview behave identically.
+          const data = new Uint8Array(e.target?.result as ArrayBuffer);
+          const wb = XLSX.read(data, { type: "array" });
+          const firstSheet = wb.Sheets[wb.SheetNames[0]];
+          if (!firstSheet) { setFileError("The workbook has no sheets."); return; }
+          const text = XLSX.utils.sheet_to_csv(firstSheet);
+          processText(text);
+        } else {
+          processText(e.target?.result as string);
+        }
+      } catch {
+        setFileError("Could not read the file. Make sure it is a valid CSV or Excel file.");
       }
-      if (parsed.length === 0) {
-        setFileError("No data rows found. Make sure your file has at least one data row after the header.");
-        return;
-      }
-      setRows(parsed);
-      setStep("preview");
     };
-    reader.readAsText(file);
+    if (isXlsx) reader.readAsArrayBuffer(file);
+    else reader.readAsText(file);
   }
 
   async function handleImport() {
@@ -201,13 +238,21 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
                 <Download className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <p className="text-sm font-medium text-blue-900">Step 1 — Download the template</p>
-                  <p className="text-xs text-blue-600 mt-0.5">Fill in your data and save as CSV. Required fields are marked.</p>
-                  <button
-                    onClick={downloadTemplate}
-                    className="mt-2 text-xs px-3 py-1.5 bg-blue-600 text-gray-900 rounded-lg hover:bg-blue-700 font-medium"
-                  >
-                    Download Template CSV
-                  </button>
+                  <p className="text-xs text-blue-600 mt-0.5">Fill in your data, then upload it back as CSV or Excel. Required fields are marked.</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      onClick={downloadTemplate}
+                      className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                    >
+                      Download Excel (.xlsx)
+                    </button>
+                    <button
+                      onClick={downloadCsvTemplate}
+                      className="text-xs px-3 py-1.5 bg-white text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 font-medium"
+                    >
+                      Download CSV (.csv)
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -242,7 +287,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
 
               {/* Upload area */}
               <div>
-                <p className="text-sm font-medium text-[#334155] mb-2">Step 2 — Upload your filled CSV</p>
+                <p className="text-sm font-medium text-[#334155] mb-2">Step 2 — Upload your filled file</p>
                 <div
                   onClick={() => fileRef.current?.click()}
                   onDragOver={e => e.preventDefault()}
@@ -250,10 +295,10 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
                   className="border-2 border-dashed border-[#E2E8F0] rounded-xl p-8 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-colors"
                 >
                   <Upload className="w-8 h-8 text-[#CBD5E1] mx-auto mb-2" />
-                  <p className="text-sm text-[#475569]">Click to browse or drag & drop your CSV file</p>
-                  <p className="text-xs text-[#94A3B8] mt-1">Only .csv files are supported</p>
+                  <p className="text-sm text-[#475569]">Click to browse or drag & drop your file</p>
+                  <p className="text-xs text-[#94A3B8] mt-1">CSV (.csv) and Excel (.xlsx, .xls) files are supported</p>
                 </div>
-                <input ref={fileRef} type="file" accept=".csv" className="hidden"
+                <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
                 {fileError && (
                   <p className="text-xs text-red-600 mt-2 flex items-center gap-1">

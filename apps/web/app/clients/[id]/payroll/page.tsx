@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Users, Plus, Play, CheckCircle,
-  FileText, TrendingUp, IndianRupee, Download,
+  FileText, TrendingUp, IndianRupee, Download, Upload,
   Building2, CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import { buildEmployees, EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -35,6 +37,7 @@ interface Employee {
   id: string;
   name: string;
   pan?: string;
+  aadhaar_last4?: string;
   designation?: string;
   department?: string;
   basic_paise: number;
@@ -168,7 +171,9 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
+  const [showImport, setShowImport] = useState(false);
+  const [form, setForm] = useState({ name: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
+  const [aadhaarError, setAadhaarError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -179,22 +184,48 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
 
   useEffect(() => { load(); }, [load]);
 
+  /** Bulk-import employees through the EXISTING /api/payroll/employees endpoint. */
+  async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
+    const { records, errors } = buildEmployees(rows, clientId, firmId);
+    let imported = 0;
+    for (const emp of records) {
+      // Responses follow the { success, data, error } contract.
+      const res = await apiFetch<unknown>("/api/payroll/employees", {
+        method: "POST",
+        body: JSON.stringify(emp),
+      }).catch(() => null) as { success?: boolean; error?: string | null } | null;
+      if (res && res.success !== false) imported++;
+      else errors.push(`Employee "${emp.name}": ${res?.error ?? "request failed"}`);
+    }
+    if (imported > 0) await load();
+    return { imported, errors };
+  }
+
   async function addEmployee() {
     if (!form.name || !form.basic_paise) return;
+    // Aadhaar: keep only the last 4 digits; never send the full number.
+    const { aadhaar, ...rest } = form;
+    const aadhaarDigits = aadhaar.replace(/\D/g, "");
+    if (aadhaarDigits && aadhaarDigits.length !== 12) {
+      setAadhaarError("Aadhaar must be 12 digits");
+      return;
+    }
+    setAadhaarError(null);
     setSaving(true);
     await apiFetch("/api/payroll/employees", {
       method: "POST",
       body: JSON.stringify({
         client_id: clientId,
         firm_id: firmId,
-        ...form,
+        ...rest,
+        aadhaar_last4: aadhaarDigits ? aadhaarDigits.slice(-4) : undefined,
         basic_paise: Math.round(parseFloat(form.basic_paise) * 100),
         hra_percent: parseFloat(form.hra_percent),
       }),
     }).catch(() => null);
     await load();
     setShowAdd(false);
-    setForm({ name: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
+    setForm({ name: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
     setSaving(false);
   }
 
@@ -204,10 +235,25 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
     <div className="p-5 space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-[#1E293B]">{employees.length} active employees</p>
-        <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-[12px] font-medium rounded-lg hover:bg-blue-700 transition-colors">
-          <Plus size={13} /> Add Employee
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 px-3 py-1.5 border border-[#E2E8F0] text-[#475569] text-[12px] font-medium rounded-lg hover:bg-[#F1F5F9] transition-colors">
+            <Upload size={13} /> Import
+          </button>
+          <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-[12px] font-medium rounded-lg hover:bg-blue-700 transition-colors">
+            <Plus size={13} /> Add Employee
+          </button>
+        </div>
       </div>
+
+      {showImport && (
+        <CsvImportModal
+          title="Import Employees"
+          columns={EMPLOYEE_IMPORT_COLUMNS}
+          templateFilename="employees-template.csv"
+          onImport={handleImport}
+          onClose={() => setShowImport(false)}
+        />
+      )}
 
       {showAdd && (
         <div className="bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] p-4 space-y-3">
@@ -218,6 +264,11 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
             <Field label="Department" value={form.department} onChange={v => setForm(f => ({...f, department: v}))} placeholder="e.g. Accounts" />
             <Field label="Basic Salary (₹/month) *" value={form.basic_paise} onChange={v => setForm(f => ({...f, basic_paise: v}))} placeholder="e.g. 25000" type="number" />
             <Field label="HRA %" value={form.hra_percent} onChange={v => setForm(f => ({...f, hra_percent: v}))} placeholder="40" type="number" />
+            <div>
+              <Field label="Aadhaar" value={form.aadhaar} onChange={v => setForm(f => ({...f, aadhaar: v}))} placeholder="12-digit Aadhaar" />
+              <p className="text-[10px] text-[#94A3B8] mt-0.5">Only the last 4 digits are stored.</p>
+              {aadhaarError && <p className="text-[10px] text-red-500 mt-0.5">{aadhaarError}</p>}
+            </div>
           </div>
           <div className="flex items-center gap-4">
             {(["pf_applicable", "esi_applicable", "pt_applicable"] as const).map(k => (
