@@ -32,6 +32,8 @@ def list_reminders(
 
 @router.post("")
 def create_reminder_endpoint(body: ReminderCreate, current_user: dict = Depends(rbac("reminder", "write"))):
+    from core.authz import assert_client_access
+    assert_client_access(current_user, body.client_id)  # M6 #7: body client_id guard
     firm_id = current_user.get("firm_id")
     reminder_data = create_reminder(
         client_id=body.client_id,

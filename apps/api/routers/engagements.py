@@ -65,7 +65,9 @@ def create_engagement(
     body: EngagementCreate,
     current_user: dict = Depends(rbac("engagement", "write")),
 ):
-    client = client_repo.find_by_id(body.client_id)
+    from core.authz import assert_client_access
+    assert_client_access(current_user, body.client_id)  # M6 #7: body client_id guard
+    client = client_repo.find_by_id(body.client_id, current_user.get("firm_id"))
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
