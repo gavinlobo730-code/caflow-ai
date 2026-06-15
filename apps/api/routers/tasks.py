@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import filter_by_client, assert_client_access
 from repositories.task_repository import task_repo
 from repositories.client_repository import client_repo
 from services.task_service import is_valid_transition, group_tasks_by_status
@@ -57,6 +58,7 @@ def list_tasks(
         assigned_to=assigned_to,
         priority=priority,
     )
+    tasks = filter_by_client(current_user, tasks)  # M2/M5: assignment scope
 
     clients = client_repo.find_all(firm_id=firm_id)
     client_map = {c["id"]: c["client_name"] for c in clients}
@@ -70,7 +72,9 @@ def list_tasks(
 
 @router.post("")
 def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "write"))):
-    client = client_repo.find_by_id(body.client_id)
+    # M5 Gap C: body client_id isn't seen by the path/query guard — enforce here.
+    assert_client_access(current_user, body.client_id)
+    client = client_repo.find_by_id(body.client_id, current_user.get("firm_id"))
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     now = datetime.now(timezone.utc).isoformat()

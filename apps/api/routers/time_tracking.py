@@ -4,6 +4,7 @@ from typing import Optional
 from datetime import datetime, timezone
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import filter_by_client
 from repositories.time_tracking_repository import time_tracking_repo
 
 router = APIRouter(prefix="/api/time-entries", tags=["time-tracking"])
@@ -71,6 +72,7 @@ def list_entries(
         date_from=date_from,
         date_to=date_to,
     )
+    entries = filter_by_client(current_user, entries)  # M2/M5: assignment scope
     completed = [e for e in entries if e.get("duration_minutes")]
     total_minutes = sum(e["duration_minutes"] for e in completed)
     billable_minutes = sum(e["duration_minutes"] for e in completed if e.get("is_billable"))
