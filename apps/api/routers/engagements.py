@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import filter_by_client
 from repositories.engagement_repository import engagement_repo
 from repositories.client_repository import client_repo
 from datetime import datetime, timezone
@@ -43,6 +44,7 @@ def list_engagements(
         client_id=client_id,
         status=status,
     )
+    engagements = filter_by_client(current_user, engagements)  # M2/M5: assignment scope
     return api_response(True, {"engagements": engagements, "total": len(engagements)})
 
 
