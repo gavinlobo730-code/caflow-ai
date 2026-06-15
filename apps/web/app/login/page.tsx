@@ -4,6 +4,7 @@ import { useState, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { getSupabaseClient } from "@/lib/supabase/client";
 import { Shield, Zap, TrendingUp, ArrowRight } from "lucide-react";
 
 const FEATURES = [
@@ -15,10 +16,15 @@ const FEATURES = [
 export default function LoginPage() {
   const { signIn } = useAuth();
   const router = useRouter();
+  const supabase = getSupabaseClient();
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [error, setError]       = useState<string | null>(null);
   const [loading, setLoading]   = useState(false);
+  // MFA challenge step (shown after password when the account has a verified factor).
+  const [mfaStep, setMfaStep]   = useState(false);
+  const [mfaFactorId, setMfaFactorId] = useState("");
+  const [mfaCode, setMfaCode]   = useState("");
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -26,10 +32,35 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { error } = await signIn(email, password);
-      if (error) { setError(error); setLoading(false); }
-      else { router.push("/"); }
+      if (error) { setError(error); setLoading(false); return; }
+      // If the account has MFA enrolled, Supabase reports nextLevel 'aal2' while the
+      // fresh session is still 'aal1' — require the TOTP code before continuing.
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (aal?.nextLevel === "aal2" && aal.currentLevel !== "aal2") {
+        const { data: f } = await supabase.auth.mfa.listFactors();
+        const totp = ((f as { totp?: { id: string }[] } | null)?.totp ?? [])[0];
+        if (totp) { setMfaFactorId(totp.id); setMfaStep(true); setLoading(false); return; }
+      }
+      router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Connection error. Please try again.");
+      setLoading(false);
+    }
+  }
+
+  async function handleMfaSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: mfaFactorId,
+        code: mfaCode.trim(),
+      });
+      if (error) { setError("Invalid code — check your authenticator app and try again."); setLoading(false); return; }
+      router.push("/");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Verification failed. Please try again.");
       setLoading(false);
     }
   }
@@ -89,10 +120,45 @@ export default function LoginPage() {
           </div>
 
           <div className="mb-8">
-            <h2 className="text-[26px] font-bold text-[#0F172A] tracking-tight">Sign in</h2>
-            <p className="text-[14px] text-[#64748B] mt-1">Enter your credentials to continue</p>
+            <h2 className="text-[26px] font-bold text-[#0F172A] tracking-tight">
+              {mfaStep ? "Two-factor authentication" : "Sign in"}
+            </h2>
+            <p className="text-[14px] text-[#64748B] mt-1">
+              {mfaStep ? "Enter the 6-digit code from your authenticator app" : "Enter your credentials to continue"}
+            </p>
           </div>
 
+          {mfaStep ? (
+            <form onSubmit={handleMfaSubmit} className="space-y-5">
+              <div className="space-y-1.5">
+                <label className="block text-[13px] font-semibold text-[#0F172A]">Authentication code</label>
+                <input
+                  autoFocus inputMode="numeric" value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="123456"
+                  className="w-full bg-white border border-[#E2E8F0] rounded-lg px-4 py-3 text-[18px] tracking-[0.3em] text-center font-mono text-[#0F172A] placeholder:text-[#CBD5E1] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+                />
+              </div>
+              {error && (
+                <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-red-50 border border-red-100">
+                  <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-red-500 text-[10px] font-bold leading-none">!</span>
+                  </div>
+                  <p className="text-[13px] text-red-600 leading-snug">{error}</p>
+                </div>
+              )}
+              <button
+                type="submit" disabled={loading || mfaCode.length < 6}
+                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[14px] font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
+              >
+                {loading ? (
+                  <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Verifying…</>
+                ) : (
+                  <>Verify <ArrowRight size={15} /></>
+                )}
+              </button>
+            </form>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
               <label className="block text-[13px] font-semibold text-[#0F172A]">Email address</label>
@@ -131,6 +197,7 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+          )}
 
           <p className="text-center text-[13px] text-[#94A3B8] mt-6">
             New to PracticeSync?{" "}
