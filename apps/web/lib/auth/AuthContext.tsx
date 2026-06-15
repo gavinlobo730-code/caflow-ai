@@ -50,15 +50,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Perf: fire a no-op warm-up ping at the backend as early as possible so a
+    // sleeping Render instance starts cold-starting while the user authenticates,
+    // rather than on the first data request. Fire-and-forget; ignore all errors.
+    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "";
+    if (apiBase) {
+      fetch(`${apiBase}/health`, { method: "GET", mode: "cors" }).catch(() => {});
+    }
+
     // Safety timeout — if Supabase doesn't respond in 5s, unblock the UI
     const timeout = setTimeout(() => setLoading(false), 5000);
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    // Perf (Cause B fix): unblock the app as soon as the session is known. Role
+    // resolution (an extra users-table query) runs asynchronously and no longer
+    // gates AuthGuard / first paint. Until it resolves, userRole is null, which
+    // the permission helpers treat as least-privilege (fail-closed), so nothing
+    // is over-exposed during the brief window.
+    supabase.auth.getSession().then(({ data: { session } }) => {
       clearTimeout(timeout);
       setSession(session);
       setUser(session?.user ?? null);
-      setUserRole(await resolveUserRole(session?.user ?? null));
       setLoading(false);
+      resolveUserRole(session?.user ?? null).then(setUserRole).catch(() => setUserRole(null));
     }).catch(() => {
       clearTimeout(timeout);
       setLoading(false);
@@ -68,7 +81,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        setUserRole(await resolveUserRole(session?.user ?? null));
+        // Non-blocking role resolution (fire-and-forget).
+        resolveUserRole(session?.user ?? null).then(setUserRole).catch(() => setUserRole(null));
       }
     );
 

@@ -52,12 +52,8 @@ function getDSCStatus(expiryDate: string): DSCStatus {
 }
 
 // Seed data
-const SEED_DSCS: DSCRecord[] = [
-  { id: "d1", firm_id: "", holder_name: "CA Rajesh Sharma",   pan: "ABCRS1234K", dsc_type: "Class 3", purpose: "All",         issuing_ca: "eMudhra",             issue_date: "2024-06-01", expiry_date: "2026-06-01", notes: null, created_at: "" },
-  { id: "d2", firm_id: "", holder_name: "Priya Mehta",        pan: "CDFPM5678L", dsc_type: "Class 3", purpose: "MCA",         issuing_ca: "NSDL e-Governance",   issue_date: "2025-03-15", expiry_date: "2027-03-15", notes: null, created_at: "" },
-  { id: "d3", firm_id: "", holder_name: "Sunita Joshi",       pan: "EFGSJ9012M", dsc_type: "Class 2", purpose: "GST",         issuing_ca: "Sify Technologies",   issue_date: "2024-09-01", expiry_date: "2026-08-31", notes: null, created_at: "" },
-  { id: "d4", firm_id: "", holder_name: "Vikram Patel",       pan: "GHIVP3456N", dsc_type: "Class 3", purpose: "Income Tax",  issuing_ca: "eMudhra",             issue_date: "2023-06-20", expiry_date: "2026-06-20", notes: "Renewal reminder sent", created_at: "" },
-];
+// DSC records are loaded from the firm's real data; empty until added
+// (no fictional DSC holders shown to users).
 
 // ─── Add DSC Modal ────────────────────────────────────────────────────────────
 
@@ -170,7 +166,7 @@ function AddDSCModal({ firmId, onClose, onAdded }: {
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function DSCTrackerPage() {
-  const [dscs, setDscs] = useState<DSCRecord[]>(SEED_DSCS);
+  const [dscs, setDscs] = useState<DSCRecord[]>([]);
   const [firmId, setFirmId] = useState("");
   const [loading, setLoading] = useState(true);
   const [tableError, setTableError] = useState(false);
@@ -185,7 +181,7 @@ export default function DSCTrackerPage() {
         const sb = getSupabaseClient();
         const { data, error } = await sb.from("dsc_records").select("*").eq("firm_id", fid).order("expiry_date");
         if (error) { setTableError(true); }
-        else if (data && data.length > 0) { setDscs(data as DSCRecord[]); }
+        else { setDscs((data ?? []) as DSCRecord[]); }   // real data only; empty firm → empty state
       } finally {
         setLoading(false);
       }
