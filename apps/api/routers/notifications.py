@@ -64,7 +64,8 @@ def read_all(current_user: dict = Depends(rbac("notification", "write"))):
 @router.patch("/{notification_id}/read")
 def read_one(notification_id: str, current_user: dict = Depends(rbac("notification", "write"))):
     firm_id = current_user.get("firm_id")
-    notif = notifications_repo.mark_read(notification_id, firm_id=firm_id)
+    # M2: scope to the recipient so a user cannot mark another user's notification.
+    notif = notifications_repo.mark_read(notification_id, firm_id=firm_id, user_id=current_user.get("id"))
     if notif is None:
         return api_response(False, None, "Notification not found")
     return api_response(True, notif)
@@ -73,7 +74,7 @@ def read_one(notification_id: str, current_user: dict = Depends(rbac("notificati
 @router.patch("/{notification_id}/archive")
 def archive_one(notification_id: str, current_user: dict = Depends(rbac("notification", "write"))):
     firm_id = current_user.get("firm_id")
-    notif = notifications_repo.archive(notification_id, firm_id=firm_id)
+    notif = notifications_repo.archive(notification_id, firm_id=firm_id, user_id=current_user.get("id"))
     if notif is None:
         return api_response(False, None, "Notification not found")
     return api_response(True, notif)

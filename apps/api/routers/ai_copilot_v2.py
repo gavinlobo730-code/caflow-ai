@@ -11,6 +11,7 @@ from models.ai_copilot import (
     GLOBAL_SUGGESTED_QUESTIONS, CLIENT_SUGGESTED_QUESTIONS, COMPLIANCE_SUGGESTED_QUESTIONS,
 )
 from core.permissions import rbac
+from core.authz import assert_client_access, effective_client_ids
 
 router = APIRouter(prefix="/api/copilot", tags=["AI Copilot Phase 11"])
 
@@ -88,13 +89,18 @@ async def send_message(
     conv = _repo().get_conversation(firm_id, conversation_id)
     if not conv:
         raise HTTPException(404, "Conversation not found")
+    ctx_id = payload.context_id or conv.get("context_id")
+    # M2: a client-scoped chat may only target an authorized client; scope the
+    # injected firm context to the caller's effective client set.
+    assert_client_access(current_user, ctx_id)
     result = await _service().chat(
         firm_id=firm_id,
         user_id=user_id,
         conversation_id=conversation_id,
         user_message=payload.content,
         context_type=payload.context_type or conv.get("context_type", "global"),
-        context_id=payload.context_id or conv.get("context_id"),
+        context_id=ctx_id,
+        allowed_client_ids=effective_client_ids(current_user),
     )
     return api_response(True, result)
 
@@ -122,6 +128,8 @@ async def quick_chat(
     """Single-turn chat without persisting conversation history."""
     firm_id = current_user["firm_id"]
     user_id = current_user.get("auth_user_id", "user-dev")
+    # M2: gate the requested client context before doing any work.
+    assert_client_access(current_user, payload.context_id)
     # Auto-create a conversation for this quick chat
     conv = _repo().create_conversation(firm_id, user_id, {
         "context_type": payload.context_type or "global",
@@ -134,6 +142,7 @@ async def quick_chat(
         user_message=payload.content,
         context_type=payload.context_type or "global",
         context_id=payload.context_id,
+        allowed_client_ids=effective_client_ids(current_user),
     )
     return api_response(True, {**result, "conversation_id": conv["id"]})
 
