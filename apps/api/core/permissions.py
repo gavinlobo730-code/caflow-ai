@@ -277,6 +277,11 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "read":  _ALL_STAFF,
         "write": _AT_LEAST_EXECUTIVE,
     },
+    # ── Client assignments (Module 9.0 M3) — Partner administers; Manager+ may view ─
+    "assignment": {
+        "read":  _AT_LEAST_MANAGER,
+        "write": _PARTNER_ONLY,
+    },
 }
 
 
