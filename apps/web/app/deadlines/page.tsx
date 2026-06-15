@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Calendar, AlertTriangle, Clock, CheckCircle, FileText, ExternalLink } from "lucide-react";
+import { Calendar, AlertTriangle, Clock, CheckCircle, FileText, ExternalLink, FlaskConical } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
@@ -10,6 +10,9 @@ import { getComplianceCalendar, updateFilingStatus, seedComplianceCalendar } fro
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
+import DemoFilingModal from "@/components/DemoFilingModal";
+import { getDemoFilingsByEntry, saveDemoFiling, type DemoFiling } from "@/lib/data/demoFilings";
+import { isSimulatable, DEMO_STATUS_LABEL } from "@/lib/filing/demoFiling";
 
 const FILING_STATUS_COLORS: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
@@ -49,14 +52,17 @@ export default function DeadlinesPage() {
   const [clientFilter, setClientFilter] = useState("");
   const [markFiled, setMarkFiled] = useState<MarkFiledForm | null>(null);
   const [filingLoading, setFilingLoading] = useState(false);
+  const [demoFilings, setDemoFilings] = useState<Record<string, DemoFiling>>({});
+  const [demoEntry, setDemoEntry] = useState<ComplianceEntry | null>(null);
 
   async function loadData(clientId?: string) {
     setLoading(true);
     setError(null);
     try {
-      const [recs, cls] = await Promise.all([
+      const [recs, cls, demos] = await Promise.all([
         getComplianceCalendar(clientId || undefined),
         getClients().catch(() => [] as Client[]),
+        getDemoFilingsByEntry(clientId || undefined).catch(() => ({} as Record<string, DemoFiling>)),
       ]);
       if (clientId && recs.length === 0) {
         await seedComplianceCalendar(clientId).catch(() => undefined);
@@ -66,11 +72,27 @@ export default function DeadlinesPage() {
         setRecords(recs);
       }
       setClients(cls);
+      setDemoFilings(demos);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load deadline data");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSimulated(demoReference: string) {
+    if (!demoEntry) return;
+    await saveDemoFiling(demoEntry, demoReference);
+    setDemoFilings(prev => ({
+      ...prev,
+      [demoEntry.id]: {
+        id: "local", firm_id: "", client_id: demoEntry.client_id,
+        compliance_entry_id: demoEntry.id, compliance_type: demoEntry.compliance_type,
+        period_start: demoEntry.period_start, period_end: demoEntry.period_end,
+        demo_reference: demoReference, demo_status: "demo_filed",
+        simulated_at: new Date().toISOString(),
+      },
+    }));
   }
 
   useEffect(() => { loadData(); }, []);
@@ -108,12 +130,15 @@ export default function DeadlinesPage() {
   const filed = records.filter(r => r.filing_status === "filed").length;
   const pending = records.filter(r => r.filing_status === "pending").length;
 
+  const demoCount = Object.keys(demoFilings).length;
+
   const STATS = [
     { label: "Due This Week", value: dueThisWeek, icon: Clock, color: "text-amber-600", bg: "bg-amber-50" },
     { label: "Overdue", value: overdue, icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50" },
     { label: "In Progress", value: inProgress, icon: FileText, color: "text-blue-600", bg: "bg-blue-50" },
     { label: "Pending", value: pending, icon: Calendar, color: "text-purple-600", bg: "bg-purple-50" },
     { label: "Filed", value: filed, icon: CheckCircle, color: "text-green-600", bg: "bg-green-50" },
+    { label: "Demo Filed", value: demoCount, icon: FlaskConical, color: "text-amber-600", bg: "bg-amber-50" },
   ];
 
   const clientMap = Object.fromEntries(clients.map(c => [c.id, c.client_name]));
@@ -139,7 +164,7 @@ export default function DeadlinesPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         {STATS.map((s) => (
           <Card key={s.label}>
             <CardContent className="pt-4 pb-3">
@@ -251,11 +276,22 @@ export default function DeadlinesPage() {
                     {formatDate(r.due_date)}
                   </td>
                   <td className="px-3 py-3">
-                    <Badge className={`text-xs ${FILING_STATUS_COLORS[r.filing_status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
-                      {r.filing_status}
-                    </Badge>
+                    <div className="flex flex-col gap-1 items-start">
+                      <Badge className={`text-xs ${FILING_STATUS_COLORS[r.filing_status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
+                        {r.filing_status}
+                      </Badge>
+                      {demoFilings[r.id] && (
+                        <Badge className="text-[10px] bg-amber-100 text-amber-700 flex items-center gap-1">
+                          <FlaskConical size={10} /> {DEMO_STATUS_LABEL}
+                        </Badge>
+                      )}
+                    </div>
                   </td>
-                  <td className="px-3 py-3 text-xs text-[#64748B] font-mono">{r.arn_number ?? "—"}</td>
+                  <td className="px-3 py-3 text-xs text-[#64748B] font-mono">
+                    {demoFilings[r.id]
+                      ? <span className="text-amber-700" title="Demo reference — not filed with any portal">{demoFilings[r.id].demo_reference}</span>
+                      : (r.arn_number ?? "—")}
+                  </td>
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-3 flex-wrap">
                       {r.filing_status !== "filed" && r.filing_status !== "na" && (
@@ -270,6 +306,15 @@ export default function DeadlinesPage() {
                         <span className="text-xs text-green-600 flex items-center gap-1">
                           <CheckCircle size={12} /> {r.filed_date ? formatDate(r.filed_date) : "Filed"}
                         </span>
+                      )}
+                      {isSimulatable(r.compliance_type) && (
+                        <button
+                          onClick={() => setDemoEntry(r)}
+                          className="text-xs text-amber-700 hover:underline flex items-center gap-1"
+                          title="Run a demo of the filing workflow — submits nothing"
+                        >
+                          <FlaskConical size={12} /> Simulate Filing
+                        </button>
                       )}
                       <Link
                         href={`/clients/${r.client_id}`}
@@ -288,6 +333,15 @@ export default function DeadlinesPage() {
           )}
         </div>
       </Card>
+
+      {demoEntry && (
+        <DemoFilingModal
+          entry={demoEntry}
+          clientName={clientMap[demoEntry.client_id] ?? demoEntry.client_id.slice(0, 8)}
+          onConfirmed={handleSimulated}
+          onClose={() => setDemoEntry(null)}
+        />
+      )}
     </div>
   );
 }
