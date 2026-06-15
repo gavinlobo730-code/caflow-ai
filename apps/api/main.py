@@ -57,6 +57,8 @@ from routers import purchase_bills, purchase_payments, document_intelligence_v1
 from routers import gst_workspace, tds_workspace, mca_workspace, document_intelligence_v2
 from routers import payroll, fixed_assets, banking
 from routers import timeline
+# Phase 14 routers that existed but were never mounted (production-readiness fix)
+from routers import einvoice, eway_bill, tally_migration, xbrl_engine, itr_workspace, form_26as, gst_portal
 # Phase 6 — Year End
 from routers import year_end, year_end_checklist, year_end_adjustments
 from routers import year_end_statements, year_end_notes, year_end_reviews
@@ -114,40 +116,49 @@ from services.internal_client_service import require_client_access
 _CLIENT_GUARD = [Depends(require_client_access)]
 
 app.include_router(clients.router, dependencies=_CLIENT_GUARD)
-app.include_router(compliance.router)
+app.include_router(compliance.router, dependencies=_CLIENT_GUARD)
 app.include_router(documents.router, dependencies=_CLIENT_GUARD)
 app.include_router(assistant.router)
-app.include_router(insights.router)
-app.include_router(tasks.router)
-app.include_router(workflows.router)
-app.include_router(reminders.router)
+app.include_router(insights.router, dependencies=_CLIENT_GUARD)
+app.include_router(tasks.router, dependencies=_CLIENT_GUARD)
+app.include_router(workflows.router, dependencies=_CLIENT_GUARD)
+app.include_router(reminders.router, dependencies=_CLIENT_GUARD)
 app.include_router(team.router)
 app.include_router(accounting.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance_records.router, dependencies=_CLIENT_GUARD)
-app.include_router(document_intelligence.router)
+app.include_router(document_intelligence.router, dependencies=_CLIENT_GUARD)
 app.include_router(risks.router, dependencies=_CLIENT_GUARD)
 app.include_router(ai_insights.router, dependencies=_CLIENT_GUARD)
 app.include_router(automation.router)
 app.include_router(notifications.router)
 app.include_router(ai_copilot.router, dependencies=_CLIENT_GUARD)
-app.include_router(gst.router)
+app.include_router(gst.router, dependencies=_CLIENT_GUARD)
 app.include_router(tds.router, dependencies=_CLIENT_GUARD)
-app.include_router(income_tax.router)
-app.include_router(task_templates.router)
+app.include_router(income_tax.router, dependencies=_CLIENT_GUARD)
+app.include_router(task_templates.router, dependencies=_CLIENT_GUARD)
 app.include_router(task_extras.router)
-app.include_router(task_recurring.router)
-app.include_router(time_tracking.router)
+app.include_router(task_recurring.router, dependencies=_CLIENT_GUARD)
+app.include_router(time_tracking.router, dependencies=_CLIENT_GUARD)
 app.include_router(workload.router)
-app.include_router(analytics.router)
-app.include_router(engagements.router)
+app.include_router(analytics.router, dependencies=_CLIENT_GUARD)
+app.include_router(engagements.router, dependencies=_CLIENT_GUARD)
 app.include_router(invoices.router, dependencies=_CLIENT_GUARD)
-app.include_router(intelligence.router)
+app.include_router(intelligence.router, dependencies=_CLIENT_GUARD)
 app.include_router(scheduler_status.router)
 app.include_router(audit.router)
 app.include_router(onboarding.router)
 app.include_router(search.router)  # M2: authorization-scoped global search
 app.include_router(assignments.router)  # M3: client-assignment administration
 app.include_router(approvals.router)  # M4: governance approval workflows
+# Phase 14 — Tax/XBRL/integrations routers (previously written but never mounted;
+# their frontend pages were dead 404s until now). All client-scoped → guarded.
+app.include_router(itr_workspace.router, dependencies=_CLIENT_GUARD)
+app.include_router(xbrl_engine.router, dependencies=_CLIENT_GUARD)
+app.include_router(form_26as.router, dependencies=_CLIENT_GUARD)
+app.include_router(einvoice.router, dependencies=_CLIENT_GUARD)
+app.include_router(eway_bill.router, dependencies=_CLIENT_GUARD)
+app.include_router(tally_migration.router, dependencies=_CLIENT_GUARD)
+app.include_router(gst_portal.router, dependencies=_CLIENT_GUARD)
 app.include_router(customers.router, dependencies=_CLIENT_GUARD)
 app.include_router(vendors.router, dependencies=_CLIENT_GUARD)
 app.include_router(sales_invoices.router, dependencies=_CLIENT_GUARD)
@@ -155,7 +166,7 @@ app.include_router(receipts.router, dependencies=_CLIENT_GUARD)
 app.include_router(credit_notes.router, dependencies=_CLIENT_GUARD)
 app.include_router(purchase_bills.router, dependencies=_CLIENT_GUARD)
 app.include_router(purchase_payments.router, dependencies=_CLIENT_GUARD)
-app.include_router(document_intelligence_v1.router)
+app.include_router(document_intelligence_v1.router, dependencies=_CLIENT_GUARD)
 app.include_router(gst_workspace.router, dependencies=_CLIENT_GUARD)
 app.include_router(tds_workspace.router, dependencies=_CLIENT_GUARD)
 app.include_router(mca_workspace.router, dependencies=_CLIENT_GUARD)

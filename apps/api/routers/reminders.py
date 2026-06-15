@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from core.permissions import rbac
+from core.authz import filter_by_client
 from typing import Optional
 from models.common import api_response
 from repositories.reminders_repository import reminders_repo
@@ -25,6 +26,7 @@ def list_reminders(
 ):
     firm_id = current_user.get("firm_id")
     reminders = reminders_repo.find_all(firm_id=firm_id, client_id=client_id, status=status)
+    reminders = filter_by_client(current_user, reminders)  # M2/M5: assignment scope
     return api_response(True, {"reminders": reminders, "total": len(reminders)})
 
 

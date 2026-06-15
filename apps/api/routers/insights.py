@@ -6,6 +6,7 @@ prefix is also wired for the same repository.
 from fastapi import APIRouter, Depends
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import filter_by_client
 from repositories.ai_insights_repository import ai_insights_repo
 
 router = APIRouter(prefix="/api/insights", tags=["insights"])
@@ -19,6 +20,7 @@ def list_insights(
 ):
     firm_id = current_user.get("firm_id")
     insights = ai_insights_repo.find_all(firm_id=firm_id, client_id=client_id, status=status)
+    insights = filter_by_client(current_user, insights)  # M2/M5: assignment scope
     return api_response(True, {"insights": insights, "total": len(insights)})
 
 
