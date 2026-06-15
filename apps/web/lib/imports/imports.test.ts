@@ -118,6 +118,23 @@ test("employees: basic → paise, boolean defaults", () => {
   assert.equal(records[0].firm_id, "firm-1");
 });
 
+test("employees: full Aadhaar is reduced to last 4 only (never stored full)", () => {
+  const { records, errors } = buildEmployees([
+    row({ name: "Asha", basic: "30000", aadhaar: "1234 5678 9012" }),
+  ], "c1", "f1");
+  assert.equal(errors.length, 0);
+  assert.equal(records[0].aadhaar_last4, "9012");
+  assert.ok(!("aadhaar" in records[0]));
+});
+
+test("employees: non-12-digit Aadhaar is rejected", () => {
+  const { records, errors } = buildEmployees([
+    row({ name: "Bad Aadhaar", basic: "30000", aadhaar: "12345" }),
+  ], "c1", "f1");
+  assert.equal(records.length, 0);
+  assert.match(errors[0], /aadhaar must be 12 digits/i);
+});
+
 test("employees: missing basic and invalid PAN reported", () => {
   const { records, errors } = buildEmployees([
     row({ name: "No Salary", basic: "" }),

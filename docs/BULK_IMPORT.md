@@ -87,9 +87,14 @@ rows group by `vendor` + `bill_date`). A `bill_no` reused across two vendors is 
 Imports **unallocated** receipts; matching a receipt to specific invoices stays a manual step.
 
 ### Employees
-`name`* · `pan` · `designation` · `department` · `basic`* (₹/month) ·
+`name`* · `pan` · `aadhaar` · `designation` · `department` · `basic`* (₹/month) ·
 `hra_percent` (default 40) · `pf_applicable` (default yes) · `esi_applicable`
 (default yes) · `pt_applicable` (default no).
+
+**Aadhaar — privacy by design:** the template accepts the full 12-digit Aadhaar,
+but PracticeSync derives and stores **only the last 4 digits** (`aadhaar_last4`).
+The full number is never sent to or persisted by the backend (UIDAI norms). The
+backend rejects any `aadhaar_last4` that is not exactly 4 digits.
 
 (\* = required) — Sales-invoice columns are documented in
 [`SALES_INVOICE_IMPORT.md`](./SALES_INVOICE_IMPORT.md).
