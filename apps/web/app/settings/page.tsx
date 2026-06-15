@@ -441,6 +441,26 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* ── Security / MFA — all users ───────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+          <ShieldCheck size={15} className="text-blue-600" />
+          <h2 className="text-sm font-semibold text-[#0F172A]">Security</h2>
+        </div>
+        <div className="px-5 py-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm text-[#334155]">Enable two-factor authentication (authenticator app) for your account.</p>
+            <p className="text-xs text-[#94A3B8] mt-0.5">Required for Partner accounts.</p>
+          </div>
+          <Link
+            href="/settings/security"
+            className="px-4 py-1.5 border border-blue-200 text-blue-600 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors whitespace-nowrap"
+          >
+            Manage 2FA →
+          </Link>
+        </div>
+      </div>
+
       {/* ── Audit Log — Partner only ─────────────────────────────────────── */}
       <RoleGuard allowed={["Partner"]} redirect={false}>
         <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
