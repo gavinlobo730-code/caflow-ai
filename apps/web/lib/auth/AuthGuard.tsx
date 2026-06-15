@@ -12,20 +12,32 @@ function isPublicPath(pathname: string): boolean {
 }
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { session, loading } = useAuth();
+  const { session, loading, mfaPending } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const onLogin = pathname === "/login" || pathname.startsWith("/login/");
 
   useEffect(() => {
     if (loading) return;
     const isPublic = isPublicPath(pathname);
-    if (!session && !isPublic) {
-      router.replace("/login");
+    if (!session) {
+      if (!isPublic) router.replace("/login");
+      return;
     }
-    if (session && (pathname === "/login" || pathname.startsWith("/login/"))) {
+    // Session exists but still owes a TOTP challenge → keep the user on /login
+    // (which renders the challenge) and bounce them there from anywhere else.
+    // This is enforced globally so MFA cannot be bypassed by deep-linking.
+    if (mfaPending === true) {
+      if (!onLogin) router.replace("/login");
+      return;
+    }
+    // Fully authenticated (no challenge owed) — don't sit on the login page.
+    // While mfaPending is still null (resolving) we do NOT redirect, so an aal1
+    // session mid-challenge is never mistaken for fully authenticated.
+    if (mfaPending === false && onLogin) {
       router.replace("/");
     }
-  }, [session, loading, pathname, router]);
+  }, [session, loading, mfaPending, onLogin, pathname, router]);
 
   if (loading) {
     return (
@@ -45,6 +57,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   const isPublic = isPublicPath(pathname);
   if (!session && !isPublic) return null;
+  // MFA challenge owed: render only the login page (the challenge UI); block
+  // everything else while we redirect there.
+  if (session && mfaPending === true && !onLogin) return null;
 
   return <>{children}</>;
 }
