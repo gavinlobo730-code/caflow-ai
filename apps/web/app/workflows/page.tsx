@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import {
-  Play, Pause, Plus, Settings, CheckCircle2, Search, Zap, RefreshCw, Activity,
+  Play, Pause, Settings, CheckCircle2, Search, Zap, RefreshCw, Activity,
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
@@ -191,11 +191,8 @@ export default function WorkflowsPage() {
               <RefreshCw size={14} />
               Refresh
             </button>
-            <button className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg text-white"
-              style={{ backgroundColor: "#182350" }}>
-              <Plus size={14} />
-              New Workflow
-            </button>
+            {/* "New Workflow" button removed — it had no handler (dead button) and no
+                builder flow exists yet. Re-add wired to a builder when implemented. */}
           </div>
         </div>
       </div>

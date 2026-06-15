@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import filter_by_client
 from repositories.compliance_repository import compliance_repo
 from repositories.client_repository import client_repo
 from services.compliance_engine import (
@@ -20,6 +21,7 @@ def list_compliance_tasks(
 ):
     firm_id = current_user.get("firm_id")
     tasks = compliance_repo.find_all(firm_id=firm_id, client_id=client_id, status=status)
+    tasks = filter_by_client(current_user, tasks)  # M2/M5: assignment scope
     return api_response(True, {"tasks": tasks, "total": len(tasks)})
 
 
@@ -27,6 +29,7 @@ def list_compliance_tasks(
 def compliance_calendar(current_user: dict = Depends(rbac("compliance_record", "read"))):
     firm_id = current_user.get("firm_id")
     tasks = compliance_repo.find_all(firm_id=firm_id)
+    tasks = filter_by_client(current_user, tasks)  # M2/M5: assignment scope
     tasks = sorted(tasks, key=lambda t: t.get("due_date", ""))
 
     # Enrich with client_name from the client repo
