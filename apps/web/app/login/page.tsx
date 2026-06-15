@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -14,17 +14,28 @@ const FEATURES = [
 ];
 
 export default function LoginPage() {
-  const { signIn } = useAuth();
+  const { signIn, mfaPending } = useAuth();
   const router = useRouter();
   const supabase = getSupabaseClient();
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [error, setError]       = useState<string | null>(null);
   const [loading, setLoading]   = useState(false);
-  // MFA challenge step (shown after password when the account has a verified factor).
-  const [mfaStep, setMfaStep]   = useState(false);
   const [mfaFactorId, setMfaFactorId] = useState("");
   const [mfaCode, setMfaCode]   = useState("");
+
+  // The challenge is driven by the global auth state (mfaPending) so it survives
+  // the post-sign-in redirect race and page refreshes. When pending, fetch the
+  // verified TOTP factor to challenge against.
+  const mfaStep = mfaPending === true;
+  useEffect(() => {
+    if (mfaStep && !mfaFactorId) {
+      supabase.auth.mfa.listFactors().then(({ data }) => {
+        const totp = ((data as { totp?: { id: string }[] } | null)?.totp ?? [])[0];
+        if (totp) setMfaFactorId(totp.id);
+      }).catch(() => {});
+    }
+  }, [mfaStep, mfaFactorId, supabase]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -33,15 +44,10 @@ export default function LoginPage() {
     try {
       const { error } = await signIn(email, password);
       if (error) { setError(error); setLoading(false); return; }
-      // If the account has MFA enrolled, Supabase reports nextLevel 'aal2' while the
-      // fresh session is still 'aal1' — require the TOTP code before continuing.
-      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      if (aal?.nextLevel === "aal2" && aal.currentLevel !== "aal2") {
-        const { data: f } = await supabase.auth.mfa.listFactors();
-        const totp = ((f as { totp?: { id: string }[] } | null)?.totp ?? [])[0];
-        if (totp) { setMfaFactorId(totp.id); setMfaStep(true); setLoading(false); return; }
-      }
-      router.push("/");
+      // Do NOT navigate here. AuthContext recomputes MFA assurance: if a challenge
+      // is owed, mfaPending flips true and the challenge form renders below; if not,
+      // AuthGuard moves the user off /login. This avoids racing the redirect.
+      setLoading(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Connection error. Please try again.");
       setLoading(false);
@@ -58,6 +64,8 @@ export default function LoginPage() {
         code: mfaCode.trim(),
       });
       if (error) { setError("Invalid code — check your authenticator app and try again."); setLoading(false); return; }
+      // Session is now aal2; onAuthStateChange clears mfaPending and AuthGuard
+      // routes onward. Push as well for immediacy.
       router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Verification failed. Please try again.");
