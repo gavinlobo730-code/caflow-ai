@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import { Users, UserPlus, Shield, Mail, MoreVertical, X, AlertCircle, Lock } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
-type Role = "Partner" | "Manager" | "Article" | "Staff";
+// Module 9.0 / M1 — canonical staff roles (single source of truth = backend Role enum).
+// Client is external (uses the portal) and is not a team member here.
+type Role = "Partner" | "Manager" | "Executive" | "Reviewer";
 
 // All modules trackable in the permissions matrix
 const MODULES = [
@@ -51,7 +53,7 @@ const ROLE_DEFAULTS: Record<Role, Record<Module, boolean>> = {
     Clients: true,
     Tasks: true,
   },
-  Article: {
+  Executive: {
     Accounting: false,
     GST: false,
     "Income Tax": false,
@@ -64,7 +66,7 @@ const ROLE_DEFAULTS: Record<Role, Record<Module, boolean>> = {
     Clients: true,
     Tasks: true,
   },
-  Staff: {
+  Reviewer: {
     Accounting: false,
     GST: false,
     "Income Tax": false,
@@ -125,13 +127,13 @@ interface TeamMember {
   firm_id?: string;
 }
 
-const ROLES: Role[] = ["Partner", "Manager", "Article", "Staff"];
+const ROLES: Role[] = ["Partner", "Manager", "Executive", "Reviewer"];
 
 const ROLE_COLORS: Record<Role, string> = {
   Partner: "bg-purple-100 text-purple-700",
   Manager: "bg-blue-100 text-blue-700",
-  Article: "bg-amber-100 text-amber-700",
-  Staff: "bg-[#F1F5F9] text-[#475569]",
+  Executive: "bg-amber-100 text-amber-700",
+  Reviewer: "bg-[#F1F5F9] text-[#475569]",
 };
 
 // ---- Invite Modal ----
@@ -143,7 +145,7 @@ interface InviteModalProps {
 function InviteModal({ onClose, onInvite }: InviteModalProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<Role>("Staff");
+  const [role, setRole] = useState<Role>("Executive");
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -649,7 +651,7 @@ export default function TeamPage() {
             id: currentUserRow.id,
             full_name: currentUserRow.full_name ?? session.user.email ?? "You",
             email: currentUserRow.email ?? session.user.email ?? "",
-            role: (currentUserRow.role as Role) ?? "Staff",
+            role: (currentUserRow.role as Role) ?? "Reviewer",
             is_active: currentUserRow.is_active !== false,
             created_at: currentUserRow.created_at,
             auth_user_id: authUserId,
@@ -676,7 +678,7 @@ export default function TeamPage() {
         id: r.id,
         full_name: r.full_name ?? r.email ?? "—",
         email: r.email ?? "",
-        role: (r.role as Role) ?? "Staff",
+        role: (r.role as Role) ?? "Reviewer",
         is_active: r.is_active !== false,
         created_at: r.created_at,
         auth_user_id: r.auth_user_id,
@@ -751,7 +753,7 @@ export default function TeamPage() {
   const activeMembers = members.filter(m => m.is_active !== false);
   const partners = members.filter(m => m.role === "Partner").length;
   const managers = members.filter(m => m.role === "Manager").length;
-  const articlesStaff = members.filter(m => m.role === "Article" || m.role === "Staff").length;
+  const articlesStaff = members.filter(m => m.role === "Executive" || m.role === "Reviewer").length;
 
   const SUMMARY_CARDS = [
     {

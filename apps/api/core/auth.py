@@ -94,7 +94,7 @@ def get_current_user(
     try:
         result = (
             supabase.table("users")
-            .select("firm_id, role, full_name")
+            .select("firm_id, role, full_name, is_active")
             .eq("auth_user_id", auth_user_id)
             .single()
             .execute()
@@ -109,11 +109,24 @@ def get_current_user(
             detail="User not found in firm. Contact your firm administrator.",
         )
 
+    # M1 — Active-user enforcement: a disabled account must not continue to
+    # operate through a still-valid (unexpired) JWT. is_active defaults True so
+    # rows predating the column are unaffected; only an explicit False blocks.
+    if user_data.get("is_active") is False:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account disabled. Contact your firm administrator.",
+        )
+
+    # M1 — default to least-privileged staff role (not silently Executive) when a
+    # row somehow has no role; never silently grant elevated access.
+    role = user_data.get("role") or "Reviewer"
+
     return {
         "auth_user_id": auth_user_id,
         "firm_id": user_data["firm_id"],
         "email": payload.get("email", ""),
-        "role": user_data.get("role", "Executive"),
+        "role": role,
         "full_name": user_data.get("full_name", ""),
     }
 
