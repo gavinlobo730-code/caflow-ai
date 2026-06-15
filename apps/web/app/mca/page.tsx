@@ -93,27 +93,8 @@ const KEY_DEADLINES = [
   { label: "MSME-1 (H2)",  date: "30 Apr 2027", note: "Half-yearly — Oct 2026–Mar 2027", daysLeft: Math.ceil((new Date("2027-04-30").getTime() - TODAY.getTime()) / 86400000) },
 ];
 
-// Seed data
-const SEED_FILINGS: MCAFiling[] = [
-  { id: "s1", client_id: "", client_name: "Joshi Textiles Pvt Ltd",   company_cin: "U17200MH2010PTC205678", form_type: "AOC-4",     period: "FY 2024-25", due_date: "2025-10-29", filed_date: "2025-10-20", srn: "SRN12345678", status: "Filed",   notes: null },
-  { id: "s2", client_id: "", client_name: "Joshi Textiles Pvt Ltd",   company_cin: "U17200MH2010PTC205678", form_type: "MGT-7",     period: "FY 2024-25", due_date: "2025-11-28", filed_date: "2025-11-15", srn: "SRN12345679", status: "Filed",   notes: null },
-  { id: "s3", client_id: "", client_name: "Sharma Industries Pvt Ltd", company_cin: "U15200MH2015PTC301234", form_type: "DIR-3 KYC", period: "FY 2025-26", due_date: "2025-09-30", filed_date: null,          srn: null,           status: "Overdue", notes: null },
-  { id: "s4", client_id: "", client_name: "Mehta Consulting LLP",      company_cin: "AAC-1234",              form_type: "MGT-7A",    period: "FY 2024-25", due_date: "2025-11-28", filed_date: "2025-11-20", srn: "SRN12345680", status: "Filed",   notes: null },
-  { id: "s5", client_id: "", client_name: "Patel Pharma Pvt Ltd",      company_cin: "U24200GJ2018PTC102345", form_type: "AOC-4",     period: "FY 2025-26", due_date: "2026-10-30", filed_date: null,          srn: null,           status: "Pending", notes: null },
-];
-
-const SEED_COMPANIES: CompanyClient[] = [
-  { id: "co1", client_name: "Joshi Textiles Pvt Ltd",   cin: "U17200MH2010PTC205678", incorp_date: "2010-05-15", auth_capital_paise: 100000000, paidup_capital_paise: 50000000, regd_office: "Mumbai, Maharashtra" },
-  { id: "co2", client_name: "Sharma Industries Pvt Ltd", cin: "U15200MH2015PTC301234", incorp_date: "2015-08-22", auth_capital_paise: 50000000,  paidup_capital_paise: 25000000, regd_office: "Pune, Maharashtra" },
-  { id: "co3", client_name: "Patel Pharma Pvt Ltd",      cin: "U24200GJ2018PTC102345", incorp_date: "2018-03-10", auth_capital_paise: 200000000, paidup_capital_paise: 100000000, regd_office: "Ahmedabad, Gujarat" },
-];
-
-const SEED_DIRECTORS: Director[] = [
-  { id: "d1", name: "Vikram Joshi",   din: "01234567", pan: "ABCPJ1234K", designation: "Managing Director", appointment_date: "2010-05-15", kyc_due_date: "2026-09-30" },
-  { id: "d2", name: "Priya Sharma",   din: "02345678", pan: "CDFPS5678L", designation: "Director",           appointment_date: "2015-08-22", kyc_due_date: "2026-09-30" },
-  { id: "d3", name: "Rajesh Patel",   din: "03456789", pan: "EFGRP9012M", designation: "Director",           appointment_date: "2018-03-10", kyc_due_date: "2026-09-30" },
-  { id: "d4", name: "Sunita Mehta",   din: "04567890", pan: "GHISM3456N", designation: "Independent Director", appointment_date: "2020-01-01", kyc_due_date: "2025-09-30" }, // KYC overdue
-];
+// MCA filings, companies, and directors are loaded from the firm's real data;
+// empty until recorded (no fictional seed records shown to users).
 
 function computeStatus(dueDate: string, filed: string | null): FilingStatus {
   if (filed) return "Filed";
@@ -260,10 +241,10 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
 export default function MCAPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [firmId, setFirmId] = useState("");
-  const [filings, setFilings] = useState<MCAFiling[]>(SEED_FILINGS);
+  const [filings, setFilings] = useState<MCAFiling[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [companies] = useState<CompanyClient[]>(SEED_COMPANIES);
-  const [directors, setDirectors] = useState<Director[]>(SEED_DIRECTORS);
+  const [companies, setCompanies] = useState<CompanyClient[]>([]);
+  const [directors, setDirectors] = useState<Director[]>([]);
   const [loading, setLoading] = useState(true);
   const [tableError, setTableError] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -281,21 +262,30 @@ export default function MCAPage() {
         if (error) { setTableError(true); }
         else {
           const rows = ((data ?? []) as MCAFiling[]).map(r => ({ ...r, status: computeStatus(r.due_date, r.filed_date) }));
-          if (rows.length > 0) setFilings(rows);
+          setFilings(rows);   // real data only; empty firm shows the empty state
         }
-        // Load directors from mca_directors table (migration 038)
+        // Companies + directors from the firm's real data (migration 038). Empty
+        // arrays when none exist — never fall back to fictional seed records.
+        const { data: coData } = await sb.from("mca_companies").select("*").eq("firm_id", fid).order("company_name");
+        setCompanies((coData ?? []).map((c: Record<string, unknown>) => ({
+          id: c.id as string,
+          client_name: (c.company_name ?? "") as string,
+          cin: (c.cin ?? "") as string,
+          incorp_date: (c.incorp_date ?? "") as string,
+          auth_capital_paise: (c.authorized_capital_paise ?? 0) as number,
+          paidup_capital_paise: (c.paid_up_capital_paise ?? 0) as number,
+          regd_office: (c.registered_office ?? "") as string,
+        })));
         const { data: dirData } = await sb.from("mca_directors").select("*").eq("firm_id", fid).order("director_name");
-        if (dirData && dirData.length > 0) {
-          setDirectors(dirData.map((d: Record<string, unknown>) => ({
-            id: d.id as string,
-            name: d.director_name as string,
-            din: d.din as string,
-            pan: (d.pan ?? "") as string,
-            designation: (d.designation ?? "Director") as string,
-            appointment_date: (d.date_of_appointment ?? "") as string,
-            kyc_due_date: (d.kyc_due_date ?? "") as string,
-          })));
-        }
+        setDirectors((dirData ?? []).map((d: Record<string, unknown>) => ({
+          id: d.id as string,
+          name: d.director_name as string,
+          din: d.din as string,
+          pan: (d.pan ?? "") as string,
+          designation: (d.designation ?? "Director") as string,
+          appointment_date: (d.date_of_appointment ?? "") as string,
+          kyc_due_date: (d.kyc_due_date ?? "") as string,
+        })));
       } finally {
         setLoading(false);
       }

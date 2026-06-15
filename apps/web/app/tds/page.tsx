@@ -116,20 +116,8 @@ interface TDSCertificate {
 
 const TABS = ["Deductions", "Challans", "Returns", "Certificates"];
 
-// Seed data for Returns (IT Act Section 200(3) — 31st of month following quarter end)
-const SEED_RETURNS: TDSReturn[] = [
-  { id: "r1", form_type: "26Q", quarter: "Q1", fy: "2025-26", due_date: "2025-07-31", filed_date: "2025-07-28", prn: "PRN1234567", status: "Filed" },
-  { id: "r2", form_type: "26Q", quarter: "Q2", fy: "2025-26", due_date: "2025-10-31", filed_date: "2025-10-25", prn: "PRN1234568", status: "Filed" },
-  { id: "r3", form_type: "26Q", quarter: "Q3", fy: "2025-26", due_date: "2026-01-31", filed_date: "2026-01-28", prn: "PRN1234569", status: "Filed" },
-  { id: "r4", form_type: "26Q", quarter: "Q4", fy: "2025-26", due_date: "2026-05-31", filed_date: null, prn: null, status: "Overdue" },
-  { id: "r5", form_type: "26Q", quarter: "Q1", fy: "2026-27", due_date: "2026-07-31", filed_date: null, prn: null, status: "Pending" },
-  { id: "r6", form_type: "24Q", quarter: "Q4", fy: "2025-26", due_date: "2026-05-31", filed_date: null, prn: null, status: "Overdue" },
-];
-
-const SEED_CERTS: TDSCertificate[] = [
-  { id: "c1", deductee_name: "Ravi Kumar", deductee_pan: "BNPKR1234M", period: "Q3 FY 2025-26", amount_paise: 2500000, issue_date: "2026-01-30", status: "Issued" },
-  { id: "c2", deductee_name: "Sunita Enterprises", deductee_pan: "AABCS5678P", period: "Q4 FY 2025-26", amount_paise: 1800000, issue_date: null, status: "Pending" },
-];
+// TDS returns (IT Act §200(3)) and certificates (Form 16/16A) are loaded from the
+// firm's real data; empty until the firm records them (no fictional seed data).
 
 // ─── Add Deduction Modal ─────────────────────────────────────────────────────
 
@@ -365,8 +353,8 @@ export default function TDSPage() {
   const [firmId, setFirmId] = useState("");
   const [deductions, setDeductions] = useState<TDSDeduction[]>([]);
   const [challans, setChallans] = useState<TDSChallan[]>([]);
-  const [returns] = useState<TDSReturn[]>(SEED_RETURNS);
-  const [certificates] = useState<TDSCertificate[]>(SEED_CERTS);
+  const [returns, setReturns] = useState<TDSReturn[]>([]);
+  const [certificates, setCertificates] = useState<TDSCertificate[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddDeduction, setShowAddDeduction] = useState(false);
   const [showAddChallan, setShowAddChallan] = useState(false);
@@ -390,6 +378,14 @@ export default function TDSPage() {
         } else {
           setDeductions((data ?? []) as TDSDeduction[]);
         }
+        // Returns + certificates from the firm's real data (best-effort; empty if
+        // the tables are absent — never show fictional records).
+        const [retRes, certRes] = await Promise.all([
+          sb.from("tds_returns").select("*").eq("firm_id", fid).order("due_date", { ascending: false }),
+          sb.from("tds_certificates").select("*").eq("firm_id", fid).order("issue_date", { ascending: false }),
+        ]);
+        if (!retRes.error) setReturns((retRes.data ?? []) as TDSReturn[]);
+        if (!certRes.error) setCertificates((certRes.data ?? []) as TDSCertificate[]);
       } finally {
         setLoading(false);
       }

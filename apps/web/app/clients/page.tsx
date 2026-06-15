@@ -11,7 +11,7 @@ import type { Client } from "@/lib/types";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
-import { getLatestHealthScore } from "@/lib/services/health-score-compute";
+import { getLatestHealthScores } from "@/lib/services/health-score-compute";
 import { HealthBadgeLight } from "@/components/HealthBadge";
 
 const CLIENT_IMPORT_COLUMNS = [
@@ -55,12 +55,8 @@ export default function ClientsPage() {
       const data = await getClients();
       setClients(data);
       setFiltered(data);
-      // Load health scores in background — non-blocking
-      Promise.all(data.map((c) => getLatestHealthScore(c.id).catch(() => null))).then((scores) => {
-        const map: Record<string, number> = {};
-        scores.forEach((s, i) => { if (s) map[data[i].id] = s.overall_score; });
-        setHealthScores(map);
-      });
+      // Load health scores in ONE batched query (was N+1 per client) — non-blocking.
+      getLatestHealthScores(data.map((c) => c.id)).then(setHealthScores).catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load clients");
     } finally {
