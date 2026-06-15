@@ -52,6 +52,7 @@ from routers import scheduler_status, audit, onboarding
 from routers import search
 from routers import assignments
 from routers import approvals
+from routers import identity
 from routers import customers, vendors, sales_invoices, receipts, credit_notes
 from routers import purchase_bills, purchase_payments, document_intelligence_v1
 from routers import gst_workspace, tds_workspace, mca_workspace, document_intelligence_v2
@@ -150,6 +151,7 @@ app.include_router(onboarding.router)
 app.include_router(search.router)  # M2: authorization-scoped global search
 app.include_router(assignments.router)  # M3: client-assignment administration
 app.include_router(approvals.router)  # M4: governance approval workflows
+app.include_router(identity.router)  # M6: identity administration (audited, server-side)
 # Phase 14 — Tax/XBRL/integrations routers (previously written but never mounted;
 # their frontend pages were dead 404s until now). All client-scoped → guarded.
 app.include_router(itr_workspace.router, dependencies=_CLIENT_GUARD)
