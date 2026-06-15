@@ -25,8 +25,8 @@ def log_event(
     action: 'create' | 'update' | 'delete' | 'status_change' | 'approve'
     """
     try:
-        from core.supabase_client import get_supabase
-        get_supabase().table("audit_log").insert({
+        from core.supabase_client import get_service_supabase
+        get_service_supabase().table("audit_log").insert({
             "firm_id": firm_id,
             "actor_id": actor_id,
             "actor_email": actor_email,
