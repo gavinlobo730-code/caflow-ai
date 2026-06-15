@@ -90,6 +90,21 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def _carry_user_token(request: Request, call_next):
+    """M6 JWT cutover: stash the caller's bearer token for the request so the
+    request-scoped Supabase client (get_supabase) can run as the end user when
+    USE_USER_JWT is enabled. No-op when the header is absent (background jobs)."""
+    from core.supabase_client import set_request_token, reset_request_token
+    auth = request.headers.get("authorization") or request.headers.get("Authorization")
+    token = auth[7:].strip() if auth and auth[:7].lower() == "bearer " else None
+    handle = set_request_token(token)
+    try:
+        return await call_next(request)
+    finally:
+        reset_request_token(handle)
+
+
 @app.exception_handler(PermissionDeniedError)
 async def permission_denied_handler(request: Request, exc: PermissionDeniedError):
     return JSONResponse(
@@ -115,6 +130,12 @@ async def global_exception_handler(request: Request, exc: Exception):
 # (separate auth audience); firm-level routers are excluded (no client_id surface).
 from services.internal_client_service import require_client_access
 _CLIENT_GUARD = [Depends(require_client_access)]
+
+# M6 MFA enforcement: sensitive firm-administration routers require an aal2
+# (MFA-satisfied) token for MFA-required roles when REQUIRE_MFA is enabled.
+# No-op pass-through while the flag is off, so it ships dark.
+from core.auth import mfa_guard
+_MFA_GUARD = [Depends(mfa_guard)]
 
 app.include_router(clients.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance.router, dependencies=_CLIENT_GUARD)
@@ -149,9 +170,9 @@ app.include_router(scheduler_status.router)
 app.include_router(audit.router)
 app.include_router(onboarding.router)
 app.include_router(search.router)  # M2: authorization-scoped global search
-app.include_router(assignments.router)  # M3: client-assignment administration
-app.include_router(approvals.router)  # M4: governance approval workflows
-app.include_router(identity.router)  # M6: identity administration (audited, server-side)
+app.include_router(assignments.router, dependencies=_MFA_GUARD)  # M3: client-assignment administration
+app.include_router(approvals.router, dependencies=_MFA_GUARD)  # M4: governance approval workflows
+app.include_router(identity.router, dependencies=_MFA_GUARD)  # M6: identity administration (audited, server-side)
 # Phase 14 — Tax/XBRL/integrations routers (previously written but never mounted;
 # their frontend pages were dead 404s until now). All client-scoped → guarded.
 app.include_router(itr_workspace.router, dependencies=_CLIENT_GUARD)
@@ -200,10 +221,10 @@ app.include_router(memory_intelligence_router, dependencies=_CLIENT_GUARD)
 app.include_router(portal_router)
 # Amendment v1.1 — Practice (firm-as-internal-client), Partner-only
 from routers.practice import router as practice_router
-app.include_router(practice_router)
+app.include_router(practice_router, dependencies=_MFA_GUARD)
 # Amendment v1.1 Batch 3 — Billing / Revenue Operations, Partner-only
 from routers.billing import router as billing_router
-app.include_router(billing_router)
+app.include_router(billing_router, dependencies=_MFA_GUARD)
 # Amendment v1.1 Batch 6 — Knowledge Base + Client Instructions. The client-scoped
 # endpoints (/api/clients/{client_id}/...) are gated by require_client_access (G1);
 # firm /api/knowledge endpoints carry no client_id so the guard is a no-op there.

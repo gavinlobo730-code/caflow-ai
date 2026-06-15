@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import Header, HTTPException, status, Depends
 import jwt
 from jwt import PyJWKClient
-from core.supabase_client import get_supabase
+from core.supabase_client import get_service_supabase
 
 _jwks_client: Optional[PyJWKClient] = None
 
@@ -91,7 +91,7 @@ def get_current_user(
     # supabase-py 2.x raises postgrest.exceptions.APIError (406) when
     # .single() finds no matching row instead of returning result.data=None,
     # so we catch that and convert it to a clean 403.
-    supabase = get_supabase()
+    supabase = get_service_supabase()
     try:
         result = (
             supabase.table("users")

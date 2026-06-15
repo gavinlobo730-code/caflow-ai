@@ -1,17 +1,46 @@
 """
 Supabase client for the FastAPI backend.
-Uses SERVICE_ROLE key — full DB access, bypasses RLS for internal operations.
-All tenant isolation enforced at repository level via firm_id filter.
+
+Two access modes:
+  * SERVICE_ROLE  — full DB access, bypasses RLS. Used for privileged/bootstrap
+    paths (auth resolution, audit/login writes, approval writes, background jobs,
+    provisioning, authz decision lookups) via get_service_supabase().
+  * PER-USER JWT  — anon key + caller's bearer token, so Postgres RLS applies.
+    Used for all user-initiated client-scoped data access via get_supabase()
+    once USE_USER_JWT is enabled (M6 cutover). A per-request ContextVar carries
+    the caller's token so existing get_supabase() call sites adopt the user
+    client automatically when the flag is on; with the flag off (or no token,
+    e.g. background jobs) get_supabase() returns the service-role client — so the
+    cutover ships dark and is reverted by the flag alone.
 """
 import os
 import logging
+from contextvars import ContextVar
 from supabase import create_client, Client
 
 _client: Client | None = None
 _logger = logging.getLogger("caflow.supabase")
 
+# Per-request access token (set by middleware from the Authorization header).
+# None for background jobs / unauthenticated paths.
+_request_access_token: ContextVar[str | None] = ContextVar("request_access_token", default=None)
 
-def get_supabase() -> Client:
+
+def set_request_token(token: str | None):
+    """Store the caller's bearer token for the current request; returns a reset
+    handle. Called by the request middleware (and cleared after the response)."""
+    return _request_access_token.set(token)
+
+
+def reset_request_token(handle) -> None:
+    try:
+        _request_access_token.reset(handle)
+    except Exception:
+        pass
+
+
+def _service_client() -> Client:
+    """The shared SERVICE_ROLE client (bypasses RLS)."""
     global _client
     if _client is None:
         url = os.environ.get("SUPABASE_URL", "").strip()
@@ -34,6 +63,29 @@ def get_supabase() -> Client:
         )
         _client = create_client(url, key)
     return _client
+
+
+def get_service_supabase() -> Client:
+    """Explicit SERVICE_ROLE accessor for privileged/bootstrap paths that must
+    bypass RLS regardless of the USE_USER_JWT flag (auth resolution, audit/login
+    writes, approvals, background jobs, provisioning, authz decision lookups)."""
+    return _service_client()
+
+
+def get_supabase() -> Client:
+    """Request-scoped DB client.
+
+    When USE_USER_JWT is enabled AND a caller token is present for this request,
+    returns a per-user client (RLS enforced). Otherwise returns the service-role
+    client (current behaviour). Privileged paths must use get_service_supabase()
+    instead so they are never downgraded by the cutover.
+    """
+    from core.security_config import use_user_jwt
+    if use_user_jwt():
+        token = _request_access_token.get()
+        if token:
+            return get_user_supabase(token)
+    return _service_client()
 
 
 def get_user_supabase(access_token: str) -> Client:

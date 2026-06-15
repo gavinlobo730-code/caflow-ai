@@ -28,7 +28,7 @@ def _patch(monkeypatch, row, payload):
         def get_signing_key_from_jwt(self,_t): return _K()
     monkeypatch.setattr(auth, "_get_jwks_client", lambda: _J())
     monkeypatch.setattr(auth.jwt, "decode", lambda *a, **k: payload)
-    monkeypatch.setattr(auth, "get_supabase", lambda: _Supa(row))
+    monkeypatch.setattr(auth, "get_service_supabase", lambda: _Supa(row))
 
 
 # ── Session revocation ────────────────────────────────────────────────────────

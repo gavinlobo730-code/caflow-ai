@@ -31,8 +31,8 @@ _scheduler = None
 
 
 def _get_db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+    from core.supabase_client import get_service_supabase
+    return get_service_supabase()
 
 
 def _already_ran_today(job_name: str, firm_id: Optional[str]) -> bool:

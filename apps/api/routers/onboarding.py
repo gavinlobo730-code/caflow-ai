@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from models.common import api_response
-from core.supabase_client import get_supabase
+from core.supabase_client import get_service_supabase
 from core.auth import get_jwt_user
 from core.permissions import rbac
 
@@ -67,7 +67,7 @@ def create_firm(
         gstin = None
 
     auth_user_id = jwt_user["auth_user_id"]
-    db = get_supabase()
+    db = get_service_supabase()
 
     # Prevent duplicate firm creation for same auth user
     existing_user = db.table("users").select("id, firm_id").eq("auth_user_id", auth_user_id).execute()
@@ -140,7 +140,7 @@ def invite_user(
         raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {', '.join(valid_roles)}")
 
     firm_id = current_user["firm_id"]
-    db = get_supabase()
+    db = get_service_supabase()
 
     # Look up firm name — column is "name" not "firm_name"
     firm = db.table("firms").select("name").eq("id", firm_id).maybe_single().execute().data
@@ -176,7 +176,7 @@ def onboarding_status(
 ):
     """Return onboarding completeness for the authenticated user's firm."""
     firm_id = current_user["firm_id"]
-    db = get_supabase()
+    db = get_service_supabase()
 
     firm = db.table("firms").select("*").eq("id", firm_id).maybe_single().execute().data
     if not firm:
