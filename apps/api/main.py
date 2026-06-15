@@ -50,6 +50,7 @@ from routers import time_tracking, workload, analytics, engagements, invoices
 from routers import intelligence
 from routers import scheduler_status, audit, onboarding
 from routers import search
+from routers import assignments
 from routers import customers, vendors, sales_invoices, receipts, credit_notes
 from routers import purchase_bills, purchase_payments, document_intelligence_v1
 from routers import gst_workspace, tds_workspace, mca_workspace, document_intelligence_v2
@@ -144,6 +145,7 @@ app.include_router(scheduler_status.router)
 app.include_router(audit.router)
 app.include_router(onboarding.router)
 app.include_router(search.router)  # M2: authorization-scoped global search
+app.include_router(assignments.router)  # M3: client-assignment administration
 app.include_router(customers.router, dependencies=_CLIENT_GUARD)
 app.include_router(vendors.router, dependencies=_CLIENT_GUARD)
 app.include_router(sales_invoices.router, dependencies=_CLIENT_GUARD)

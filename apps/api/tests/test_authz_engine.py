@@ -31,8 +31,9 @@ def enforced(monkeypatch):
 # ── Role tier ────────────────────────────────────────────────────────────────
 
 def test_firmwide_roles():
+    # M3 / Option B: only the Partner is firm-wide; Managers are assigned-book.
     assert authz.is_firmwide(PARTNER) is True
-    assert authz.is_firmwide(MANAGER) is True
+    assert authz.is_firmwide(MANAGER) is False
     assert authz.is_firmwide(EXECUTIVE) is False
     assert authz.is_firmwide(REVIEWER) is False
     assert authz.is_firmwide(CLIENT) is False
@@ -41,20 +42,25 @@ def test_firmwide_roles():
 # ── effective_client_ids ──────────────────────────────────────────────────────
 
 def test_effective_ids_firmwide_is_none(enforced):
+    # Only Partner is firm-wide (Option B).
     assert authz.effective_client_ids(PARTNER) is None
-    assert authz.effective_client_ids(MANAGER) is None
 
 
 def test_effective_ids_assignment_scoped(enforced):
     assert authz.effective_client_ids(EXECUTIVE) == {"C1"}
     assert authz.effective_client_ids(REVIEWER) == set()
+    assert authz.effective_client_ids(MANAGER) == set()  # M3: assigned-book, none here
 
 
 # ── can_access_client ──────────────────────────────────────────────────────────
 
-def test_partner_manager_access_any_client(enforced):
+def test_partner_accesses_any_client(enforced):
     assert authz.can_access_client(PARTNER, "C9") is True
-    assert authz.can_access_client(MANAGER, "C9") is True
+
+
+def test_manager_is_assignment_scoped(enforced):
+    # M3 / Option B: a manager with no assignment cannot access an arbitrary client.
+    assert authz.can_access_client(MANAGER, "C9") is False
 
 
 def test_executive_only_assigned(enforced):
