@@ -37,17 +37,35 @@ interface AuthContextValue {
   user: User | null;
   userRole: UserRole | null;
   loading: boolean;
+  /**
+   * MFA challenge state: true = the session is aal1 but the account has a verified
+   * factor (must complete the TOTP challenge to reach aal2); false = no challenge
+   * needed; null = not yet resolved for the current session.
+   */
+  mfaPending: boolean | null;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** Resolve whether the current session still owes a TOTP challenge (aal1 → aal2). */
+async function resolveMfaPending(session: Session | null): Promise<boolean> {
+  if (!session) return false;
+  try {
+    const { data } = await getSupabaseClient().auth.mfa.getAuthenticatorAssuranceLevel();
+    return !!data && data.currentLevel === "aal1" && data.nextLevel === "aal2";
+  } catch {
+    return false;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mfaPending, setMfaPending] = useState<boolean | null>(null);
 
   useEffect(() => {
     // Perf: fire a no-op warm-up ping at the backend as early as possible so a
@@ -72,6 +90,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
       setLoading(false);
       resolveUserRole(session?.user ?? null).then(setUserRole).catch(() => setUserRole(null));
+      // Resolve MFA assurance for the restored session (null = computing).
+      setMfaPending(null);
+      resolveMfaPending(session).then(setMfaPending).catch(() => setMfaPending(false));
     }).catch(() => {
       clearTimeout(timeout);
       setLoading(false);
@@ -83,6 +104,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(session?.user ?? null);
         // Non-blocking role resolution (fire-and-forget).
         resolveUserRole(session?.user ?? null).then(setUserRole).catch(() => setUserRole(null));
+        // Recompute MFA assurance on every auth transition (login, refresh, verify).
+        // Set null first so the guard never treats an unresolved aal1 session as
+        // "fully authenticated" and skips the challenge.
+        setMfaPending(null);
+        resolveMfaPending(session).then(setMfaPending).catch(() => setMfaPending(false));
       }
     );
 
@@ -112,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ session, user, userRole, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ session, user, userRole, loading, mfaPending, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
