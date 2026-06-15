@@ -10,7 +10,7 @@ export default function JoinPage() {
   const router = useRouter();
 
   const firmId = searchParams.get("firm") ?? "";
-  const role = searchParams.get("role") ?? "Staff";
+  const role = searchParams.get("role") ?? "Executive";
   const name = searchParams.get("name") ?? "";
   const jobTitle = searchParams.get("jobTitle") ?? "";
 

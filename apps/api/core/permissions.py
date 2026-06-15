@@ -26,6 +26,22 @@ class Role(str, Enum):
 # Role hierarchy — index 0 = least privileged
 ROLE_HIERARCHY = [Role.CLIENT, Role.REVIEWER, Role.EXECUTIVE, Role.MANAGER, Role.PARTNER]
 
+# M1 Role Model Unification — single canonical vocabulary is the Role enum above.
+# Legacy/foreign role strings (from the old frontend type and DB CHECK constraints in
+# migrations 001/021/022) are mapped to canonical roles so existing rows keep working
+# during/after migration 081. Mapping rationale:
+#   owner            -> Partner   (firm owner)
+#   admin            -> Manager   (admin access level)
+#   article / staff  -> Executive (delivery staff)
+#   viewer           -> Reviewer  (read/approve-only)
+LEGACY_ROLE_MAP = {
+    "owner":   Role.PARTNER,
+    "admin":   Role.MANAGER,
+    "article": Role.EXECUTIVE,
+    "staff":   Role.EXECUTIVE,
+    "viewer":  Role.REVIEWER,
+}
+
 _ALL_STAFF = {Role.PARTNER, Role.MANAGER, Role.EXECUTIVE, Role.REVIEWER}
 _AT_LEAST_EXECUTIVE = {Role.PARTNER, Role.MANAGER, Role.EXECUTIVE}
 _AT_LEAST_MANAGER   = {Role.PARTNER, Role.MANAGER}
@@ -204,19 +220,88 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "write":   _AT_LEAST_MANAGER,
         "approve": _PARTNER_ONLY,
     },
+    # ── M1 phantom-resource fixes ────────────────────────────────────────────
+    # These resources were referenced by rbac() in routers but had NO entry here,
+    # so can() fail-closed → every guarded endpoint returned 403 for ALL roles
+    # (including Partner). Definitions below restore correct behaviour.
+    #
+    # Analytics / executive dashboards (firm-level metrics) — Manager+.
+    "analytics": {
+        "read":   _AT_LEAST_MANAGER,
+        "write":  _AT_LEAST_MANAGER,
+        "export": _AT_LEAST_MANAGER,
+    },
+    # AI Copilot (firm-context AI — sees client list / risks). Manager+ for now,
+    # mirroring the existing "ai":"copilot" intent. Per-client assignment gating
+    # is deferred to Module 9.0/M5 (AI-context security); until then keep it to
+    # Manager+ rather than re-opening it to all staff.
+    "copilot": {
+        "read":  _AT_LEAST_MANAGER,
+        "write": _AT_LEAST_MANAGER,
+    },
+    # Fee engagements / proposals / engagement letters — Manager+.
+    "engagement": {
+        "read":  _AT_LEAST_MANAGER,
+        "write": _AT_LEAST_MANAGER,
+    },
+    # Sales/client invoices (accounting domain).
+    "invoice": {
+        "read":    _AT_LEAST_EXECUTIVE,
+        "write":   _AT_LEAST_EXECUTIVE,
+        "approve": _AT_LEAST_MANAGER,
+        "delete":  _PARTNER_ONLY,
+    },
+    # Payroll — salary data is sensitive. Manager+ to run; Partner-only to finalise.
+    "payroll": {
+        "read":     _AT_LEAST_MANAGER,
+        "write":    _AT_LEAST_MANAGER,
+        "finalize": _PARTNER_ONLY,
+    },
+    # Time tracking — staff log/read their own time; firm-level reports Manager+.
+    "time_entry": {
+        "read":   _ALL_STAFF,
+        "write":  _ALL_STAFF,
+        "report": _AT_LEAST_MANAGER,
+        "delete": _AT_LEAST_MANAGER,
+    },
+    # Team workload / capacity views — Manager+.
+    "workload": {
+        "read":  _AT_LEAST_MANAGER,
+        "write": _AT_LEAST_MANAGER,
+    },
+    # ── Client portal (CA-facing management of a client's portal) ─────────────
+    # Staff manage portal document-requests/messages/dues. NOT for the Client role
+    # (clients use the separate external /portal surface). Closes the previously
+    # unauthenticated /api/portal/* endpoints.
+    "portal": {
+        "read":  _ALL_STAFF,
+        "write": _AT_LEAST_EXECUTIVE,
+    },
 }
 
 
 # ── Core helpers ─────────────────────────────────────────────────────────────
 
 def _to_role(role: str) -> Role:
-    """Normalize role string to Role enum, accepting any case (e.g. 'partner' → Role.PARTNER)."""
-    # Try as-is first, then title-cased (handles 'Partner', 'partner', 'PARTNER')
+    """Normalize a role string to the canonical Role enum.
+
+    Accepts any case ('partner' → Role.PARTNER) and maps legacy/foreign role
+    strings (owner/admin/article/staff/viewer) to their canonical equivalent so
+    rows written under older constraints (migrations 001/021/022) still authorize
+    correctly. Raises ValueError on a genuinely unknown role.
+    """
+    if role is None:
+        raise ValueError("Unknown role: None")
+    # Canonical match first (case-insensitive).
     for candidate in (role, role.title(), role.capitalize()):
         try:
             return Role(candidate)
         except ValueError:
             continue
+    # Legacy/foreign vocabulary.
+    mapped = LEGACY_ROLE_MAP.get(role.strip().lower())
+    if mapped is not None:
+        return mapped
     raise ValueError(f"Unknown role: {role!r}")
 
 

@@ -8,7 +8,7 @@ Provides the CA-facing API for managing client portal content:
 
 All monetary values stored in integer paise (₹1 = 100 paise) — never float.
 """
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone
@@ -16,7 +16,7 @@ import uuid
 import os
 
 from models.common import api_response
-from core.permissions import rbac  # noqa: F401 — available for future auth gating
+from core.permissions import rbac  # M1: applied to every endpoint below (was unauthenticated)
 import domain.portal_service as portal_svc
 
 router = APIRouter(prefix="/api/portal", tags=["portal"])
@@ -60,6 +60,7 @@ class SendMessageBody(BaseModel):
 def list_document_requests(
     firm_id: str = Query(...),
     client_id: str = Query(...),
+    current_user: dict = Depends(rbac("portal", "read")),
 ):
     """List all document requests for a client."""
     db = _db()
@@ -79,7 +80,10 @@ def list_document_requests(
 
 
 @router.post("/document-requests")
-def create_document_request(body: CreateDocRequestBody):
+def create_document_request(
+    body: CreateDocRequestBody,
+    current_user: dict = Depends(rbac("portal", "write")),
+):
     """Create a new document request from CA to client."""
     db = _db()
     if db is None:
@@ -112,7 +116,10 @@ def create_document_request(body: CreateDocRequestBody):
 
 
 @router.put("/document-requests/{request_id}/complete")
-def complete_document_request(request_id: str):
+def complete_document_request(
+    request_id: str,
+    current_user: dict = Depends(rbac("portal", "write")),
+):
     """Mark a document request as fulfilled."""
     db = _db()
     now = _now()
@@ -138,6 +145,7 @@ def complete_document_request(request_id: str):
 def list_messages(
     firm_id: str = Query(...),
     client_id: str = Query(...),
+    current_user: dict = Depends(rbac("portal", "read")),
 ):
     """List all portal messages for a client (CA → client broadcasts)."""
     db = _db()
@@ -157,7 +165,10 @@ def list_messages(
 
 
 @router.post("/messages")
-def send_message(body: SendMessageBody):
+def send_message(
+    body: SendMessageBody,
+    current_user: dict = Depends(rbac("portal", "write")),
+):
     """Send a portal message from CA to client."""
     db = _db()
     if db is None:
@@ -189,6 +200,7 @@ def send_message(body: SendMessageBody):
 def get_dues(
     firm_id: str = Query(...),
     client_id: str = Query(...),
+    current_user: dict = Depends(rbac("portal", "read")),
 ):
     """
     Outstanding dues summary for a client.
