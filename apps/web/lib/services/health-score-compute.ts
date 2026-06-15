@@ -127,6 +127,25 @@ export async function getLatestHealthScore(
 }
 
 /**
+ * Perf (Cause C fix): fetch the latest health score for MANY clients in ONE query
+ * instead of N per-client round trips. Returns a clientId → overall_score map.
+ */
+export async function getLatestHealthScores(clientIds: string[]): Promise<Record<string, number>> {
+  if (clientIds.length === 0) return {};
+  const supabase = getSupabaseClient();
+  const { data } = await supabase
+    .from("client_health_scores")
+    .select("client_id, overall_score, computed_at")
+    .in("client_id", clientIds)
+    .order("computed_at", { ascending: false });
+  const map: Record<string, number> = {};
+  for (const row of (data ?? []) as Array<{ client_id: string; overall_score: number }>) {
+    if (map[row.client_id] === undefined) map[row.client_id] = row.overall_score; // first row = latest
+  }
+  return map;
+}
+
+/**
  * Compute accounting score from journal entry activity.
  * High score = regular journal entries, recent activity.
  */
