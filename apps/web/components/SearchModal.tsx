@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Search, Users, CheckSquare, FileText, Shield, X } from "lucide-react";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { getFirmId } from "@/lib/data/getFirmId";
+import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
 type SearchResult = {
   id: string;
-  category: "clients" | "tasks" | "compliance" | "journals";
+  category: "clients" | "tasks" | "compliance" | "journals" | "accounts";
   title: string;
   subtitle: string;
   href: string;
@@ -19,6 +18,7 @@ const CATEGORY_ICONS = {
   tasks: CheckSquare,
   compliance: Shield,
   journals: FileText,
+  accounts: FileText,
 };
 
 const CATEGORY_LABELS = {
@@ -26,79 +26,35 @@ const CATEGORY_LABELS = {
   tasks: "Tasks",
   compliance: "Compliance",
   journals: "Journal Entries",
+  accounts: "Accounts",
 };
 
-async function runSearch(query: string, firmId: string): Promise<SearchResult[]> {
+// M2: search now goes through the backend /api/search, which enforces client
+// assignment server-side. The browser no longer queries Supabase directly, so a
+// user can only discover entities for clients they are authorized to access.
+async function runSearch(query: string): Promise<SearchResult[]> {
   if (!query.trim() || query.length < 2) return [];
-  const sb = getSupabaseClient();
-  const like = `%${query.trim()}%`;
-  const results: SearchResult[] = [];
-
-  const [clientsRes, accountsRes, journalsRes] = await Promise.all([
-    // Server-side filtered search — works at scale
-    sb.from("clients")
-      .select("id, client_name, entity_type, pan, gstin")
-      .eq("firm_id", firmId)
-      .or(`client_name.ilike.${like},pan.ilike.${like},gstin.ilike.${like}`)
-      .limit(5),
-    sb.from("chart_of_accounts")
-      .select("id, account_code, account_name, account_type, client_id")
-      .eq("firm_id", firmId)
-      .or(`account_name.ilike.${like},account_code.ilike.${like}`)
-      .limit(4),
-    sb.from("journal_entries")
-      .select("id, narration, entry_date, reference_no, client_id")
-      .eq("firm_id", firmId)
-      .ilike("narration", like)
-      .order("entry_date", { ascending: false })
-      .limit(4),
-  ]);
-
-  for (const c of (clientsRes.data ?? [])) {
-    results.push({
-      id: c.id,
-      category: "clients",
-      title: c.client_name,
-      subtitle: `${c.entity_type ?? "Client"} ${c.gstin ? `• ${c.gstin}` : `• ${c.pan}`}`,
-      href: `/clients/${c.id}/overview`,
-    });
+  try {
+    const res = await api.search(query.trim());
+    return (res.data?.results ?? []).map((r) => ({
+      id: r.id,
+      category: (r.category as SearchResult["category"]) ?? "clients",
+      title: r.title,
+      subtitle: r.subtitle ?? "",
+      href: r.href,
+    }));
+  } catch {
+    return [];
   }
-
-  for (const a of (accountsRes.data ?? [])) {
-    results.push({
-      id: a.id,
-      category: "journals",
-      title: `${a.account_code} — ${a.account_name}`,
-      subtitle: `Account · ${a.account_type}`,
-      href: a.client_id ? `/clients/${a.client_id}/accounting` : `/settings/accounts`,
-    });
-  }
-
-  for (const j of (journalsRes.data ?? [])) {
-    results.push({
-      id: j.id,
-      category: "journals",
-      title: j.narration ?? "Journal Entry",
-      subtitle: j.entry_date ? new Date(j.entry_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "",
-      href: j.client_id ? `/clients/${j.client_id}/accounting` : `/accounting/journal`,
-    });
-  }
-
-  return results;
 }
 
 export function SearchModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [firmId, setFirmId] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
-
-  useEffect(() => {
-    getFirmId().then(setFirmId).catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (open) {
@@ -119,13 +75,13 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
   }, [open, onClose]);
 
   const search = useCallback(async (q: string) => {
-    if (!firmId || !q.trim()) { setResults([]); return; }
+    if (!q.trim()) { setResults([]); return; }
     setLoading(true);
-    const res = await runSearch(q, firmId);
+    const res = await runSearch(q);
     setResults(res);
     setSelectedIndex(0);
     setLoading(false);
-  }, [firmId]);
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => search(query), 300);

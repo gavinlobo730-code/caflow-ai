@@ -431,4 +431,9 @@ export const api = {
     archive: (clientId: string, id: string) =>
       request(`/api/clients/${clientId}/instructions/${id}/archive`, { method: "POST" }),
   },
+  // M2: authorization-scoped global search (server enforces client assignment).
+  search: (q: string) =>
+    request(`/api/search?q=${encodeURIComponent(q)}`) as Promise<
+      ApiResp<{ results: { id: string; category: string; title: string; subtitle?: string; href: string }[] }>
+    >,
 };

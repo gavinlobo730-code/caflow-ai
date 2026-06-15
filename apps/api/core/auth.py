@@ -53,6 +53,7 @@ def get_current_user(
         role = (x_user_role or "partner").strip().capitalize()
         return {
             "auth_user_id": x_user_id or "dev-user",
+            "id": x_user_id or "dev-user",
             "firm_id": x_firm_id or "firm-001",
             "email": "dev@caflow.ai",
             "role": role,
@@ -94,7 +95,7 @@ def get_current_user(
     try:
         result = (
             supabase.table("users")
-            .select("firm_id, role, full_name, is_active")
+            .select("id, firm_id, role, full_name, is_active")
             .eq("auth_user_id", auth_user_id)
             .single()
             .execute()
@@ -124,6 +125,9 @@ def get_current_user(
 
     return {
         "auth_user_id": auth_user_id,
+        # Internal users.id — required for client-assignment lookups (core.authz)
+        # and per-user notification scoping. Distinct from auth_user_id.
+        "id": user_data.get("id"),
         "firm_id": user_data["firm_id"],
         "email": payload.get("email", ""),
         "role": role,

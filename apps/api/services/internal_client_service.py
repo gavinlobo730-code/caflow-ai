@@ -105,7 +105,11 @@ def require_client_access(
     """
     client_id = request.path_params.get("client_id") or request.query_params.get("client_id")
     if client_id:
-        assert_partner_for_internal_id(client_id, current_user)
+        assert_partner_for_internal_id(client_id, current_user)   # G1: internal-client
+        # M2: central client-assignment enforcement (Partner/Manager firm-wide;
+        # Executive/Reviewer restricted to assigned clients). 404 on unauthorized.
+        from core.authz import assert_client_access
+        assert_client_access(current_user, client_id)
     return current_user
 
 

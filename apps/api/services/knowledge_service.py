@@ -75,13 +75,10 @@ def next_version(current_version: int) -> int:
 # ── Assignment lookup ────────────────────────────────────────────────────────
 
 def is_assigned(firm_id: str, user_id: Optional[str], client_id: Optional[str]) -> bool:
-    if not user_id or not client_id:
-        return False
-    if _USE_MOCK:
-        return True   # mock has no assignments table; tests pass explicit flags to pure helpers
-    res = (_db().table("user_client_assignments").select("id")
-           .eq("user_id", user_id).eq("client_id", client_id).limit(1).execute())
-    return bool(res.data)
+    # M2: delegate to the central authorization engine — single source of truth
+    # for client-assignment (no duplicated query logic).
+    from core.authz import is_client_assigned
+    return is_client_assigned(user_id, client_id)
 
 
 def _assert_client_access(current_user: dict, client_id: str, *, write: bool = False) -> None:
