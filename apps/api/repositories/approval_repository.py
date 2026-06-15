@@ -11,8 +11,8 @@ _MOCK_REQUESTS: list[dict] = []
 
 
 def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+    from core.supabase_client import get_service_supabase
+    return get_service_supabase()
 
 
 def _now() -> str:

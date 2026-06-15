@@ -47,7 +47,7 @@ def _patch_auth(monkeypatch, user_row):
     monkeypatch.setattr(auth, "_get_jwks_client", lambda: _JWKS())
     monkeypatch.setattr(auth.jwt, "decode",
                         lambda *a, **k: {"sub": "auth-1", "email": "u@firm.com"})
-    monkeypatch.setattr(auth, "get_supabase", lambda: _FakeSupabase(user_row))
+    monkeypatch.setattr(auth, "get_service_supabase", lambda: _FakeSupabase(user_row))
 
 
 def test_disabled_user_is_rejected(monkeypatch):

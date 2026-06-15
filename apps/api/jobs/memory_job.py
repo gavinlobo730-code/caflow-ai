@@ -14,8 +14,8 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 
 def _get_db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+    from core.supabase_client import get_service_supabase
+    return get_service_supabase()
 
 
 def _get_pipeline():
