@@ -450,4 +450,31 @@ export const api = {
       request(`/api/assignments?user_id=${encodeURIComponent(user_id)}&client_id=${encodeURIComponent(client_id)}`,
               { method: "DELETE" }),
   },
+  // M4: governance approval workflows (maker-checker). Executive+ requests;
+  // Partner approves/rejects; Manager+ reads.
+  approvals: {
+    list: (status?: string) =>
+      request(`/api/approvals${status ? `?status=${status}` : ""}`) as Promise<
+        ApiResp<{ requests: ApprovalRequest[] }>
+      >,
+    get: (id: string) => request(`/api/approvals/${id}`) as Promise<ApiResp<ApprovalRequest>>,
+    create: (request_type: string, payload: Record<string, unknown>) =>
+      request("/api/approvals", { method: "POST", body: JSON.stringify({ request_type, payload }) }),
+    approve: (id: string) => request(`/api/approvals/${id}/approve`, { method: "POST" }),
+    reject: (id: string, reason?: string) =>
+      request(`/api/approvals/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),
+    cancel: (id: string) => request(`/api/approvals/${id}/cancel`, { method: "POST" }),
+  },
+};
+
+export type ApprovalRequest = {
+  id: string;
+  request_type: string;
+  summary?: string;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  payload?: Record<string, unknown>;
+  requested_by_email?: string;
+  decided_by_email?: string;
+  reason?: string;
+  created_at?: string;
 };

@@ -282,6 +282,14 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "read":  _AT_LEAST_MANAGER,
         "write": _PARTNER_ONLY,
     },
+    # ── Governance approvals (Module 9.0 M4) — maker/checker ─────────────────
+    # request: any staff may submit (maker). approve: Partner-only (checker).
+    # read: Manager+ (the approval inbox).
+    "approval": {
+        "request": _AT_LEAST_EXECUTIVE,
+        "read":    _AT_LEAST_MANAGER,
+        "approve": _PARTNER_ONLY,
+    },
 }
 
 
