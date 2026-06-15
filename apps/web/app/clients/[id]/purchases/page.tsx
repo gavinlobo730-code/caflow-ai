@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, RefreshCw, Upload, AlertCircle, CheckCircle, X } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS, type NameRef } from "@/lib/imports/mappers";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -205,6 +207,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   const [accounts, setAccounts] = useState<{ id: string; account_code: string; account_name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -382,6 +385,27 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
     } catch { /* skip */ }
   }
 
+  /**
+   * Bulk-import handler. Maps flat rows → grouped bills via buildPurchaseBills, then
+   * creates each through the EXISTING /api/purchase-bills/ endpoint (no parallel logic).
+   * Bills land as drafts. Vendors must already exist (referenced by name).
+   */
+  async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
+    const vendorRefs: NameRef[] = vendors.map((v) => ({ id: v.id, name: v.name }));
+    const { bills: built, errors } = buildPurchaseBills(rows, clientId, vendorRefs);
+    const token = await getAuthToken();
+    let imported = 0;
+    for (const bill of built) {
+      const { ref, ...payload } = bill; // drop the internal grouping key
+      void ref;
+      const result = await apiCall("/api/purchase-bills/", "POST", payload, token);
+      if (result.success) imported += bill.lines.length;
+      else errors.push(`Bill "${bill.bill_no ?? bill.ref}": ${result.error ?? "failed to create"}`);
+    }
+    if (imported > 0) load();
+    return { imported, errors };
+  }
+
   const totalPayable = bills.filter((b) => !["paid", "cancelled"].includes(b.status))
     .reduce((s, b) => s + b.net_payable_paise, 0);
   const totalThisFy = bills.reduce((s, b) => s + b.total_paise, 0);
@@ -419,6 +443,12 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
             <RefreshCw size={13} className={loading ? "animate-spin text-[#94A3B8]" : "text-[#94A3B8]"} />
           </button>
           <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+          >
+            <Upload size={12} /> Import
+          </button>
+          <button
             onClick={() => setShowForm((s) => !s)}
             className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
           >
@@ -426,6 +456,16 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
           </button>
         </div>
       </div>
+
+      {showImport && (
+        <CsvImportModal
+          title="Import Purchase Bills"
+          columns={PURCHASE_BILL_IMPORT_COLUMNS}
+          templateFilename="purchase-bills-template.csv"
+          onImport={handleImport}
+          onClose={() => setShowImport(false)}
+        />
+      )}
 
       {/* Create form */}
       {showForm && (
@@ -658,6 +698,7 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
   const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
@@ -685,6 +726,20 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
+
+  /** Bulk-import vendors through the EXISTING /api/vendors/ endpoint. */
+  async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
+    const { records, errors } = buildVendors(rows, clientId);
+    const token = await getAuthToken();
+    let imported = 0;
+    for (const v of records) {
+      const result = await apiCall("/api/vendors/", "POST", v, token);
+      if (result.success) imported++;
+      else errors.push(`Vendor "${v.name}": ${result.error ?? "failed to create"}`);
+    }
+    if (imported > 0) load();
+    return { imported, errors };
+  }
 
   async function handleSave() {
     if (!name.trim()) { setMsg({ type: "err", text: "Name is required" }); return; }
@@ -742,9 +797,20 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
         <p className="text-xs font-semibold text-[#334155]">{vendors.length} vendor{vendors.length !== 1 ? "s" : ""}</p>
         <div className="flex gap-2">
           <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC]"><RefreshCw size={13} className={loading ? "animate-spin text-[#94A3B8]" : "text-[#94A3B8]"} /></button>
+          <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"><Upload size={12} /> Import</button>
           <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"><Plus size={12} /> Add Vendor</button>
         </div>
       </div>
+
+      {showImport && (
+        <CsvImportModal
+          title="Import Vendors"
+          columns={VENDOR_IMPORT_COLUMNS}
+          templateFilename="vendors-template.csv"
+          onImport={handleImport}
+          onClose={() => setShowImport(false)}
+        />
+      )}
 
       {showForm && (
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">

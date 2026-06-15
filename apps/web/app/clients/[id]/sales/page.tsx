@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, RefreshCw, X, FileText, CheckCircle } from "lucide-react";
+import { Plus, RefreshCw, X, FileText, CheckCircle, Upload } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
+import { buildCustomers, CUSTOMER_IMPORT_COLUMNS, buildReceipts, RECEIPT_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -323,6 +326,7 @@ function SalesInvoices({
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   // Summary stats
@@ -392,6 +396,33 @@ function SalesInvoices({
     setTimeout(() => setToast(null), 4000);
   }
 
+  /**
+   * Bulk-import handler for the CSV/XLSX modal. Maps flat rows → grouped invoices
+   * via the pure buildSalesInvoices() mapper, then creates each invoice through the
+   * EXISTING /api/sales-invoices/ endpoint — the same path the manual form uses, so
+   * there is no parallel invoice logic. Returns a per-invoice success/error report.
+   */
+  async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
+    const { invoices: built, errors } = buildSalesInvoices(rows, clientId, customers);
+    const token = await getAuthToken();
+    let imported = 0;
+
+    for (const inv of built) {
+      const { ref, ...payload } = inv; // drop the internal grouping key
+      void ref;
+      const result = await apiCall("/api/sales-invoices/", "POST", payload, token);
+      if (result.success) {
+        imported += inv.lines.length; // count line-rows so the totals match the upload
+      } else {
+        const label = inv.ref || `${inv.customer_id} / ${inv.invoice_date}`;
+        errors.push(`Invoice "${label}": ${result.error ?? "failed to create"}`);
+      }
+    }
+
+    if (imported > 0) load();
+    return { imported, errors };
+  }
+
   return (
     <div className="space-y-4 max-w-5xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
@@ -416,6 +447,12 @@ function SalesInvoices({
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
           <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+          >
+            <Upload size={12} /> Import
+          </button>
+          <button
             onClick={() => setShowForm(true)}
             className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
           >
@@ -431,6 +468,17 @@ function SalesInvoices({
           customers={customers}
           onSaved={() => { setShowForm(false); load(); showToast("Invoice created", "success"); }}
           onCancel={() => setShowForm(false)}
+        />
+      )}
+
+      {/* Bulk import (CSV / XLSX) — reuses the existing create endpoint */}
+      {showImport && (
+        <CsvImportModal
+          title="Import Sales Invoices"
+          columns={SALES_INVOICE_IMPORT_COLUMNS}
+          templateFilename="sales-invoices-template.csv"
+          onImport={handleImport}
+          onClose={() => setShowImport(false)}
         />
       )}
 
@@ -786,6 +834,7 @@ function Customers({
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
@@ -822,6 +871,20 @@ function Customers({
     load();
   }
 
+  /** Bulk-import customers through the EXISTING /api/customers/ endpoint. */
+  async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
+    const { records, errors } = buildCustomers(rows, clientId);
+    const token = await getAuthToken();
+    let imported = 0;
+    for (const c of records) {
+      const result = await apiCall("/api/customers/", "POST", c, token);
+      if (result.success) imported++;
+      else errors.push(`Customer "${c.name}": ${result.error ?? "failed to create"}`);
+    }
+    if (imported > 0) load();
+    return { imported, errors };
+  }
+
   return (
     <div className="space-y-4 max-w-4xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
@@ -835,6 +898,12 @@ function Customers({
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
           <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+          >
+            <Upload size={12} /> Import
+          </button>
+          <button
             onClick={() => { setEditCustomer(null); setShowForm(true); }}
             className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
           >
@@ -842,6 +911,16 @@ function Customers({
           </button>
         </div>
       </div>
+
+      {showImport && (
+        <CsvImportModal
+          title="Import Customers"
+          columns={CUSTOMER_IMPORT_COLUMNS}
+          templateFilename="customers-template.csv"
+          onImport={handleImport}
+          onClose={() => setShowImport(false)}
+        />
+      )}
 
       {showForm && (
         <CustomerForm
@@ -1166,6 +1245,7 @@ function Receipts({
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   const load = useCallback(async () => {
@@ -1208,6 +1288,20 @@ function Receipts({
     setTimeout(() => setToast(null), 4000);
   }
 
+  /** Bulk-import unallocated receipts through the EXISTING /api/receipts/ endpoint. */
+  async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
+    const { records, errors } = buildReceipts(rows, clientId, customers);
+    const token = await getAuthToken();
+    let imported = 0;
+    for (const rec of records) {
+      const result = await apiCall("/api/receipts/", "POST", rec, token);
+      if (result.success) imported++;
+      else errors.push(`Receipt for "${rec.customer_id}" on ${rec.receipt_date}: ${result.error ?? "failed to create"}`);
+    }
+    if (imported > 0) load();
+    return { imported, errors };
+  }
+
   return (
     <div className="space-y-4 max-w-4xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
@@ -1221,6 +1315,12 @@ function Receipts({
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
           <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+          >
+            <Upload size={12} /> Import
+          </button>
+          <button
             onClick={() => setShowForm(true)}
             className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
           >
@@ -1228,6 +1328,16 @@ function Receipts({
           </button>
         </div>
       </div>
+
+      {showImport && (
+        <CsvImportModal
+          title="Import Receipts"
+          columns={RECEIPT_IMPORT_COLUMNS}
+          templateFilename="receipts-template.csv"
+          onImport={handleImport}
+          onClose={() => setShowImport(false)}
+        />
+      )}
 
       {showForm && (
         <ReceiptForm
