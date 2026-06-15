@@ -10,7 +10,27 @@ import {
 } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
-import type { UserRole } from "@/lib/auth/permissions";
+import { normalizeRole, type UserRole } from "@/lib/auth/permissions";
+
+/**
+ * Resolve the caller's role from the AUTHORITATIVE source — the users table —
+ * rather than JWT user_metadata (which can be stale/forged and previously
+ * defaulted to Partner). Falls back to user_metadata, then to least privilege.
+ */
+async function resolveUserRole(user: User | null): Promise<UserRole | null> {
+  if (!user) return null;
+  try {
+    const { data } = await supabase
+      .from("users")
+      .select("role")
+      .eq("auth_user_id", user.id)
+      .maybeSingle();
+    const raw = (data?.role as string | undefined) ?? (user.user_metadata?.role as string | undefined);
+    return normalizeRole(raw);
+  } catch {
+    return normalizeRole(user.user_metadata?.role as string | undefined);
+  }
+}
 
 interface AuthContextValue {
   session: Session | null;
@@ -33,11 +53,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Safety timeout — if Supabase doesn't respond in 5s, unblock the UI
     const timeout = setTimeout(() => setLoading(false), 5000);
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       clearTimeout(timeout);
       setSession(session);
       setUser(session?.user ?? null);
-      setUserRole((session?.user?.user_metadata?.role as UserRole) ?? "Partner");
+      setUserRole(await resolveUserRole(session?.user ?? null));
       setLoading(false);
     }).catch(() => {
       clearTimeout(timeout);
@@ -48,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        setUserRole((session?.user?.user_metadata?.role as UserRole) ?? "Partner");
+        setUserRole(await resolveUserRole(session?.user ?? null));
       }
     );
 
