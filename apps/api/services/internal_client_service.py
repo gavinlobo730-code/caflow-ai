@@ -92,18 +92,37 @@ def assert_not_internal_for_payroll(client_id: Optional[str], firm_id: Optional[
         )
 
 
-def require_client_access(
+async def require_client_access(
     request: Request,
     current_user: dict = Depends(get_current_user),
 ) -> dict:
     """G1 router-level guard (Batch 2.1). Applied via include_router(dependencies=[...])
-    to every client-scoped router. Reads client_id from the path OR query string;
-    when it targets the firm's internal practice client and the caller is not a
-    Partner, returns 404 (existence not disclosed). No-op for requests without a
+    to every client-scoped router. Reads client_id from the path, query string, OR
+    a JSON request body (writes); when it targets the firm's internal practice
+    client and the caller is not a Partner, returns 404 (existence not disclosed),
+    and enforces client-assignment scope (M2). No-op for requests without a
     client_id (firm-level endpoints). The portal router is intentionally NOT
     guarded here — it uses a separate auth audience.
+
+    Module 9.0 hardening: the original guard only inspected path/query, so a write
+    that carried client_id in its JSON body (e.g. creating an invoice/customer for
+    an UNASSIGNED client) bypassed assignment enforcement. We now also scope the
+    JSON body on POST/PUT/PATCH. Multipart/form writes (e.g. document upload) carry
+    client_id outside JSON and are scoped explicitly in their handlers.
     """
     client_id = request.path_params.get("client_id") or request.query_params.get("client_id")
+    if not client_id and request.method in ("POST", "PUT", "PATCH"):
+        # Only JSON bodies are inspected here; reading the body caches it on the
+        # Request, so the downstream handler still parses normally.
+        if request.headers.get("content-type", "").startswith("application/json"):
+            try:
+                body = await request.json()
+            except Exception:
+                body = None
+            if isinstance(body, dict):
+                cid = body.get("client_id")
+                if isinstance(cid, str) and cid.strip():
+                    client_id = cid.strip()
     if client_id:
         assert_partner_for_internal_id(client_id, current_user)   # G1: internal-client
         # M2: central client-assignment enforcement (Partner/Manager firm-wide;

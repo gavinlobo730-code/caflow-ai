@@ -11,6 +11,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import assert_client_access
+from services.internal_client_service import assert_partner_for_internal_id
 
 _logger = logging.getLogger("caflow.doc_intelligence_v1")
 _GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
@@ -67,6 +69,10 @@ async def extract_invoice(
     Returns:
       extracted data + requires_review: true flag always set.
     """
+    # Client scope: multipart form client_id bypasses the central JSON guard, so
+    # enforce internal-client (G1) + assignment (M2) here explicitly.
+    assert_partner_for_internal_id(client_id, current_user)
+    assert_client_access(current_user, client_id)
     # File size guard (10 MB)
     MAX_BYTES = 10 * 1024 * 1024
     content = await file.read()
