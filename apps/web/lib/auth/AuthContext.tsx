@@ -9,7 +9,7 @@ import {
   ReactNode,
 } from "react";
 import { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, getSupabaseClient } from "@/lib/supabase/client";
 import { normalizeRole, type UserRole } from "@/lib/auth/permissions";
 
 /**
@@ -20,7 +20,7 @@ import { normalizeRole, type UserRole } from "@/lib/auth/permissions";
 async function resolveUserRole(user: User | null): Promise<UserRole | null> {
   if (!user) return null;
   try {
-    const { data } = await supabase
+    const { data } = await getSupabaseClient()
       .from("users")
       .select("role")
       .eq("auth_user_id", user.id)
