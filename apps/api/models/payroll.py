@@ -6,12 +6,16 @@ All monetary amounts in integer paise.
 """
 from pydantic import BaseModel, field_validator
 from typing import Optional
+import re
 
 
 class EmployeeIn(BaseModel):
     client_id: str
     name: str
     pan: Optional[str] = None
+    # Privacy-by-design: we store ONLY the last 4 digits of Aadhaar, never the full
+    # number (UIDAI norms). The full value must never reach the backend.
+    aadhaar_last4: Optional[str] = None
     designation: Optional[str] = None
     department: Optional[str] = None
     joining_date: Optional[str] = None
@@ -39,6 +43,20 @@ class EmployeeIn(BaseModel):
             raise ValueError("Employee name cannot be blank.")
         return v.strip()
 
+    @field_validator("aadhaar_last4")
+    @classmethod
+    def aadhaar_last4_format(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return None
+        # Reject anything other than exactly 4 digits so a full Aadhaar can never
+        # be stored even if a caller mistakenly sends one.
+        if not re.fullmatch(r"\d{4}", v):
+            raise ValueError("aadhaar_last4 must be exactly the last 4 digits.")
+        return v
+
     @field_validator("basic_paise", "other_allowances_paise", "lta_paise",
                      "medical_paise", "special_allowance_paise")
     @classmethod
@@ -50,6 +68,7 @@ class EmployeeIn(BaseModel):
 
 class EmployeeUpdateIn(BaseModel):
     name: Optional[str] = None
+    aadhaar_last4: Optional[str] = None
     designation: Optional[str] = None
     department: Optional[str] = None
     basic_paise: Optional[int] = None
@@ -68,6 +87,18 @@ class EmployeeUpdateIn(BaseModel):
     uan: Optional[str] = None
     esi_number: Optional[str] = None
     status: Optional[str] = None
+
+    @field_validator("aadhaar_last4")
+    @classmethod
+    def aadhaar_last4_format(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return None
+        if not re.fullmatch(r"\d{4}", v):
+            raise ValueError("aadhaar_last4 must be exactly the last 4 digits.")
+        return v
 
 
 class SalaryStructureIn(BaseModel):

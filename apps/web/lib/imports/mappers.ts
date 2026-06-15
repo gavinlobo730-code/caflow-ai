@@ -342,6 +342,8 @@ export interface BuiltEmployee {
   firm_id: string;
   name: string;
   pan?: string;
+  // Privacy-by-design: only the last 4 digits of Aadhaar are ever stored/sent.
+  aadhaar_last4?: string;
   designation?: string;
   department?: string;
   basic_paise: number;
@@ -354,6 +356,7 @@ export interface BuiltEmployee {
 export const EMPLOYEE_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "name", label: "Name", required: true, hint: "Employee full name" },
   { key: "pan", label: "PAN", required: false, hint: "10-char PAN (optional)" },
+  { key: "aadhaar", label: "Aadhaar", required: false, hint: "12-digit Aadhaar (optional) — only the last 4 digits are stored" },
   { key: "designation", label: "Designation", required: false, hint: "e.g. Manager (optional)" },
   { key: "department", label: "Department", required: false, hint: "e.g. Accounts (optional)" },
   { key: "basic", label: "Basic Salary (₹/month)", required: true, hint: "Monthly basic in rupees, e.g. 25000" },
@@ -384,6 +387,15 @@ export function buildEmployees(
     const pan = str(r.pan).toUpperCase() || undefined;
     if (pan && !PAN_RE.test(pan)) { errors.push(`Row ${rowNo}: invalid PAN "${pan}"`); return; }
 
+    // Aadhaar: accept the full 12 digits the firm has, but keep ONLY the last 4.
+    // The full number is never placed on the built record (so it is never sent/stored).
+    let aadhaarLast4: string | undefined;
+    const aadhaarDigits = str(r.aadhaar).replace(/\D/g, "");
+    if (aadhaarDigits) {
+      if (aadhaarDigits.length !== 12) { errors.push(`Row ${rowNo}: Aadhaar must be 12 digits`); return; }
+      aadhaarLast4 = aadhaarDigits.slice(-4);
+    }
+
     const hraRaw = str(r.hra_percent);
     const hraPercent = hraRaw ? num(r.hra_percent) : 40;
     if (hraRaw && (!Number.isFinite(hraPercent) || hraPercent < 0)) {
@@ -395,6 +407,7 @@ export function buildEmployees(
       firm_id: firmId,
       name,
       pan,
+      aadhaar_last4: aadhaarLast4,
       designation: str(r.designation) || undefined,
       department: str(r.department) || undefined,
       basic_paise: basicPaise,

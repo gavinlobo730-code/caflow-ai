@@ -37,6 +37,7 @@ interface Employee {
   id: string;
   name: string;
   pan?: string;
+  aadhaar_last4?: string;
   designation?: string;
   department?: string;
   basic_paise: number;
@@ -171,7 +172,8 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [form, setForm] = useState({ name: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
+  const [form, setForm] = useState({ name: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
+  const [aadhaarError, setAadhaarError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -201,20 +203,29 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
 
   async function addEmployee() {
     if (!form.name || !form.basic_paise) return;
+    // Aadhaar: keep only the last 4 digits; never send the full number.
+    const { aadhaar, ...rest } = form;
+    const aadhaarDigits = aadhaar.replace(/\D/g, "");
+    if (aadhaarDigits && aadhaarDigits.length !== 12) {
+      setAadhaarError("Aadhaar must be 12 digits");
+      return;
+    }
+    setAadhaarError(null);
     setSaving(true);
     await apiFetch("/api/payroll/employees", {
       method: "POST",
       body: JSON.stringify({
         client_id: clientId,
         firm_id: firmId,
-        ...form,
+        ...rest,
+        aadhaar_last4: aadhaarDigits ? aadhaarDigits.slice(-4) : undefined,
         basic_paise: Math.round(parseFloat(form.basic_paise) * 100),
         hra_percent: parseFloat(form.hra_percent),
       }),
     }).catch(() => null);
     await load();
     setShowAdd(false);
-    setForm({ name: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
+    setForm({ name: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
     setSaving(false);
   }
 
@@ -253,6 +264,11 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
             <Field label="Department" value={form.department} onChange={v => setForm(f => ({...f, department: v}))} placeholder="e.g. Accounts" />
             <Field label="Basic Salary (₹/month) *" value={form.basic_paise} onChange={v => setForm(f => ({...f, basic_paise: v}))} placeholder="e.g. 25000" type="number" />
             <Field label="HRA %" value={form.hra_percent} onChange={v => setForm(f => ({...f, hra_percent: v}))} placeholder="40" type="number" />
+            <div>
+              <Field label="Aadhaar" value={form.aadhaar} onChange={v => setForm(f => ({...f, aadhaar: v}))} placeholder="12-digit Aadhaar" />
+              <p className="text-[10px] text-[#94A3B8] mt-0.5">Only the last 4 digits are stored.</p>
+              {aadhaarError && <p className="text-[10px] text-red-500 mt-0.5">{aadhaarError}</p>}
+            </div>
           </div>
           <div className="flex items-center gap-4">
             {(["pf_applicable", "esi_applicable", "pt_applicable"] as const).map(k => (
