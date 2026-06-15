@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import {
   Users, Clock, AlertTriangle, FileCheck,
   Calendar, Sparkles, CheckCircle2,
-  ChevronRight,
+  ChevronRight, FlaskConical,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -19,6 +19,7 @@ interface KPIs {
   pendingTasks: number;
   filingsDueThisMonth: number;
   overdueFilings: number;
+  demoFilings: number;
 }
 
 interface RecentClient {
@@ -158,7 +159,7 @@ export default function DashboardContent() {
           .from("users").select("firm_id").eq("auth_user_id", user!.id).maybeSingle();
         const firmId: string | null = userData?.firm_id ?? null;
         if (!firmId) {
-          setKpis({ totalClients: 0, pendingTasks: 0, filingsDueThisMonth: 0, overdueFilings: 0 });
+          setKpis({ totalClients: 0, pendingTasks: 0, filingsDueThisMonth: 0, overdueFilings: 0, demoFilings: 0 });
           setRecentClients([]); setRecentTasks([]); setLoading(false); return;
         }
 
@@ -177,6 +178,7 @@ export default function DashboardContent() {
           { count: pendingCount },
           { count: filingsDue },
           { count: overdueCount },
+          { count: demoCount },
           { data: clientsData },
           { data: tasksRaw },
         ] = await Promise.all([
@@ -184,6 +186,8 @@ export default function DashboardContent() {
           supabase.from("tasks").select("id", { count: "exact", head: true }).eq("firm_id", firmId).neq("status", "completed"),
           supabase.from("compliance_entries").select("id", { count: "exact", head: true }).eq("firm_id", firmId).gte("due_date", monthStart).lte("due_date", monthEnd).neq("status", "filed"),
           supabase.from("compliance_entries").select("id", { count: "exact", head: true }).eq("firm_id", firmId).lt("due_date", todayStr).neq("status", "filed"),
+          // DEMO MODE filing simulations (separate from real compliance status).
+          supabase.from("demo_filings").select("id", { count: "exact", head: true }).eq("firm_id", firmId),
           supabase.from("clients").select("id, client_name, gstin, entity_type").eq("firm_id", firmId).eq("is_internal", false).order("created_at", { ascending: false }).limit(5),
           supabase.from("tasks").select("id, title, due_date, status, client_name").eq("firm_id", firmId).order("created_at", { ascending: false }).limit(6),
         ]);
@@ -193,11 +197,12 @@ export default function DashboardContent() {
           pendingTasks: pendingCount ?? 0,
           filingsDueThisMonth: filingsDue ?? 0,
           overdueFilings: overdueCount ?? 0,
+          demoFilings: demoCount ?? 0,
         });
         setRecentClients((clientsData as RecentClient[]) ?? []);
         setRecentTasks((tasksRaw as RecentTask[]) ?? []);
       } catch {
-        setKpis({ totalClients: 0, pendingTasks: 0, filingsDueThisMonth: 0, overdueFilings: 0 });
+        setKpis({ totalClients: 0, pendingTasks: 0, filingsDueThisMonth: 0, overdueFilings: 0, demoFilings: 0 });
         setRecentClients([]); setRecentTasks([]);
       } finally {
         setLoading(false);
@@ -276,6 +281,21 @@ export default function DashboardContent() {
             </div>
           )}
         </Link>
+        {/* DEMO MODE: simulated filings — only surfaced once some exist, clearly labelled. */}
+        {!loading && (kpis?.demoFilings ?? 0) > 0 && (
+          <>
+            <div className="w-px h-8 bg-[#F1F5F9]" />
+            <Link href="/deadlines" className="flex items-center gap-2.5 group" title="Simulated filings — DEMO MODE only, nothing submitted">
+              <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center">
+                <FlaskConical size={13} className="text-amber-600" />
+              </div>
+              <div>
+                <span className="text-xl font-bold text-amber-700">{kpis?.demoFilings ?? 0}</span>
+                <span className="text-xs text-[#94A3B8] ml-1.5">Demo Filed</span>
+              </div>
+            </Link>
+          </>
+        )}
       </div>
 
       {/* ── Three-column Briefing Grid ──────────────────────────────────── */}
