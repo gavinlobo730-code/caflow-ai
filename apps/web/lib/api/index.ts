@@ -436,4 +436,18 @@ export const api = {
     request(`/api/search?q=${encodeURIComponent(q)}`) as Promise<
       ApiResp<{ results: { id: string; category: string; title: string; subtitle?: string; href: string }[] }>
     >,
+  // M3: client-assignment administration (Partner writes; Manager+ reads).
+  assignments: {
+    listForUser: (userId: string) =>
+      request(`/api/assignments/users/${userId}`) as Promise<ApiResp<{ user_id: string; client_ids: string[] }>>,
+    listForClient: (clientId: string) =>
+      request(`/api/assignments/clients/${clientId}`) as Promise<ApiResp<{ client_id: string; user_ids: string[] }>>,
+    create: (user_id: string, client_id: string) =>
+      request("/api/assignments", { method: "POST", body: JSON.stringify({ user_id, client_id }) }),
+    bulkCreate: (user_id: string, client_ids: string[]) =>
+      request("/api/assignments/bulk", { method: "POST", body: JSON.stringify({ user_id, client_ids }) }),
+    remove: (user_id: string, client_id: string) =>
+      request(`/api/assignments?user_id=${encodeURIComponent(user_id)}&client_id=${encodeURIComponent(client_id)}`,
+              { method: "DELETE" }),
+  },
 };
