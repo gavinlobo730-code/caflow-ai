@@ -80,10 +80,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (!error) {
+      // M6: record login for admin login-history (best-effort; never blocks sign-in).
+      const { api } = await import("@/lib/api");
+      api.identity.recordLoginEvent("login").catch(() => {});
+    }
     return { error: error?.message ?? null };
   }, []);
 
   const signOut = useCallback(async () => {
+    // Record logout while the token is still valid, then sign out.
+    try {
+      const { api } = await import("@/lib/api");
+      await api.identity.recordLoginEvent("logout").catch(() => {});
+    } catch { /* best-effort */ }
     await supabase.auth.signOut();
   }, []);
 

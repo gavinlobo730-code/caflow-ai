@@ -138,6 +138,15 @@ def client_analytics(
     all_tasks_result = db.table("tasks").select("id, client_id, status, due_date, updated_at").eq("firm_id", firm_id).execute()
     all_tasks = all_tasks_result.data or []
 
+    # M6 #6: per-client analytics must respect assignment — a non-Partner must not
+    # infer activity for clients they cannot access directly. effective set None
+    # (Partner) ⇒ no filtering.
+    from core.authz import effective_client_ids
+    _eff = effective_client_ids(current_user)
+    if _eff is not None:
+        clients = [c for c in clients if str(c["id"]) in _eff]
+        all_tasks = [t for t in all_tasks if str(t.get("client_id")) in _eff]
+
     stats: dict[str, dict] ={c["id"]: {"client_id": c["id"], "client_name": c["client_name"], "tasks_completed": 0, "tasks_overdue": 0, "open_tasks": 0} for c in clients}
     for t in all_tasks:
         cid = t.get("client_id")

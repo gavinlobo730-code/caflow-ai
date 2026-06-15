@@ -5,7 +5,7 @@ Extracts user identity and resolves firm_id from the users table.
 """
 import os
 from typing import Optional
-from fastapi import Header, HTTPException, status
+from fastapi import Header, HTTPException, status, Depends
 import jwt
 from jwt import PyJWKClient
 from core.supabase_client import get_supabase
@@ -95,7 +95,7 @@ def get_current_user(
     try:
         result = (
             supabase.table("users")
-            .select("id, firm_id, role, full_name, is_active")
+            .select("id, firm_id, role, full_name, is_active, sessions_revoked_at")
             .eq("auth_user_id", auth_user_id)
             .single()
             .execute()
@@ -119,6 +119,27 @@ def get_current_user(
             detail="Account disabled. Contact your firm administrator.",
         )
 
+    # M6 — Session revocation / forced logout: reject any token issued before the
+    # account's sessions_revoked_at instant (set by suspend / force-logout / global
+    # logout). Compares the JWT 'iat' (issued-at) against the stored timestamp.
+    revoked_at = user_data.get("sessions_revoked_at")
+    token_iat = payload.get("iat")
+    if revoked_at and token_iat:
+        try:
+            from datetime import datetime, timezone
+            revoked_epoch = datetime.fromisoformat(
+                str(revoked_at).replace("Z", "+00:00")
+            ).timestamp()
+            if float(token_iat) < revoked_epoch:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Session revoked. Please sign in again.",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # unparseable timestamp must never hard-fail auth
+
     # M1 — default to least-privileged staff role (not silently Executive) when a
     # row somehow has no role; never silently grant elevated access.
     role = user_data.get("role") or "Reviewer"
@@ -132,6 +153,10 @@ def get_current_user(
         "email": payload.get("email", ""),
         "role": role,
         "full_name": user_data.get("full_name", ""),
+        # M6 — MFA assurance level from the Supabase JWT (aal1 = password only,
+        # aal2 = MFA satisfied). Used by require_mfa() when REQUIRE_MFA is enabled.
+        "aal": payload.get("aal", "aal1"),
+        "access_token": token,
     }
 
 
@@ -170,3 +195,27 @@ def get_jwt_user(authorization: Optional[str] = Header(default=None)) -> dict:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing sub claim")
 
     return {"auth_user_id": auth_user_id, "email": payload.get("email", "")}
+
+
+def require_mfa(current_user: dict = Header(default=None)) -> dict:  # pragma: no cover - thin wrapper
+    """Placeholder kept for import stability; real dependency is mfa_guard()."""
+    return current_user
+
+
+def mfa_guard(current_user: dict = Depends(get_current_user)) -> dict:
+    """
+    M6 — MFA enforcement (staged behind REQUIRE_MFA, default OFF).
+
+    When enabled, users whose role is in MFA_REQUIRED_ROLES must present an aal2
+    (MFA-satisfied) token; otherwise a 403 instructs them to complete MFA. When the
+    flag is off this is a no-op pass-through, so it is safe to attach to sensitive
+    routes now and switch on after MFA is validated in staging.
+    """
+    from core.security_config import require_mfa as _flag, mfa_required_roles
+    if _flag() and current_user.get("role") in mfa_required_roles():
+        if current_user.get("aal") != "aal2":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Multi-factor authentication required for this action.",
+            )
+    return current_user
