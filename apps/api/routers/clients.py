@@ -12,6 +12,7 @@ from mock_data import MOCK_ACTIVITY_LOGS
 from datetime import date
 from services.audit_service import log_event
 from services.internal_client_service import assert_can_view_client
+from core.authz import effective_client_ids
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
@@ -65,6 +66,11 @@ def list_clients(
         include_archived=include_archived,
         include_test=include_test,
     )
+    # M2: assignment scope — Executive/Reviewer only see clients assigned to them
+    # (Partner/Manager firm-wide ⇒ effective set is None ⇒ no filtering).
+    eff = effective_client_ids(current_user)
+    if eff is not None:
+        clients = [c for c in clients if str(c.get("id")) in eff]
     return api_response(True, {"clients": clients, "total": len(clients)})
 
 

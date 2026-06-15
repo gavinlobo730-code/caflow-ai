@@ -96,13 +96,20 @@ class AICopilotService:
         user_message: str,
         context_type: str = "global",
         context_id: Optional[str] = None,
+        allowed_client_ids: Optional[set] = None,
     ) -> dict:
-        """Process a user message and return AI response with suggestions."""
+        """Process a user message and return AI response with suggestions.
+
+        allowed_client_ids restricts which clients may appear in the injected
+        context (None = firm-wide, for Partner/Manager). Set by the router from
+        core.authz.effective_client_ids so the AI never sees clients the caller
+        is not authorized to access.
+        """
         # Save user message
         self._repo.add_message(firm_id, conversation_id, "user", user_message)
 
         # Build enriched context payload from real data
-        context = self._build_context(firm_id, context_type, context_id)
+        context = self._build_context(firm_id, context_type, context_id, allowed_client_ids)
 
         # Build message history (last 20 for token efficiency)
         history = self._repo.list_messages(conversation_id, limit=20)
@@ -134,6 +141,7 @@ class AICopilotService:
         firm_id: str,
         context_type: str,
         context_id: Optional[str],
+        allowed_client_ids: Optional[set] = None,
     ) -> str:
         """
         Build a firm-specific context string to inject into the AI prompt.
@@ -151,6 +159,10 @@ class AICopilotService:
         try:
             if context_type in ("global", "client"):
                 clients = _get_client_repo().find_all(firm_id=firm_id)
+                # M2: restrict context to the caller's authorized clients
+                # (None ⇒ firm-wide for Partner/Manager).
+                if allowed_client_ids is not None:
+                    clients = [c for c in clients if str(c.get("id")) in allowed_client_ids]
                 total = len(clients)
                 active = len([c for c in clients if c.get("status") == "active"])
                 at_risk = len([
@@ -171,7 +183,11 @@ class AICopilotService:
                 ]
 
                 if context_type == "client" and context_id:
-                    client = _get_client_repo().find_by_id(context_id)
+                    # M2: never inject a client the caller isn't authorized for.
+                    if allowed_client_ids is not None and str(context_id) not in allowed_client_ids:
+                        client = None
+                    else:
+                        client = _get_client_repo().find_by_id(context_id)
                     if client:
                         lines += [
                             f"CLIENT NAME: {client.get('client_name', 'Unknown')}",

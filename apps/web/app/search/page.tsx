@@ -4,13 +4,12 @@ import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Search, Users, CheckSquare, FileText, Shield } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { getFirmId } from "@/lib/data/getFirmId";
+import { api } from "@/lib/api";
 import Link from "next/link";
 
 type SearchResult = {
   id: string;
-  category: "clients" | "tasks" | "compliance" | "journals";
+  category: "clients" | "tasks" | "compliance" | "journals" | "accounts";
   title: string;
   subtitle: string;
   href: string;
@@ -21,6 +20,7 @@ const CATEGORY_ICONS = {
   tasks: CheckSquare,
   compliance: Shield,
   journals: FileText,
+  accounts: FileText,
 };
 
 const CATEGORY_LABELS = {
@@ -28,81 +28,25 @@ const CATEGORY_LABELS = {
   tasks: "Tasks",
   compliance: "Compliance",
   journals: "Journal Entries",
+  accounts: "Accounts",
 };
 
-async function runSearch(query: string, firmId: string): Promise<SearchResult[]> {
+// M2: search goes through the backend /api/search, which enforces client
+// assignment server-side. Unauthorized clients are never returned.
+async function runSearch(query: string): Promise<SearchResult[]> {
   if (!query.trim()) return [];
-  const sb = getSupabaseClient();
-  const q = query.trim().toLowerCase();
-  const results: SearchResult[] = [];
-
-  const [clientsRes, tasksRes, complianceRes, journalsRes] = await Promise.all([
-    sb.from("clients").select("id, client_name, entity_type, pan, gstin").eq("firm_id", firmId).eq("is_internal", false),
-    sb.from("tasks").select("id, title, status, due_date, client_id").eq("firm_id", firmId),
-    sb.from("compliance_items").select("id, compliance_type, due_date, client_id, clients(client_name)").eq("firm_id", firmId),
-    sb.from("journal_entries").select("id, narration, entry_date, reference_no").eq("firm_id", firmId),
-  ]);
-
-  for (const c of (clientsRes.data ?? [])) {
-    if (
-      c.client_name?.toLowerCase().includes(q) ||
-      c.pan?.toLowerCase().includes(q) ||
-      c.gstin?.toLowerCase().includes(q)
-    ) {
-      results.push({
-        id: c.id,
-        category: "clients",
-        title: c.client_name,
-        subtitle: `${c.entity_type ?? "Client"} ${c.gstin ? `• ${c.gstin}` : ""}`,
-        href: `/clients/${c.id}`,
-      });
-    }
+  try {
+    const res = await api.search(query.trim());
+    return (res.data?.results ?? []).map((r) => ({
+      id: r.id,
+      category: (r.category as SearchResult["category"]) ?? "clients",
+      title: r.title,
+      subtitle: r.subtitle ?? "",
+      href: r.href,
+    }));
+  } catch {
+    return [];
   }
-
-  for (const t of (tasksRes.data ?? [])) {
-    if (t.title?.toLowerCase().includes(q)) {
-      results.push({
-        id: t.id,
-        category: "tasks",
-        title: t.title,
-        subtitle: `${t.status ?? "todo"} ${t.due_date ? `• Due ${t.due_date}` : ""}`,
-        href: `/tasks`,
-      });
-    }
-  }
-
-  for (const comp of (complianceRes.data ?? [])) {
-    const clientName = (comp as { clients?: { client_name?: string } }).clients?.client_name ?? "";
-    if (
-      comp.compliance_type?.toLowerCase().includes(q) ||
-      clientName.toLowerCase().includes(q)
-    ) {
-      results.push({
-        id: comp.id,
-        category: "compliance",
-        title: comp.compliance_type,
-        subtitle: `${clientName} ${comp.due_date ? `• Due ${comp.due_date}` : ""}`,
-        href: `/compliance`,
-      });
-    }
-  }
-
-  for (const j of (journalsRes.data ?? [])) {
-    if (
-      j.narration?.toLowerCase().includes(q) ||
-      (j as { reference_no?: string }).reference_no?.toLowerCase().includes(q)
-    ) {
-      results.push({
-        id: j.id,
-        category: "journals",
-        title: j.narration ?? "Journal Entry",
-        subtitle: j.entry_date ?? "",
-        href: `/accounting/journal`,
-      });
-    }
-  }
-
-  return results;
 }
 
 function SearchContent() {
@@ -111,19 +55,14 @@ function SearchContent() {
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [firmId, setFirmId] = useState<string | null>(null);
-
-  useEffect(() => {
-    getFirmId().then(setFirmId).catch(() => {});
-  }, []);
 
   const search = useCallback(async (q: string) => {
-    if (!firmId || !q.trim()) { setResults([]); return; }
+    if (!q.trim()) { setResults([]); return; }
     setLoading(true);
-    const res = await runSearch(q, firmId);
+    const res = await runSearch(q);
     setResults(res);
     setLoading(false);
-  }, [firmId]);
+  }, []);
 
   useEffect(() => {
     const q = searchParams.get("q") ?? "";
