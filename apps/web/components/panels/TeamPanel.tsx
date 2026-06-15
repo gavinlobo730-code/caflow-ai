@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { UserCheck, CheckSquare, LayoutGrid, Users } from "lucide-react";
+import { UserCheck, CheckSquare, LayoutGrid, Users, Link2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TEAM_ITEMS = [
   { href: "/team", label: "Team", icon: UserCheck },
+  { href: "/team/assignments", label: "Assignments", icon: Link2 },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/team/work-allocation", label: "Work Allocation", icon: LayoutGrid },
   { href: "/payroll/attendance", label: "Attendance", icon: Users },

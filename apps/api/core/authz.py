@@ -34,7 +34,12 @@ from core.permissions import Role, _to_role, can as _rbac_can
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 # Firm-wide roles see every client in their firm; everyone else is assignment-scoped.
-_FIRMWIDE_ROLES = {Role.PARTNER, Role.MANAGER}
+# M3 decision — Manager scope = assigned-book (Option B): only the Partner/Owner is
+# firm-wide. Managers (like Executives/Reviewers) see only the clients explicitly
+# assigned to them, so one manager cannot see another manager's book — the core
+# internal-confidentiality goal of Module 9. Flip this set to re-include MANAGER if
+# a firm-wide manager model is ever desired.
+_FIRMWIDE_ROLES = {Role.PARTNER}
 
 
 def _db():
