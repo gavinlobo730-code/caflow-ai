@@ -465,6 +465,27 @@ export const api = {
       request(`/api/approvals/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),
     cancel: (id: string) => request(`/api/approvals/${id}/cancel`, { method: "POST" }),
   },
+  // M6: identity administration (audited, server-side; Partner-only writes).
+  identity: {
+    listUsers: () => request("/api/identity/users"),
+    createUser: (full_name: string, email: string, role: string) =>
+      request("/api/identity/users", { method: "POST", body: JSON.stringify({ full_name, email, role }) }),
+    changeRole: (userId: string, role: string) =>
+      request(`/api/identity/users/${userId}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
+    suspend: (userId: string) => request(`/api/identity/users/${userId}/suspend`, { method: "POST" }),
+    reactivate: (userId: string) => request(`/api/identity/users/${userId}/reactivate`, { method: "POST" }),
+    forceLogout: (userId: string) => request(`/api/identity/users/${userId}/force-logout`, { method: "POST" }),
+    forceLogoutAll: () => request("/api/identity/force-logout-all", { method: "POST" }),
+    loginHistory: () =>
+      request("/api/identity/login-history") as Promise<ApiResp<{ events: LoginEvent[] }>>,
+    recordLoginEvent: (event: "login" | "logout") =>
+      request("/api/identity/login-event", { method: "POST", body: JSON.stringify({ event }) }),
+  },
+};
+
+export type LoginEvent = {
+  id: string; user_id?: string; email?: string; event: string;
+  ip?: string; user_agent?: string; created_at?: string;
 };
 
 export type ApprovalRequest = {

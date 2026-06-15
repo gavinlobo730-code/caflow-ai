@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Users, UserPlus, Shield, Mail, MoreVertical, X, AlertCircle, Lock } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api";
 
 // Module 9.0 / M1 — canonical staff roles (single source of truth = backend Role enum).
 // Client is external (uses the portal) and is not a team member here.
@@ -695,58 +696,31 @@ export default function TeamPage() {
     loadTeam();
   }, [loadTeam]);
 
+  // M6: identity mutations now go through the audited, Partner-only backend
+  // (api.identity) instead of direct Supabase writes from the browser. The user
+  // row is created server-side; the magic link is still sent for self-onboarding.
   async function handleInvite(name: string, email: string, role: Role) {
-    const supabase = getSupabaseClient();
-    // Pre-create the user row so we can link auth_user_id on first login
-    const { error: insertErr } = await supabase.from("users").insert({
-      full_name: name,
-      email,
-      role,
-      firm_id: firmId,
-      is_active: true,
-      status: "invited",
-    });
-    if (insertErr) throw new Error(insertErr.message);
-
-    // Send magic link so team member can self-onboard
+    await api.identity.createUser(name, email, role);
     const joinUrl =
       (typeof window !== "undefined" ? window.location.origin : "") +
-      "/join?firm=" +
-      encodeURIComponent(firmId ?? "") +
-      "&role=" +
-      encodeURIComponent(role) +
-      "&name=" +
-      encodeURIComponent(name);
-    const { error: otpErr } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: joinUrl },
-    });
-    if (otpErr) throw new Error(otpErr.message);
-
+      "/join?firm=" + encodeURIComponent(firmId ?? "") +
+      "&role=" + encodeURIComponent(role) +
+      "&name=" + encodeURIComponent(name);
+    const supabase = getSupabaseClient();
+    await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: joinUrl } }).catch(() => {});
     await loadTeam();
   }
 
   async function handleEditRole(id: string, role: Role) {
-    const supabase = getSupabaseClient();
-    const { error: updateErr } = await supabase.from("users").update({ role }).eq("id", id);
-    if (updateErr) throw new Error(updateErr.message);
+    await api.identity.changeRole(id, role);   // audited server-side
     setMembers(ms => ms.map(m => m.id === id ? { ...m, role } : m));
   }
 
   async function handleDeactivate(member: TeamMember) {
-    const newActive = member.is_active === false;
-    const supabase = getSupabaseClient();
-    // Soft deactivate — set is_active flag. If column doesn't exist, update silently fails gracefully in UI.
-    const { error: updateErr } = await supabase
-      .from("users")
-      .update({ is_active: newActive })
-      .eq("id", member.id);
-    if (updateErr) {
-      // Column may not exist — update UI optimistically anyway
-      setMembers(ms => ms.map(m => m.id === member.id ? { ...m, is_active: newActive } : m));
-      return;
-    }
-    setMembers(ms => ms.map(m => m.id === member.id ? { ...m, is_active: newActive } : m));
+    const reactivating = member.is_active === false;
+    if (reactivating) await api.identity.reactivate(member.id);
+    else await api.identity.suspend(member.id);   // also revokes the user's sessions
+    setMembers(ms => ms.map(m => m.id === member.id ? { ...m, is_active: reactivating } : m));
   }
 
   // Summary counts
