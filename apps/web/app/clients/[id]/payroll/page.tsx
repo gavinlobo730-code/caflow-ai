@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Users, Plus, Play, CheckCircle,
-  FileText, TrendingUp, IndianRupee, Download,
+  FileText, TrendingUp, IndianRupee, Download, Upload,
   Building2, CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import { buildEmployees, EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -168,6 +170,7 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [form, setForm] = useState({ name: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
   const [saving, setSaving] = useState(false);
 
@@ -178,6 +181,23 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
+
+  /** Bulk-import employees through the EXISTING /api/payroll/employees endpoint. */
+  async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
+    const { records, errors } = buildEmployees(rows, clientId, firmId);
+    let imported = 0;
+    for (const emp of records) {
+      // Responses follow the { success, data, error } contract.
+      const res = await apiFetch<unknown>("/api/payroll/employees", {
+        method: "POST",
+        body: JSON.stringify(emp),
+      }).catch(() => null) as { success?: boolean; error?: string | null } | null;
+      if (res && res.success !== false) imported++;
+      else errors.push(`Employee "${emp.name}": ${res?.error ?? "request failed"}`);
+    }
+    if (imported > 0) await load();
+    return { imported, errors };
+  }
 
   async function addEmployee() {
     if (!form.name || !form.basic_paise) return;
@@ -204,10 +224,25 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
     <div className="p-5 space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-[#1E293B]">{employees.length} active employees</p>
-        <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-[12px] font-medium rounded-lg hover:bg-blue-700 transition-colors">
-          <Plus size={13} /> Add Employee
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 px-3 py-1.5 border border-[#E2E8F0] text-[#475569] text-[12px] font-medium rounded-lg hover:bg-[#F1F5F9] transition-colors">
+            <Upload size={13} /> Import
+          </button>
+          <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-[12px] font-medium rounded-lg hover:bg-blue-700 transition-colors">
+            <Plus size={13} /> Add Employee
+          </button>
+        </div>
       </div>
+
+      {showImport && (
+        <CsvImportModal
+          title="Import Employees"
+          columns={EMPLOYEE_IMPORT_COLUMNS}
+          templateFilename="employees-template.csv"
+          onImport={handleImport}
+          onClose={() => setShowImport(false)}
+        />
+      )}
 
       {showAdd && (
         <div className="bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] p-4 space-y-3">
