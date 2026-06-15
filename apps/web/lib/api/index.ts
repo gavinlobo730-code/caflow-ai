@@ -9,14 +9,30 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options?.headers ?? {}),
-    },
-  });
+  // Perf/UX: bound every request so a cold-starting/unreachable backend fails
+  // fast with a clear message instead of hanging the UI indefinitely. 45s covers
+  // a Render cold start; the warm-up ping (AuthContext) usually avoids hitting it.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 45_000);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      signal: options?.signal ?? controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options?.headers ?? {}),
+      },
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new Error("The server is taking too long to respond (it may be waking up). Please retry in a moment.");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`API error ${res.status}: ${err}`);
