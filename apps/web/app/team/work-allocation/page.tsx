@@ -13,21 +13,22 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 
-type Role = "Partner" | "Manager" | "Article" | "Staff";
+// Module 9.0 / M1 — canonical staff roles (single source of truth = backend Role enum).
+type Role = "Partner" | "Manager" | "Executive" | "Reviewer";
 
 // Capacity by role (task count)
 const CAPACITY: Record<Role, number> = {
   Partner: 20,
   Manager: 30,
-  Article: 40,
-  Staff: 20,
+  Executive: 40,
+  Reviewer: 20,
 };
 
 const ROLE_COLORS: Record<Role, string> = {
   Partner: "bg-purple-100 text-purple-700",
   Manager: "bg-blue-100 text-blue-700",
-  Article: "bg-amber-100 text-amber-700",
-  Staff: "bg-[#F1F5F9] text-[#475569]",
+  Executive: "bg-amber-100 text-amber-700",
+  Reviewer: "bg-[#F1F5F9] text-[#475569]",
 };
 
 const PRIORITY_BADGE: Record<string, string> = {
@@ -169,7 +170,7 @@ export default function WorkAllocationPage() {
         id: m.id,
         full_name: m.full_name ?? m.email ?? "—",
         email: m.email ?? "",
-        role: (m.role as Role) ?? "Staff",
+        role: (m.role as Role) ?? "Reviewer",
       }));
 
       const clientMap = new Map((clientList).map(c => [c.id, c.client_name]));
@@ -234,7 +235,7 @@ export default function WorkAllocationPage() {
         <select value={roleFilter} onChange={e => setRoleFilter(e.target.value as Role | "all")}
           className="border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
           <option value="all">All Roles</option>
-          {(["Partner","Manager","Article","Staff"] as Role[]).map(r => (
+          {(["Partner","Manager","Executive","Reviewer"] as Role[]).map(r => (
             <option key={r} value={r}>{r}</option>
           ))}
         </select>
