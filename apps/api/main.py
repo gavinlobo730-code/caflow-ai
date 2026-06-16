@@ -79,8 +79,26 @@ from routers.portal import router as portal_router
 
 app = FastAPI(title="PracticeSync AI API", version="2.0.0")
 
-# CORSMiddleware MUST be registered first so it wraps all response paths,
-# including error responses produced by exception handlers below.
+# Middleware ordering (Starlette applies the LAST-added as the OUTERMOST):
+#   _carry_user_token  ->  CORSMiddleware  ->  _errors_with_cors  ->  routes
+# _errors_with_cors is INNERMOST, so any unhandled exception it converts to a
+# JSONResponse travels back OUT through CORSMiddleware and carries the CORS
+# headers. This matters because FastAPI's built-in catch-all `Exception` handler
+# runs in Starlette's ServerErrorMiddleware, which sits OUTSIDE CORS — a raw 500
+# there reaches the browser with no Access-Control-Allow-Origin header and shows
+# up as an opaque "Failed to fetch" instead of a readable error.
+@app.middleware("http")
+async def _errors_with_cors(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception:
+        _logger.exception("Unhandled exception for %s %s", request.method, request.url)
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "data": None, "error": "Internal server error"},
+        )
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_ALLOWED_ORIGINS,
