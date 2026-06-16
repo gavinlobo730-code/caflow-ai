@@ -28,15 +28,18 @@ _GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
 class FirmCreate(BaseModel):
     firm_name: str
     firm_email: EmailStr          # maps to firms.email (NOT NULL)
-    pan: str
+    # PAN is optional at signup time (the signup form does not collect it). When
+    # provided it is validated, de-duplicated, and used to provision the firm's
+    # internal practice client. When absent the firm is created without a PAN and
+    # the internal client is provisioned later (once PAN is set) via
+    # POST /api/practice/provision.
+    pan: Optional[str] = None
     gstin: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
     partner_name: str
-    # Entity type of the CA firm itself, used only to provision the internal
-    # practice client (Amendment v1.1). Optional; defaults to Partnership.
     entity_type: Optional[str] = None
 
 
@@ -55,9 +58,11 @@ def create_firm(
     Requires a valid Supabase Auth JWT. The authenticated user becomes the Partner.
     Called immediately after Supabase Auth sign-up completes.
     """
-    pan = body.pan.upper()
-    if not _PAN_RE.match(pan):
-        raise HTTPException(status_code=400, detail="Invalid PAN format. Expected: AAAAA9999A")
+    pan: Optional[str] = None
+    if body.pan:
+        pan = body.pan.upper()
+        if not _PAN_RE.match(pan):
+            raise HTTPException(status_code=400, detail="Invalid PAN format. Expected: AAAAA9999A")
 
     if body.gstin:
         gstin = body.gstin.upper()
@@ -74,10 +79,11 @@ def create_firm(
     if existing_user.data:
         raise HTTPException(status_code=409, detail="This user already belongs to a firm")
 
-    # Prevent duplicate PAN
-    existing_pan = db.table("firms").select("id").eq("pan", pan).execute()
-    if existing_pan.data:
-        raise HTTPException(status_code=409, detail="A firm with this PAN already exists")
+    # Prevent duplicate PAN (only when a PAN was supplied)
+    if pan:
+        existing_pan = db.table("firms").select("id").eq("pan", pan).execute()
+        if existing_pan.data:
+            raise HTTPException(status_code=409, detail="A firm with this PAN already exists")
 
     # Insert firm — column names match live schema (name, email, pan, gstin, address, city, state)
     firm = db.table("firms").insert({

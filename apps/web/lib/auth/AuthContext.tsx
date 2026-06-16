@@ -13,22 +13,24 @@ import { supabase, getSupabaseClient } from "@/lib/supabase/client";
 import { normalizeRole, type UserRole } from "@/lib/auth/permissions";
 
 /**
- * Resolve the caller's role from the AUTHORITATIVE source — the users table —
- * rather than JWT user_metadata (which can be stale/forged and previously
- * defaulted to Partner). Falls back to user_metadata, then to least privilege.
+ * Resolve the caller's role AND firm membership from the AUTHORITATIVE source —
+ * the users table — rather than JWT user_metadata (which can be stale/forged).
+ * `hasFirm` is true only when a users row with a non-null firm_id exists; a
+ * freshly-signed-up account with no firm yet resolves to hasFirm=false so the
+ * guard can route it to onboarding instead of dropping it on an empty dashboard.
  */
-async function resolveUserRole(user: User | null): Promise<UserRole | null> {
-  if (!user) return null;
+async function resolveUserContext(user: User | null): Promise<{ role: UserRole | null; hasFirm: boolean }> {
+  if (!user) return { role: null, hasFirm: false };
   try {
     const { data } = await getSupabaseClient()
       .from("users")
-      .select("role")
+      .select("role, firm_id")
       .eq("auth_user_id", user.id)
       .maybeSingle();
     const raw = (data?.role as string | undefined) ?? (user.user_metadata?.role as string | undefined);
-    return normalizeRole(raw);
+    return { role: normalizeRole(raw), hasFirm: !!data?.firm_id };
   } catch {
-    return normalizeRole(user.user_metadata?.role as string | undefined);
+    return { role: normalizeRole(user.user_metadata?.role as string | undefined), hasFirm: false };
   }
 }
 
@@ -43,6 +45,10 @@ interface AuthContextValue {
    * needed; null = not yet resolved for the current session.
    */
   mfaPending: boolean | null;
+  /** Whether the signed-in user has a users row linked to a firm. null = resolving. */
+  hasFirm: boolean | null;
+  /** Re-resolve role + firm membership (call after creating a firm in onboarding). */
+  refreshUserContext: () => Promise<boolean>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
@@ -66,6 +72,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [mfaPending, setMfaPending] = useState<boolean | null>(null);
+  const [hasFirm, setHasFirm] = useState<boolean | null>(null);
+
+  function applyContext(u: User | null) {
+    setHasFirm(null);
+    resolveUserContext(u).then(({ role, hasFirm }) => {
+      setUserRole(role);
+      setHasFirm(hasFirm);
+    }).catch(() => { setUserRole(null); setHasFirm(false); });
+  }
 
   useEffect(() => {
     // Perf: fire a no-op warm-up ping at the backend as early as possible so a
@@ -89,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
-      resolveUserRole(session?.user ?? null).then(setUserRole).catch(() => setUserRole(null));
+      applyContext(session?.user ?? null);
       // Resolve MFA assurance for the restored session (null = computing).
       setMfaPending(null);
       resolveMfaPending(session).then(setMfaPending).catch(() => setMfaPending(false));
@@ -102,8 +117,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        // Non-blocking role resolution (fire-and-forget).
-        resolveUserRole(session?.user ?? null).then(setUserRole).catch(() => setUserRole(null));
+        // Non-blocking role + firm resolution.
+        applyContext(session?.user ?? null);
         // Recompute MFA assurance on every auth transition (login, refresh, verify).
         // Set null first so the guard never treats an unresolved aal1 session as
         // "fully authenticated" and skips the challenge.
@@ -116,6 +131,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeout);
       subscription.unsubscribe();
     };
+  }, []);
+
+  // Awaitable re-resolution — onboarding calls this right after creating a firm
+  // so the guard sees hasFirm=true before navigating to the dashboard.
+  const refreshUserContext = useCallback(async (): Promise<boolean> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const { role, hasFirm } = await resolveUserContext(session?.user ?? null);
+    setUserRole(role);
+    setHasFirm(hasFirm);
+    return hasFirm;
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
@@ -138,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ session, user, userRole, loading, mfaPending, signIn, signOut }}>
+    <AuthContext.Provider value={{ session, user, userRole, loading, mfaPending, hasFirm, refreshUserContext, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
