@@ -225,6 +225,11 @@ app.include_router(practice_router, dependencies=_MFA_GUARD)
 # Amendment v1.1 Batch 3 — Billing / Revenue Operations, Partner-only
 from routers.billing import router as billing_router
 app.include_router(billing_router, dependencies=_MFA_GUARD)
+
+# Platform Admin (Super Admin) — ABOVE firms, separate from firm RBAC. Its own
+# allowlist-based auth (require_platform_admin); no firm guard applies.
+from routers.platform import router as platform_router
+app.include_router(platform_router)
 # Amendment v1.1 Batch 6 — Knowledge Base + Client Instructions. The client-scoped
 # endpoints (/api/clients/{client_id}/...) are gated by require_client_access (G1);
 # firm /api/knowledge endpoints carry no client_id so the guard is a no-op there.
