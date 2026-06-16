@@ -9,7 +9,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Users, ShieldCheck, Ban, RotateCcw, Trash2, X, Loader2, AlertCircle } from "lucide-react";
+import { Building2, Users, ShieldCheck, Ban, RotateCcw, Trash2, X, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { api } from "@/lib/api";
 
@@ -26,12 +26,21 @@ const STATUS_BADGE: Record<string, string> = {
 export default function PlatformAdminPage() {
   const { session, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [gate, setGate] = useState<"checking" | "denied" | "ok">("checking");
+  // "error" is distinct from "denied": denied = the server authoritatively said
+  // "not a platform admin" (→ redirect); error = we could NOT get an answer
+  // (network/timeout/backend/config failure) and must NOT silently bounce a
+  // legitimate admin. We surface the real error + a Retry instead.
+  const [gate, setGate] = useState<"checking" | "denied" | "error" | "ok">("checking");
+  const [gateErr, setGateErr] = useState<string>("");
+  const [dataErr, setDataErr] = useState<string>("");
   const [stats, setStats] = useState<Stats | null>(null);
   const [firms, setFirms] = useState<FirmRow[]>([]);
   const [detail, setDetail] = useState<{ firm: FirmRow; users: FirmUser[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+
+  const cleanErr = (e: unknown, fallback: string) =>
+    e instanceof Error ? e.message.replace(/^API error \d+:\s*/, "") : fallback;
 
   const load = useCallback(async () => {
     const [s, f] = await Promise.all([api.platform.stats(), api.platform.firms()]);
@@ -39,21 +48,48 @@ export default function PlatformAdminPage() {
     setFirms(f.data);
   }, []);
 
-  // Gate: must be signed in AND a platform admin.
+  // Gate: must be signed in AND a platform admin. Authorization (is_platform_admin)
+  // is decided ONLY by a SUCCESSFUL /me response; any request failure is treated
+  // as "couldn't verify" (error state), never as "denied".
+  const verify = useCallback(async () => {
+    setGate("checking");
+    setGateErr("");
+    try {
+      // Cold-start tolerance: the free-tier backend may be asleep and the first
+      // call can exceed the client abort. Retry once before giving up so a
+      // legitimate admin isn't bounced by a 50s wake-up.
+      let me;
+      try {
+        me = await api.platform.me();
+      } catch {
+        me = await api.platform.me();
+      }
+      if (me.data?.is_platform_admin !== true) {
+        setGate("denied");
+        router.replace("/");
+        return;
+      }
+      setGate("ok");
+    } catch (e) {
+      setGateErr(cleanErr(e, "Could not verify platform access."));
+      setGate("error");
+    }
+  }, [router]);
+
   useEffect(() => {
     if (authLoading) return;
     if (!session) { router.replace("/login"); return; }
-    (async () => {
-      try {
-        const me = await api.platform.me();
-        if (!me.data?.is_platform_admin) { setGate("denied"); router.replace("/"); return; }
-        setGate("ok");
-        await load();
-      } catch {
-        setGate("denied"); router.replace("/");
-      }
-    })();
-  }, [authLoading, session, router, load]);
+    verify();
+  }, [authLoading, session, router, verify]);
+
+  // Load firm data only AFTER the gate opens, in a separate effect. A failure
+  // here shows an inline banner — it must never re-enter the auth gate and
+  // redirect a verified admin away (the original bug).
+  useEffect(() => {
+    if (gate !== "ok") return;
+    setDataErr("");
+    load().catch((e) => setDataErr(cleanErr(e, "Could not load platform data.")));
+  }, [gate, load]);
 
   function notify(msg: string, ok: boolean) {
     setToast({ msg, ok });
@@ -90,6 +126,23 @@ export default function PlatformAdminPage() {
   }
 
   if (gate !== "ok") {
+    if (gate === "error") {
+      return (
+        <div className="flex h-screen items-center justify-center bg-[#F8FAFC] p-6">
+          <div className="bg-white rounded-2xl border border-[#F1F5F9] shadow-sm max-w-md w-full p-6 text-center space-y-4">
+            <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center mx-auto"><AlertCircle size={18} className="text-amber-600" /></div>
+            <div>
+              <h2 className="text-base font-semibold text-[#0F172A]">Couldn’t verify access</h2>
+              <p className="text-sm text-[#64748B] mt-1">We couldn’t reach the platform service to confirm your access. This is not a denial — it’s a connection problem.</p>
+              {gateErr && <p className="text-xs text-[#94A3B8] mt-2 break-words font-mono bg-[#F8FAFC] rounded-md px-2 py-1">{gateErr}</p>}
+            </div>
+            <button onClick={() => verify()} className="inline-flex items-center gap-2 rounded-lg bg-[#0F172A] text-white text-sm font-medium px-4 py-2 hover:bg-[#1E293B]">
+              <RefreshCw size={14} /> Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex h-screen items-center justify-center text-[#64748B]">
         {gate === "checking" ? <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={16} /> Verifying access…</span> : "Redirecting…"}
@@ -118,6 +171,15 @@ export default function PlatformAdminPage() {
       {toast && (
         <div className={`rounded-lg px-4 py-3 text-sm font-medium flex items-center gap-2 ${toast.ok ? "bg-green-50 text-green-700 border border-green-100" : "bg-red-50 text-red-700 border border-red-100"}`}>
           <AlertCircle size={14} /> {toast.msg}
+        </div>
+      )}
+
+      {dataErr && (
+        <div className="rounded-lg px-4 py-3 text-sm font-medium flex items-center justify-between gap-2 bg-amber-50 text-amber-700 border border-amber-100">
+          <span className="flex items-center gap-2"><AlertCircle size={14} /> {dataErr}</span>
+          <button onClick={() => { setDataErr(""); load().catch((e) => setDataErr(cleanErr(e, "Could not load platform data."))); }} className="inline-flex items-center gap-1 text-amber-800 hover:underline">
+            <RefreshCw size={12} /> Retry
+          </button>
         </div>
       )}
 
