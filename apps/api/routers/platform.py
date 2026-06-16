@@ -156,3 +156,29 @@ def soft_delete_firm(firm_id: str, admin: dict = Depends(require_platform_admin_
     log_event(firm_id, "firm", firm_id, "platform_delete",
               actor_id=admin.get("auth_user_id"), actor_email=admin.get("email"))
     return api_response(True, {"firm_id": firm_id, "status": "deleted"})
+
+
+@router.delete("/firms/{firm_id}/permanent")
+def purge_firm(firm_id: str, admin: dict = Depends(require_platform_admin_mfa)):
+    """PERMANENT (hard) delete — irreversible. Removes the firm and ALL of its
+    data (users rows, clients, every firm-scoped table) via platform_purge_firm,
+    which disables FK enforcement for its own transaction to handle the mixed
+    CASCADE / NO ACTION constraints. Auth login accounts are intentionally left
+    intact (so the platform admin's own access survives purging their firm).
+    Gated by aal2 (require_platform_admin_mfa)."""
+    db = get_service_supabase()
+    firm = db.table("firms").select("id, name").eq("id", firm_id).maybe_single().execute().data
+    if not firm:
+        raise HTTPException(status_code=404, detail="Firm not found")
+    removed = db.rpc("platform_purge_firm", {"p_firm_id": firm_id}).execute().data
+    # Durable platform-level audit — written AFTER the purge so it is not swept
+    # away with the firm's own (firm-scoped) audit_logs.
+    db.table("platform_audit").insert({
+        "action": "platform_purge",
+        "target_firm_id": firm_id,
+        "firm_name": firm.get("name"),
+        "actor_auth_user_id": admin.get("auth_user_id"),
+        "actor_email": admin.get("email"),
+        "metadata": removed or {},
+    }).execute()
+    return api_response(True, {"firm_id": firm_id, "status": "purged", "removed": removed})
