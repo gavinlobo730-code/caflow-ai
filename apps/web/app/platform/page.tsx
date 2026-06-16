@@ -9,7 +9,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Users, ShieldCheck, Ban, RotateCcw, Trash2, X, Loader2, AlertCircle, RefreshCw } from "lucide-react";
+import { Building2, Users, ShieldCheck, Ban, RotateCcw, Trash2, X, Loader2, AlertCircle, RefreshCw, AlertTriangle, KeyRound } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
@@ -39,6 +39,12 @@ export default function PlatformAdminPage() {
   const [detail, setDetail] = useState<{ firm: FirmRow; users: FirmUser[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  // Permanent (hard) delete — MFA step-up + typed confirmation.
+  const [purgeTarget, setPurgeTarget] = useState<FirmRow | null>(null);
+  const [purgeCode, setPurgeCode] = useState("");
+  const [purgeName, setPurgeName] = useState("");
+  const [purgeBusy, setPurgeBusy] = useState(false);
+  const [purgeErr, setPurgeErr] = useState("");
 
   const cleanErr = (e: unknown, fallback: string) =>
     e instanceof Error ? e.message.replace(/^API error \d+:\s*/, "") : fallback;
@@ -142,6 +148,42 @@ export default function PlatformAdminPage() {
     setDetail({ firm: f, users: u.data });
   }
 
+  function openPurge(f: FirmRow) {
+    setPurgeTarget(f); setPurgeCode(""); setPurgeName(""); setPurgeErr("");
+  }
+
+  // Irreversible hard delete. Re-verifies the authenticator code (TOTP step-up to
+  // aal2) right before purging, so a destructive action always requires a fresh
+  // MFA proof — the backend (require_platform_admin_mfa) rejects anything less.
+  async function confirmPurge() {
+    if (!purgeTarget) return;
+    if (purgeName.trim() !== purgeTarget.name) { setPurgeErr("Firm name does not match."); return; }
+    const code = purgeCode.replace(/\s/g, "");
+    if (!/^\d{6}$/.test(code)) { setPurgeErr("Enter the 6-digit code from your authenticator app."); return; }
+    setPurgeBusy(true); setPurgeErr("");
+    try {
+      const sb = getSupabaseClient();
+      const { data: factors, error: fErr } = await sb.auth.mfa.listFactors();
+      if (fErr) throw new Error(fErr.message);
+      const totp = factors?.totp?.find((f) => f.status === "verified") ?? factors?.totp?.[0];
+      if (!totp) throw new Error("No authenticator is set up on this account. Enrol one at Settings → Security first.");
+      const { data: ch, error: cErr } = await sb.auth.mfa.challenge({ factorId: totp.id });
+      if (cErr || !ch) throw new Error(cErr?.message ?? "Could not start the MFA challenge.");
+      const { error: vErr } = await sb.auth.mfa.verify({ factorId: totp.id, challengeId: ch.id, code });
+      if (vErr) throw new Error("Invalid authenticator code. Please try again.");
+      // Session is now aal2 — the purge request carries the elevated token.
+      await api.platform.purge(purgeTarget.id);
+      notify(`Permanently deleted ${purgeTarget.name}`, true);
+      setPurgeTarget(null);
+      await load();
+      setDetail(null);
+    } catch (e) {
+      setPurgeErr(e instanceof Error ? e.message.replace(/^API error \d+:\s*/, "") : "Permanent delete failed.");
+    } finally {
+      setPurgeBusy(false);
+    }
+  }
+
   if (gate !== "ok") {
     if (gate === "error") {
       return (
@@ -238,6 +280,7 @@ export default function PlatformAdminPage() {
                       {f.status === "active" && <button onClick={() => suspend(f)} disabled={busy} className="text-amber-700 hover:underline flex items-center gap-1"><Ban size={11} /> Suspend</button>}
                       {f.status === "suspended" && <button onClick={() => unsuspend(f)} disabled={busy} className="text-green-700 hover:underline flex items-center gap-1"><RotateCcw size={11} /> Unsuspend</button>}
                       {f.status !== "deleted" && <button onClick={() => softDelete(f)} disabled={busy} className="text-red-600 hover:underline flex items-center gap-1"><Trash2 size={11} /> Delete</button>}
+                      <button onClick={() => openPurge(f)} disabled={busy} className="text-red-700 hover:underline flex items-center gap-1 font-medium"><AlertTriangle size={11} /> Delete permanently</button>
                     </div>
                   </td>
                 </tr>
@@ -275,6 +318,44 @@ export default function PlatformAdminPage() {
                   {detail.users.length === 0 && <div className="px-3 py-3 text-xs text-[#94A3B8]">No users</div>}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Permanent delete — MFA step-up + typed confirmation */}
+      {purgeTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !purgeBusy && setPurgeTarget(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#F1F5F9]">
+              <h2 className="text-base font-semibold text-red-700 flex items-center gap-2"><AlertTriangle size={16} /> Permanently delete firm</h2>
+              <button onClick={() => !purgeBusy && setPurgeTarget(null)} className="text-[#94A3B8] hover:text-[#475569]"><X size={18} /></button>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              <p className="text-sm text-[#475569]">
+                This <span className="font-semibold text-red-700">irreversibly</span> deletes <span className="font-semibold">{purgeTarget.name}</span> and all of its data — {purgeTarget.users} user(s), {purgeTarget.clients} client(s), and every related record. This cannot be undone.
+              </p>
+              <p className="text-xs text-[#94A3B8]">Login accounts in authentication are not removed — only the firm and its data.</p>
+              <div>
+                <label className="text-xs font-medium text-[#64748B]">Type the firm name to confirm</label>
+                <input value={purgeName} onChange={(e) => setPurgeName(e.target.value)} placeholder={purgeTarget.name}
+                  className="mt-1 w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-200" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[#64748B] flex items-center gap-1"><KeyRound size={12} /> Authenticator code</label>
+                <input value={purgeCode} onChange={(e) => setPurgeCode(e.target.value)} inputMode="numeric" maxLength={6} placeholder="6-digit code"
+                  className="mt-1 w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-red-200" />
+                <p className="text-[11px] text-[#94A3B8] mt-1">From the authenticator app you enrolled for this account.</p>
+              </div>
+              {purgeErr && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">{purgeErr}</p>}
+            </div>
+            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[#F1F5F9]">
+              <button onClick={() => setPurgeTarget(null)} disabled={purgeBusy} className="text-sm text-[#64748B] px-3 py-2 hover:underline disabled:opacity-50">Cancel</button>
+              <button onClick={confirmPurge}
+                disabled={purgeBusy || purgeName.trim() !== purgeTarget.name || purgeCode.replace(/\s/g, "").length !== 6}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-600 text-white text-sm font-medium px-4 py-2 hover:bg-red-700 disabled:opacity-50">
+                {purgeBusy ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />} Delete permanently
+              </button>
             </div>
           </div>
         </div>

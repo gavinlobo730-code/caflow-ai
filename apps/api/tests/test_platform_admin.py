@@ -66,6 +66,31 @@ def test_me_reports_admin_status(monkeypatch):
     assert _client(monkeypatch, is_admin=False).get("/me").json()["is_platform_admin"] is False
 
 
+# ── Permanent (hard) delete is admin-gated AND requires MFA (aal2) ───────────
+def _real_router_client(monkeypatch, *, is_admin: bool, aal: str):
+    """Mounts the real platform router with the allowlist + identity stubbed, so
+    we exercise the actual route dependencies without a database."""
+    import importlib
+    mod = importlib.import_module("routers.platform")
+    monkeypatch.setattr(pa, "_is_platform_admin", lambda uid: is_admin)
+    app = FastAPI()
+    app.include_router(mod.router)
+    app.dependency_overrides[get_jwt_user] = lambda: {"auth_user_id": "u1", "email": "x@y.z", "aal": aal}
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_purge_non_admin_gets_404(monkeypatch):
+    c = _real_router_client(monkeypatch, is_admin=False, aal="aal2")
+    assert c.delete("/api/platform/firms/abc/permanent").status_code == 404
+
+
+def test_purge_admin_without_mfa_gets_403(monkeypatch):
+    c = _real_router_client(monkeypatch, is_admin=True, aal="aal1")
+    r = c.delete("/api/platform/firms/abc/permanent")
+    assert r.status_code == 403
+    assert "Multi-factor" in r.json()["detail"]
+
+
 # ── Router imports cleanly + no firm-RBAC coupling ───────────────────────────
 def test_platform_router_imports_and_is_rbac_independent():
     import importlib
