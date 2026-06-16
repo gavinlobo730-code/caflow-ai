@@ -387,6 +387,18 @@ export const api = {
     get: () => request("/api/practice"),
     provision: () => request("/api/practice/provision", { method: "POST" }),
   },
+  // Platform Admin (Super Admin) — cross-firm; gated server-side by the
+  // platform_admins allowlist, completely separate from firm RBAC.
+  platform: {
+    me: () => request<ApiResp<{ is_platform_admin: boolean }>>("/api/platform/me"),
+    stats: () => request<ApiResp<{ total_firms: number; active_firms: number; suspended_firms: number; total_users: number; total_clients: number }>>("/api/platform/stats"),
+    firms: () => request<ApiResp<Array<{ id: string; name: string; created_at: string; users: number; clients: number; status: string }>>>("/api/platform/firms"),
+    firm: (id: string) => request<ApiResp<{ id: string; name: string; email: string; created_at: string; status: string; users: number; clients: number }>>(`/api/platform/firms/${id}`),
+    firmUsers: (id: string) => request<ApiResp<Array<{ name: string; email: string; role: string; status: string }>>>(`/api/platform/firms/${id}/users`),
+    suspend: (id: string, reason: string) => request(`/api/platform/firms/${id}/suspend`, { method: "POST", body: JSON.stringify({ reason }) }),
+    unsuspend: (id: string) => request(`/api/platform/firms/${id}/unsuspend`, { method: "POST" }),
+    softDelete: (id: string) => request(`/api/platform/firms/${id}`, { method: "DELETE" }),
+  },
   account: {
     /**
      * Bootstrap a brand-new firm + first Partner user. Runs server-side
