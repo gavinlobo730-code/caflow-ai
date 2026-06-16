@@ -3,7 +3,7 @@ import { LogoIcon } from "@/components/LogoIcon";
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, BookOpen, Users, CheckCircle, ChevronRight, ChevronLeft } from "lucide-react";
+import { Building2, BookOpen, CheckCircle, ChevronRight, ChevronLeft, KeyRound, Eye, EyeOff } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { api } from "@/lib/api";
@@ -49,16 +49,6 @@ const INDIAN_STATES = [
   "Ladakh",
   "Chandigarh",
   "Puducherry",
-];
-
-const ENTITY_TYPES = [
-  "Individual",
-  "Partnership",
-  "LLP",
-  "Private Limited",
-  "Public Limited",
-  "Trust",
-  "HUF",
 ];
 
 // ─── CoA accounts to seed (migration 011) ─────────────────────────────────
@@ -163,16 +153,6 @@ interface FirmForm {
   [key: string]: string;
 }
 
-interface ClientForm {
-  [key: string]: string;
-  name: string;
-  entity_type: string;
-  pan: string;
-  gstin: string;
-  email: string;
-  phone: string;
-}
-
 const EMPTY_FIRM: FirmForm = {
   name: "",
   pan: "",
@@ -184,20 +164,11 @@ const EMPTY_FIRM: FirmForm = {
   pincode: "",
 };
 
-const EMPTY_CLIENT: ClientForm = {
-  name: "",
-  entity_type: "Individual",
-  pan: "",
-  gstin: "",
-  email: "",
-  phone: "",
-};
-
 // ─── Step labels ───────────────────────────────────────────────────────────
 const STEPS = [
+  { label: "Create Password", icon: KeyRound },
   { label: "Firm Profile", icon: Building2 },
   { label: "Chart of Accounts", icon: BookOpen },
-  { label: "First Client", icon: Users },
 ];
 
 // ─── Reusable field component ──────────────────────────────────────────────
@@ -303,12 +274,17 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [firmId, setFirmId] = useState<string | null>(null);
   const [firmForm, setFirmForm] = useState<FirmForm>(EMPTY_FIRM);
-  const [clientForm, setClientForm] = useState<ClientForm>(EMPTY_CLIENT);
   const [firmErrors, setFirmErrors] = useState<Partial<Record<keyof FirmForm, string>>>({});
-  const [clientErrors, setClientErrors] = useState<Partial<Record<keyof ClientForm, string>>>({});
   const [coaSeeded, setCoaSeeded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Step 1 — password
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSet, setPwSet] = useState(false);
 
   // ─── Pre-fill the firm name from the signup stash ─────────────────────
   useEffect(() => {
@@ -386,21 +362,45 @@ export default function OnboardingPage() {
   }, [firmId]);
 
   // ─── Navigation ───────────────────────────────────────────────────────
-  function goNext() { setStep((s) => Math.min(s + 1, 3)); }
+  function goNext() { setStep((s) => Math.min(s + 1, STEPS.length)); }
   function goBack() { setStep((s) => Math.max(s - 1, 1)); }
   async function finish() {
     // A firm must exist before entering the app, or AuthGuard will bounce the
     // (firm-less) user straight back to onboarding.
     const id = firmId ?? (await ensureFirmExists());
     if (!id) {
-      setError("Please enter your firm name (Step 1) before continuing.");
+      setError("Please enter your firm name (Step 2) before continuing.");
+      setStep(2);
       return;
     }
     await refreshUserContext();
     router.replace("/");
   }
 
-  // ─── Step 1: Save firm profile ────────────────────────────────────────
+  // ─── Step 1: Set a password ───────────────────────────────────────────
+  // The account was created via a magic link (passwordless), so we set a real
+  // password here — otherwise the email+password login page would be unusable.
+  async function savePassword() {
+    setError(null);
+    setPwError(null);
+    if (pw.length < 8) { setPwError("Use at least 8 characters."); return; }
+    if (pw !== pw2) { setPwError("Passwords do not match."); return; }
+    setSaving(true);
+    try {
+      const { error: upErr } = await supabase.auth.updateUser({ password: pw });
+      if (upErr) throw new Error(upErr.message);
+      setPwSet(true);
+      // Clear the in-memory password values once set.
+      setPw(""); setPw2("");
+      goNext();
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : "Could not set your password. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ─── Step 2: Save firm profile ────────────────────────────────────────
   function validateFirm(): boolean {
     const errs: Partial<Record<keyof FirmForm, string>> = {};
     if (!firmForm.name.trim()) errs.name = "Firm name is required";
@@ -459,7 +459,8 @@ export default function OnboardingPage() {
     }
   }
 
-  // ─── Step 2: Seed Chart of Accounts ──────────────────────────────────
+  // ─── Step 3: Seed Chart of Accounts (idempotent — server already seeds on
+  // firm creation; this is a safety net + the review screen) ───────────────
   async function seedCoA() {
     if (!firmId) { setError("No firm found for your account"); return; }
     setSaving(true);
@@ -472,57 +473,18 @@ export default function OnboardingPage() {
         account_type: acc.account_type,
         is_active: true,
       }));
-      // ON CONFLICT (firm_id, account_code) DO NOTHING — use ignoreDuplicates
+      // ON CONFLICT (firm_id, account_code) DO NOTHING — duplicates are expected
+      // (the server seeds the same master CoA on firm creation).
       const { error: insertError } = await supabase
         .from("chart_of_accounts")
         .insert(rows, { count: "exact" });
-      // Ignore duplicate-key errors (23505) — they mean it's already seeded
       if (insertError && !insertError.message.includes("duplicate") && insertError.code !== "23505") {
         throw insertError;
       }
       setCoaSeeded(true);
-      goNext();
+      await finish();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to seed chart of accounts");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // ─── Step 3: Add first client ─────────────────────────────────────────
-  function validateClient(): boolean {
-    const errs: Partial<Record<keyof ClientForm, string>> = {};
-    if (!clientForm.name.trim()) errs.name = "Client name is required";
-    if (!clientForm.entity_type) errs.entity_type = "Entity type is required";
-    // IT Act Section 139A — PAN validation
-    if (clientForm.pan && !validatePAN(clientForm.pan)) errs.pan = "Invalid PAN (e.g. AABCU9603R)";
-    // CGST Act Section 25 — GSTIN validation
-    if (clientForm.gstin && !validateGSTIN(clientForm.gstin)) errs.gstin = "Invalid GSTIN (e.g. 27AABCU9603R1ZX)";
-    if (clientForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientForm.email))
-      errs.email = "Invalid email address";
-    setClientErrors(errs);
-    return Object.keys(errs).length === 0;
-  }
-
-  async function saveClient() {
-    if (!validateClient()) return;
-    if (!firmId) { setError("No firm found for your account"); return; }
-    setSaving(true);
-    setError(null);
-    try {
-      const { error: insertError } = await supabase.from("clients").insert({
-        firm_id: firmId,
-        name: clientForm.name.trim(),
-        entity_type: clientForm.entity_type,
-        pan: clientForm.pan.trim() || null,
-        gstin: clientForm.gstin.trim() || null,
-        email: clientForm.email.trim() || null,
-        phone: clientForm.phone.trim() || null,
-      });
-      if (insertError) throw insertError;
-      finish();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add client");
+      setError(err instanceof Error ? err.message : "Failed to set up chart of accounts");
     } finally {
       setSaving(false);
     }
@@ -550,8 +512,66 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* ── Step 1: Firm Profile ────────────────────────────────────────── */}
+        {/* ── Step 1: Create Password ──────────────────────────────────────── */}
         {step === 1 && (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <KeyRound size={18} className="text-blue-600" />
+              <h2 className="text-base font-semibold text-[#0F172A]">Create your password</h2>
+            </div>
+            <p className="text-sm text-[#64748B] mb-5">
+              Your email is verified. Set a password so you can sign in any time — you signed up with <span className="font-medium text-[#334155]">{user?.email}</span>.
+            </p>
+
+            <div className="space-y-4 max-w-md">
+              <div>
+                <label className="text-xs font-medium text-[#64748B] block mb-1">Password<span className="text-red-500 ml-0.5">*</span></label>
+                <div className="relative">
+                  <input
+                    type={showPw ? "text" : "password"}
+                    value={pw}
+                    onChange={(e) => setPw(e.target.value)}
+                    placeholder="At least 8 characters"
+                    autoComplete="new-password"
+                    className={`w-full text-sm text-[#0F172A] border rounded-lg px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] ${pwError ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"}`}
+                  />
+                  <button type="button" onClick={() => setShowPw((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#475569]">
+                    {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[#64748B] block mb-1">Confirm password<span className="text-red-500 ml-0.5">*</span></label>
+                <input
+                  type={showPw ? "text" : "password"}
+                  value={pw2}
+                  onChange={(e) => setPw2(e.target.value)}
+                  placeholder="Re-enter your password"
+                  autoComplete="new-password"
+                  className={`w-full text-sm text-[#0F172A] border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] ${pwError ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"}`}
+                />
+              </div>
+              {pwError && <p className="text-xs text-red-500">{pwError}</p>}
+              {pwSet && (
+                <div className="flex items-center gap-2 text-sm text-green-700"><CheckCircle size={15} /> Password set</div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end mt-8 pt-5 border-t border-gray-50">
+              <button
+                onClick={savePassword}
+                disabled={saving || !pw || !pw2}
+                className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                {saving ? "Saving…" : "Set Password & Continue"}
+                {!saving && <ChevronRight size={16} />}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 2: Firm Profile ────────────────────────────────────────── */}
+        {step === 2 && (
           <div>
             <div className="flex items-center gap-2 mb-5">
               <Building2 size={18} className="text-blue-600" />
@@ -641,10 +661,10 @@ export default function OnboardingPage() {
 
             <div className="flex items-center justify-between mt-8 pt-5 border-t border-gray-50">
               <button
-                onClick={finish}
-                className="text-sm text-[#94A3B8] hover:text-[#475569] transition-colors"
+                onClick={goBack}
+                className="flex items-center gap-1 text-sm text-[#64748B] hover:text-[#334155] transition-colors"
               >
-                Skip for now
+                <ChevronLeft size={16} /> Back
               </button>
               <button
                 onClick={saveFirmProfile}
@@ -658,15 +678,15 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* ── Step 2: Chart of Accounts ───────────────────────────────────── */}
-        {step === 2 && (
+        {/* ── Step 3: Chart of Accounts ───────────────────────────────────── */}
+        {step === 3 && (
           <div>
             <div className="flex items-center gap-2 mb-2">
               <BookOpen size={18} className="text-blue-600" />
               <h2 className="text-base font-semibold text-[#0F172A]">Chart of Accounts</h2>
             </div>
             <p className="text-sm text-[#64748B] mb-5">
-              We&apos;ll seed your ledger with {COA_ACCOUNTS.length} standard Indian accounts. You can add, rename or delete them later.
+              We&apos;ve set up {COA_ACCOUNTS.length} standard Indian accounts for your firm. You can add, rename or delete them later from Accounting.
             </p>
 
             <div className="border border-[#F1F5F9] rounded-xl overflow-hidden divide-y divide-[#F8FAFC] max-h-80 overflow-y-auto">
@@ -692,138 +712,23 @@ export default function OnboardingPage() {
             {coaSeeded && (
               <div className="mt-3 flex items-center gap-2 text-sm text-green-700">
                 <CheckCircle size={15} />
-                Chart of Accounts set up successfully
+                Chart of Accounts ready
               </div>
             )}
 
             <div className="flex items-center justify-between mt-8 pt-5 border-t border-gray-50">
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={goBack}
-                  className="flex items-center gap-1 text-sm text-[#64748B] hover:text-[#334155] transition-colors"
-                >
-                  <ChevronLeft size={16} /> Back
-                </button>
-                <button
-                  onClick={goNext}
-                  className="text-sm text-[#94A3B8] hover:text-[#475569] transition-colors"
-                >
-                  Skip for now
-                </button>
-              </div>
+              <button
+                onClick={goBack}
+                className="flex items-center gap-1 text-sm text-[#64748B] hover:text-[#334155] transition-colors"
+              >
+                <ChevronLeft size={16} /> Back
+              </button>
               <button
                 onClick={seedCoA}
-                disabled={saving || coaSeeded}
-                className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                {saving ? "Setting up…" : coaSeeded ? "Done" : "Set Up Chart of Accounts"}
-                {!saving && !coaSeeded && <ChevronRight size={16} />}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── Step 3: First Client ────────────────────────────────────────── */}
-        {step === 3 && (
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Users size={18} className="text-blue-600" />
-              <h2 className="text-base font-semibold text-[#0F172A]">Add Your First Client</h2>
-            </div>
-            <p className="text-sm text-[#64748B] mb-5">
-              Add a client to get started. You can add more from the Clients section.
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2">
-                <Field
-                  label="Client Name"
-                  field="name"
-                  form={clientForm}
-                  setForm={setClientForm}
-                  errors={clientErrors}
-                  placeholder="e.g. Ramesh Kumar or ABC Pvt Ltd"
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[#64748B] block mb-1">
-                  Entity Type<span className="text-red-500 ml-0.5">*</span>
-                </label>
-                <select
-                  value={clientForm.entity_type}
-                  onChange={(e) => setClientForm((p) => ({ ...p, entity_type: e.target.value }))}
-                  className={`w-full text-sm text-[#0F172A] border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] ${
-                    clientErrors.entity_type ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"
-                  }`}
-                >
-                  {ENTITY_TYPES.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-                {clientErrors.entity_type && (
-                  <p className="text-xs text-red-500 mt-1">{clientErrors.entity_type}</p>
-                )}
-              </div>
-              <Field
-                label="PAN"
-                field="pan"
-                form={clientForm}
-                setForm={setClientForm}
-                errors={clientErrors}
-                placeholder="e.g. AABCU9603R"
-                hint="IT Act §139A — 10-char PAN"
-              />
-              <Field
-                label="GSTIN (optional)"
-                field="gstin"
-                form={clientForm}
-                setForm={setClientForm}
-                errors={clientErrors}
-                placeholder="e.g. 27AABCU9603R1ZX"
-                hint="CGST Act §25 — 15-char GSTIN"
-              />
-              <Field
-                label="Email"
-                field="email"
-                form={clientForm}
-                setForm={setClientForm}
-                errors={clientErrors}
-                type="email"
-                placeholder="client@example.com"
-              />
-              <Field
-                label="Phone"
-                field="phone"
-                form={clientForm}
-                setForm={setClientForm}
-                errors={clientErrors}
-                type="tel"
-                placeholder="+91 98765 43210"
-              />
-            </div>
-
-            <div className="flex items-center justify-between mt-8 pt-5 border-t border-gray-50">
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={goBack}
-                  className="flex items-center gap-1 text-sm text-[#64748B] hover:text-[#334155] transition-colors"
-                >
-                  <ChevronLeft size={16} /> Back
-                </button>
-                <button
-                  onClick={finish}
-                  className="text-sm text-[#94A3B8] hover:text-[#475569] transition-colors"
-                >
-                  Skip for now
-                </button>
-              </div>
-              <button
-                onClick={saveClient}
                 disabled={saving}
                 className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
-                {saving ? "Adding…" : "Add Client & Finish"}
+                {saving ? "Finishing…" : "Finish & Go to Dashboard"}
                 {!saving && <ChevronRight size={16} />}
               </button>
             </div>
