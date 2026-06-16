@@ -6,6 +6,13 @@ import { useRouter } from "next/navigation";
 import { Building2, BookOpen, Users, CheckCircle, ChevronRight, ChevronLeft } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { api } from "@/lib/api";
+
+interface SignupStash { firmName?: string; fullName?: string }
+function readSignupStash(): SignupStash {
+  if (typeof window === "undefined") return {};
+  try { return JSON.parse(localStorage.getItem("practicesync_signup") || "{}"); } catch { return {}; }
+}
 
 // ─── Indian states list ────────────────────────────────────────────────────
 const INDIAN_STATES = [
@@ -195,7 +202,7 @@ const STEPS = [
 
 // ─── Main page ─────────────────────────────────────────────────────────────
 export default function OnboardingPage() {
-  const { user } = useAuth();
+  const { user, refreshUserContext } = useAuth();
   const router = useRouter();
   const supabase = getSupabaseClient();
 
@@ -209,57 +216,44 @@ export default function OnboardingPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ─── Auto-create firm+user from Partner signup localStorage data ──────
+  // ─── Pre-fill the firm name from the signup stash ─────────────────────
   useEffect(() => {
-    if (!user) return;
-    const currentUser = user; // capture non-null reference
-    async function autoCreateFirmFromSignup() {
-      const raw = typeof window !== "undefined" ? localStorage.getItem("practicesync_signup") : null;
-      if (!raw) return;
-      let signupData: { firmName?: string; fullName?: string } = {};
-      try { signupData = JSON.parse(raw); } catch { return; }
-      if (!signupData.firmName) return;
+    const { firmName } = readSignupStash();
+    if (firmName) setFirmForm((f) => (f.name ? f : { ...f, name: firmName }));
+  }, []);
 
-      // Check if user already has a row
-      const { data: existingUser } = await supabase
-        .from("users")
-        .select("id, firm_id")
-        .eq("auth_user_id", currentUser.id)
-        .maybeSingle();
-      if (existingUser?.firm_id) {
-        // Already onboarded — clear storage
-        localStorage.removeItem("practicesync_signup");
-        setFirmId(existingUser.firm_id);
-        return;
+  // ─── Create the firm + first Partner via the server-side bootstrap ────
+  // Runs server-side (service-role) so it is NOT blocked by the firm-isolation
+  // RLS that forbids a firm-less user from inserting a firms row. Single
+  // entrypoint (called from Save and Skip) so there is no create race.
+  const ensureFirmExists = useCallback(
+    async (extra?: { pan?: string; gstin?: string; phone?: string; address?: string; city?: string; state?: string }): Promise<string | null> => {
+      if (firmId) return firmId;
+      if (!user?.email) return null;
+      const stash = readSignupStash();
+      const name = firmForm.name.trim() || stash.firmName || "";
+      if (!name) return null;
+      const partner = stash.fullName?.trim() || user.email;
+      try {
+        const resp = await api.account.createFirm({
+          firm_name: name,
+          firm_email: user.email,
+          partner_name: partner,
+          ...extra,
+        });
+        const newId = resp?.data?.firm?.id ?? null;
+        if (!newId) return null;
+        if (typeof window !== "undefined") localStorage.removeItem("practicesync_signup");
+        setFirmId(newId);
+        await refreshUserContext();
+        return newId;
+      } catch (e) {
+        console.error("createFirm failed:", e);
+        return null;
       }
-
-      // Create firm row
-      const { data: newFirm, error: firmErr } = await supabase
-        .from("firms")
-        .insert({ name: signupData.firmName.trim(), email: currentUser.email })
-        .select("id")
-        .single();
-      if (firmErr) { console.error("autoCreateFirm firmErr:", firmErr); return; }
-
-      // Create user row
-      const { error: userErr } = await supabase.from("users").insert({
-        auth_user_id: currentUser.id,
-        firm_id: newFirm.id,
-        full_name: signupData.fullName?.trim() ?? currentUser.email,
-        email: currentUser.email,
-        role: "Partner",
-        is_active: true,
-      });
-      if (userErr) { console.error("autoCreateFirm userErr:", userErr); return; }
-
-      localStorage.removeItem("practicesync_signup");
-      setFirmId(newFirm.id);
-      // Pre-fill firm name in form
-      setFirmForm((f) => ({ ...f, name: signupData.firmName ?? f.name }));
-    }
-    autoCreateFirmFromSignup();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+    },
+    [firmId, user, firmForm.name, refreshUserContext],
+  );
 
   // ─── Load firm_id on mount ────────────────────────────────────────────
   const loadFirmId = useCallback(async () => {
@@ -300,7 +294,17 @@ export default function OnboardingPage() {
   // ─── Navigation ───────────────────────────────────────────────────────
   function goNext() { setStep((s) => Math.min(s + 1, 3)); }
   function goBack() { setStep((s) => Math.max(s - 1, 1)); }
-  function finish() { router.replace("/"); }
+  async function finish() {
+    // A firm must exist before entering the app, or AuthGuard will bounce the
+    // (firm-less) user straight back to onboarding.
+    const id = firmId ?? (await ensureFirmExists());
+    if (!id) {
+      setError("Please enter your firm name (Step 1) before continuing.");
+      return;
+    }
+    await refreshUserContext();
+    router.replace("/");
+  }
 
   // ─── Step 1: Save firm profile ────────────────────────────────────────
   function validateFirm(): boolean {
@@ -317,10 +321,25 @@ export default function OnboardingPage() {
 
   async function saveFirmProfile() {
     if (!validateFirm()) return;
-    if (!firmId) { setError("No firm found for your account"); return; }
     setSaving(true);
     setError(null);
     try {
+      if (!firmId) {
+        // No firm yet — create it now (server-side: firm + Partner user + master
+        // CoA, and the internal client when a PAN is supplied).
+        const id = await ensureFirmExists({
+          pan: firmForm.pan.trim() || undefined,
+          gstin: firmForm.gstin.trim() || undefined,
+          phone: firmForm.phone.trim() || undefined,
+          address: firmForm.address.trim() || undefined,
+          city: firmForm.city.trim() || undefined,
+          state: firmForm.state || undefined,
+        });
+        if (!id) { setError("Could not create your firm. Please check the firm name and try again."); return; }
+        goNext();
+        return;
+      }
+      // Firm exists — update its profile fields (anon client; now permitted by RLS).
       const { error: updateError } = await supabase
         .from("firms")
         .update({
@@ -335,6 +354,9 @@ export default function OnboardingPage() {
         })
         .eq("id", firmId);
       if (updateError) throw updateError;
+      // Provision the internal practice client now that a PAN may be set
+      // (idempotent + non-fatal — onboarding must not fail on this).
+      if (firmForm.pan.trim()) { await api.practice.provision().catch(() => {}); }
       goNext();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save firm profile");
