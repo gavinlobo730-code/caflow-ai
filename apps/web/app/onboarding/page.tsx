@@ -200,6 +200,100 @@ const STEPS = [
   { label: "First Client", icon: Users },
 ];
 
+// ─── Reusable field component ──────────────────────────────────────────────
+// MUST live at module scope (not inside the page component): a component defined
+// inside another component is a NEW function identity on every render, so React
+// unmounts/remounts its <input> on each keystroke — which steals focus after a
+// single character. Hoisting it keeps the input mounted and focused.
+function Field<T extends Record<string, string>>({
+  label,
+  field,
+  form,
+  setForm,
+  errors,
+  type = "text",
+  placeholder,
+  hint,
+  required,
+}: {
+  label: string;
+  field: keyof T;
+  form: T;
+  setForm: React.Dispatch<React.SetStateAction<T>>;
+  errors: Partial<Record<keyof T, string>>;
+  type?: string;
+  placeholder?: string;
+  hint?: string;
+  required?: boolean;
+}) {
+  return (
+    <div>
+      <label className="text-xs font-medium text-[#64748B] block mb-1">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      <input
+        type={type}
+        value={form[field] as string}
+        onChange={(e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))}
+        placeholder={placeholder}
+        className={`w-full text-sm text-[#0F172A] border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] ${
+          errors[field] ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"
+        }`}
+      />
+      {hint && !errors[field] && <p className="text-xs text-[#94A3B8] mt-1">{hint}</p>}
+      {errors[field] && <p className="text-xs text-red-500 mt-1">{errors[field] as string}</p>}
+    </div>
+  );
+}
+
+// ─── Progress bar ──────────────────────────────────────────────────────────
+function ProgressBar({ step }: { step: number }) {
+  return (
+    <div className="mb-8">
+      <div className="flex items-center justify-between mb-3">
+        {STEPS.map((s, i) => {
+          const n = i + 1;
+          const done = step > n;
+          const active = step === n;
+          return (
+            <div key={s.label} className="flex items-center flex-1">
+              <div className="flex items-center gap-2 shrink-0">
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
+                    done
+                      ? "bg-blue-600 text-white"
+                      : active
+                      ? "bg-blue-600 text-white ring-4 ring-blue-100"
+                      : "bg-[#F1F5F9] text-[#94A3B8]"
+                  }`}
+                >
+                  {done ? <CheckCircle size={16} /> : n}
+                </div>
+                <span
+                  className={`text-sm font-medium hidden sm:block ${
+                    active ? "text-blue-700" : done ? "text-[#334155]" : "text-[#94A3B8]"
+                  }`}
+                >
+                  {s.label}
+                </span>
+              </div>
+              {i < STEPS.length - 1 && (
+                <div
+                  className={`flex-1 h-0.5 mx-3 transition-colors ${
+                    step > n ? "bg-blue-600" : "bg-white/[0.08]"
+                  }`}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-xs text-[#94A3B8] text-right">Step {step} of {STEPS.length}</p>
+    </div>
+  );
+}
+
 // ─── Main page ─────────────────────────────────────────────────────────────
 export default function OnboardingPage() {
   const { user, refreshUserContext } = useAuth();
@@ -434,101 +528,6 @@ export default function OnboardingPage() {
     }
   }
 
-  // ─── Reusable field component ─────────────────────────────────────────
-  function Field<T extends Record<string, string>>({
-    label,
-    field,
-    form,
-    setForm,
-    errors,
-    type = "text",
-    placeholder,
-    hint,
-    required,
-  }: {
-    label: string;
-    field: keyof T;
-    form: T;
-    setForm: React.Dispatch<React.SetStateAction<T>>;
-    errors: Partial<Record<keyof T, string>>;
-    type?: string;
-    placeholder?: string;
-    hint?: string;
-    required?: boolean;
-  }) {
-    return (
-      <div>
-        <label className="text-xs font-medium text-[#64748B] block mb-1">
-          {label}
-          {required && <span className="text-red-500 ml-0.5">*</span>}
-        </label>
-        <input
-          type={type}
-          value={form[field] as string}
-          onChange={(e) => {
-            setForm((prev) => ({ ...prev, [field]: e.target.value }));
-            if (errors[field]) {
-              // clear error on change — handled by re-validate on submit
-            }
-          }}
-          placeholder={placeholder}
-          className={`w-full text-sm text-[#0F172A] border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] ${
-            errors[field] ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"
-          }`}
-        />
-        {hint && !errors[field] && <p className="text-xs text-[#94A3B8] mt-1">{hint}</p>}
-        {errors[field] && <p className="text-xs text-red-500 mt-1">{errors[field] as string}</p>}
-      </div>
-    );
-  }
-
-  // ─── Progress bar ─────────────────────────────────────────────────────
-  function ProgressBar() {
-    return (
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-3">
-          {STEPS.map((s, i) => {
-            const n = i + 1;
-            const done = step > n;
-            const active = step === n;
-            return (
-              <div key={s.label} className="flex items-center flex-1">
-                <div className="flex items-center gap-2 shrink-0">
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
-                      done
-                        ? "bg-blue-600 text-white"
-                        : active
-                        ? "bg-blue-600 text-white ring-4 ring-blue-100"
-                        : "bg-[#F1F5F9] text-[#94A3B8]"
-                    }`}
-                  >
-                    {done ? <CheckCircle size={16} /> : n}
-                  </div>
-                  <span
-                    className={`text-sm font-medium hidden sm:block ${
-                      active ? "text-blue-700" : done ? "text-[#334155]" : "text-[#94A3B8]"
-                    }`}
-                  >
-                    {s.label}
-                  </span>
-                </div>
-                {i < STEPS.length - 1 && (
-                  <div
-                    className={`flex-1 h-0.5 mx-3 transition-colors ${
-                      step > n ? "bg-blue-600" : "bg-white/[0.08]"
-                    }`}
-                  />
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <p className="text-xs text-[#94A3B8] text-right">Step {step} of {STEPS.length}</p>
-      </div>
-    );
-  }
-
   // ─── Render ────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4">
@@ -543,7 +542,7 @@ export default function OnboardingPage() {
           <p className="text-sm text-[#64748B] mt-1">This takes about 2 minutes. You can always update these later in Settings.</p>
         </div>
 
-        <ProgressBar />
+        <ProgressBar step={step} />
 
         {error && (
           <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
