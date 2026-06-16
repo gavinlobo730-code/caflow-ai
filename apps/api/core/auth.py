@@ -119,6 +119,26 @@ def get_current_user(
             detail="Account disabled. Contact your firm administrator.",
         )
 
+    # Platform Admin enforcement: a suspended or soft-deleted firm blocks ALL of
+    # its users. Enforced centrally here so every firm endpoint is gated at once.
+    firm_id_for_status = user_data.get("firm_id")
+    if firm_id_for_status:
+        try:
+            firm_row = (
+                supabase.table("firms")
+                .select("is_active, deleted_at")
+                .eq("id", firm_id_for_status)
+                .single()
+                .execute()
+            ).data
+        except Exception:
+            firm_row = None
+        if firm_row:
+            if firm_row.get("deleted_at"):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Firm unavailable")
+            if firm_row.get("is_active") is False:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Firm suspended")
+
     # M6 — Session revocation / forced logout: reject any token issued before the
     # account's sessions_revoked_at instant (set by suspend / force-logout / global
     # logout). Compares the JWT 'iat' (issued-at) against the stored timestamp.
@@ -165,7 +185,7 @@ def get_jwt_user(authorization: Optional[str] = Header(default=None)) -> dict:
     Lightweight JWT-only dependency — validates the Supabase JWT but does NOT
     require a row in the users table. Used for firm onboarding where the caller
     has just completed Supabase Auth sign-up and has no users record yet.
-    Returns: { auth_user_id, email }
+    Returns: { auth_user_id, email, aal }
     """
     supabase_url = os.environ.get("SUPABASE_URL", "")
     if not supabase_url:
@@ -173,7 +193,7 @@ def get_jwt_user(authorization: Optional[str] = Header(default=None)) -> dict:
         if app_env != "development":
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                                 detail="Server configuration error: SUPABASE_URL not set")
-        return {"auth_user_id": "dev-user", "email": "dev@caflow.ai"}
+        return {"auth_user_id": "dev-user", "email": "dev@caflow.ai", "aal": "aal1"}
 
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
@@ -194,7 +214,7 @@ def get_jwt_user(authorization: Optional[str] = Header(default=None)) -> dict:
     if not auth_user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing sub claim")
 
-    return {"auth_user_id": auth_user_id, "email": payload.get("email", "")}
+    return {"auth_user_id": auth_user_id, "email": payload.get("email", ""), "aal": payload.get("aal", "aal1")}
 
 
 def require_mfa(current_user: dict = Header(default=None)) -> dict:  # pragma: no cover - thin wrapper
