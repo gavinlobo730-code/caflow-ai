@@ -398,6 +398,8 @@ export const api = {
     suspend: (id: string, reason: string) => request(`/api/platform/firms/${id}/suspend`, { method: "POST", body: JSON.stringify({ reason }) }),
     unsuspend: (id: string) => request(`/api/platform/firms/${id}/unsuspend`, { method: "POST" }),
     softDelete: (id: string) => request(`/api/platform/firms/${id}`, { method: "DELETE" }),
+    /** PERMANENT hard delete — requires a fresh aal2 (MFA) token. Irreversible. */
+    purge: (id: string) => request(`/api/platform/firms/${id}/permanent`, { method: "DELETE" }),
   },
   account: {
     /**
