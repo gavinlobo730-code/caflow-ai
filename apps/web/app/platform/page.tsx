@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, Users, ShieldCheck, Ban, RotateCcw, Trash2, X, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
 
 interface FirmRow { id: string; name: string; created_at: string; users: number; clients: number; status: string }
@@ -54,6 +55,20 @@ export default function PlatformAdminPage() {
   const verify = useCallback(async () => {
     setGate("checking");
     setGateErr("");
+    // Authoritative session check. /platform is a PUBLIC, self-gating route, so
+    // (unlike AuthGuard-protected pages) its body runs even while the context
+    // session is transiently null — e.g. a slow token refresh trips AuthContext's
+    // 5s safety timeout, or a one-off getSession error. Trusting the context
+    // `session` here would bounce a signed-in admin to /login. Read the session
+    // straight from the Supabase store (the same source the api client uses), so
+    // only a CONFIRMED-null session means "not signed in".
+    let live;
+    try {
+      ({ data: { session: live } } = await getSupabaseClient().auth.getSession());
+    } catch {
+      ({ data: { session: live } } = await getSupabaseClient().auth.getSession());
+    }
+    if (!live) { router.replace("/login"); return; }
     try {
       // Cold-start tolerance: the free-tier backend may be asleep and the first
       // call can exceed the client abort. Retry once before giving up so a
@@ -76,11 +91,13 @@ export default function PlatformAdminPage() {
     }
   }, [router]);
 
+  // Wait for the initial auth resolution to settle, then verify authoritatively.
+  // We intentionally do NOT branch on the context `session` here — verify() reads
+  // the live session itself, which is race-proof against the 5s safety timeout.
   useEffect(() => {
     if (authLoading) return;
-    if (!session) { router.replace("/login"); return; }
     verify();
-  }, [authLoading, session, router, verify]);
+  }, [authLoading, session, verify]);
 
   // Load firm data only AFTER the gate opens, in a separate effect. A failure
   // here shows an inline banner — it must never re-enter the auth gate and
