@@ -12,7 +12,7 @@ function isPublicPath(pathname: string): boolean {
 }
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { session, loading, mfaPending } = useAuth();
+  const { session, loading, mfaPending, hasFirm } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const onLogin = pathname === "/login" || pathname.startsWith("/login/");
@@ -31,13 +31,20 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       if (!onLogin) router.replace("/login");
       return;
     }
+    // Authenticated but with no firm/users record (e.g. a brand-new signup whose
+    // firm bootstrap hasn't run) → route to onboarding instead of dropping them
+    // on an empty dashboard. Only on explicit false; null = still resolving.
+    if (hasFirm === false && !isPublic) {
+      router.replace("/onboarding");
+      return;
+    }
     // Fully authenticated (no challenge owed) — don't sit on the login page.
     // While mfaPending is still null (resolving) we do NOT redirect, so an aal1
     // session mid-challenge is never mistaken for fully authenticated.
     if (mfaPending === false && onLogin) {
       router.replace("/");
     }
-  }, [session, loading, mfaPending, onLogin, pathname, router]);
+  }, [session, loading, mfaPending, hasFirm, onLogin, pathname, router]);
 
   if (loading) {
     return (
@@ -60,6 +67,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   // MFA challenge owed: render only the login page (the challenge UI); block
   // everything else while we redirect there.
   if (session && mfaPending === true && !onLogin) return null;
+  // Firm-less user: block protected pages while redirecting to onboarding.
+  if (session && hasFirm === false && !isPublic) return null;
 
   return <>{children}</>;
 }
