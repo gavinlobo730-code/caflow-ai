@@ -387,6 +387,29 @@ export const api = {
     get: () => request("/api/practice"),
     provision: () => request("/api/practice/provision", { method: "POST" }),
   },
+  account: {
+    /**
+     * Bootstrap a brand-new firm + first Partner user. Runs server-side
+     * (service-role) so it is not blocked by the firm-isolation RLS that forbids
+     * a firm-less user from inserting a firms row. Seeds the master CoA and
+     * provisions the internal client when a PAN is supplied.
+     */
+    createFirm: (body: {
+      firm_name: string;
+      firm_email: string;
+      partner_name: string;
+      pan?: string;
+      gstin?: string;
+      phone?: string;
+      address?: string;
+      city?: string;
+      state?: string;
+      entity_type?: string;
+    }) => request<ApiResp<{ firm: { id: string; name: string } }>>(
+      "/api/onboarding/firm",
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  },
   billing: {
     listSchedules: (activeOnly?: boolean) =>
       request(`/api/billing/schedules${activeOnly ? "?active_only=true" : ""}`),
