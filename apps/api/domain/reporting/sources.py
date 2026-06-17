@@ -99,16 +99,20 @@ class InMemoryLedgerSource(LedgerSource):
 class SupabaseLedgerSource(LedgerSource):
     """Queries the production tables. Always firm_id + client_id scoped."""
 
-    # Base columns always present on chart_of_accounts. system_account_key is
-    # added by migration 092 and probed for separately (see _accounts).
+    # Base columns always present. system_account_key (migration 092) and
+    # reversal_of (migration 055) are added later and probed for separately, so
+    # reports run whether or not those migrations have been applied.
     _BASE_ACCOUNT_COLS = "id, account_code, account_name, account_type, account_subtype"
+    _BASE_ENTRY_COLS = ("id, entry_date, client_id, firm_id, entry_type, "
+                        "journal_lines(account_id, debit_paise, credit_paise)")
 
     def __init__(self, db):
         self.db = db
-        # None = not yet probed; True/False once chart_of_accounts has been read.
-        # Makes reports work whether or not migration 092 has run — deployment
-        # order between the migration and this code no longer matters.
+        # None = not yet probed; True/False once the table has been read. Makes
+        # reports work whether or not migrations 092 / 055 have run — deployment
+        # order between those migrations and this code no longer matters.
         self._has_system_key: bool | None = None
+        self._has_reversal_of: bool | None = None
 
     def snapshot(self, firm_id, client_id, start_date, end_date) -> LedgerSnapshot:
         accounts = self._accounts(firm_id, client_id)
@@ -175,13 +179,30 @@ class SupabaseLedgerSource(LedgerSource):
         }
 
     def _entries(self, firm_id, client_id) -> dict[str, JournalEntry]:
-        q = (self.db.table("journal_entries")
-             .select("id, entry_date, client_id, firm_id, entry_type, reversal_of, "
-                     "journal_lines(account_id, debit_paise, credit_paise)")
-             .eq("firm_id", firm_id).eq("is_posted", True).is_("deleted_at", "null"))
-        if client_id:
-            q = q.eq("client_id", client_id)
-        rows = q.execute().data or []
+        def run(select_cols: str):
+            q = (self.db.table("journal_entries").select(select_cols)
+                 .eq("firm_id", firm_id).eq("is_posted", True).is_("deleted_at", "null"))
+            if client_id:
+                q = q.eq("client_id", client_id)
+            return q.execute().data or []
+
+        rows = None
+        # Use reversal_of when present; tolerate its absence (pre-migration 055).
+        if self._has_reversal_of is not False:
+            try:
+                rows = run(self._BASE_ENTRY_COLS + ", reversal_of")
+                self._has_reversal_of = True
+            except Exception as e:  # noqa: BLE001 — re-raised unless it's the missing column
+                if not _is_missing_column_error(e, "reversal_of"):
+                    raise
+                self._has_reversal_of = False
+                _logger.warning(
+                    "journal_entries.reversal_of not found — treating all entries as "
+                    "non-reversals until migration 055 is applied."
+                )
+        if rows is None:
+            rows = run(self._BASE_ENTRY_COLS)
+
         out: dict[str, JournalEntry] = {}
         for r in rows:
             lines = tuple(
@@ -192,6 +213,7 @@ class SupabaseLedgerSource(LedgerSource):
             out[r["id"]] = JournalEntry(
                 id=r["id"], entry_date=r["entry_date"], client_id=r.get("client_id", ""),
                 firm_id=r.get("firm_id", ""), entry_type=r.get("entry_type", ""),
+                # .get() yields None when the column is absent → entry treated as non-reversal.
                 lines=lines, reversal_of=r.get("reversal_of"),
             )
         return out

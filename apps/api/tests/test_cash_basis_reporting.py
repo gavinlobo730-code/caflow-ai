@@ -490,3 +490,142 @@ def test_accounts_unrelated_error_propagates():
     src = SupabaseLedgerSource(_FakeDB(_AR_WITH_KEY, _AR_NO_KEY, key_error=err))
     with pytest.raises(RuntimeError, match="connection reset"):
         src._accounts(FIRM, CLIENT)
+
+
+# ── Migration tolerance: journal_entries.reversal_of (migration 055) ───────────
+# Production hotfix — the prod schema is missing reversal_of, which 500'd every
+# report. _entries() must tolerate its absence exactly like _accounts() does for
+# system_account_key.
+
+class _FakeEntriesQuery:
+    """Minimal PostgREST chain for a journal_entries select."""
+    def __init__(self, rows_with, rows_without, key_error: Exception | None):
+        self._rows_with = rows_with
+        self._rows_without = rows_without
+        self._key_error = key_error
+        self._cols = ""
+
+    def select(self, cols): self._cols = cols; return self
+    def eq(self, *a, **k): return self
+    def is_(self, *a, **k): return self
+
+    def execute(self):
+        if "reversal_of" in self._cols:
+            if self._key_error is not None:
+                raise self._key_error
+            return _FakeExec(self._rows_with)
+        return _FakeExec(self._rows_without)
+
+
+class _FakeEntriesDB:
+    def __init__(self, rows_with, rows_without, key_error=None):
+        self._args = (rows_with, rows_without, key_error)
+
+    def table(self, _name):
+        return _FakeEntriesQuery(*self._args)
+
+
+_JE_WITH = [{"id": "je1", "entry_date": "2026-04-10", "client_id": CLIENT, "firm_id": FIRM,
+             "entry_type": "x", "reversal_of": "je0",
+             "journal_lines": [{"account_id": "bank", "debit_paise": 100, "credit_paise": 0}]}]
+_JE_NO = [{"id": "je1", "entry_date": "2026-04-10", "client_id": CLIENT, "firm_id": FIRM,
+           "entry_type": "x",
+           "journal_lines": [{"account_id": "bank", "debit_paise": 100, "credit_paise": 0}]}]
+
+
+def test_entries_use_reversal_of_when_present():
+    from domain.reporting import SupabaseLedgerSource
+    src = SupabaseLedgerSource(_FakeEntriesDB(_JE_WITH, _JE_NO, key_error=None))
+    entries = src._entries(FIRM, CLIENT)
+    assert src._has_reversal_of is True
+    assert entries["je1"].reversal_of == "je0"
+
+
+def test_entries_fall_back_when_reversal_of_missing():
+    from domain.reporting import SupabaseLedgerSource
+    # Exactly the production failure: 42703 column does not exist.
+    err = RuntimeError('column journal_entries.reversal_of does not exist (42703)')
+    src = SupabaseLedgerSource(_FakeEntriesDB(_JE_WITH, _JE_NO, key_error=err))
+    entries = src._entries(FIRM, CLIENT)
+    assert src._has_reversal_of is False
+    assert entries["je1"].reversal_of is None  # treated as non-reversal
+
+
+def test_entries_unrelated_error_propagates():
+    from domain.reporting import SupabaseLedgerSource
+    err = RuntimeError("connection reset by peer")
+    src = SupabaseLedgerSource(_FakeEntriesDB(_JE_WITH, _JE_NO, key_error=err))
+    with pytest.raises(RuntimeError, match="connection reset"):
+        src._entries(FIRM, CLIENT)
+
+
+# ── End-to-end: reports load on the exact production schema (both cols missing) ─
+
+class _GenericQuery:
+    def __init__(self, resolver, table):
+        self._resolver = resolver
+        self._table = table
+        self._cols = ""
+
+    def select(self, cols): self._cols = cols; return self
+    def eq(self, *a, **k): return self
+    def or_(self, *a, **k): return self
+    def is_(self, *a, **k): return self
+    def in_(self, *a, **k): return self
+
+    def execute(self):
+        return _FakeExec(self._resolver(self._table, self._cols))
+
+
+class _ProdLikeDB:
+    """
+    Reproduces production caflow-ai: chart_of_accounts has NO system_account_key
+    (migration 092 not applied) AND journal_entries has NO reversal_of (055 not
+    applied) — both raise 42703 on those column selects.
+    """
+    def __init__(self, accounts, entries):
+        self._accounts = accounts
+        self._entries = entries
+
+    def table(self, name):
+        return _GenericQuery(self._resolve, name)
+
+    def _resolve(self, table, cols):
+        if table == "chart_of_accounts":
+            if "system_account_key" in cols:
+                raise RuntimeError('column chart_of_accounts.system_account_key does not exist (42703)')
+            return self._accounts
+        if table == "journal_entries":
+            if "reversal_of" in cols:
+                raise RuntimeError('column journal_entries.reversal_of does not exist (42703)')
+            return self._entries
+        return []  # invoices / receipts / allocations / credit_notes / bills / payments
+
+
+def test_all_reports_load_on_prod_schema_missing_both_columns():
+    from domain.reporting import SupabaseLedgerSource
+    accounts = [
+        {"id": "bank", "account_code": "1000", "account_name": "Bank", "account_type": "Asset", "account_subtype": "Bank"},
+        {"id": "cap", "account_code": "3000", "account_name": "Capital", "account_type": "Equity", "account_subtype": None},
+        {"id": "rev1", "account_code": "4000", "account_name": "Professional Fees", "account_type": "Revenue", "account_subtype": None},
+    ]
+    entries = [{
+        "id": "je1", "entry_date": "2026-04-10", "client_id": CLIENT, "firm_id": FIRM, "entry_type": "Receipt",
+        "journal_lines": [
+            {"account_id": "bank", "debit_paise": 1000, "credit_paise": 0},
+            {"account_id": "rev1", "debit_paise": 0, "credit_paise": 1000},
+        ],
+    }]
+    src = SupabaseLedgerSource(_ProdLikeDB(accounts, entries))
+    svc = ReportingService(src)
+    for basis in ("accrual", "cash"):
+        tb = svc.trial_balance(FIRM, CLIENT, FY_END, basis=basis)
+        assert tb["is_balanced"], f"{basis} TB must load and balance"
+        assert tb["total_debit_paise"] == 1000
+        pl = svc.profit_loss(FIRM, CLIENT, FY_START, FY_END, basis=basis)
+        assert pl["revenue"]["total_paise"] == 1000, f"{basis} P&L must load"
+        bs = svc.balance_sheet(FIRM, CLIENT, FY_END, basis=basis)
+        assert bs["is_balanced"], f"{basis} BS must load and balance"
+    # Both missing columns were detected and tolerated (no 500).
+    assert src._has_system_key is False
+    assert src._has_reversal_of is False
