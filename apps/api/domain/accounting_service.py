@@ -172,7 +172,6 @@ MOCK_JOURNAL_ENTRIES: list[dict] = [
 
 JOURNAL_INDEX: dict[str, dict] = {e["id"]: e for e in MOCK_JOURNAL_ENTRIES}
 
-
 def _compute_totals(entry: dict) -> dict:
     """Add total_debit_paise and total_credit_paise to entry dict."""
     total_debit = sum(ln["debit_paise"] for ln in entry["lines"])
@@ -331,6 +330,11 @@ class AccountingService:
     # ── Trial Balance ────────────────────────────────────────────────────────
 
     def get_trial_balance(self, as_of_date: Optional[str] = None) -> dict:
+        """
+        Accrual trial balance over the posted in-memory seed (dev/demo).
+        IT Act Section 145: method of accounting. Cash-basis and all production
+        reporting are served by domain.reporting.ReportingService.
+        """
         totals: dict[str, dict] = {}
         for entry in MOCK_JOURNAL_ENTRIES:
             if entry["status"] != "posted":
@@ -380,6 +384,10 @@ class AccountingService:
         client_id: Optional[str] = None,
         firm_id: Optional[str] = None,
     ) -> dict:
+        """
+        Accrual P&L over the posted in-memory seed (dev/demo). Cash-basis and
+        all production reporting are served by domain.reporting.ReportingService.
+        """
         # Default: current FY April 1 to today
         today = date.today()
         fy_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1).isoformat()
@@ -442,6 +450,11 @@ class AccountingService:
         client_id: Optional[str] = None,
         firm_id: Optional[str] = None,
     ) -> dict:
+        """
+        Accrual balance sheet over the posted in-memory seed (dev/demo).
+        Companies Act Section 128. Cash-basis and all production reporting are
+        served by domain.reporting.ReportingService.
+        """
         _as_of = as_of_date or date.today().isoformat()
         balances: dict[str, int] = {}
 

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, CheckCircle, AlertTriangle, Download } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatPaise } from "@/lib/services/formatting";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api";
 import * as XLSX from "xlsx";
 import type { AccountType } from "@/lib/types";
 
@@ -18,6 +19,22 @@ interface TrialBalanceLine {
   total_debit_paise: number;
   total_credit_paise: number;
 }
+
+type Basis = "accrual" | "cash";
+
+// Backend response envelope. ALL aggregation happens server-side (CLAUDE.md):
+// the page only passes the basis/date and renders what the API returns,
+// including the authoritative totals (never recomputed here).
+type TBResponse = {
+  success: boolean;
+  data: {
+    lines: TrialBalanceLine[];
+    total_debit_paise: number;
+    total_credit_paise: number;
+    is_balanced: boolean;
+  } | null;
+  error: string | null;
+};
 
 const TYPE_COLORS: Record<AccountType, string> = {
   Asset: "text-blue-700",
@@ -37,84 +54,62 @@ function LoadingSpinner() {
   );
 }
 
-async function getFirmId(): Promise<string> {
-  const sb = getSupabaseClient();
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).maybeSingle();
-  if (!data?.firm_id) throw new Error("No firm found — please complete onboarding");
-  return data.firm_id as string;
-}
-
 export default function TrialBalancePage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   const [asOfDate, setAsOfDate] = useState("2025-05-31");
+  // basis persists in URL — refresh-safe
+  const [basis, setBasis] = useState<Basis>((searchParams.get("basis") as Basis) ?? "accrual");
   const [lines, setLines] = useState<TrialBalanceLine[]>([]);
+  // Authoritative totals from the backend — never recomputed here.
+  const [tbTotals, setTbTotals] = useState({ debit: 0, credit: 0, balanced: true });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const updateBasis = useCallback((b: Basis) => {
+    setBasis(b);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("basis", b);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }, [router, searchParams]);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    const sb = getSupabaseClient();
-    getFirmId()
-      .then(async (fid) => {
-        // Fetch all accounts for this firm
-        const { data: accs, error: accErr } = await sb
-          .from("accounts")
-          .select("id, account_code, account_name, account_type")
-          .eq("firm_id", fid);
-        if (accErr) throw new Error(accErr.message);
 
-        // Fetch all journal entry lines for entries up to asOfDate
-        const { data: entryLines, error: lineErr } = await sb
-          .from("journal_entry_lines")
-          .select("account_id, debit_paise, credit_paise, journal_entries!inner(firm_id, entry_date, status)")
-          .eq("journal_entries.firm_id", fid)
-          .eq("journal_entries.status", "posted")
-          .lte("journal_entries.entry_date", asOfDate);
-        if (lineErr) throw new Error(lineErr.message);
+    const load = async (): Promise<void> => {
+      // Both bases are computed server-side from the same posted ledger
+      // (IT Act §145). The frontend only passes parameters.
+      const params: Record<string, string> = { basis };
+      if (asOfDate) params.as_of_date = asOfDate;
+      const res = (await api.accounting.trialBalance(params)) as TBResponse;
+      if (!res.success) throw new Error(res.error ?? "Failed to load trial balance");
+      setLines(res.data?.lines ?? []);
+      setTbTotals({
+        debit: res.data?.total_debit_paise ?? 0,
+        credit: res.data?.total_credit_paise ?? 0,
+        balanced: res.data?.is_balanced ?? false,
+      });
+    };
 
-        // Aggregate debit/credit per account in integer paise — no floating point
-        const map = new Map<string, { debit: number; credit: number }>();
-        for (const line of (entryLines ?? [])) {
-          const existing = map.get(line.account_id) ?? { debit: 0, credit: 0 };
-          map.set(line.account_id, {
-            debit: existing.debit + (line.debit_paise ?? 0),
-            credit: existing.credit + (line.credit_paise ?? 0),
-          });
-        }
-
-        const result: TrialBalanceLine[] = (accs ?? [])
-          .map((a) => {
-            const totals = map.get(a.id) ?? { debit: 0, credit: 0 };
-            return {
-              account_id: a.id,
-              account_code: a.account_code,
-              account_name: a.account_name,
-              account_type: a.account_type as AccountType,
-              total_debit_paise: totals.debit,
-              total_credit_paise: totals.credit,
-            };
-          })
-          .filter((l) => l.total_debit_paise > 0 || l.total_credit_paise > 0);
-
-        setLines(result);
-      })
+    load()
       .catch((e) => setError(e.message ?? "Failed to load trial balance"))
       .finally(() => setLoading(false));
-  }, [asOfDate]);
+  }, [asOfDate, basis]);
 
-  // Compute totals in integer paise
-  const totalDebit: number = lines.reduce((s, l) => s + l.total_debit_paise, 0);
-  const totalCredit: number = lines.reduce((s, l) => s + l.total_credit_paise, 0);
+  // Display totals are the backend's authoritative figures (single source of truth).
+  const totalDebit: number = tbTotals.debit;
+  const totalCredit: number = tbTotals.credit;
   const difference: number = totalDebit - totalCredit;
-  const isBalanced = difference === 0 && lines.length > 0;
+  const isBalanced = tbTotals.balanced && lines.length > 0;
 
   function exportToExcel() {
     const rows = lines.map((l) => ({
       Code: l.account_code,
       "Account Name": l.account_name,
       Type: l.account_type,
+      Basis: basis === "cash" ? "Cash" : "Accrual",
       "Debit (₹)": (l.total_debit_paise / 100).toFixed(2),
       "Credit (₹)": (l.total_credit_paise / 100).toFixed(2),
     }));
@@ -122,13 +117,14 @@ export default function TrialBalancePage() {
       Code: "",
       "Account Name": "TOTAL",
       Type: "Asset" as AccountType,
+      Basis: "",
       "Debit (₹)": (totalDebit / 100).toFixed(2),
       "Credit (₹)": (totalCredit / 100).toFixed(2),
     });
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Trial Balance");
-    XLSX.writeFile(wb, `trial_balance_${asOfDate}.xlsx`);
+    XLSX.writeFile(wb, `trial_balance_${basis}_${asOfDate}.xlsx`);
   }
 
   if (loading) return <LoadingSpinner />;
@@ -160,10 +156,37 @@ export default function TrialBalancePage() {
           <input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)}
             className="block mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
+
+        {/* Accrual | Cash toggle — IT Act Section 145 */}
+        <div>
+          <label className="text-xs text-[#64748B]">Reporting Basis</label>
+          <div className="flex mt-1 rounded-md border border-[#E2E8F0] overflow-hidden text-sm">
+            <button
+              onClick={() => updateBasis("accrual")}
+              className={`px-4 py-1.5 font-medium transition-colors ${basis === "accrual" ? "bg-[#1E293B] text-white" : "bg-white text-[#64748B] hover:bg-[#F8FAFC]"}`}
+            >
+              Accrual
+            </button>
+            <button
+              onClick={() => updateBasis("cash")}
+              className={`px-4 py-1.5 font-medium border-l border-[#E2E8F0] transition-colors ${basis === "cash" ? "bg-[#1E293B] text-white" : "bg-white text-[#64748B] hover:bg-[#F8FAFC]"}`}
+            >
+              Cash
+            </button>
+          </div>
+        </div>
+
         <Button variant="outline" size="sm" onClick={exportToExcel} disabled={lines.length === 0}>
           <Download size={14} className="mr-1" /> Export Excel
         </Button>
       </div>
+
+      {/* Cash basis disclaimer */}
+      {basis === "cash" && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-800">
+          Cash basis is for management reporting only (IT Act §145). GST returns remain invoice-based per CGST Act and are not affected by this view.
+        </div>
+      )}
 
       {lines.length === 0 ? (
         <div className="bg-[#F8FAFC] rounded-xl border border-[#F1F5F9] p-12 text-center">
@@ -171,7 +194,6 @@ export default function TrialBalancePage() {
         </div>
       ) : (
         <>
-          {/* Balance status banner */}
           <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium ${isBalanced ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
             {isBalanced
               ? <><CheckCircle size={16} /> Trial Balance is Balanced</>
@@ -179,7 +201,6 @@ export default function TrialBalancePage() {
             }
           </div>
 
-          {/* Table */}
           <Card>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
