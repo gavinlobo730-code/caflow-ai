@@ -138,7 +138,7 @@ export const api = {
     createJournalEntry: (data: unknown) => request("/api/accounting/journal", { method: "POST", body: JSON.stringify(data) }),
     postJournalEntry: (id: string) => request(`/api/accounting/journal/${id}/post`, { method: "PATCH" }),
     ledger: (accountId: string, params?: Record<string, string>) => request(`/api/accounting/ledger?account_id=${accountId}${params ? "&" + new URLSearchParams(params) : ""}`),
-    trialBalance: (asOfDate?: string) => request(`/api/accounting/trial-balance${asOfDate ? "?as_of_date=" + asOfDate : ""}`),
+    trialBalance: (params?: Record<string, string>) => request(`/api/accounting/trial-balance${params ? "?" + new URLSearchParams(params) : ""}`),
     profitLoss: (params?: Record<string, string>) => request(`/api/accounting/profit-loss${params ? "?" + new URLSearchParams(params) : ""}`),
     balanceSheet: (params?: Record<string, string>) => request(`/api/accounting/balance-sheet${params ? "?" + new URLSearchParams(params) : ""}`),
   },

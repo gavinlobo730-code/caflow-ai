@@ -206,9 +206,14 @@ def get_ledger(
 @router.get("/trial-balance")
 def get_trial_balance(
     as_of_date: Optional[str] = Query(None),
+    basis: str = Query("accrual", pattern="^(accrual|cash)$"),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
-    tb = accounting_service.get_trial_balance(as_of_date)
+    """
+    IT Act Section 145: method of accounting.
+    basis=cash is management reporting only — never affects GST returns.
+    """
+    tb = accounting_service.get_trial_balance(as_of_date, basis=basis)
     return api_response(True, tb)
 
 
@@ -217,10 +222,15 @@ def get_profit_loss(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
+    basis: str = Query("accrual", pattern="^(accrual|cash)$"),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
+    """
+    IT Act Section 44AA: professionals may use cash basis for record-keeping.
+    basis=cash is management reporting only — never affects GST/ITR filings.
+    """
     pl = accounting_service.get_profit_loss(
-        start_date, end_date, client_id, firm_id=current_user["firm_id"]
+        start_date, end_date, client_id, firm_id=current_user["firm_id"], basis=basis
     )
     return api_response(True, pl)
 
@@ -229,9 +239,14 @@ def get_profit_loss(
 def get_balance_sheet(
     as_of_date: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
+    basis: str = Query("accrual", pattern="^(accrual|cash)$"),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
+    """
+    Companies Act Section 128: balance sheet must use accrual for companies.
+    basis=cash excludes unpaid A/R and A/P — for management view only.
+    """
     bs = accounting_service.get_balance_sheet(
-        as_of_date, client_id, firm_id=current_user["firm_id"]
+        as_of_date, client_id, firm_id=current_user["firm_id"], basis=basis
     )
     return api_response(True, bs)
