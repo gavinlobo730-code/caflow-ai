@@ -23,8 +23,18 @@ interface TrialBalanceLine {
 type Basis = "accrual" | "cash";
 
 // Backend response envelope. ALL aggregation happens server-side (CLAUDE.md):
-// the page only passes the basis/date and renders what the API returns.
-type TBResponse = { success: boolean; data: { lines: TrialBalanceLine[] } | null; error: string | null };
+// the page only passes the basis/date and renders what the API returns,
+// including the authoritative totals (never recomputed here).
+type TBResponse = {
+  success: boolean;
+  data: {
+    lines: TrialBalanceLine[];
+    total_debit_paise: number;
+    total_credit_paise: number;
+    is_balanced: boolean;
+  } | null;
+  error: string | null;
+};
 
 const TYPE_COLORS: Record<AccountType, string> = {
   Asset: "text-blue-700",
@@ -52,6 +62,8 @@ export default function TrialBalancePage() {
   // basis persists in URL — refresh-safe
   const [basis, setBasis] = useState<Basis>((searchParams.get("basis") as Basis) ?? "accrual");
   const [lines, setLines] = useState<TrialBalanceLine[]>([]);
+  // Authoritative totals from the backend — never recomputed here.
+  const [tbTotals, setTbTotals] = useState({ debit: 0, credit: 0, balanced: true });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,26 +78,31 @@ export default function TrialBalancePage() {
     setLoading(true);
     setError(null);
 
-    const load = async (): Promise<TrialBalanceLine[]> => {
+    const load = async (): Promise<void> => {
       // Both bases are computed server-side from the same posted ledger
       // (IT Act §145). The frontend only passes parameters.
       const params: Record<string, string> = { basis };
       if (asOfDate) params.as_of_date = asOfDate;
       const res = (await api.accounting.trialBalance(params)) as TBResponse;
       if (!res.success) throw new Error(res.error ?? "Failed to load trial balance");
-      return res.data?.lines ?? [];
+      setLines(res.data?.lines ?? []);
+      setTbTotals({
+        debit: res.data?.total_debit_paise ?? 0,
+        credit: res.data?.total_credit_paise ?? 0,
+        balanced: res.data?.is_balanced ?? false,
+      });
     };
 
     load()
-      .then(setLines)
       .catch((e) => setError(e.message ?? "Failed to load trial balance"))
       .finally(() => setLoading(false));
   }, [asOfDate, basis]);
 
-  const totalDebit: number = lines.reduce((s, l) => s + l.total_debit_paise, 0);
-  const totalCredit: number = lines.reduce((s, l) => s + l.total_credit_paise, 0);
+  // Display totals are the backend's authoritative figures (single source of truth).
+  const totalDebit: number = tbTotals.debit;
+  const totalCredit: number = tbTotals.credit;
   const difference: number = totalDebit - totalCredit;
-  const isBalanced = difference === 0 && lines.length > 0;
+  const isBalanced = tbTotals.balanced && lines.length > 0;
 
   function exportToExcel() {
     const rows = lines.map((l) => ({

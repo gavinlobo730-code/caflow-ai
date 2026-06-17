@@ -94,6 +94,14 @@ interface TrialRow {
   total_credit_paise: number;
 }
 
+// Backend trial-balance payload (authoritative totals computed server-side).
+interface TBApiData {
+  lines: TrialRow[];
+  total_debit_paise: number;
+  total_credit_paise: number;
+  is_balanced: boolean;
+}
+
 // Aggregated balance per account (from journal lines)
 interface AccountBalance {
   account_id: string;
@@ -764,6 +772,8 @@ function TrialBalance({ clientId, financialYear }: { clientId: string; financial
   const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
 
   const [rows, setRows] = useState<TrialRow[]>([]);
+  // Authoritative totals come from the backend — never recomputed here.
+  const [totals, setTotals] = useState({ debit: 0, credit: 0, balanced: true });
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -781,20 +791,27 @@ function TrialBalance({ clientId, financialYear }: { clientId: string; financial
     const { end } = fyDateRange(financialYear);
     const res = (await api.accounting.trialBalance({
       basis, as_of_date: end, client_id: clientId,
-    })) as { success: boolean; data: { lines: TrialRow[] } | null };
-    if (res.success && res.data?.lines) {
-      setRows(res.data.lines);
+    })) as { success: boolean; data: TBApiData | null };
+    if (res.success && res.data) {
+      setRows(res.data.lines ?? []);
+      setTotals({
+        debit: res.data.total_debit_paise,
+        credit: res.data.total_credit_paise,
+        balanced: res.data.is_balanced,
+      });
     } else {
       setRows([]);
+      setTotals({ debit: 0, credit: 0, balanced: true });
     }
     setLoading(false); setLoaded(true);
   }, [clientId, financialYear, basis]);
 
   useEffect(() => { load(); }, [load]);
 
-  const grandDebit = rows.reduce((s, r) => s + r.total_debit_paise, 0);
-  const grandCredit = rows.reduce((s, r) => s + r.total_credit_paise, 0);
-  const isBalanced = grandDebit === grandCredit;
+  // Display totals are the backend's authoritative figures (single source of truth).
+  const grandDebit = totals.debit;
+  const grandCredit = totals.credit;
+  const isBalanced = totals.balanced;
 
   return (
     <div className="space-y-4 max-w-3xl">
@@ -878,6 +895,8 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
 
   const [balances, setBalances] = useState<AccountBalance[]>([]);
   const [cashPL, setCashPL] = useState<CashPLData | null>(null);
+  // Authoritative accrual totals from the backend — never recomputed here.
+  const [plTotals, setPlTotals] = useState({ revenue: 0, expenses: 0, net: 0 });
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -913,8 +932,14 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
         ...(d.operating_expenses?.lines ?? []).map((l) => toBal(l, "Expense")),
       ].filter((b) => b.net_paise !== 0).sort((a, b) => a.account_code.localeCompare(b.account_code));
       setBalances(rows);
+      setPlTotals({
+        revenue: d.revenue?.total_paise ?? 0,
+        expenses: d.operating_expenses?.total_paise ?? 0,
+        net: d.net_profit_paise ?? 0,
+      });
     } else {
       setBalances([]);
+      setPlTotals({ revenue: 0, expenses: 0, net: 0 });
     }
     setLoading(false); setLoaded(true);
   }, [clientId, financialYear, basis]);
@@ -923,9 +948,11 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
 
   const revenue = balances.filter((b) => b.account_type === "Revenue");
   const expenses = balances.filter((b) => b.account_type === "Expense");
-  const totalRevenue = revenue.reduce((s, b) => s + b.net_paise, 0);
-  const totalExpenses = expenses.reduce((s, b) => s + b.net_paise, 0);
-  const netPL = totalRevenue - totalExpenses;
+  // Grand totals are the backend's authoritative figures; bucket subtotals below
+  // are presentation-only Schedule III grouping of the same backend line amounts.
+  const totalRevenue = plTotals.revenue;
+  const totalExpenses = plTotals.expenses;
+  const netPL = plTotals.net;
 
   const revBuckets = groupBy(revenue, (b) => plBucket(b.account_type, b.account_subtype));
   const expBuckets = groupBy(expenses, (b) => plBucket(b.account_type, b.account_subtype));
@@ -1103,6 +1130,8 @@ function BalanceSheet({ clientId, financialYear }: { clientId: string; financial
 
   const [balances, setBalances] = useState<AccountBalance[]>([]);
   const [cashBS, setCashBS] = useState<CashBSData | null>(null);
+  // Authoritative accrual totals from the backend — never recomputed here.
+  const [bsTotals, setBsTotals] = useState({ assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true });
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -1140,22 +1169,34 @@ function BalanceSheet({ clientId, financialYear }: { clientId: string; financial
         ...fromSection(d.liabilities, "Liability"),
         ...fromSection(d.equity, "Equity"),
       ].sort((a, b) => a.account_code.localeCompare(b.account_code)));
+      setBsTotals({
+        assets: d.total_assets_paise ?? 0,
+        liab: d.liabilities?.[0]?.total_paise ?? 0,
+        equity: d.equity?.[0]?.total_paise ?? 0,
+        liabEquity: d.total_liabilities_equity_paise ?? 0,
+        balanced: d.is_balanced ?? false,
+      });
     } else {
       setBalances([]);
+      setBsTotals({ assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true });
     }
     setLoading(false); setLoaded(true);
   }, [clientId, financialYear, basis]);
 
   useEffect(() => { load(); }, [load]);
 
-  const assets = balances.filter((b) => b.account_type === "Asset" && b.net_paise > 0);
-  const liabilities = balances.filter((b) => b.account_type === "Liability" && b.net_paise > 0);
+  // Line inclusion mirrors the backend section contents (non-zero balances) so
+  // the displayed lines and the backend totals below always reconcile.
+  const assets = balances.filter((b) => b.account_type === "Asset" && b.net_paise !== 0);
+  const liabilities = balances.filter((b) => b.account_type === "Liability" && b.net_paise !== 0);
   const equity = balances.filter((b) => b.account_type === "Equity");
 
-  const totalAssets = assets.reduce((s, b) => s + b.net_paise, 0);
-  const totalLiab = liabilities.reduce((s, b) => s + b.net_paise, 0);
-  const totalEquity = equity.reduce((s, b) => s + b.net_paise, 0);
-  const isBalanced = totalAssets === totalLiab + totalEquity;
+  // Grand totals are the backend's authoritative figures; bucket subtotals below
+  // are presentation-only Schedule III grouping of the same backend line amounts.
+  const totalAssets = bsTotals.assets;
+  const totalLiab = bsTotals.liab;
+  const totalEquity = bsTotals.equity;
+  const isBalanced = bsTotals.balanced;
 
   const assetBuckets = groupBy(assets, (b) => bsBucket(b.account_type, b.account_subtype));
   const liabBuckets = groupBy(liabilities, (b) => bsBucket(b.account_type, b.account_subtype));
@@ -1730,6 +1771,11 @@ function YearEndClose({ financialYear }: { financialYear: string }) {
 // ── Financial Reports ──────────────────────────────────────────────────────
 
 function FinancialReports({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+  // Exports follow the same basis the user is viewing (URL-persisted).
+  const searchParams = useSearchParams();
+  const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
+  const basisLabel = basis === "cash" ? "Cash" : "Accrual";
+
   const [sharedReports, setSharedReports] = useState<{
     id: string; report_type: string; report_label: string; financial_year: string; file_name: string; created_at: string; storage_path: string;
   }[]>([]);
@@ -1753,97 +1799,70 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
 
   useEffect(() => { loadShared(); }, [loadShared]);
 
+  // Build report rows from the backend reporting engine — the SAME API the
+  // on-screen reports use — so exported figures match the screen exactly for the
+  // selected basis. No journal aggregation in the browser (single source of truth).
+  async function buildReportSheet(
+    reportType: "pl" | "bs" | "trial",
+  ): Promise<{ rows: Record<string, string | number>[]; sheetName: string }> {
+    const { start, end } = fyDateRange(financialYear);
+    const money = (p: number) => (p / 100).toFixed(2);
+
+    if (reportType === "trial") {
+      const res = (await api.accounting.trialBalance({ basis, as_of_date: end, client_id: clientId })) as
+        { success: boolean; data: TBApiData | null };
+      const d = res.data;
+      const rows: Record<string, string | number>[] = (d?.lines ?? []).map((l) => ({
+        "Account Code": l.account_code, "Account Name": l.account_name, "Type": l.account_type,
+        "Debit (₹)": money(l.total_debit_paise), "Credit (₹)": money(l.total_credit_paise),
+      }));
+      rows.push({
+        "Account Code": "TOTAL", "Account Name": "", "Type": "",
+        "Debit (₹)": money(d?.total_debit_paise ?? 0), "Credit (₹)": money(d?.total_credit_paise ?? 0),
+      });
+      return { rows, sheetName: `Trial Balance ${basisLabel}`.slice(0, 31) };
+    }
+
+    if (reportType === "pl") {
+      const res = (await api.accounting.profitLoss({ basis, start_date: start, end_date: end, client_id: clientId })) as
+        { success: boolean; data: PLApiData | null };
+      const d = res.data;
+      const rows: Record<string, string | number>[] = [];
+      for (const l of d?.revenue.lines ?? [])
+        rows.push({ "Schedule III Category": plBucket("Revenue", l.account_subtype ?? null), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Revenue", "Amount (₹)": money(l.amount_paise) });
+      rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Revenue", "Type": "", "Amount (₹)": money(d?.revenue.total_paise ?? 0) });
+      for (const l of d?.operating_expenses.lines ?? [])
+        rows.push({ "Schedule III Category": plBucket("Expense", l.account_subtype ?? null), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Expense", "Amount (₹)": money(l.amount_paise) });
+      rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Expenses", "Type": "", "Amount (₹)": money(d?.operating_expenses.total_paise ?? 0) });
+      rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Net Profit", "Type": "", "Amount (₹)": money(d?.net_profit_paise ?? 0) });
+      return { rows, sheetName: `P&L ${basisLabel}`.slice(0, 31) };
+    }
+
+    const res = (await api.accounting.balanceSheet({ basis, as_of_date: end, client_id: clientId })) as
+      { success: boolean; data: BSApiData | null };
+    const d = res.data;
+    const rows: Record<string, string | number>[] = [];
+    const section = (secs: BSApiSection[] | undefined, type: string) => {
+      for (const s of secs ?? []) for (const l of s.lines ?? [])
+        rows.push({ "Schedule III Category": bsBucket(type, l.account_subtype ?? null), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": type, "Amount (₹)": money(l.balance_paise) });
+    };
+    section(d?.assets, "Asset");
+    rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Assets", "Type": "", "Amount (₹)": money(d?.total_assets_paise ?? 0) });
+    section(d?.liabilities, "Liability");
+    section(d?.equity, "Equity");
+    rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Equity & Liabilities", "Type": "", "Amount (₹)": money(d?.total_liabilities_equity_paise ?? 0) });
+    return { rows, sheetName: `Balance Sheet ${basisLabel}`.slice(0, 31) };
+  }
+
   async function exportXLSX(reportType: "pl" | "bs" | "trial") {
     setExporting(reportType);
     try {
       const XLSX = (await import("xlsx")).default;
-      const supabase = getSupabaseClient();
-      const { start, end } = fyDateRange(financialYear);
-
-      if (reportType === "trial") {
-        const { data: lines } = await supabase
-          .from("journal_lines")
-          .select("debit_paise, credit_paise, chart_of_accounts!inner(account_code, account_name, account_type), journal_entries!inner(entry_date, is_posted, client_id, deleted_at)")
-          .eq("journal_entries.client_id", clientId)
-          .eq("journal_entries.is_posted", true)
-          .is("journal_entries.deleted_at", null)
-          .gte("journal_entries.entry_date", start)
-          .lte("journal_entries.entry_date", end);
-
-        const map: Record<string, { code: string; name: string; type: string; debit: number; credit: number }> = {};
-        for (const row of (lines ?? []) as unknown as Array<{
-          debit_paise: number; credit_paise: number;
-          chart_of_accounts: { account_code: string; account_name: string; account_type: string };
-        }>) {
-          const acc = row.chart_of_accounts;
-          const key = acc.account_code;
-          if (!map[key]) map[key] = { code: acc.account_code, name: acc.account_name, type: acc.account_type, debit: 0, credit: 0 };
-          map[key].debit += row.debit_paise;
-          map[key].credit += row.credit_paise;
-        }
-        const rows = Object.values(map).sort((a, b) => a.code.localeCompare(b.code));
-        const ws = XLSX.utils.json_to_sheet([
-          { "Account Code": "", "Account Name": "", "Type": "", "Debit (₹)": "", "Credit (₹)": "" },
-          ...rows.map((r) => ({
-            "Account Code": r.code,
-            "Account Name": r.name,
-            "Type": r.type,
-            "Debit (₹)": (r.debit / 100).toFixed(2),
-            "Credit (₹)": (r.credit / 100).toFixed(2),
-          })),
-          {
-            "Account Code": "TOTAL",
-            "Account Name": "",
-            "Type": "",
-            "Debit (₹)": (rows.reduce((s, r) => s + r.debit, 0) / 100).toFixed(2),
-            "Credit (₹)": (rows.reduce((s, r) => s + r.credit, 0) / 100).toFixed(2),
-          },
-        ], { skipHeader: true });
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, `Trial Balance FY${financialYear}`);
-        XLSX.writeFile(wb, `Trial-Balance-FY${financialYear}.xlsx`);
-
-      } else {
-        // P&L or Balance Sheet
-        const accountTypes = reportType === "pl" ? ["Revenue", "Expense"] : ["Asset", "Liability", "Equity"];
-        const { data: lines } = await supabase
-          .from("journal_lines")
-          .select("debit_paise, credit_paise, chart_of_accounts!inner(id, account_code, account_name, account_type, account_subtype), journal_entries!inner(entry_date, is_posted, client_id, deleted_at)")
-          .eq("journal_entries.client_id", clientId)
-          .eq("journal_entries.is_posted", true)
-          .is("journal_entries.deleted_at", null)
-          .gte("journal_entries.entry_date", start)
-          .lte("journal_entries.entry_date", end)
-          .in("chart_of_accounts.account_type", accountTypes);
-
-        const map: Record<string, { code: string; name: string; type: string; subtype: string | null; net: number }> = {};
-        for (const row of (lines ?? []) as unknown as Array<{
-          debit_paise: number; credit_paise: number;
-          chart_of_accounts: { id: string; account_code: string; account_name: string; account_type: string; account_subtype: string | null };
-        }>) {
-          const acc = row.chart_of_accounts;
-          if (!map[acc.id]) map[acc.id] = { code: acc.account_code, name: acc.account_name, type: acc.account_type, subtype: acc.account_subtype, net: 0 };
-          if (acc.account_type === "Revenue" || acc.account_type === "Asset")
-            map[acc.id].net += row.credit_paise - row.debit_paise;
-          else
-            map[acc.id].net += row.debit_paise - row.credit_paise;
-        }
-        const rows = Object.values(map).filter((r) => r.net !== 0).sort((a, b) => a.code.localeCompare(b.code));
-        const bucketFn = reportType === "pl" ? plBucket : bsBucket;
-        const sheetRows = rows.map((r) => ({
-          "Schedule III Category": bucketFn(r.type, r.subtype),
-          "Account Code": r.code,
-          "Account Name": r.name,
-          "Type": r.type,
-          "Amount (₹)": (r.net / 100).toFixed(2),
-        }));
-        const ws = XLSX.utils.json_to_sheet(sheetRows);
-        const wb = XLSX.utils.book_new();
-        const sheetName = reportType === "pl" ? `P&L FY${financialYear}` : `Balance Sheet FY${financialYear}`;
-        XLSX.utils.book_append_sheet(wb, ws, sheetName);
-        const fileName = reportType === "pl" ? `PL-FY${financialYear}.xlsx` : `BalanceSheet-FY${financialYear}.xlsx`;
-        XLSX.writeFile(wb, fileName);
-      }
+      const { rows, sheetName } = await buildReportSheet(reportType);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), sheetName);
+      const base = reportType === "pl" ? "PL" : reportType === "bs" ? "BalanceSheet" : "Trial-Balance";
+      XLSX.writeFile(wb, `${base}-FY${financialYear}-${basisLabel}.xlsx`);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Export failed");
     } finally {
@@ -1857,49 +1876,14 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
       const XLSX = (await import("xlsx")).default;
       const supabase = getSupabaseClient();
       const firmId = await getFirmId();
-      const { start, end } = fyDateRange(financialYear);
       const labelMap = { pl: "Profit & Loss", bs: "Balance Sheet", trial: "Trial Balance" };
-      const label = `${labelMap[reportType]} — FY ${financialYear}`;
-      const fileName = `${reportType}-FY${financialYear}-${Date.now()}.xlsx`;
+      const label = `${labelMap[reportType]} (${basisLabel}) — FY ${financialYear}`;
+      const fileName = `${reportType}-${basis}-FY${financialYear}-${Date.now()}.xlsx`;
 
-      // Generate XLSX in memory and upload to Supabase Storage
-      const accountTypes =
-        reportType === "pl" ? ["Revenue", "Expense"] :
-        reportType === "bs" ? ["Asset", "Liability", "Equity"] :
-        ["Revenue", "Expense", "Asset", "Liability", "Equity"];
-
-      const { data: lines } = await supabase
-        .from("journal_lines")
-        .select("debit_paise, credit_paise, chart_of_accounts!inner(id, account_code, account_name, account_type, account_subtype), journal_entries!inner(entry_date, is_posted, client_id, deleted_at)")
-        .eq("journal_entries.client_id", clientId)
-        .eq("journal_entries.is_posted", true)
-        .is("journal_entries.deleted_at", null)
-        .gte("journal_entries.entry_date", start)
-        .lte("journal_entries.entry_date", end)
-        .in("chart_of_accounts.account_type", accountTypes);
-
-      const map: Record<string, { code: string; name: string; type: string; subtype: string | null; debit: number; credit: number }> = {};
-      for (const row of (lines ?? []) as unknown as Array<{
-        debit_paise: number; credit_paise: number;
-        chart_of_accounts: { id: string; account_code: string; account_name: string; account_type: string; account_subtype: string | null };
-      }>) {
-        const acc = row.chart_of_accounts;
-        if (!map[acc.id]) map[acc.id] = { code: acc.account_code, name: acc.account_name, type: acc.account_type, subtype: acc.account_subtype, debit: 0, credit: 0 };
-        map[acc.id].debit += row.debit_paise;
-        map[acc.id].credit += row.credit_paise;
-      }
-
-      const rows = Object.values(map).sort((a, b) => a.code.localeCompare(b.code));
-      const sheetRows = rows.map((r) => ({
-        "Account Code": r.code,
-        "Account Name": r.name,
-        "Type": r.type,
-        "Debit (₹)": (r.debit / 100).toFixed(2),
-        "Credit (₹)": (r.credit / 100).toFixed(2),
-      }));
-
+      // Same backend-sourced report as the on-screen view and the XLSX export.
+      const { rows, sheetName } = await buildReportSheet(reportType);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetRows), label.slice(0, 31));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), sheetName);
       const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
       const file = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 

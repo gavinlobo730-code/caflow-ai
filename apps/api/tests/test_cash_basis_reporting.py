@@ -377,6 +377,39 @@ def test_basis_markers():
 
 # ── Mock/demo source still works end-to-end ──────────────────────────────────────
 
+def _assert_report_consistency(svc, basis):
+    """Backend totals must reconcile with their own line sums, for any surface
+    (on-screen footer, XLSX export, share) that either reads totals or sums lines."""
+    tb = svc.trial_balance(FIRM, CLIENT, FY_END, basis=basis)
+    assert tb["total_debit_paise"] == sum(l["total_debit_paise"] for l in tb["lines"])
+    assert tb["total_credit_paise"] == sum(l["total_credit_paise"] for l in tb["lines"])
+    assert tb["is_balanced"] == (tb["total_debit_paise"] == tb["total_credit_paise"])
+
+    pl = svc.profit_loss(FIRM, CLIENT, FY_START, FY_END, basis=basis)
+    assert pl["revenue"]["total_paise"] == sum(l["amount_paise"] for l in pl["revenue"]["lines"])
+    assert pl["operating_expenses"]["total_paise"] == sum(l["amount_paise"] for l in pl["operating_expenses"]["lines"])
+    assert pl["net_profit_paise"] == pl["revenue"]["total_paise"] - pl["operating_expenses"]["total_paise"]
+
+    bs = svc.balance_sheet(FIRM, CLIENT, FY_END, basis=basis)
+    assets = sum(l["balance_paise"] for s in bs["assets"] for l in s["lines"])
+    liab = sum(l["balance_paise"] for s in bs["liabilities"] for l in s["lines"])
+    eq = sum(l["balance_paise"] for s in bs["equity"] for l in s["lines"])
+    assert bs["total_assets_paise"] == assets
+    assert bs["total_liabilities_equity_paise"] == liab + eq
+    assert bs["is_balanced"] == (assets == liab + eq)
+
+
+def test_report_totals_reconcile_with_lines_both_bases():
+    inv_f, je_f = invoice("F", "jf", [("rev1", 10000)], gst=1800)
+    r, jr, allocs = receipt("R", "jr", 5900, [("F", 5900)])
+    b, jb = bill("B", "jb", [("exp1", 8000)], gst_input=1440)
+    p, jp = payment("P", "jp", "B", 4000)
+    svc = build(entries=[je_f, jr, jb, jp], invoices=[inv_f], receipts=[r],
+                allocations=allocs, bills=[b], payments=[p])
+    for basis in ("accrual", "cash"):
+        _assert_report_consistency(svc, basis)
+
+
 def test_mock_ledger_source_runs_and_balances():
     from domain.reporting import mock_ledger_source
     svc = ReportingService(mock_ledger_source())
