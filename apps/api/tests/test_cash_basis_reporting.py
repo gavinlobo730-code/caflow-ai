@@ -383,3 +383,77 @@ def test_mock_ledger_source_runs_and_balances():
     for basis in ("accrual", "cash"):
         tb = svc.trial_balance("firm-001", "c-001", "2025-12-31", basis=basis)
         assert tb["is_balanced"]
+
+
+# ── Migration tolerance: system_account_key may or may not exist yet ───────────
+# SupabaseLedgerSource must work whether or not migration 092 has been applied,
+# so deployment order between the migration and the backend no longer matters.
+
+class _FakeExec:
+    def __init__(self, data): self.data = data
+
+
+class _FakeAccountsQuery:
+    """Minimal PostgREST chain for a chart_of_accounts select."""
+    def __init__(self, rows_with_key, rows_without_key, key_error: Exception | None):
+        self._rows_with = rows_with_key
+        self._rows_without = rows_without_key
+        self._key_error = key_error
+        self._cols = ""
+
+    def select(self, cols): self._cols = cols; return self
+    def eq(self, *a, **k): return self
+    def or_(self, *a, **k): return self
+    def is_(self, *a, **k): return self
+    def in_(self, *a, **k): return self
+
+    def execute(self):
+        if "system_account_key" in self._cols:
+            if self._key_error is not None:
+                raise self._key_error
+            return _FakeExec(self._rows_with)
+        return _FakeExec(self._rows_without)
+
+
+class _FakeDB:
+    def __init__(self, rows_with_key, rows_without_key, key_error=None):
+        self._args = (rows_with_key, rows_without_key, key_error)
+
+    def table(self, _name):
+        return _FakeAccountsQuery(*self._args)
+
+
+_AR_WITH_KEY = [{"id": "ar", "account_code": "1100", "account_name": "Trade Receivables",
+                 "account_type": "Asset", "account_subtype": None, "system_account_key": "ar"}]
+_AR_NO_KEY = [{"id": "ar", "account_code": "1100", "account_name": "Trade Receivables",
+               "account_type": "Asset", "account_subtype": None}]
+
+
+def test_accounts_use_system_key_when_present():
+    from domain.reporting import SupabaseLedgerSource, AccountResolver
+    src = SupabaseLedgerSource(_FakeDB(_AR_WITH_KEY, _AR_NO_KEY, key_error=None))
+    accounts = src._accounts(FIRM, CLIENT)
+    assert src._has_system_key is True
+    assert accounts["ar"].system_key == "ar"
+    assert AccountResolver(accounts).is_ar("ar")  # resolves via key
+
+
+def test_accounts_fall_back_when_column_missing():
+    from domain.reporting import SupabaseLedgerSource, AccountResolver
+    # Pre-migration: selecting the column raises a PostgREST "does not exist" error.
+    err = RuntimeError('column chart_of_accounts.system_account_key does not exist (42703)')
+    src = SupabaseLedgerSource(_FakeDB(_AR_WITH_KEY, _AR_NO_KEY, key_error=err))
+    accounts = src._accounts(FIRM, CLIENT)
+    assert src._has_system_key is False
+    assert accounts["ar"].system_key is None
+    # Name-based resolution still identifies the A/R control account.
+    assert AccountResolver(accounts).is_ar("ar")
+
+
+def test_accounts_unrelated_error_propagates():
+    from domain.reporting import SupabaseLedgerSource
+    # A non-column error (e.g. network/auth) must NOT be swallowed as a fallback.
+    err = RuntimeError("connection reset by peer")
+    src = SupabaseLedgerSource(_FakeDB(_AR_WITH_KEY, _AR_NO_KEY, key_error=err))
+    with pytest.raises(RuntimeError, match="connection reset"):
+        src._accounts(FIRM, CLIENT)

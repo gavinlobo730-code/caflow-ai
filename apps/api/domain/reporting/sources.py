@@ -31,6 +31,19 @@ def _in_range(d: str, start: Optional[str], end: Optional[str]) -> bool:
     return True
 
 
+def _is_missing_column_error(err: Exception, column: str) -> bool:
+    """
+    True when a PostgREST/Supabase error indicates `column` does not exist yet
+    (i.e. migration 092 has not been applied). Requires the column name AND a
+    not-found signal so unrelated failures (network, auth) are never swallowed.
+    """
+    s = str(err).lower()
+    return column.lower() in s and any(
+        marker in s for marker in
+        ("does not exist", "could not find", "schema cache", "42703", "pgrst204")
+    )
+
+
 class LedgerSource(ABC):
     @abstractmethod
     def snapshot(self, firm_id: str, client_id: Optional[str],
@@ -86,8 +99,16 @@ class InMemoryLedgerSource(LedgerSource):
 class SupabaseLedgerSource(LedgerSource):
     """Queries the production tables. Always firm_id + client_id scoped."""
 
+    # Base columns always present on chart_of_accounts. system_account_key is
+    # added by migration 092 and probed for separately (see _accounts).
+    _BASE_ACCOUNT_COLS = "id, account_code, account_name, account_type, account_subtype"
+
     def __init__(self, db):
         self.db = db
+        # None = not yet probed; True/False once chart_of_accounts has been read.
+        # Makes reports work whether or not migration 092 has run — deployment
+        # order between the migration and this code no longer matters.
+        self._has_system_key: bool | None = None
 
     def snapshot(self, firm_id, client_id, start_date, end_date) -> LedgerSnapshot:
         accounts = self._accounts(firm_id, client_id)
@@ -120,16 +141,34 @@ class SupabaseLedgerSource(LedgerSource):
     # ── scoped fetches ────────────────────────────────────────────────────────
 
     def _accounts(self, firm_id, client_id) -> dict[str, Account]:
-        q = self.db.table("chart_of_accounts").select(
-            "id, account_code, account_name, account_type, account_subtype, system_account_key"
-        ).eq("firm_id", firm_id)
-        if client_id:
-            q = q.or_(f"client_id.eq.{client_id},client_id.is.null")
-        rows = q.execute().data or []
+        def run(select_cols: str):
+            q = self.db.table("chart_of_accounts").select(select_cols).eq("firm_id", firm_id)
+            if client_id:
+                q = q.or_(f"client_id.eq.{client_id},client_id.is.null")
+            return q.execute().data or []
+
+        rows = None
+        # Use system_account_key when present; tolerate its absence pre-migration.
+        if self._has_system_key is not False:
+            try:
+                rows = run(self._BASE_ACCOUNT_COLS + ", system_account_key")
+                self._has_system_key = True
+            except Exception as e:  # noqa: BLE001 — re-raised unless it's the missing column
+                if not _is_missing_column_error(e, "system_account_key"):
+                    raise
+                self._has_system_key = False
+                _logger.warning(
+                    "chart_of_accounts.system_account_key not found — falling back to "
+                    "name-based control-account resolution until migration 092 is applied."
+                )
+        if rows is None:
+            rows = run(self._BASE_ACCOUNT_COLS)
+
         return {
             r["id"]: Account(
                 id=r["id"], code=r.get("account_code", ""), name=r.get("account_name", ""),
                 type=r.get("account_type", ""), subtype=r.get("account_subtype"),
+                # .get() yields None when the column is absent → resolver name fallback.
                 system_key=r.get("system_account_key"),
             )
             for r in rows
