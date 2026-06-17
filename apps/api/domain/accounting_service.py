@@ -172,87 +172,6 @@ MOCK_JOURNAL_ENTRIES: list[dict] = [
 
 JOURNAL_INDEX: dict[str, dict] = {e["id"]: e for e in MOCK_JOURNAL_ENTRIES}
 
-# ─── Cash-basis helpers ───────────────────────────────────────────────────────
-# Used only by the cash-basis report methods. These IDs are stable mock constants;
-# production callers use the Supabase router path which queries actual table data.
-
-_BANK_CASH_IDS: frozenset = frozenset({"acc-001", "acc-002"})
-_AR_IDS: frozenset = frozenset({"acc-003"})   # Trade Receivables
-_AP_IDS: frozenset = frozenset({"acc-008"})   # Trade Payables
-
-
-def _is_bank_cash(aid: str) -> bool:
-    return aid in _BANK_CASH_IDS
-
-
-def _is_ar(aid: str) -> bool:
-    return aid in _AR_IDS
-
-
-def _is_ap(aid: str) -> bool:
-    return aid in _AP_IDS
-
-
-def _build_ar_debit_index() -> dict:
-    """Map A/R total debit paise → journal entry (for receipt-to-revenue tracing)."""
-    idx: dict[int, dict] = {}
-    for e in MOCK_JOURNAL_ENTRIES:
-        if e["status"] != "posted":
-            continue
-        ar_dr = sum(int(ln["debit_paise"]) for ln in e["lines"] if _is_ar(ln["account_id"]))
-        if ar_dr > 0:
-            idx[ar_dr] = e
-    return idx
-
-
-def _build_ap_credit_index() -> dict:
-    """Map A/P total credit paise → journal entry (for payment-to-expense tracing)."""
-    idx: dict[int, dict] = {}
-    for e in MOCK_JOURNAL_ENTRIES:
-        if e["status"] != "posted":
-            continue
-        ap_cr = sum(int(ln["credit_paise"]) for ln in e["lines"] if _is_ap(ln["account_id"]))
-        if ap_cr > 0:
-            idx[ap_cr] = e
-    return idx
-
-
-def _find_linked_invoice(ar_cleared: int, ar_debit_index: dict) -> tuple[dict | None, int]:
-    """
-    Return (invoice_entry, invoice_ar_total) for a given cleared A/R amount.
-    Exact match first; then smallest invoice with A/R Dr >= cleared (partial payment).
-    Returns (None, 0) if no match found.
-    """
-    if ar_cleared in ar_debit_index:
-        return ar_debit_index[ar_cleared], ar_cleared
-    best: tuple[int, dict] | None = None
-    for ar_total, entry in ar_debit_index.items():
-        if ar_total >= ar_cleared:
-            if best is None or ar_total < best[0]:
-                best = (ar_total, entry)
-    if best:
-        return best[1], best[0]
-    return None, 0
-
-
-def _find_linked_bill(ap_cleared: int, ap_credit_index: dict) -> tuple[dict | None, int]:
-    """
-    Return (bill_entry, bill_ap_total) for a given cleared A/P amount.
-    Exact match first; then smallest bill with A/P Cr >= cleared (partial payment).
-    Returns (None, 0) if no match found.
-    """
-    if ap_cleared in ap_credit_index:
-        return ap_credit_index[ap_cleared], ap_cleared
-    best: tuple[int, dict] | None = None
-    for ap_total, entry in ap_credit_index.items():
-        if ap_total >= ap_cleared:
-            if best is None or ap_total < best[0]:
-                best = (ap_total, entry)
-    if best:
-        return best[1], best[0]
-    return None, 0
-
-
 def _compute_totals(entry: dict) -> dict:
     """Add total_debit_paise and total_credit_paise to entry dict."""
     total_debit = sum(ln["debit_paise"] for ln in entry["lines"])
@@ -410,14 +329,12 @@ class AccountingService:
 
     # ── Trial Balance ────────────────────────────────────────────────────────
 
-    def get_trial_balance(self, as_of_date: Optional[str] = None, basis: str = "accrual") -> dict:
+    def get_trial_balance(self, as_of_date: Optional[str] = None) -> dict:
         """
-        IT Act Section 145: method of accounting governs revenue recognition.
-        Companies Act Section 128: companies must use mercantile (accrual) system.
-        basis='cash' is management reporting only — never affects GST returns (CGST Act).
+        Accrual trial balance over the posted in-memory seed (dev/demo).
+        IT Act Section 145: method of accounting. Cash-basis and all production
+        reporting are served by domain.reporting.ReportingService.
         """
-        if basis == "cash":
-            return self._tb_cash(as_of_date)
         totals: dict[str, dict] = {}
         for entry in MOCK_JOURNAL_ENTRIES:
             if entry["status"] != "posted":
@@ -466,14 +383,11 @@ class AccountingService:
         end_date: Optional[str] = None,
         client_id: Optional[str] = None,
         firm_id: Optional[str] = None,
-        basis: str = "accrual",
     ) -> dict:
         """
-        IT Act Section 44AA: professionals may use cash basis for record-keeping.
-        Cash basis is management reporting only — never affects GST/ITR filings.
+        Accrual P&L over the posted in-memory seed (dev/demo). Cash-basis and
+        all production reporting are served by domain.reporting.ReportingService.
         """
-        if basis == "cash":
-            return self._pl_cash(start_date, end_date, client_id, firm_id)
         # Default: current FY April 1 to today
         today = date.today()
         fy_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1).isoformat()
@@ -535,14 +449,12 @@ class AccountingService:
         as_of_date: Optional[str] = None,
         client_id: Optional[str] = None,
         firm_id: Optional[str] = None,
-        basis: str = "accrual",
     ) -> dict:
         """
-        Companies Act Section 128: balance sheet must follow accrual basis for companies.
-        Cash basis balance sheet excludes unpaid A/R and A/P for management view only.
+        Accrual balance sheet over the posted in-memory seed (dev/demo).
+        Companies Act Section 128. Cash-basis and all production reporting are
+        served by domain.reporting.ReportingService.
         """
-        if basis == "cash":
-            return self._bs_cash(as_of_date, client_id, firm_id)
         _as_of = as_of_date or date.today().isoformat()
         balances: dict[str, int] = {}
 
@@ -596,236 +508,6 @@ class AccountingService:
 
         return {
             "as_of_date": _as_of,
-            "assets": assets,
-            "liabilities": liabilities,
-            "equity": equities,
-            "total_assets_paise": total_assets,
-            "total_liabilities_equity_paise": total_liab_equity,
-            "is_balanced": diff == 0,
-        }
-
-    # ── Cash-basis private helpers ────────────────────────────────────────────
-
-    def _get_cash_basis_lines(
-        self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-    ):
-        """
-        Generator yielding (account_id, debit_paise, credit_paise) for cash-basis view.
-        Transformation rules (IT Act Section 145 — cash method):
-          - Accrual invoices (Dr A/R + Cr Revenue): skip — no cash received yet.
-          - Accrual bills (Dr Expense + Cr A/P): skip — no cash paid yet.
-          - Receipts (Dr Bank + Cr A/R): substitute proportional Revenue from linked invoice.
-          - Payments (Dr A/P + Cr Bank): substitute proportional Expense from linked bill.
-          - All other entries (direct cash flows): include as-is.
-        GST figures flow through unchanged — GST remains invoice-based per CGST Act.
-        This is management reporting only; never affects GSTR filings.
-        """
-        ar_debit_index = _build_ar_debit_index()
-        ap_credit_index = _build_ap_credit_index()
-
-        for entry in MOCK_JOURNAL_ENTRIES:
-            if entry["status"] != "posted":
-                continue
-            if start_date and entry["entry_date"] < start_date:
-                continue
-            if end_date and entry["entry_date"] > end_date:
-                continue
-
-            lines = entry["lines"]
-            has_ar_dr = any(_is_ar(ln["account_id"]) and int(ln["debit_paise"]) > 0 for ln in lines)
-            has_ar_cr = any(_is_ar(ln["account_id"]) and int(ln["credit_paise"]) > 0 for ln in lines)
-            has_ap_cr = any(_is_ap(ln["account_id"]) and int(ln["credit_paise"]) > 0 for ln in lines)
-            has_ap_dr = any(_is_ap(ln["account_id"]) and int(ln["debit_paise"]) > 0 for ln in lines)
-
-            if has_ar_dr:
-                # Accrual invoice — skip: revenue not yet collected
-                continue
-
-            if has_ap_cr:
-                # Accrual bill — skip: expense not yet paid
-                continue
-
-            if has_ar_cr:
-                # Receipt: Dr Bank + Cr A/R
-                # Transform: keep Bank debit, substitute Revenue credit from linked invoice.
-                ar_cleared = sum(int(ln["credit_paise"]) for ln in lines if _is_ar(ln["account_id"]))
-                invoice_entry, invoice_ar_total = _find_linked_invoice(ar_cleared, ar_debit_index)
-
-                for ln in lines:
-                    if _is_ar(ln["account_id"]):
-                        continue  # drop A/R clearing line
-                    yield ln["account_id"], int(ln["debit_paise"]), int(ln["credit_paise"])
-
-                if invoice_entry and invoice_ar_total > 0:
-                    for ln in invoice_entry["lines"]:
-                        aid = ln["account_id"]
-                        if _is_ar(aid) or _is_bank_cash(aid):
-                            continue  # skip A/R and bank lines from the invoice
-                        cr = int(ln["credit_paise"])
-                        dr = int(ln["debit_paise"])
-                        # Proportional: multiply first, then integer-divide (no float)
-                        if cr > 0:
-                            yield aid, 0, (cr * ar_cleared) // invoice_ar_total
-                        if dr > 0:
-                            yield aid, (dr * ar_cleared) // invoice_ar_total, 0
-
-            elif has_ap_dr:
-                # Payment: Dr A/P + Cr Bank
-                # Transform: keep Bank credit, substitute Expense debit from linked bill.
-                ap_cleared = sum(int(ln["debit_paise"]) for ln in lines if _is_ap(ln["account_id"]))
-                bill_entry, bill_ap_total = _find_linked_bill(ap_cleared, ap_credit_index)
-
-                for ln in lines:
-                    if _is_ap(ln["account_id"]):
-                        continue  # drop A/P clearing line
-                    yield ln["account_id"], int(ln["debit_paise"]), int(ln["credit_paise"])
-
-                if bill_entry and bill_ap_total > 0:
-                    for ln in bill_entry["lines"]:
-                        aid = ln["account_id"]
-                        if _is_ap(aid) or _is_bank_cash(aid):
-                            continue  # skip A/P and bank lines from the bill
-                        dr = int(ln["debit_paise"])
-                        cr = int(ln["credit_paise"])
-                        if dr > 0:
-                            yield aid, (dr * ap_cleared) // bill_ap_total, 0
-                        if cr > 0:
-                            yield aid, 0, (cr * ap_cleared) // bill_ap_total
-
-            else:
-                # Direct cash transaction — include as-is
-                for ln in lines:
-                    yield ln["account_id"], int(ln["debit_paise"]), int(ln["credit_paise"])
-
-    def _tb_cash(self, as_of_date: Optional[str] = None) -> dict:
-        totals: dict[str, dict] = {}
-        for aid, dr, cr in self._get_cash_basis_lines(end_date=as_of_date):
-            if aid not in totals:
-                acc = ACCOUNT_INDEX.get(aid, {})
-                totals[aid] = {
-                    "account_id": aid,
-                    "account_code": acc.get("account_code", ""),
-                    "account_name": acc.get("account_name", ""),
-                    "account_type": acc.get("account_type", ""),
-                    "total_debit_paise": 0,
-                    "total_credit_paise": 0,
-                    "net_paise": 0,
-                }
-            totals[aid]["total_debit_paise"] += dr
-            totals[aid]["total_credit_paise"] += cr
-
-        tb_lines = []
-        grand_dr: int = 0
-        grand_cr: int = 0
-        for row in totals.values():
-            row["net_paise"] = row["total_debit_paise"] - row["total_credit_paise"]
-            tb_lines.append(row)
-            grand_dr += row["total_debit_paise"]
-            grand_cr += row["total_credit_paise"]
-        tb_lines.sort(key=lambda x: x["account_code"])
-        diff: int = grand_dr - grand_cr
-        return {
-            "as_of_date": as_of_date or date.today().isoformat(),
-            "basis": "cash",
-            "lines": tb_lines,
-            "total_debit_paise": grand_dr,
-            "total_credit_paise": grand_cr,
-            "is_balanced": diff == 0,
-            "difference_paise": diff,
-        }
-
-    def _pl_cash(
-        self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        client_id: Optional[str] = None,
-        firm_id: Optional[str] = None,
-    ) -> dict:
-        today = date.today()
-        fy_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1).isoformat()
-        _start = start_date or fy_start
-        _end = end_date or today.isoformat()
-
-        income_totals: dict[str, int] = {}
-        expense_totals: dict[str, int] = {}
-        for aid, dr, cr in self._get_cash_basis_lines(start_date=_start, end_date=_end):
-            acc = ACCOUNT_INDEX.get(aid, {})
-            atype = acc.get("account_type", "")
-            if atype == "Income":
-                income_totals[aid] = income_totals.get(aid, 0) + cr - dr
-            elif atype == "Expense":
-                expense_totals[aid] = expense_totals.get(aid, 0) + dr - cr
-
-        def _make_section(label: str, totals: dict[str, int]) -> dict:
-            lines = [
-                {"account_name": ACCOUNT_INDEX.get(aid, {}).get("account_name", aid), "amount_paise": amt}
-                for aid, amt in totals.items()
-            ]
-            lines.sort(key=lambda x: x["account_name"])
-            return {"label": label, "lines": lines, "total_paise": sum(totals.values())}
-
-        revenue = _make_section("Revenue", income_totals)
-        opex = _make_section("Operating Expenses", expense_totals)
-        return {
-            "start_date": _start,
-            "end_date": _end,
-            "basis": "cash",
-            "revenue": revenue,
-            "cost_of_sales": {"label": "Cost of Sales", "lines": [], "total_paise": 0},
-            "gross_profit_paise": revenue["total_paise"],
-            "operating_expenses": opex,
-            "net_profit_paise": revenue["total_paise"] - opex["total_paise"],
-        }
-
-    def _bs_cash(
-        self,
-        as_of_date: Optional[str] = None,
-        client_id: Optional[str] = None,
-        firm_id: Optional[str] = None,
-    ) -> dict:
-        _as_of = as_of_date or date.today().isoformat()
-        balances: dict[str, int] = {}
-        for aid, dr, cr in self._get_cash_basis_lines(end_date=_as_of):
-            balances[aid] = balances.get(aid, 0) + dr - cr
-
-        def _lines_for_type(atype: str) -> list[dict]:
-            result = []
-            for aid, net in balances.items():
-                acc = ACCOUNT_INDEX.get(aid, {})
-                if acc.get("account_type") == atype:
-                    bal = net if atype == "Asset" else -net
-                    if bal != 0:
-                        result.append({"account_name": acc.get("account_name", aid), "balance_paise": bal})
-            result.sort(key=lambda x: x["account_name"])
-            return result
-
-        def _section(label: str, lines: list[dict]) -> dict:
-            return {"label": label, "lines": lines, "total_paise": sum(l["balance_paise"] for l in lines)}
-
-        assets = [_section("Assets", _lines_for_type("Asset"))]
-        total_assets: int = sum(s["total_paise"] for s in assets)
-
-        liabilities = [_section("Liabilities", _lines_for_type("Liability"))]
-        total_liab: int = sum(s["total_paise"] for s in liabilities)
-
-        equity_lines = _lines_for_type("Equity")
-        income_net = sum(-net for aid, net in balances.items()
-                         if ACCOUNT_INDEX.get(aid, {}).get("account_type") == "Income")
-        expense_net = sum(net for aid, net in balances.items()
-                          if ACCOUNT_INDEX.get(aid, {}).get("account_type") == "Expense")
-        net_profit = income_net - expense_net
-        if net_profit != 0:
-            equity_lines.append({"account_name": "Retained Earnings / Net Profit", "balance_paise": net_profit})
-        equities = [_section("Equity", equity_lines)]
-        total_equity: int = sum(s["total_paise"] for s in equities)
-
-        total_liab_equity: int = total_liab + total_equity
-        diff: int = total_assets - total_liab_equity
-        return {
-            "as_of_date": _as_of,
-            "basis": "cash",
             "assets": assets,
             "liabilities": liabilities,
             "equity": equities,

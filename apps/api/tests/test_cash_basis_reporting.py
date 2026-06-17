@@ -1,555 +1,385 @@
 """
-Unit tests for Cash Basis vs Accrual Basis reporting.
+Cash-basis vs accrual reporting — allocation-driven engine tests.
 
-IT Act Section 145: method of accounting (cash vs accrual).
-IT Act Section 44AA: record-keeping for professionals.
-Companies Act Section 128: companies must use accrual (mercantile) system.
+Cash basis is derived from document allocation links (receipt_allocations,
+purchase_payments.purchase_bill_id, credit_notes) — NEVER by amount matching.
+Every transformed entry must balance to the paise.
 
-Cash basis is management reporting only — never affects GST returns.
-All amounts in integer paise. No floats. No rounding drift.
+IT Act §145 / §44AA (method of accounting); Companies Act §128 (accrual for
+companies). Cash basis is management reporting only and never affects GST
+returns (CGST Act). All amounts integer paise.
+
+Mandated coverage: multi-invoice allocation, duplicate amounts, partial
+allocation, credit notes, receipt reversal, payment reversal, GST invoices,
+rounding edge cases. Plus tenant isolation, accrual regression, invariants.
 """
+import random
+
 import pytest
-from domain.accounting_service import (
-    AccountingService,
-    MOCK_JOURNAL_ENTRIES,
-    ACCOUNT_INDEX,
+
+from domain.reporting import (
+    Account, Bill, CreditNote, Invoice, JournalEntry, JournalLine, Payment,
+    Receipt, ReceiptAllocation, InMemoryLedgerSource, ReportingService, apportion,
 )
 
+FIRM = "firm-1"
+CLIENT = "client-1"
+FY_START, FY_END = "2026-04-01", "2027-03-31"
 
-@pytest.fixture(autouse=True)
-def fresh_service():
-    """Each test gets a fresh AccountingService instance."""
-    return AccountingService()
-
-
-# ─── Helper to build a service with injected journal entries ─────────────────
-
-def _service_with_entries(entries: list[dict]) -> AccountingService:
-    """
-    Build an AccountingService and monkey-patch MOCK_JOURNAL_ENTRIES
-    to contain exactly the provided entries for isolated testing.
-    """
-    import domain.accounting_service as svc_module
-    original = svc_module.MOCK_JOURNAL_ENTRIES[:]
-    svc_module.MOCK_JOURNAL_ENTRIES.clear()
-    svc_module.MOCK_JOURNAL_ENTRIES.extend(entries)
-    # Rebuild the index so _build_ar_debit_index() sees only our entries
-    svc_module.JOURNAL_INDEX.clear()
-    svc_module.JOURNAL_INDEX.update({e["id"]: e for e in entries})
-    svc = AccountingService()
-    yield svc
-    # Restore
-    svc_module.MOCK_JOURNAL_ENTRIES.clear()
-    svc_module.MOCK_JOURNAL_ENTRIES.extend(original)
-    svc_module.JOURNAL_INDEX.clear()
-    svc_module.JOURNAL_INDEX.update({e["id"]: e for e in original})
-
-
-# ─── Fixtures: canonical test entries ─────────────────────────────────────────
-
-# Use explicit dates in current FY (2026-27) so get_profit_loss() default range includes them.
-# Explicit start_date/end_date are passed in every P&L call below for date-independence.
-_FY_START = "2026-04-01"
-_FY_END = "2027-03-31"
-
-# Invoice: Dr A/R 10000000 (₹1,00,000), Cr Revenue 10000000 — accrual invoice
-INVOICE_ENTRY = {
-    "id": "je-test-inv", "client_id": "c-test", "firm_id": "firm-001",
-    "entry_date": "2026-04-10", "reference_no": "INV/TEST/001",
-    "narration": "Test invoice", "entry_type": "Sales", "status": "posted",
-    "lines": [
-        {"id": "jl-ti-1", "account_id": "acc-003", "account_name": "Trade Receivables", "debit_paise": 10000000, "credit_paise": 0, "narration": ""},
-        {"id": "jl-ti-2", "account_id": "acc-015", "account_name": "Professional Fees — GST Clients", "debit_paise": 0, "credit_paise": 10000000, "narration": ""},
-    ],
-}
-
-# Full receipt: Dr Bank 10000000, Cr A/R 10000000
-FULL_RECEIPT_ENTRY = {
-    "id": "je-test-rec-full", "client_id": "c-test", "firm_id": "firm-001",
-    "entry_date": "2026-04-20", "reference_no": "REC/TEST/001",
-    "narration": "Full receipt", "entry_type": "Receipt", "status": "posted",
-    "lines": [
-        {"id": "jl-rf-1", "account_id": "acc-002", "account_name": "Bank — HDFC", "debit_paise": 10000000, "credit_paise": 0, "narration": ""},
-        {"id": "jl-rf-2", "account_id": "acc-003", "account_name": "Trade Receivables", "debit_paise": 0, "credit_paise": 10000000, "narration": ""},
-    ],
-}
-
-# Partial receipt: Dr Bank 4000000, Cr A/R 4000000  (40% of 10000000)
-PARTIAL_RECEIPT_ENTRY = {
-    "id": "je-test-rec-part", "client_id": "c-test", "firm_id": "firm-001",
-    "entry_date": "2026-04-20", "reference_no": "REC/TEST/001P",
-    "narration": "Partial receipt", "entry_type": "Receipt", "status": "posted",
-    "lines": [
-        {"id": "jl-rp-1", "account_id": "acc-002", "account_name": "Bank — HDFC", "debit_paise": 4000000, "credit_paise": 0, "narration": ""},
-        {"id": "jl-rp-2", "account_id": "acc-003", "account_name": "Trade Receivables", "debit_paise": 0, "credit_paise": 4000000, "narration": ""},
-    ],
-}
-
-# Bill: Dr Expense 5000000, Cr A/P 5000000 — accrual bill
-BILL_ENTRY = {
-    "id": "je-test-bill", "client_id": "c-test", "firm_id": "firm-001",
-    "entry_date": "2026-04-11", "reference_no": "BILL/TEST/001",
-    "narration": "Test bill", "entry_type": "Purchase", "status": "posted",
-    "lines": [
-        {"id": "jl-tb-1", "account_id": "acc-018", "account_name": "Salary Expense", "debit_paise": 5000000, "credit_paise": 0, "narration": ""},
-        {"id": "jl-tb-2", "account_id": "acc-008", "account_name": "Trade Payables", "debit_paise": 0, "credit_paise": 5000000, "narration": ""},
-    ],
-}
-
-# Full payment: Dr A/P 5000000, Cr Bank 5000000
-FULL_PAYMENT_ENTRY = {
-    "id": "je-test-pay-full", "client_id": "c-test", "firm_id": "firm-001",
-    "entry_date": "2026-04-25", "reference_no": "PAY/TEST/001",
-    "narration": "Full payment", "entry_type": "Payment", "status": "posted",
-    "lines": [
-        {"id": "jl-pf-1", "account_id": "acc-008", "account_name": "Trade Payables", "debit_paise": 5000000, "credit_paise": 0, "narration": ""},
-        {"id": "jl-pf-2", "account_id": "acc-002", "account_name": "Bank — HDFC", "debit_paise": 0, "credit_paise": 5000000, "narration": ""},
-    ],
-}
-
-# Partial payment: Dr A/P 2000000, Cr Bank 2000000 (40% of 5000000)
-PARTIAL_PAYMENT_ENTRY = {
-    "id": "je-test-pay-part", "client_id": "c-test", "firm_id": "firm-001",
-    "entry_date": "2026-04-25", "reference_no": "PAY/TEST/001P",
-    "narration": "Partial payment", "entry_type": "Payment", "status": "posted",
-    "lines": [
-        {"id": "jl-pp-1", "account_id": "acc-008", "account_name": "Trade Payables", "debit_paise": 2000000, "credit_paise": 0, "narration": ""},
-        {"id": "jl-pp-2", "account_id": "acc-002", "account_name": "Bank — HDFC", "debit_paise": 0, "credit_paise": 2000000, "narration": ""},
-    ],
-}
-
-
-# ─── Revenue tests ─────────────────────────────────────────────────────────────
-
-class TestCashBasisRevenue:
-
-    def test_unpaid_invoice_accrual_shows_full_revenue(self, fresh_service):
-        """Accrual: invoice alone shows full revenue."""
-        import domain.accounting_service as m
-        orig = m.MOCK_JOURNAL_ENTRIES[:]
-        orig_idx = dict(m.JOURNAL_INDEX)
-        try:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.append(INVOICE_ENTRY)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX["je-test-inv"] = INVOICE_ENTRY
-
-            svc = AccountingService()
-            pl = svc.get_profit_loss(start_date=_FY_START, end_date=_FY_END, basis="accrual")
-            total_rev = pl["revenue"]["total_paise"]
-            assert total_rev == 10000000, f"Expected 10000000, got {total_rev}"
-        finally:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(orig)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update(orig_idx)
-
-    def test_unpaid_invoice_cash_shows_zero_revenue(self, fresh_service):
-        """Cash: unpaid invoice → cash revenue = 0 (no cash received)."""
-        import domain.accounting_service as m
-        orig = m.MOCK_JOURNAL_ENTRIES[:]
-        orig_idx = dict(m.JOURNAL_INDEX)
-        try:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.append(INVOICE_ENTRY)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX["je-test-inv"] = INVOICE_ENTRY
-
-            svc = AccountingService()
-            pl = svc.get_profit_loss(start_date=_FY_START, end_date=_FY_END, basis="cash")
-            total_rev = pl["revenue"]["total_paise"]
-            assert total_rev == 0, f"Unpaid invoice: cash revenue must be 0, got {total_rev}"
-        finally:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(orig)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update(orig_idx)
-
-    def test_fully_paid_invoice_cash_shows_full_revenue(self, fresh_service):
-        """Cash: invoice + full receipt → cash revenue = invoice amount (paise)."""
-        import domain.accounting_service as m
-        orig = m.MOCK_JOURNAL_ENTRIES[:]
-        orig_idx = dict(m.JOURNAL_INDEX)
-        try:
-            entries = [INVOICE_ENTRY, FULL_RECEIPT_ENTRY]
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(entries)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update({e["id"]: e for e in entries})
-
-            svc = AccountingService()
-            pl = svc.get_profit_loss(start_date=_FY_START, end_date=_FY_END, basis="cash")
-            total_rev = pl["revenue"]["total_paise"]
-            assert total_rev == 10000000, f"Full receipt: cash revenue must be 10000000, got {total_rev}"
-            # Integer paise — not a float
-            assert isinstance(total_rev, int), "Revenue must be integer paise"
-        finally:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(orig)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update(orig_idx)
-
-    def test_partially_paid_invoice_cash_shows_collected_amount(self, fresh_service):
-        """Cash: invoice ₹1,00,000 + receipt ₹40,000 → cash revenue = 4000000 paise."""
-        import domain.accounting_service as m
-        orig = m.MOCK_JOURNAL_ENTRIES[:]
-        orig_idx = dict(m.JOURNAL_INDEX)
-        try:
-            entries = [INVOICE_ENTRY, PARTIAL_RECEIPT_ENTRY]
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(entries)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update({e["id"]: e for e in entries})
-
-            svc = AccountingService()
-            pl = svc.get_profit_loss(start_date=_FY_START, end_date=_FY_END, basis="cash")
-            total_rev = pl["revenue"]["total_paise"]
-            # 4000000/10000000 = 40% of 10000000 revenue = 4000000 paise
-            assert total_rev == 4000000, f"Partial receipt: cash revenue must be 4000000, got {total_rev}"
-            assert isinstance(total_rev, int), "Revenue must be integer paise"
-        finally:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(orig)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update(orig_idx)
-
-    def test_accrual_always_shows_full_revenue_regardless_of_payment(self, fresh_service):
-        """Accrual: invoice + partial receipt → accrual revenue is still full amount."""
-        import domain.accounting_service as m
-        orig = m.MOCK_JOURNAL_ENTRIES[:]
-        orig_idx = dict(m.JOURNAL_INDEX)
-        try:
-            entries = [INVOICE_ENTRY, PARTIAL_RECEIPT_ENTRY]
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(entries)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update({e["id"]: e for e in entries})
-
-            svc = AccountingService()
-            pl = svc.get_profit_loss(start_date=_FY_START, end_date=_FY_END, basis="accrual")
-            total_rev = pl["revenue"]["total_paise"]
-            assert total_rev == 10000000, f"Accrual revenue with partial receipt must be 10000000, got {total_rev}"
-        finally:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(orig)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update(orig_idx)
-
-
-# ─── Expense tests ─────────────────────────────────────────────────────────────
-
-class TestCashBasisExpense:
-
-    def test_unpaid_bill_accrual_shows_full_expense(self, fresh_service):
-        """Accrual: bill alone shows full expense."""
-        import domain.accounting_service as m
-        orig = m.MOCK_JOURNAL_ENTRIES[:]
-        orig_idx = dict(m.JOURNAL_INDEX)
-        try:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.append(BILL_ENTRY)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX["je-test-bill"] = BILL_ENTRY
-
-            svc = AccountingService()
-            pl = svc.get_profit_loss(start_date=_FY_START, end_date=_FY_END, basis="accrual")
-            total_exp = pl["operating_expenses"]["total_paise"]
-            assert total_exp == 5000000, f"Expected 5000000, got {total_exp}"
-        finally:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(orig)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update(orig_idx)
-
-    def test_unpaid_bill_cash_shows_zero_expense(self, fresh_service):
-        """Cash: unpaid bill → cash expense = 0 (no cash paid)."""
-        import domain.accounting_service as m
-        orig = m.MOCK_JOURNAL_ENTRIES[:]
-        orig_idx = dict(m.JOURNAL_INDEX)
-        try:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.append(BILL_ENTRY)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX["je-test-bill"] = BILL_ENTRY
-
-            svc = AccountingService()
-            pl = svc.get_profit_loss(start_date=_FY_START, end_date=_FY_END, basis="cash")
-            total_exp = pl["operating_expenses"]["total_paise"]
-            assert total_exp == 0, f"Unpaid bill: cash expense must be 0, got {total_exp}"
-        finally:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(orig)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update(orig_idx)
-
-    def test_fully_paid_bill_cash_shows_full_expense(self, fresh_service):
-        """Cash: bill + full payment → cash expense = bill amount."""
-        import domain.accounting_service as m
-        orig = m.MOCK_JOURNAL_ENTRIES[:]
-        orig_idx = dict(m.JOURNAL_INDEX)
-        try:
-            entries = [BILL_ENTRY, FULL_PAYMENT_ENTRY]
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(entries)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update({e["id"]: e for e in entries})
-
-            svc = AccountingService()
-            pl = svc.get_profit_loss(start_date=_FY_START, end_date=_FY_END, basis="cash")
-            total_exp = pl["operating_expenses"]["total_paise"]
-            assert total_exp == 5000000, f"Full payment: cash expense must be 5000000, got {total_exp}"
-            assert isinstance(total_exp, int), "Expense must be integer paise"
-        finally:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(orig)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update(orig_idx)
-
-    def test_partially_paid_bill_cash_shows_paid_amount(self, fresh_service):
-        """Cash: bill ₹50,000 + payment ₹20,000 → cash expense = 2000000 paise."""
-        import domain.accounting_service as m
-        orig = m.MOCK_JOURNAL_ENTRIES[:]
-        orig_idx = dict(m.JOURNAL_INDEX)
-        try:
-            entries = [BILL_ENTRY, PARTIAL_PAYMENT_ENTRY]
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(entries)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update({e["id"]: e for e in entries})
-
-            svc = AccountingService()
-            pl = svc.get_profit_loss(start_date=_FY_START, end_date=_FY_END, basis="cash")
-            total_exp = pl["operating_expenses"]["total_paise"]
-            # 2000000/5000000 = 40% of 5000000 = 2000000 paise
-            assert total_exp == 2000000, f"Partial payment: cash expense must be 2000000, got {total_exp}"
-            assert isinstance(total_exp, int), "Expense must be integer paise"
-        finally:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(orig)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update(orig_idx)
-
-
-# ─── Balance Sheet tests ───────────────────────────────────────────────────────
-
-class TestCashBasisBalanceSheet:
-
-    def test_accrual_bs_includes_ar(self, fresh_service):
-        """Accrual: unpaid invoice creates A/R on balance sheet."""
-        import domain.accounting_service as m
-        orig = m.MOCK_JOURNAL_ENTRIES[:]
-        orig_idx = dict(m.JOURNAL_INDEX)
-        try:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.append(INVOICE_ENTRY)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX["je-test-inv"] = INVOICE_ENTRY
-
-            svc = AccountingService()
-            bs = svc.get_balance_sheet(basis="accrual")
-            asset_lines = bs["assets"][0]["lines"]
-            ar_line = next((l for l in asset_lines if "Receivable" in l["account_name"]), None)
-            assert ar_line is not None, "Accrual BS must include Trade Receivables"
-            assert ar_line["balance_paise"] == 10000000
-        finally:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(orig)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update(orig_idx)
-
-    def test_cash_bs_excludes_unpaid_ar(self, fresh_service):
-        """Cash BS: unpaid invoice → Trade Receivables not on balance sheet."""
-        import domain.accounting_service as m
-        orig = m.MOCK_JOURNAL_ENTRIES[:]
-        orig_idx = dict(m.JOURNAL_INDEX)
-        try:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.append(INVOICE_ENTRY)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX["je-test-inv"] = INVOICE_ENTRY
-
-            svc = AccountingService()
-            bs = svc.get_balance_sheet(basis="cash")
-            asset_lines = bs["assets"][0]["lines"]
-            ar_line = next((l for l in asset_lines if "Receivable" in l["account_name"]), None)
-            assert ar_line is None, "Cash BS must NOT include Trade Receivables for unpaid invoice"
-            assert bs["is_balanced"], "Cash BS must balance even with no AR"
-        finally:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(orig)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update(orig_idx)
-
-    def test_accrual_bs_includes_ap(self, fresh_service):
-        """Accrual: unpaid bill creates A/P on balance sheet."""
-        import domain.accounting_service as m
-        orig = m.MOCK_JOURNAL_ENTRIES[:]
-        orig_idx = dict(m.JOURNAL_INDEX)
-        try:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.append(BILL_ENTRY)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX["je-test-bill"] = BILL_ENTRY
-
-            svc = AccountingService()
-            bs = svc.get_balance_sheet(basis="accrual")
-            liab_lines = bs["liabilities"][0]["lines"]
-            ap_line = next((l for l in liab_lines if "Payable" in l["account_name"]), None)
-            assert ap_line is not None, "Accrual BS must include Trade Payables"
-            assert ap_line["balance_paise"] == 5000000
-        finally:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(orig)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update(orig_idx)
-
-    def test_cash_bs_excludes_unpaid_ap(self, fresh_service):
-        """Cash BS: unpaid bill → Trade Payables not on balance sheet."""
-        import domain.accounting_service as m
-        orig = m.MOCK_JOURNAL_ENTRIES[:]
-        orig_idx = dict(m.JOURNAL_INDEX)
-        try:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.append(BILL_ENTRY)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX["je-test-bill"] = BILL_ENTRY
-
-            svc = AccountingService()
-            bs = svc.get_balance_sheet(basis="cash")
-            liab_lines = bs["liabilities"][0]["lines"]
-            ap_line = next((l for l in liab_lines if "Payable" in l["account_name"]), None)
-            assert ap_line is None, "Cash BS must NOT include Trade Payables for unpaid bill"
-            assert bs["is_balanced"], "Cash BS must balance even with no AP"
-        finally:
-            m.MOCK_JOURNAL_ENTRIES.clear()
-            m.MOCK_JOURNAL_ENTRIES.extend(orig)
-            m.JOURNAL_INDEX.clear()
-            m.JOURNAL_INDEX.update(orig_idx)
-
-    def test_cash_bs_is_balanced(self, fresh_service):
-        """Cash basis balance sheet always balances (Assets = Liabilities + Equity)."""
-        svc = AccountingService()
-        bs = svc.get_balance_sheet(basis="cash")
-        assert bs["is_balanced"], (
-            f"Cash BS must balance. Assets={bs['total_assets_paise']}, "
-            f"Liab+Equity={bs['total_liabilities_equity_paise']}"
-        )
-
-    def test_cash_bs_totals_are_integers(self, fresh_service):
-        """All cash BS totals must be integer paise — no floats."""
-        svc = AccountingService()
-        bs = svc.get_balance_sheet(basis="cash")
-        assert isinstance(bs["total_assets_paise"], int)
-        assert isinstance(bs["total_liabilities_equity_paise"], int)
-
-
-# ─── Trial Balance tests ───────────────────────────────────────────────────────
-
-class TestCashBasisTrialBalance:
-
-    def test_cash_tb_is_balanced(self, fresh_service):
-        """Cash basis TB must balance (total debit = total credit)."""
-        svc = AccountingService()
-        tb = svc.get_trial_balance(basis="cash")
-        assert tb["is_balanced"], (
-            f"Cash TB must balance. Dr={tb['total_debit_paise']}, "
-            f"Cr={tb['total_credit_paise']}, diff={tb['difference_paise']}"
-        )
-
-    def test_cash_tb_excludes_ar_account(self, fresh_service):
-        """Cash TB has no net balance in Trade Receivables (A/R is transformed away)."""
-        svc = AccountingService()
-        tb = svc.get_trial_balance(basis="cash")
-        for line in tb["lines"]:
-            if line["account_id"] == "acc-003":
-                net = line["total_debit_paise"] - line["total_credit_paise"]
-                assert net == 0, f"Cash TB: A/R net balance must be 0, got {net}"
-
-    def test_cash_tb_totals_are_integers(self, fresh_service):
-        """All cash TB totals are integer paise."""
-        svc = AccountingService()
-        tb = svc.get_trial_balance(basis="cash")
-        assert isinstance(tb["total_debit_paise"], int)
-        assert isinstance(tb["total_credit_paise"], int)
-        for line in tb["lines"]:
-            assert isinstance(line["total_debit_paise"], int)
-            assert isinstance(line["total_credit_paise"], int)
-
-
-# ─── Regression: accrual output unchanged ─────────────────────────────────────
-
-class TestCashBasisRegression:
-    """
-    When basis=accrual, output must be identical to the original default behavior.
-    This verifies no regression was introduced by the basis parameter.
-    """
-
-    def test_trial_balance_accrual_regression(self, fresh_service):
-        """basis=accrual TB matches default TB (no basis param)."""
-        svc = AccountingService()
-        tb_default = svc.get_trial_balance()
-        tb_accrual = svc.get_trial_balance(basis="accrual")
-        assert tb_default["total_debit_paise"] == tb_accrual["total_debit_paise"]
-        assert tb_default["total_credit_paise"] == tb_accrual["total_credit_paise"]
-        assert tb_default["is_balanced"] == tb_accrual["is_balanced"]
-        assert len(tb_default["lines"]) == len(tb_accrual["lines"])
-
-    def test_profit_loss_accrual_regression(self, fresh_service):
-        """basis=accrual P&L matches default P&L (no basis param)."""
-        svc = AccountingService()
-        pl_default = svc.get_profit_loss()
-        pl_accrual = svc.get_profit_loss(basis="accrual")
-        assert pl_default["revenue"]["total_paise"] == pl_accrual["revenue"]["total_paise"]
-        assert pl_default["operating_expenses"]["total_paise"] == pl_accrual["operating_expenses"]["total_paise"]
-        assert pl_default["net_profit_paise"] == pl_accrual["net_profit_paise"]
-
-    def test_balance_sheet_accrual_regression(self, fresh_service):
-        """basis=accrual BS matches default BS (no basis param)."""
-        svc = AccountingService()
-        bs_default = svc.get_balance_sheet()
-        bs_accrual = svc.get_balance_sheet(basis="accrual")
-        assert bs_default["total_assets_paise"] == bs_accrual["total_assets_paise"]
-        assert bs_default["total_liabilities_equity_paise"] == bs_accrual["total_liabilities_equity_paise"]
-        assert bs_default["is_balanced"] == bs_accrual["is_balanced"]
-
-    def test_accrual_tb_is_balanced(self, fresh_service):
-        """Accrual TB must remain balanced after adding cash-basis code."""
-        svc = AccountingService()
-        tb = svc.get_trial_balance(basis="accrual")
-        assert tb["is_balanced"], f"Accrual TB must balance. diff={tb['difference_paise']}"
-
-    def test_cash_pl_less_than_or_equal_accrual_revenue(self, fresh_service):
-        """Cash revenue ≤ accrual revenue (collected ≤ earned)."""
-        svc = AccountingService()
-        pl_accrual = svc.get_profit_loss(basis="accrual")
-        pl_cash = svc.get_profit_loss(basis="cash")
-        assert pl_cash["revenue"]["total_paise"] <= pl_accrual["revenue"]["total_paise"], (
-            f"Cash revenue ({pl_cash['revenue']['total_paise']}) must not exceed "
-            f"accrual revenue ({pl_accrual['revenue']['total_paise']})"
-        )
-
-    def test_cash_pl_expenses_less_than_or_equal_accrual(self, fresh_service):
-        """Cash expenses ≤ accrual expenses (paid ≤ incurred)."""
-        svc = AccountingService()
-        pl_accrual = svc.get_profit_loss(basis="accrual")
-        pl_cash = svc.get_profit_loss(basis="cash")
-        assert pl_cash["operating_expenses"]["total_paise"] <= pl_accrual["operating_expenses"]["total_paise"], (
-            f"Cash expenses ({pl_cash['operating_expenses']['total_paise']}) must not exceed "
-            f"accrual expenses ({pl_accrual['operating_expenses']['total_paise']})"
-        )
-
-    def test_cash_basis_marker_in_response(self, fresh_service):
-        """Cash basis responses include basis='cash' marker."""
-        svc = AccountingService()
-        tb = svc.get_trial_balance(basis="cash")
-        pl = svc.get_profit_loss(basis="cash")
-        bs = svc.get_balance_sheet(basis="cash")
-        assert tb.get("basis") == "cash"
-        assert pl.get("basis") == "cash"
-        assert bs.get("basis") == "cash"
-
-    def test_accrual_basis_has_no_cash_marker(self, fresh_service):
-        """Accrual responses do not have basis='cash' (avoiding confusion)."""
-        svc = AccountingService()
-        tb = svc.get_trial_balance(basis="accrual")
-        assert tb.get("basis") != "cash"
+# ── Chart of accounts (production-style types; system keys for robustness) ──
+ACCOUNTS = [
+    Account("ar", "1100", "Trade Receivables", "Asset", system_key="ar"),
+    Account("ap", "2100", "Trade Payables", "Liability", system_key="ap"),
+    Account("bank", "1000", "Bank — HDFC", "Asset", "Bank", system_key="bank"),
+    Account("tdsrecv", "1300", "TDS Receivable", "Asset"),
+    Account("rev1", "4000", "Professional Fees", "Revenue"),
+    Account("rev2", "4001", "Consulting Fees", "Revenue"),
+    Account("gstout", "2200", "GST Output Tax Payable", "Liability", system_key="gst_output"),
+    Account("gstin", "1400", "GST Input Tax Credit", "Asset", system_key="gst_input"),
+    Account("exp1", "5000", "Office Rent", "Expense"),
+    Account("cap", "3000", "Capital Account", "Equity"),
+    Account("advc", "2300", "Advance from Customers", "Liability", system_key="advance_customer"),
+    Account("advv", "1500", "Advance to Vendors", "Asset", system_key="advance_vendor"),
+]
+
+
+# ── builders ────────────────────────────────────────────────────────────────
+
+def _je(jid, lines, date="2026-04-10", reversal_of=None):
+    return JournalEntry(
+        id=jid, entry_date=date, client_id=CLIENT, firm_id=FIRM,
+        entry_type="x", lines=tuple(JournalLine(*l) for l in lines), reversal_of=reversal_of,
+    )
+
+
+def invoice(inv_id, je_id, rev_legs, gst=0, date="2026-04-10"):
+    """rev_legs: list[(acct, amount)]. Builds Dr A/R total; Cr revenue (+ GST)."""
+    total = sum(a for _, a in rev_legs) + gst
+    lines = [("ar", total, 0)] + [(acc, 0, amt) for acc, amt in rev_legs]
+    if gst:
+        lines.append(("gstout", 0, gst))
+    return Invoice(inv_id, total, je_id), _je(je_id, lines, date)
+
+
+def receipt(rid, je_id, amount, allocs, tds=0, date="2026-04-20"):
+    """allocs: list[(invoice_id, allocated_paise)] in settlement (amount+tds) terms."""
+    settlement = amount + tds
+    lines = [("bank", amount, 0)]
+    if tds:
+        lines.append(("tdsrecv", tds, 0))
+    lines.append(("ar", 0, settlement))
+    r = Receipt(rid, je_id, amount, tds)
+    allocations = [ReceiptAllocation(rid, inv, amt) for inv, amt in allocs]
+    return r, _je(je_id, lines, date), allocations
+
+
+def credit_note(cid, je_id, inv_id, rev_legs, gst=0, date="2026-04-15"):
+    total = sum(a for _, a in rev_legs) + gst
+    lines = [(acc, amt, 0) for acc, amt in rev_legs]
+    if gst:
+        lines.append(("gstout", gst, 0))
+    lines.append(("ar", 0, total))
+    return CreditNote(cid, inv_id, je_id), _je(je_id, lines, date)
+
+
+def bill(bid, je_id, exp_legs, gst_input=0, tds=0, date="2026-04-11"):
+    total = sum(a for _, a in exp_legs) + gst_input
+    net_payable = total - tds
+    lines = [(acc, amt, 0) for acc, amt in exp_legs]
+    if gst_input:
+        lines.append(("gstin", gst_input, 0))
+    lines.append(("ap", 0, net_payable))
+    if tds:
+        lines.append(("tdspay", 0, tds))
+    return Bill(bid, total, je_id), _je(je_id, lines, date)
+
+
+def payment(pid, je_id, bill_id, amount, date="2026-04-25"):
+    lines = [("ap", amount, 0), ("bank", 0, amount)]
+    return Payment(pid, bill_id, je_id, amount), _je(je_id, lines, date)
+
+
+def build(entries=(), invoices=(), receipts=(), allocations=(),
+          credit_notes=(), bills=(), payments=()):
+    return ReportingService(InMemoryLedgerSource(
+        accounts=ACCOUNTS, entries=list(entries), invoices=list(invoices),
+        receipts=list(receipts), allocations=list(allocations),
+        credit_notes=list(credit_notes), bills=list(bills), payments=list(payments),
+    ))
+
+
+def rev_total(pl):
+    return pl["revenue"]["total_paise"]
+
+
+def rev_for(pl, name):
+    return next((l["amount_paise"] for l in pl["revenue"]["lines"] if l["account_name"] == name), 0)
+
+
+def exp_total(pl):
+    return pl["operating_expenses"]["total_paise"]
+
+
+def cash_pl(svc):
+    return svc.profit_loss(FIRM, CLIENT, FY_START, FY_END, basis="cash")
+
+
+def accrual_pl(svc):
+    return svc.profit_loss(FIRM, CLIENT, FY_START, FY_END, basis="accrual")
+
+
+def assert_tb_balances(svc, basis):
+    tb = svc.trial_balance(FIRM, CLIENT, FY_END, basis=basis)
+    assert tb["difference_paise"] == 0, f"{basis} TB drift: {tb['difference_paise']}"
+    assert tb["is_balanced"]
+    return tb
+
+
+def assert_bs_balances(svc, basis):
+    bs = svc.balance_sheet(FIRM, CLIENT, FY_END, basis=basis)
+    assert bs["is_balanced"], (
+        f"{basis} BS: assets={bs['total_assets_paise']} "
+        f"L+E={bs['total_liabilities_equity_paise']}"
+    )
+    return bs
+
+
+# ── 1. Multi-invoice allocation ───────────────────────────────────────────────
+
+def test_multi_invoice_single_receipt():
+    inv_a, je_a = invoice("A", "ja", [("rev1", 1000)])
+    inv_b, je_b = invoice("B", "jb", [("rev1", 2000)])
+    inv_c, je_c = invoice("C", "jc", [("rev2", 3000)])
+    r, jr, allocs = receipt("R", "jr", 6000, [("A", 1000), ("B", 2000), ("C", 3000)])
+    svc = build(entries=[je_a, je_b, je_c, jr], invoices=[inv_a, inv_b, inv_c],
+                receipts=[r], allocations=allocs)
+    pl = cash_pl(svc)
+    assert rev_for(pl, "Professional Fees") == 3000
+    assert rev_for(pl, "Consulting Fees") == 3000
+    assert rev_total(pl) == 6000
+    assert_tb_balances(svc, "cash")
+
+
+# ── 2. Duplicate invoice amounts (proves linkage, not amount matching) ─────────
+
+def test_duplicate_amounts_only_paid_invoice_recognised():
+    inv_d, je_d = invoice("D", "jd", [("rev1", 5000)])   # same amount
+    inv_e, je_e = invoice("E", "je", [("rev2", 5000)])   # same amount, diff account
+    r, jr, allocs = receipt("R", "jr", 5000, [("D", 5000)])  # pays only D
+    svc = build(entries=[je_d, je_e, jr], invoices=[inv_d, inv_e],
+                receipts=[r], allocations=allocs)
+    pl = cash_pl(svc)
+    assert rev_for(pl, "Professional Fees") == 5000   # D's account
+    assert rev_for(pl, "Consulting Fees") == 0        # E unpaid — not guessed by amount
+    assert rev_total(pl) == 5000
+    assert accrual_pl(svc)["revenue"]["total_paise"] == 10000
+    assert_tb_balances(svc, "cash")
+
+
+# ── 3. Partial allocation ──────────────────────────────────────────────────────
+
+def test_partial_receipt_recognises_collected_portion():
+    inv_f, je_f = invoice("F", "jf", [("rev1", 10000)])
+    r, jr, allocs = receipt("R", "jr", 4000, [("F", 4000)])
+    svc = build(entries=[je_f, jr], invoices=[inv_f], receipts=[r], allocations=allocs)
+    assert rev_total(cash_pl(svc)) == 4000
+    assert rev_total(accrual_pl(svc)) == 10000
+    bs = assert_bs_balances(svc, "cash")
+    # A/R is transformed away — no receivable on the cash balance sheet.
+    assert all("Receivable" not in l["account_name"] for s in bs["assets"] for l in s["lines"])
+
+
+# ── 4. Credit notes ─────────────────────────────────────────────────────────────
+
+def test_credit_note_reduces_recognised_revenue():
+    inv_g, je_g = invoice("G", "jg", [("rev1", 1000)], gst=180)        # total 1180
+    cn_g, je_cn = credit_note("CN", "jcn", "G", [("rev1", 400)], gst=72)  # total 472
+    r, jr, allocs = receipt("R", "jr", 708, [("G", 708)])             # 1180 - 472
+    svc = build(entries=[je_g, je_cn, jr], invoices=[inv_g],
+                credit_notes=[cn_g], receipts=[r], allocations=allocs)
+    pl = cash_pl(svc)
+    assert rev_for(pl, "Professional Fees") == 600   # 1000 - 400, never increased
+    assert rev_total(pl) == 600
+    assert_tb_balances(svc, "cash")
+
+
+def test_credit_note_alone_recognises_no_revenue():
+    inv_g, je_g = invoice("G", "jg", [("rev1", 1000)])
+    cn_g, je_cn = credit_note("CN", "jcn", "G", [("rev1", 400)])
+    svc = build(entries=[je_g, je_cn], invoices=[inv_g], credit_notes=[cn_g])
+    assert rev_total(cash_pl(svc)) == 0  # nothing collected → no cash revenue
+    assert_tb_balances(svc, "cash")
+
+
+# ── 5. Receipt reversal (bounced cheque) ────────────────────────────────────────
+
+def test_receipt_reversal_unwinds_revenue():
+    inv_h, je_h = invoice("H", "jh", [("rev1", 5000)])
+    r, jr, allocs = receipt("R", "jr", 5000, [("H", 5000)])
+    rev = _je("jrr", [("ar", 5000, 0), ("bank", 0, 5000)], date="2026-04-22", reversal_of="jr")
+    svc = build(entries=[je_h, jr, rev], invoices=[inv_h], receipts=[r], allocations=allocs)
+    assert rev_total(cash_pl(svc)) == 0   # recognised then reversed
+    assert_tb_balances(svc, "cash")
+
+
+# ── 6. Payment reversal (vendor refund) ─────────────────────────────────────────
+
+def test_payment_reversal_unwinds_expense():
+    b, jb = bill("B", "jb", [("exp1", 5000)])
+    p, jp = payment("P", "jp", "B", 5000)
+    rev = _je("jpr", [("bank", 5000, 0), ("ap", 0, 5000)], date="2026-04-27", reversal_of="jp")
+    svc = build(entries=[jb, jp, rev], bills=[b], payments=[p])
+    assert exp_total(cash_pl(svc)) == 0
+    assert_tb_balances(svc, "cash")
+
+
+def test_paid_bill_recognises_expense():
+    b, jb = bill("B", "jb", [("exp1", 5000)])
+    p, jp = payment("P", "jp", "B", 5000)
+    svc = build(entries=[jb, jp], bills=[b], payments=[p])
+    assert exp_total(cash_pl(svc)) == 5000
+    assert exp_total(accrual_pl(svc)) == 5000
+    assert_tb_balances(svc, "cash")
+
+
+def test_unpaid_bill_zero_cash_expense():
+    b, jb = bill("B", "jb", [("exp1", 5000)])
+    svc = build(entries=[jb], bills=[b])
+    assert exp_total(cash_pl(svc)) == 0
+    assert exp_total(accrual_pl(svc)) == 5000
+
+
+# ── 7. GST invoices (revenue excludes GST; cash GST ≠ statutory) ────────────────
+
+def test_gst_invoice_full_receipt_excludes_gst_from_revenue():
+    inv_j, je_j = invoice("J", "jj", [("rev1", 10000)], gst=1800)  # total 11800
+    r, jr, allocs = receipt("R", "jr", 11800, [("J", 11800)])
+    svc = build(entries=[je_j, jr], invoices=[inv_j], receipts=[r], allocations=allocs)
+    pl = cash_pl(svc)
+    assert rev_total(pl) == 10000          # revenue is net of GST
+    tb = assert_tb_balances(svc, "cash")
+    gst = next(l for l in tb["lines"] if l["account_id"] == "gstout")
+    assert gst["total_credit_paise"] == 1800
+
+
+def test_gst_partial_receipt_cash_gst_differs_from_statutory():
+    inv_j, je_j = invoice("J", "jj", [("rev1", 10000)], gst=1800)  # statutory GST = 1800
+    r, jr, allocs = receipt("R", "jr", 5900, [("J", 5900)])        # half collected
+    svc = build(entries=[je_j, jr], invoices=[inv_j], receipts=[r], allocations=allocs)
+    pl = cash_pl(svc)
+    assert rev_total(pl) == 5000
+    tb = assert_tb_balances(svc, "cash")
+    gst = next(l for l in tb["lines"] if l["account_id"] == "gstout")
+    # Cash-view GST (900) is NOT the statutory invoice-based GST (1800).
+    assert gst["total_credit_paise"] == 900
+
+
+def test_receipt_with_tds_recognises_gross_income():
+    # Decision D: TDS withheld is deemed received → gross professional receipts.
+    inv_t, je_t = invoice("T", "jt", [("rev1", 10000)])
+    r, jr, allocs = receipt("R", "jr", 9000, [("T", 10000)], tds=1000)  # settlement 10000
+    svc = build(entries=[je_t, jr], invoices=[inv_t], receipts=[r], allocations=allocs)
+    assert rev_total(cash_pl(svc)) == 10000
+    assert_tb_balances(svc, "cash")
+
+
+# ── 8. Rounding edge cases ──────────────────────────────────────────────────────
+
+def test_indivisible_partial_keeps_tb_balanced():
+    # Three legs that don't divide evenly; tiny and odd collections.
+    inv_k, je_k = invoice("K", "jk", [("rev1", 334), ("rev2", 333)], gst=333)  # total 1000
+    r1, jr1, a1 = receipt("R1", "jr1", 1, [("K", 1)])       # 1 paise
+    svc = build(entries=[je_k, jr1], invoices=[inv_k], receipts=[r1], allocations=a1)
+    pl = cash_pl(svc)
+    assert rev_total(pl) + _gst_credit(svc, "cash") == 1    # every paise placed
+    assert_tb_balances(svc, "cash")
+
+    r2, jr2, a2 = receipt("R2", "jr2", 500, [("K", 500)])
+    svc2 = build(entries=[je_k, jr2], invoices=[inv_k], receipts=[r2], allocations=a2)
+    assert_tb_balances(svc2, "cash")
+
+
+def _gst_credit(svc, basis):
+    tb = svc.trial_balance(FIRM, CLIENT, FY_END, basis=basis)
+    g = next((l for l in tb["lines"] if l["account_id"] == "gstout"), None)
+    return g["total_credit_paise"] - g["total_debit_paise"] if g else 0
+
+
+def test_apportion_property_sum_equals_total():
+    rng = random.Random(42)
+    for _ in range(2000):
+        total = rng.randint(0, 1_000_000)
+        weights = [rng.randint(0, 1000) for _ in range(rng.randint(1, 6))]
+        parts = apportion(total, weights)
+        assert all(p >= 0 for p in parts)
+        if sum(weights) > 0:
+            assert sum(parts) == total
+        else:
+            assert sum(parts) == 0
+
+
+# ── Unallocated receipts → advance liability (Decision C) ──────────────────────
+
+def test_unallocated_receipt_parks_as_advance_not_revenue():
+    r, jr, _ = receipt("R", "jr", 5000, [])  # money in, not applied to any invoice
+    svc = build(entries=[jr], receipts=[r])
+    assert rev_total(cash_pl(svc)) == 0          # not income (Decision C)
+    bs = assert_bs_balances(svc, "cash")
+    liab = [l["account_name"] for s in bs["liabilities"] for l in s["lines"]]
+    assert any("Advance from Customers" in n for n in liab)
+
+
+# ── Tenant isolation ────────────────────────────────────────────────────────────
+
+def test_tenant_isolation_excludes_other_client():
+    inv_a, je_a = invoice("A", "ja", [("rev1", 1000)])
+    r, jr, allocs = receipt("R", "jr", 1000, [("A", 1000)])
+    # Another client's entry must never appear for CLIENT.
+    other = JournalEntry(id="jx", entry_date="2026-04-10", client_id="client-2",
+                         firm_id=FIRM, entry_type="x",
+                         lines=(JournalLine("bank", 99999, 0), JournalLine("rev1", 0, 99999)))
+    svc = build(entries=[je_a, jr, other], invoices=[inv_a], receipts=[r], allocations=allocs)
+    assert rev_total(cash_pl(svc)) == 1000        # not 1000 + 99999
+    assert rev_total(accrual_pl(svc)) == 1000
+
+
+# ── Accrual regression + invariants ─────────────────────────────────────────────
+
+def test_accrual_revenue_independent_of_collection():
+    inv_f, je_f = invoice("F", "jf", [("rev1", 10000)])
+    r, jr, allocs = receipt("R", "jr", 3000, [("F", 3000)])
+    svc = build(entries=[je_f, jr], invoices=[inv_f], receipts=[r], allocations=allocs)
+    assert rev_total(accrual_pl(svc)) == 10000   # full, regardless of payment
+    assert rev_total(cash_pl(svc)) == 3000       # only collected
+    assert_tb_balances(svc, "accrual")
+    assert_tb_balances(svc, "cash")
+
+
+def test_cash_never_exceeds_accrual():
+    inv_f, je_f = invoice("F", "jf", [("rev1", 10000)])
+    r, jr, allocs = receipt("R", "jr", 3000, [("F", 3000)])
+    b, jb = bill("B", "jb", [("exp1", 8000)])
+    p, jp = payment("P", "jp", "B", 2000)
+    svc = build(entries=[je_f, jr, jb, jp], invoices=[inv_f], receipts=[r],
+                allocations=allocs, bills=[b], payments=[p])
+    c, a = cash_pl(svc), accrual_pl(svc)
+    assert c["revenue"]["total_paise"] <= a["revenue"]["total_paise"]
+    assert c["operating_expenses"]["total_paise"] <= a["operating_expenses"]["total_paise"]
+
+
+def test_basis_markers():
+    svc = build(entries=[_je("j", [("bank", 100, 0), ("cap", 0, 100)])])
+    assert svc.trial_balance(FIRM, CLIENT, FY_END, basis="cash").get("basis") == "cash"
+    assert svc.profit_loss(FIRM, CLIENT, FY_START, FY_END, basis="cash").get("basis") == "cash"
+    assert svc.balance_sheet(FIRM, CLIENT, FY_END, basis="cash").get("basis") == "cash"
+    assert "basis" not in svc.trial_balance(FIRM, CLIENT, FY_END, basis="accrual")
+
+
+# ── Mock/demo source still works end-to-end ──────────────────────────────────────
+
+def test_mock_ledger_source_runs_and_balances():
+    from domain.reporting import mock_ledger_source
+    svc = ReportingService(mock_ledger_source())
+    for basis in ("accrual", "cash"):
+        tb = svc.trial_balance("firm-001", "c-001", "2025-12-31", basis=basis)
+        assert tb["is_balanced"]

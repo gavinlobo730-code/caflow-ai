@@ -7,7 +7,6 @@ import { ChevronLeft, CheckCircle, AlertTriangle, Download } from "lucide-react"
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatPaise } from "@/lib/services/formatting";
-import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
 import * as XLSX from "xlsx";
 import type { AccountType } from "@/lib/types";
@@ -22,6 +21,10 @@ interface TrialBalanceLine {
 }
 
 type Basis = "accrual" | "cash";
+
+// Backend response envelope. ALL aggregation happens server-side (CLAUDE.md):
+// the page only passes the basis/date and renders what the API returns.
+type TBResponse = { success: boolean; data: { lines: TrialBalanceLine[] } | null; error: string | null };
 
 const TYPE_COLORS: Record<AccountType, string> = {
   Asset: "text-blue-700",
@@ -39,57 +42,6 @@ function LoadingSpinner() {
       <div className="h-64 bg-[#F1F5F9] rounded-xl" />
     </div>
   );
-}
-
-async function getFirmId(): Promise<string> {
-  const sb = getSupabaseClient();
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).maybeSingle();
-  if (!data?.firm_id) throw new Error("No firm found — please complete onboarding");
-  return data.firm_id as string;
-}
-
-async function fetchAccrualTB(asOfDate: string): Promise<TrialBalanceLine[]> {
-  const sb = getSupabaseClient();
-  const fid = await getFirmId();
-
-  const { data: accs, error: accErr } = await sb
-    .from("accounts")
-    .select("id, account_code, account_name, account_type")
-    .eq("firm_id", fid);
-  if (accErr) throw new Error(accErr.message);
-
-  const { data: entryLines, error: lineErr } = await sb
-    .from("journal_entry_lines")
-    .select("account_id, debit_paise, credit_paise, journal_entries!inner(firm_id, entry_date, status)")
-    .eq("journal_entries.firm_id", fid)
-    .eq("journal_entries.status", "posted")
-    .lte("journal_entries.entry_date", asOfDate);
-  if (lineErr) throw new Error(lineErr.message);
-
-  const map = new Map<string, { debit: number; credit: number }>();
-  for (const line of (entryLines ?? [])) {
-    const existing = map.get(line.account_id) ?? { debit: 0, credit: 0 };
-    map.set(line.account_id, {
-      debit: existing.debit + (line.debit_paise ?? 0),
-      credit: existing.credit + (line.credit_paise ?? 0),
-    });
-  }
-
-  return (accs ?? [])
-    .map((a) => {
-      const totals = map.get(a.id) ?? { debit: 0, credit: 0 };
-      return {
-        account_id: a.id,
-        account_code: a.account_code,
-        account_name: a.account_name,
-        account_type: a.account_type as AccountType,
-        total_debit_paise: totals.debit,
-        total_credit_paise: totals.credit,
-      };
-    })
-    .filter((l) => l.total_debit_paise > 0 || l.total_credit_paise > 0);
 }
 
 export default function TrialBalancePage() {
@@ -114,16 +66,14 @@ export default function TrialBalancePage() {
     setLoading(true);
     setError(null);
 
-    const load = async () => {
-      if (basis === "cash") {
-        // All calculations are backend-only — frontend only passes parameters
-        const params: Record<string, string> = { basis: "cash" };
-        if (asOfDate) params.as_of_date = asOfDate;
-        const res = await api.accounting.trialBalance(params);
-        if (!res.success) throw new Error(res.error ?? "Failed to load cash-basis trial balance");
-        return (res.data.lines ?? []) as TrialBalanceLine[];
-      }
-      return fetchAccrualTB(asOfDate);
+    const load = async (): Promise<TrialBalanceLine[]> => {
+      // Both bases are computed server-side from the same posted ledger
+      // (IT Act §145). The frontend only passes parameters.
+      const params: Record<string, string> = { basis };
+      if (asOfDate) params.as_of_date = asOfDate;
+      const res = (await api.accounting.trialBalance(params)) as TBResponse;
+      if (!res.success) throw new Error(res.error ?? "Failed to load trial balance");
+      return res.data?.lines ?? [];
     };
 
     load()

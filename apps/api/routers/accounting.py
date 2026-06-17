@@ -1,16 +1,31 @@
 """
 Accounting router — Chart of Accounts, Journal Entries, Ledger, Trial Balance, P&L, Balance Sheet.
 """
+import os
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from datetime import datetime, timezone
 from models.common import api_response
 from models.accounting import AccountIn, AccountUpdateIn, JournalEntryIn, JournalReversalIn
 from domain.accounting_service import accounting_service
+from domain.reporting import ReportingService, SupabaseLedgerSource, mock_ledger_source
 from core.exceptions import NotFoundError, ValidationError
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
+
+
+def _reporting_service() -> ReportingService:
+    """
+    Trial Balance / P&L / Balance Sheet engine. Reads the production ledger via
+    Supabase when configured (firm- and client-scoped), else the in-memory seed
+    for dev/demo. Cash and accrual are computed by one code path over one source
+    — IT Act §145; cash basis is management reporting only (GST stays invoice-based).
+    """
+    if os.environ.get("SUPABASE_URL"):
+        from core.supabase_client import get_supabase
+        return ReportingService(SupabaseLedgerSource(get_supabase()))
+    return ReportingService(mock_ledger_source())
 
 
 def _current_fy_long() -> str:
@@ -206,14 +221,18 @@ def get_ledger(
 @router.get("/trial-balance")
 def get_trial_balance(
     as_of_date: Optional[str] = Query(None),
+    client_id: Optional[str] = Query(None),
     basis: str = Query("accrual", pattern="^(accrual|cash)$"),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """
     IT Act Section 145: method of accounting.
-    basis=cash is management reporting only — never affects GST returns.
+    Cash basis is derived from real allocation links (management reporting only);
+    it never affects GST returns, which remain invoice-based per the CGST Act.
     """
-    tb = accounting_service.get_trial_balance(as_of_date, basis=basis)
+    tb = _reporting_service().trial_balance(
+        current_user["firm_id"], client_id, as_of_date, basis=basis
+    )
     return api_response(True, tb)
 
 
@@ -229,8 +248,8 @@ def get_profit_loss(
     IT Act Section 44AA: professionals may use cash basis for record-keeping.
     basis=cash is management reporting only — never affects GST/ITR filings.
     """
-    pl = accounting_service.get_profit_loss(
-        start_date, end_date, client_id, firm_id=current_user["firm_id"], basis=basis
+    pl = _reporting_service().profit_loss(
+        current_user["firm_id"], client_id, start_date, end_date, basis=basis
     )
     return api_response(True, pl)
 
@@ -246,7 +265,7 @@ def get_balance_sheet(
     Companies Act Section 128: balance sheet must use accrual for companies.
     basis=cash excludes unpaid A/R and A/P — for management view only.
     """
-    bs = accounting_service.get_balance_sheet(
-        as_of_date, client_id, firm_id=current_user["firm_id"], basis=basis
+    bs = _reporting_service().balance_sheet(
+        current_user["firm_id"], client_id, as_of_date, basis=basis
     )
     return api_response(True, bs)

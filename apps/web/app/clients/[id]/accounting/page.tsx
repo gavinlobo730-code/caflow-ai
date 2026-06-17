@@ -776,39 +776,16 @@ function TrialBalance({ clientId, financialYear }: { clientId: string; financial
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
-
-    if (basis === "cash") {
-      // All calculations backend-only — frontend only passes parameters (CLAUDE.md)
-      const { end } = fyDateRange(financialYear);
-      const res = await api.accounting.trialBalance({ basis: "cash", as_of_date: end });
-      if (res.success && res.data?.lines) {
-        setRows(res.data.lines as TrialRow[]);
-      }
+    // Both bases are computed server-side from the same posted ledger, scoped to
+    // this client (IT Act §145). The frontend only passes parameters (CLAUDE.md).
+    const { end } = fyDateRange(financialYear);
+    const res = (await api.accounting.trialBalance({
+      basis, as_of_date: end, client_id: clientId,
+    })) as { success: boolean; data: { lines: TrialRow[] } | null };
+    if (res.success && res.data?.lines) {
+      setRows(res.data.lines);
     } else {
-      const { start, end } = fyDateRange(financialYear);
-      const supabase = getSupabaseClient();
-      const { data } = await supabase
-        .from("journal_lines")
-        .select("debit_paise, credit_paise, chart_of_accounts!inner(id, account_code, account_name, account_type), journal_entries!inner(entry_date, is_posted, client_id, deleted_at)")
-        .eq("journal_entries.client_id", clientId)
-        .eq("journal_entries.is_posted", true)
-        .is("journal_entries.deleted_at", null)
-        .gte("journal_entries.entry_date", start)
-        .lte("journal_entries.entry_date", end);
-
-      if (data) {
-        const map: Record<string, TrialRow> = {};
-        for (const row of data as unknown as Array<{
-          debit_paise: number; credit_paise: number;
-          chart_of_accounts: { id: string; account_code: string; account_name: string; account_type: string };
-        }>) {
-          const acc = row.chart_of_accounts;
-          if (!map[acc.id]) map[acc.id] = { account_id: acc.id, account_code: acc.account_code, account_name: acc.account_name, account_type: acc.account_type, total_debit_paise: 0, total_credit_paise: 0 };
-          map[acc.id].total_debit_paise += row.debit_paise;
-          map[acc.id].total_credit_paise += row.credit_paise;
-        }
-        setRows(Object.values(map).sort((a, b) => a.account_code.localeCompare(b.account_code)));
-      }
+      setRows([]);
     }
     setLoading(false); setLoaded(true);
   }, [clientId, financialYear, basis]);
@@ -868,8 +845,9 @@ function TrialBalance({ clientId, financialYear }: { clientId: string; financial
 }
 
 // ── Profit & Loss ──────────────────────────────────────────────────────────
-// Computed from journal_lines for the FY. Accounts classified per
-// Companies Act 2013, Schedule III, Part II.
+// All aggregation is server-side (domain.reporting). The component fetches
+// account-level lines and groups them per Companies Act 2013, Schedule III,
+// Part II for presentation only.
 
 interface CashPLData {
   revenue: { lines: { account_name: string; amount_paise: number }[]; total_paise: number };
@@ -877,6 +855,20 @@ interface CashPLData {
   net_profit_paise: number;
   start_date: string;
   end_date: string;
+}
+
+// Account-level line returned by the backend P&L (accrual & cash).
+interface PLApiLine {
+  account_id: string;
+  account_name: string;
+  account_code?: string;
+  account_subtype?: string | null;
+  amount_paise: number;
+}
+interface PLApiData {
+  revenue: { lines: PLApiLine[]; total_paise: number };
+  operating_expenses: { lines: PLApiLine[]; total_paise: number };
+  net_profit_paise: number;
 }
 
 function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financialYear: string }) {
@@ -898,36 +890,31 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
+    // Both bases computed server-side from the same posted ledger, scoped to this
+    // client (IT Act §44AA). The frontend only passes parameters and groups the
+    // returned account lines for display (Schedule III) — no financial math here.
+    const { start, end } = fyDateRange(financialYear);
+    const res = (await api.accounting.profitLoss({
+      basis, start_date: start, end_date: end, client_id: clientId,
+    })) as { success: boolean; data: PLApiData | null };
 
     if (basis === "cash") {
-      // All calculations backend-only — frontend only passes parameters (CLAUDE.md)
-      const { start, end } = fyDateRange(financialYear);
-      const res = await api.accounting.profitLoss({ basis: "cash", start_date: start, end_date: end });
-      if (res.success && res.data) setCashPL(res.data as CashPLData);
+      if (res.success && res.data) setCashPL(res.data as unknown as CashPLData);
+      else setCashPL(null);
+    } else if (res.success && res.data) {
+      const d = res.data;
+      const toBal = (l: PLApiLine, type: string): AccountBalance => ({
+        account_id: l.account_id, account_code: l.account_code ?? "",
+        account_name: l.account_name, account_type: type,
+        account_subtype: l.account_subtype ?? null, net_paise: l.amount_paise,
+      });
+      const rows = [
+        ...(d.revenue?.lines ?? []).map((l) => toBal(l, "Revenue")),
+        ...(d.operating_expenses?.lines ?? []).map((l) => toBal(l, "Expense")),
+      ].filter((b) => b.net_paise !== 0).sort((a, b) => a.account_code.localeCompare(b.account_code));
+      setBalances(rows);
     } else {
-      const { start, end } = fyDateRange(financialYear);
-      const supabase = getSupabaseClient();
-      const { data } = await supabase
-        .from("journal_lines")
-        .select("debit_paise, credit_paise, chart_of_accounts!inner(id, account_code, account_name, account_type, account_subtype), journal_entries!inner(entry_date, is_posted, client_id, deleted_at)")
-        .eq("journal_entries.client_id", clientId)
-        .eq("journal_entries.is_posted", true)
-        .is("journal_entries.deleted_at", null)
-        .gte("journal_entries.entry_date", start)
-        .lte("journal_entries.entry_date", end)
-        .in("chart_of_accounts.account_type", ["Revenue", "Expense"]);
-
-      const map: Record<string, AccountBalance> = {};
-      for (const row of (data ?? []) as unknown as Array<{
-        debit_paise: number; credit_paise: number;
-        chart_of_accounts: { id: string; account_code: string; account_name: string; account_type: string; account_subtype: string | null };
-      }>) {
-        const acc = row.chart_of_accounts;
-        if (!map[acc.id]) map[acc.id] = { account_id: acc.id, account_code: acc.account_code, account_name: acc.account_name, account_type: acc.account_type, account_subtype: acc.account_subtype, net_paise: 0 };
-        if (acc.account_type === "Revenue") map[acc.id].net_paise += row.credit_paise - row.debit_paise;
-        else map[acc.id].net_paise += row.debit_paise - row.credit_paise;
-      }
-      setBalances(Object.values(map).filter((b) => b.net_paise !== 0).sort((a, b) => a.account_code.localeCompare(b.account_code)));
+      setBalances([]);
     }
     setLoading(false); setLoaded(true);
   }, [clientId, financialYear, basis]);
@@ -1091,6 +1078,24 @@ interface CashBSData {
   is_balanced: boolean;
 }
 
+// Account-level shapes returned by the backend balance sheet (accrual & cash).
+interface BSApiLine {
+  account_id?: string;
+  account_name: string;
+  account_code?: string;
+  account_subtype?: string | null;
+  balance_paise: number;
+}
+interface BSApiSection { label: string; lines: BSApiLine[]; total_paise: number }
+interface BSApiData {
+  assets: BSApiSection[];
+  liabilities: BSApiSection[];
+  equity: BSApiSection[];
+  total_assets_paise: number;
+  total_liabilities_equity_paise: number;
+  is_balanced: boolean;
+}
+
 function BalanceSheet({ clientId, financialYear }: { clientId: string; financialYear: string }) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -1110,45 +1115,33 @@ function BalanceSheet({ clientId, financialYear }: { clientId: string; financial
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
+    // Both bases computed server-side from the same posted ledger, scoped to this
+    // client (Companies Act §128). Retained earnings / net profit is computed in
+    // the backend and returned in the equity section. The frontend only groups
+    // the returned balances for Schedule III presentation — no financial math.
+    const { end } = fyDateRange(financialYear);
+    const res = (await api.accounting.balanceSheet({
+      basis, as_of_date: end, client_id: clientId,
+    })) as { success: boolean; data: BSApiData | null };
 
     if (basis === "cash") {
-      // All calculations backend-only — frontend only passes parameters (CLAUDE.md)
-      const { end } = fyDateRange(financialYear);
-      const res = await api.accounting.balanceSheet({ basis: "cash", as_of_date: end });
-      if (res.success && res.data) setCashBS(res.data as CashBSData);
+      if (res.success && res.data) setCashBS(res.data as unknown as CashBSData);
+      else setCashBS(null);
+    } else if (res.success && res.data) {
+      const d = res.data;
+      const fromSection = (secs: BSApiSection[] | undefined, type: string): AccountBalance[] =>
+        (secs ?? []).flatMap((s) => (s.lines ?? []).map((l) => ({
+          account_id: l.account_id ?? l.account_name, account_code: l.account_code ?? "",
+          account_name: l.account_name, account_type: type,
+          account_subtype: l.account_subtype ?? null, net_paise: l.balance_paise,
+        })));
+      setBalances([
+        ...fromSection(d.assets, "Asset"),
+        ...fromSection(d.liabilities, "Liability"),
+        ...fromSection(d.equity, "Equity"),
+      ].sort((a, b) => a.account_code.localeCompare(b.account_code)));
     } else {
-      const { end } = fyDateRange(financialYear);
-      const supabase = getSupabaseClient();
-
-      const { data } = await supabase
-        .from("journal_lines")
-        .select("debit_paise, credit_paise, chart_of_accounts!inner(id, account_code, account_name, account_type, account_subtype), journal_entries!inner(entry_date, is_posted, client_id, deleted_at)")
-        .eq("journal_entries.client_id", clientId)
-        .eq("journal_entries.is_posted", true)
-        .is("journal_entries.deleted_at", null)
-        .lte("journal_entries.entry_date", end);
-
-      const map: Record<string, AccountBalance> = {};
-      let revNet = 0, expNet = 0;
-
-      for (const row of (data ?? []) as unknown as Array<{
-        debit_paise: number; credit_paise: number;
-        chart_of_accounts: { id: string; account_code: string; account_name: string; account_type: string; account_subtype: string | null };
-      }>) {
-        const acc = row.chart_of_accounts;
-        if (acc.account_type === "Revenue") { revNet += row.credit_paise - row.debit_paise; continue; }
-        if (acc.account_type === "Expense") { expNet += row.debit_paise - row.credit_paise; continue; }
-
-        if (!map[acc.id]) map[acc.id] = { account_id: acc.id, account_code: acc.account_code, account_name: acc.account_name, account_type: acc.account_type, account_subtype: acc.account_subtype, net_paise: 0 };
-        if (acc.account_type === "Asset") map[acc.id].net_paise += row.debit_paise - row.credit_paise;
-        else map[acc.id].net_paise += row.credit_paise - row.debit_paise;
-      }
-
-      const bs = Object.values(map).filter((b) => b.net_paise !== 0).sort((a, b) => a.account_code.localeCompare(b.account_code));
-      if (revNet !== 0 || expNet !== 0) {
-        bs.push({ account_id: "__retained__", account_code: "", account_name: `Current Year P&L (FY ${financialYear})`, account_type: "Equity", account_subtype: "Reserves & Surplus", net_paise: revNet - expNet });
-      }
-      setBalances(bs);
+      setBalances([]);
     }
     setLoading(false); setLoaded(true);
   }, [clientId, financialYear, basis]);
