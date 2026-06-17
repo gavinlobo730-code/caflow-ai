@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Plus, RefreshCw, Upload, CheckCircle, X, Printer, FileText, Download, Share2 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { api } from "@/lib/api";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import {
   parseCSV,
@@ -90,6 +92,14 @@ interface TrialRow {
   account_type: string;
   total_debit_paise: number;
   total_credit_paise: number;
+}
+
+// Backend trial-balance payload (authoritative totals computed server-side).
+interface TBApiData {
+  lines: TrialRow[];
+  total_debit_paise: number;
+  total_credit_paise: number;
+  is_balanced: boolean;
 }
 
 // Aggregated balance per account (from journal lines)
@@ -757,52 +767,70 @@ function GeneralLedger({ accounts, clientId, financialYear }: { accounts: Accoun
 // ── Trial Balance ──────────────────────────────────────────────────────────
 
 function TrialBalance({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
+
   const [rows, setRows] = useState<TrialRow[]>([]);
+  // Authoritative totals come from the backend — never recomputed here.
+  const [totals, setTotals] = useState({ debit: 0, credit: 0, balanced: true });
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+
+  const updateBasis = (b: "accrual" | "cash") => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("basis", b);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
-    const { start, end } = fyDateRange(financialYear);
-    const supabase = getSupabaseClient();
-    const { data } = await supabase
-      .from("journal_lines")
-      .select("debit_paise, credit_paise, chart_of_accounts!inner(id, account_code, account_name, account_type), journal_entries!inner(entry_date, is_posted, client_id, deleted_at)")
-      .eq("journal_entries.client_id", clientId)
-      .eq("journal_entries.is_posted", true)
-      .is("journal_entries.deleted_at", null)
-      .gte("journal_entries.entry_date", start)
-      .lte("journal_entries.entry_date", end);
-
-    if (data) {
-      const map: Record<string, TrialRow> = {};
-      for (const row of data as unknown as Array<{
-        debit_paise: number; credit_paise: number;
-        chart_of_accounts: { id: string; account_code: string; account_name: string; account_type: string };
-      }>) {
-        const acc = row.chart_of_accounts;
-        if (!map[acc.id]) map[acc.id] = { account_id: acc.id, account_code: acc.account_code, account_name: acc.account_name, account_type: acc.account_type, total_debit_paise: 0, total_credit_paise: 0 };
-        map[acc.id].total_debit_paise += row.debit_paise;
-        map[acc.id].total_credit_paise += row.credit_paise;
-      }
-      setRows(Object.values(map).sort((a, b) => a.account_code.localeCompare(b.account_code)));
+    // Both bases are computed server-side from the same posted ledger, scoped to
+    // this client (IT Act §145). The frontend only passes parameters (CLAUDE.md).
+    const { end } = fyDateRange(financialYear);
+    const res = (await api.accounting.trialBalance({
+      basis, as_of_date: end, client_id: clientId,
+    })) as { success: boolean; data: TBApiData | null };
+    if (res.success && res.data) {
+      setRows(res.data.lines ?? []);
+      setTotals({
+        debit: res.data.total_debit_paise,
+        credit: res.data.total_credit_paise,
+        balanced: res.data.is_balanced,
+      });
+    } else {
+      setRows([]);
+      setTotals({ debit: 0, credit: 0, balanced: true });
     }
     setLoading(false); setLoaded(true);
-  }, [clientId, financialYear]);
+  }, [clientId, financialYear, basis]);
 
   useEffect(() => { load(); }, [load]);
 
-  const grandDebit = rows.reduce((s, r) => s + r.total_debit_paise, 0);
-  const grandCredit = rows.reduce((s, r) => s + r.total_credit_paise, 0);
-  const isBalanced = grandDebit === grandCredit;
+  // Display totals are the backend's authoritative figures (single source of truth).
+  const grandDebit = totals.debit;
+  const grandCredit = totals.credit;
+  const isBalanced = totals.balanced;
 
   return (
     <div className="space-y-4 max-w-3xl">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">Trial Balance — FY {financialYear}</p>
-        <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+        <div className="flex items-center gap-2">
+          {/* Accrual | Cash toggle — IT Act Section 145 */}
+          <div className="flex rounded border border-[#E2E8F0] overflow-hidden text-xs">
+            <button onClick={() => updateBasis("accrual")} className={`px-3 py-1 font-medium transition-colors ${basis === "accrual" ? "bg-[#1E293B] text-white" : "bg-white text-[#64748B] hover:bg-[#F8FAFC]"}`}>Accrual</button>
+            <button onClick={() => updateBasis("cash")} className={`px-3 py-1 font-medium border-l border-[#E2E8F0] transition-colors ${basis === "cash" ? "bg-[#1E293B] text-white" : "bg-white text-[#64748B] hover:bg-[#F8FAFC]"}`}>Cash</button>
+          </div>
+          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+        </div>
       </div>
+      {basis === "cash" && (
+        <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-700">
+          Cash basis — management reporting only (IT Act §145). GST returns remain invoice-based per CGST Act.
+        </div>
+      )}
       {loading ? <div className="h-40 rounded-lg bg-[#F8FAFC] animate-pulse" /> : loaded && rows.length > 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           <table className="w-full text-xs">
@@ -834,72 +862,174 @@ function TrialBalance({ clientId, financialYear }: { clientId: string; financial
 }
 
 // ── Profit & Loss ──────────────────────────────────────────────────────────
-// Computed from journal_lines for the FY. Accounts classified per
-// Companies Act 2013, Schedule III, Part II.
+// All aggregation is server-side (domain.reporting). The component fetches
+// account-level lines and groups them per Companies Act 2013, Schedule III,
+// Part II for presentation only.
+
+interface CashPLData {
+  revenue: { lines: { account_name: string; amount_paise: number }[]; total_paise: number };
+  operating_expenses: { lines: { account_name: string; amount_paise: number }[]; total_paise: number };
+  net_profit_paise: number;
+  start_date: string;
+  end_date: string;
+}
+
+// Account-level line returned by the backend P&L (accrual & cash).
+interface PLApiLine {
+  account_id: string;
+  account_name: string;
+  account_code?: string;
+  account_subtype?: string | null;
+  amount_paise: number;
+}
+interface PLApiData {
+  revenue: { lines: PLApiLine[]; total_paise: number };
+  operating_expenses: { lines: PLApiLine[]; total_paise: number };
+  net_profit_paise: number;
+}
 
 function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
+
   const [balances, setBalances] = useState<AccountBalance[]>([]);
+  const [cashPL, setCashPL] = useState<CashPLData | null>(null);
+  // Authoritative accrual totals from the backend — never recomputed here.
+  const [plTotals, setPlTotals] = useState({ revenue: 0, expenses: 0, net: 0 });
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+
+  const updateBasis = (b: "accrual" | "cash") => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("basis", b);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
+    // Both bases computed server-side from the same posted ledger, scoped to this
+    // client (IT Act §44AA). The frontend only passes parameters and groups the
+    // returned account lines for display (Schedule III) — no financial math here.
     const { start, end } = fyDateRange(financialYear);
-    const supabase = getSupabaseClient();
-    const { data } = await supabase
-      .from("journal_lines")
-      .select("debit_paise, credit_paise, chart_of_accounts!inner(id, account_code, account_name, account_type, account_subtype), journal_entries!inner(entry_date, is_posted, client_id, deleted_at)")
-      .eq("journal_entries.client_id", clientId)
-      .eq("journal_entries.is_posted", true)
-      .is("journal_entries.deleted_at", null)
-      .gte("journal_entries.entry_date", start)
-      .lte("journal_entries.entry_date", end)
-      .in("chart_of_accounts.account_type", ["Revenue", "Expense"]);
+    const res = (await api.accounting.profitLoss({
+      basis, start_date: start, end_date: end, client_id: clientId,
+    })) as { success: boolean; data: PLApiData | null };
 
-    const map: Record<string, AccountBalance> = {};
-    for (const row of (data ?? []) as unknown as Array<{
-      debit_paise: number; credit_paise: number;
-      chart_of_accounts: { id: string; account_code: string; account_name: string; account_type: string; account_subtype: string | null };
-    }>) {
-      const acc = row.chart_of_accounts;
-      if (!map[acc.id]) map[acc.id] = { account_id: acc.id, account_code: acc.account_code, account_name: acc.account_name, account_type: acc.account_type, account_subtype: acc.account_subtype, net_paise: 0 };
-      // Revenue: credit = positive, debit = negative
-      // Expense: debit = positive, credit = negative
-      if (acc.account_type === "Revenue") map[acc.id].net_paise += row.credit_paise - row.debit_paise;
-      else map[acc.id].net_paise += row.debit_paise - row.credit_paise;
+    if (basis === "cash") {
+      if (res.success && res.data) setCashPL(res.data as unknown as CashPLData);
+      else setCashPL(null);
+    } else if (res.success && res.data) {
+      const d = res.data;
+      const toBal = (l: PLApiLine, type: string): AccountBalance => ({
+        account_id: l.account_id, account_code: l.account_code ?? "",
+        account_name: l.account_name, account_type: type,
+        account_subtype: l.account_subtype ?? null, net_paise: l.amount_paise,
+      });
+      const rows = [
+        ...(d.revenue?.lines ?? []).map((l) => toBal(l, "Revenue")),
+        ...(d.operating_expenses?.lines ?? []).map((l) => toBal(l, "Expense")),
+      ].filter((b) => b.net_paise !== 0).sort((a, b) => a.account_code.localeCompare(b.account_code));
+      setBalances(rows);
+      setPlTotals({
+        revenue: d.revenue?.total_paise ?? 0,
+        expenses: d.operating_expenses?.total_paise ?? 0,
+        net: d.net_profit_paise ?? 0,
+      });
+    } else {
+      setBalances([]);
+      setPlTotals({ revenue: 0, expenses: 0, net: 0 });
     }
-    setBalances(Object.values(map).filter((b) => b.net_paise !== 0).sort((a, b) => a.account_code.localeCompare(b.account_code)));
     setLoading(false); setLoaded(true);
-  }, [clientId, financialYear]);
+  }, [clientId, financialYear, basis]);
 
   useEffect(() => { load(); }, [load]);
 
   const revenue = balances.filter((b) => b.account_type === "Revenue");
   const expenses = balances.filter((b) => b.account_type === "Expense");
-  const totalRevenue = revenue.reduce((s, b) => s + b.net_paise, 0);
-  const totalExpenses = expenses.reduce((s, b) => s + b.net_paise, 0);
-  const netPL = totalRevenue - totalExpenses;
+  // Grand totals are the backend's authoritative figures; bucket subtotals below
+  // are presentation-only Schedule III grouping of the same backend line amounts.
+  const totalRevenue = plTotals.revenue;
+  const totalExpenses = plTotals.expenses;
+  const netPL = plTotals.net;
 
-  // Group into Schedule III P&L buckets
   const revBuckets = groupBy(revenue, (b) => plBucket(b.account_type, b.account_subtype));
   const expBuckets = groupBy(expenses, (b) => plBucket(b.account_type, b.account_subtype));
 
   const PL_REV_ORDER = ["Revenue from Operations", "Other Income"];
   const PL_EXP_ORDER = ["Cost of Materials Consumed", "Employee Benefit Expense", "Finance Costs", "Depreciation & Amortisation", "Other Expenses"];
 
+  const BasisToggle = () => (
+    <div className="flex rounded border border-[#E2E8F0] overflow-hidden text-xs">
+      <button onClick={() => updateBasis("accrual")} className={`px-3 py-1 font-medium transition-colors ${basis === "accrual" ? "bg-[#1E293B] text-white" : "bg-white text-[#64748B] hover:bg-[#F8FAFC]"}`}>Accrual</button>
+      <button onClick={() => updateBasis("cash")} className={`px-3 py-1 font-medium border-l border-[#E2E8F0] transition-colors ${basis === "cash" ? "bg-[#1E293B] text-white" : "bg-white text-[#64748B] hover:bg-[#F8FAFC]"}`}>Cash</button>
+    </div>
+  );
+
   return (
     <div className="space-y-4 max-w-2xl">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">Statement of Profit & Loss — FY {financialYear}</p>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <BasisToggle />
           <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button onClick={() => window.print()} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]" title="Print"><Printer size={13} /></button>
         </div>
       </div>
 
+      {/* Cash basis disclaimer — IT Act §44AA */}
+      {basis === "cash" && (
+        <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-700">
+          Cash basis — management reporting only (IT Act §44AA). Revenue shown only when collected; expenses when paid. GST returns are not affected.
+        </div>
+      )}
+
       {loading && <div className="h-48 rounded-lg bg-[#F8FAFC] animate-pulse" />}
-      {!loading && loaded && (
+
+      {/* Cash basis P&L — simplified flat view (no Schedule III bucketing) */}
+      {!loading && loaded && basis === "cash" && cashPL && (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="px-5 py-4 bg-[#F8FAFC] border-b border-[#F1F5F9]">
+            <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">Statement of Profit & Loss (Cash Basis)</p>
+            <p className="text-[10px] text-[#94A3B8] mt-0.5">For the year ended 31 March {parseInt(financialYear.split("-")[0]) + 1} · Management Report Only</p>
+          </div>
+          <table className="w-full text-xs">
+            <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
+            <tbody>
+              <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">I. Revenue (Collected)</td></tr>
+              {cashPL.revenue.lines.map((l, i) => (
+                <tr key={i} className="hover:bg-[#F8FAFC]">
+                  <td className="px-5 py-1.5 pl-10 text-[#334155]">{l.account_name}</td>
+                  <td className="px-4 py-1.5 text-right font-mono text-[#334155]">{fmt(l.amount_paise)}</td>
+                </tr>
+              ))}
+              <tr className="border-t border-[#E2E8F0] font-semibold">
+                <td className="px-5 py-2.5 text-[#1E293B]">Total Revenue (I)</td>
+                <td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(cashPL.revenue.total_paise)}</td>
+              </tr>
+              <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">II. Expenses (Paid)</td></tr>
+              {cashPL.operating_expenses.lines.map((l, i) => (
+                <tr key={i} className="hover:bg-[#F8FAFC]">
+                  <td className="px-5 py-1.5 pl-10 text-[#334155]">{l.account_name}</td>
+                  <td className="px-4 py-1.5 text-right font-mono text-[#334155]">{fmt(l.amount_paise)}</td>
+                </tr>
+              ))}
+              <tr className="border-t border-[#E2E8F0] font-semibold">
+                <td className="px-5 py-2.5 text-[#1E293B]">Total Expenses (II)</td>
+                <td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(cashPL.operating_expenses.total_paise)}</td>
+              </tr>
+              <tr className={`border-t-2 border-gray-300 font-bold text-sm ${cashPL.net_profit_paise >= 0 ? "bg-green-50" : "bg-red-50"}`}>
+                <td className="px-5 py-3 text-[#0F172A]">{cashPL.net_profit_paise >= 0 ? "III. Profit (I − II)" : "III. Loss (II − I)"}</td>
+                <td className={`px-4 py-3 text-right font-mono ${cashPL.net_profit_paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmt(Math.abs(cashPL.net_profit_paise))}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Accrual basis P&L — Schedule III format */}
+      {!loading && loaded && basis === "accrual" && (
         <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden print:border-0">
           <div className="px-5 py-4 bg-[#F8FAFC] border-b border-[#F1F5F9] print:bg-white">
             <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">Statement of Profit & Loss</p>
@@ -908,22 +1038,17 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
           <table className="w-full text-xs">
             <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
             <tbody>
-              {/* Revenue */}
               <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">I. Revenue</td></tr>
               {PL_REV_ORDER.map((bucket) => {
                 const items = revBuckets[bucket] ?? [];
                 if (items.length === 0) return null;
                 const total = items.reduce((s, b) => s + b.net_paise, 0);
-                return (
-                  <PLSection key={bucket} label={bucket} items={items} total={total} />
-                );
+                return <PLSection key={bucket} label={bucket} items={items} total={total} />;
               })}
               <tr className="border-t border-[#E2E8F0] font-semibold">
                 <td className="px-5 py-2.5 text-[#1E293B]">Total Revenue (I)</td>
                 <td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(totalRevenue)}</td>
               </tr>
-
-              {/* Expenses */}
               <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">II. Expenses</td></tr>
               {PL_EXP_ORDER.map((bucket) => {
                 const items = expBuckets[bucket] ?? [];
@@ -935,15 +1060,9 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
                 <td className="px-5 py-2.5 text-[#1E293B]">Total Expenses (II)</td>
                 <td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(totalExpenses)}</td>
               </tr>
-
-              {/* Net P&L */}
               <tr className={`border-t-2 border-gray-300 font-bold text-sm ${netPL >= 0 ? "bg-green-50" : "bg-red-50"}`}>
-                <td className="px-5 py-3 text-[#0F172A]">
-                  {netPL >= 0 ? "III. Profit for the Year (I − II)" : "III. Loss for the Year (II − I)"}
-                </td>
-                <td className={`px-4 py-3 text-right font-mono ${netPL >= 0 ? "text-green-700" : "text-red-700"}`}>
-                  {fmt(Math.abs(netPL))}
-                </td>
+                <td className="px-5 py-3 text-[#0F172A]">{netPL >= 0 ? "III. Profit for the Year (I − II)" : "III. Loss for the Year (II − I)"}</td>
+                <td className={`px-4 py-3 text-right font-mono ${netPL >= 0 ? "text-green-700" : "text-red-700"}`}>{fmt(Math.abs(netPL))}</td>
               </tr>
             </tbody>
           </table>
@@ -976,62 +1095,108 @@ function PLSection({ label, items, total }: { label: string; items: AccountBalan
 // Cumulative balances up to FY end date.
 // Companies Act 2013, Schedule III, Part I.
 
+interface CashBSSection { label: string; lines: { account_name: string; balance_paise: number }[]; total_paise: number }
+interface CashBSData {
+  assets: CashBSSection[];
+  liabilities: CashBSSection[];
+  equity: CashBSSection[];
+  total_assets_paise: number;
+  total_liabilities_equity_paise: number;
+  is_balanced: boolean;
+}
+
+// Account-level shapes returned by the backend balance sheet (accrual & cash).
+interface BSApiLine {
+  account_id?: string;
+  account_name: string;
+  account_code?: string;
+  account_subtype?: string | null;
+  balance_paise: number;
+}
+interface BSApiSection { label: string; lines: BSApiLine[]; total_paise: number }
+interface BSApiData {
+  assets: BSApiSection[];
+  liabilities: BSApiSection[];
+  equity: BSApiSection[];
+  total_assets_paise: number;
+  total_liabilities_equity_paise: number;
+  is_balanced: boolean;
+}
+
 function BalanceSheet({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
+
   const [balances, setBalances] = useState<AccountBalance[]>([]);
+  const [cashBS, setCashBS] = useState<CashBSData | null>(null);
+  // Authoritative accrual totals from the backend — never recomputed here.
+  const [bsTotals, setBsTotals] = useState({ assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true });
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+
+  const updateBasis = (b: "accrual" | "cash") => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("basis", b);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
+    // Both bases computed server-side from the same posted ledger, scoped to this
+    // client (Companies Act §128). Retained earnings / net profit is computed in
+    // the backend and returned in the equity section. The frontend only groups
+    // the returned balances for Schedule III presentation — no financial math.
     const { end } = fyDateRange(financialYear);
-    const supabase = getSupabaseClient();
+    const res = (await api.accounting.balanceSheet({
+      basis, as_of_date: end, client_id: clientId,
+    })) as { success: boolean; data: BSApiData | null };
 
-    // Cumulative: all posted entries up to FY end date
-    const { data } = await supabase
-      .from("journal_lines")
-      .select("debit_paise, credit_paise, chart_of_accounts!inner(id, account_code, account_name, account_type, account_subtype), journal_entries!inner(entry_date, is_posted, client_id, deleted_at)")
-      .eq("journal_entries.client_id", clientId)
-      .eq("journal_entries.is_posted", true)
-      .is("journal_entries.deleted_at", null)
-      .lte("journal_entries.entry_date", end);
-
-    const map: Record<string, AccountBalance> = {};
-    let revNet = 0, expNet = 0;
-
-    for (const row of (data ?? []) as unknown as Array<{
-      debit_paise: number; credit_paise: number;
-      chart_of_accounts: { id: string; account_code: string; account_name: string; account_type: string; account_subtype: string | null };
-    }>) {
-      const acc = row.chart_of_accounts;
-      if (acc.account_type === "Revenue") { revNet += row.credit_paise - row.debit_paise; continue; }
-      if (acc.account_type === "Expense") { expNet += row.debit_paise - row.credit_paise; continue; }
-
-      if (!map[acc.id]) map[acc.id] = { account_id: acc.id, account_code: acc.account_code, account_name: acc.account_name, account_type: acc.account_type, account_subtype: acc.account_subtype, net_paise: 0 };
-      // Normal balance: Asset = Dr, Liability = Cr, Equity = Cr
-      if (acc.account_type === "Asset") map[acc.id].net_paise += row.debit_paise - row.credit_paise;
-      else map[acc.id].net_paise += row.credit_paise - row.debit_paise;
+    if (basis === "cash") {
+      if (res.success && res.data) setCashBS(res.data as unknown as CashBSData);
+      else setCashBS(null);
+    } else if (res.success && res.data) {
+      const d = res.data;
+      const fromSection = (secs: BSApiSection[] | undefined, type: string): AccountBalance[] =>
+        (secs ?? []).flatMap((s) => (s.lines ?? []).map((l) => ({
+          account_id: l.account_id ?? l.account_name, account_code: l.account_code ?? "",
+          account_name: l.account_name, account_type: type,
+          account_subtype: l.account_subtype ?? null, net_paise: l.balance_paise,
+        })));
+      setBalances([
+        ...fromSection(d.assets, "Asset"),
+        ...fromSection(d.liabilities, "Liability"),
+        ...fromSection(d.equity, "Equity"),
+      ].sort((a, b) => a.account_code.localeCompare(b.account_code)));
+      setBsTotals({
+        assets: d.total_assets_paise ?? 0,
+        liab: d.liabilities?.[0]?.total_paise ?? 0,
+        equity: d.equity?.[0]?.total_paise ?? 0,
+        liabEquity: d.total_liabilities_equity_paise ?? 0,
+        balanced: d.is_balanced ?? false,
+      });
+    } else {
+      setBalances([]);
+      setBsTotals({ assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true });
     }
-
-    const bs = Object.values(map).filter((b) => b.net_paise !== 0).sort((a, b) => a.account_code.localeCompare(b.account_code));
-    // Inject current year retained earnings
-    if (revNet !== 0 || expNet !== 0) {
-      bs.push({ account_id: "__retained__", account_code: "", account_name: `Current Year P&L (FY ${financialYear})`, account_type: "Equity", account_subtype: "Reserves & Surplus", net_paise: revNet - expNet });
-    }
-    setBalances(bs);
     setLoading(false); setLoaded(true);
-  }, [clientId, financialYear]);
+  }, [clientId, financialYear, basis]);
 
   useEffect(() => { load(); }, [load]);
 
-  const assets = balances.filter((b) => b.account_type === "Asset" && b.net_paise > 0);
-  const liabilities = balances.filter((b) => b.account_type === "Liability" && b.net_paise > 0);
+  // Line inclusion mirrors the backend section contents (non-zero balances) so
+  // the displayed lines and the backend totals below always reconcile.
+  const assets = balances.filter((b) => b.account_type === "Asset" && b.net_paise !== 0);
+  const liabilities = balances.filter((b) => b.account_type === "Liability" && b.net_paise !== 0);
   const equity = balances.filter((b) => b.account_type === "Equity");
 
-  const totalAssets = assets.reduce((s, b) => s + b.net_paise, 0);
-  const totalLiab = liabilities.reduce((s, b) => s + b.net_paise, 0);
-  const totalEquity = equity.reduce((s, b) => s + b.net_paise, 0);
-  const isBalanced = totalAssets === totalLiab + totalEquity;
+  // Grand totals are the backend's authoritative figures; bucket subtotals below
+  // are presentation-only Schedule III grouping of the same backend line amounts.
+  const totalAssets = bsTotals.assets;
+  const totalLiab = bsTotals.liab;
+  const totalEquity = bsTotals.equity;
+  const isBalanced = bsTotals.balanced;
 
   const assetBuckets = groupBy(assets, (b) => bsBucket(b.account_type, b.account_subtype));
   const liabBuckets = groupBy(liabilities, (b) => bsBucket(b.account_type, b.account_subtype));
@@ -1041,20 +1206,80 @@ function BalanceSheet({ clientId, financialYear }: { clientId: string; financial
   const BS_LIAB_ORDER = ["Long-term Borrowings", "Short-term Borrowings", "Trade Payables", "Tax Liabilities", "Other Current Liabilities"];
   const BS_EQ_ORDER = ["Share Capital", "Reserves & Surplus"];
 
+  const BasisToggle = () => (
+    <div className="flex rounded border border-[#E2E8F0] overflow-hidden text-xs">
+      <button onClick={() => updateBasis("accrual")} className={`px-3 py-1 font-medium transition-colors ${basis === "accrual" ? "bg-[#1E293B] text-white" : "bg-white text-[#64748B] hover:bg-[#F8FAFC]"}`}>Accrual</button>
+      <button onClick={() => updateBasis("cash")} className={`px-3 py-1 font-medium border-l border-[#E2E8F0] transition-colors ${basis === "cash" ? "bg-[#1E293B] text-white" : "bg-white text-[#64748B] hover:bg-[#F8FAFC]"}`}>Cash</button>
+    </div>
+  );
+
   return (
     <div className="space-y-4 max-w-2xl">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">Balance Sheet — as at 31 March {parseInt(financialYear.split("-")[0]) + 1}</p>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <BasisToggle />
           <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button onClick={() => window.print()} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]" title="Print"><Printer size={13} /></button>
         </div>
       </div>
 
+      {/* Cash basis disclaimer — Companies Act §128 */}
+      {basis === "cash" && (
+        <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-700">
+          Cash basis — management reporting only (IT Act §145). Companies Act §128 requires accrual for statutory accounts. Unpaid receivables and payables are excluded from this view.
+        </div>
+      )}
+
       {loading && <div className="h-48 rounded-lg bg-[#F8FAFC] animate-pulse" />}
-      {!loading && loaded && (
+
+      {/* Cash basis balance sheet — simplified flat view */}
+      {!loading && loaded && basis === "cash" && cashBS && (
         <div className="space-y-4">
-          {/* Equity & Liabilities side */}
+          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+            <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#F1F5F9]">
+              <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">I. Equity & Liabilities (Cash Basis)</p>
+            </div>
+            <table className="w-full text-xs">
+              <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
+              <tbody>
+                <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(A) Equity</td></tr>
+                {(cashBS.equity[0]?.lines ?? []).map((l, i) => (
+                  <tr key={i} className="hover:bg-[#F8FAFC]"><td className="px-5 py-1.5 pl-10 text-[#334155]">{l.account_name}</td><td className="px-4 py-1.5 text-right font-mono text-[#334155]">{fmt(l.balance_paise)}</td></tr>
+                ))}
+                <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Equity</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(cashBS.equity[0]?.total_paise ?? 0)}</td></tr>
+                <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(B) Liabilities</td></tr>
+                {(cashBS.liabilities[0]?.lines ?? []).map((l, i) => (
+                  <tr key={i} className="hover:bg-[#F8FAFC]"><td className="px-5 py-1.5 pl-10 text-[#334155]">{l.account_name}</td><td className="px-4 py-1.5 text-right font-mono text-[#334155]">{fmt(l.balance_paise)}</td></tr>
+                ))}
+                <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Liabilities</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(cashBS.liabilities[0]?.total_paise ?? 0)}</td></tr>
+                <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Equity & Liabilities</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(cashBS.total_liabilities_equity_paise)}</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+            <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#F1F5F9]">
+              <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">II. Assets (Cash Basis)</p>
+            </div>
+            <table className="w-full text-xs">
+              <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
+              <tbody>
+                {(cashBS.assets[0]?.lines ?? []).map((l, i) => (
+                  <tr key={i} className="hover:bg-[#F8FAFC]"><td className="px-5 py-1.5 pl-10 text-[#334155]">{l.account_name}</td><td className="px-4 py-1.5 text-right font-mono text-[#334155]">{fmt(l.balance_paise)}</td></tr>
+                ))}
+                <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Assets</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(cashBS.total_assets_paise)}</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div className={`rounded-lg px-4 py-3 text-xs font-medium ${cashBS.is_balanced ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+            {cashBS.is_balanced ? "✓ Balance Sheet balances — Assets = Equity + Liabilities" : "✗ Balance Sheet out of balance — check for errors"}
+          </div>
+        </div>
+      )}
+
+      {/* Accrual balance sheet — Schedule III format */}
+      {!loading && loaded && basis === "accrual" && (
+        <div className="space-y-4">
           <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
             <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#F1F5F9]">
               <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">I. Equity & Liabilities</p>
@@ -1066,17 +1291,13 @@ function BalanceSheet({ clientId, financialYear }: { clientId: string; financial
                 {BS_EQ_ORDER.map((bucket) => { const items = equityBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} />; })}
                 {equityBuckets["Capital Account"] && <BSSectionRows label="Capital Account" items={equityBuckets["Capital Account"]} />}
                 <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Equity</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(totalEquity)}</td></tr>
-
                 <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(B) Liabilities</td></tr>
                 {BS_LIAB_ORDER.map((bucket) => { const items = liabBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} />; })}
                 <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Liabilities</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(totalLiab)}</td></tr>
-
                 <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Equity & Liabilities</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(totalLiab + totalEquity)}</td></tr>
               </tbody>
             </table>
           </div>
-
-          {/* Assets side */}
           <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
             <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#F1F5F9]">
               <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">II. Assets</p>
@@ -1089,12 +1310,8 @@ function BalanceSheet({ clientId, financialYear }: { clientId: string; financial
               </tbody>
             </table>
           </div>
-
-          {/* Balance check */}
           <div className={`rounded-lg px-4 py-3 text-xs font-medium ${isBalanced ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-            {isBalanced
-              ? "✓ Balance Sheet balances — Assets = Equity + Liabilities"
-              : `✗ Out of balance by ${fmt(Math.abs(totalAssets - totalLiab - totalEquity))} — check for unposted entries`}
+            {isBalanced ? "✓ Balance Sheet balances — Assets = Equity + Liabilities" : `✗ Out of balance by ${fmt(Math.abs(totalAssets - totalLiab - totalEquity))} — check for unposted entries`}
           </div>
           {balances.length === 0 && <div className="text-center py-8 text-[#94A3B8] text-sm">No posted journal entries found for this client.</div>}
         </div>
@@ -1554,6 +1771,11 @@ function YearEndClose({ financialYear }: { financialYear: string }) {
 // ── Financial Reports ──────────────────────────────────────────────────────
 
 function FinancialReports({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+  // Exports follow the same basis the user is viewing (URL-persisted).
+  const searchParams = useSearchParams();
+  const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
+  const basisLabel = basis === "cash" ? "Cash" : "Accrual";
+
   const [sharedReports, setSharedReports] = useState<{
     id: string; report_type: string; report_label: string; financial_year: string; file_name: string; created_at: string; storage_path: string;
   }[]>([]);
@@ -1577,97 +1799,70 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
 
   useEffect(() => { loadShared(); }, [loadShared]);
 
+  // Build report rows from the backend reporting engine — the SAME API the
+  // on-screen reports use — so exported figures match the screen exactly for the
+  // selected basis. No journal aggregation in the browser (single source of truth).
+  async function buildReportSheet(
+    reportType: "pl" | "bs" | "trial",
+  ): Promise<{ rows: Record<string, string | number>[]; sheetName: string }> {
+    const { start, end } = fyDateRange(financialYear);
+    const money = (p: number) => (p / 100).toFixed(2);
+
+    if (reportType === "trial") {
+      const res = (await api.accounting.trialBalance({ basis, as_of_date: end, client_id: clientId })) as
+        { success: boolean; data: TBApiData | null };
+      const d = res.data;
+      const rows: Record<string, string | number>[] = (d?.lines ?? []).map((l) => ({
+        "Account Code": l.account_code, "Account Name": l.account_name, "Type": l.account_type,
+        "Debit (₹)": money(l.total_debit_paise), "Credit (₹)": money(l.total_credit_paise),
+      }));
+      rows.push({
+        "Account Code": "TOTAL", "Account Name": "", "Type": "",
+        "Debit (₹)": money(d?.total_debit_paise ?? 0), "Credit (₹)": money(d?.total_credit_paise ?? 0),
+      });
+      return { rows, sheetName: `Trial Balance ${basisLabel}`.slice(0, 31) };
+    }
+
+    if (reportType === "pl") {
+      const res = (await api.accounting.profitLoss({ basis, start_date: start, end_date: end, client_id: clientId })) as
+        { success: boolean; data: PLApiData | null };
+      const d = res.data;
+      const rows: Record<string, string | number>[] = [];
+      for (const l of d?.revenue.lines ?? [])
+        rows.push({ "Schedule III Category": plBucket("Revenue", l.account_subtype ?? null), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Revenue", "Amount (₹)": money(l.amount_paise) });
+      rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Revenue", "Type": "", "Amount (₹)": money(d?.revenue.total_paise ?? 0) });
+      for (const l of d?.operating_expenses.lines ?? [])
+        rows.push({ "Schedule III Category": plBucket("Expense", l.account_subtype ?? null), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Expense", "Amount (₹)": money(l.amount_paise) });
+      rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Expenses", "Type": "", "Amount (₹)": money(d?.operating_expenses.total_paise ?? 0) });
+      rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Net Profit", "Type": "", "Amount (₹)": money(d?.net_profit_paise ?? 0) });
+      return { rows, sheetName: `P&L ${basisLabel}`.slice(0, 31) };
+    }
+
+    const res = (await api.accounting.balanceSheet({ basis, as_of_date: end, client_id: clientId })) as
+      { success: boolean; data: BSApiData | null };
+    const d = res.data;
+    const rows: Record<string, string | number>[] = [];
+    const section = (secs: BSApiSection[] | undefined, type: string) => {
+      for (const s of secs ?? []) for (const l of s.lines ?? [])
+        rows.push({ "Schedule III Category": bsBucket(type, l.account_subtype ?? null), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": type, "Amount (₹)": money(l.balance_paise) });
+    };
+    section(d?.assets, "Asset");
+    rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Assets", "Type": "", "Amount (₹)": money(d?.total_assets_paise ?? 0) });
+    section(d?.liabilities, "Liability");
+    section(d?.equity, "Equity");
+    rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Equity & Liabilities", "Type": "", "Amount (₹)": money(d?.total_liabilities_equity_paise ?? 0) });
+    return { rows, sheetName: `Balance Sheet ${basisLabel}`.slice(0, 31) };
+  }
+
   async function exportXLSX(reportType: "pl" | "bs" | "trial") {
     setExporting(reportType);
     try {
       const XLSX = (await import("xlsx")).default;
-      const supabase = getSupabaseClient();
-      const { start, end } = fyDateRange(financialYear);
-
-      if (reportType === "trial") {
-        const { data: lines } = await supabase
-          .from("journal_lines")
-          .select("debit_paise, credit_paise, chart_of_accounts!inner(account_code, account_name, account_type), journal_entries!inner(entry_date, is_posted, client_id, deleted_at)")
-          .eq("journal_entries.client_id", clientId)
-          .eq("journal_entries.is_posted", true)
-          .is("journal_entries.deleted_at", null)
-          .gte("journal_entries.entry_date", start)
-          .lte("journal_entries.entry_date", end);
-
-        const map: Record<string, { code: string; name: string; type: string; debit: number; credit: number }> = {};
-        for (const row of (lines ?? []) as unknown as Array<{
-          debit_paise: number; credit_paise: number;
-          chart_of_accounts: { account_code: string; account_name: string; account_type: string };
-        }>) {
-          const acc = row.chart_of_accounts;
-          const key = acc.account_code;
-          if (!map[key]) map[key] = { code: acc.account_code, name: acc.account_name, type: acc.account_type, debit: 0, credit: 0 };
-          map[key].debit += row.debit_paise;
-          map[key].credit += row.credit_paise;
-        }
-        const rows = Object.values(map).sort((a, b) => a.code.localeCompare(b.code));
-        const ws = XLSX.utils.json_to_sheet([
-          { "Account Code": "", "Account Name": "", "Type": "", "Debit (₹)": "", "Credit (₹)": "" },
-          ...rows.map((r) => ({
-            "Account Code": r.code,
-            "Account Name": r.name,
-            "Type": r.type,
-            "Debit (₹)": (r.debit / 100).toFixed(2),
-            "Credit (₹)": (r.credit / 100).toFixed(2),
-          })),
-          {
-            "Account Code": "TOTAL",
-            "Account Name": "",
-            "Type": "",
-            "Debit (₹)": (rows.reduce((s, r) => s + r.debit, 0) / 100).toFixed(2),
-            "Credit (₹)": (rows.reduce((s, r) => s + r.credit, 0) / 100).toFixed(2),
-          },
-        ], { skipHeader: true });
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, `Trial Balance FY${financialYear}`);
-        XLSX.writeFile(wb, `Trial-Balance-FY${financialYear}.xlsx`);
-
-      } else {
-        // P&L or Balance Sheet
-        const accountTypes = reportType === "pl" ? ["Revenue", "Expense"] : ["Asset", "Liability", "Equity"];
-        const { data: lines } = await supabase
-          .from("journal_lines")
-          .select("debit_paise, credit_paise, chart_of_accounts!inner(id, account_code, account_name, account_type, account_subtype), journal_entries!inner(entry_date, is_posted, client_id, deleted_at)")
-          .eq("journal_entries.client_id", clientId)
-          .eq("journal_entries.is_posted", true)
-          .is("journal_entries.deleted_at", null)
-          .gte("journal_entries.entry_date", start)
-          .lte("journal_entries.entry_date", end)
-          .in("chart_of_accounts.account_type", accountTypes);
-
-        const map: Record<string, { code: string; name: string; type: string; subtype: string | null; net: number }> = {};
-        for (const row of (lines ?? []) as unknown as Array<{
-          debit_paise: number; credit_paise: number;
-          chart_of_accounts: { id: string; account_code: string; account_name: string; account_type: string; account_subtype: string | null };
-        }>) {
-          const acc = row.chart_of_accounts;
-          if (!map[acc.id]) map[acc.id] = { code: acc.account_code, name: acc.account_name, type: acc.account_type, subtype: acc.account_subtype, net: 0 };
-          if (acc.account_type === "Revenue" || acc.account_type === "Asset")
-            map[acc.id].net += row.credit_paise - row.debit_paise;
-          else
-            map[acc.id].net += row.debit_paise - row.credit_paise;
-        }
-        const rows = Object.values(map).filter((r) => r.net !== 0).sort((a, b) => a.code.localeCompare(b.code));
-        const bucketFn = reportType === "pl" ? plBucket : bsBucket;
-        const sheetRows = rows.map((r) => ({
-          "Schedule III Category": bucketFn(r.type, r.subtype),
-          "Account Code": r.code,
-          "Account Name": r.name,
-          "Type": r.type,
-          "Amount (₹)": (r.net / 100).toFixed(2),
-        }));
-        const ws = XLSX.utils.json_to_sheet(sheetRows);
-        const wb = XLSX.utils.book_new();
-        const sheetName = reportType === "pl" ? `P&L FY${financialYear}` : `Balance Sheet FY${financialYear}`;
-        XLSX.utils.book_append_sheet(wb, ws, sheetName);
-        const fileName = reportType === "pl" ? `PL-FY${financialYear}.xlsx` : `BalanceSheet-FY${financialYear}.xlsx`;
-        XLSX.writeFile(wb, fileName);
-      }
+      const { rows, sheetName } = await buildReportSheet(reportType);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), sheetName);
+      const base = reportType === "pl" ? "PL" : reportType === "bs" ? "BalanceSheet" : "Trial-Balance";
+      XLSX.writeFile(wb, `${base}-FY${financialYear}-${basisLabel}.xlsx`);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Export failed");
     } finally {
@@ -1681,49 +1876,14 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
       const XLSX = (await import("xlsx")).default;
       const supabase = getSupabaseClient();
       const firmId = await getFirmId();
-      const { start, end } = fyDateRange(financialYear);
       const labelMap = { pl: "Profit & Loss", bs: "Balance Sheet", trial: "Trial Balance" };
-      const label = `${labelMap[reportType]} — FY ${financialYear}`;
-      const fileName = `${reportType}-FY${financialYear}-${Date.now()}.xlsx`;
+      const label = `${labelMap[reportType]} (${basisLabel}) — FY ${financialYear}`;
+      const fileName = `${reportType}-${basis}-FY${financialYear}-${Date.now()}.xlsx`;
 
-      // Generate XLSX in memory and upload to Supabase Storage
-      const accountTypes =
-        reportType === "pl" ? ["Revenue", "Expense"] :
-        reportType === "bs" ? ["Asset", "Liability", "Equity"] :
-        ["Revenue", "Expense", "Asset", "Liability", "Equity"];
-
-      const { data: lines } = await supabase
-        .from("journal_lines")
-        .select("debit_paise, credit_paise, chart_of_accounts!inner(id, account_code, account_name, account_type, account_subtype), journal_entries!inner(entry_date, is_posted, client_id, deleted_at)")
-        .eq("journal_entries.client_id", clientId)
-        .eq("journal_entries.is_posted", true)
-        .is("journal_entries.deleted_at", null)
-        .gte("journal_entries.entry_date", start)
-        .lte("journal_entries.entry_date", end)
-        .in("chart_of_accounts.account_type", accountTypes);
-
-      const map: Record<string, { code: string; name: string; type: string; subtype: string | null; debit: number; credit: number }> = {};
-      for (const row of (lines ?? []) as unknown as Array<{
-        debit_paise: number; credit_paise: number;
-        chart_of_accounts: { id: string; account_code: string; account_name: string; account_type: string; account_subtype: string | null };
-      }>) {
-        const acc = row.chart_of_accounts;
-        if (!map[acc.id]) map[acc.id] = { code: acc.account_code, name: acc.account_name, type: acc.account_type, subtype: acc.account_subtype, debit: 0, credit: 0 };
-        map[acc.id].debit += row.debit_paise;
-        map[acc.id].credit += row.credit_paise;
-      }
-
-      const rows = Object.values(map).sort((a, b) => a.code.localeCompare(b.code));
-      const sheetRows = rows.map((r) => ({
-        "Account Code": r.code,
-        "Account Name": r.name,
-        "Type": r.type,
-        "Debit (₹)": (r.debit / 100).toFixed(2),
-        "Credit (₹)": (r.credit / 100).toFixed(2),
-      }));
-
+      // Same backend-sourced report as the on-screen view and the XLSX export.
+      const { rows, sheetName } = await buildReportSheet(reportType);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetRows), label.slice(0, 31));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), sheetName);
       const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
       const file = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 
