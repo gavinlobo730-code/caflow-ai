@@ -201,8 +201,16 @@ export default function DashboardContent() {
         });
         setRecentClients((clientsData as RecentClient[]) ?? []);
         setRecentTasks(
-          ((tasksRaw ?? []) as Array<{ id: string; title: string; due_date: string | null; status: string | null; clients: { client_name: string } | null }>)
-            .map((t) => ({ ...t, client_name: t.clients?.client_name ?? null }))
+          ((tasksRaw ?? []) as unknown as Array<{
+            id: string; title: string; due_date: string | null;
+            status: string | null; clients: { client_name: string } | null;
+          }>).map((t): RecentTask => ({
+            id: t.id,
+            title: t.title,
+            due_date: t.due_date,
+            status: t.status,
+            client_name: t.clients?.client_name ?? null,
+          }))
         );
       } catch {
         setKpis({ totalClients: 0, pendingTasks: 0, filingsDueThisMonth: 0, overdueFilings: 0, demoFilings: 0 });
