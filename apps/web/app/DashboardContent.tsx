@@ -189,7 +189,7 @@ export default function DashboardContent() {
           // DEMO MODE filing simulations (separate from real compliance status).
           supabase.from("demo_filings").select("id", { count: "exact", head: true }).eq("firm_id", firmId),
           supabase.from("clients").select("id, client_name, gstin, entity_type").eq("firm_id", firmId).eq("is_internal", false).order("created_at", { ascending: false }).limit(5),
-          supabase.from("tasks").select("id, title, due_date, status, client_name").eq("firm_id", firmId).order("created_at", { ascending: false }).limit(6),
+          supabase.from("tasks").select("id, title, due_date, status, clients(client_name)").eq("firm_id", firmId).order("created_at", { ascending: false }).limit(6),
         ]);
 
         setKpis({
@@ -200,7 +200,10 @@ export default function DashboardContent() {
           demoFilings: demoCount ?? 0,
         });
         setRecentClients((clientsData as RecentClient[]) ?? []);
-        setRecentTasks((tasksRaw as RecentTask[]) ?? []);
+        setRecentTasks(
+          ((tasksRaw ?? []) as Array<{ id: string; title: string; due_date: string | null; status: string | null; clients: { client_name: string } | null }>)
+            .map((t) => ({ ...t, client_name: t.clients?.client_name ?? null }))
+        );
       } catch {
         setKpis({ totalClients: 0, pendingTasks: 0, filingsDueThisMonth: 0, overdueFilings: 0, demoFilings: 0 });
         setRecentClients([]); setRecentTasks([]);
