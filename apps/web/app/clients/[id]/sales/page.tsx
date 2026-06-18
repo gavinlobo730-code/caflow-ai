@@ -341,7 +341,7 @@ function SalesInvoices({
       supabase
         .from("client_sales_invoices")
         .select(
-          "id, invoice_no, invoice_date, due_date, customer_id, taxable_paise, gst_paise, total_paise, status, supply_state_code, is_interstate, customers(name)"
+          "id, invoice_no, invoice_date, due_date, customer_id, taxable_amount_paise, total_gst_paise, total_paise, status, supply_state_code, is_interstate, customers(name)"
         )
         .eq("client_id", clientId)
         .gte("invoice_date", start)
@@ -356,10 +356,23 @@ function SalesInvoices({
     ]);
 
     const mapped: SalesInvoice[] = ((invData ?? []) as unknown as Array<
-      SalesInvoice & { customers: { name: string } | null }
+      { id: string; invoice_no: string; invoice_date: string; due_date: string | null;
+        customer_id: string; taxable_amount_paise: number; total_gst_paise: number;
+        total_paise: number; status: string; supply_state_code: string | null;
+        is_interstate: boolean; customers: { name: string } | null }
     >).map((r) => ({
-      ...r,
+      id: r.id,
+      invoice_no: r.invoice_no,
+      invoice_date: r.invoice_date,
+      due_date: r.due_date,
+      customer_id: r.customer_id,
       customer_name: r.customers?.name ?? "—",
+      taxable_paise: r.taxable_amount_paise,
+      gst_paise: r.total_gst_paise,
+      total_paise: r.total_paise,
+      status: r.status as InvoiceStatus,
+      supply_state_code: r.supply_state_code,
+      is_interstate: r.is_interstate,
     }));
 
     setInvoices(mapped);
@@ -1622,12 +1635,12 @@ function CreditNotes({
       supabase
         .from("credit_notes")
         .select(
-          "id, cn_no, cn_date, customer_id, original_invoice_id, reason, taxable_paise, gst_paise, total_paise, status, customers(name), client_sales_invoices(invoice_no)"
+          "id, credit_note_no, credit_note_date, customer_id, sales_invoice_id, reason, taxable_amount_paise, cgst_paise, sgst_paise, igst_paise, total_paise, status, customers(name), client_sales_invoices(invoice_no)"
         )
         .eq("client_id", clientId)
-        .gte("cn_date", start)
-        .lte("cn_date", end)
-        .order("cn_date", { ascending: false }),
+        .gte("credit_note_date", start)
+        .lte("credit_note_date", end)
+        .order("credit_note_date", { ascending: false }),
       supabase
         .from("customers")
         .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
@@ -1637,11 +1650,24 @@ function CreditNotes({
     ]);
 
     const mapped: CreditNote[] = ((cnData ?? []) as unknown as Array<
-      CreditNote & { customers: { name: string } | null; client_sales_invoices: { invoice_no: string } | null }
+      { id: string; credit_note_no: string; credit_note_date: string; customer_id: string;
+        sales_invoice_id: string | null; reason: string; taxable_amount_paise: number;
+        cgst_paise: number; sgst_paise: number; igst_paise: number; total_paise: number;
+        status: string; customers: { name: string } | null;
+        client_sales_invoices: { invoice_no: string } | null }
     >).map((r) => ({
-      ...r,
+      id: r.id,
+      cn_no: r.credit_note_no,
+      cn_date: r.credit_note_date,
+      customer_id: r.customer_id,
       customer_name: r.customers?.name ?? "—",
+      original_invoice_id: r.sales_invoice_id ?? null,
       original_invoice_no: r.client_sales_invoices?.invoice_no ?? null,
+      reason: r.reason,
+      taxable_paise: r.taxable_amount_paise,
+      gst_paise: r.cgst_paise + r.sgst_paise + r.igst_paise,
+      total_paise: r.total_paise,
+      status: r.status as "draft" | "issued" | "cancelled",
     }));
 
     setCreditNotes(mapped);
