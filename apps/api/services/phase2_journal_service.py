@@ -29,8 +29,9 @@ class Phase2JournalService:
         Create journal entry for a posted sales invoice.
         Dr Trade Receivables = total_paise
         Cr Sales Revenue     = taxable_amount_paise
-        Cr GST Output (CGST/SGST/IGST) as applicable
+        Cr GST Output (CGST/SGST/IGST) as applicable — per-head accounts.
         CGST Act §9: GST on taxable outward supplies.
+        CGST Act §8: Intra-state → CGST+SGST; Inter-state → IGST.
         """
         if _USE_MOCK:
             _logger.info("[MOCK] journal_for_sales_invoice: %s", invoice.get("invoice_no"))
@@ -40,9 +41,12 @@ class Phase2JournalService:
             from core.supabase_client import get_supabase
             db = get_supabase()
 
-            receivables_id = self._find_account(db, firm_id, client_id, "%Trade Receivable%")
-            sales_id       = self._find_account(db, firm_id, client_id, "%Sales%")
-            gst_output_id  = self._find_account(db, firm_id, client_id, "%GST Output%")
+            receivables_id = self._find_account(
+                db, firm_id, client_id, "%Trade Receivable%", system_key="ar"
+            )
+            sales_id = self._find_account(
+                db, firm_id, client_id, "%Sales%", system_key="revenue"
+            )
 
             lines = [
                 {
@@ -59,23 +63,34 @@ class Phase2JournalService:
                 },
             ]
 
+            # CGST Act §8: separate posting per GST head so each head hits its own ledger.
+            # Falls back to combined %GST Output% for standard single-account charts.
             if invoice.get("cgst_paise", 0) > 0:
+                cgst_id = self._find_account(
+                    db, firm_id, client_id, "%GST Output%", system_key="gst_cgst"
+                )
                 lines.append({
-                    "account_id": gst_output_id,
+                    "account_id": cgst_id,
                     "debit_paise": 0,
                     "credit_paise": invoice["cgst_paise"],
                     "narration": "CGST output tax payable",
                 })
             if invoice.get("sgst_paise", 0) > 0:
+                sgst_id = self._find_account(
+                    db, firm_id, client_id, "%GST Output%", system_key="gst_sgst"
+                )
                 lines.append({
-                    "account_id": gst_output_id,
+                    "account_id": sgst_id,
                     "debit_paise": 0,
                     "credit_paise": invoice["sgst_paise"],
                     "narration": "SGST output tax payable",
                 })
             if invoice.get("igst_paise", 0) > 0:
+                igst_id = self._find_account(
+                    db, firm_id, client_id, "%GST Output%", system_key="gst_igst"
+                )
                 lines.append({
-                    "account_id": gst_output_id,
+                    "account_id": igst_id,
                     "debit_paise": 0,
                     "credit_paise": invoice["igst_paise"],
                     "narration": "IGST output tax payable",
@@ -121,8 +136,10 @@ class Phase2JournalService:
             tds_paise  = int(receipt.get("tds_paise", 0) or 0)
             settlement = cash_paise + tds_paise
 
-            bank_id        = self._find_account(db, firm_id, client_id, "%Bank%")
-            receivables_id = self._find_account(db, firm_id, client_id, "%Trade Receivable%")
+            bank_id        = self._find_account(db, firm_id, client_id, "%Bank%", system_key="bank")
+            receivables_id = self._find_account(
+                db, firm_id, client_id, "%Trade Receivable%", system_key="ar"
+            )
 
             lines = [
                 {
@@ -133,7 +150,9 @@ class Phase2JournalService:
                 },
             ]
             if tds_paise > 0:
-                tds_recv_id = self._find_account(db, firm_id, client_id, "%TDS Receivable%")
+                tds_recv_id = self._find_account(
+                    db, firm_id, client_id, "%TDS Receivable%", system_key="tds_receivable"
+                )
                 lines.append({
                     "account_id": tds_recv_id,
                     "debit_paise": tds_paise,
@@ -168,9 +187,10 @@ class Phase2JournalService:
     ) -> Optional[str]:
         """
         Dr Sales Returns (Sales Revenue account) = taxable_amount_paise
-        Dr GST Output Tax Payable (CGST/SGST/IGST)
+        Dr GST Output Tax Payable (CGST/SGST/IGST) — per-head accounts
         Cr Trade Receivables = total_paise
         CGST Act §34: Credit notes for reduction in taxable value.
+        CGST Act §8: Intra-state → CGST+SGST; Inter-state → IGST.
         """
         if _USE_MOCK:
             _logger.info("[MOCK] journal_for_credit_note: %s", cn.get("credit_note_no"))
@@ -180,9 +200,12 @@ class Phase2JournalService:
             from core.supabase_client import get_supabase
             db = get_supabase()
 
-            sales_id       = self._find_account(db, firm_id, client_id, "%Sales%")
-            gst_output_id  = self._find_account(db, firm_id, client_id, "%GST Output%")
-            receivables_id = self._find_account(db, firm_id, client_id, "%Trade Receivable%")
+            sales_id = self._find_account(
+                db, firm_id, client_id, "%Sales%", system_key="revenue"
+            )
+            receivables_id = self._find_account(
+                db, firm_id, client_id, "%Trade Receivable%", system_key="ar"
+            )
 
             lines = [
                 {
@@ -193,23 +216,33 @@ class Phase2JournalService:
                 },
             ]
 
+            # CGST Act §34: per-head GST reversal matches the original posting heads.
             if cn.get("cgst_paise", 0) > 0:
+                cgst_id = self._find_account(
+                    db, firm_id, client_id, "%GST Output%", system_key="gst_cgst"
+                )
                 lines.append({
-                    "account_id": gst_output_id,
+                    "account_id": cgst_id,
                     "debit_paise": cn["cgst_paise"],
                     "credit_paise": 0,
                     "narration": "CGST output tax reversed",
                 })
             if cn.get("sgst_paise", 0) > 0:
+                sgst_id = self._find_account(
+                    db, firm_id, client_id, "%GST Output%", system_key="gst_sgst"
+                )
                 lines.append({
-                    "account_id": gst_output_id,
+                    "account_id": sgst_id,
                     "debit_paise": cn["sgst_paise"],
                     "credit_paise": 0,
                     "narration": "SGST output tax reversed",
                 })
             if cn.get("igst_paise", 0) > 0:
+                igst_id = self._find_account(
+                    db, firm_id, client_id, "%GST Output%", system_key="gst_igst"
+                )
                 lines.append({
-                    "account_id": gst_output_id,
+                    "account_id": igst_id,
                     "debit_paise": cn["igst_paise"],
                     "credit_paise": 0,
                     "narration": "IGST output tax reversed",
@@ -266,9 +299,15 @@ class Phase2JournalService:
                 except ValueError:
                     purchases_id = self._find_account(db, firm_id, client_id, "%Expense%")
 
-            gst_input_id = self._find_account(db, firm_id, client_id, "%GST Input%")
-            payables_id  = self._find_account(db, firm_id, client_id, "%Trade Payable%")
-            tds_pay_id   = self._find_account(db, firm_id, client_id, "%TDS Payable%")
+            gst_input_id = self._find_account(
+                db, firm_id, client_id, "%GST Input%", system_key="gst_input"
+            )
+            payables_id = self._find_account(
+                db, firm_id, client_id, "%Trade Payable%", system_key="ap"
+            )
+            tds_pay_id = self._find_account(
+                db, firm_id, client_id, "%TDS Payable%", system_key="tds_payable"
+            )
 
             lines = [
                 {
@@ -356,8 +395,12 @@ class Phase2JournalService:
             from core.supabase_client import get_supabase
             db = get_supabase()
 
-            payables_id = self._find_account(db, firm_id, client_id, "%Trade Payable%")
-            bank_id     = self._find_account(db, firm_id, client_id, "%Bank%")
+            payables_id = self._find_account(
+                db, firm_id, client_id, "%Trade Payable%", system_key="ap"
+            )
+            bank_id = self._find_account(
+                db, firm_id, client_id, "%Bank%", system_key="bank"
+            )
 
             lines = [
                 {
@@ -414,6 +457,7 @@ class Phase2JournalService:
             from core.supabase_client import get_supabase
             db = get_supabase()
 
+            # Payroll accounts use name matching only — no system_account_key for these
             salary_exp_id  = self._find_account(db, firm_id, client_id, "%Salaries Expense%")
             net_sal_id     = self._find_account(db, firm_id, client_id, "%Net Salary Payable%")
             pf_id          = self._find_account(db, firm_id, client_id, "%PF Payable%")
@@ -494,7 +538,7 @@ class Phase2JournalService:
                 "Intangible": "%Intangible Assets%",
             }
             asset_acct = self._find_account(db, firm_id, client_id, cat_map.get(category, "%Plant & Machinery%"))
-            bank_id    = self._find_account(db, firm_id, client_id, "%Bank%")
+            bank_id    = self._find_account(db, firm_id, client_id, "%Bank%", system_key="bank")
 
             cost = asset["purchase_cost_paise"]
             return self._create_journal(
@@ -575,7 +619,7 @@ class Phase2JournalService:
             }
             asset_acct    = self._find_account(db, firm_id, client_id, cat_map.get(category, "%Plant & Machinery%"))
             accum_dep_id  = self._find_account(db, firm_id, client_id, "%Accumulated Depreciation%")
-            bank_id       = self._find_account(db, firm_id, client_id, "%Bank%")
+            bank_id       = self._find_account(db, firm_id, client_id, "%Bank%", system_key="bank")
 
             cost        = asset["purchase_cost_paise"]
             accum_depn  = asset.get("accumulated_depreciation_paise", 0)
@@ -622,15 +666,36 @@ class Phase2JournalService:
         firm_id: str,
         client_id: str,
         name_pattern: str,
+        system_key: Optional[str] = None,
     ) -> str:
         """
-        Search chart_of_accounts by account_name ILIKE for an active account
-        scoped to this firm (client_id may be NULL for firm-wide accounts).
+        Resolve a chart_of_accounts row by system_account_key first, then by
+        account_name ILIKE as fallback. Mirrors the pattern in
+        domain/reporting/resolver.py._by_key_or_name.
+
+        system_key lookup: firm-wide, not client-filtered (keys are stable).
+        name_pattern fallback: client_id OR NULL scope (mirrors the original behaviour).
 
         Raises:
-            ValueError: If no matching active account is found.
-                        Callers must set up Chart of Accounts before posting.
+            ValueError: If neither key nor name lookup finds an active account.
         """
+        if system_key:
+            try:
+                resp = (
+                    db.table("chart_of_accounts")
+                    .select("id")
+                    .eq("firm_id", firm_id)
+                    .eq("system_account_key", system_key)
+                    .eq("is_active", True)
+                    .limit(1)
+                    .execute()
+                )
+                if resp.data:
+                    return resp.data[0]["id"]
+            except Exception as e:
+                _logger.warning("_find_account key lookup failed (%s): %s", system_key, e)
+
+        # Name-pattern fallback — preserves pre-key behaviour for all accounts
         try:
             resp = (
                 db.table("chart_of_accounts")
