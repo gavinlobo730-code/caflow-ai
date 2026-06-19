@@ -1,7 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Plus, RefreshCw, X, FileText, CheckCircle, Upload, Send, Clock } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  Plus, RefreshCw, X, FileText, CheckCircle, Upload, Send, Clock,
+  Pencil, Trash2, Search, Eye, Download, ArrowUp, ArrowDown, Loader2, AlertTriangle,
+} from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
@@ -109,6 +112,7 @@ interface SalesInvoice {
   taxable_paise: number;
   gst_paise: number;
   total_paise: number;
+  paid_paise?: number;
   status: InvoiceStatus;
   supply_state_code: string | null;
   is_interstate: boolean;
@@ -121,6 +125,59 @@ interface InvoiceLine {
   rate: string; // in rupees
   gst_rate: number; // 0,5,12,18,28
 }
+
+/** Server line shape (from GET /api/sales-invoices/{id}). */
+interface ServerInvoiceLine {
+  id?: string;
+  description: string;
+  hsn_sac: string | null;
+  quantity: number;
+  rate_paise: number;
+  gst_rate_bps: number;
+  taxable_amount_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  igst_paise: number;
+  line_total_paise: number;
+}
+
+/** Full invoice detail (header + lines + accounting + customer embed). */
+interface InvoiceDetail {
+  id: string;
+  invoice_no: string;
+  invoice_date: string;
+  due_date: string | null;
+  customer_id: string;
+  supply_state_code: string | null;
+  is_interstate: boolean;
+  notes: string | null;
+  taxable_amount_paise: number;
+  total_gst_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  igst_paise: number;
+  total_paise: number;
+  paid_paise: number;
+  status: InvoiceStatus;
+  journal_entry_id: string | null;
+  issued_at: string | null;
+  created_by_name: string | null;
+  customers?: { id: string; name: string; email: string | null; gstin: string | null; phone: string | null } | null;
+  lines: ServerInvoiceLine[];
+}
+
+/** HSN/SAC suggestion (from GET /api/sales-invoices/hsn-suggestions). */
+interface HsnSuggestion {
+  hsn_sac: string;
+  gst_rate_bps: number | null;
+  use_count: number;
+  sample_description: string;
+  reason: string;
+}
+
+type SortKey = "invoice_no" | "invoice_date" | "due_date" | "total_paise" | "status";
+type SortDir = "asc" | "desc";
+type DateMode = "current" | "previous" | "custom";
 
 interface Receipt {
   id: string;
@@ -180,6 +237,37 @@ function fyRange(fy: string): { start: string; end: string } {
   const [y] = fy.split("-");
   const yr = parseInt(y, 10);
   return { start: `${yr}-04-01`, end: `${yr + 1}-03-31` };
+}
+
+/** Previous financial year string, e.g. "2025-26" → "2024-25". */
+function previousFy(fy: string): string {
+  const [y] = fy.split("-");
+  const yr = parseInt(y, 10) - 1;
+  return `${yr}-${String(yr + 1).slice(2)}`;
+}
+
+/** Format an ISO timestamp for display, or "—" when absent. */
+function fmtDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? "—" : d.toLocaleString("en-IN");
+}
+
+/**
+ * Open the GST tax-invoice PDF in a new tab. The endpoint requires a Bearer
+ * token, so we fetch with auth and open a blob URL (a plain window.open would
+ * drop the Authorization header). Backend-generated PDF — no logic here.
+ */
+async function viewInvoicePdf(invoiceId: string): Promise<void> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API}/api/sales-invoices/${invoiceId}/pdf`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("PDF generation failed");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank");
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 /** Validate GSTIN format: 2-digit state + PAN(10) + entity# + Z + check (CGST Act §25) */
@@ -361,23 +449,82 @@ function SalesInvoices({
   const [sendModal, setSendModal] = useState<{ invoice: SalesInvoice; customerEmail: string | null } | null>(null);
   const [deliveryModal, setDeliveryModal] = useState<{ invoice: SalesInvoice; deliveries: InvoiceDelivery[] } | null>(null);
 
+  // Edit / detail / delete
+  const [editing, setEditing] = useState<InvoiceDetail | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SalesInvoice | null>(null);
+
+  // Search / filter / sort (sort + filters persisted in the URL).
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [customerFilter, setCustomerFilter] = useState<string>("all");
+  const [dateMode, setDateMode] = useState<DateMode>("current");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("invoice_date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
   // Summary stats
   const [stats, setStats] = useState({ outstanding: 0, issued: 0, paid: 0 });
+
+  // ── URL state: hydrate once on mount, then mirror changes back ────────────
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("sort")) setSortKey(p.get("sort") as SortKey);
+    if (p.get("dir")) setSortDir(p.get("dir") as SortDir);
+    if (p.get("status")) setStatusFilter(p.get("status")!);
+    if (p.get("cust")) setCustomerFilter(p.get("cust")!);
+    if (p.get("fy")) setDateMode(p.get("fy") as DateMode);
+    if (p.get("from")) setCustomFrom(p.get("from")!);
+    if (p.get("to")) setCustomTo(p.get("to")!);
+    if (p.get("q")) { setSearch(p.get("q")!); setDebouncedSearch(p.get("q")!); }
+  }, []);
+
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const set = (k: string, v: string, def: string) => (v && v !== def ? p.set(k, v) : p.delete(k));
+    set("sort", sortKey, "invoice_date");
+    set("dir", sortDir, "desc");
+    set("status", statusFilter, "all");
+    set("cust", customerFilter, "all");
+    set("fy", dateMode, "current");
+    set("from", dateMode === "custom" ? customFrom : "", "");
+    set("to", dateMode === "custom" ? customTo : "", "");
+    set("q", debouncedSearch, "");
+    const qs = p.toString();
+    window.history.replaceState(null, "", qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+  }, [sortKey, sortDir, statusFilter, customerFilter, dateMode, customFrom, customTo, debouncedSearch]);
+
+  // Debounce the search box (instant-feel, but not a filter pass per keystroke).
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // The date window that scopes the server query (FY-aware).
+  const range = useMemo(() => {
+    if (dateMode === "custom" && (customFrom || customTo)) {
+      return { start: customFrom || "1900-01-01", end: customTo || "2999-12-31" };
+    }
+    if (dateMode === "previous") return fyRange(previousFy(financialYear));
+    return fyRange(financialYear);
+  }, [dateMode, customFrom, customTo, financialYear]);
 
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = getSupabaseClient();
-    const { start, end } = fyRange(financialYear);
 
     const [{ data: invData }, { data: custData }] = await Promise.all([
       supabase
         .from("client_sales_invoices")
         .select(
-          "id, invoice_no, invoice_date, due_date, customer_id, taxable_amount_paise, total_gst_paise, total_paise, status, supply_state_code, is_interstate, customers(name)"
+          "id, invoice_no, invoice_date, due_date, customer_id, taxable_amount_paise, total_gst_paise, total_paise, paid_paise, status, supply_state_code, is_interstate, customers(name)"
         )
         .eq("client_id", clientId)
-        .gte("invoice_date", start)
-        .lte("invoice_date", end)
+        .is("deleted_at", null)
+        .gte("invoice_date", range.start)
+        .lte("invoice_date", range.end)
         .order("invoice_date", { ascending: false }),
       supabase
         .from("customers")
@@ -390,7 +537,7 @@ function SalesInvoices({
     const mapped: SalesInvoice[] = ((invData ?? []) as unknown as Array<
       { id: string; invoice_no: string; invoice_date: string; due_date: string | null;
         customer_id: string; taxable_amount_paise: number; total_gst_paise: number;
-        total_paise: number; status: string; supply_state_code: string | null;
+        total_paise: number; paid_paise: number; status: string; supply_state_code: string | null;
         is_interstate: boolean; customers: { name: string } | null }
     >).map((r) => ({
       id: r.id,
@@ -402,6 +549,7 @@ function SalesInvoices({
       taxable_paise: r.taxable_amount_paise,
       gst_paise: r.total_gst_paise,
       total_paise: r.total_paise,
+      paid_paise: r.paid_paise,
       status: r.status as InvoiceStatus,
       supply_state_code: r.supply_state_code,
       is_interstate: r.is_interstate,
@@ -419,9 +567,44 @@ function SalesInvoices({
     }
     setStats({ outstanding, issued, paid });
     setLoading(false);
-  }, [clientId, financialYear]);
+  }, [clientId, range]);
 
   useEffect(() => { load(); }, [load]);
+
+  // ── Search + filter + sort, all client-side over the loaded window ────────
+  const visible = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    let r = invoices.filter((inv) => {
+      if (statusFilter !== "all" && inv.status !== statusFilter) return false;
+      if (customerFilter !== "all" && inv.customer_id !== customerFilter) return false;
+      if (q) {
+        const hay = `${inv.invoice_no} ${inv.customer_name ?? ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+    r = [...r].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "invoice_no": cmp = a.invoice_no.localeCompare(b.invoice_no); break;
+        case "invoice_date": cmp = a.invoice_date.localeCompare(b.invoice_date); break;
+        case "due_date": cmp = (a.due_date ?? "").localeCompare(b.due_date ?? ""); break;
+        case "total_paise": cmp = a.total_paise - b.total_paise; break;
+        case "status": cmp = a.status.localeCompare(b.status); break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return r;
+  }, [invoices, debouncedSearch, statusFilter, customerFilter, sortKey, sortDir]);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "total_paise" || key.includes("date") ? "desc" : "asc");
+    }
+  }
 
   async function issueInvoice(id: string) {
     try {
@@ -436,6 +619,28 @@ function SalesInvoices({
     }
   }
 
+  async function openEdit(inv: SalesInvoice) {
+    try {
+      const token = await getAuthToken();
+      const result = await apiGet(`/api/sales-invoices/${inv.id}`, token);
+      if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load invoice");
+      setDetailId(null);
+      setShowForm(false);
+      setEditing(result.data as InvoiceDetail);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to open invoice", "error");
+    }
+  }
+
+  async function deleteInvoice(inv: SalesInvoice) {
+    const token = await getAuthToken();
+    const result = await apiCall(`/api/sales-invoices/${inv.id}`, "DELETE", undefined, token);
+    if (!result.success) throw new Error(result.error ?? "Failed to delete invoice");
+    showToast(`Invoice ${inv.invoice_no} deleted`, "success");
+    setDeleteTarget(null);
+    load();
+  }
+
   async function sendInvoice(inv: SalesInvoice, toEmail: string, isResend: boolean) {
     const token = await getAuthToken();
     const endpoint = isResend
@@ -445,6 +650,11 @@ function SalesInvoices({
     if (!result.success) throw new Error(result.error ?? "Failed to send invoice");
     showToast(`Invoice ${inv.invoice_no} sent to ${toEmail}`, "success");
     setSendModal(null);
+  }
+
+  function openSend(inv: SalesInvoice) {
+    const cust = customers.find((c) => c.id === inv.customer_id);
+    setSendModal({ invoice: inv, customerEmail: cust?.email ?? null });
   }
 
   async function loadAndShowDeliveries(inv: SalesInvoice) {
@@ -490,6 +700,21 @@ function SalesInvoices({
     return { imported, errors };
   }
 
+  const SortTh = ({ k, label, align = "left" }: { k: SortKey; label: string; align?: "left" | "right" }) => (
+    <th className={`px-3 py-3 font-semibold ${align === "right" ? "text-right" : "text-left"}`}>
+      <button
+        onClick={() => toggleSort(k)}
+        className={`inline-flex items-center gap-1 hover:text-[#475569] ${sortKey === k ? "text-[#334155]" : ""}`}
+      >
+        {label}
+        {sortKey === k && (sortDir === "asc" ? <ArrowUp size={10} /> : <ArrowDown size={10} />)}
+      </button>
+    </th>
+  );
+
+  const anyFilterActive =
+    debouncedSearch.trim() !== "" || statusFilter !== "all" || customerFilter !== "all";
+
   return (
     <div className="space-y-4 max-w-5xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
@@ -515,6 +740,25 @@ function SalesInvoices({
         />
       )}
 
+      {deleteTarget && (
+        <DeleteInvoiceModal
+          invoice={deleteTarget}
+          onConfirm={() => deleteInvoice(deleteTarget)}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {detailId && (
+        <InvoiceDetailDrawer
+          invoiceId={detailId}
+          onClose={() => setDetailId(null)}
+          onEdit={(inv) => openEdit(inv)}
+          onIssue={(id) => { setDetailId(null); issueInvoice(id); }}
+          onSend={(inv) => { setDetailId(null); openSend(inv); }}
+          onToast={showToast}
+        />
+      )}
+
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-3">
         <SummaryCard label="Outstanding" value={fmt(stats.outstanding)} color="amber" />
@@ -525,7 +769,7 @@ function SalesInvoices({
       {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">
-          {invoices.length} invoice{invoices.length !== 1 ? "s" : ""} in FY {financialYear}
+          {visible.length} of {invoices.length} invoice{invoices.length !== 1 ? "s" : ""}
         </p>
         <div className="flex gap-2">
           <button
@@ -541,7 +785,7 @@ function SalesInvoices({
             <Upload size={12} /> Import
           </button>
           <button
-            onClick={() => setShowForm(true)}
+            onClick={() => { setEditing(null); setShowForm(true); }}
             className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
           >
             <Plus size={12} /> New Invoice
@@ -549,13 +793,85 @@ function SalesInvoices({
         </div>
       </div>
 
-      {/* New Invoice Form */}
-      {showForm && (
+      {/* Search + Filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search invoice no. or customer…"
+            className="w-full pl-8 pr-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
+        >
+          <option value="all">All statuses</option>
+          <option value="draft">Draft</option>
+          <option value="issued">Issued</option>
+          <option value="partially_paid">Partially paid</option>
+          <option value="paid">Paid</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+        <select
+          value={customerFilter}
+          onChange={(e) => setCustomerFilter(e.target.value)}
+          className="px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569] max-w-[160px]"
+        >
+          <option value="all">All customers</option>
+          {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select
+          value={dateMode}
+          onChange={(e) => setDateMode(e.target.value as DateMode)}
+          className="px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
+        >
+          <option value="current">FY {financialYear}</option>
+          <option value="previous">FY {previousFy(financialYear)}</option>
+          <option value="custom">Custom range</option>
+        </select>
+        {dateMode === "custom" && (
+          <>
+            <input
+              type="date"
+              value={customFrom}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              className="px-2 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
+            />
+            <span className="text-xs text-[#94A3B8]">to</span>
+            <input
+              type="date"
+              value={customTo}
+              onChange={(e) => setCustomTo(e.target.value)}
+              className="px-2 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
+            />
+          </>
+        )}
+        {anyFilterActive && (
+          <button
+            onClick={() => { setSearch(""); setDebouncedSearch(""); setStatusFilter("all"); setCustomerFilter("all"); }}
+            className="text-xs text-[#64748B] hover:text-[#334155] underline"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      {/* Edit / New Invoice Form */}
+      {(showForm || editing) && (
         <InvoiceForm
           clientId={clientId}
           customers={customers}
-          onSaved={() => { setShowForm(false); load(); showToast("Invoice created", "success"); }}
-          onCancel={() => setShowForm(false)}
+          existing={editing}
+          onSaved={() => {
+            const wasEdit = !!editing;
+            setShowForm(false); setEditing(null); load();
+            showToast(wasEdit ? "Invoice updated" : "Invoice created", "success");
+          }}
+          onCancel={() => { setShowForm(false); setEditing(null); }}
         />
       )}
 
@@ -580,7 +896,12 @@ function SalesInvoices({
       ) : invoices.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16">
           <FileText size={32} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-sm text-[#64748B]">No invoices in FY {financialYear}</p>
+          <p className="text-sm text-[#64748B]">No invoices in this period</p>
+        </div>
+      ) : visible.length === 0 ? (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16">
+          <Search size={28} className="text-gray-200 mx-auto mb-3" />
+          <p className="text-sm text-[#64748B]">No invoices match your search / filters</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
@@ -588,46 +909,72 @@ function SalesInvoices({
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
-                  <th className="px-4 py-3 text-left font-semibold">Invoice No</th>
-                  <th className="px-3 py-3 text-left font-semibold">Date</th>
+                  <SortTh k="invoice_no" label="Invoice No" />
+                  <SortTh k="invoice_date" label="Date" />
                   <th className="px-3 py-3 text-left font-semibold">Customer</th>
                   <th className="px-3 py-3 text-right font-semibold">Taxable</th>
                   <th className="px-3 py-3 text-right font-semibold">GST</th>
-                  <th className="px-3 py-3 text-right font-semibold">Total</th>
-                  <th className="px-3 py-3 text-left font-semibold">Status</th>
-                  <th className="px-4 py-3 text-left font-semibold">Action</th>
+                  <SortTh k="total_paise" label="Total" align="right" />
+                  <SortTh k="due_date" label="Due" />
+                  <SortTh k="status" label="Status" />
+                  <th className="px-4 py-3 text-right font-semibold">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F8FAFC]">
-                {invoices.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-[#F8FAFC]">
+                {visible.map((inv) => (
+                  <tr
+                    key={inv.id}
+                    onClick={() => setDetailId(inv.id)}
+                    className="hover:bg-[#F8FAFC] cursor-pointer"
+                  >
                     <td className="px-4 py-2.5 font-mono font-medium text-[#1E293B]">{inv.invoice_no}</td>
                     <td className="px-3 py-2.5 text-[#64748B] whitespace-nowrap">{inv.invoice_date}</td>
                     <td className="px-3 py-2.5 text-[#334155]">{inv.customer_name}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-[#334155]">{fmt(inv.taxable_paise)}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-[#334155]">{fmt(inv.gst_paise)}</td>
                     <td className="px-3 py-2.5 text-right font-mono font-semibold text-[#0F172A]">{fmt(inv.total_paise)}</td>
+                    <td className="px-3 py-2.5 text-[#64748B] whitespace-nowrap">{inv.due_date ?? "—"}</td>
                     <td className="px-3 py-2.5">
                       <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[inv.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
                         {inv.status.replace("_", " ")}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-2">
+                    <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-2.5">
+                        <button
+                          onClick={() => setDetailId(inv.id)}
+                          className="text-[#94A3B8] hover:text-[#334155]"
+                          title="View details"
+                        >
+                          <Eye size={13} />
+                        </button>
                         {inv.status === "draft" && (
-                          <button
-                            onClick={() => issueInvoice(inv.id)}
-                            className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                          >
-                            <CheckCircle size={11} /> Issue
-                          </button>
+                          <>
+                            <button
+                              onClick={() => openEdit(inv)}
+                              className="text-[#94A3B8] hover:text-blue-600"
+                              title="Edit draft"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              onClick={() => issueInvoice(inv.id)}
+                              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                            >
+                              <CheckCircle size={11} /> Issue
+                            </button>
+                            <button
+                              onClick={() => setDeleteTarget(inv)}
+                              className="text-[#CBD5E1] hover:text-red-600"
+                              title="Delete draft"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </>
                         )}
                         {inv.status !== "draft" && inv.status !== "cancelled" && (
                           <button
-                            onClick={() => {
-                              const cust = customers.find((c) => c.id === inv.customer_id);
-                              setSendModal({ invoice: inv, customerEmail: cust?.email ?? null });
-                            }}
+                            onClick={() => openSend(inv)}
                             className="text-xs text-emerald-600 hover:underline flex items-center gap-1"
                           >
                             <Send size={11} /> Send
@@ -660,23 +1007,36 @@ function SalesInvoices({
 function InvoiceForm({
   clientId,
   customers,
+  existing,
   onSaved,
   onCancel,
 }: {
   clientId: string;
   customers: Customer[];
+  existing?: InvoiceDetail | null;
   onSaved: () => void;
   onCancel: () => void;
 }) {
   const today = new Date().toISOString().split("T")[0];
-  const [customerId, setCustomerId] = useState("");
-  const [invoiceDate, setInvoiceDate] = useState(today);
-  const [dueDate, setDueDate] = useState("");
-  const [supplyStateCode, setSupplyStateCode] = useState("");
-  const [isInterstate, setIsInterstate] = useState(false);
-  const [lines, setLines] = useState<InvoiceLine[]>([
-    { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18 },
-  ]);
+  const isEdit = !!existing;
+
+  const initialLines: InvoiceLine[] = existing && existing.lines.length > 0
+    ? existing.lines.map((l) => ({
+        description: l.description ?? "",
+        hsn_sac: l.hsn_sac ?? "",
+        qty: String(l.quantity ?? 1),
+        rate: String((l.rate_paise ?? 0) / 100),
+        gst_rate: Math.round((l.gst_rate_bps ?? 0) / 100),
+      }))
+    : [{ description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18 }];
+
+  const [customerId, setCustomerId] = useState(existing?.customer_id ?? "");
+  const [invoiceDate, setInvoiceDate] = useState(existing?.invoice_date ?? today);
+  const [dueDate, setDueDate] = useState(existing?.due_date ?? "");
+  const [supplyStateCode, setSupplyStateCode] = useState(existing?.supply_state_code ?? "");
+  const [isInterstate, setIsInterstate] = useState(existing?.is_interstate ?? false);
+  const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [lines, setLines] = useState<InvoiceLine[]>(initialLines);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -699,29 +1059,53 @@ function InvoiceForm({
     const validLines = lines.filter((l) => l.description.trim() && parseFloat(l.rate) > 0);
     if (validLines.length === 0) { setError("Add at least one line with description and rate"); return; }
 
+    const linePayload = validLines.map((l) => ({
+      description: l.description.trim(),
+      hsn_sac: l.hsn_sac.trim() || undefined,
+      quantity: parseFloat(l.qty),
+      rate_paise: Math.round(parseFloat(l.rate) * 100),
+      gst_rate_bps: l.gst_rate * 100,
+    }));
+
     setSaving(true); setError(null);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(
-        "/api/sales-invoices/",
-        "POST",
-        {
-          client_id: clientId,
-          customer_id: customerId,
-          invoice_date: invoiceDate,
-          due_date: dueDate || undefined,
-          supply_state_code: supplyStateCode || undefined,
-          lines: validLines.map((l) => ({
-            description: l.description.trim(),
-            hsn_sac: l.hsn_sac.trim() || undefined,
-            quantity: parseFloat(l.qty),
-            rate_paise: Math.round(parseFloat(l.rate) * 100),
-            gst_rate_bps: l.gst_rate * 100,
-          })),
-        },
-        token
-      );
-      if (!result.success) throw new Error(result.error ?? "Failed to create invoice");
+      let result;
+      if (isEdit && existing) {
+        // Update the existing draft in place (PATCH) — never creates a new invoice.
+        result = await apiCall(
+          `/api/sales-invoices/${existing.id}`,
+          "PATCH",
+          {
+            customer_id: customerId,
+            invoice_date: invoiceDate,
+            due_date: dueDate || undefined,
+            supply_state_code: supplyStateCode || undefined,
+            notes: notes.trim() || undefined,
+            is_inter_state: isInterstate,
+            lines: linePayload,
+          },
+          token
+        );
+        if (!result.success) throw new Error(result.error ?? "Failed to update invoice");
+      } else {
+        result = await apiCall(
+          "/api/sales-invoices/",
+          "POST",
+          {
+            client_id: clientId,
+            customer_id: customerId,
+            invoice_date: invoiceDate,
+            due_date: dueDate || undefined,
+            supply_state_code: supplyStateCode || undefined,
+            is_inter_state: isInterstate,
+            notes: notes.trim() || undefined,
+            lines: linePayload,
+          },
+          token
+        );
+        if (!result.success) throw new Error(result.error ?? "Failed to create invoice");
+      }
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save invoice");
@@ -733,7 +1117,9 @@ function InvoiceForm({
   return (
     <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[#0F172A]">New Sales Invoice</h3>
+        <h3 className="text-sm font-semibold text-[#0F172A]">
+          {isEdit ? `Edit Draft Invoice ${existing?.invoice_no ?? ""}` : "New Sales Invoice"}
+        </h3>
         <button onClick={onCancel} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
       </div>
 
@@ -764,7 +1150,7 @@ function InvoiceForm({
           <label className="block text-xs font-medium text-[#475569] mb-1">Due Date</label>
           <input
             type="date"
-            value={dueDate}
+            value={dueDate ?? ""}
             onChange={(e) => setDueDate(e.target.value)}
             className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
@@ -772,7 +1158,7 @@ function InvoiceForm({
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">Supply State</label>
           <select
-            value={supplyStateCode}
+            value={supplyStateCode ?? ""}
             onChange={(e) => setSupplyStateCode(e.target.value)}
             className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
@@ -801,7 +1187,7 @@ function InvoiceForm({
           <thead>
             <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
               <th className="pb-2 text-left font-semibold">Description</th>
-              <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
+              <th className="pb-2 text-left font-semibold w-32">HSN/SAC</th>
               <th className="pb-2 text-right font-semibold w-16">Qty</th>
               <th className="pb-2 text-right font-semibold w-24">Rate (₹)</th>
               <th className="pb-2 text-right font-semibold w-20">GST %</th>
@@ -824,11 +1210,12 @@ function InvoiceForm({
                     />
                   </td>
                   <td className="py-1.5 pr-2">
-                    <input
+                    <HsnAutocomplete
+                      clientId={clientId}
+                      description={line.description}
                       value={line.hsn_sac}
-                      onChange={(e) => setLine(idx, { hsn_sac: e.target.value })}
-                      placeholder="998314"
-                      className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs font-mono"
+                      onChange={(v) => setLine(idx, { hsn_sac: v })}
+                      onPickGst={(pct) => setLine(idx, { gst_rate: pct })}
                     />
                   </td>
                   <td className="py-1.5 pr-2">
@@ -884,6 +1271,18 @@ function InvoiceForm({
         <Plus size={12} /> Add line
       </button>
 
+      {/* Notes */}
+      <div>
+        <label className="block text-xs font-medium text-[#475569] mb-1">Notes</label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={2}
+          placeholder="Optional notes shown on the invoice (terms, PO reference…)"
+          className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
       {/* GST Preview */}
       {gst.taxable_paise > 0 && (
         <div className="bg-[#F8FAFC] rounded-lg p-3 text-xs space-y-1">
@@ -916,6 +1315,13 @@ function InvoiceForm({
         </div>
       )}
 
+      {isEdit && (
+        <p className="text-[10px] text-[#94A3B8]">
+          Editing a draft. GST is recomputed by the backend on save. Only drafts are editable —
+          issued, paid and cancelled invoices are locked.
+        </p>
+      )}
+
       {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
       <div className="flex gap-3 justify-end pt-1">
         <button onClick={onCancel} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">
@@ -926,7 +1332,7 @@ function InvoiceForm({
           disabled={saving}
           className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
         >
-          {saving ? "Saving…" : "Save Invoice"}
+          {saving ? "Saving…" : isEdit ? "Update Invoice" : "Save Invoice"}
         </button>
       </div>
     </div>
@@ -1092,6 +1498,327 @@ function DeliveryHistoryModal({
             className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]"
           >
             Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── HSN/SAC Smart Suggestions (autocomplete) ────────────────────────────────
+
+function HsnAutocomplete({
+  clientId,
+  description,
+  value,
+  onChange,
+  onPickGst,
+}: {
+  clientId: string;
+  description: string;
+  value: string;
+  onChange: (hsn: string) => void;
+  onPickGst?: (gstPercent: number) => void;
+}) {
+  const [suggestions, setSuggestions] = useState<HsnSuggestion[]>([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  // Debounced lookup keyed on the line description — the suggestion signal.
+  // All ranking/learning happens server-side (zero business logic in the frontend).
+  useEffect(() => {
+    const q = description.trim();
+    if (q.length < 2) { setSuggestions([]); return; }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const token = await getAuthToken();
+        const res = await apiGet(
+          `/api/sales-invoices/hsn-suggestions?client_id=${encodeURIComponent(clientId)}&query=${encodeURIComponent(q)}`,
+          token
+        );
+        if (!cancelled) setSuggestions((res.data as HsnSuggestion[]) ?? []);
+      } catch {
+        if (!cancelled) setSuggestions([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [description, clientId]);
+
+  const showDropdown = open && (suggestions.length > 0 || loading);
+
+  return (
+    <div className="relative">
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="998314"
+        className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs font-mono"
+      />
+      {showDropdown && (
+        <div className="absolute z-30 mt-1 w-64 max-h-56 overflow-y-auto bg-white border border-[#E2E8F0] rounded-lg shadow-lg">
+          {loading && suggestions.length === 0 ? (
+            <div className="px-3 py-2 text-[10px] text-[#94A3B8] flex items-center gap-1">
+              <Loader2 size={11} className="animate-spin" /> Finding HSN/SAC…
+            </div>
+          ) : (
+            suggestions.map((s) => (
+              <button
+                key={s.hsn_sac}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  onChange(s.hsn_sac);
+                  if (onPickGst && s.gst_rate_bps != null) onPickGst(Math.round(s.gst_rate_bps / 100));
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-[#F8FAFC] border-b border-[#F8FAFC] last:border-0"
+              >
+                <div className="font-mono text-xs text-[#1E293B]">{s.hsn_sac}</div>
+                <div className="text-[10px] text-[#94A3B8]">{s.reason}</div>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Invoice Detail Drawer ────────────────────────────────────────────────────
+
+function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <span className="text-xs text-[#94A3B8] flex-shrink-0">{label}</span>
+      <span className={`text-xs text-[#334155] text-right break-all ${mono ? "font-mono" : ""}`}>{value}</span>
+    </div>
+  );
+}
+
+function InvoiceDetailDrawer({
+  invoiceId,
+  onClose,
+  onEdit,
+  onIssue,
+  onSend,
+  onToast,
+}: {
+  invoiceId: string;
+  onClose: () => void;
+  onEdit: (inv: SalesInvoice) => void;
+  onIssue: (id: string) => void;
+  onSend: (inv: SalesInvoice) => void;
+  onToast: (msg: string, type: "success" | "error") => void;
+}) {
+  const [inv, setInv] = useState<InvoiceDetail | null>(null);
+  const [deliveries, setDeliveries] = useState<InvoiceDelivery[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      const token = await getAuthToken();
+      const [d, del] = await Promise.all([
+        apiGet(`/api/sales-invoices/${invoiceId}`, token),
+        apiGet(`/api/sales-invoices/${invoiceId}/deliveries`, token),
+      ]);
+      if (cancelled) return;
+      if (d.success) setInv(d.data as InvoiceDetail);
+      setDeliveries((del.data as InvoiceDelivery[]) ?? []);
+      setLoading(false);
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [invoiceId]);
+
+  async function handleViewPdf() {
+    try { await viewInvoicePdf(invoiceId); }
+    catch { onToast("Unable to open PDF", "error"); }
+  }
+
+  const customerName = inv?.customers?.name ?? "—";
+  const outstanding = inv ? inv.total_paise - (inv.paid_paise ?? 0) : 0;
+  const posted = !!inv?.journal_entry_id;
+  const lastDelivery = deliveries[0];
+
+  // Thin SalesInvoice projection for the edit / send callbacks.
+  const summary: SalesInvoice | null = inv ? {
+    id: inv.id, invoice_no: inv.invoice_no, invoice_date: inv.invoice_date,
+    due_date: inv.due_date, customer_id: inv.customer_id, customer_name: customerName,
+    taxable_paise: inv.taxable_amount_paise, gst_paise: inv.total_gst_paise,
+    total_paise: inv.total_paise, paid_paise: inv.paid_paise, status: inv.status,
+    supply_state_code: inv.supply_state_code, is_interstate: inv.is_interstate,
+  } : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative w-full max-w-md bg-white h-full shadow-xl overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b border-[#F1F5F9] px-5 py-3 flex items-center justify-between z-10">
+          <h3 className="text-sm font-semibold text-[#0F172A] font-mono">{inv ? inv.invoice_no : "Invoice"}</h3>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155]"><X size={16} /></button>
+        </div>
+
+        {loading || !inv ? (
+          <div className="p-6 space-y-3">
+            {[...Array(5)].map((_, i) => <div key={i} className="h-10 rounded bg-[#F8FAFC] animate-pulse" />)}
+          </div>
+        ) : (
+          <div className="p-5 space-y-5">
+            {/* Header */}
+            <section className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[inv.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+                  {inv.status.replace("_", " ")}
+                </span>
+                <span className="text-[10px] text-[#94A3B8]">{inv.is_interstate ? "Inter-state (IGST)" : "Intra-state (CGST+SGST)"}</span>
+              </div>
+              <DetailRow label="Customer" value={customerName} />
+              <DetailRow label="Invoice Date" value={inv.invoice_date} />
+              <DetailRow label="Due Date" value={inv.due_date ?? "—"} />
+              <DetailRow label="Amount" value={fmt(inv.total_paise)} />
+              <DetailRow label="Outstanding" value={fmt(outstanding)} />
+              <DetailRow label="Created By" value={inv.created_by_name ?? "—"} />
+            </section>
+
+            {/* Line Items */}
+            <section>
+              <h4 className="text-xs font-semibold text-[#334155] mb-2">Line Items</h4>
+              <div className="overflow-x-auto border border-[#F1F5F9] rounded-lg">
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="text-[#94A3B8] border-b border-[#F1F5F9]">
+                      <th className="px-2 py-1.5 text-left font-semibold">Description</th>
+                      <th className="px-2 py-1.5 text-left font-semibold">HSN/SAC</th>
+                      <th className="px-2 py-1.5 text-right font-semibold">Qty</th>
+                      <th className="px-2 py-1.5 text-right font-semibold">Rate</th>
+                      <th className="px-2 py-1.5 text-right font-semibold">GST%</th>
+                      <th className="px-2 py-1.5 text-right font-semibold">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F8FAFC]">
+                    {inv.lines.map((l, i) => (
+                      <tr key={l.id ?? i}>
+                        <td className="px-2 py-1.5 text-[#334155]">{l.description}</td>
+                        <td className="px-2 py-1.5 font-mono text-[#64748B]">{l.hsn_sac || "—"}</td>
+                        <td className="px-2 py-1.5 text-right text-[#334155]">{l.quantity}</td>
+                        <td className="px-2 py-1.5 text-right font-mono text-[#334155]">{fmt(l.rate_paise)}</td>
+                        <td className="px-2 py-1.5 text-right text-[#334155]">{l.gst_rate_bps / 100}%</td>
+                        <td className="px-2 py-1.5 text-right font-mono text-[#0F172A]">{fmt(l.line_total_paise)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            {/* Accounting */}
+            <section className="space-y-2">
+              <h4 className="text-xs font-semibold text-[#334155]">Accounting</h4>
+              <DetailRow label="Journal Entry ID" value={inv.journal_entry_id ?? "—"} mono />
+              <DetailRow label="Posting Status" value={posted ? "Posted" : "Not posted"} />
+              <DetailRow label="Issued At" value={fmtDateTime(inv.issued_at)} />
+            </section>
+
+            {/* Delivery */}
+            <section className="space-y-2">
+              <h4 className="text-xs font-semibold text-[#334155]">Delivery</h4>
+              {lastDelivery ? (
+                <>
+                  <DetailRow label="Email Status" value={DELIVERY_STATUS_LABEL[lastDelivery.status] ?? lastDelivery.status} />
+                  <DetailRow label="Sent To" value={lastDelivery.sent_to} />
+                  <DetailRow label="Sent At" value={fmtDateTime(lastDelivery.sent_at ?? lastDelivery.created_at)} />
+                  {deliveries.length > 1 && (
+                    <div className="text-[10px] text-[#94A3B8] pt-1">{deliveries.length} delivery attempts</div>
+                  )}
+                </>
+              ) : (
+                <p className="text-xs text-[#94A3B8]">Not sent yet.</p>
+              )}
+            </section>
+
+            {/* Actions */}
+            <div className="flex flex-wrap gap-2 pt-3 border-t border-[#F1F5F9]">
+              {inv.status === "draft" && summary && (
+                <button onClick={() => onEdit(summary)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] flex items-center gap-1">
+                  <Pencil size={12} /> Edit
+                </button>
+              )}
+              {inv.status === "draft" && (
+                <button onClick={() => onIssue(inv.id)} className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1">
+                  <CheckCircle size={12} /> Issue
+                </button>
+              )}
+              {inv.status !== "draft" && inv.status !== "cancelled" && summary && (
+                <button onClick={() => onSend(summary)} className="text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-1">
+                  <Send size={12} /> Send Email
+                </button>
+              )}
+              <button onClick={handleViewPdf} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] flex items-center gap-1">
+                <Download size={12} /> View PDF
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Delete Draft Confirmation ────────────────────────────────────────────────
+
+function DeleteInvoiceModal({
+  invoice,
+  onConfirm,
+  onClose,
+}: {
+  invoice: SalesInvoice;
+  onConfirm: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handle() {
+    setDeleting(true); setError(null);
+    try {
+      await onConfirm();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete invoice");
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 w-full max-w-md shadow-xl">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="p-2 rounded-full bg-red-50 text-red-600 flex-shrink-0"><AlertTriangle size={16} /></div>
+          <div>
+            <h3 className="text-sm font-semibold text-[#0F172A]">Delete draft invoice?</h3>
+            <p className="text-xs text-[#64748B] mt-1">
+              <span className="font-mono">{invoice.invoice_no}</span> will be removed from your invoice
+              list. Only drafts can be deleted — issued, partially-paid, paid and cancelled invoices are
+              permanent records and are protected.
+            </p>
+          </div>
+        </div>
+        {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2 mb-3">{error}</p>}
+        <div className="flex gap-3 justify-end">
+          <button onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+          <button
+            onClick={handle}
+            disabled={deleting}
+            className="text-xs px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-1.5"
+          >
+            {deleting ? "Deleting…" : <><Trash2 size={12} /> Delete Draft</>}
           </button>
         </div>
       </div>
