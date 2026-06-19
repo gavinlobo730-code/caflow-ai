@@ -248,3 +248,46 @@ def _load_firm(firm_id: Optional[str]) -> dict:
     except Exception as e:
         logger.warning(f"Could not load firm {firm_id}: {e}")
         return {}
+
+
+def get_sales_invoice_pdf(invoice_id: str, firm_id: str) -> tuple[bytes, str]:
+    """
+    Load a client_sales_invoice with its customer and render the GST tax invoice PDF.
+
+    Normalises the column names from client_sales_invoices (taxable_amount_paise,
+    cgst_paise, sgst_paise, igst_paise) to the keys expected by build_invoice_pdf()
+    (amount_paise, gst_paise) so the shared PDF builder is reused without changes.
+
+    Returns (pdf_bytes, suggested_filename).
+    """
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    row = (
+        db.table("client_sales_invoices")
+        .select("*, customers(id,name,gstin,pan,address,state_code,city,state)")
+        .eq("id", invoice_id)
+        .eq("firm_id", firm_id)
+        .maybe_single()
+        .execute()
+    )
+    if not row.data:
+        raise ValueError(f"Invoice {invoice_id} not found for firm {firm_id}")
+    data = row.data
+    customer = data.get("customers") or {}
+    invoice_dict = {
+        "invoice_no":   data["invoice_no"],
+        "invoice_date": data["invoice_date"],
+        "due_date":     data.get("due_date"),
+        "status":       data["status"],
+        "amount_paise": data.get("taxable_amount_paise", 0),
+        "gst_paise": (
+            data.get("cgst_paise", 0)
+            + data.get("sgst_paise", 0)
+            + data.get("igst_paise", 0)
+        ),
+        "total_paise":  data.get("total_paise", 0),
+    }
+    firm = _load_firm(firm_id)
+    pdf = build_invoice_pdf(invoice_dict, firm, customer)
+    filename = f"invoice-{data.get('invoice_no', invoice_id)}.pdf"
+    return pdf, filename
