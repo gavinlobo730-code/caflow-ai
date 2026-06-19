@@ -501,14 +501,27 @@ class TestScheduleIIICompliance:
             f"liab+equity={bs['total_liabilities_equity_paise']}"
         )
 
-    def test_cash_flow_statement_is_missing(self):
+    def test_cash_flow_statement_exists_and_reconciles(self):
         """
-        Document gap: AccountingService must not yet have get_cash_flow_statement.
-        Schedule III requires: Balance Sheet + P&L + Cash Flow Statement (AS-3).
-        This test will FAIL once the method is correctly implemented, serving as
-        a reminder to also update this test file.
+        Schedule III requires Balance Sheet + P&L + Cash Flow Statement (AS-3).
+        get_cash_flow_statement is now implemented on AccountingService and
+        delegates to the shared ReportingService. Verify the AS-3 structure and
+        the two invariants: O+I+F == net change == closing − opening cash.
+        (Phase 3.1 — replaces the former gap-marker test.)
         """
-        assert not hasattr(svc, "get_cash_flow_statement"), (
-            "Cash flow statement is now implemented — update test_accounting_completion.py "
-            "to add positive cash flow tests and remove this gap marker"
+        assert hasattr(svc, "get_cash_flow_statement")
+        cf = svc.get_cash_flow_statement(
+            firm_id="firm-001", start_date="2025-04-01", end_date="2026-03-31"
         )
+        for key in ("operating", "investing", "financing"):
+            assert key in cf and "total_paise" in cf[key] and "lines" in cf[key]
+        activities_total = (
+            cf["operating"]["total_paise"]
+            + cf["investing"]["total_paise"]
+            + cf["financing"]["total_paise"]
+        )
+        assert activities_total == cf["net_change_paise"]
+        assert cf["closing_cash_paise"] - cf["opening_cash_paise"] == cf["net_change_paise"]
+        assert cf["reconciles"] is True
+        # Integer paise — never float.
+        assert isinstance(cf["net_change_paise"], int)

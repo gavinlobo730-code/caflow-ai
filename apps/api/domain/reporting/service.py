@@ -27,6 +27,11 @@ def _fy_start(today: date | None = None) -> str:
     return date(today.year if today.month >= 4 else today.year - 1, 4, 1).isoformat()
 
 
+def _day_before(iso: str) -> str:
+    from datetime import timedelta
+    return (date.fromisoformat(iso[:10]) - timedelta(days=1)).isoformat()
+
+
 class ReportingService:
     def __init__(self, source: LedgerSource):
         self.source = source
@@ -61,6 +66,42 @@ class ReportingService:
         as_of = as_of_date or date.today().isoformat()
         snap = self.source.snapshot(firm_id, client_id, None, as_of)
         return builders.balance_sheet(self._lines(snap, basis), snap.accounts, as_of, basis)
+
+    def cash_flow_statement(self, firm_id: str, client_id: Optional[str],
+                            start_date: Optional[str], end_date: Optional[str],
+                            basis: str = "accrual") -> dict:
+        """
+        AS-3 Cash Flow Statement (indirect), Companies Act 2013 Schedule III.
+
+        Computed over the same scoped ledger as the other reports — the period
+        movement classifies into operating/investing/financing, and opening cash
+        is the cumulative bank balance as of the day before the window. Closing
+        cash = opening + period cash movement, so by double-entry:
+        Operating + Investing + Financing = net cash change = closing − opening.
+        """
+        start = start_date or _fy_start()
+        end = end_date or date.today().isoformat()
+        period_snap = self.source.snapshot(firm_id, client_id, start, end)
+        bank_ids = AccountResolver(period_snap.accounts).bank_ids
+        period_lines = self._lines(period_snap, basis)
+        opening_cash = self._cash_balance(firm_id, client_id, _day_before(start), basis)
+        return builders.cash_flow(
+            period_lines, period_snap.accounts, bank_ids,
+            start, end, opening_cash, basis,
+        )
+
+    def _cash_balance(self, firm_id: str, client_id: Optional[str],
+                      as_of: str, basis: str) -> int:
+        """Cumulative cash/bank balance (integer paise) as of a date, same basis
+        stream as the report. Cash legs are basis-invariant, so accrual and cash
+        agree; computing on the requested basis keeps the tie-out exact."""
+        snap = self.source.snapshot(firm_id, client_id, None, as_of)
+        bank_ids = AccountResolver(snap.accounts).bank_ids
+        total = 0
+        for ln in self._lines(snap, basis):
+            if ln.account_id in bank_ids:
+                total += ln.debit_paise - ln.credit_paise
+        return total
 
 
 def mock_ledger_source() -> InMemoryLedgerSource:
