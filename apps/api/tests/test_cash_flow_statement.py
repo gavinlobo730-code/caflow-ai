@@ -1,229 +1,261 @@
 """
-Cash Flow Statement (AS-3 indirect) — engine tests over the shared reporting
-infrastructure (InMemoryLedgerSource + ReportingService).
+Cash Flow Statement (AS-3 / Companies Act 2013 Schedule III) — correctness tests
+for the remediated entry-level method (post-audit of c78c7f1).
 
-Guarantees verified:
-  * Operating + Investing + Financing == net cash change   (double-entry)
-  * Closing Cash − Opening Cash == net cash change           (balance tie-out)
-  * Classification by account_type/subtype/system_key (never name)
-  * Accrual vs cash basis behave consistently (same net cash; different working-
-    capital composition)
-  * Part-paid invoice reflects only ACTUAL cash movement
-  * Integer paise throughout — never float
-
-Companies Act 2013 Schedule III / AS-3. Cash basis is management reporting only
-(IT Act §145) and never affects GST/ITR filings. All amounts integer paise.
+Proves, per scenario, that:
+  • Investing/Financing follow ACTUAL cash legs (full disposal proceeds in
+    investing; gain/loss NOT shown as operating).
+  • Depreciation and year-end closing entries (no cash leg) are EXCLUDED, and
+    depreciation is ADDED BACK in the operating reconciliation.
+  • Reconciliation is meaningful: O+I+F == net change == independent(closing −
+    opening), AND the indirect operating breakdown ties to operating cash.
+All integer paise.
 """
 from domain.reporting import (
-    Account, Invoice, JournalEntry, JournalLine, Receipt, ReceiptAllocation,
-    InMemoryLedgerSource, ReportingService,
+    Account, JournalEntry, JournalLine, InMemoryLedgerSource, ReportingService,
 )
 
 FIRM, CLIENT = "firm-cf", "client-cf"
 START, END = "2026-04-01", "2027-03-31"
+PRE = "2026-03-02"   # before the window → affects opening cash only
 
-# Chart of accounts: production-style types/subtypes + system keys. Includes a
-# Fixed Asset (investing), a Loan and Capital (financing) so every activity is
-# exercised. Cash/bank carry system_key='bank'.
 ACCOUNTS = [
-    Account("bank",   "1000", "Bank — HDFC",        "Asset",     "Bank",              system_key="bank"),
-    Account("ar",     "1100", "Trade Receivables",  "Asset",     "Receivable",        system_key="ar"),
-    Account("gstout", "2200", "GST Output Payable", "Liability", "Tax",               system_key="gst_output"),
-    Account("ap",     "2100", "Trade Payables",     "Liability", "Payable",           system_key="ap"),
-    Account("rev",    "4000", "Professional Fees",  "Revenue",   "Professional Fees"),
-    Account("exp",    "5000", "Office Rent",        "Expense",   "Operating Expense"),
-    Account("fa",     "1500", "Office Equipment",   "Asset",     "Fixed Asset"),
-    Account("loan",   "2500", "Term Loan",          "Liability", "Loan"),
-    Account("cap",    "3000", "Capital Account",    "Equity",    "Capital"),
+    Account("bank",   "1000", "Bank — HDFC",            "Asset",     "Bank",              system_key="bank"),
+    Account("ar",     "1100", "Trade Receivables",      "Asset",     "Receivable",        system_key="ar"),
+    Account("gstout", "2200", "GST Output Payable",     "Liability", "Tax",               system_key="gst_output"),
+    Account("ap",     "2150", "Trade Payables",         "Liability", "Payable",           system_key="ap"),
+    Account("rev",    "4000", "Professional Fees",      "Revenue",   "Professional Fees"),
+    Account("exp",    "5000", "Office Rent",            "Expense",   "Operating Expense"),
+    Account("fa",     "1500", "Office Equipment",       "Asset",     "Fixed Asset"),
+    Account("accdep", "1599", "Accumulated Depreciation","Asset",    "Fixed Asset"),
+    Account("depexp", "5900", "Depreciation Expense",   "Expense",   "Depreciation"),
+    Account("gain",   "4900", "Profit on Asset Disposal","Revenue",  "Other Income"),
+    Account("loss",   "5950", "Loss on Asset Disposal", "Expense",   "Other Expense"),
+    Account("loan",   "2500", "Term Loan",              "Liability", "Loan"),
+    Account("cap",    "3000", "Partner Capital Account","Equity",    "Capital"),
+    Account("retd",   "3100", "Retained Earnings",      "Equity",    "Retained"),
 ]
 
 
-def je(jid, lines, date="2026-04-10", reversal_of=None):
-    return JournalEntry(
-        id=jid, entry_date=date, client_id=CLIENT, firm_id=FIRM,
-        entry_type="x", lines=tuple(JournalLine(*l) for l in lines), reversal_of=reversal_of,
-    )
+def je(jid, lines, date="2026-06-01"):
+    return JournalEntry(id=jid, entry_date=date, client_id=CLIENT, firm_id=FIRM,
+                        entry_type="x", lines=tuple(JournalLine(*l) for l in lines))
 
 
-def svc_for(entries=(), invoices=(), receipts=(), allocations=()):
-    return ReportingService(InMemoryLedgerSource(
-        accounts=ACCOUNTS, entries=list(entries), invoices=list(invoices),
-        receipts=list(receipts), allocations=list(allocations),
-    ))
+# ₹10,000 opening cash, introduced before the window (capital). Affects opening only.
+OPENING = je("ob", [("bank", 1000000, 0), ("cap", 0, 1000000)], PRE)
 
 
-def cf(svc, basis="accrual", start=START, end=END):
-    return svc.cash_flow_statement(FIRM, CLIENT, start, end, basis=basis)
+def svc_for(entries):
+    return ReportingService(InMemoryLedgerSource(accounts=ACCOUNTS, entries=list(entries)))
 
 
-def line_for(section, aid):
-    return next((l for l in section["lines"] if l["account_id"] == aid), None)
+def cf(svc, basis="accrual"):
+    return svc.cash_flow_statement(FIRM, CLIENT, START, END, basis=basis)
 
 
-def all_ints(stmt) -> bool:
-    keys = ("net_change_paise", "opening_cash_paise", "closing_cash_paise")
-    if not all(isinstance(stmt[k], int) for k in keys):
-        return False
+def total(s, sec):
+    return s[sec]["total_paise"]
+
+
+def line_for(s, sec, aid):
+    return next((l for l in s[sec]["lines"] if l["account_id"] == aid), None)
+
+
+def assert_reconciles(s):
+    assert s["reconciles"] is True
+    assert total(s, "operating") + total(s, "investing") + total(s, "financing") == s["net_change_paise"]
+    assert s["closing_cash_paise"] - s["opening_cash_paise"] == s["net_change_paise"]
+    assert s["operating_reconciliation"]["ties_out"] is True
+
+
+# ── 1. Depreciation ───────────────────────────────────────────────────────────
+
+def test_depreciation_excluded_and_added_back():
+    s = cf(svc_for([OPENING, je("d", [("depexp", 10000, 0), ("accdep", 0, 10000)])]))
+    assert total(s, "operating") == 0          # non-cash → no operating cash
+    assert total(s, "investing") == 0          # NOT mis-posted to investing
+    assert total(s, "financing") == 0
+    assert s["net_change_paise"] == 0
+    assert s["non_cash_excluded_count"] == 1
+    r = s["operating_reconciliation"]
+    assert r["net_profit_paise"] == -10000     # expense reduced profit
+    assert r["depreciation_addback_paise"] == 10000   # …added back
+    assert r["net_cash_operating_paise"] == 0
+    assert s["opening_cash_paise"] == 1000000 and s["closing_cash_paise"] == 1000000
+    assert_reconciles(s)
+
+
+# ── 2. Asset purchase ─────────────────────────────────────────────────────────
+
+def test_asset_purchase_is_investing_outflow():
+    s = cf(svc_for([OPENING, je("p", [("fa", 50000, 0), ("bank", 0, 50000)])]))
+    assert total(s, "investing") == -50000
+    assert line_for(s, "investing", "fa")["amount_paise"] == -50000
+    assert total(s, "operating") == 0 and total(s, "financing") == 0
+    assert s["net_change_paise"] == -50000
+    assert s["closing_cash_paise"] == 950000
+    assert_reconciles(s)
+
+
+# ── 3. Asset disposal — gain ──────────────────────────────────────────────────
+
+def test_asset_disposal_gain_full_proceeds_in_investing():
+    pre = [OPENING,
+           je("acq", [("fa", 100000, 0), ("bank", 0, 100000)], PRE),
+           je("dep", [("depexp", 60000, 0), ("accdep", 0, 60000)], PRE)]
+    # cost 100000, accum dep 60000, WDV 40000, proceeds 50000, gain 10000
+    disp = je("disp", [("accdep", 60000, 0), ("bank", 50000, 0), ("fa", 0, 100000), ("gain", 0, 10000)])
+    s = cf(svc_for(pre + [disp]))
+    assert total(s, "investing") == 50000      # FULL proceeds, not WDV (40000)
+    assert total(s, "operating") == 0          # gain NOT shown as operating cash
+    assert total(s, "financing") == 0
+    r = s["operating_reconciliation"]
+    assert r["net_profit_paise"] == 10000          # gain sits in P&L…
+    assert r["non_operating_adjust_paise"] == -10000   # …and is removed from operating
+    assert r["net_cash_operating_paise"] == 0
+    assert s["opening_cash_paise"] == 900000        # 1,000,000 − 100,000 acquisition
+    assert s["closing_cash_paise"] == 950000
+    assert_reconciles(s)
+
+
+# ── 4. Asset disposal — loss ──────────────────────────────────────────────────
+
+def test_asset_disposal_loss_full_proceeds_loss_added_back():
+    pre = [OPENING,
+           je("acq", [("fa", 100000, 0), ("bank", 0, 100000)], PRE),
+           je("dep", [("depexp", 60000, 0), ("accdep", 0, 60000)], PRE)]
+    # WDV 40000, proceeds 30000, loss 10000
+    disp = je("disp", [("accdep", 60000, 0), ("bank", 30000, 0), ("loss", 10000, 0), ("fa", 0, 100000)])
+    s = cf(svc_for(pre + [disp]))
+    assert total(s, "investing") == 30000      # full proceeds
+    assert total(s, "operating") == 0
+    r = s["operating_reconciliation"]
+    assert r["net_profit_paise"] == -10000         # loss in P&L…
+    assert r["non_operating_adjust_paise"] == 10000    # …added back (removed from operating)
+    assert r["net_cash_operating_paise"] == 0
+    assert_reconciles(s)
+
+
+# ── 5. Loan proceeds ──────────────────────────────────────────────────────────
+
+def test_loan_proceeds_financing_inflow():
+    s = cf(svc_for([je("l", [("bank", 100000, 0), ("loan", 0, 100000)])]))
+    assert total(s, "financing") == 100000
+    assert line_for(s, "financing", "loan")["amount_paise"] == 100000
+    assert total(s, "operating") == 0 and total(s, "investing") == 0
+    assert s["net_change_paise"] == 100000
+    assert_reconciles(s)
+
+
+# ── 6. Loan repayment ─────────────────────────────────────────────────────────
+
+def test_loan_repayment_financing_outflow():
+    s = cf(svc_for([OPENING, je("r", [("loan", 30000, 0), ("bank", 0, 30000)])]))
+    assert total(s, "financing") == -30000
+    assert line_for(s, "financing", "loan")["amount_paise"] == -30000
+    assert s["net_change_paise"] == -30000
+    assert s["closing_cash_paise"] == 970000
+    assert_reconciles(s)
+
+
+# ── 7. Capital introduction ───────────────────────────────────────────────────
+
+def test_capital_introduction_financing_inflow():
+    s = cf(svc_for([je("c", [("bank", 500000, 0), ("cap", 0, 500000)])]))
+    assert total(s, "financing") == 500000
+    assert line_for(s, "financing", "cap")["amount_paise"] == 500000
+    assert s["net_change_paise"] == 500000
+    assert_reconciles(s)
+
+
+# ── 8. Drawings ───────────────────────────────────────────────────────────────
+
+def test_drawings_financing_outflow():
+    s = cf(svc_for([OPENING, je("dr", [("cap", 20000, 0), ("bank", 0, 20000)])]))
+    assert total(s, "financing") == -20000
+    assert line_for(s, "financing", "cap")["amount_paise"] == -20000
+    assert total(s, "operating") == 0 and total(s, "investing") == 0
+    assert s["net_change_paise"] == -20000
+    assert_reconciles(s)
+
+
+# ── 9. GST liability movements ────────────────────────────────────────────────
+
+def test_gst_movements_are_operating():
+    s = cf(svc_for([
+        je("sale",  [("bank", 11800, 0), ("rev", 0, 10000), ("gstout", 0, 1800)]),
+        je("remit", [("gstout", 1800, 0), ("bank", 0, 1800)], "2026-06-20"),
+    ]))
+    assert total(s, "operating") == 10000      # 11,800 collected − 1,800 GST remitted
+    assert total(s, "investing") == 0 and total(s, "financing") == 0
+    assert line_for(s, "investing", "gstout") is None
+    assert line_for(s, "financing", "gstout") is None
+    r = s["operating_reconciliation"]
+    assert r["net_profit_paise"] == 10000
+    assert r["net_cash_operating_paise"] == 10000
+    assert s["net_change_paise"] == 10000
+    assert_reconciles(s)
+
+
+# ── 10. Year-end closing entries ──────────────────────────────────────────────
+
+def test_year_end_close_excluded_no_distortion():
+    s = cf(svc_for([
+        je("earn",  [("ar", 10000, 0), ("rev", 0, 10000)]),               # credit sale (earned)
+        je("close", [("rev", 10000, 0), ("retd", 0, 10000)], "2027-03-31"),  # year-end close
+    ]))
+    assert total(s, "operating") == 0
+    assert total(s, "investing") == 0
+    assert total(s, "financing") == 0          # retained-earnings close is NOT financing
+    assert line_for(s, "financing", "retd") is None
+    assert s["net_change_paise"] == 0
+    assert s["non_cash_excluded_count"] == 2
+    r = s["operating_reconciliation"]
+    assert r["net_profit_paise"] == 10000          # earned profit, NOT zeroed by the close
+    assert r["working_capital_change_paise"] == -10000  # offset by the A/R increase
+    assert r["net_cash_operating_paise"] == 0
+    assert_reconciles(s)
+
+
+# ── Cross-scenario invariants ─────────────────────────────────────────────────
+
+def test_combined_ledger_reconciles_and_classifies():
+    s = cf(svc_for([
+        OPENING,
+        je("sale",  [("bank", 59000, 0), ("rev", 0, 50000), ("gstout", 0, 9000)], "2026-04-10"),
+        je("rent",  [("exp", 20000, 0), ("bank", 0, 20000)], "2026-04-15"),
+        je("buy",   [("fa", 30000, 0), ("bank", 0, 30000)], "2026-05-01"),
+        je("loan",  [("bank", 80000, 0), ("loan", 0, 80000)], "2026-05-10"),
+        je("dep",   [("depexp", 5000, 0), ("accdep", 0, 5000)], "2026-06-30"),
+        je("draw",  [("cap", 15000, 0), ("bank", 0, 15000)], "2026-07-01"),
+    ]))
+    assert total(s, "operating") == 39000      # 59,000 in − 20,000 rent
+    assert total(s, "investing") == -30000     # asset purchase
+    assert total(s, "financing") == 80000 - 15000  # loan in − drawings
+    assert s["net_change_paise"] == 39000 - 30000 + 65000
+    assert s["opening_cash_paise"] == 1000000
+    assert s["closing_cash_paise"] == 1000000 + s["net_change_paise"]
+    assert s["operating_reconciliation"]["depreciation_addback_paise"] == 5000
+    assert_reconciles(s)
+
+
+def test_basis_param_is_accepted_and_cash_totals_invariant():
+    entries = [je("sale", [("bank", 11800, 0), ("rev", 0, 10000), ("gstout", 0, 1800)])]
+    accrual = cf(svc_for(entries), "accrual")
+    cash = cf(svc_for(entries), "cash")
+    assert cash.get("basis") == "cash"
+    # A cash flow statement is intrinsically actual-cash → identical totals.
     for sec in ("operating", "investing", "financing"):
-        if not isinstance(stmt[sec]["total_paise"], int):
-            return False
-        if not all(isinstance(l["amount_paise"], int) for l in stmt[sec]["lines"]):
-            return False
-    return True
+        assert total(accrual, sec) == total(cash, sec)
+    assert accrual["net_change_paise"] == cash["net_change_paise"] == 11800
 
 
-# ── Classification ────────────────────────────────────────────────────────────
-
-class TestClassification:
-    def _statement(self):
-        # Cash sale, fixed-asset purchase, loan drawdown, capital intro, rent paid.
-        svc = svc_for(entries=[
-            je("e1", [("bank", 1000, 0), ("rev", 0, 1000)], "2026-04-10"),   # operating in
-            je("e2", [("fa", 500, 0), ("bank", 0, 500)], "2026-05-01"),       # investing out
-            je("e3", [("bank", 2000, 0), ("loan", 0, 2000)], "2026-05-10"),   # financing in
-            je("e4", [("bank", 3000, 0), ("cap", 0, 3000)], "2026-06-01"),    # financing in
-            je("e5", [("exp", 200, 0), ("bank", 0, 200)], "2026-06-15"),      # operating out
-        ])
-        return cf(svc)
-
-    def test_operating_holds_revenue_and_expense(self):
-        s = self._statement()
-        assert line_for(s["operating"], "rev")["amount_paise"] == 1000
-        assert line_for(s["operating"], "exp")["amount_paise"] == -200
-        assert s["operating"]["total_paise"] == 800
-        # Fixed asset / loan / capital must NOT appear in operating.
-        assert line_for(s["operating"], "fa") is None
-        assert line_for(s["operating"], "loan") is None
-        assert line_for(s["operating"], "cap") is None
-
-    def test_investing_holds_fixed_assets(self):
-        s = self._statement()
-        assert line_for(s["investing"], "fa")["amount_paise"] == -500
-        assert s["investing"]["total_paise"] == -500
-
-    def test_financing_holds_loans_and_equity(self):
-        s = self._statement()
-        assert line_for(s["financing"], "loan")["amount_paise"] == 2000
-        assert line_for(s["financing"], "cap")["amount_paise"] == 3000
-        assert s["financing"]["total_paise"] == 5000
-
-    def test_cash_account_excluded_from_activities(self):
-        s = self._statement()
-        for sec in ("operating", "investing", "financing"):
-            assert line_for(s[sec], "bank") is None
-
-
-# ── Reconciliation: O + I + F == net change ──────────────────────────────────
-
-class TestReconciliation:
-    def test_activities_sum_to_net_change(self):
-        svc = svc_for(entries=[
-            je("e1", [("bank", 1000, 0), ("rev", 0, 1000)], "2026-04-10"),
-            je("e2", [("fa", 500, 0), ("bank", 0, 500)], "2026-05-01"),
-            je("e3", [("bank", 2000, 0), ("loan", 0, 2000)], "2026-05-10"),
-            je("e4", [("bank", 3000, 0), ("cap", 0, 3000)], "2026-06-01"),
-            je("e5", [("exp", 200, 0), ("bank", 0, 200)], "2026-06-15"),
-        ])
-        s = cf(svc)
-        total = s["operating"]["total_paise"] + s["investing"]["total_paise"] + s["financing"]["total_paise"]
-        assert total == s["net_change_paise"] == 5300
-        assert s["reconciles"] is True
-
-    def test_empty_period_reconciles_to_zero(self):
-        s = cf(svc_for(entries=[]))
-        assert s["net_change_paise"] == 0
-        assert s["operating"]["total_paise"] == 0
-        assert s["reconciles"] is True
-
-
-# ── Balance-sheet tie-out: closing − opening == net change ───────────────────
-
-class TestBalanceSheetTieOut:
-    def test_opening_and_closing_cash(self):
-        svc = svc_for(entries=[
-            # Capital introduced BEFORE the reporting window → opening cash.
-            je("ob", [("bank", 10000, 0), ("cap", 0, 10000)], "2026-03-20"),
-            # A cash sale inside the window.
-            je("e1", [("bank", 1000, 0), ("rev", 0, 1000)], "2026-04-10"),
-        ])
-        s = cf(svc)
-        assert s["opening_cash_paise"] == 10000          # prior capital, excluded from period
-        assert s["net_change_paise"] == 1000             # only the in-window sale moved cash
-        assert s["closing_cash_paise"] == 11000
-        assert s["closing_cash_paise"] - s["opening_cash_paise"] == s["net_change_paise"]
-        # The pre-window capital must NOT show in this period's financing section.
-        assert line_for(s["financing"], "cap") is None
-        assert s["reconciles"] is True
-
-
-# ── Basis: accrual vs cash behave consistently ───────────────────────────────
-
-class TestBasis:
-    def _credit_sale_partial_receipt(self):
-        # Invoice ₹11.80 (rev 1000 + GST 180), then collect ₹5.90 (half).
-        inv = Invoice("inv1", 1180, "jinv")
-        jinv = je("jinv", [("ar", 1180, 0), ("rev", 0, 1000), ("gstout", 0, 180)], "2026-04-10")
-        rcpt = Receipt("r1", "jrec", 590, 0)
-        jrec = je("jrec", [("bank", 590, 0), ("ar", 0, 590)], "2026-04-20")
-        alloc = ReceiptAllocation("r1", "inv1", 590)
-        return svc_for(entries=[jinv, jrec], invoices=[inv], receipts=[rcpt], allocations=[alloc])
-
-    def test_net_cash_same_on_both_bases(self):
-        svc = self._credit_sale_partial_receipt()
-        accrual = cf(svc, "accrual")
-        cash = cf(svc, "cash")
-        # Actual cash moved is identical regardless of basis.
-        assert accrual["net_change_paise"] == cash["net_change_paise"] == 590
-        assert accrual["reconciles"] and cash["reconciles"]
-
-    def test_accrual_shows_working_capital_cash_does_not(self):
-        svc = self._credit_sale_partial_receipt()
-        accrual = cf(svc, "accrual")
-        cash = cf(svc, "cash")
-        # Accrual operating carries the A/R working-capital change…
-        assert line_for(accrual["operating"], "ar") is not None
-        assert line_for(accrual["operating"], "rev")["amount_paise"] == 1000
-        # …cash operating recognises revenue only on collection, with no A/R line.
-        assert line_for(cash["operating"], "ar") is None
-        assert line_for(cash["operating"], "rev")["amount_paise"] == 500   # half of 1000
-        # Both operating totals equal the cash collected.
-        assert accrual["operating"]["total_paise"] == cash["operating"]["total_paise"] == 590
-
-    def test_cash_basis_marks_basis(self):
-        s = cf(self._credit_sale_partial_receipt(), "cash")
-        assert s.get("basis") == "cash"
-
-
-# ── Part-paid invoice reflects only actual cash ──────────────────────────────
-
-class TestPartPaidInvoice:
-    def test_only_received_cash_appears(self):
-        inv = Invoice("inv1", 1180, "jinv")
-        jinv = je("jinv", [("ar", 1180, 0), ("rev", 0, 1000), ("gstout", 0, 180)], "2026-04-10")
-        rcpt = Receipt("r1", "jrec", 590, 0)
-        jrec = je("jrec", [("bank", 590, 0), ("ar", 0, 590)], "2026-04-20")
-        alloc = ReceiptAllocation("r1", "inv1", 590)
-        svc = svc_for(entries=[jinv, jrec], invoices=[inv], receipts=[rcpt], allocations=[alloc])
-        s = cf(svc, "accrual")
-        # The invoice itself moved no cash; only the ₹5.90 receipt did.
-        assert s["net_change_paise"] == 590
-        assert s["closing_cash_paise"] == 590
-        assert s["reconciles"] is True
-
-
-# ── Integer paise / odd-amount apportionment ─────────────────────────────────
-
-class TestIntegerPaise:
-    def test_uneven_collection_stays_integer_and_reconciles(self):
-        # Collect ₹3.33 against an ₹11.80 invoice — forces apportionment on cash basis.
-        inv = Invoice("inv1", 1180, "jinv")
-        jinv = je("jinv", [("ar", 1180, 0), ("rev", 0, 1000), ("gstout", 0, 180)], "2026-04-10")
-        rcpt = Receipt("r1", "jrec", 333, 0)
-        jrec = je("jrec", [("bank", 333, 0), ("ar", 0, 333)], "2026-04-20")
-        alloc = ReceiptAllocation("r1", "inv1", 333)
-        svc = svc_for(entries=[jinv, jrec], invoices=[inv], receipts=[rcpt], allocations=[alloc])
-        for basis in ("accrual", "cash"):
-            s = cf(svc, basis)
-            assert all_ints(s), f"{basis}: non-integer paise found"
-            assert s["net_change_paise"] == 333
-            assert s["reconciles"] is True
+def test_integer_paise_only():
+    s = cf(svc_for([OPENING, je("x", [("bank", 333, 0), ("rev", 0, 333)])]))
+    for k in ("net_change_paise", "opening_cash_paise", "closing_cash_paise"):
+        assert isinstance(s[k], int)
+    for sec in ("operating", "investing", "financing"):
+        assert isinstance(total(s, sec), int)
+        assert all(isinstance(l["amount_paise"], int) for l in s[sec]["lines"])
+    assert_reconciles(s)

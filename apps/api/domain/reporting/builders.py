@@ -148,54 +148,162 @@ def _classify_activity(a: Account) -> str:
     return "operating"
 
 
-def cash_flow(lines: list[ProjectedLine], accounts: dict[str, Account],
+def _activity_of_entry(lines, accounts, bank_ids) -> str:
+    """Classify a CASH-touching journal entry by its non-cash legs.
+    Investing wins over financing wins over operating (an entry touching a fixed
+    asset is an investing transaction regardless of any P&L leg, so disposal
+    proceeds land in investing and the gain/loss is not shown as operating cash)."""
+    acts = {
+        _classify_activity(_acc(accounts, l.account_id))
+        for l in lines if l.account_id not in bank_ids
+    }
+    if "investing" in acts:
+        return "investing"
+    if "financing" in acts:
+        return "financing"
+    return "operating"
+
+
+def _attribute(acc_totals: dict, nonbank, accounts: dict, activity: str, cash: int) -> None:
+    """Attribute an entry's cash to the most material counterpart account of its
+    activity (e.g. disposal proceeds shown against the fixed-asset account)."""
+    candidates = [l for l in nonbank
+                  if _classify_activity(_acc(accounts, l.account_id)) == activity] or list(nonbank)
+    if not candidates:
+        return
+    key = max(candidates, key=lambda l: l.debit_paise + l.credit_paise).account_id
+    acc_totals[key] = acc_totals.get(key, 0) + cash
+
+
+def _non_operating_pl(nonbank, accounts: dict) -> int:
+    """Net P&L recognised in a non-operating (investing/financing) entry — i.e.
+    gain (+) / loss (−) on disposal. credit−debit so a gain is positive."""
+    total = 0
+    for l in nonbank:
+        a = _acc(accounts, l.account_id)
+        if a.is_income or a.is_expense:
+            total += l.credit_paise - l.debit_paise
+    return total
+
+
+def cash_flow(entries: list, accounts: dict[str, Account],
               bank_ids: frozenset[str], start_date: str, end_date: str,
-              opening_cash_paise: int, basis: str) -> dict:
+              opening_cash_paise: int, closing_cash_paise: int, basis: str) -> dict:
     """
-    Build an AS-3 (indirect-method) Cash Flow Statement from the period's
-    ProjectedLines. Derived from ledger movement, so by double-entry:
+    AS-3 Cash Flow Statement (Companies Act 2013 Schedule III).
 
-        Operating + Investing + Financing
-            = net movement of cash/bank accounts
-            = Closing Cash − Opening Cash
+    Method (correct AS-3, not naive movement classification):
+      • Investing & Financing — the ACTUAL cash legs of entries that touch a
+        fixed-asset / loan / equity account (so a disposal shows full proceeds in
+        investing, never the gain in operating).
+      • Operating — the residual cash, presented as the INDIRECT reconciliation:
+        net profit + depreciation add-back − non-operating gains ± working capital.
+      • Non-cash entries (depreciation, year-end closing, accruals — no bank leg)
+        are EXCLUDED from every section.
 
-    Every cash inflow is the credit side of a non-cash account's movement, so a
-    non-cash account's contribution is (credit − debit) of its period movement
-    (inflow positive). Integer paise throughout — never float.
+    Reconciliation is meaningful, not tautological:
+      O + I + F == net cash change == (independent) closing − opening cash, AND
+      the operating indirect breakdown ties to operating cash.
+    Integer paise throughout — never float.
     """
-    by_activity: dict[str, dict[str, int]] = {"operating": {}, "investing": {}, "financing": {}}
-    cash_movement = 0
-    for ln in lines:
-        if ln.account_id in bank_ids:
-            cash_movement += ln.debit_paise - ln.credit_paise   # debit-positive = cash in
+    inv_acc: dict[str, int] = {}
+    fin_acc: dict[str, int] = {}
+    operating_cash = 0
+    investing_cash = 0
+    financing_cash = 0
+    non_operating_pl = 0          # gain(+)/loss(−) on disposal etc.
+    net_profit = 0               # accrual P&L for the period (excl. closing entries)
+    depreciation = 0             # non-cash add-back
+    working_capital = 0          # Δ operating current assets/liabilities
+    non_cash_excluded = 0
+    total_cash = 0
+
+    for e in entries:
+        elines = e.lines
+        cash = sum(l.debit_paise - l.credit_paise for l in elines if l.account_id in bank_ids)
+        total_cash += cash
+        nonbank = [l for l in elines if l.account_id not in bank_ids]
+
+        # ── Cash sections (actual cash legs) ──────────────────────────────────
+        if cash != 0:
+            activity = _activity_of_entry(elines, accounts, bank_ids)
+            if activity == "investing":
+                investing_cash += cash       # MEDIUM-3: full proceeds / cost to investing
+                _attribute(inv_acc, nonbank, accounts, "investing", cash)
+                non_operating_pl += _non_operating_pl(nonbank, accounts)
+            elif activity == "financing":
+                financing_cash += cash
+                _attribute(fin_acc, nonbank, accounts, "financing", cash)
+                non_operating_pl += _non_operating_pl(nonbank, accounts)
+            else:
+                operating_cash += cash
+        else:
+            non_cash_excluded += 1           # MEDIUM-4/5: non-cash entry excluded from cash flow
+
+        # ── Operating-reconciliation inputs (HIGH-1) ─────────────────────────
+        # Exclude year-end closing / equity reclassifications: a non-cash entry
+        # that moves P&L into equity (Dr Revenue / Cr Retained Earnings) is not
+        # period profit and must not pollute the indirect reconciliation (MEDIUM-5).
+        has_equity = any(_acc(accounts, l.account_id).type == "Equity" for l in nonbank)
+        has_pl = any(_acc(accounts, l.account_id).is_income or _acc(accounts, l.account_id).is_expense
+                     for l in nonbank)
+        if cash == 0 and has_equity and has_pl:
             continue
-        a = _acc(accounts, ln.account_id)
-        bucket = by_activity[_classify_activity(a)]
-        bucket[ln.account_id] = bucket.get(ln.account_id, 0) + (ln.credit_paise - ln.debit_paise)
+        for l in nonbank:
+            a = _acc(accounts, l.account_id)
+            if a.is_income or a.is_expense:
+                net_profit += l.credit_paise - l.debit_paise         # P&L: credit-positive
+                if a.is_expense and (a.subtype or "").strip().lower() == "depreciation":
+                    depreciation += l.debit_paise - l.credit_paise   # non-cash add-back
+            elif _classify_activity(a) == "operating":
+                working_capital += l.credit_paise - l.debit_paise    # Δ operating WC
 
-    def section(label: str, totals: dict[str, int]) -> dict:
+    operating_profit = net_profit - non_operating_pl                 # strip disposal gain/loss
+    # Meaningful cross-check (HIGH-2): the indirect operating reconciliation must
+    # tie to the residual operating cash — catches any mis-classification.
+    operating_reconciles = (operating_profit + depreciation + working_capital) == operating_cash
+
+    def acct_section(label: str, totals: dict[str, int]) -> dict:
         rows = []
         for aid, amt in totals.items():
             if amt == 0:
                 continue
             a = _acc(accounts, aid)
             rows.append({
-                "account_id": aid,
-                "account_code": a.code,
-                "account_name": a.name,
-                "account_type": a.type,
-                "account_subtype": a.subtype,
-                "amount_paise": amt,
+                "account_id": aid, "account_code": a.code, "account_name": a.name,
+                "account_type": a.type, "account_subtype": a.subtype, "amount_paise": amt,
             })
         rows.sort(key=lambda x: x["account_code"])
         return {"label": label, "lines": rows, "total_paise": sum(totals.values())}
 
-    operating = section("Cash from Operating Activities", by_activity["operating"])
-    investing = section("Cash from Investing Activities", by_activity["investing"])
-    financing = section("Cash from Financing Activities", by_activity["financing"])
+    # Operating section presented as the indirect reconciliation.
+    op_lines = [{
+        "account_id": "__net_profit__", "account_code": "", "account_name": "Net profit for the period",
+        "account_type": "", "account_subtype": None, "amount_paise": net_profit,
+    }]
+    adjust = depreciation - non_operating_pl
+    if adjust:
+        op_lines.append({
+            "account_id": "__noncash__", "account_code": "",
+            "account_name": "Add back: depreciation & non-operating items",
+            "account_type": "", "account_subtype": None, "amount_paise": adjust,
+        })
+    if working_capital:
+        op_lines.append({
+            "account_id": "__wc__", "account_code": "",
+            "account_name": "Changes in working capital",
+            "account_type": "", "account_subtype": None, "amount_paise": working_capital,
+        })
+    operating = {"label": "Cash from Operating Activities", "lines": op_lines, "total_paise": operating_cash}
+    investing = acct_section("Cash from Investing Activities", inv_acc)
+    financing = acct_section("Cash from Financing Activities", fin_acc)
 
-    net_change = operating["total_paise"] + investing["total_paise"] + financing["total_paise"]
-    closing_cash = opening_cash_paise + cash_movement
+    net_change = operating_cash + investing_cash + financing_cash
+    reconciles = (
+        net_change == total_cash                                   # every cash entry classified
+        and (closing_cash_paise - opening_cash_paise) == net_change  # ties to ledger cash balances
+        and operating_reconciles                                   # indirect == residual (not tautological)
+    )
     out = {
         "start_date": start_date,
         "end_date": end_date,
@@ -204,9 +312,17 @@ def cash_flow(lines: list[ProjectedLine], accounts: dict[str, Account],
         "financing": financing,
         "net_change_paise": net_change,
         "opening_cash_paise": opening_cash_paise,
-        "closing_cash_paise": closing_cash,
-        # Guaranteed equal by double-entry; surfaced for the UI and asserted in tests.
-        "reconciles": net_change == cash_movement == (closing_cash - opening_cash_paise),
+        "closing_cash_paise": closing_cash_paise,
+        "reconciles": reconciles,
+        "non_cash_excluded_count": non_cash_excluded,
+        "operating_reconciliation": {
+            "net_profit_paise": net_profit,
+            "non_operating_adjust_paise": -non_operating_pl,   # remove gains / add back losses
+            "depreciation_addback_paise": depreciation,
+            "working_capital_change_paise": working_capital,
+            "net_cash_operating_paise": operating_cash,
+            "ties_out": operating_reconciles,
+        },
     }
     if basis == "cash":
         out["basis"] = "cash"

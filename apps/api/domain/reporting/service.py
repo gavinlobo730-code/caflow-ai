@@ -73,21 +73,28 @@ class ReportingService:
         """
         AS-3 Cash Flow Statement (indirect), Companies Act 2013 Schedule III.
 
-        Computed over the same scoped ledger as the other reports — the period
-        movement classifies into operating/investing/financing, and opening cash
-        is the cumulative bank balance as of the day before the window. Closing
-        cash = opening + period cash movement, so by double-entry:
-        Operating + Investing + Financing = net cash change = closing − opening.
+        Investing & financing follow the ACTUAL cash legs of posted entries that
+        touch fixed-asset / loan / equity accounts; operating is the residual,
+        presented as the indirect reconciliation (net profit + depreciation
+        add-back − non-operating items ± working capital). Non-cash entries
+        (depreciation, year-end closing) are excluded — they have no cash leg.
+
+        A cash flow statement is intrinsically actual-cash, so investing/financing
+        and the cash totals are basis-invariant; the operating reconciliation uses
+        the accrual P&L. `basis` is accepted for API symmetry and echoed only.
+        Opening and closing cash are computed INDEPENDENTLY from the ledger, so the
+        reconciliation is a real check, not a tautology.
         """
         start = start_date or _fy_start()
         end = end_date or date.today().isoformat()
         period_snap = self.source.snapshot(firm_id, client_id, start, end)
         bank_ids = AccountResolver(period_snap.accounts).bank_ids
-        period_lines = self._lines(period_snap, basis)
-        opening_cash = self._cash_balance(firm_id, client_id, _day_before(start), basis)
+        entries = period_snap.entries_in_range
+        opening_cash = self._cash_balance(firm_id, client_id, _day_before(start), "accrual")
+        closing_cash = self._cash_balance(firm_id, client_id, end, "accrual")
         return builders.cash_flow(
-            period_lines, period_snap.accounts, bank_ids,
-            start, end, opening_cash, basis,
+            entries, period_snap.accounts, bank_ids,
+            start, end, opening_cash, closing_cash, basis,
         )
 
     def _cash_balance(self, firm_id: str, client_id: Optional[str],
