@@ -197,14 +197,15 @@ def list_invoices(
             lines_resp = (
                 db.table("client_sales_invoice_lines")
                 .select("*")
-                .eq("invoice_id", inv["id"])
+                .eq("sales_invoice_id", inv["id"])
                 .execute()
             )
             inv["lines"] = lines_resp.data or []
 
         return api_response(True, invoices)
     except Exception as e:
-        _logger.error("list_invoices: %s", e)
+        # Full exception + traceback go to server logs only; client sees a generic message.
+        _logger.error("list_invoices failed: %s", e, exc_info=True)
         return api_response(False, None, "Unable to complete invoice operation. Please try again.")
 
 
@@ -379,7 +380,8 @@ def create_invoice(
         line_payloads = []
         for ln in computed_lines:
             line_payloads.append({
-                "invoice_id":            invoice_id,
+                # FK column per migration 050 is sales_invoice_id (not invoice_id)
+                "sales_invoice_id":      invoice_id,
                 "description":           ln["description"],
                 "hsn_sac":               ln["hsn_sac"],
                 "quantity":              ln["quantity"],
@@ -392,7 +394,14 @@ def create_invoice(
                 "igst_paise":            ln["igst_paise"],
                 "line_total_paise":      ln["line_total_paise"],
             })
-        lines_resp = db.table("client_sales_invoice_lines").insert(line_payloads).execute()  # type: ignore[possibly-undefined]
+        # Atomicity: PostgREST exposes no multi-statement transaction here, so if
+        # the line insert fails we compensate by deleting the just-created header.
+        # This guarantees we never leave an orphan invoice (header with no lines).
+        try:
+            lines_resp = db.table("client_sales_invoice_lines").insert(line_payloads).execute()  # type: ignore[possibly-undefined]
+        except Exception:
+            db.table("client_sales_invoices").delete().eq("id", invoice_id).execute()  # type: ignore[possibly-undefined]
+            raise
         invoice["lines"] = lines_resp.data or computed_lines
 
         log_event(
@@ -411,7 +420,8 @@ def create_invoice(
     except HTTPException:
         raise
     except Exception as e:
-        _logger.error("create_invoice: %s", e)
+        # Full exception + traceback go to server logs only; client sees a generic message.
+        _logger.error("create_invoice failed: %s", e, exc_info=True)
         return api_response(False, None, "Unable to create invoice. Please try again.")
 
 
@@ -435,13 +445,14 @@ def get_invoice(
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
         invoice = resp.data[0]
-        lines_resp = db.table("client_sales_invoice_lines").select("*").eq("invoice_id", invoice_id).execute()
+        lines_resp = db.table("client_sales_invoice_lines").select("*").eq("sales_invoice_id", invoice_id).execute()
         invoice["lines"] = lines_resp.data or []
         return api_response(True, invoice)
     except HTTPException:
         raise
     except Exception as e:
-        _logger.error("get_invoice: %s", e)
+        # Full exception + traceback go to server logs only; client sees a generic message.
+        _logger.error("get_invoice failed: %s", e, exc_info=True)
         return api_response(False, None, "Unable to complete invoice operation. Please try again.")
 
 
@@ -500,7 +511,8 @@ def update_invoice(
                 total_igst    += igst
 
                 computed_lines.append({
-                    "invoice_id":           invoice_id,
+                    # FK column per migration 050 is sales_invoice_id (not invoice_id)
+                    "sales_invoice_id":     invoice_id,
                     "description":          ln.get("description", ""),
                     "hsn_sac":              ln.get("hsn_sac", ""),
                     "quantity":             qty,
@@ -515,7 +527,7 @@ def update_invoice(
                 })
 
             # Delete existing lines and reinsert
-            db.table("client_sales_invoice_lines").delete().eq("invoice_id", invoice_id).execute()
+            db.table("client_sales_invoice_lines").delete().eq("sales_invoice_id", invoice_id).execute()
             db.table("client_sales_invoice_lines").insert(computed_lines).execute()
 
             # Update aggregate totals in invoice
@@ -538,7 +550,8 @@ def update_invoice(
     except HTTPException:
         raise
     except Exception as e:
-        _logger.error("update_invoice: %s", e)
+        # Full exception + traceback go to server logs only; client sees a generic message.
+        _logger.error("update_invoice failed: %s", e, exc_info=True)
         return api_response(False, None, "Unable to complete invoice operation. Please try again.")
 
 
