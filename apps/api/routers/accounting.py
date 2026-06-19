@@ -269,3 +269,23 @@ def get_balance_sheet(
         current_user["firm_id"], client_id, as_of_date, basis=basis
     )
     return api_response(True, bs)
+
+
+@router.get("/cash-flow")
+def get_cash_flow(
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    client_id: Optional[str] = Query(None),
+    basis: str = Query("accrual", pattern="^(accrual|cash)$"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """
+    Cash Flow Statement — AS-3 (indirect method), Companies Act 2013 Schedule III.
+    Operating + Investing + Financing = net cash movement = closing − opening cash
+    (guaranteed by double-entry; all integer paise). basis=cash is management
+    reporting only (IT Act §145) and never affects GST/ITR filings.
+    """
+    cf = _reporting_service().cash_flow_statement(
+        current_user["firm_id"], client_id, start_date, end_date, basis=basis
+    )
+    return api_response(True, cf)
