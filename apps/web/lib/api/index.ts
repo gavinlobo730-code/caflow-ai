@@ -454,6 +454,13 @@ export const api = {
     issue: (id: string) => request(`/api/sales-invoices/${id}/issue`, { method: "POST" }),
     unposted: (clientId?: string) =>
       request(`/api/sales-invoices/maintenance/unposted${clientId ? `?client_id=${clientId}` : ""}`),
+    downloadPdf: (id: string, invoiceNo?: string) =>
+      downloadFile(`/api/sales-invoices/${id}/pdf`, `invoice-${invoiceNo ?? id}.pdf`),
+    send: (id: string, toEmail?: string) =>
+      request(`/api/sales-invoices/${id}/send`, { method: "POST", body: JSON.stringify({ to_email: toEmail ?? null }) }),
+    resend: (id: string, toEmail?: string) =>
+      request(`/api/sales-invoices/${id}/resend`, { method: "POST", body: JSON.stringify({ to_email: toEmail ?? null }) }),
+    deliveries: (id: string) => request(`/api/sales-invoices/${id}/deliveries`),
   },
   receipts: {
     create: (body: unknown) =>

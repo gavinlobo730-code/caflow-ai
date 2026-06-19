@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, RefreshCw, X, FileText, CheckCircle, Upload } from "lucide-react";
+import { Plus, RefreshCw, X, FileText, CheckCircle, Upload, Send, Clock } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
@@ -52,6 +52,24 @@ async function getAuthToken(): Promise<string> {
   const supabase = getSupabaseClient();
   const { data: { session } } = await supabase.auth.getSession();
   return session?.access_token ?? "";
+}
+
+async function apiGet(
+  endpoint: string,
+  token?: string
+): Promise<{ success: boolean; data: unknown; error: string | null }> {
+  const res = await fetch(`${API}${endpoint}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "Request failed");
+    return { success: false, data: null, error: text };
+  }
+  return res.json();
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -129,6 +147,18 @@ interface CreditNote {
   gst_paise: number;
   total_paise: number;
   status: "draft" | "issued" | "cancelled";
+}
+
+interface InvoiceDelivery {
+  id: string;
+  invoice_id: string;
+  sent_to: string;
+  sent_by_email: string | null;
+  status: "queued" | "sending" | "sent" | "failed" | "bounced";
+  provider_message_id: string | null;
+  error_message: string | null;
+  sent_at: string | null;
+  created_at: string;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -328,6 +358,8 @@ function SalesInvoices({
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [sendModal, setSendModal] = useState<{ invoice: SalesInvoice; customerEmail: string | null } | null>(null);
+  const [deliveryModal, setDeliveryModal] = useState<{ invoice: SalesInvoice; deliveries: InvoiceDelivery[] } | null>(null);
 
   // Summary stats
   const [stats, setStats] = useState({ outstanding: 0, issued: 0, paid: 0 });
@@ -404,6 +436,28 @@ function SalesInvoices({
     }
   }
 
+  async function sendInvoice(inv: SalesInvoice, toEmail: string, isResend: boolean) {
+    const token = await getAuthToken();
+    const endpoint = isResend
+      ? `/api/sales-invoices/${inv.id}/resend`
+      : `/api/sales-invoices/${inv.id}/send`;
+    const result = await apiCall(endpoint, "POST", { to_email: toEmail || null }, token);
+    if (!result.success) throw new Error(result.error ?? "Failed to send invoice");
+    showToast(`Invoice ${inv.invoice_no} sent to ${toEmail}`, "success");
+    setSendModal(null);
+  }
+
+  async function loadAndShowDeliveries(inv: SalesInvoice) {
+    try {
+      const token = await getAuthToken();
+      const result = await apiGet(`/api/sales-invoices/${inv.id}/deliveries`, token);
+      const deliveries = (result.data as InvoiceDelivery[]) ?? [];
+      setDeliveryModal({ invoice: inv, deliveries });
+    } catch {
+      showToast("Failed to load delivery history", "error");
+    }
+  }
+
   function showToast(msg: string, type: "success" | "error") {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
@@ -439,6 +493,27 @@ function SalesInvoices({
   return (
     <div className="space-y-4 max-w-5xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
+
+      {sendModal && (
+        <SendInvoiceModal
+          invoice={sendModal.invoice}
+          defaultEmail={sendModal.customerEmail}
+          onSend={(email) => sendInvoice(sendModal.invoice, email, false)}
+          onClose={() => setSendModal(null)}
+        />
+      )}
+
+      {deliveryModal && (
+        <DeliveryHistoryModal
+          invoice={deliveryModal.invoice}
+          deliveries={deliveryModal.deliveries}
+          onResend={(email) => {
+            setDeliveryModal(null);
+            setSendModal({ invoice: deliveryModal.invoice, customerEmail: email || null });
+          }}
+          onClose={() => setDeliveryModal(null)}
+        />
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-3">
@@ -538,14 +613,36 @@ function SalesInvoices({
                       </span>
                     </td>
                     <td className="px-4 py-2.5">
-                      {inv.status === "draft" && (
-                        <button
-                          onClick={() => issueInvoice(inv.id)}
-                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                        >
-                          <CheckCircle size={11} /> Issue
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {inv.status === "draft" && (
+                          <button
+                            onClick={() => issueInvoice(inv.id)}
+                            className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                          >
+                            <CheckCircle size={11} /> Issue
+                          </button>
+                        )}
+                        {inv.status !== "draft" && inv.status !== "cancelled" && (
+                          <button
+                            onClick={() => {
+                              const cust = customers.find((c) => c.id === inv.customer_id);
+                              setSendModal({ invoice: inv, customerEmail: cust?.email ?? null });
+                            }}
+                            className="text-xs text-emerald-600 hover:underline flex items-center gap-1"
+                          >
+                            <Send size={11} /> Send
+                          </button>
+                        )}
+                        {inv.status !== "draft" && inv.status !== "cancelled" && (
+                          <button
+                            onClick={() => loadAndShowDeliveries(inv)}
+                            className="text-[#CBD5E1] hover:text-[#64748B]"
+                            title="Delivery history"
+                          >
+                            <Clock size={11} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -831,6 +928,172 @@ function InvoiceForm({
         >
           {saving ? "Saving…" : "Save Invoice"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Send Invoice Modal ─────────────────────────────────────────────────────
+
+function SendInvoiceModal({
+  invoice,
+  defaultEmail,
+  onSend,
+  onClose,
+}: {
+  invoice: SalesInvoice;
+  defaultEmail: string | null;
+  onSend: (email: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [email, setEmail] = useState(defaultEmail || "");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim()) { setError("Email address is required"); return; }
+    setSending(true);
+    setError(null);
+    try {
+      await onSend(email.trim());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send invoice");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 w-full max-w-md shadow-xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-[#0F172A]">Send Invoice {invoice.invoice_no}</h3>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155]"><X size={14} /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-[#475569] mb-1">Recipient Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="customer@example.com"
+              className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+              autoFocus
+            />
+            {!defaultEmail && (
+              <p className="text-[10px] text-amber-600 mt-1">
+                No email on the customer record — enter the address to send.
+              </p>
+            )}
+          </div>
+          <p className="text-xs text-[#64748B]">
+            A PDF of this invoice will be attached and sent by email.
+          </p>
+          {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+          <div className="flex gap-3 justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={sending}
+              className="text-xs px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1.5"
+            >
+              {sending ? "Sending…" : <><Send size={11} /> Send Invoice</>}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Delivery History Modal ─────────────────────────────────────────────────
+
+const DELIVERY_STATUS_LABEL: Record<string, string> = {
+  queued: "Queued", sending: "Sending", sent: "Sent", failed: "Failed", bounced: "Bounced",
+};
+const DELIVERY_STATUS_COLOR: Record<string, string> = {
+  queued:  "bg-[#F1F5F9] text-[#64748B]",
+  sending: "bg-blue-50 text-blue-600",
+  sent:    "bg-green-50 text-green-700",
+  failed:  "bg-red-50 text-red-700",
+  bounced: "bg-amber-50 text-amber-700",
+};
+
+function DeliveryHistoryModal({
+  invoice,
+  deliveries,
+  onResend,
+  onClose,
+}: {
+  invoice: SalesInvoice;
+  deliveries: InvoiceDelivery[];
+  onResend: (email: string) => void;
+  onClose: () => void;
+}) {
+  const lastEmail = deliveries[0]?.sent_to ?? "";
+
+  return (
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 w-full max-w-lg shadow-xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-[#0F172A]">
+            Delivery History — {invoice.invoice_no}
+          </h3>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155]"><X size={14} /></button>
+        </div>
+        {deliveries.length === 0 ? (
+          <p className="text-xs text-[#94A3B8] text-center py-8">No delivery attempts yet.</p>
+        ) : (
+          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            {deliveries.map((d) => (
+              <div key={d.id} className="border border-[#F1F5F9] rounded-lg p-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[#334155] font-medium">{d.sent_to}</span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                      DELIVERY_STATUS_COLOR[d.status] ?? "bg-[#F1F5F9] text-[#64748B]"
+                    }`}
+                  >
+                    {DELIVERY_STATUS_LABEL[d.status] ?? d.status}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mt-1 text-[#94A3B8]">
+                  <span>
+                    {d.sent_at
+                      ? new Date(d.sent_at).toLocaleString("en-IN")
+                      : new Date(d.created_at).toLocaleString("en-IN")}
+                  </span>
+                  {d.sent_by_email && <span>by {d.sent_by_email}</span>}
+                </div>
+                {d.error_message && (
+                  <p className="mt-1 text-red-600 text-[10px]">{d.error_message}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center justify-between mt-4 pt-4 border-t border-[#F1F5F9]">
+          <button
+            onClick={() => onResend(lastEmail)}
+            className="text-xs text-emerald-600 hover:underline flex items-center gap-1"
+          >
+            <Send size={11} /> Resend Invoice
+          </button>
+          <button
+            onClick={onClose}
+            className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );
