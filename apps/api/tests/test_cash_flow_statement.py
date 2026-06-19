@@ -259,3 +259,17 @@ def test_integer_paise_only():
         assert isinstance(total(s, sec), int)
         assert all(isinstance(l["amount_paise"], int) for l in s[sec]["lines"])
     assert_reconciles(s)
+
+
+# ── 11. reconciles=False on unbalanced journal ────────────────────────────────
+
+def test_reconciles_false_on_unbalanced_journal():
+    # Bank receives ₹100 (10 000p) but only ₹80 (8 000p) is credited to revenue.
+    # operating_cash = 10 000; indirect check = net_profit 8 000 ≠ 10 000 → False.
+    # Proves the reconciliation is not tautological.
+    s = cf(svc_for([je("unbal", [("bank", 10000, 0), ("rev", 0, 8000)])]))
+    assert s["reconciles"] is False
+    assert s["operating_reconciliation"]["ties_out"] is False
+    assert s["net_change_paise"] == 10000          # actual bank cash is reported correctly
+    assert total(s, "operating") == 10000
+    assert s["operating_reconciliation"]["net_profit_paise"] == 8000
