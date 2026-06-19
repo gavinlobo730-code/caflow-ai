@@ -68,6 +68,12 @@ class _Query:
     def like(self, *a, **k):
         return self
 
+    def is_(self, *a, **k):
+        return self
+
+    def ilike(self, *a, **k):
+        return self
+
     def limit(self, *a, **k):
         return self
 
@@ -295,3 +301,43 @@ class TestUpdateInvoice:
         for row in line_inserts[0]["payload"]:
             assert row["sales_invoice_id"] == "INV-1"
             assert "invoice_id" not in row
+
+    def test_edit_remaps_interstate_flag_and_recomputes_intrastate(self, fake_db):
+        """Editing a draft may flip the IGST checkbox. The request field
+        is_inter_state must persist as the is_interstate COLUMN (never the bad
+        is_inter_state name), and the existing GST math must re-split the line
+        intra-state (CGST+SGST). CGST Act §8."""
+        recorder, holder = fake_db
+
+        def _controller(event):
+            t, op = event["table"], event["op"]
+            if t == "client_sales_invoices" and op == "select":
+                # Was inter-state; the edit switches it to intra-state.
+                return _Resp(data=[{"id": "INV-1", "status": "draft",
+                                    "is_interstate": True, "client_id": "C1"}])
+            if t == "client_sales_invoice_lines" and op == "insert":
+                return _Resp(data=event["payload"])
+            if t == "client_sales_invoices" and op == "update":
+                return _Resp(data=[{**event["payload"], "id": "INV-1"}])
+            return _Resp(data=[])
+
+        holder["controller"] = _controller
+        upd = SalesInvoiceUpdateIn(
+            is_inter_state=False,
+            lines=[InvoiceLineIn(description="Consulting", rate_paise=10000,
+                                 quantity=1, gst_rate_percent=18.0)],
+        )
+        resp = sales_invoices.update_invoice("INV-1", upd, _USER)
+
+        assert resp["success"] is True
+        upd_event = [e for e in recorder
+                     if e["table"] == "client_sales_invoices" and e["op"] == "update"][0]
+        pl = upd_event["payload"]
+        assert "is_inter_state" not in pl, "must map to the is_interstate column"
+        assert pl["is_interstate"] is False
+        # ₹100 @18% intra-state → CGST 900 + SGST 900, no IGST. Integer paise.
+        assert pl["taxable_amount_paise"] == 10000
+        assert pl["cgst_paise"] == 900
+        assert pl["sgst_paise"] == 900
+        assert pl["igst_paise"] == 0
+        assert pl["total_paise"] == 11800

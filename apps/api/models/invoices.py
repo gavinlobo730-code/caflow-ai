@@ -51,8 +51,10 @@ class SalesInvoiceIn(BaseModel):
 
 class SalesInvoiceUpdateIn(BaseModel):
     """Partial update of a draft sales invoice."""
+    customer_id: Optional[str] = None
     invoice_date: Optional[str] = None
     due_date: Optional[str] = None
+    supply_state_code: Optional[str] = None
     lines: Optional[list[InvoiceLineIn]] = None
     reference_no: Optional[str] = None
     notes: Optional[str] = None

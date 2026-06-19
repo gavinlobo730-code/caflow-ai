@@ -4,6 +4,7 @@ CGST Act Section 8: Intra-state → CGST+SGST, Inter-state → IGST.
 CGST Rule 46: Mandatory fields on tax invoice.
 """
 import os
+import re
 import uuid
 import logging
 from datetime import datetime, timezone
@@ -103,6 +104,92 @@ def _get_state_code_from_gstin(gstin: Optional[str]) -> Optional[str]:
     return None
 
 
+def _normalize_desc(description: Optional[str]) -> str:
+    """Normalise a line description into a stable lookup key: lower-cased,
+    whitespace-collapsed, trimmed. Used to match HSN/SAC suggestions (migration
+    101). Pure string handling — no tax/financial meaning."""
+    return re.sub(r"\s+", " ", (description or "").strip()).lower()
+
+
+def _record_hsn_preferences(db, firm_id: str, client_id: str, lines: list[dict]) -> None:
+    """Learn the HSN/SAC a firm uses for each line description so the invoice form
+    can auto-suggest it next time and reduce manual entry (CGST Rule 46(g): HSN/SAC
+    is a mandatory tax-invoice field). The most recently / most frequently chosen
+    code surfaces first, so a user override is prioritised on the next invoice.
+
+    Pure UX metadata — this table is NEVER read by any GST, journal, or report
+    code. Non-fatal: a failure here must never break an invoice save (same
+    contract as the audit logger).
+    """
+    if not firm_id or not client_id:
+        return
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for ln in lines or []:
+        try:
+            desc = (ln.get("description") or "").strip()
+            hsn = (ln.get("hsn_sac") or "").strip()
+            if not desc or not hsn:
+                continue
+            key = _normalize_desc(desc)
+            gst_rate_bps = ln.get("gst_rate_bps")
+            existing = (
+                db.table("hsn_sac_preferences")
+                .select("id,use_count")
+                .eq("firm_id", firm_id)
+                .eq("client_id", client_id)
+                .eq("description_key", key)
+                .eq("hsn_sac", hsn)
+                .limit(1)
+                .execute()
+            )
+            if existing.data:
+                row = existing.data[0]
+                db.table("hsn_sac_preferences").update({
+                    "use_count":          (row.get("use_count") or 0) + 1,
+                    "last_used_at":       now_iso,
+                    "sample_description": desc,
+                    "gst_rate_bps":       gst_rate_bps,
+                }).eq("id", row["id"]).execute()
+            else:
+                db.table("hsn_sac_preferences").insert({
+                    "firm_id":            firm_id,
+                    "client_id":          client_id,
+                    "description_key":    key,
+                    "sample_description": desc,
+                    "hsn_sac":            hsn,
+                    "gst_rate_bps":       gst_rate_bps,
+                    "use_count":          1,
+                    "last_used_at":       now_iso,
+                }).execute()
+        except Exception as e:
+            _logger.warning("hsn preference record skipped: %s", e)
+
+
+def _resolve_creator_name(db, invoice_id: str, created_by: Optional[str]) -> Optional[str]:
+    """Best-effort display name for who created an invoice (detail view, UX only).
+    Tries the users table by auth_user_id then id; falls back to the 'create'
+    audit event's actor_email for legacy rows. Never raises."""
+    try:
+        if created_by:
+            for col in ("auth_user_id", "id"):
+                u = (
+                    db.table("users").select("full_name,email")
+                    .eq(col, created_by).limit(1).execute()
+                )
+                if u.data:
+                    return u.data[0].get("full_name") or u.data[0].get("email")
+        a = (
+            db.table("audit_log").select("actor_email")
+            .eq("entity_id", invoice_id).eq("action", "create")
+            .order("created_at").limit(1).execute()
+        )
+        if a.data:
+            return a.data[0].get("actor_email")
+    except Exception as e:
+        _logger.warning("creator name resolve skipped: %s", e)
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -141,6 +228,65 @@ def get_outstanding(
         return api_response(False, None, "Unable to complete invoice operation. Please try again.")
 
 
+@router.get("/hsn-suggestions")
+def hsn_suggestions(
+    client_id: str = Query(...),
+    query: str = Query("", description="Partial line description typed by the user"),
+    limit: int = Query(5, ge=1, le=20),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Suggest HSN/SAC codes for a line description from the firm's own invoice
+    history (migration 101). Ranked by most-recent then most-used, so a code the
+    CA picked last time (an override) is prioritised on the next invoice.
+
+    CGST Rule 46(g): HSN/SAC is a mandatory tax-invoice field. This endpoint only
+    reduces manual entry — it is never used in any GST or journal computation.
+    """
+    try:
+        firm_id = current_user.get("firm_id", "")
+        key = _normalize_desc(query)
+        if _USE_MOCK or not key:
+            return api_response(True, [])
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        rows = (
+            db.table("hsn_sac_preferences")
+            .select("hsn_sac,sample_description,gst_rate_bps,use_count,last_used_at")
+            .eq("firm_id", firm_id)
+            .eq("client_id", client_id)
+            .ilike("description_key", f"%{key}%")
+            .order("last_used_at", desc=True)
+            .order("use_count", desc=True)
+            .limit(limit * 4)
+            .execute()
+        ).data or []
+
+        # De-dupe by HSN/SAC (rows already ranked; first occurrence wins).
+        seen: set[str] = set()
+        out: list[dict] = []
+        for r in rows:
+            h = (r.get("hsn_sac") or "").strip()
+            if not h or h in seen:
+                continue
+            seen.add(h)
+            n = r.get("use_count") or 1
+            sample = r.get("sample_description") or query
+            out.append({
+                "hsn_sac":            h,
+                "gst_rate_bps":       r.get("gst_rate_bps"),
+                "use_count":          n,
+                "sample_description": sample,
+                "reason":             f"Used in {n} previous {sample} invoice" + ("s" if n != 1 else ""),
+            })
+            if len(out) >= limit:
+                break
+        return api_response(True, out)
+    except Exception as e:
+        _logger.error("hsn_suggestions: %s", e)
+        return api_response(False, None, "Unable to fetch HSN suggestions. Please try again.")
+
+
 @router.get("/")
 def list_invoices(
     client_id: str = Query(..., description="CA client ID — required"),
@@ -150,18 +296,20 @@ def list_invoices(
     date_to: Optional[str] = Query(None),
     from_date: Optional[str] = Query(None, description="Alias for date_from"),
     to_date: Optional[str] = Query(None, description="Alias for date_to"),
+    search: Optional[str] = Query(None, description="Match invoice number (case-insensitive)"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
-    """List sales invoices with optional filters."""
+    """List sales invoices with optional filters. Soft-deleted drafts are excluded."""
     try:
         # Support both date_from/date_to and from_date/to_date aliases
         effective_from = date_from or from_date
         effective_to = date_to or to_date
 
         if _USE_MOCK:
-            result = [inv for inv in MOCK_SALES_INVOICES if inv["client_id"] == client_id]
+            result = [inv for inv in MOCK_SALES_INVOICES
+                      if inv["client_id"] == client_id and not inv.get("deleted_at")]
             if customer_id:
                 result = [inv for inv in result if inv.get("customer_id") == customer_id]
             if status:
@@ -170,6 +318,8 @@ def list_invoices(
                 result = [inv for inv in result if inv.get("invoice_date", "") >= effective_from]
             if effective_to:
                 result = [inv for inv in result if inv.get("invoice_date", "") <= effective_to]
+            if search:
+                result = [inv for inv in result if search.lower() in inv.get("invoice_no", "").lower()]
             result = result[offset:offset + limit]
             # Attach lines
             for inv in result:
@@ -189,6 +339,10 @@ def list_invoices(
             q = q.gte("invoice_date", effective_from)
         if effective_to:
             q = q.lte("invoice_date", effective_to)
+        if search:
+            q = q.ilike("invoice_no", f"%{search}%")
+        # Exclude soft-deleted drafts (migration 100).
+        q = q.is_("deleted_at", None)
         resp = q.order("invoice_date", desc=True).range(offset, offset + limit - 1).execute()
         invoices = resp.data or []
 
@@ -337,6 +491,7 @@ def create_invoice(
                 "paid_paise":            0,
                 "status":                "draft",
                 "notes":                 data.get("notes", ""),
+                "created_by":            current_user.get("auth_user_id"),
                 "created_at":            datetime.now(timezone.utc).isoformat(),
                 "lines":                 computed_lines,
             }
@@ -369,6 +524,7 @@ def create_invoice(
             "paid_paise":            0,
             "status":                "draft",
             "notes":                 data.get("notes", ""),
+            "created_by":            current_user.get("auth_user_id"),
             "created_at":            datetime.now(timezone.utc).isoformat(),
         }
 
@@ -403,6 +559,9 @@ def create_invoice(
             db.table("client_sales_invoices").delete().eq("id", invoice_id).execute()  # type: ignore[possibly-undefined]
             raise
         invoice["lines"] = lines_resp.data or computed_lines
+
+        # Learn HSN/SAC choices for smart suggestions (UX only; non-fatal).
+        _record_hsn_preferences(db, firm_id or "", client_id, computed_lines)
 
         log_event(
             firm_id, "sales_invoice", invoice_id,
@@ -441,12 +600,29 @@ def get_invoice(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("client_sales_invoices").select("*").eq("id", invoice_id).limit(1).execute()
+        resp = (
+            db.table("client_sales_invoices")
+            .select("*, customers(id,name,email,gstin,phone)")
+            .eq("id", invoice_id)
+            .is_("deleted_at", None)
+            .limit(1)
+            .execute()
+        )
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
         invoice = resp.data[0]
-        lines_resp = db.table("client_sales_invoice_lines").select("*").eq("sales_invoice_id", invoice_id).execute()
+        lines_resp = (
+            db.table("client_sales_invoice_lines")
+            .select("*")
+            .eq("sales_invoice_id", invoice_id)
+            .order("sort_order")
+            .execute()
+        )
         invoice["lines"] = lines_resp.data or []
+        # Resolve a human "Created By" for the detail view (UX only). Prefer the
+        # users table; fall back to the create event in the audit trail (covers
+        # invoices created before created_by was captured). Never fatal.
+        invoice["created_by_name"] = _resolve_creator_name(db, invoice_id, invoice.get("created_by"))
         return api_response(True, invoice)
     except HTTPException:
         raise
@@ -465,6 +641,11 @@ def update_invoice(
     """Update a draft invoice. Recomputes GST if lines are changed. Only allowed on draft status."""
     try:
         data = data.model_dump(exclude_none=True)
+        # The request model field is is_inter_state; the DB column is is_interstate.
+        # Map it so the flag (the form's IGST checkbox) both drives the GST recompute
+        # below and persists correctly — without this the column write would 400.
+        if "is_inter_state" in data:
+            data["is_interstate"] = data.pop("is_inter_state")
         if _USE_MOCK:
             for i, inv in enumerate(MOCK_SALES_INVOICES):
                 if inv["id"] == invoice_id:
@@ -486,10 +667,12 @@ def update_invoice(
 
         # If lines are provided, recompute GST
         if "lines" in data:
-            # Fetch current invoice for is_interstate flag
+            # Fetch current invoice for the is_interstate flag. An edit may change
+            # it (the IGST checkbox) — honour the new value, else keep the stored
+            # one. The GST math (_compute_line_gst) itself is unchanged.
             inv_resp = db.table("client_sales_invoices").select("*").eq("id", invoice_id).limit(1).execute()
             inv = inv_resp.data[0]
-            is_interstate = inv.get("is_interstate", False)
+            is_interstate = data.get("is_interstate", inv.get("is_interstate", False))
 
             computed_lines = []
             total_taxable = 0
@@ -529,6 +712,11 @@ def update_invoice(
             # Delete existing lines and reinsert
             db.table("client_sales_invoice_lines").delete().eq("sales_invoice_id", invoice_id).execute()
             db.table("client_sales_invoice_lines").insert(computed_lines).execute()
+
+            # Learn HSN/SAC choices (incl. overrides) for smart suggestions.
+            _record_hsn_preferences(
+                db, current_user.get("firm_id", ""), inv.get("client_id", ""), computed_lines
+            )
 
             # Update aggregate totals in invoice
             data.pop("lines")
@@ -695,6 +883,80 @@ def cancel_invoice(
         raise
     except Exception as e:
         _logger.error("cancel_invoice: %s", e)
+        return api_response(False, None, "Unable to complete invoice operation. Please try again.")
+
+
+# Human-readable phrasing for statuses that block deletion.
+_DELETE_BLOCKED = {
+    "issued":         "an issued",
+    "partially_paid": "a partially-paid",
+    "paid":           "a paid",
+    "cancelled":      "a cancelled",
+}
+
+
+@router.delete("/{invoice_id}")
+def delete_invoice(
+    invoice_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Soft-delete a DRAFT sales invoice.
+
+    Only drafts may be deleted. Issued / partially-paid / paid / cancelled
+    invoices are protected — they are legal records (CGST Act §31) with a posted
+    journal and must never be removed. Deletion is a soft-delete (sets
+    deleted_at, migration 100) plus an immutable audit_log 'delete' event. A draft
+    never appears in any accounting report, so removing it has zero effect on the
+    Trial Balance / P&L / Balance Sheet.
+    """
+    try:
+        if _USE_MOCK:
+            for i, inv in enumerate(MOCK_SALES_INVOICES):
+                if inv["id"] == invoice_id:
+                    st = inv.get("status")
+                    if st != "draft":
+                        raise HTTPException(
+                            status_code=422,
+                            detail=f"Cannot delete {_DELETE_BLOCKED.get(st, st)} invoice — only drafts can be deleted",
+                        )
+                    MOCK_SALES_INVOICES.pop(i)
+                    return api_response(True, {"id": invoice_id, "deleted": True})
+            raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        resp = (
+            db.table("client_sales_invoices").select("*")
+            .eq("id", invoice_id).is_("deleted_at", None).limit(1).execute()
+        )
+        if not resp.data:
+            raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+        inv = resp.data[0]
+        st = inv.get("status")
+        if st != "draft":
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cannot delete {_DELETE_BLOCKED.get(st, st)} invoice — only drafts can be deleted",
+            )
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        db.table("client_sales_invoices").update({"deleted_at": now_iso}).eq("id", invoice_id).execute()
+
+        log_event(
+            current_user.get("firm_id", ""), "sales_invoice", invoice_id,
+            "delete", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            old_data={
+                "invoice_no":  inv.get("invoice_no"),
+                "status":      st,
+                "total_paise": inv.get("total_paise"),
+            },
+        )
+        return api_response(True, {"id": invoice_id, "deleted": True})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("delete_invoice: %s", e)
         return api_response(False, None, "Unable to complete invoice operation. Please try again.")
 
 
