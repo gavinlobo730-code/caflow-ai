@@ -115,3 +115,94 @@ def send_firm_invite(to: str, firm_name: str, inviter_name: str, role: str, invi
     <p>This link expires in 7 days.</p>
     """
     return _send(to, subject, html)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — Invoice delivery to customers
+# ---------------------------------------------------------------------------
+
+def _fmt_rupees(paise: int) -> str:
+    """Format integer paise as a display rupee string, e.g. 123456 → ₹1,234.56."""
+    return f"₹{paise // 100:,}.{paise % 100:02d}"
+
+
+def _send_with_attachment(
+    to: str,
+    subject: str,
+    html: str,
+    attachment_bytes: bytes,
+    attachment_filename: str,
+) -> tuple[bool, Optional[str]]:
+    """
+    Send an email with a binary attachment via Resend.
+    Returns (success, provider_message_id).
+    """
+    import base64
+    if not _RESEND_API_KEY:
+        _logger.info("RESEND_API_KEY not set — skipping email+attachment to %s: %s", to, subject)
+        return False, None
+    try:
+        import httpx
+        payload = {
+            "from": _FROM_EMAIL,
+            "to": [to],
+            "subject": subject,
+            "html": html,
+            "attachments": [
+                {
+                    "filename": attachment_filename,
+                    "content": base64.b64encode(attachment_bytes).decode(),
+                }
+            ],
+        }
+        resp = httpx.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {_RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=30,
+        )
+        if resp.status_code in (200, 201):
+            message_id = resp.json().get("id")
+            return True, message_id
+        _logger.warning("Resend returned %s for email+attachment to %s", resp.status_code, to)
+        return False, None
+    except Exception as e:
+        _logger.error("Email+attachment send failed to %s: %s", to, e)
+        return False, None
+
+
+def send_invoice_to_customer(
+    to: str,
+    customer_name: str,
+    firm_name: str,
+    invoice_no: str,
+    invoice_date: str,
+    due_date: Optional[str],
+    total_paise: int,
+    pdf_bytes: bytes,
+    pdf_filename: str,
+) -> tuple[bool, Optional[str]]:
+    """
+    Send a GST tax invoice PDF to a customer by email via Resend.
+    Returns (success, provider_message_id).
+    """
+    subject = f"Invoice {invoice_no} from {firm_name}"
+    amount_str = _fmt_rupees(total_paise)
+    html = f"""
+    <p>Dear {customer_name},</p>
+    <p>Please find attached Invoice <strong>{invoice_no}</strong>
+    from <strong>{firm_name}</strong>.</p>
+    <table cellpadding="8">
+      <tr><td><strong>Invoice No</strong></td><td>{invoice_no}</td></tr>
+      <tr><td><strong>Invoice Date</strong></td><td>{invoice_date}</td></tr>
+      <tr><td><strong>Due Date</strong></td><td>{due_date or 'On receipt'}</td></tr>
+      <tr><td><strong>Amount</strong></td><td>{amount_str}</td></tr>
+    </table>
+    <p>If you have any queries regarding this invoice, please contact us.</p>
+    <p>Thank you for your business.</p>
+    <p>Regards,<br/><strong>{firm_name}</strong></p>
+    """
+    return _send_with_attachment(to, subject, html, pdf_bytes, pdf_filename)

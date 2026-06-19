@@ -11,6 +11,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from models.common import api_response
 from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from core.permissions import rbac
@@ -774,3 +775,235 @@ def repost_journal(
     except Exception as e:
         _logger.error("repost_journal: %s", e)
         return api_response(False, None, "Unable to complete invoice operation. Please try again.")
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — Invoice Delivery
+# ---------------------------------------------------------------------------
+
+class _SendInvoiceBody(BaseModel):
+    to_email: Optional[str] = None
+
+
+@router.get("/{invoice_id}/pdf")
+def download_sales_invoice_pdf(
+    invoice_id: str,
+    current_user: dict = Depends(rbac("invoice", "read")),
+):
+    """Download a GST tax invoice PDF for a client_sales_invoice."""
+    from fastapi.responses import Response
+    from services.invoice_pdf_service import get_sales_invoice_pdf
+    if _USE_MOCK:
+        raise HTTPException(status_code=501, detail="PDF not available in mock mode")
+    firm_id = current_user.get("firm_id", "")
+    try:
+        pdf_bytes, filename = get_sales_invoice_pdf(invoice_id, firm_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        _logger.error("download_sales_invoice_pdf %s: %s", invoice_id, e)
+        raise HTTPException(status_code=500, detail="PDF generation failed")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _do_send_invoice(invoice_id: str, body: _SendInvoiceBody, current_user: dict) -> dict:
+    """
+    Core send logic shared by /send and /resend.
+    Creates a new invoice_deliveries row on every call — re-send always appends,
+    preserving the full delivery history. Returns the standard API response dict.
+    """
+    from core.supabase_client import get_supabase
+    from services.invoice_pdf_service import get_sales_invoice_pdf
+    from services.email_service import send_invoice_to_customer as _send_email
+
+    db = get_supabase()
+    firm_id     = current_user.get("firm_id", "")
+    actor_id    = current_user.get("auth_user_id")
+    actor_email = current_user.get("email")
+
+    # 1. Load invoice — must belong to this firm
+    inv_resp = (
+        db.table("client_sales_invoices")
+        .select("*, customers(id,name,email)")
+        .eq("id", invoice_id)
+        .eq("firm_id", firm_id)
+        .maybe_single()
+        .execute()
+    )
+    if not inv_resp.data:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    inv      = inv_resp.data
+    customer = inv.get("customers") or {}
+
+    # 2. Status guard: only issued invoices may be sent
+    status = inv.get("status", "")
+    if status == "draft":
+        raise HTTPException(status_code=422, detail="Issue the invoice before sending it")
+    if status == "cancelled":
+        raise HTTPException(status_code=422, detail="Cannot send a cancelled invoice")
+
+    # 3. Resolve destination email
+    to_email = body.to_email or customer.get("email")
+    if not to_email:
+        raise HTTPException(
+            status_code=422,
+            detail="No email address available — add one to the customer record or provide it in the request",
+        )
+
+    # 4. Validate email format
+    try:
+        from email_validator import validate_email as _ve, EmailNotValidError
+        _ve(to_email, check_deliverability=False)
+    except Exception:
+        raise HTTPException(status_code=422, detail=f"Invalid email address: {to_email}")
+
+    # 5. Create delivery record (status=sending)
+    delivery = (
+        db.table("invoice_deliveries")
+        .insert({
+            "firm_id":       firm_id,
+            "client_id":     inv["client_id"],
+            "invoice_id":    invoice_id,
+            "sent_to":       to_email,
+            "sent_by_id":    actor_id,
+            "sent_by_email": actor_email,
+            "status":        "sending",
+        })
+        .execute()
+    ).data[0]
+    delivery_id = delivery["id"]
+
+    # 6. Generate PDF
+    try:
+        pdf_bytes, pdf_filename = get_sales_invoice_pdf(invoice_id, firm_id)
+    except Exception as e:
+        _logger.error("PDF gen failed for invoice %s: %s", invoice_id, e)
+        db.table("invoice_deliveries").update({
+            "status":        "failed",
+            "error_message": f"PDF generation failed: {str(e)[:200]}",
+        }).eq("id", delivery_id).execute()
+        raise HTTPException(status_code=500, detail="PDF generation failed")
+
+    # 7. Load firm name for email body
+    firm_row = (
+        db.table("firms").select("name").eq("id", firm_id).maybe_single().execute()
+    ).data or {}
+    firm_name = firm_row.get("name") or "Your Chartered Accountant"
+
+    # 8. Send via Resend
+    success, provider_id = _send_email(
+        to=to_email,
+        customer_name=customer.get("name") or "Customer",
+        firm_name=firm_name,
+        invoice_no=inv["invoice_no"],
+        invoice_date=str(inv["invoice_date"])[:10],
+        due_date=str(inv["due_date"])[:10] if inv.get("due_date") else None,
+        total_paise=inv.get("total_paise", 0),
+        pdf_bytes=pdf_bytes,
+        pdf_filename=pdf_filename,
+    )
+
+    # 9. Update delivery status
+    now_iso = datetime.now(timezone.utc).isoformat()
+    update_data: dict = {"status": "sent" if success else "failed"}
+    if provider_id:
+        update_data["provider_message_id"] = provider_id
+    if success:
+        update_data["sent_at"] = now_iso
+    else:
+        update_data["error_message"] = "Email delivery failed — check RESEND_API_KEY or recipient address"
+    db.table("invoice_deliveries").update(update_data).eq("id", delivery_id).execute()
+
+    # 10. Audit log
+    log_event(
+        firm_id, "sales_invoice", invoice_id, "send",
+        actor_id=actor_id, actor_email=actor_email,
+        metadata={
+            "sent_to":     to_email,
+            "delivery_id": delivery_id,
+            "status":      update_data["status"],
+        },
+    )
+
+    final = (
+        db.table("invoice_deliveries").select("*").eq("id", delivery_id).maybe_single().execute()
+    ).data
+    return {"success": success, "data": final, "error": None if success else "Email delivery failed"}
+
+
+@router.post("/{invoice_id}/send")
+def send_invoice(
+    invoice_id: str,
+    body: _SendInvoiceBody,
+    current_user: dict = Depends(rbac("invoice", "write")),
+):
+    """Send an issued sales invoice PDF to the customer by email. Creates a delivery record."""
+    if _USE_MOCK:
+        return api_response(True, {"status": "sent", "sent_to": body.to_email or "customer@example.com"})
+    try:
+        return _do_send_invoice(invoice_id, body, current_user)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("send_invoice %s: %s", invoice_id, e)
+        return api_response(False, None, "Unable to send invoice. Please try again.")
+
+
+@router.post("/{invoice_id}/resend")
+def resend_invoice(
+    invoice_id: str,
+    body: _SendInvoiceBody,
+    current_user: dict = Depends(rbac("invoice", "write")),
+):
+    """Re-send an invoice PDF — identical to /send but semantically a resend. Always appends a new delivery record."""
+    if _USE_MOCK:
+        return api_response(True, {"status": "sent", "sent_to": body.to_email or "customer@example.com"})
+    try:
+        return _do_send_invoice(invoice_id, body, current_user)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("resend_invoice %s: %s", invoice_id, e)
+        return api_response(False, None, "Unable to resend invoice. Please try again.")
+
+
+@router.get("/{invoice_id}/deliveries")
+def list_invoice_deliveries(
+    invoice_id: str,
+    current_user: dict = Depends(rbac("invoice", "read")),
+):
+    """List all delivery attempts for an invoice, newest first."""
+    if _USE_MOCK:
+        return api_response(True, [])
+    try:
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        firm_id = current_user.get("firm_id", "")
+        # Verify invoice belongs to this firm before returning delivery records
+        exists = (
+            db.table("client_sales_invoices")
+            .select("id")
+            .eq("id", invoice_id)
+            .eq("firm_id", firm_id)
+            .maybe_single()
+            .execute()
+        ).data
+        if not exists:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+        rows = (
+            db.table("invoice_deliveries")
+            .select("*")
+            .eq("invoice_id", invoice_id)
+            .order("created_at", desc=True)
+            .execute()
+        ).data or []
+        return api_response(True, rows)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("list_invoice_deliveries %s: %s", invoice_id, e)
+        return api_response(False, None, "Unable to fetch delivery history. Please try again.")
