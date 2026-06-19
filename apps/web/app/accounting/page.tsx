@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { BookOpen, FileText, BarChart2, Scale, TrendingUp, List, ArrowUpRight, ArrowDownRight, Building2, Receipt, RefreshCw, Target, IndianRupee, ClipboardCheck, Lock, Layers, Landmark, Users, Clock } from "lucide-react";
+import { BookOpen, FileText, BarChart2, Scale, TrendingUp, List, ArrowUpRight, ArrowDownRight, Building2, Receipt, RefreshCw, Target, IndianRupee, ClipboardCheck, Lock, Layers, Landmark, Users, Clock, Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -15,6 +15,7 @@ const NAV_CARDS = [
   { label: "General Ledger", description: "Transaction history per account", href: "/accounting/ledger", icon: BookOpen },
   { label: "Trial Balance", description: "Verify debit/credit totals", href: "/accounting/trial-balance", icon: Scale },
   { label: "Financial Statements", description: "Revenue, expenses, assets and liabilities — Schedule III format", href: "/reports/financial-statements", icon: TrendingUp },
+  { label: "Cash Flow Statement", description: "Operating, investing & financing activities — AS-3, Companies Act 2013 Schedule III", href: "/accounting/cash-flow", icon: Wallet },
   { label: "Bank Statement Import", description: "Import CSV statements from any Indian bank", href: "/accounting/bank-import", icon: ArrowDownRight },
   { label: "Bank Statements", description: "Allocate and post bank transactions", href: "/accounting/bank-statements", icon: Building2 },
   { label: "Recurring Transactions", description: "Automate monthly, quarterly & yearly entries", href: "/accounting/recurring", icon: RefreshCw },
