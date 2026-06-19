@@ -41,11 +41,13 @@ CREATE POLICY firm_invoice_deliveries
 
 CREATE POLICY invoice_deliveries_assignment_scope
     ON public.invoice_deliveries
+    AS RESTRICTIVE
     FOR ALL TO authenticated
     USING (can_access_client((client_id)::text));
 
 CREATE POLICY invoice_deliveries_internal_partner_only
     ON public.invoice_deliveries
+    AS RESTRICTIVE
     FOR ALL TO authenticated
     USING (
         (get_my_role() = 'Partner'::text)
