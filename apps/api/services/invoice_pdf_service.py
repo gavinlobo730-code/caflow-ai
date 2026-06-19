@@ -92,6 +92,51 @@ def _state_code(gstin: Optional[str]) -> Optional[str]:
     return None
 
 
+def _compute_tax_splits(
+    invoice: dict, firm: dict, client: dict
+) -> tuple[int, int, int, int, int]:
+    """
+    Resolve CGST/SGST/IGST paise from the invoice dict.
+
+    Prefers stored per-head values (cgst_paise, sgst_paise, igst_paise) so
+    B2C invoices (no customer GSTIN) render correctly — geography-based
+    derivation would see client_state=None → intra_state=False → wrongly
+    render IGST on an intra-state supply (CGST Act §8; CGST Rule 46).
+
+    Falls back to GSTIN state-code comparison when no stored values are present.
+
+    Returns: (cgst_paise, sgst_paise, igst_paise, gst_paise, total_paise)
+    """
+    amount_paise = invoice.get("amount_paise", 0)
+    stored_cgst = invoice.get("cgst_paise")
+    stored_sgst = invoice.get("sgst_paise")
+    stored_igst = invoice.get("igst_paise")
+
+    if stored_cgst is not None or stored_sgst is not None or stored_igst is not None:
+        cgst_paise = stored_cgst or 0
+        sgst_paise = stored_sgst or 0
+        igst_paise = stored_igst or 0
+        gst_paise = cgst_paise + sgst_paise + igst_paise
+        total_paise = invoice.get("total_paise") or (amount_paise + gst_paise)
+    else:
+        # Fallback: derive from GSTIN geography (Section 12, IGST Act 2017).
+        gst_paise = invoice.get("gst_paise", 0)
+        total_paise = invoice.get("total_paise", amount_paise + gst_paise)
+        firm_state = _state_code(firm.get("gstin"))
+        client_state = _state_code(client.get("gstin"))
+        intra_state = firm_state is not None and firm_state == client_state
+        if intra_state:
+            cgst_paise = gst_paise // 2
+            sgst_paise = gst_paise - cgst_paise
+            igst_paise = 0
+        else:
+            cgst_paise = 0
+            sgst_paise = 0
+            igst_paise = gst_paise
+
+    return cgst_paise, sgst_paise, igst_paise, gst_paise, total_paise
+
+
 def build_invoice_pdf(invoice: dict, firm: dict, client: dict, engagement: Optional[dict] = None) -> bytes:
     """Render a GST tax invoice PDF and return raw bytes."""
     buf = io.BytesIO()
@@ -149,14 +194,10 @@ def build_invoice_pdf(invoice: dict, firm: dict, client: dict, engagement: Optio
     story.append(header)
     story.append(Spacer(1, 6 * mm))
 
-    # Intra-state supply: CGST + SGST split equally; inter-state: IGST.
-    # Place of supply per Section 12, IGST Act 2017 — state code from GSTINs.
     amount_paise = invoice.get("amount_paise", 0)
-    gst_paise = invoice.get("gst_paise", 0)
-    total_paise = invoice.get("total_paise", amount_paise + gst_paise)
-    firm_state = _state_code(firm.get("gstin"))
-    client_state = _state_code(client.get("gstin"))
-    intra_state = firm_state is not None and firm_state == client_state
+    cgst_paise, sgst_paise, igst_paise, gst_paise, total_paise = _compute_tax_splits(
+        invoice, firm, client
+    )
 
     description = "Professional Services — Chartered Accountancy"
     if engagement and engagement.get("service_type"):
@@ -167,15 +208,11 @@ def build_invoice_pdf(invoice: dict, firm: dict, client: dict, engagement: Optio
         ["1", Paragraph(description, styles["Normal"]), SAC_CODE, _paise_to_rupee_str(amount_paise)],
         ["", "Taxable Value", "", _paise_to_rupee_str(amount_paise)],
     ]
-    if intra_state:
-        # Integer split: CGST gets the floor half, SGST gets the remainder,
-        # so CGST + SGST == gst_paise exactly with no paise lost.
-        cgst = gst_paise // 2
-        sgst = gst_paise - cgst
-        rows.append(["", f"CGST @ {GST_RATE_PCT // 2}%", "", _paise_to_rupee_str(cgst)])
-        rows.append(["", f"SGST @ {GST_RATE_PCT // 2}%", "", _paise_to_rupee_str(sgst)])
-    else:
-        rows.append(["", f"IGST @ {GST_RATE_PCT}%", "", _paise_to_rupee_str(gst_paise)])
+    if cgst_paise or sgst_paise:
+        rows.append(["", f"CGST @ {GST_RATE_PCT // 2}%", "", _paise_to_rupee_str(cgst_paise)])
+        rows.append(["", f"SGST @ {GST_RATE_PCT // 2}%", "", _paise_to_rupee_str(sgst_paise)])
+    if igst_paise:
+        rows.append(["", f"IGST @ {GST_RATE_PCT}%", "", _paise_to_rupee_str(igst_paise)])
     rows.append(["", "Total", "", _paise_to_rupee_str(total_paise)])
 
     table = Table(rows, colWidths=[10 * mm, 95 * mm, 25 * mm, 50 * mm])
@@ -248,3 +285,46 @@ def _load_firm(firm_id: Optional[str]) -> dict:
     except Exception as e:
         logger.warning(f"Could not load firm {firm_id}: {e}")
         return {}
+
+
+def get_sales_invoice_pdf(invoice_id: str, firm_id: str) -> tuple[bytes, str]:
+    """
+    Load a client_sales_invoice with its customer and render the GST tax invoice PDF.
+
+    Normalises the column names from client_sales_invoices (taxable_amount_paise,
+    cgst_paise, sgst_paise, igst_paise) to the keys expected by build_invoice_pdf()
+    (amount_paise, gst_paise) so the shared PDF builder is reused without changes.
+
+    Returns (pdf_bytes, suggested_filename).
+    """
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    row = (
+        db.table("client_sales_invoices")
+        .select("*, customers(id,name,gstin,pan,address,state_code,city,state)")
+        .eq("id", invoice_id)
+        .eq("firm_id", firm_id)
+        .maybe_single()
+        .execute()
+    )
+    if not row.data:
+        raise ValueError(f"Invoice {invoice_id} not found for firm {firm_id}")
+    data = row.data
+    customer = data.get("customers") or {}
+    invoice_dict = {
+        "invoice_no":   data["invoice_no"],
+        "invoice_date": data["invoice_date"],
+        "due_date":     data.get("due_date"),
+        "status":       data["status"],
+        "amount_paise": data.get("taxable_amount_paise", 0),
+        # Pass stored tax heads directly — build_invoice_pdf() uses these to render
+        # correct CGST/SGST/IGST lines without re-deriving from GSTIN geography.
+        "cgst_paise":   data.get("cgst_paise", 0),
+        "sgst_paise":   data.get("sgst_paise", 0),
+        "igst_paise":   data.get("igst_paise", 0),
+        "total_paise":  data.get("total_paise", 0),
+    }
+    firm = _load_firm(firm_id)
+    pdf = build_invoice_pdf(invoice_dict, firm, customer)
+    filename = f"invoice-{data.get('invoice_no', invoice_id)}.pdf"
+    return pdf, filename
