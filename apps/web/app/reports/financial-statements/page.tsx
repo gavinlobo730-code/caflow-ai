@@ -14,8 +14,9 @@ import { useState, useCallback, useEffect } from "react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { formatPaise } from "@/lib/services/formatting";
-import { Download, Loader2, AlertCircle, BarChart3, Share2, X, CheckCircle } from "lucide-react";
+import { Download, Loader2, AlertCircle, BarChart3, Share2, X, CheckCircle, AlertTriangle } from "lucide-react";
 import * as XLSX from "xlsx";
+import { api } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,39 @@ interface BSData {
   totalLiabilities: number;
   totalEquity: number;
   totalLiabilitiesAndEquity: number;
+}
+
+interface CashFlowLine {
+  account_id: string;
+  account_name: string;
+  amount_paise: number;
+}
+
+interface CashFlowSection {
+  label: string;
+  lines: CashFlowLine[];
+  total_paise: number;
+}
+
+interface CashFlowData {
+  start_date: string;
+  end_date: string;
+  operating: CashFlowSection;
+  investing: CashFlowSection;
+  financing: CashFlowSection;
+  net_change_paise: number;
+  opening_cash_paise: number;
+  closing_cash_paise: number;
+  reconciles: boolean;
+  non_cash_excluded_count: number;
+  operating_reconciliation: {
+    net_profit_paise: number;
+    non_operating_adjust_paise: number;
+    depreciation_addback_paise: number;
+    working_capital_change_paise: number;
+    net_cash_operating_paise: number;
+    ties_out: boolean;
+  };
 }
 
 // ─── FY helpers ───────────────────────────────────────────────────────────────
@@ -591,6 +625,141 @@ function BSTable({ currentBS, priorBS, currentFY, priorFY }: BSTableProps) {
   );
 }
 
+// ─── Cash Flow Components ─────────────────────────────────────────────────────
+
+function CashFlowSectionBlock({ title, section }: { title: string; section: CashFlowSection }) {
+  const pos = section.total_paise >= 0;
+  return (
+    <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
+      <div className={`px-5 py-3 border-b border-gray-50 flex items-center justify-between ${pos ? "bg-green-50/50" : "bg-red-50/50"}`}>
+        <h3 className="text-sm font-semibold text-[#0F172A]">{title}</h3>
+        <span className={`text-sm font-bold ${pos ? "text-green-700" : "text-red-700"}`}>
+          {formatPaise(section.total_paise)}
+        </span>
+      </div>
+      {section.lines.length === 0 ? (
+        <p className="px-5 py-4 text-xs text-[#94A3B8]">No transactions in this category</p>
+      ) : (
+        <table className="w-full text-sm">
+          <tbody className="divide-y divide-[#F8FAFC]">
+            {section.lines.map((line) => (
+              <tr key={line.account_id} className="hover:bg-[#F8FAFC]/30">
+                <td className="px-5 py-2.5 text-xs text-[#334155]">{line.account_name}</td>
+                <td className={`px-5 py-2.5 text-xs font-medium text-right ${line.amount_paise >= 0 ? "text-green-700" : "text-red-700"}`}>
+                  {line.amount_paise >= 0 ? "+" : ""}{formatPaise(line.amount_paise)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-[#E2E8F0] bg-[#F8FAFC]">
+              <td className="px-5 py-2.5 text-xs font-semibold text-[#334155]">Net Cash</td>
+              <td className={`px-5 py-2.5 text-sm font-bold text-right ${pos ? "text-green-700" : "text-red-700"}`}>
+                {formatPaise(section.total_paise)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function CashFlowTable({ cf }: { cf: CashFlowData }) {
+  const r = cf.operating_reconciliation;
+  const netPos = cf.net_change_paise >= 0;
+  return (
+    <div className="space-y-4">
+      {!cf.reconciles && (
+        <div className="flex items-center gap-2 p-3 bg-amber-50 text-amber-700 rounded-lg text-sm border border-amber-200">
+          <AlertTriangle size={14} className="shrink-0" />
+          Cash flow does not reconcile for this period. Please review the ledger.
+        </div>
+      )}
+
+      {/* Summary bar */}
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
+        <div className="grid grid-cols-4 gap-4">
+          {[
+            { label: "Operating", paise: cf.operating.total_paise, color: "text-blue-700" },
+            { label: "Investing", paise: cf.investing.total_paise, color: "text-purple-700" },
+            { label: "Financing", paise: cf.financing.total_paise, color: "text-orange-700" },
+            { label: "Net Change", paise: cf.net_change_paise, color: netPos ? "text-green-700" : "text-red-700" },
+          ].map((s) => (
+            <div key={s.label} className="text-center">
+              <p className="text-xs text-[#94A3B8] mb-1">{s.label}</p>
+              <p className={`text-sm font-bold ${s.color}`}>{formatPaise(s.paise)}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Opening → Closing */}
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 flex items-center gap-4 flex-wrap">
+        <div>
+          <p className="text-xs text-[#94A3B8]">Opening Cash</p>
+          <p className="text-sm font-semibold text-[#0F172A]">{formatPaise(cf.opening_cash_paise)}</p>
+        </div>
+        <span className="text-[#CBD5E1] font-medium">+</span>
+        <div>
+          <p className="text-xs text-[#94A3B8]">Net Change</p>
+          <p className={`text-sm font-semibold ${netPos ? "text-green-700" : "text-red-700"}`}>
+            {netPos ? "+" : ""}{formatPaise(cf.net_change_paise)}
+          </p>
+        </div>
+        <span className="text-[#CBD5E1] font-medium">=</span>
+        <div>
+          <p className="text-xs text-[#94A3B8]">Closing Cash</p>
+          <p className="text-sm font-semibold text-[#0F172A]">{formatPaise(cf.closing_cash_paise)}</p>
+        </div>
+        {cf.reconciles && <CheckCircle size={16} className="text-green-500 ml-auto shrink-0" />}
+      </div>
+
+      <CashFlowSectionBlock title="A. Cash from Operating Activities" section={cf.operating} />
+      <CashFlowSectionBlock title="B. Cash from Investing Activities" section={cf.investing} />
+      <CashFlowSectionBlock title="C. Cash from Financing Activities" section={cf.financing} />
+
+      {/* Operating reconciliation (indirect method breakdown) */}
+      <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-50 bg-slate-50">
+          <h3 className="text-sm font-semibold text-[#0F172A]">Operating Reconciliation — Indirect Method</h3>
+        </div>
+        <table className="w-full text-sm">
+          <tbody className="divide-y divide-[#F8FAFC]">
+            {([
+              { label: "Net Profit for the Period", paise: r.net_profit_paise },
+              { label: "Add: Depreciation & Non-cash Items", paise: r.depreciation_addback_paise },
+              { label: "Non-operating Adjustments (Gain/Loss on Disposal)", paise: r.non_operating_adjust_paise },
+              { label: "Changes in Working Capital", paise: r.working_capital_change_paise },
+            ] as { label: string; paise: number }[]).map(({ label, paise }) =>
+              paise !== 0 ? (
+                <tr key={label} className="hover:bg-[#F8FAFC]/30">
+                  <td className="px-5 py-2.5 text-xs text-[#334155] pl-8">{label}</td>
+                  <td className={`px-5 py-2.5 text-xs font-medium text-right ${paise >= 0 ? "text-green-700" : "text-red-700"}`}>
+                    {paise >= 0 ? "+" : ""}{formatPaise(paise)}
+                  </td>
+                </tr>
+              ) : null
+            )}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-[#E2E8F0] bg-[#F8FAFC]">
+              <td className="px-5 py-2.5 text-xs font-semibold text-[#334155]">Net Cash from Operations</td>
+              <td className={`px-5 py-2.5 text-sm font-bold text-right ${r.net_cash_operating_paise >= 0 ? "text-green-700" : "text-red-700"}`}>
+                {formatPaise(r.net_cash_operating_paise)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <p className="text-[10px] text-[#94A3B8] text-center">
+        AS-3 (Accounting Standard on Cash Flow Statements) · Companies Act 2013 Schedule III · Indirect Method
+      </p>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function FinancialStatementsPage() {
@@ -610,6 +779,7 @@ export default function FinancialStatementsPage() {
   const [priorPL, setPriorPL] = useState<PLData | null>(null);
   const [currentBS, setCurrentBS] = useState<BSData | null>(null);
   const [priorBS, setPriorBS] = useState<BSData | null>(null);
+  const [cfData, setCfData] = useState<CashFlowData | null>(null);
 
   // Share with client
   const [showShareModal, setShowShareModal] = useState(false);
@@ -637,27 +807,39 @@ export default function FinancialStatementsPage() {
     setPriorPL(null);
     setCurrentBS(null);
     setPriorBS(null);
+    setCfData(null);
 
     try {
       const curRange = fyToDateRange(currentFY);
       const priRange = fyToDateRange(priorFY);
+
+      // Kick off CF fetch immediately so it runs in parallel with Supabase queries.
+      const cfFetch = api.accounting.cashFlow({
+        start_date: curRange.from,
+        end_date: curRange.to,
+        client_id: selectedClientId,
+        basis: "accrual",
+      });
 
       const [curBalances, priBalances] = await Promise.all([
         fetchAccountBalances(selectedClientId, curRange.from, curRange.to),
         fetchAccountBalances(selectedClientId, priRange.from, priRange.to),
       ]);
 
-      const [cPL, pPL, cBS, pBS] = await Promise.all([
+      const [cPL, pPL, cBS, pBS, cfRaw] = await Promise.all([
         buildPLData(curBalances),
         buildPLData(priBalances),
         buildBSData(curBalances),
         buildBSData(priBalances),
+        cfFetch,
       ]);
 
       setCurrentPL(cPL);
       setPriorPL(pPL);
       setCurrentBS(cBS);
       setPriorBS(pBS);
+      const cfRes = cfRaw as { success: boolean; data: CashFlowData | null; error: string | null };
+      if (cfRes.success && cfRes.data) setCfData(cfRes.data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to generate report");
     } finally {
@@ -897,13 +1079,14 @@ export default function FinancialStatementsPage() {
         />
       )}
 
-      {/* Cash Flow Summary Tab */}
-      {hasData && activeTab === "cashflow" && (
-        <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center text-[#94A3B8]">
-          <BarChart3 size={32} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">Cash Flow Statement requires direct cash account mapping.</p>
-          <p className="text-xs mt-1 text-[#CBD5E1]">Coming in next phase — configure cash &amp; bank accounts in Chart of Accounts first.</p>
-        </div>
+      {/* Cash Flow Tab — live AS-3 statement from /api/accounting/cash-flow */}
+      {activeTab === "cashflow" && !loading && (
+        cfData
+          ? <CashFlowTable cf={cfData} />
+          : <div className="text-center py-16 text-[#94A3B8]">
+              <BarChart3 size={40} className="mx-auto mb-3 opacity-30" />
+              <p className="text-sm">Select a client and FY range, then click Generate.</p>
+            </div>
       )}
 
       {/* Share with Client Modal */}

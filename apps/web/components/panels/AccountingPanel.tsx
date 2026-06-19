@@ -11,6 +11,7 @@ import {
   BookOpen,
   Receipt,
   Briefcase,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { label: "Account Groups",      href: "/accounting/account-groups",        icon: Layers },
   { label: "Import COA",          href: "/accounting/coa-import",            icon: Upload },
   { label: "Export COA",          href: "/accounting/coa-export",            icon: Download },
+  { label: "Cash Flow Statement", href: "/accounting/cash-flow",             icon: Wallet },
   { label: "Fee Billing",         href: "/billing",                          icon: Receipt },
   { label: "Payroll",             href: "/payroll",                          icon: Briefcase },
 ];
