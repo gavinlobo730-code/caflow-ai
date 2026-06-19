@@ -3,6 +3,7 @@ Double-entry accounting engine.
 All monetary values in paise (integer) — never float.
 CGST Act Section 2(59): Input Tax Credit; IT Act Section 44AB: Tax Audit
 """
+import os
 from datetime import date, datetime
 from typing import Optional
 from core.exceptions import ValidationError, NotFoundError
@@ -515,6 +516,35 @@ class AccountingService:
             "total_liabilities_equity_paise": total_liab_equity,
             "is_balanced": diff == 0,
         }
+
+    def get_cash_flow_statement(
+        self,
+        firm_id: Optional[str] = None,
+        client_id: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        basis: str = "accrual",
+    ) -> dict:
+        """
+        Cash Flow Statement — AS-3 (indirect method), Companies Act 2013 Schedule III.
+
+        Delegates to the shared ReportingService so there is ONE reporting code
+        path (production ledger via Supabase when configured, else the in-memory
+        seed). Operating + Investing + Financing = net cash movement = closing −
+        opening cash; integer paise throughout. basis=cash is management
+        reporting only (IT Act §145) and never affects GST/ITR filings.
+        """
+        # Lazy import — domain.reporting.mock_ledger_source imports this module,
+        # so importing it here (not at module load) avoids a circular import.
+        from domain.reporting import (
+            ReportingService, SupabaseLedgerSource, mock_ledger_source,
+        )
+        if os.environ.get("SUPABASE_URL"):
+            from core.supabase_client import get_supabase
+            svc = ReportingService(SupabaseLedgerSource(get_supabase()))
+        else:
+            svc = ReportingService(mock_ledger_source())
+        return svc.cash_flow_statement(firm_id, client_id, start_date, end_date, basis=basis)
 
     def get_cash_balance(self) -> int:
         """Return current cash + bank balance in integer paise."""

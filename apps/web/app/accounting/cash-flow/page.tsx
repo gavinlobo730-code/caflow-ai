@@ -1,35 +1,51 @@
 "use client";
 
 /**
- * Cash Flow Statement — Indirect Method
- * Companies Act 2013, Schedule III: Format for cash flow statement
- * AS-3 (Accounting Standard): Cash Flow Statements
- * Indirect method: Start with net profit, adjust for non-cash items and working capital changes
+ * Cash Flow Statement — Indirect Method (AS-3, Companies Act 2013 Schedule III).
+ *
+ * Presentation layer ONLY. All classification (operating / investing / financing)
+ * and money arithmetic happen server-side in the reporting engine — this page
+ * fetches GET /api/accounting/cash-flow and renders the response. Zero business
+ * logic in the frontend (CLAUDE.md).
  */
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ChevronLeft, TrendingUp, TrendingDown, Minus, Download } from "lucide-react";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { getFirmId } from "@/lib/data/getFirmId";
+import { ChevronLeft, TrendingUp, TrendingDown, Minus, Download, AlertTriangle } from "lucide-react";
 import { formatPaise } from "@/lib/services/formatting";
+import { api } from "@/lib/api";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types (mirror the backend response) ──────────────────────────────────────
 
-interface JournalLine {
+interface CashFlowLine {
   account_id: string;
-  debit_paise: number;
-  credit_paise: number;
+  account_code: string;
   account_name: string;
   account_type: string;
-  account_code: string;
+  account_subtype: string | null;
+  amount_paise: number;
 }
 
 interface CashFlowSection {
-  title: string;
-  items: { label: string; amount_paise: number }[];
+  label: string;
+  lines: CashFlowLine[];
   total_paise: number;
 }
+
+interface CashFlowStatement {
+  start_date: string;
+  end_date: string;
+  basis?: string;
+  operating: CashFlowSection;
+  investing: CashFlowSection;
+  financing: CashFlowSection;
+  net_change_paise: number;
+  opening_cash_paise: number;
+  closing_cash_paise: number;
+  reconciles: boolean;
+}
+
+type CashFlowResponse = { success: boolean; data: CashFlowStatement | null; error: string | null };
 
 // Indian Financial Year selector — April 1 to March 31
 const FY_LIST = [
@@ -38,99 +54,20 @@ const FY_LIST = [
   { label: "FY 2023-24", start: "2023-04-01", end: "2024-03-31" },
 ];
 
-// Account type classification for cash flow — AS-3
-function classifyCashFlowActivity(accountCode: string, accountType: string, accountName: string): "operating" | "investing" | "financing" | "cash" {
-  const code = accountCode?.toLowerCase() ?? "";
-  const name = accountName?.toLowerCase() ?? "";
-  const type = accountType?.toLowerCase() ?? "";
-
-  // Cash and bank accounts
-  if (name.includes("cash") || name.includes("bank") || code.startsWith("10")) return "cash";
-
-  // Investing: Fixed assets, investments
-  if (type === "asset" && (name.includes("fixed") || name.includes("equipment") || name.includes("vehicle") || name.includes("building") || name.includes("plant") || name.includes("machinery") || name.includes("investment") || name.includes("furniture"))) return "investing";
-
-  // Financing: Capital, loans, dividends
-  if (type === "equity" || name.includes("loan") || name.includes("capital") || name.includes("borrowing") || name.includes("dividend") || name.includes("debenture")) return "financing";
-
-  // Everything else is operating (Revenue, Expense, Working Capital Assets/Liabilities)
-  return "operating";
-}
-
-// ─── Cash Flow Computation ───────────────────────────────────────────────────
-
-function computeCashFlow(lines: JournalLine[]): {
-  operating: CashFlowSection;
-  investing: CashFlowSection;
-  financing: CashFlowSection;
-  openingCash: number;
-  closingCash: number;
-} {
-  // Group by account and net the debits/credits
-  const accountMap = new Map<string, { name: string; type: string; code: string; net_paise: number }>();
-  for (const l of lines) {
-    const existing = accountMap.get(l.account_id) ?? { name: l.account_name, type: l.account_type, code: l.account_code, net_paise: 0 };
-    // Net = debit - credit (positive = debit balance)
-    existing.net_paise += (l.debit_paise - l.credit_paise);
-    accountMap.set(l.account_id, existing);
-  }
-
-  const operatingItems: { label: string; amount_paise: number }[] = [];
-  const investingItems: { label: string; amount_paise: number }[] = [];
-  const financingItems: { label: string; amount_paise: number }[] = [];
-  let cashChange = 0;
-
-  for (const acct of Array.from(accountMap.values())) {
-    const activity = classifyCashFlowActivity(acct.code, acct.type, acct.name);
-    if (activity === "cash") {
-      cashChange += acct.net_paise;
-    } else if (activity === "operating") {
-      // For revenue/expense accounts, net shows P&L contribution
-      // For asset/liability working capital, net change affects operating cash
-      const amt = acct.type === "Revenue" ? acct.net_paise : acct.type === "Expense" ? -acct.net_paise : -acct.net_paise;
-      if (amt !== 0) operatingItems.push({ label: acct.name, amount_paise: amt });
-    } else if (activity === "investing") {
-      const amt = -acct.net_paise; // Asset increase = cash outflow
-      if (amt !== 0) investingItems.push({ label: acct.name, amount_paise: amt });
-    } else if (activity === "financing") {
-      const amt = acct.type === "Equity" ? acct.net_paise : -acct.net_paise;
-      if (amt !== 0) financingItems.push({ label: acct.name, amount_paise: amt });
-    }
-  }
-
-  const operatingTotal = operatingItems.reduce((s, i) => s + i.amount_paise, 0);
-  const investingTotal = investingItems.reduce((s, i) => s + i.amount_paise, 0);
-  const financingTotal = financingItems.reduce((s, i) => s + i.amount_paise, 0);
-
-  return {
-    operating: {
-      title: "A. Cash from Operating Activities",
-      items: operatingItems,
-      total_paise: operatingTotal,
-    },
-    investing: {
-      title: "B. Cash from Investing Activities",
-      items: investingItems,
-      total_paise: investingTotal,
-    },
-    financing: {
-      title: "C. Cash from Financing Activities",
-      items: financingItems,
-      total_paise: financingTotal,
-    },
-    openingCash: 0, // Would need prior year data
-    closingCash: cashChange,
-  };
-}
+const SECTION_TITLES: Record<keyof Pick<CashFlowStatement, "operating" | "investing" | "financing">, string> = {
+  operating: "A. Cash from Operating Activities",
+  investing: "B. Cash from Investing Activities",
+  financing: "C. Cash from Financing Activities",
+};
 
 // ─── Section Component ────────────────────────────────────────────────────────
 
-function CashFlowSectionBlock({ section }: { section: CashFlowSection }) {
+function CashFlowSectionBlock({ title, section }: { title: string; section: CashFlowSection }) {
   const isPositive = section.total_paise >= 0;
   return (
     <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
       <div className={`px-5 py-3 border-b border-gray-50 flex items-center justify-between ${isPositive ? "bg-green-50/50" : "bg-red-50/50"}`}>
-        <h3 className="text-sm font-semibold text-[#0F172A]">{section.title}</h3>
+        <h3 className="text-sm font-semibold text-[#0F172A]">{title}</h3>
         <div className="flex items-center gap-1.5">
           {isPositive ? <TrendingUp className="w-4 h-4 text-green-600" /> : <TrendingDown className="w-4 h-4 text-red-600" />}
           <span className={`text-sm font-bold ${isPositive ? "text-green-700" : "text-red-700"}`}>
@@ -138,14 +75,14 @@ function CashFlowSectionBlock({ section }: { section: CashFlowSection }) {
           </span>
         </div>
       </div>
-      {section.items.length === 0 ? (
+      {section.lines.length === 0 ? (
         <div className="px-5 py-4 text-xs text-[#94A3B8]">No transactions in this category for selected period</div>
       ) : (
         <table className="w-full text-sm">
           <tbody className="divide-y divide-[#F8FAFC]">
-            {section.items.map((item, i) => (
-              <tr key={i} className="hover:bg-[#F8FAFC]/30">
-                <td className="px-5 py-2.5 text-xs text-[#334155]">{item.label}</td>
+            {section.lines.map((item) => (
+              <tr key={item.account_id} className="hover:bg-[#F8FAFC]/30">
+                <td className="px-5 py-2.5 text-xs text-[#334155]">{item.account_name}</td>
                 <td className={`px-5 py-2.5 text-xs font-medium text-right ${item.amount_paise >= 0 ? "text-green-700" : "text-red-700"}`}>
                   {item.amount_paise >= 0 ? "+" : ""}{formatPaise(item.amount_paise)}
                 </td>
@@ -170,68 +107,63 @@ function CashFlowSectionBlock({ section }: { section: CashFlowSection }) {
 
 export default function CashFlowPage() {
   const [selectedFY, setSelectedFY] = useState(0);
-  const [lines, setLines] = useState<JournalLine[]>([]);
+  const [cf, setCf] = useState<CashFlowStatement | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fy = FY_LIST[selectedFY];
 
   useEffect(() => {
+    let cancelled = false;
     async function load() {
       setLoading(true);
       setError(null);
       try {
-        const firmId = await getFirmId();
-        const sb = getSupabaseClient();
-
-        // Fetch journal lines with account info for the selected FY
-        // AS-3: Cash flow from all journal entries in the period
-        const { data, error: dbErr } = await sb
-          .from("journal_lines")
-          .select(`
-            account_id,
-            debit_paise,
-            credit_paise,
-            chart_of_accounts!inner (
-              account_name,
-              account_type,
-              account_code
-            ),
-            journal_entries!inner (
-              entry_date,
-              firm_id
-            )
-          `)
-          .eq("journal_entries.firm_id", firmId)
-          .gte("journal_entries.entry_date", fy.start)
-          .lte("journal_entries.entry_date", fy.end);
-
-        if (dbErr) throw new Error(dbErr.message);
-
-        const mapped: JournalLine[] = (data ?? []).map((r: Record<string, unknown>) => {
-          const acct = r.chart_of_accounts as Record<string, string>;
-          return {
-            account_id: r.account_id as string,
-            debit_paise: r.debit_paise as number,
-            credit_paise: r.credit_paise as number,
-            account_name: acct?.account_name ?? "",
-            account_type: acct?.account_type ?? "",
-            account_code: acct?.account_code ?? "",
-          };
-        });
-
-        setLines(mapped);
+        // AS-3 cash flow is computed entirely server-side (CLAUDE.md): the page
+        // passes the period and renders the authoritative response.
+        const res = (await api.accounting.cashFlow({
+          start_date: fy.start,
+          end_date: fy.end,
+          basis: "accrual",
+        })) as CashFlowResponse;
+        if (!res.success || !res.data) throw new Error(res.error ?? "Failed to load cash flow statement");
+        if (!cancelled) setCf(res.data);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load data");
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load data");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
     load();
-  }, [selectedFY, fy.start, fy.end]);
+    return () => { cancelled = true; };
+  }, [fy.start, fy.end]);
 
-  const cf = computeCashFlow(lines);
-  const netChange = cf.operating.total_paise + cf.investing.total_paise + cf.financing.total_paise;
+  function exportCsv() {
+    if (!cf) return;
+    const sectionRows = (key: "operating" | "investing" | "financing") => {
+      const s = cf[key];
+      return [
+        ...s.lines.map((l) => [SECTION_TITLES[key], l.account_name, String(Math.round(l.amount_paise / 100))]),
+        [SECTION_TITLES[key], `Net ${s.label}`, String(Math.round(s.total_paise / 100))],
+      ];
+    };
+    const rows = [
+      ["Section", "Item", "Amount (₹)"],
+      ...sectionRows("operating"),
+      ...sectionRows("investing"),
+      ...sectionRows("financing"),
+      ["Summary", "Opening Cash", String(Math.round(cf.opening_cash_paise / 100))],
+      ["Summary", "Net Change in Cash", String(Math.round(cf.net_change_paise / 100))],
+      ["Summary", "Closing Cash", String(Math.round(cf.closing_cash_paise / 100))],
+    ];
+    const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+    a.download = `cash-flow-${fy.label.replace(/\s/g, "-")}.csv`;
+    a.click();
+  }
+
+  const netChange = cf?.net_change_paise ?? 0;
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -253,25 +185,9 @@ export default function CashFlowPage() {
             {FY_LIST.map((f, i) => <option key={f.label} value={i}>{f.label}</option>)}
           </select>
           <button
-            onClick={() => {
-              const cf = computeCashFlow(lines);
-              const rows = [
-                ["Section", "Item", "Amount (₹)"],
-                ...cf.operating.items.map(i => [cf.operating.title, i.label, String(Math.round(i.amount_paise / 100))]),
-                [cf.operating.title, "Net Cash from Operations", String(Math.round(cf.operating.total_paise / 100))],
-                ...cf.investing.items.map(i => [cf.investing.title, i.label, String(Math.round(i.amount_paise / 100))]),
-                [cf.investing.title, "Net Cash from Investing", String(Math.round(cf.investing.total_paise / 100))],
-                ...cf.financing.items.map(i => [cf.financing.title, i.label, String(Math.round(i.amount_paise / 100))]),
-                [cf.financing.title, "Net Cash from Financing", String(Math.round(cf.financing.total_paise / 100))],
-                ["Summary", "Net Change in Cash", String(Math.round(cf.closingCash / 100))],
-              ];
-              const csv = rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n");
-              const a = document.createElement("a");
-              a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-              a.download = `cash-flow-${fy.label.replace(/\s/g, "-")}.csv`;
-              a.click();
-            }}
-            className="flex items-center gap-1.5 border border-[#E2E8F0] text-[#475569] text-sm px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+            onClick={exportCsv}
+            disabled={!cf}
+            className="flex items-center gap-1.5 border border-[#E2E8F0] text-[#475569] text-sm px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50"
           >
             <Download className="w-3.5 h-3.5" /> Export
           </button>
@@ -282,7 +198,7 @@ export default function CashFlowPage() {
         <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 text-sm text-red-700">{error}</div>
       )}
 
-      {loading ? (
+      {loading || !cf ? (
         <div className="space-y-4">
           {[1, 2, 3].map(i => <div key={i} className="h-32 bg-[#F1F5F9] rounded-xl animate-pulse" />)}
         </div>
@@ -310,7 +226,7 @@ export default function CashFlowPage() {
             <div className="flex items-center gap-4">
               <div>
                 <p className="text-xs text-[#94A3B8]">Opening Cash Balance</p>
-                <p className="text-sm font-semibold text-[#0F172A]">{formatPaise(cf.openingCash)}</p>
+                <p className="text-sm font-semibold text-[#0F172A]">{formatPaise(cf.opening_cash_paise)}</p>
               </div>
               <Minus className="w-4 h-4 text-[#CBD5E1]" />
               <div>
@@ -320,16 +236,23 @@ export default function CashFlowPage() {
               <Minus className="w-4 h-4 text-[#CBD5E1]" />
               <div>
                 <p className="text-xs text-[#94A3B8]">Closing Cash Balance</p>
-                <p className="text-sm font-semibold text-[#0F172A]">{formatPaise(cf.closingCash)}</p>
+                <p className="text-sm font-semibold text-[#0F172A]">{formatPaise(cf.closing_cash_paise)}</p>
               </div>
             </div>
             <p className="text-[10px] text-[#94A3B8]">FY: Apr {fy.start.slice(0, 4)} — Mar {fy.end.slice(0, 4)}</p>
           </div>
 
+          {!cf.reconciles && (
+            <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 text-xs text-amber-700 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              Cash flow does not reconcile to the change in cash balances for this period. Please review the ledger.
+            </div>
+          )}
+
           {/* Three sections */}
-          <CashFlowSectionBlock section={cf.operating} />
-          <CashFlowSectionBlock section={cf.investing} />
-          <CashFlowSectionBlock section={cf.financing} />
+          <CashFlowSectionBlock title={SECTION_TITLES.operating} section={cf.operating} />
+          <CashFlowSectionBlock title={SECTION_TITLES.investing} section={cf.investing} />
+          <CashFlowSectionBlock title={SECTION_TITLES.financing} section={cf.financing} />
 
           <p className="text-[10px] text-[#94A3B8] text-center">
             Prepared using indirect method per AS-3 (Accounting Standard on Cash Flow Statements) and Companies Act 2013 Schedule III.
