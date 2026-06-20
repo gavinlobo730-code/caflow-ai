@@ -268,6 +268,76 @@ def test_report_structure_and_csv(db):
     assert csv_text.count("txn t1") == 1
 
 
+# ── F1: completion requires full review (not just arithmetic tie-out) ─────────
+
+def test_empty_completion_blocked(db):
+    # Opening == Closing == 0, nothing reconciled, but 3 in-period posted txns remain.
+    rid = _open(db, 0, 0)
+    rep = svc.report(db, FIRM, rid)
+    assert rep["ties_out"] is True          # arithmetic ties out (0 == 0)...
+    assert rep["counts"]["unreconciled"] == 3
+    with pytest.raises(HTTPException) as e:  # ...but completion must still fail
+        svc.complete(db, FIRM, rid)
+    assert e.value.status_code == 422
+    assert "unreconciled" in e.value.detail.lower()
+
+
+def test_netting_completion_blocked(db):
+    # Unreconciled deposit + withdrawal that offset; reconciled subset ties out.
+    db.store["bank_transactions"].append(_txn("t5", credit=10000))   # unreconciled deposit
+    db.store["bank_transactions"].append(_txn("t6", debit=10000))    # unreconciled withdrawal
+    rid = _open(db, 100000, 160000)
+    svc.reconcile(db, FIRM, rid, ["t1", "t2", "t3"])
+    rep = svc.report(db, FIRM, rid)
+    assert rep["ties_out"] is True           # 100000 + 80000 - 20000 == 160000
+    assert rep["counts"]["unreconciled"] == 2
+    with pytest.raises(HTTPException) as e:   # offsetting items remain unreviewed
+        svc.complete(db, FIRM, rid)
+    assert e.value.status_code == 422
+
+
+# ── F2: completed reconciliation is frozen (immutable history) ────────────────
+
+def test_snapshot_report_stable_after_txn_change(db):
+    import copy
+    rid = _open(db, 100000, 160000)
+    svc.reconcile(db, FIRM, rid, ["t1", "t2", "t3"])
+    svc.complete(db, FIRM, rid)
+    before = copy.deepcopy(svc.report(db, FIRM, rid))
+    assert before["reconciled_transaction_ids"] == ["t1", "t2", "t3"]
+
+    # Simulate later tampering: recategorize, reverse (remove journal), delete a txn.
+    txns = db.store["bank_transactions"]
+    next(t for t in txns if t["id"] == "t1")["credit_paise"] = 999999
+    next(t for t in txns if t["id"] == "t2")["posted_journal_id"] = None
+    db.store["bank_transactions"] = [t for t in txns if t["id"] != "t3"]
+
+    after = svc.report(db, FIRM, rid)
+    assert after == before                    # frozen — no live recomputation
+
+
+def test_snapshot_csv_stable_after_txn_change(db):
+    rid = _open(db, 100000, 160000)
+    svc.reconcile(db, FIRM, rid, ["t1", "t2", "t3"])
+    svc.complete(db, FIRM, rid)
+    csv_before = svc.report_csv(db, FIRM, rid)
+
+    next(t for t in db.store["bank_transactions"] if t["id"] == "t1")["credit_paise"] = 1
+    db.store["bank_transactions"] = [t for t in db.store["bank_transactions"] if t["id"] != "t3"]
+
+    assert svc.report_csv(db, FIRM, rid) == csv_before
+
+
+def test_get_session_serves_frozen_summary(db):
+    rid = _open(db, 100000, 160000)
+    svc.reconcile(db, FIRM, rid, ["t1", "t2", "t3"])
+    svc.complete(db, FIRM, rid)
+    frozen = svc.get_session(db, FIRM, rid)["summary"]
+    # mutate underlying data, then re-read
+    db.store["bank_transactions"] = [t for t in db.store["bank_transactions"] if t["id"] != "t1"]
+    assert svc.get_session(db, FIRM, rid)["summary"] == frozen
+
+
 # ── Firm isolation ────────────────────────────────────────────────────────────
 
 def test_firm_isolation(db):

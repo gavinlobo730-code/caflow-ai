@@ -155,8 +155,23 @@ class BankReconciliationService:
         rows = q.order("period_end", desc=True).execute().data or []
         return [self._session_view(r) for r in rows]
 
+    def _frozen_snapshot(self, session: dict) -> Optional[dict]:
+        """The frozen report stored at completion (F2). None for mutable sessions."""
+        if session.get("status") != "completed":
+            return None
+        snap = session.get("snapshot")
+        if snap is None:
+            return None
+        if isinstance(snap, str):  # jsonb may arrive as text from some drivers
+            import json
+            snap = json.loads(snap)
+        return snap
+
     def get_session(self, db, firm_id, recon_id) -> dict:
         session = self._get_session(db, firm_id, recon_id)
+        snap = self._frozen_snapshot(session)
+        if snap is not None:  # completed → serve frozen summary/counts
+            return {**snap["reconciliation"], "summary": snap["summary"], "counts": snap["counts"]}
         txns = self._posted_account_txns(db, firm_id, session["bank_account_id"])
         buckets = self._classify(session, txns)
         view = self._session_view(session)
@@ -241,14 +256,31 @@ class BankReconciliationService:
         txns = self._posted_account_txns(db, firm_id, session["bank_account_id"])
         buckets = self._classify(session, txns)
         summary = self._summary(session, buckets["reconciled"])
+        # F1 Condition 2: every in-period statement line must be reviewed. A clean
+        # arithmetic tie-out is NOT sufficient — unreconciled items (even ones that
+        # net to zero) mean the statement was not fully reconciled.
+        unreconciled = len(buckets["unreconciled"])
+        if unreconciled:
+            raise HTTPException(
+                status_code=422,
+                detail=(f"Cannot complete — {unreconciled} transaction(s) in this period are "
+                        f"still unreconciled. Every statement line must be reconciled before "
+                        f"completing, even if the balance already ties out."))
+        # F1 Condition 1: arithmetic tie-out.
         if not summary["reconciles"]:
             raise HTTPException(
                 status_code=422,
                 detail=(f"Cannot complete — statement does not tie out. Difference "
                         f"₹{summary['difference_paise'] / 100:.2f}. Reconcile the remaining "
                         f"items or record an adjustment."))
+        # F2: freeze the report at completion so the historical reconciliation can
+        # never silently change if transactions are later modified / reversed / removed.
+        now = _now()
+        snapshot = self._compute_report(session, txns)
+        snapshot["reconciliation"].update({"status": "completed", "completed_at": now, "completed_by": actor_id})
         db.table("bank_reconciliations").update({
-            "status": "completed", "completed_at": _now(), "completed_by": actor_id, "updated_at": _now(),
+            "status": "completed", "completed_at": now, "completed_by": actor_id,
+            "snapshot": snapshot, "updated_at": now,
         }).eq("id", recon_id).eq("firm_id", firm_id).execute()
         self._log(session, actor_id, "Reconciliation Completed",
                   f"Tied out at ₹{summary['statement_closing_balance_paise'] / 100:.2f}", severity="success")
@@ -262,12 +294,10 @@ class BankReconciliationService:
         return self.get_session(db, firm_id, recon_id)
 
     # ── B.4.4 report + CSV ──────────────────────────────────────────────────────
-    def report(self, db, firm_id, recon_id) -> dict:
-        session = self._get_session(db, firm_id, recon_id)
-        txns = self._posted_account_txns(db, firm_id, session["bank_account_id"])
+    def _compute_report(self, session: dict, txns: list[dict]) -> dict:
+        """Build the full report payload from live transaction data."""
         buckets = self._classify(session, txns)
         summary = self._summary(session, buckets["reconciled"])
-        view = self._session_view(session)
 
         def line(t: dict) -> dict:
             return {
@@ -279,18 +309,29 @@ class BankReconciliationService:
                 "exception_reason": t.get("exception_reason"),
             }
         return {
-            "reconciliation": view,
+            "reconciliation": self._session_view(session),
             "summary": summary,
             "ties_out": summary["reconciles"],
             "reconciled": [line(t) for t in buckets["reconciled"]],
             "unreconciled": [line(t) for t in buckets["unreconciled"]],
             "exceptions": [line(t) for t in buckets["exceptions"]],
+            "reconciled_transaction_ids": [t["id"] for t in buckets["reconciled"]],
             "counts": {
                 "reconciled": len(buckets["reconciled"]),
                 "unreconciled": len(buckets["unreconciled"]),
                 "exceptions": len(buckets["exceptions"]),
             },
         }
+
+    def report(self, db, firm_id, recon_id) -> dict:
+        """Completed sessions serve a frozen snapshot (F2); mutable sessions compute
+        live. No recomputation ever changes a completed reconciliation."""
+        session = self._get_session(db, firm_id, recon_id)
+        snap = self._frozen_snapshot(session)
+        if snap is not None:
+            return snap
+        txns = self._posted_account_txns(db, firm_id, session["bank_account_id"])
+        return self._compute_report(session, txns)
 
     def report_csv(self, db, firm_id, recon_id) -> str:
         rep = self.report(db, firm_id, recon_id)
