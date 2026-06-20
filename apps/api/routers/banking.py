@@ -19,12 +19,13 @@ from typing import Optional
 from models.common import api_response
 from models.banking import (
     BankAccountIn, BankAccountUpdateIn, StatementImportIn,
-    TransactionAccountIn, PostTransactionIn, MatchingRuleIn,
+    TransactionAccountIn, PostBankTxnIn, MatchingRuleIn,
     CategorizeIn, MatchIn,
 )
 from core.permissions import rbac
 from services.banking_service import banking_service
 from services.bank_matching_service import bank_matching_service
+from services.bank_posting_service import bank_posting_service
 from domain.banking import parse_statement, file_hash, StatementParseError
 
 # Defensive upload cap (bank statements are small; protects the parser/DB).
@@ -278,22 +279,66 @@ def ignore_transaction(
     return api_response(True, banking_service.ignore(db, current_user["firm_id"], txn_id))
 
 
+# ─── Posting Engine (B.3) ─────────────────────────────────────────────────────
+
+@router.get("/ready-to-post")
+def ready_to_post_queue(
+    client_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Categorized/matched transactions awaiting an explicit post (B.3.1)."""
+    db = _db()
+    if not db:
+        return api_response(True, [])
+    return api_response(True, bank_posting_service.ready_to_post(db, current_user["firm_id"], client_id))
+
+
+@router.get("/posted")
+def posted_queue(
+    client_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Transactions already posted to the ledger (journal id + who/when)."""
+    db = _db()
+    if not db:
+        return api_response(True, [])
+    return api_response(True, bank_posting_service.posted(db, current_user["firm_id"], client_id))
+
+
+@router.post("/transactions/{txn_id}/posting-preview")
+def posting_preview(
+    txn_id: str,
+    data: PostBankTxnIn,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Proposed balanced journal + settlement effect — NO writes (review drawer)."""
+    db = _db()
+    if not db:
+        return api_response(True, {"transaction_id": txn_id, "lines": []})
+    return api_response(True, bank_posting_service.preview(
+        db, current_user["firm_id"], txn_id, bank_account_id=data.bank_account_id,
+        account_id=data.account_id, to_bank_account_id=data.to_bank_account_id))
+
+
 @router.post("/transactions/{txn_id}/post")
 def post_transaction(
     txn_id: str,
-    data: PostTransactionIn,
+    data: PostBankTxnIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """
-    Post a bank transaction to the ledger (double-entry via the shared engine).
-    Human-initiated only. Refuses to post into a locked financial year.
+    Explicitly post a bank transaction to the ledger (B.3.2): category → balanced
+    journal (shared engine) → settlement. Idempotent (one journal per transaction).
+    Human-initiated only; refuses a locked financial year.
     CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     db = _db()
     if not db:
-        return api_response(True, {"id": txn_id, "match_status": "posted", "journal_entry_id": "mock-je"})
-    return api_response(True, banking_service.post_transaction(
-        db, current_user["firm_id"], txn_id, data.account_id, data.bank_account_id,
+        return api_response(True, {"id": txn_id, "match_status": "posted", "posted_journal_id": "mock-je"})
+    return api_response(True, bank_posting_service.post(
+        db, current_user["firm_id"], txn_id,
+        bank_account_id=data.bank_account_id, account_id=data.account_id,
+        to_bank_account_id=data.to_bank_account_id,
         actor_id=current_user.get("auth_user_id"),
     ))
 

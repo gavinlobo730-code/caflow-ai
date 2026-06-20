@@ -88,6 +88,17 @@ class PostTransactionIn(BaseModel):
     bank_account_id: str
 
 
+class PostBankTxnIn(BaseModel):
+    """Banking B.3 post / preview. The category (set in B.2) drives counter
+    resolution + settlement; accounts are supplied only where a GL account must be
+    chosen explicitly (Expense/Salary/Loan/Capital/Interest/Other) or for a
+    Transfer's destination. All optional — the service validates what each
+    category requires."""
+    bank_account_id: Optional[str] = None      # bank's GL account (else derived from the statement)
+    account_id: Optional[str] = None           # explicitly-selected counter GL account
+    to_bank_account_id: Optional[str] = None   # Transfer destination bank/cash account
+
+
 class ReconcileMatchIn(BaseModel):
     bank_transaction_id: str
     journal_entry_id: str

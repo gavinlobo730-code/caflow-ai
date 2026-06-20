@@ -32,6 +32,7 @@ type AccountingTab =
   | "cashflow"
   | "banks"
   | "categorize"
+  | "post"
   | "reconciliation"
   | "reports";
 
@@ -46,6 +47,7 @@ const TABS: { id: AccountingTab; label: string }[] = [
   { id: "cashflow",      label: "Cash Flow" },
   { id: "banks",         label: "Banks" },
   { id: "categorize",    label: "Categorize" },
+  { id: "post",          label: "Post" },
   { id: "reconciliation",label: "Reconciliation" },
   { id: "reports",       label: "Reports" },
 ];
@@ -258,6 +260,9 @@ export default function AccountingPage() {
         )}
         {tab === "categorize" && (
           <BankMatchQueue clientId={clientId} />
+        )}
+        {tab === "post" && (
+          <BankPostingQueue clientId={clientId} accounts={accounts} />
         )}
         {tab === "reconciliation" && (
           <BankReconciliation accounts={accounts} clientId={clientId} />
@@ -1696,6 +1701,355 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
       <p className="text-[10px] text-[#94A3B8] text-center">
         Suggestions &amp; categorization only — accepting a match links the transaction; it does not post a journal (that is a later phase).
       </p>
+    </div>
+  );
+}
+
+// ── Bank Posting (B.3) — Ready to Post / Posted / Review drawer ────────────
+// Posting is EXPLICIT and human-initiated. The browser never builds journals;
+// it only previews the backend's proposed entry and asks the user to confirm.
+
+// Categories whose counter GL must be chosen explicitly (mirror of the backend
+// posting_map.EXPLICIT_COUNTER — display logic only; the API re-validates).
+const EXPLICIT_COUNTER_CATEGORIES = new Set([
+  "Expense", "Salary", "Loan", "Capital", "Interest", "Sales Receipt", "Other",
+]);
+const TRANSFER_CATEGORY = "Transfer";
+
+interface ReadyTxn {
+  id: string; transaction_date: string; description: string; reference_no: string | null;
+  debit_paise: number; credit_paise: number; match_status: string;
+  category: string | null; matched_entity_type: string | null; matched_entity_id: string | null;
+}
+interface PostedTxn extends ReadyTxn {
+  posted_journal_id: string; posted_at: string | null; posted_by: string | null;
+}
+interface PreviewLine { account_id: string; account_name: string; debit_paise: number; credit_paise: number; }
+interface SettlementPreview {
+  entity: string; label: string | null; allocate_paise: number;
+  new_paid_paise: number; total_paise: number;
+}
+interface PostingPreview {
+  transaction_id: string; category: string | null; entry_type: string; narration: string;
+  lines: PreviewLine[]; total_debit_paise: number; total_credit_paise: number;
+  settlement: SettlementPreview | null;
+}
+
+const isBankish = (a: Account) =>
+  a.account_type === "Asset" && /bank|cash/i.test(`${a.account_subtype ?? ""} ${a.account_name}`);
+
+function BankPostingQueue({ clientId, accounts }: { clientId: string; accounts: Account[] }) {
+  const [view, setView] = useState<"ready" | "posted">("ready");
+  const [ready, setReady] = useState<ReadyTxn[]>([]);
+  const [posted, setPosted] = useState<PostedTxn[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [reviewing, setReviewing] = useState<ReadyTxn | null>(null);
+
+  const load = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
+    setLoading(true);
+    try {
+      const [r, p] = await Promise.all([
+        api.banking.readyToPost({ client_id: clientId }) as Promise<{ success: boolean; data: ReadyTxn[] }>,
+        api.banking.posted({ client_id: clientId }) as Promise<{ success: boolean; data: PostedTxn[] }>,
+      ]);
+      setReady(r.success ? (r.data ?? []) : []);
+      setPosted(p.success ? (p.data ?? []) : []);
+    } catch { setReady([]); setPosted([]); } finally { setLoading(false); }
+  }, [clientId]);
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div className="space-y-4 max-w-5xl">
+      <div className="flex items-center justify-between">
+        <div className="flex gap-1 bg-[#F1F5F9] p-1 rounded-lg w-fit">
+          {([["ready", `Ready to Post (${ready.length})`], ["posted", `Posted (${posted.length})`]] as const).map(([id, label]) => (
+            <button key={id} onClick={() => setView(id)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === id ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <button onClick={load} className="text-xs text-[#64748B] hover:text-[#334155]">Refresh</button>
+      </div>
+
+      {loading ? <div className="h-40 bg-[#F8FAFC] rounded-lg animate-pulse" /> : view === "ready" ? (
+        ready.length === 0 ? (
+          <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">
+            Nothing ready to post. Categorize transactions under the Categorize tab first.
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+            <table className="w-full text-xs">
+              <thead className="bg-[#F8FAFC] text-[#64748B]">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Date</th>
+                  <th className="px-3 py-2 text-right font-medium">Amount</th>
+                  <th className="px-3 py-2 text-left font-medium">Narration</th>
+                  <th className="px-3 py-2 text-left font-medium">Category</th>
+                  <th className="px-3 py-2 text-left font-medium">Match</th>
+                  <th className="px-3 py-2 text-right font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F8FAFC]">
+                {ready.map((t) => (
+                  <tr key={t.id} className="hover:bg-[#F8FAFC]">
+                    <td className="px-3 py-2 whitespace-nowrap text-[#475569]">{String(t.transaction_date).slice(0, 10)}</td>
+                    <td className="px-3 py-2 text-right font-mono whitespace-nowrap">
+                      {t.credit_paise > 0
+                        ? <span className="text-green-700">{fmt(t.credit_paise)} Cr</span>
+                        : <span className="text-red-700">{fmt(t.debit_paise)} Dr</span>}
+                    </td>
+                    <td className="px-3 py-2 max-w-[220px] truncate text-[#334155]" title={t.description}>{t.description}</td>
+                    <td className="px-3 py-2">
+                      {t.category
+                        ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">{t.category}</span>
+                        : <span className="text-[#94A3B8]">—</span>}
+                    </td>
+                    <td className="px-3 py-2">
+                      {t.matched_entity_id
+                        ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">{t.matched_entity_type}</span>
+                        : <span className="text-[#94A3B8]">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button onClick={() => setReviewing(t)}
+                        className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+                        Review &amp; Post
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : (
+        posted.length === 0 ? (
+          <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">No posted transactions yet.</div>
+        ) : (
+          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+            <table className="w-full text-xs">
+              <thead className="bg-[#F8FAFC] text-[#64748B]">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Date</th>
+                  <th className="px-3 py-2 text-right font-medium">Amount</th>
+                  <th className="px-3 py-2 text-left font-medium">Journal #</th>
+                  <th className="px-3 py-2 text-left font-medium">Posted At</th>
+                  <th className="px-3 py-2 text-left font-medium">Posted By</th>
+                  <th className="px-3 py-2 text-left font-medium">Linked Entity</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F8FAFC]">
+                {posted.map((t) => (
+                  <tr key={t.id} className="hover:bg-[#F8FAFC]">
+                    <td className="px-3 py-2 whitespace-nowrap text-[#475569]">{String(t.transaction_date).slice(0, 10)}</td>
+                    <td className="px-3 py-2 text-right font-mono whitespace-nowrap">
+                      {t.credit_paise > 0
+                        ? <span className="text-green-700">{fmt(t.credit_paise)} Cr</span>
+                        : <span className="text-red-700">{fmt(t.debit_paise)} Dr</span>}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-[#475569]" title={t.posted_journal_id}>{t.posted_journal_id.slice(0, 8)}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-[#475569]">{t.posted_at ? String(t.posted_at).slice(0, 16).replace("T", " ") : "—"}</td>
+                    <td className="px-3 py-2 font-mono text-[#94A3B8]" title={t.posted_by ?? ""}>{t.posted_by ? t.posted_by.slice(0, 8) : "—"}</td>
+                    <td className="px-3 py-2 text-[#475569]">{t.matched_entity_id ? t.matched_entity_type : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+
+      <p className="text-[10px] text-[#94A3B8] text-center">
+        Posting is explicit — review the proposed journal and confirm. Nothing is posted automatically.
+      </p>
+
+      {reviewing && (
+        <PostingReviewDrawer
+          txn={reviewing} accounts={accounts}
+          onClose={() => setReviewing(null)}
+          onPosted={() => { setReviewing(null); load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function PostingReviewDrawer({
+  txn, accounts, onClose, onPosted,
+}: {
+  txn: ReadyTxn; accounts: Account[]; onClose: () => void; onPosted: () => void;
+}) {
+  const [bankAccountId, setBankAccountId] = useState("");      // "" = auto (from statement)
+  const [accountId, setAccountId] = useState("");             // counter GL (explicit categories)
+  const [toBankAccountId, setToBankAccountId] = useState(""); // transfer destination
+  const [preview, setPreview] = useState<PostingPreview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
+
+  const category = txn.category ?? "";
+  const needsCounter = EXPLICIT_COUNTER_CATEGORIES.has(category);
+  const isTransfer = category === TRANSFER_CATEGORY;
+  const bankAccounts = accounts.filter(isBankish);
+
+  // Can we even attempt a preview yet? (the API enforces this too)
+  const ready = (!needsCounter || !!accountId) && (!isTransfer || !!toBankAccountId);
+
+  const loadPreview = useCallback(async () => {
+    if (!ready) { setPreview(null); setPreviewError(null); return; }
+    setLoadingPreview(true); setPreviewError(null);
+    try {
+      const res = (await api.banking.postingPreview(txn.id, {
+        bank_account_id: bankAccountId || undefined,
+        account_id: accountId || undefined,
+        to_bank_account_id: toBankAccountId || undefined,
+      })) as { success: boolean; data: PostingPreview; error: string | null };
+      if (res.success) { setPreview(res.data); setPreviewError(null); }
+      else { setPreview(null); setPreviewError(res.error ?? "Could not build the journal."); }
+    } catch (e) {
+      setPreview(null);
+      setPreviewError(e instanceof Error ? e.message : "Could not build the journal.");
+    } finally { setLoadingPreview(false); }
+  }, [txn.id, bankAccountId, accountId, toBankAccountId, ready]);
+  useEffect(() => { loadPreview(); }, [loadPreview]);
+
+  const balanced = !!preview && preview.total_debit_paise === preview.total_credit_paise && preview.lines.length > 0;
+
+  async function post() {
+    setPosting(true); setPostError(null);
+    try {
+      const res = (await api.banking.postTransaction(txn.id, {
+        bank_account_id: bankAccountId || undefined,
+        account_id: accountId || undefined,
+        to_bank_account_id: toBankAccountId || undefined,
+      })) as { success: boolean; error: string | null };
+      if (res.success) onPosted();
+      else setPostError(res.error ?? "Posting failed.");
+    } catch (e) {
+      setPostError(e instanceof Error ? e.message : "Posting failed.");
+    } finally { setPosting(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose}>
+      <div className="w-full max-w-md h-full bg-white shadow-xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-center justify-between sticky top-0 bg-white">
+          <h3 className="text-sm font-semibold text-[#0F172A]">Review &amp; Post Transaction</h3>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155] text-lg leading-none">×</button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Transaction summary */}
+          <div className="bg-[#F8FAFC] rounded-lg p-3 space-y-1">
+            <p className="text-xs font-medium text-[#1E293B]">{txn.description}</p>
+            <p className="text-[10px] text-[#94A3B8]">{String(txn.transaction_date).slice(0, 10)} · {txn.reference_no ?? "no ref"}</p>
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">{category || "Uncategorized"}</span>
+              <span className="text-sm font-mono">
+                {txn.credit_paise > 0
+                  ? <span className="text-green-700">{fmt(txn.credit_paise)} Cr</span>
+                  : <span className="text-red-700">{fmt(txn.debit_paise)} Dr</span>}
+              </span>
+            </div>
+          </div>
+
+          {/* Account inputs (only where the engine needs an explicit choice) */}
+          <div className="space-y-3">
+            <label className="block">
+              <span className="text-[11px] font-medium text-[#475569]">Bank account</span>
+              <select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)}
+                className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
+                <option value="">Auto — from statement</option>
+                {bankAccounts.map((a) => <option key={a.id} value={a.id}>{a.account_code} · {a.account_name}</option>)}
+              </select>
+            </label>
+
+            {needsCounter && (
+              <label className="block">
+                <span className="text-[11px] font-medium text-[#475569]">Counter account (GL) <span className="text-red-500">*</span></span>
+                <select value={accountId} onChange={(e) => setAccountId(e.target.value)}
+                  className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
+                  <option value="">— Select account —</option>
+                  {accounts.map((a) => <option key={a.id} value={a.id}>{a.account_code} · {a.account_name}</option>)}
+                </select>
+                <span className="text-[10px] text-[#94A3B8]">Required — the ledger account is never guessed.</span>
+              </label>
+            )}
+
+            {isTransfer && (
+              <label className="block">
+                <span className="text-[11px] font-medium text-[#475569]">Transfer to (bank / cash) <span className="text-red-500">*</span></span>
+                <select value={toBankAccountId} onChange={(e) => setToBankAccountId(e.target.value)}
+                  className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
+                  <option value="">— Select destination —</option>
+                  {accounts.filter((a) => a.account_type === "Asset").map((a) => <option key={a.id} value={a.id}>{a.account_code} · {a.account_name}</option>)}
+                </select>
+              </label>
+            )}
+          </div>
+
+          {/* Proposed journal (preview — no writes) */}
+          <div>
+            <p className="text-[11px] font-medium text-[#475569] mb-1">Proposed journal entry</p>
+            {!ready ? (
+              <p className="text-xs text-[#94A3B8] bg-[#F8FAFC] rounded-lg p-3">Select the required account(s) above to preview the entry.</p>
+            ) : loadingPreview ? (
+              <div className="h-20 bg-[#F8FAFC] rounded-lg animate-pulse" />
+            ) : previewError ? (
+              <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-3">{previewError}</p>
+            ) : preview ? (
+              <div className="border border-[#F1F5F9] rounded-lg overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-[#F8FAFC] text-[#64748B]">
+                    <tr><th className="px-3 py-1.5 text-left font-medium">Account</th><th className="px-3 py-1.5 text-right font-medium">Dr</th><th className="px-3 py-1.5 text-right font-medium">Cr</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F8FAFC]">
+                    {preview.lines.map((l, i) => (
+                      <tr key={i}>
+                        <td className="px-3 py-1.5 text-[#334155]">{l.account_name}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-[#334155]">{l.debit_paise > 0 ? fmt(l.debit_paise) : "—"}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-[#334155]">{l.credit_paise > 0 ? fmt(l.credit_paise) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-[#F8FAFC] font-medium">
+                    <tr>
+                      <td className="px-3 py-1.5 text-[#475569]">Total ({preview.entry_type})</td>
+                      <td className="px-3 py-1.5 text-right font-mono">{fmt(preview.total_debit_paise)}</td>
+                      <td className="px-3 py-1.5 text-right font-mono">{fmt(preview.total_credit_paise)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+                {!balanced && <p className="text-[10px] text-red-600 px-3 py-1.5">Entry is not balanced — posting is blocked.</p>}
+              </div>
+            ) : null}
+          </div>
+
+          {/* Settlement effect */}
+          {preview?.settlement && (
+            <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-900">
+              <p className="font-medium">Settlement</p>
+              <p className="mt-0.5">
+                {preview.settlement.entity === "purchase_bill" ? "Bill" : "Invoice"} {preview.settlement.label ?? ""}:
+                allocate <span className="font-mono">{fmt(preview.settlement.allocate_paise)}</span>
+                {" "}(<span className="font-mono">{fmt(preview.settlement.new_paid_paise)}</span> of <span className="font-mono">{fmt(preview.settlement.total_paise)}</span> paid)
+              </p>
+            </div>
+          )}
+
+          {postError && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-3">{postError}</p>}
+        </div>
+
+        <div className="px-5 py-4 border-t border-[#F1F5F9] flex items-center justify-end gap-2 sticky bottom-0 bg-white">
+          <button onClick={onClose} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded text-[#475569] hover:bg-[#F8FAFC]">Cancel</button>
+          <button onClick={post} disabled={!balanced || posting || loadingPreview}
+            className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+            {posting ? "Posting…" : "Post Transaction"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
