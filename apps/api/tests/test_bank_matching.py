@@ -1,0 +1,276 @@
+"""
+Banking B.2 — Matching & Categorization tests.
+
+Pure engine (match ranking, rule categorization, category vocabulary) plus the
+matching service (queue filters, manual match acceptance, duplicate prevention)
+against an in-memory fake Supabase client.
+"""
+import pytest
+
+from domain.banking import (
+    Candidate, rank_suggestions, suggest_category, rule_matches,
+    is_valid_category, CATEGORIES,
+)
+import services.bank_matching_service as bms
+from services.bank_matching_service import bank_matching_service
+
+
+# ── B.2.1 match ranking (pure) ────────────────────────────────────────────────
+
+def _cand(**kw):
+    base = dict(entity_type="sales_invoice", entity_id="i1", label="INV", amount_paise=118000,
+                entity_date="2026-04-10", party_name=None, outstanding_paise=None)
+    base.update(kw)
+    return Candidate(**base)
+
+
+def test_exact_amount_match_only():
+    cands = [_cand(amount_paise=118000), _cand(entity_id="i2", amount_paise=100000)]
+    out = rank_suggestions(118000, "2026-04-10", "NEFT", cands)
+    assert [s.entity_id for s in out] == ["i1"]  # non-exact excluded
+
+
+def test_near_date_scores_below_same_day():
+    same = rank_suggestions(118000, "2026-04-10", "x", [_cand(entity_date="2026-04-10")])[0]
+    near = rank_suggestions(118000, "2026-04-10", "x", [_cand(entity_date="2026-04-13")])[0]
+    far = rank_suggestions(118000, "2026-04-10", "x", [_cand(entity_date="2026-06-10")])[0]
+    assert same.confidence > near.confidence > far.confidence
+
+
+def test_multiple_candidates_ranked_by_confidence():
+    cands = [
+        _cand(entity_id="far", entity_date="2026-06-10"),
+        _cand(entity_id="party", entity_date="2026-04-10", party_name="Acme", outstanding_paise=118000),
+        _cand(entity_id="mid", entity_date="2026-04-12"),
+    ]
+    out = rank_suggestions(118000, "2026-04-10", "payment from ACME ltd", cands)
+    assert out[0].entity_id == "party"          # same-day + party + outstanding → highest
+    assert out[0].confidence_label == "high"
+    assert [s.entity_id for s in out] == ["party", "mid", "far"]
+
+
+def test_party_and_outstanding_boost_confidence():
+    base = rank_suggestions(118000, "2026-04-10", "random", [_cand(entity_date="2026-04-10")])[0]
+    boosted = rank_suggestions(118000, "2026-04-10", "from acme",
+                               [_cand(entity_date="2026-04-10", party_name="Acme", outstanding_paise=118000)])[0]
+    assert boosted.confidence > base.confidence
+
+
+def test_invoice_outranks_journal_on_tie():
+    cands = [
+        Candidate("journal_entry", "j1", "JE", 5000, "2026-04-10"),
+        Candidate("sales_invoice", "i1", "INV", 5000, "2026-04-10"),
+    ]
+    out = rank_suggestions(5000, "2026-04-10", "x", cands)
+    assert out[0].entity_type == "sales_invoice"  # settlement doc ahead of journal
+
+
+# ── B.2.3 rule engine (pure) ──────────────────────────────────────────────────
+
+def test_rule_pattern_and_category():
+    rules = [{"description_pattern": "RAZORPAY", "suggested_category": "Sales Receipt", "is_active": True}]
+    assert suggest_category("NEFT RAZORPAY SOFTWARE", 50000, False, rules) == "Sales Receipt"
+    assert suggest_category("ATM WITHDRAWAL", 50000, False, rules) is None
+
+
+def test_rule_amount_and_txn_type():
+    rule = {"description_pattern": "BANK CHARGES", "amount_max_paise": 10000,
+            "txn_type": "debit", "suggested_category": "Expense", "is_active": True}
+    assert rule_matches(rule, "MONTHLY BANK CHARGES", 5000, is_debit=True)
+    assert not rule_matches(rule, "BANK CHARGES", 50000, is_debit=True)   # over max
+    assert not rule_matches(rule, "BANK CHARGES", 5000, is_debit=False)  # wrong direction
+
+
+def test_inactive_rule_skipped():
+    rules = [{"description_pattern": "GST", "suggested_category": "GST Payment", "is_active": False}]
+    assert suggest_category("GST PMT", 90000, True, rules) is None
+
+
+def test_first_matching_rule_wins():
+    rules = [
+        {"description_pattern": "PMT", "suggested_category": "GST Payment", "is_active": True},
+        {"description_pattern": "PMT", "suggested_category": "Other", "is_active": True},
+    ]
+    assert suggest_category("GST PMT", 1, True, rules) == "GST Payment"
+
+
+# ── B.2.2 category vocabulary ─────────────────────────────────────────────────
+
+def test_categories_are_controlled():
+    assert is_valid_category("GST Payment")
+    assert not is_valid_category("random text")
+    assert len(CATEGORIES) == 11
+
+
+# ── Fake Supabase for service tests ───────────────────────────────────────────
+
+class _Resp:
+    def __init__(self, data):
+        self.data = data
+
+
+class _Q:
+    def __init__(self, store, table):
+        self.store, self.table = store, table
+        self._op = "select"
+        self._payload = None
+        self._eq = []
+        self._single = False
+        self._order = None
+
+    def insert(self, p):
+        self._op, self._payload = "insert", p
+        return self
+
+    def update(self, p):
+        self._op, self._payload = "update", p
+        return self
+
+    def select(self, *_a, **_k):
+        self._op = "select"
+        return self
+
+    def eq(self, k, v):
+        self._eq.append((k, v))
+        return self
+
+    def order(self, col, **_k):
+        self._order = col
+        return self
+
+    def limit(self, _n):
+        return self
+
+    def single(self):
+        self._single = True
+        return self
+
+    def _matches(self):
+        rows = self.store.setdefault(self.table, [])
+        return [r for r in rows if all(r.get(k) == v for k, v in self._eq)]
+
+    def execute(self):
+        rows = self.store.setdefault(self.table, [])
+        if self._op == "insert":
+            items = self._payload if isinstance(self._payload, list) else [self._payload]
+            ins = []
+            for p in items:
+                rec = dict(p)
+                rec.setdefault("id", f"{self.table}-{len(rows)+1}")
+                rows.append(rec); ins.append(rec)
+            return _Resp(ins)
+        matched = self._matches()
+        if self._op == "update":
+            for r in matched:
+                r.update(self._payload)
+            return _Resp(matched)
+        if self._order:
+            matched = sorted(matched, key=lambda r: str(r.get(self._order)))
+        if self._single:
+            return _Resp(matched[0] if matched else None)
+        return _Resp(matched)
+
+
+class FakeDB:
+    def __init__(self):
+        self.store = {}
+
+    def table(self, name):
+        return _Q(self.store, name)
+
+
+FIRM, CLIENT = "firm-1", "client-1"
+
+
+@pytest.fixture(autouse=True)
+def _silence(monkeypatch):
+    monkeypatch.setattr(bms.timeline_service, "log", lambda *a, **k: None)
+    yield
+
+
+def _seed_txn(db, **kw):
+    row = dict(id="t1", firm_id=FIRM, client_id=CLIENT, transaction_date="2026-04-10",
+               description="NEFT", debit_paise=0, credit_paise=118000, balance_paise=118000,
+               match_status="unmatched", category=None, matched_entity_id=None, needs_review=False)
+    row.update(kw)
+    db.store.setdefault("bank_transactions", []).append(row)
+    return row
+
+
+# ── B.2.2 categorize ──────────────────────────────────────────────────────────
+
+def test_categorize_sets_controlled_category():
+    db = FakeDB(); _seed_txn(db)
+    res = bank_matching_service.categorize(db, FIRM, "t1", "Sales Receipt")
+    assert res["category"] == "Sales Receipt"
+    assert db.store["bank_transactions"][0]["category"] == "Sales Receipt"
+
+
+def test_categorize_rejects_freeform():
+    db = FakeDB(); _seed_txn(db)
+    with pytest.raises(Exception):
+        bank_matching_service.categorize(db, FIRM, "t1", "made up category")
+
+
+# ── B.2.5 manual match acceptance ─────────────────────────────────────────────
+
+def test_manual_match_acceptance_links_entity():
+    db = FakeDB(); _seed_txn(db)
+    res = bank_matching_service.match(db, FIRM, "t1", "sales_invoice", "inv-9",
+                                      category="Sales Receipt", actor_id="u1")
+    assert res["match_status"] == "matched"
+    row = db.store["bank_transactions"][0]
+    assert row["matched_entity_type"] == "sales_invoice"
+    assert row["matched_entity_id"] == "inv-9"
+    assert row["category"] == "Sales Receipt"
+    assert row["matched_by"] == "u1" and row["matched_at"]
+
+
+def test_match_invalid_entity_type_rejected():
+    db = FakeDB(); _seed_txn(db)
+    with pytest.raises(Exception):
+        bank_matching_service.match(db, FIRM, "t1", "not_a_type", "x")
+
+
+# ── Duplicate prevention: cannot re-match a posted transaction ────────────────
+
+def test_cannot_match_posted_transaction():
+    db = FakeDB(); _seed_txn(db, match_status="posted")
+    with pytest.raises(Exception):
+        bank_matching_service.match(db, FIRM, "t1", "sales_invoice", "inv-9")
+
+
+def test_unmatch_clears_linkage():
+    db = FakeDB()
+    _seed_txn(db, match_status="matched", matched_entity_type="sales_invoice", matched_entity_id="inv-9")
+    res = bank_matching_service.unmatch(db, FIRM, "t1")
+    assert res["match_status"] == "unmatched"
+    assert db.store["bank_transactions"][0]["matched_entity_id"] is None
+
+
+# ── B.2.4 queue filters ───────────────────────────────────────────────────────
+
+def test_queue_filters_partition_transactions():
+    db = FakeDB()
+    _seed_txn(db, id="u1", match_status="unmatched")
+    _seed_txn(db, id="c1", category="Expense")
+    _seed_txn(db, id="m1", match_status="matched", matched_entity_id="inv-1")
+    _seed_txn(db, id="r1", needs_review=True)
+
+    ids = lambda st: {t["id"] for t in bank_matching_service.queue(db, FIRM, CLIENT, st)}
+    assert "u1" in ids("unmatched") and "m1" not in ids("unmatched")
+    assert ids("categorized") == {"c1"}
+    assert ids("matched") == {"m1"}
+    assert ids("needs_review") == {"r1"}
+    assert len(ids("all")) == 4
+
+
+def test_queue_applies_rule_suggested_category():
+    db = FakeDB()
+    _seed_txn(db, id="u1", description="UPI RAZORPAY PAYOUT")
+    db.store.setdefault("bank_matching_rules", []).append({
+        "id": "rule-1", "firm_id": FIRM, "is_active": True,
+        "description_pattern": "RAZORPAY", "suggested_category": "Sales Receipt",
+    })
+    q = bank_matching_service.queue(db, FIRM, CLIENT, "unmatched")
+    assert q[0]["suggested_category"] == "Sales Receipt"

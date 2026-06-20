@@ -20,9 +20,11 @@ from models.common import api_response
 from models.banking import (
     BankAccountIn, BankAccountUpdateIn, StatementImportIn,
     TransactionAccountIn, PostTransactionIn, MatchingRuleIn,
+    CategorizeIn, MatchIn,
 )
 from core.permissions import rbac
 from services.banking_service import banking_service
+from services.bank_matching_service import bank_matching_service
 from domain.banking import parse_statement, file_hash, StatementParseError
 
 # Defensive upload cap (bank statements are small; protects the parser/DB).
@@ -177,6 +179,78 @@ def list_transactions(
         date_from=date_from, date_to=date_to,
         min_amount_paise=min_amount_paise, max_amount_paise=max_amount_paise,
     ))
+
+
+# ─── Matching & Categorization (B.2) ──────────────────────────────────────────
+
+@router.get("/queue")
+def matching_queue(
+    client_id: Optional[str] = Query(None),
+    status: str = Query("unmatched", pattern="^(unmatched|categorized|matched|needs_review|all)$"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Work queue (B.2.4) with rule-based suggested categories inline. status ∈
+    unmatched | categorized | matched | needs_review | all."""
+    db = _db()
+    if not db:
+        return api_response(True, [])
+    return api_response(True, bank_matching_service.queue(
+        db, current_user["firm_id"], client_id, status))
+
+
+@router.get("/transactions/{txn_id}/suggestions")
+def transaction_suggestions(
+    txn_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Ranked match suggestions with confidence (B.2.1). Suggestions only — no posting."""
+    db = _db()
+    if not db:
+        return api_response(True, {"transaction_id": txn_id, "suggestions": []})
+    return api_response(True, bank_matching_service.suggestions(db, current_user["firm_id"], txn_id))
+
+
+@router.post("/transactions/{txn_id}/categorize")
+def categorize_transaction(
+    txn_id: str,
+    data: CategorizeIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Set a controlled category (B.2.2). No free-form categories."""
+    db = _db()
+    if not db:
+        return api_response(True, {"id": txn_id, "category": data.category})
+    return api_response(True, bank_matching_service.categorize(
+        db, current_user["firm_id"], txn_id, data.category))
+
+
+@router.post("/transactions/{txn_id}/match")
+def match_transaction(
+    txn_id: str,
+    data: MatchIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Accept a suggestion / manually link a transaction to an entity (B.2.5).
+    Linkage only — does NOT post a journal (that is Phase B.3)."""
+    db = _db()
+    if not db:
+        return api_response(True, {"id": txn_id, "match_status": "matched"})
+    return api_response(True, bank_matching_service.match(
+        db, current_user["firm_id"], txn_id, data.matched_entity_type,
+        data.matched_entity_id, category=data.category,
+        actor_id=current_user.get("auth_user_id")))
+
+
+@router.post("/transactions/{txn_id}/unmatch")
+def unmatch_transaction(
+    txn_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Reject a suggestion / clear a manual match (B.2.5)."""
+    db = _db()
+    if not db:
+        return api_response(True, {"id": txn_id, "match_status": "unmatched"})
+    return api_response(True, bank_matching_service.unmatch(db, current_user["firm_id"], txn_id))
 
 
 @router.patch("/transactions/{txn_id}")

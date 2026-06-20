@@ -12,8 +12,14 @@ from .normalizer import (
     StatementParseError,
 )
 from .dedup import transaction_hash, file_hash
+from .categories import CATEGORIES, CATEGORY_SET, is_valid_category
+from .rules import suggest_category, rule_matches
+from .matcher import Candidate, Suggestion, rank_suggestions
 
 __all__ = [
     "NormalizedTxn", "parse_statement", "parse_csv", "parse_xlsx",
     "detect_format", "StatementParseError", "transaction_hash", "file_hash",
+    "CATEGORIES", "CATEGORY_SET", "is_valid_category",
+    "suggest_category", "rule_matches",
+    "Candidate", "Suggestion", "rank_suggestions",
 ]

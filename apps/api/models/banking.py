@@ -93,6 +93,19 @@ class ReconcileMatchIn(BaseModel):
     journal_entry_id: str
 
 
+class CategorizeIn(BaseModel):
+    """Set a controlled category on a bank transaction (B.2.2)."""
+    category: str
+
+
+class MatchIn(BaseModel):
+    """Manually match / accept a suggestion: link a transaction to a business
+    entity (B.2.5). No journal is posted (that is Phase B.3)."""
+    matched_entity_type: str
+    matched_entity_id: str
+    category: Optional[str] = None
+
+
 class MatchingRuleIn(BaseModel):
     client_id: str
     rule_name: str
@@ -101,6 +114,7 @@ class MatchingRuleIn(BaseModel):
     amount_max_paise: Optional[int] = None
     txn_type: str = "any"            # debit | credit | any (matches table CHECK)
     suggested_account_id: Optional[str] = None
+    suggested_category: Optional[str] = None
     suggested_narration: Optional[str] = None
     is_active: bool = True
 
