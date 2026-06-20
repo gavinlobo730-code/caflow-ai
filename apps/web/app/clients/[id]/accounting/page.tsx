@@ -31,6 +31,7 @@ type AccountingTab =
   | "balance-sheet"
   | "cashflow"
   | "banks"
+  | "categorize"
   | "reconciliation"
   | "reports";
 
@@ -44,6 +45,7 @@ const TABS: { id: AccountingTab; label: string }[] = [
   { id: "balance-sheet", label: "Balance Sheet" },
   { id: "cashflow",      label: "Cash Flow" },
   { id: "banks",         label: "Banks" },
+  { id: "categorize",    label: "Categorize" },
   { id: "reconciliation",label: "Reconciliation" },
   { id: "reports",       label: "Reports" },
 ];
@@ -253,6 +255,9 @@ export default function AccountingPage() {
         )}
         {tab === "banks" && (
           <BankAccounts clientId={clientId} />
+        )}
+        {tab === "categorize" && (
+          <BankMatchQueue clientId={clientId} />
         )}
         {tab === "reconciliation" && (
           <BankReconciliation accounts={accounts} clientId={clientId} />
@@ -1534,6 +1539,163 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+// ── Bank Accounts & Statement Import ──────────────────────────────────────
+
+// ── Bank Match & Categorize Queue (Banking B.2) ─────────────────────────────
+// Suggestions + categorization workflow over B.1-imported transactions. No
+// posting / reconciliation here — that is the Reconciliation tab / later phases.
+
+const BANK_CATEGORIES = [
+  "Sales Receipt", "Customer Payment", "Vendor Payment", "Expense", "GST Payment",
+  "Salary", "Loan", "Capital", "Transfer", "Interest", "Other",
+];
+
+interface QueueTxn {
+  id: string; transaction_date: string; description: string; reference_no: string | null;
+  debit_paise: number; credit_paise: number; balance_paise: number; match_status: string;
+  category: string | null; matched_entity_type: string | null; matched_entity_id: string | null;
+  suggested_category: string | null; needs_review: boolean;
+}
+interface MatchSuggestion {
+  matched_entity_type: string; matched_entity_id: string; label: string;
+  amount_paise: number; confidence: number; confidence_label: string; reasons: string[];
+}
+
+const QUEUE_FILTERS: { id: string; label: string }[] = [
+  { id: "unmatched", label: "Unmatched" },
+  { id: "categorized", label: "Categorized" },
+  { id: "needs_review", label: "Needs Review" },
+  { id: "matched", label: "Matched" },
+];
+
+function BankMatchQueue({ clientId }: { clientId: string }) {
+  const [status, setStatus] = useState("unmatched");
+  const [rows, setRows] = useState<QueueTxn[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [sugg, setSugg] = useState<Record<string, MatchSuggestion[]>>({});
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+
+  const load = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
+    setLoading(true);
+    try {
+      const res = (await api.banking.queue({ client_id: clientId, status })) as { success: boolean; data: QueueTxn[] };
+      setRows(res.success ? (res.data ?? []) : []);
+    } catch { setRows([]); } finally { setLoading(false); }
+  }, [clientId, status]);
+  useEffect(() => { load(); }, [load]);
+
+  async function categorize(id: string, category: string) {
+    if (!category) return;
+    setBusy((b) => ({ ...b, [id]: true }));
+    try { await api.banking.categorize(id, { category }); await load(); }
+    catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
+    finally { setBusy((b) => ({ ...b, [id]: false })); }
+  }
+  async function loadSugg(id: string) {
+    setBusy((b) => ({ ...b, [id]: true }));
+    try {
+      const res = (await api.banking.suggestions(id)) as { success: boolean; data: { suggestions: MatchSuggestion[] } };
+      setSugg((s) => ({ ...s, [id]: res.success ? (res.data.suggestions ?? []) : [] }));
+    } finally { setBusy((b) => ({ ...b, [id]: false })); }
+  }
+  async function accept(id: string, s: MatchSuggestion) {
+    setBusy((b) => ({ ...b, [id]: true }));
+    try { await api.banking.matchEntity(id, { matched_entity_type: s.matched_entity_type, matched_entity_id: s.matched_entity_id }); await load(); }
+    catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
+    finally { setBusy((b) => ({ ...b, [id]: false })); }
+  }
+  async function reject(id: string) {
+    setBusy((b) => ({ ...b, [id]: true }));
+    try { await api.banking.unmatch(id); setSugg((s) => ({ ...s, [id]: [] })); await load(); }
+    finally { setBusy((b) => ({ ...b, [id]: false })); }
+  }
+
+  const confColor = (l: string) => l === "high" ? "text-green-700 bg-green-50" : l === "medium" ? "text-amber-700 bg-amber-50" : "text-[#64748B] bg-[#F1F5F9]";
+
+  return (
+    <div className="space-y-4 max-w-4xl">
+      <div className="flex gap-1 bg-[#F1F5F9] p-1 rounded-lg w-fit">
+        {QUEUE_FILTERS.map((f) => (
+          <button key={f.id} onClick={() => setStatus(f.id)}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${status === f.id ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"}`}>
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? <div className="h-40 bg-[#F8FAFC] rounded-lg animate-pulse" /> : rows.length === 0 ? (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">No transactions in this view.</div>
+      ) : (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden divide-y divide-[#F8FAFC]">
+          {rows.map((t) => (
+            <div key={t.id} className="px-4 py-3 space-y-2">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-[#1E293B] truncate">{t.description}</p>
+                  <p className="text-[10px] text-[#94A3B8] mt-0.5">{t.transaction_date} · {t.reference_no ?? ""}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  {t.debit_paise > 0 && <p className="text-xs font-mono text-red-700">{fmt(t.debit_paise)} Dr</p>}
+                  {t.credit_paise > 0 && <p className="text-xs font-mono text-green-700">{fmt(t.credit_paise)} Cr</p>}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Categorize (B.2.2) */}
+                <select
+                  value={t.category ?? ""} disabled={busy[t.id]}
+                  onChange={(e) => categorize(t.id, e.target.value)}
+                  className="px-2 py-1 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
+                  <option value="">{t.suggested_category ? `Suggested: ${t.suggested_category}` : "— Category —"}</option>
+                  {BANK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                {t.category && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">{t.category}</span>}
+
+                {/* Match (B.2.1 / B.2.5) */}
+                {t.matched_entity_id ? (
+                  <>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">Matched · {t.matched_entity_type}</span>
+                    <button onClick={() => reject(t.id)} disabled={busy[t.id]} className="text-[10px] text-red-600 hover:underline">Unmatch</button>
+                  </>
+                ) : (
+                  <button onClick={() => loadSugg(t.id)} disabled={busy[t.id]} className="text-xs px-2.5 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
+                    Suggest matches
+                  </button>
+                )}
+              </div>
+
+              {/* Suggestion list */}
+              {sugg[t.id] && sugg[t.id].length > 0 && (
+                <div className="ml-1 border-l-2 border-[#F1F5F9] pl-3 space-y-1">
+                  {sugg[t.id].map((s) => (
+                    <div key={s.matched_entity_id} className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[11px] text-[#334155] truncate">{s.label}</p>
+                        <p className="text-[10px] text-[#94A3B8]">{s.reasons.join(" · ")}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${confColor(s.confidence_label)}`}>{s.confidence}%</span>
+                        <button onClick={() => accept(t.id, s)} disabled={busy[t.id]} className="text-[10px] px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700">Accept</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {sugg[t.id] && sugg[t.id].length === 0 && (
+                <p className="text-[10px] text-[#94A3B8] ml-1">No match suggestions found.</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-[10px] text-[#94A3B8] text-center">
+        Suggestions &amp; categorization only — accepting a match links the transaction; it does not post a journal (that is a later phase).
+      </p>
     </div>
   );
 }

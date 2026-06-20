@@ -165,6 +165,12 @@ export const api = {
     setTransactionAccount: (txnId: string, data: unknown) => request(`/api/banking/transactions/${txnId}`, { method: "PATCH", body: JSON.stringify(data) }),
     ignoreTransaction: (txnId: string) => request(`/api/banking/transactions/${txnId}/ignore`, { method: "POST" }),
     postTransaction: (txnId: string, data: unknown) => request(`/api/banking/transactions/${txnId}/post`, { method: "POST", body: JSON.stringify(data) }),
+    // B.2 — matching & categorization (suggestions only; no posting)
+    queue: (params?: Record<string, string>) => request(`/api/banking/queue${params ? "?" + new URLSearchParams(params) : ""}`),
+    suggestions: (txnId: string) => request(`/api/banking/transactions/${txnId}/suggestions`),
+    categorize: (txnId: string, data: { category: string }) => request(`/api/banking/transactions/${txnId}/categorize`, { method: "POST", body: JSON.stringify(data) }),
+    matchEntity: (txnId: string, data: { matched_entity_type: string; matched_entity_id: string; category?: string }) => request(`/api/banking/transactions/${txnId}/match`, { method: "POST", body: JSON.stringify(data) }),
+    unmatch: (txnId: string) => request(`/api/banking/transactions/${txnId}/unmatch`, { method: "POST" }),
   },
   complianceRecords: {
     list: (params?: Record<string, string>) => request(`/api/compliance-records${params ? "?" + new URLSearchParams(params) : ""}`),
