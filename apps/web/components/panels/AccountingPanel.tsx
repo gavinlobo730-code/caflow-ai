@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  List,
   GitBranch,
   Layers,
   Upload,
@@ -11,20 +10,18 @@ import {
   BookOpen,
   Receipt,
   Briefcase,
-  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Payroll & Fee Billing live in the Accounting workspace (their /payroll and
-// /billing routes map to "accounting"); they are surfaced here rather than in
-// the Work panel so selecting them doesn't jump the user to another workspace.
+// Firm administration only. Chart of Accounts, statements and cash flow now live
+// in the client workspace (Client → Accounting); the duplicate firm-level screens
+// were retired in the Phase 3 consolidation. Payroll & Fee Billing map to the
+// accounting workspace, so they are surfaced here.
 const NAV_ITEMS = [
-  { label: "Chart of Accounts",   href: "/accounting/chart-of-accounts",    icon: List },
   { label: "Schedule III Mapping", href: "/accounting/schedule-iii-mapping", icon: GitBranch },
   { label: "Account Groups",      href: "/accounting/account-groups",        icon: Layers },
   { label: "Import COA",          href: "/accounting/coa-import",            icon: Upload },
   { label: "Export COA",          href: "/accounting/coa-export",            icon: Download },
-  { label: "Cash Flow Statement", href: "/accounting/cash-flow",             icon: Wallet },
   { label: "Fee Billing",         href: "/billing",                          icon: Receipt },
   { label: "Payroll",             href: "/payroll",                          icon: Briefcase },
 ];

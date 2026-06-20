@@ -297,29 +297,20 @@ function AccountingDashboard({
       const supabase = getSupabaseClient();
       const { start, end } = fyDateRange(financialYear);
 
-      // Fetch posted journal lines for FY
-      const { data: lines } = await supabase
-        .from("journal_lines")
-        .select("debit_paise, credit_paise, chart_of_accounts!inner(account_type, account_subtype), journal_entries!inner(entry_date, is_posted, client_id, deleted_at)")
-        .eq("journal_entries.client_id", clientId)
-        .eq("journal_entries.is_posted", true)
-        .is("journal_entries.deleted_at", null)
-        .gte("journal_entries.entry_date", start)
-        .lte("journal_entries.entry_date", end);
-
+      // Headline figures come from the SINGLE backend reporting engine — never
+      // recomputed in the browser (Phase 3: frontend renders only).
       let revenue = 0, expenses = 0, cash = 0;
-      for (const row of (lines ?? []) as unknown as Array<{
-        debit_paise: number; credit_paise: number;
-        chart_of_accounts: { account_type: string; account_subtype: string | null };
-      }>) {
-        const { account_type, account_subtype } = row.chart_of_accounts;
-        const net = row.credit_paise - row.debit_paise;
-        if (account_type === "Revenue") revenue += net;
-        if (account_type === "Expense") expenses += (row.debit_paise - row.credit_paise);
-        const sub = (account_subtype ?? "").toLowerCase();
-        if (account_type === "Asset" && (sub.includes("cash") || sub.includes("bank")))
-          cash += row.debit_paise - row.credit_paise;
-      }
+      try {
+        const [plRes, cfRes] = await Promise.all([
+          api.accounting.profitLoss({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { revenue: { total_paise: number }; operating_expenses: { total_paise: number } } }>,
+          api.accounting.cashFlow({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { closing_cash_paise: number } }>,
+        ]);
+        if (plRes.success) {
+          revenue = plRes.data.revenue?.total_paise ?? 0;
+          expenses = plRes.data.operating_expenses?.total_paise ?? 0;
+        }
+        if (cfRes.success) cash = cfRes.data.closing_cash_paise ?? 0;
+      } catch { /* transient API error — leave zeros rather than recomputing client-side */ }
 
       // Unmatched bank transactions
       const { count: unmatchedCount } = await supabase

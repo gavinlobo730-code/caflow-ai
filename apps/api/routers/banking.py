@@ -519,32 +519,3 @@ def create_rule(
         {"firm_id": current_user["firm_id"], **data.model_dump()}
     ).execute()
     return api_response(True, (row.data or [{}])[0])
-
-
-# ─── Reports ──────────────────────────────────────────────────────────────────
-
-@router.get("/reports/reconciliation-summary")
-def reconciliation_summary(
-    client_id: str = Query(...),
-    current_user: dict = Depends(rbac("accounting", "read")),
-):
-    """Counts/sums by match_status (canonical). Reconciliation workflow is Phase B.4."""
-    db = _db()
-    if not db:
-        return api_response(True, {})
-    txns = (db.table("bank_transactions").select("match_status, debit_paise, credit_paise")
-            .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).execute().data or [])
-
-    def amount(rows):
-        return sum((r.get("debit_paise") or 0) + (r.get("credit_paise") or 0) for r in rows)
-
-    posted = [t for t in txns if t.get("match_status") == "posted"]
-    unmatched = [t for t in txns if t.get("match_status", "unmatched") == "unmatched"]
-    return api_response(True, {
-        "total_transactions": len(txns),
-        "posted_count": len(posted),
-        "unmatched_count": len(unmatched),
-        "posted_amount_paise": amount(posted),
-        "unmatched_amount_paise": amount(unmatched),
-        "posted_percent": round(len(posted) / len(txns) * 100, 1) if txns else 0,
-    })

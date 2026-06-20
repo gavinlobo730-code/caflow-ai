@@ -59,7 +59,6 @@ const STAFF_HIDDEN_HREFS = new Set([
   "/tds",
   "/mca",
   "/reports",
-  "/reports/analytics",
   "/settings",
   "/team",
   "/team/workload",
