@@ -25,15 +25,25 @@ def _db():
 
 
 # (account_code, account_name, account_type, account_subtype)
-# Names align with phase2_journal_service._find_account patterns.
+#
+# CANONICAL Chart of Accounts (Phase 3.3A, Part E) — the SINGLE source of truth
+# used by firm onboarding (POST /api/onboarding/firm), the onboarding seed
+# endpoint (POST /api/onboarding/seed-coa), and — transitively, since clients
+# share the firm CoA — the internal practice client. The frontend no longer
+# carries its own list. Names align with phase2_journal_service._find_account
+# ILIKE patterns (so posting always resolves); income accounts use the
+# production "Revenue" type (the reporting model also accepts "Income"). It is a
+# CA-practice superset so a firm's own books need no extra accounts.
 STANDARD_COA: list[tuple[str, str, str, str]] = [
     # ── Assets ──
     ("1001", "Cash in Hand",                 "Asset", "Cash"),
+    ("1002", "Petty Cash",                   "Asset", "Cash"),
     ("1101", "Bank Account",                 "Asset", "Bank"),          # %Bank%
     ("1201", "Trade Receivables",            "Asset", "Receivable"),    # %Trade Receivable%
     ("1301", "GST Input Tax Credit",         "Asset", "Tax"),           # %GST Input%
     ("1401", "TDS Receivable",               "Asset", "Tax"),
     ("1402", "Advance Tax Paid",             "Asset", "Tax"),
+    ("1403", "Prepaid Expenses",             "Asset", "Current Asset"),
     ("1501", "Plant & Machinery",            "Asset", "Fixed Asset"),   # %Plant & Machinery%
     ("1502", "Furniture & Fixtures",         "Asset", "Fixed Asset"),   # %Furniture & Fixtures%
     ("1503", "Computers & Software",         "Asset", "Fixed Asset"),   # %Computers & Software%
@@ -50,20 +60,38 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     ("2006", "ESI Payable",                  "Liability", "Current Liability"),  # %ESI Payable%
     ("2007", "PT Payable",                   "Liability", "Current Liability"),  # %PT Payable%
     ("2008", "Net Salary Payable",           "Liability", "Current Liability"),  # %Net Salary Payable%
+    ("2009", "Income Tax Payable",           "Liability", "Current Liability"),
+    ("2101", "Short Term Loan",              "Liability", "Loan"),
+    ("2201", "Long Term Loan",               "Liability", "Loan"),
     # ── Equity ──
-    ("3001", "Capital Account",              "Equity", "Owner Equity"),
-    ("3002", "Retained Earnings",            "Equity", "Owner Equity"),
-    # ── Income ──
-    ("4001", "Sales Revenue",                "Income", "Revenue"),      # %Sales%
-    ("4002", "Professional Fees",            "Income", "Revenue"),
-    ("4901", "Profit on Asset Disposal",     "Income", "Other Income"), # %Profit on Asset Disposal%
+    ("3001", "Capital Account",              "Equity", "Capital"),
+    ("3002", "Retained Earnings",            "Equity", "Reserves & Surplus"),
+    ("3003", "Drawings Account",             "Equity", "Capital"),
+    # ── Revenue ──
+    ("4001", "Sales Revenue",                "Revenue", "Revenue"),     # %Sales%
+    ("4002", "Professional Fees",            "Revenue", "Professional Fees"),
+    ("4003", "Audit Fees",                   "Revenue", "Professional Fees"),
+    ("4004", "GST Consultancy Fees",         "Revenue", "Professional Fees"),
+    ("4005", "Income Tax Consultancy Fees",  "Revenue", "Professional Fees"),
+    ("4006", "ROC Filing Fees",              "Revenue", "Professional Fees"),
+    ("4101", "Interest Income",              "Revenue", "Other Income"),
+    ("4102", "Other Income",                 "Revenue", "Other Income"),
+    ("4901", "Profit on Asset Disposal",     "Revenue", "Other Income"), # %Profit on Asset Disposal%
     # ── Expenses ──
     ("5001", "Purchases",                    "Expense", "Direct Expense"),     # %Purchase%
-    ("5002", "Salaries Expense",             "Expense", "Operating Expense"),  # %Salaries Expense%
+    ("5002", "Salaries Expense",             "Expense", "Personnel"),          # %Salaries Expense%
     ("5003", "Depreciation Expense",         "Expense", "Non-cash Expense"),   # %Depreciation Expense%
-    ("5004", "Office Rent",                  "Expense", "Operating Expense"),
-    ("5005", "Bank Charges",                 "Expense", "Operating Expense"),
-    ("5006", "General Expenses",             "Expense", "Operating Expense"),  # %Expense% fallback
+    ("5004", "Office Rent",                  "Expense", "Overhead"),
+    ("5005", "Bank Charges",                 "Expense", "Overhead"),
+    ("5006", "General Expenses",             "Expense", "Overhead"),           # %Expense% fallback
+    ("5007", "Software Subscriptions",       "Expense", "Overhead"),
+    ("5008", "Electricity & Utilities",      "Expense", "Overhead"),
+    ("5009", "Internet & Telephone",         "Expense", "Overhead"),
+    ("5010", "Travel & Conveyance",          "Expense", "Overhead"),
+    ("5011", "Professional Fees Paid",       "Expense", "Professional"),
+    ("5012", "Office Supplies & Stationery", "Expense", "Overhead"),
+    ("5013", "Staff Welfare",                "Expense", "Personnel"),
+    ("5014", "Interest on Loans",            "Expense", "Finance Cost"),
     ("5901", "Loss on Asset Disposal",       "Expense", "Other Expense"),      # %Loss on Asset Disposal%
 ]
 

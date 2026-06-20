@@ -107,6 +107,54 @@ def validate_state_code(value: Optional[str]) -> Optional[str]:
     return None
 
 
+# Canonical GST state name → 2-digit code map (GST council list). Reference data.
+INDIAN_STATE_CODES: dict[str, str] = {
+    "jammu and kashmir": "01", "jammu & kashmir": "01",
+    "himachal pradesh": "02", "punjab": "03", "chandigarh": "04",
+    "uttarakhand": "05", "haryana": "06", "delhi": "07",
+    "rajasthan": "08", "uttar pradesh": "09", "bihar": "10",
+    "sikkim": "11", "arunachal pradesh": "12", "nagaland": "13",
+    "manipur": "14", "mizoram": "15", "tripura": "16",
+    "meghalaya": "17", "assam": "18", "west bengal": "19",
+    "jharkhand": "20", "odisha": "21", "orissa": "21",
+    "chhattisgarh": "22", "madhya pradesh": "23", "gujarat": "24",
+    "daman and diu": "25", "dadra and nagar haveli": "26",
+    "maharashtra": "27", "karnataka": "29", "goa": "30",
+    "lakshadweep": "31", "kerala": "32", "tamil nadu": "33",
+    "puducherry": "34", "pondicherry": "34",
+    "andaman and nicobar islands": "35",
+    "telangana": "36", "andhra pradesh": "37",
+    "ladakh": "38", "other territory": "97",
+}
+
+
+def derive_state_code(
+    explicit_state_code: Optional[str] = None,
+    state_name: Optional[str] = None,
+    gstin: Optional[str] = None,
+) -> Optional[str]:
+    """Best-effort 2-digit GST state code, in priority order (Part C):
+      1. an explicit, valid state_code
+      2. the GSTIN prefix (first two digits — the registered state, CGST Act §25)
+      3. the state name mapped via INDIAN_STATE_CODES
+      4. None (caller decides whether absence is an error)
+    Pure and non-raising — derivation must never block provisioning.
+    """
+    if explicit_state_code:
+        code = str(explicit_state_code).strip()
+        if code in _VALID_STATE_CODES:
+            return code
+    if gstin:
+        prefix = str(gstin).strip().upper()[:2]
+        if prefix in _VALID_STATE_CODES:
+            return prefix
+    if state_name:
+        code = INDIAN_STATE_CODES.get(str(state_name).strip().lower())
+        if code:
+            return code
+    return None
+
+
 def collect_errors(**fields: tuple) -> list[str]:
     """
     Run multiple validators and collect all error messages.

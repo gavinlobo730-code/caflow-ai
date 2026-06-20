@@ -125,11 +125,25 @@ def create_firm(
         _provision_internal(
             firm_id, body.firm_name, pan,
             entity_type=(body.entity_type or "Partnership"), gstin=gstin,
+            state=body.state, actor_id=auth_user_id,
         )
     except Exception as e:  # pragma: no cover - defensive
         _logger.error("Internal-client provisioning failed for firm %s: %s", firm_id, e)
 
     return api_response(True, {"firm": firm, "message": "Firm created successfully"})
+
+
+@router.post("/seed-coa")
+def seed_coa(current_user: dict = Depends(rbac("accounting", "write"))):
+    """Idempotently seed the firm-wide CANONICAL master CoA for the caller's firm
+    (single source of truth: coa_seed_service.STANDARD_COA). Skips if the firm
+    already has firm-wide accounts. This is the path the onboarding UI calls
+    instead of inserting accounts directly from the browser (Phase 3.3A, Part E)."""
+    firm_id = current_user.get("firm_id")
+    if not firm_id:
+        return api_response(False, None, "No firm found for the current user.")
+    from services.coa_seed_service import seed_firm_coa
+    return api_response(True, seed_firm_coa(firm_id))
 
 
 @router.post("/invite")

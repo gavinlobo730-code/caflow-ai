@@ -397,6 +397,9 @@ export const api = {
   practice: {
     get: () => request("/api/practice"),
     provision: () => request("/api/practice/provision", { method: "POST" }),
+    /** Partner-only maintenance of the practice client's tax identity (PAN/GSTIN/state). */
+    updateIdentity: (body: { pan?: string; gstin?: string; state?: string; state_code?: string }) =>
+      request("/api/practice/identity", { method: "PATCH", body: JSON.stringify(body) }),
   },
   // Platform Admin (Super Admin) — cross-firm; gated server-side by the
   // platform_admins allowlist, completely separate from firm RBAC.
@@ -433,6 +436,11 @@ export const api = {
     }) => request<ApiResp<{ firm: { id: string; name: string } }>>(
       "/api/onboarding/firm",
       { method: "POST", body: JSON.stringify(body) },
+    ),
+    /** Idempotently seed the firm's canonical master CoA (backend = single source of truth). */
+    seedCoa: () => request<ApiResp<{ seeded: number; skipped: boolean }>>(
+      "/api/onboarding/seed-coa",
+      { method: "POST" },
     ),
   },
   billing: {
