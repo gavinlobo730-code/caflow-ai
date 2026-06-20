@@ -14,6 +14,7 @@ import {
   getBankStatements,
   getBankTransactions,
   postBankTransaction,
+  ignoreBankTransaction,
   type BankStatement,
   type BankTransaction,
 } from "@/lib/data/bankStatements";
@@ -251,10 +252,10 @@ export default function AccountingPage() {
           <CashFlow clientId={clientId} financialYear={financialYear} />
         )}
         {tab === "banks" && (
-          <BankAccounts clientId={clientId} financialYear={financialYear} />
+          <BankAccounts clientId={clientId} />
         )}
         {tab === "reconciliation" && (
-          <BankReconciliation accounts={accounts} clientId={clientId} financialYear={financialYear} />
+          <BankReconciliation accounts={accounts} clientId={clientId} />
         )}
         {tab === "reports" && (
           <FinancialReports clientId={clientId} financialYear={financialYear} />
@@ -1539,7 +1540,7 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
 
 // ── Bank Accounts & Statement Import ──────────────────────────────────────
 
-function BankAccounts({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+function BankAccounts({ clientId }: { clientId: string }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);
   const [loading, setLoading] = useState(true);
   const [showImport, setShowImport] = useState(false);
@@ -1647,7 +1648,7 @@ function BankAccounts({ clientId, financialYear }: { clientId: string; financial
       )}
 
       {showImport && (
-        <BankImportModal clientId={clientId} financialYear={financialYear} onClose={() => setShowImport(false)} onImported={() => { setShowImport(false); loadStatements(); }} />
+        <BankImportModal clientId={clientId} onClose={() => setShowImport(false)} onImported={() => { setShowImport(false); loadStatements(); }} />
       )}
     </div>
   );
@@ -1655,7 +1656,7 @@ function BankAccounts({ clientId, financialYear }: { clientId: string; financial
 
 // ── Bank Import Modal ──────────────────────────────────────────────────────
 
-function BankImportModal({ clientId, financialYear, onClose, onImported }: { clientId: string; financialYear: string; onClose: () => void; onImported: () => void }) {
+function BankImportModal({ clientId, onClose, onImported }: { clientId: string; onClose: () => void; onImported: () => void }) {
   const [bankName, setBankName] = useState("HDFC Bank");
   const [accountNumber, setAccountNumber] = useState("");
   const [parsed, setParsed] = useState<ReturnType<typeof parseCSV> | null>(null);
@@ -1683,11 +1684,8 @@ function BankImportModal({ clientId, financialYear, onClose, onImported }: { cli
     if (!bankName.trim()) { setError("Bank name required."); return; }
     setImporting(true); setError(null);
     try {
-      const stmt = await importBankStatement(clientId, bankName.trim(), accountNumber.trim(), parsed);
-      try {
-        const firmId = await getFirmId();
-        await writeTimelineEvent({ client_id: clientId, firm_id: firmId, financial_year: financialYear, category: "accounting", event_type: "bank_statement_imported", severity: "info", title: `Bank statement imported — ${bankName}`, description: `${parsed.length} transactions from ${stmt.statement_from} to ${stmt.statement_to}`, entity_type: "bank_statement", entity_id: stmt.id, actor_type: "user" });
-      } catch { /* non-blocking */ }
+      // The backend banking service records the import + its timeline event.
+      await importBankStatement(clientId, bankName.trim(), accountNumber.trim(), parsed);
       onImported();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Import failed");
@@ -1742,7 +1740,7 @@ function BankImportModal({ clientId, financialYear, onClose, onImported }: { cli
 
 // ── Bank Reconciliation ────────────────────────────────────────────────────
 
-function BankReconciliation({ accounts, clientId, financialYear }: { accounts: Account[]; clientId: string; financialYear: string }) {
+function BankReconciliation({ accounts, clientId }: { accounts: Account[]; clientId: string }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);
   const [selectedStmtId, setSelectedStmtId] = useState<string>("");
   const [txns, setTxns] = useState<BankTransaction[]>([]);
@@ -1781,11 +1779,9 @@ function BankReconciliation({ accounts, clientId, financialYear }: { accounts: A
     if (!bankAccId) { alert("No cash/bank account found in Chart of Accounts. Add one first."); return; }
     setPosting((p) => ({ ...p, [txn.id]: true }));
     try {
-      await postBankTransaction(txn.id, accountId, bankAccId, clientId);
-      try {
-        const firmId = await getFirmId();
-        await writeTimelineEvent({ client_id: clientId, firm_id: firmId, financial_year: financialYear, category: "accounting", event_type: "bank_transaction_posted", severity: "info", title: "Bank transaction posted to ledger", description: txn.description, actor_type: "user" });
-      } catch { /* non-blocking */ }
+      // The backend banking service posts the journal (FY-lock checked) and
+      // records the timeline event — the browser only triggers it.
+      await postBankTransaction(txn.id, accountId, bankAccId);
       setPosted((p) => ({ ...p, [txn.id]: true }));
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to post");
@@ -1795,8 +1791,7 @@ function BankReconciliation({ accounts, clientId, financialYear }: { accounts: A
   }
 
   async function ignoreTxn(txnId: string) {
-    const supabase = getSupabaseClient();
-    await supabase.from("bank_transactions").update({ match_status: "ignored" }).eq("id", txnId);
+    await ignoreBankTransaction(txnId);
     setIgnored((p) => ({ ...p, [txnId]: true }));
   }
 

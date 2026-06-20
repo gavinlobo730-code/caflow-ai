@@ -185,7 +185,7 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
     # 5. Bank reconciliation not done > 6 months
     try:
         six_months_ago = (today - timedelta(days=183)).isoformat()
-        unreconciled = db.table("bank_transactions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("txn_date", six_months_ago).limit(1).execute().data or []
+        unreconciled = db.table("bank_transactions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("transaction_date", six_months_ago).limit(1).execute().data or []
         if unreconciled:
             return "bank_recon_6months"
     except Exception:
@@ -250,11 +250,11 @@ def _dim_accounting_quality_db(db, client_id: str, firm_id: str) -> int:
     try:
         cutoff_30 = (today - timedelta(days=30)).isoformat()
         cutoff_90 = (today - timedelta(days=90)).isoformat()
-        old_90 = db.table("bank_transactions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("txn_date", cutoff_90).limit(1).execute().data or []
+        old_90 = db.table("bank_transactions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("transaction_date", cutoff_90).limit(1).execute().data or []
         if old_90:
             score -= 50
         else:
-            old_30 = db.table("bank_transactions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("txn_date", cutoff_30).limit(1).execute().data or []
+            old_30 = db.table("bank_transactions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("transaction_date", cutoff_30).limit(1).execute().data or []
             if old_30:
                 score -= 30
     except Exception:
@@ -564,7 +564,7 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
     elif dimension == "accounting_quality":
         try:
             cutoff_30 = (today - timedelta(days=30)).isoformat()
-            old = db.table("bank_transactions").select("id, txn_date").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("txn_date", cutoff_30).limit(1).execute().data or []
+            old = db.table("bank_transactions").select("id, transaction_date").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("transaction_date", cutoff_30).limit(1).execute().data or []
             if old:
                 factors.append({
                     "label": "Unreconciled bank transactions > 30 days old",

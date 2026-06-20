@@ -1,10 +1,13 @@
-import { getFirmId } from "./getFirmId";
 /**
- * Bank Statement import layer.
- * Parses CSV exports from major Indian banks.
- * Ref: RBI guidelines on bank statement formats
+ * Bank Statement layer.
+ *
+ * CSV parsing (parseCSV) is pure and runs client-side. Every MUTATION and READ
+ * of bank data now goes through the backend banking API (api.banking.*) — the
+ * browser no longer writes bank statements, transactions, or journal entries to
+ * Supabase directly (Phase B.0; CLAUDE.md: zero business logic in the frontend).
+ * Ref: RBI guidelines on bank statement formats.
  */
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { api, type ApiResp } from "@/lib/api";
 
 export interface ParsedTransaction {
   date: string;
@@ -150,167 +153,88 @@ export async function importBankStatement(
   accountNumber: string,
   transactions: ParsedTransaction[],
 ): Promise<BankStatement> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-
   if (transactions.length === 0) throw new Error("No transactions found in file");
 
-  const dates = transactions.map(t => t.date).sort();
-  const totalDebits = transactions.reduce((s, t) => s + t.debit_paise, 0);
-  const totalCredits = transactions.reduce((s, t) => s + t.credit_paise, 0);
-  const opening = transactions[0]?.balance_paise ?? 0;
-  const closing = transactions[transactions.length - 1]?.balance_paise ?? 0;
-
-  const { data: stmt, error: stmtErr } = await sb.from("bank_statements").insert({
-    firm_id: firmId,
-    client_id: clientId,
-    bank_name: bankName,
-    account_number: accountNumber,
-    statement_from: dates[0],
-    statement_to: dates[dates.length - 1],
-    opening_balance_paise: opening,
-    closing_balance_paise: closing,
-    total_debits_paise: totalDebits,
-    total_credits_paise: totalCredits,
-    row_count: transactions.length,
-    import_status: "pending",
-  }).select().single();
-
-  if (stmtErr || !stmt) throw new Error(stmtErr?.message ?? "Failed to create statement");
-
   const rows = transactions.map(t => ({
-    statement_id: stmt.id,
-    firm_id: firmId,
-    client_id: clientId,
     transaction_date: t.date,
     description: t.description,
     debit_paise: t.debit_paise,
     credit_paise: t.credit_paise,
     balance_paise: t.balance_paise,
     reference_no: t.reference_no,
-    match_status: "unmatched",
   }));
 
-  await sb.from("bank_transactions").insert(rows);
-  return stmt as BankStatement;
+  const res = (await api.banking.importStatement({
+    client_id: clientId, bank_name: bankName, account_number: accountNumber, rows,
+  })) as ApiResp<{ statement_id: string; imported: number }>;
+  if (!res.success || !res.data) throw new Error(res.error ?? "Failed to import statement");
+
+  // Header totals are computed authoritatively by the backend; this return is a
+  // convenience shape for callers that read .id / .row_count after import.
+  const dates = transactions.map(t => t.date).sort();
+  return {
+    id: res.data.statement_id,
+    client_id: clientId,
+    bank_name: bankName,
+    account_number: accountNumber,
+    statement_from: dates[0],
+    statement_to: dates[dates.length - 1],
+    opening_balance_paise: transactions[0]?.balance_paise ?? 0,
+    closing_balance_paise: transactions[transactions.length - 1]?.balance_paise ?? 0,
+    total_credits_paise: transactions.reduce((s, t) => s + t.credit_paise, 0),
+    total_debits_paise: transactions.reduce((s, t) => s + t.debit_paise, 0),
+    row_count: res.data.imported,
+    import_status: "pending",
+    created_at: new Date().toISOString(),
+  };
 }
 
 export async function getBankStatements(clientId: string): Promise<BankStatement[]> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-  const { data, error } = await sb.from("bank_statements")
-    .select("*").eq("firm_id", firmId).eq("client_id", clientId)
-    .order("created_at", { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as BankStatement[];
+  const res = (await api.banking.listStatements({ client_id: clientId })) as ApiResp<BankStatement[]>;
+  if (!res.success) throw new Error(res.error ?? "Failed to load statements");
+  return res.data ?? [];
 }
 
 export async function getBankTransactions(statementId: string): Promise<BankTransaction[]> {
-  const sb = getSupabaseClient();
-  const { data, error } = await sb.from("bank_transactions")
-    .select("*").eq("statement_id", statementId)
-    .order("transaction_date");
-  if (error) throw new Error(error.message);
-  return (data ?? []) as BankTransaction[];
+  const res = (await api.banking.listTransactions({ statement_id: statementId })) as ApiResp<BankTransaction[]>;
+  if (!res.success) throw new Error(res.error ?? "Failed to load transactions");
+  return res.data ?? [];
 }
 
 export async function updateTransactionAccount(id: string, accountId: string): Promise<void> {
-  const sb = getSupabaseClient();
-  await sb.from("bank_transactions").update({
-    account_id: accountId,
-    match_status: "matched",
-    updated_at: new Date().toISOString(),
-  }).eq("id", id);
+  const res = (await api.banking.setTransactionAccount(id, { account_id: accountId })) as ApiResp<unknown>;
+  if (!res.success) throw new Error(res.error ?? "Failed to update transaction");
 }
 
 /**
  * Post a single bank transaction to the accounting ledger (double-entry).
- * Creates a journal entry in journal_entries + journal_lines.
- * All amounts in paise — never float.
- * Double-entry rules (CGST Act Section 2 read with IT Act Section 145):
- *   Debit (money out of bank) → Dr selected account / Cr bank account
- *   Credit (money into bank) → Dr bank account / Cr selected account
+ *
+ * The double-entry generation now lives in the backend banking service (which
+ * reuses the shared journal engine and enforces FY locks) — the browser only
+ * triggers it. bankAccountId is the bank's GL (chart_of_accounts) account;
+ * accountId is the mapped counter-account.
+ * Double-entry rules (IT Act §145): money out of bank → Dr counter / Cr bank;
+ * money into bank → Dr bank / Cr counter.
  */
 export async function postBankTransaction(
   transactionId: string,
   accountId: string,
   bankAccountId: string,
-  clientId: string,
 ): Promise<void> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
+  const res = (await api.banking.postTransaction(transactionId, {
+    account_id: accountId, bank_account_id: bankAccountId,
+  })) as ApiResp<unknown>;
+  if (!res.success) throw new Error(res.error ?? "Failed to post transaction");
+}
 
-  // Fetch the bank transaction
-  const { data: txn, error: txnErr } = await sb
-    .from("bank_transactions")
-    .select("*")
-    .eq("id", transactionId)
-    .single();
-  if (txnErr || !txn) throw new Error(txnErr?.message ?? "Transaction not found");
-
-  const debitPaise = txn.debit_paise as number;
-  const creditPaise = txn.credit_paise as number;
-  const amount = Math.max(debitPaise, creditPaise); // one will be 0
-  if (amount === 0) throw new Error("Transaction has zero amount");
-
-  // Determine narration
-  const narration = `Bank import: ${txn.description as string}`;
-
-  // Create journal entry
-  const { data: je, error: jeErr } = await sb.from("journal_entries").insert({
-    firm_id: firmId,
-    client_id: clientId,
-    entry_date: txn.transaction_date,
-    narration,
-    entry_type: debitPaise > 0 ? "Payment" : "Receipt",
-    reference_no: txn.reference_no ?? null,
-    is_posted: true,
-    posted_at: new Date().toISOString(),
-  }).select().single();
-  if (jeErr || !je) throw new Error(jeErr?.message ?? "Failed to create journal entry");
-
-  // Create journal lines (double-entry)
-  const lines = debitPaise > 0
-    ? [
-        // Debit: selected account (expense/asset)
-        { journal_entry_id: je.id, account_id: accountId, debit_paise: amount, credit_paise: 0 },
-        // Credit: bank account
-        { journal_entry_id: je.id, account_id: bankAccountId, debit_paise: 0, credit_paise: amount },
-      ]
-    : [
-        // Debit: bank account
-        { journal_entry_id: je.id, account_id: bankAccountId, debit_paise: amount, credit_paise: 0 },
-        // Credit: selected account (income/liability)
-        { journal_entry_id: je.id, account_id: accountId, debit_paise: 0, credit_paise: amount },
-      ];
-
-  const { error: linesErr } = await sb.from("journal_lines").insert(lines);
-  if (linesErr) throw new Error(linesErr.message);
-
-  // Mark bank transaction as posted
-  await sb.from("bank_transactions").update({
-    account_id: accountId,
-    match_status: "posted",
-    updated_at: new Date().toISOString(),
-  }).eq("id", transactionId);
+/** Mark a bank transaction as ignored (no ledger impact). */
+export async function ignoreBankTransaction(transactionId: string): Promise<void> {
+  const res = (await api.banking.ignoreTransaction(transactionId)) as ApiResp<unknown>;
+  if (!res.success) throw new Error(res.error ?? "Failed to ignore transaction");
 }
 
 export async function getAllBankStatements(): Promise<BankStatement[]> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-  const { data, error } = await sb.from("bank_statements")
-    .select("*").eq("firm_id", firmId)
-    .order("created_at", { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as BankStatement[];
-}
-
-export async function postBankStatement(statementId: string): Promise<void> {
-  const sb = getSupabaseClient();
-  await sb.from("bank_transactions")
-    .update({ match_status: "posted", updated_at: new Date().toISOString() })
-    .eq("statement_id", statementId).eq("match_status", "matched");
-  await sb.from("bank_statements")
-    .update({ import_status: "posted", updated_at: new Date().toISOString() })
-    .eq("id", statementId);
+  const res = (await api.banking.listStatements()) as ApiResp<BankStatement[]>;
+  if (!res.success) throw new Error(res.error ?? "Failed to load statements");
+  return res.data ?? [];
 }

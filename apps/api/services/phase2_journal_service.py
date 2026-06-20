@@ -660,6 +660,67 @@ class Phase2JournalService:
     #  Private Helpers                                                      #
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def bank_txn_lines(
+        debit_paise: int,
+        credit_paise: int,
+        account_id: str,
+        bank_coa_account_id: str,
+    ) -> tuple[int, str, list[dict]]:
+        """
+        Pure, side-effect-free construction of the double-entry for a single bank
+        statement line. Returned as (amount_paise, entry_type, lines).
+
+        Double-entry rules (IT Act §145 — mercantile/double-entry):
+          money OUT of bank  (debit_paise > 0)  → Dr counter-account / Cr bank   ("Payment")
+          money INTO  bank   (credit_paise > 0)  → Dr bank / Cr counter-account   ("Receipt")
+        Exactly one of debit/credit is non-zero on a bank line. Integer paise only.
+        """
+        debit_paise = int(debit_paise or 0)
+        credit_paise = int(credit_paise or 0)
+        amount = max(debit_paise, credit_paise)
+        if amount <= 0:
+            raise ValueError("Bank transaction has zero amount")
+        if debit_paise > 0:
+            return amount, "Payment", [
+                {"account_id": account_id, "debit_paise": amount, "credit_paise": 0},
+                {"account_id": bank_coa_account_id, "debit_paise": 0, "credit_paise": amount},
+            ]
+        return amount, "Receipt", [
+            {"account_id": bank_coa_account_id, "debit_paise": amount, "credit_paise": 0},
+            {"account_id": account_id, "debit_paise": 0, "credit_paise": amount},
+        ]
+
+    def journal_for_bank_transaction(
+        self,
+        db,
+        firm_id: str,
+        client_id: str,
+        txn: dict,
+        account_id: str,
+        bank_coa_account_id: str,
+    ) -> str:
+        """
+        Create a balanced journal entry for a posted bank transaction, reusing the
+        shared engine (_create_journal — integer paise, balance-validated, dedup).
+        Account classification is the caller's responsibility (it supplies the
+        mapped GL account); this only forms and posts the entry. Returns the
+        journal_entry_id.
+        """
+        amount, entry_type, lines = self.bank_txn_lines(
+            txn.get("debit_paise", 0), txn.get("credit_paise", 0),
+            account_id, bank_coa_account_id,
+        )
+        # Reference embeds the bank txn id so re-posting the same line is
+        # idempotent (dedup) while distinct lines never collide.
+        ref = f"{(txn.get('reference_no') or 'BANK')}-{str(txn.get('id', ''))[:8]}"
+        narration = f"Bank import: {txn.get('description', '')}".strip()
+        return self._create_journal(
+            db, firm_id=firm_id, client_id=client_id,
+            entry_date=str(txn["transaction_date"])[:10],
+            reference_no=ref, narration=narration, entry_type=entry_type, lines=lines,
+        )
+
     def _find_account(
         self,
         db,

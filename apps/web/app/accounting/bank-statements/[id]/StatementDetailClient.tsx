@@ -99,7 +99,7 @@ export default function StatementDetailClient() {
     setPosting(prev => ({ ...prev, [txn.id]: true }));
     try {
       await updateTransactionAccount(txn.id, accountId);
-      await postBankTransaction(txn.id, accountId, bankGLAccountId, txn.statement_id);
+      await postBankTransaction(txn.id, accountId, bankGLAccountId);
       const updated = await getBankTransactions(statementId as string);
       setTransactions(updated);
     } catch (err) {

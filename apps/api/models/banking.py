@@ -1,6 +1,10 @@
 """
 Pydantic request models for banking & reconciliation endpoints.
 All monetary amounts must be integer paise (CGST Act §2(59), never float).
+
+Phase B.0: models use the canonical bank_transactions field names
+(`transaction_date`, `account_id`) — not the legacy `txn_date`/`bank_account_id`
+that never existed as columns.
 """
 from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
@@ -41,15 +45,17 @@ class BankAccountUpdateIn(BaseModel):
     is_active: Optional[bool] = None
 
 
-class BankTransactionRow(BaseModel):
-    txn_date: str
-    description: str
+class StatementImportRow(BaseModel):
+    """One already-parsed bank-statement line. Parsing happens upstream (Phase B.1)."""
+    transaction_date: str
+    description: str = ""
     debit_paise: int = 0
     credit_paise: int = 0
     balance_paise: int = 0
+    reference_no: Optional[str] = None
 
     @model_validator(mode="after")
-    def validate_amounts(self) -> "BankTransactionRow":
+    def validate_amounts(self) -> "StatementImportRow":
         if self.debit_paise < 0 or self.credit_paise < 0:
             raise ValueError("debit_paise and credit_paise must be non-negative.")
         return self
@@ -57,8 +63,10 @@ class BankTransactionRow(BaseModel):
 
 class StatementImportIn(BaseModel):
     client_id: str
+    bank_name: str
+    account_number: Optional[str] = None
     bank_account_id: Optional[str] = None
-    rows: list[BankTransactionRow]
+    rows: list[StatementImportRow]
 
     @field_validator("rows")
     @classmethod
@@ -66,6 +74,18 @@ class StatementImportIn(BaseModel):
         if not v:
             raise ValueError("No transactions provided.")
         return v
+
+
+class TransactionAccountIn(BaseModel):
+    """Map a bank transaction to a GL (chart_of_accounts) account."""
+    account_id: str
+
+
+class PostTransactionIn(BaseModel):
+    """Post a bank transaction to the ledger. bank_account_id is the bank's GL
+    (chart_of_accounts) account; account_id is the counter-account."""
+    account_id: str
+    bank_account_id: str
 
 
 class ReconcileMatchIn(BaseModel):
@@ -79,7 +99,9 @@ class MatchingRuleIn(BaseModel):
     description_pattern: Optional[str] = None
     amount_min_paise: Optional[int] = None
     amount_max_paise: Optional[int] = None
-    account_id: Optional[str] = None
+    txn_type: str = "any"            # debit | credit | any (matches table CHECK)
+    suggested_account_id: Optional[str] = None
+    suggested_narration: Optional[str] = None
     is_active: bool = True
 
     @field_validator("rule_name")
