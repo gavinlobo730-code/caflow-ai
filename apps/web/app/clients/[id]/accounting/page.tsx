@@ -28,6 +28,7 @@ type AccountingTab =
   | "trial"
   | "pl"
   | "balance-sheet"
+  | "cashflow"
   | "banks"
   | "reconciliation"
   | "reports";
@@ -40,6 +41,7 @@ const TABS: { id: AccountingTab; label: string }[] = [
   { id: "trial",         label: "Trial Balance" },
   { id: "pl",            label: "P & L" },
   { id: "balance-sheet", label: "Balance Sheet" },
+  { id: "cashflow",      label: "Cash Flow" },
   { id: "banks",         label: "Banks" },
   { id: "reconciliation",label: "Reconciliation" },
   { id: "reports",       label: "Reports" },
@@ -244,6 +246,9 @@ export default function AccountingPage() {
         )}
         {tab === "balance-sheet" && (
           <BalanceSheet clientId={clientId} financialYear={financialYear} />
+        )}
+        {tab === "cashflow" && (
+          <CashFlow clientId={clientId} financialYear={financialYear} />
         )}
         {tab === "banks" && (
           <BankAccounts clientId={clientId} financialYear={financialYear} />
@@ -1336,6 +1341,199 @@ function BSSectionRows({ label, items }: { label: string; items: AccountBalance[
         </tr>
       ))}
     </>
+  );
+}
+
+// ── Cash Flow Statement ────────────────────────────────────────────────────
+// AS-3 (indirect), Companies Act 2013 Schedule III. ALL classification and
+// arithmetic are server-side (domain.reporting); this component only passes the
+// period + client_id and renders the authoritative response (CLAUDE.md).
+
+interface CFLine { account_id: string; account_name: string; amount_paise: number }
+interface CFSection { label: string; lines: CFLine[]; total_paise: number }
+interface CFData {
+  start_date: string;
+  end_date: string;
+  operating: CFSection;
+  investing: CFSection;
+  financing: CFSection;
+  net_change_paise: number;
+  opening_cash_paise: number;
+  closing_cash_paise: number;
+  reconciles: boolean;
+  non_cash_excluded_count: number;
+  operating_reconciliation: {
+    net_profit_paise: number;
+    non_operating_adjust_paise: number;
+    depreciation_addback_paise: number;
+    working_capital_change_paise: number;
+    net_cash_operating_paise: number;
+    ties_out: boolean;
+  };
+}
+
+// Sign-preserving money format (cash flow direction matters — inflow vs outflow).
+function fmtSigned(paise: number): string {
+  const sign = paise < 0 ? "-" : "";
+  return sign + "₹" + new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(paise) / 100);
+}
+
+function CFSectionBlock({ title, section }: { title: string; section: CFSection }) {
+  const pos = section.total_paise >= 0;
+  return (
+    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className={`px-5 py-3 border-b border-gray-50 flex items-center justify-between ${pos ? "bg-green-50/50" : "bg-red-50/50"}`}>
+        <h3 className="text-xs font-semibold text-[#334155]">{title}</h3>
+        <span className={`text-sm font-bold ${pos ? "text-green-700" : "text-red-700"}`}>{fmtSigned(section.total_paise)}</span>
+      </div>
+      {section.lines.length === 0 ? (
+        <p className="px-5 py-4 text-xs text-[#94A3B8]">No transactions in this category</p>
+      ) : (
+        <table className="w-full text-xs">
+          <tbody className="divide-y divide-[#F8FAFC]">
+            {section.lines.map((l) => (
+              <tr key={l.account_id} className="hover:bg-[#F8FAFC]">
+                <td className="px-5 py-2 text-[#334155]">{l.account_name}</td>
+                <td className={`px-5 py-2 text-right font-mono font-medium ${l.amount_paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(l.amount_paise)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-[#E2E8F0] bg-[#F8FAFC]">
+              <td className="px-5 py-2 text-xs font-semibold text-[#334155]">Net Cash</td>
+              <td className={`px-5 py-2 text-right font-mono text-sm font-bold ${pos ? "text-green-700" : "text-red-700"}`}>{fmtSigned(section.total_paise)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function CashFlow({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+  const [cf, setCf] = useState<CFData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
+    setLoading(true);
+    // Scoped to THIS client (each client is a separate entity — never aggregated
+    // across the firm). A cash flow statement is intrinsically actual-cash; we
+    // request the accrual stream because the operating reconciliation uses the
+    // accrual P&L. All figures come from the backend AS-3 engine.
+    const { start, end } = fyDateRange(financialYear);
+    const res = (await api.accounting.cashFlow({
+      basis: "accrual", start_date: start, end_date: end, client_id: clientId,
+    })) as { success: boolean; data: CFData | null };
+    setCf(res.success && res.data ? res.data : null);
+    setLoading(false); setLoaded(true);
+  }, [clientId, financialYear]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const r = cf?.operating_reconciliation;
+
+  return (
+    <div className="space-y-4 max-w-3xl">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-[#334155]">Cash Flow Statement — FY {financialYear}</p>
+        <div className="flex items-center gap-2">
+          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button onClick={() => window.print()} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]" title="Print"><Printer size={13} /></button>
+        </div>
+      </div>
+
+      {loading && <div className="h-48 rounded-lg bg-[#F8FAFC] animate-pulse" />}
+
+      {!loading && loaded && !cf && (
+        <div className="text-center py-12 text-[#94A3B8] text-sm">No posted journal entries for FY {financialYear}.</div>
+      )}
+
+      {!loading && cf && (
+        <>
+          {!cf.reconciles && (
+            <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-700">
+              Cash flow does not reconcile to the change in cash balances for this period. Please review the ledger.
+            </div>
+          )}
+
+          {/* Summary strip */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              { label: "Operating", paise: cf.operating.total_paise },
+              { label: "Investing", paise: cf.investing.total_paise },
+              { label: "Financing", paise: cf.financing.total_paise },
+              { label: "Net Change", paise: cf.net_change_paise },
+            ].map((s) => (
+              <div key={s.label} className="rounded-xl border border-[#F1F5F9] bg-white p-3 text-center">
+                <p className="text-[10px] font-medium text-[#64748B] mb-1">{s.label}</p>
+                <p className={`text-sm font-bold tabular-nums ${s.paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(s.paise)}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Opening → Closing */}
+          <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 flex items-center gap-4 flex-wrap">
+            <div>
+              <p className="text-[10px] text-[#94A3B8]">Opening Cash</p>
+              <p className="text-sm font-semibold text-[#0F172A]">{fmtSigned(cf.opening_cash_paise)}</p>
+            </div>
+            <span className="text-[#CBD5E1] font-medium">+</span>
+            <div>
+              <p className="text-[10px] text-[#94A3B8]">Net Change</p>
+              <p className={`text-sm font-semibold ${cf.net_change_paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(cf.net_change_paise)}</p>
+            </div>
+            <span className="text-[#CBD5E1] font-medium">=</span>
+            <div>
+              <p className="text-[10px] text-[#94A3B8]">Closing Cash</p>
+              <p className="text-sm font-semibold text-[#0F172A]">{fmtSigned(cf.closing_cash_paise)}</p>
+            </div>
+            {cf.reconciles && <CheckCircle size={16} className="text-green-500 ml-auto shrink-0" />}
+          </div>
+
+          <CFSectionBlock title="A. Cash from Operating Activities" section={cf.operating} />
+          <CFSectionBlock title="B. Cash from Investing Activities" section={cf.investing} />
+          <CFSectionBlock title="C. Cash from Financing Activities" section={cf.financing} />
+
+          {/* Operating reconciliation (indirect method) */}
+          {r && (
+            <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-50 bg-[#F8FAFC]">
+                <h3 className="text-xs font-semibold text-[#334155]">Operating Reconciliation — Indirect Method</h3>
+              </div>
+              <table className="w-full text-xs">
+                <tbody className="divide-y divide-[#F8FAFC]">
+                  {([
+                    { label: "Net Profit for the Period", paise: r.net_profit_paise },
+                    { label: "Add: Depreciation & Non-cash Items", paise: r.depreciation_addback_paise },
+                    { label: "Non-operating Adjustments (Gain/Loss on Disposal)", paise: r.non_operating_adjust_paise },
+                    { label: "Changes in Working Capital", paise: r.working_capital_change_paise },
+                  ] as { label: string; paise: number }[]).map(({ label, paise }) =>
+                    paise !== 0 ? (
+                      <tr key={label} className="hover:bg-[#F8FAFC]">
+                        <td className="px-5 py-2 pl-8 text-[#334155]">{label}</td>
+                        <td className={`px-5 py-2 text-right font-mono font-medium ${paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(paise)}</td>
+                      </tr>
+                    ) : null
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-[#E2E8F0] bg-[#F8FAFC]">
+                    <td className="px-5 py-2 text-xs font-semibold text-[#334155]">Net Cash from Operations</td>
+                    <td className={`px-5 py-2 text-right font-mono text-sm font-bold ${r.net_cash_operating_paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(r.net_cash_operating_paise)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
+          <p className="text-[10px] text-[#94A3B8] text-center">
+            AS-3 (Accounting Standard on Cash Flow Statements) · Companies Act 2013 Schedule III · Indirect Method
+          </p>
+        </>
+      )}
+    </div>
   );
 }
 

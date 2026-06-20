@@ -14,6 +14,8 @@ import Link from "next/link";
 import { ChevronLeft, TrendingUp, TrendingDown, Minus, Download, AlertTriangle } from "lucide-react";
 import { formatPaise } from "@/lib/services/formatting";
 import { api } from "@/lib/api";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
 
 // ─── Types (mirror the backend response) ──────────────────────────────────────
 
@@ -46,6 +48,8 @@ interface CashFlowStatement {
 }
 
 type CashFlowResponse = { success: boolean; data: CashFlowStatement | null; error: string | null };
+
+interface Client { id: string; client_name: string }
 
 // Indian Financial Year selector — April 1 to March 31
 const FY_LIST = [
@@ -107,23 +111,51 @@ function CashFlowSectionBlock({ title, section }: { title: string; section: Cash
 
 export default function CashFlowPage() {
   const [selectedFY, setSelectedFY] = useState(0);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>("");
   const [cf, setCf] = useState<CashFlowStatement | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fy = FY_LIST[selectedFY];
 
+  // A cash flow statement is per-entity. Each client — including the practice
+  // itself, which is modelled as a client record — keeps its own books, so this
+  // page requires an explicit client selection and NEVER aggregates across the
+  // firm. (Per-client cash flow also lives in the client workspace, under
+  // Accounting → Cash Flow; this firm-level page is a convenience entry point.)
   useEffect(() => {
+    let cancelled = false;
+    async function loadClients() {
+      try {
+        const sb = getSupabaseClient();
+        const firmId = await getFirmId();
+        const { data } = await sb.from("clients").select("id, client_name").eq("firm_id", firmId).order("client_name");
+        if (cancelled) return;
+        const list = (data ?? []) as Client[];
+        setClients(list);
+        if (list.length > 0) setSelectedClientId((prev) => prev || list[0].id);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load clients");
+      }
+    }
+    loadClients();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedClientId) { setCf(null); return; }
     let cancelled = false;
     async function load() {
       setLoading(true);
       setError(null);
       try {
         // AS-3 cash flow is computed entirely server-side (CLAUDE.md): the page
-        // passes the period and renders the authoritative response.
+        // passes the period + client and renders the authoritative response.
         const res = (await api.accounting.cashFlow({
           start_date: fy.start,
           end_date: fy.end,
+          client_id: selectedClientId,
           basis: "accrual",
         })) as CashFlowResponse;
         if (!res.success || !res.data) throw new Error(res.error ?? "Failed to load cash flow statement");
@@ -136,7 +168,7 @@ export default function CashFlowPage() {
     }
     load();
     return () => { cancelled = true; };
-  }, [fy.start, fy.end]);
+  }, [fy.start, fy.end, selectedClientId]);
 
   function exportCsv() {
     if (!cf) return;
@@ -157,9 +189,10 @@ export default function CashFlowPage() {
       ["Summary", "Closing Cash", String(Math.round(cf.closing_cash_paise / 100))],
     ];
     const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+    const clientName = clients.find((c) => c.id === selectedClientId)?.client_name ?? "client";
     const a = document.createElement("a");
     a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-    a.download = `cash-flow-${fy.label.replace(/\s/g, "-")}.csv`;
+    a.download = `cash-flow-${clientName.replace(/\s/g, "-")}-${fy.label.replace(/\s/g, "-")}.csv`;
     a.click();
   }
 
@@ -174,9 +207,17 @@ export default function CashFlowPage() {
         </Link>
         <div className="flex-1">
           <h1 className="text-xl font-semibold text-[#0F172A]">Cash Flow Statement</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Indirect method — AS-3, Companies Act 2013 Schedule III</p>
+          <p className="text-sm text-[#64748B] mt-0.5">Per client · Indirect method — AS-3, Companies Act 2013 Schedule III</p>
         </div>
         <div className="flex items-center gap-2">
+          <select
+            className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[200px]"
+            value={selectedClientId}
+            onChange={e => setSelectedClientId(e.target.value)}
+          >
+            {clients.length === 0 && <option value="">Loading clients…</option>}
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.client_name}</option>)}
+          </select>
           <select
             className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={selectedFY}
@@ -198,7 +239,11 @@ export default function CashFlowPage() {
         <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 text-sm text-red-700">{error}</div>
       )}
 
-      {loading || !cf ? (
+      {!loading && !selectedClientId ? (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">
+          Select a client to view its cash flow statement. Each entity&apos;s books are reported separately — figures are never aggregated across the firm.
+        </div>
+      ) : loading || !cf ? (
         <div className="space-y-4">
           {[1, 2, 3].map(i => <div key={i} className="h-32 bg-[#F1F5F9] rounded-xl animate-pulse" />)}
         </div>
