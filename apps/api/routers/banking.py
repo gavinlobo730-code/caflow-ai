@@ -13,7 +13,7 @@ are intentionally NOT wired to the UI yet.
 IMPORTANT: posting is explicit and human-initiated — never auto-post.
 CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from typing import Optional
 
 from models.common import api_response
@@ -23,6 +23,10 @@ from models.banking import (
 )
 from core.permissions import rbac
 from services.banking_service import banking_service
+from domain.banking import parse_statement, file_hash, StatementParseError
+
+# Defensive upload cap (bank statements are small; protects the parser/DB).
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 router = APIRouter(prefix="/api/banking", tags=["banking"])
 
@@ -100,6 +104,45 @@ def import_statement(
     return api_response(True, result)
 
 
+@router.post("/statements/upload")
+async def upload_statement(
+    file: UploadFile = File(...),
+    client_id: str = Form(...),
+    bank_name: str = Form("Bank"),
+    account_number: Optional[str] = Form(None),
+    bank_account_id: Optional[str] = Form(None),
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Upload a CSV/XLSX bank statement. Parsing + normalization + dedup happen
+    SERVER-SIDE (Banking B.1) — the browser sends the raw file only. Returns the
+    counts of imported and duplicate-skipped transactions."""
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB).")
+    try:
+        txns = parse_statement(file.filename or "", content)
+    except StatementParseError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    db = _db()
+    fmt = "xlsx" if (file.filename or "").lower().endswith(".xlsx") else "csv"
+    if not db:
+        return api_response(True, {"statement_id": "mock-id", "imported": len(txns),
+                                   "duplicates_skipped": 0, "total_rows": len(txns)})
+    file_meta = {
+        "file_name": file.filename, "file_size_bytes": len(content),
+        "source_format": fmt, "file_hash": file_hash(content),
+    }
+    result = banking_service.import_normalized(
+        db, current_user["firm_id"], client_id, bank_name, account_number, txns,
+        bank_account_id=bank_account_id, actor_id=current_user.get("auth_user_id"),
+        file_meta=file_meta,
+    )
+    return api_response(True, result)
+
+
 @router.get("/statements")
 def list_statements(
     client_id: Optional[str] = Query(None),
@@ -118,14 +161,21 @@ def list_transactions(
     statement_id: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
     match_status: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    min_amount_paise: Optional[int] = Query(None),
+    max_amount_paise: Optional[int] = Query(None),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
+    """List bank transactions with date / amount / account filters (B.1, Part E)."""
     db = _db()
     if not db:
         return api_response(True, [])
     return api_response(True, banking_service.list_transactions(
         db, current_user["firm_id"], statement_id=statement_id,
         client_id=client_id, match_status=match_status,
+        date_from=date_from, date_to=date_to,
+        min_amount_paise=min_amount_paise, max_amount_paise=max_amount_paise,
     ))
 
 

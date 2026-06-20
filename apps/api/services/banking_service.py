@@ -31,10 +31,14 @@ from fastapi import HTTPException
 from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
+from domain.banking.dedup import transaction_hash
 
 _logger = logging.getLogger("caflow.banking")
 
 VALID_MATCH_STATUSES = frozenset({"unmatched", "matched", "posted", "ignored"})
+
+# Batch size for chunked transaction inserts (large-statement safe).
+_IMPORT_BATCH = 500
 
 
 def _now() -> str:
@@ -44,59 +48,131 @@ def _now() -> str:
 class BankingService:
     """All bank-transaction mutations. db is the Supabase client (caller-supplied)."""
 
-    # ── Statement import (storage only — parsing is Phase B.1) ────────────────
+    # ── Statement import (B.1: dedup + chunked insert + file metadata) ────────
     def import_statement(
         self, db, firm_id: str, client_id: str, bank_name: str,
         account_number: Optional[str], rows: list[dict],
         bank_account_id: Optional[str] = None, actor_id: Optional[str] = None,
     ) -> dict:
-        """Insert a bank_statements header and its bank_transactions lines.
-        `rows` are already parsed (date/description/paise) — this service does not
-        parse files. All amounts are integer paise."""
-        if not rows:
+        """Backward-compatible entry: store already-normalised dict rows
+        (transaction_date / description / reference_no / *_paise). Deduplicates and
+        chunk-inserts via the shared core."""
+        norm = [{
+            "transaction_date": str(r["transaction_date"])[:10],
+            "description": r.get("description", ""),
+            "reference_no": r.get("reference_no"),
+            "debit_paise": int(r.get("debit_paise", 0) or 0),
+            "credit_paise": int(r.get("credit_paise", 0) or 0),
+            "balance_paise": int(r.get("balance_paise", 0) or 0),
+        } for r in rows]
+        return self._import_core(db, firm_id, client_id, bank_name, account_number,
+                                 norm, bank_account_id, actor_id, file_meta=None)
+
+    def import_normalized(
+        self, db, firm_id: str, client_id: str, bank_name: str,
+        account_number: Optional[str], txns: list, bank_account_id: Optional[str] = None,
+        actor_id: Optional[str] = None, file_meta: Optional[dict] = None,
+    ) -> dict:
+        """Store NormalizedTxn rows produced by the server-side normalizer (B.1)."""
+        norm = [{
+            "transaction_date": t.transaction_date, "description": t.description,
+            "reference_no": t.reference_no, "debit_paise": t.debit_paise,
+            "credit_paise": t.credit_paise, "balance_paise": t.balance_paise,
+        } for t in txns]
+        return self._import_core(db, firm_id, client_id, bank_name, account_number,
+                                 norm, bank_account_id, actor_id, file_meta=file_meta)
+
+    def _existing_hashes(self, db, firm_id: str, client_id: str, hashes: list[str]) -> set:
+        """Hashes already stored for this client (chunked IN lookup)."""
+        found: set = set()
+        for i in range(0, len(hashes), 200):
+            res = (db.table("bank_transactions").select("import_hash")
+                   .eq("firm_id", firm_id).eq("client_id", client_id)
+                   .in_("import_hash", hashes[i:i + 200]).execute())
+            for row in (res.data or []):
+                if row.get("import_hash"):
+                    found.add(row["import_hash"])
+        return found
+
+    def _import_core(self, db, firm_id, client_id, bank_name, account_number,
+                     norm: list[dict], bank_account_id, actor_id, file_meta) -> dict:
+        if not norm:
             raise HTTPException(status_code=400, detail="No transactions provided.")
 
-        dates = sorted(str(r["transaction_date"])[:10] for r in rows)
-        total_debits = sum(int(r.get("debit_paise", 0) or 0) for r in rows)
-        total_credits = sum(int(r.get("credit_paise", 0) or 0) for r in rows)
+        # 1) fingerprint every row; drop within-file duplicates (keep first).
+        seen, deduped = set(), []
+        for r in norm:
+            h = transaction_hash(
+                client_id, bank_account_id, r["transaction_date"],
+                r["debit_paise"], r["credit_paise"], r["balance_paise"],
+                r["description"], r["reference_no"],
+            )
+            if h not in seen:
+                seen.add(h)
+                deduped.append({**r, "import_hash": h})
+
+        total_rows = len(norm)
+        # 2) drop rows already stored for this client (idempotent re-import).
+        existing = self._existing_hashes(db, firm_id, client_id, [r["import_hash"] for r in deduped])
+        new_rows = [r for r in deduped if r["import_hash"] not in existing]
+        duplicates = total_rows - len(new_rows)
+
+        if not new_rows:
+            return {"statement_id": None, "imported": 0,
+                    "duplicates_skipped": duplicates, "total_rows": total_rows}
+
+        # 3) statement header (summary over the rows actually stored).
+        dates = sorted(r["transaction_date"] for r in new_rows)
         stmt_payload = {
             "firm_id": firm_id, "client_id": client_id, "bank_name": bank_name,
             "account_number": account_number,
             "statement_from": dates[0], "statement_to": dates[-1],
-            "opening_balance_paise": int(rows[0].get("balance_paise", 0) or 0),
-            "closing_balance_paise": int(rows[-1].get("balance_paise", 0) or 0),
-            "total_debits_paise": total_debits, "total_credits_paise": total_credits,
-            "row_count": len(rows), "import_status": "pending",
+            "opening_balance_paise": new_rows[0]["balance_paise"],
+            "closing_balance_paise": new_rows[-1]["balance_paise"],
+            "total_debits_paise": sum(r["debit_paise"] for r in new_rows),
+            "total_credits_paise": sum(r["credit_paise"] for r in new_rows),
+            "row_count": len(new_rows), "import_status": "pending",
+            "imported_count": len(new_rows), "duplicate_count": duplicates,
         }
         if bank_account_id:
             stmt_payload["bank_account_id"] = bank_account_id
+        if file_meta:
+            for k in ("file_name", "file_size_bytes", "source_format", "file_hash"):
+                if file_meta.get(k) is not None:
+                    stmt_payload[k] = file_meta[k]
 
         stmt = db.table("bank_statements").insert(stmt_payload).execute().data
         if not stmt:
             raise HTTPException(status_code=500, detail="Failed to create bank statement.")
         statement_id = stmt[0]["id"]
 
-        db.table("bank_transactions").insert([
-            {
+        # 4) chunked transaction insert (large-statement safe).
+        for i in range(0, len(new_rows), _IMPORT_BATCH):
+            db.table("bank_transactions").insert([{
                 "statement_id": statement_id, "firm_id": firm_id, "client_id": client_id,
-                "transaction_date": str(r["transaction_date"])[:10],
-                "description": r.get("description", ""),
-                "debit_paise": int(r.get("debit_paise", 0) or 0),
-                "credit_paise": int(r.get("credit_paise", 0) or 0),
-                "balance_paise": int(r.get("balance_paise", 0) or 0),
-                "reference_no": r.get("reference_no"),
-                "match_status": "unmatched",
-            }
-            for r in rows
-        ]).execute()
+                "transaction_date": r["transaction_date"], "description": r["description"],
+                "debit_paise": r["debit_paise"], "credit_paise": r["credit_paise"],
+                "balance_paise": r["balance_paise"], "reference_no": r["reference_no"],
+                "import_hash": r["import_hash"], "match_status": "unmatched",
+            } for r in new_rows[i:i + _IMPORT_BATCH]]).execute()
 
         timeline_service.log(
             client_id, "accounting", "Bank Statement Imported",
-            f"{len(rows)} transactions imported from {bank_name}", "info",
-            firm_id=firm_id, entity_type="bank_statement", entity_id=statement_id,
-            actor_id=actor_id,
+            f"{len(new_rows)} transactions imported from {bank_name}"
+            + (f" ({duplicates} duplicate(s) skipped)" if duplicates else ""),
+            "info", firm_id=firm_id, entity_type="bank_statement",
+            entity_id=statement_id, actor_id=actor_id,
         )
-        return {"statement_id": statement_id, "imported": len(rows)}
+        try:
+            from services.audit_service import log_event
+            log_event(firm_id, "bank_statement", statement_id, "create", actor_id=actor_id,
+                      new_data={"imported": len(new_rows), "duplicates_skipped": duplicates},
+                      metadata={"source": "bank_feed_import",
+                                "file_name": (file_meta or {}).get("file_name")})
+        except Exception:  # pragma: no cover - audit must never block import
+            pass
+        return {"statement_id": statement_id, "imported": len(new_rows),
+                "duplicates_skipped": duplicates, "total_rows": total_rows}
 
     # ── Account mapping ───────────────────────────────────────────────────────
     def set_account(self, db, firm_id: str, txn_id: str, account_id: str) -> dict:
@@ -164,6 +240,8 @@ class BankingService:
     def list_transactions(
         self, db, firm_id: str, statement_id: Optional[str] = None,
         client_id: Optional[str] = None, match_status: Optional[str] = None,
+        date_from: Optional[str] = None, date_to: Optional[str] = None,
+        min_amount_paise: Optional[int] = None, max_amount_paise: Optional[int] = None,
     ) -> list:
         q = db.table("bank_transactions").select("*").eq("firm_id", firm_id)
         if statement_id:
@@ -172,7 +250,19 @@ class BankingService:
             q = q.eq("client_id", client_id)
         if match_status:
             q = q.eq("match_status", match_status)
-        return q.order("transaction_date").execute().data or []
+        if date_from:
+            q = q.gte("transaction_date", date_from[:10])
+        if date_to:
+            q = q.lte("transaction_date", date_to[:10])
+        rows = q.order("transaction_date").execute().data or []
+        # Amount filter on the transaction magnitude (max of debit/credit).
+        if min_amount_paise is not None or max_amount_paise is not None:
+            lo = min_amount_paise if min_amount_paise is not None else 0
+            hi = max_amount_paise if max_amount_paise is not None else None
+            def amt(r):
+                return max(int(r.get("debit_paise") or 0), int(r.get("credit_paise") or 0))
+            rows = [r for r in rows if amt(r) >= lo and (hi is None or amt(r) <= hi)]
+        return rows
 
     # ── internal ──────────────────────────────────────────────────────────────
     def _get_txn(self, db, firm_id: str, txn_id: str) -> dict:

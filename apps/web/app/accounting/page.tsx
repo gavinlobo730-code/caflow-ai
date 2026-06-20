@@ -16,6 +16,7 @@ const NAV_CARDS = [
   { label: "Trial Balance", description: "Verify debit/credit totals", href: "/accounting/trial-balance", icon: Scale },
   { label: "Financial Statements", description: "Revenue, expenses, assets and liabilities — Schedule III format", href: "/reports/financial-statements", icon: TrendingUp },
   { label: "Cash Flow Statement", description: "Operating, investing & financing activities — AS-3, Companies Act 2013 Schedule III", href: "/accounting/cash-flow", icon: Wallet },
+  { label: "Bank Feed", description: "Import CSV/XLSX statements — parsed, normalized & deduplicated server-side", href: "/accounting/bank-feed", icon: ArrowDownRight },
   { label: "Bank Statement Import", description: "Import CSV statements from any Indian bank", href: "/accounting/bank-import", icon: ArrowDownRight },
   { label: "Bank Statements", description: "Allocate and post bank transactions", href: "/accounting/bank-statements", icon: Building2 },
   { label: "Recurring Transactions", description: "Automate monthly, quarterly & yearly entries", href: "/accounting/recurring", icon: RefreshCw },
