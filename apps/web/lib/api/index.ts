@@ -146,6 +146,7 @@ export const api = {
   // Banking (Phase B.0): all bank mutations go through the backend banking
   // service — the frontend never writes bank rows or journals to Supabase.
   banking: {
+    listBankAccounts: (params?: Record<string, string>) => request(`/api/banking/accounts${params ? "?" + new URLSearchParams(params) : ""}`),
     listStatements: (params?: Record<string, string>) => request(`/api/banking/statements${params ? "?" + new URLSearchParams(params) : ""}`),
     importStatement: (data: unknown) => request("/api/banking/statements/import", { method: "POST", body: JSON.stringify(data) }),
     /** Upload a CSV/XLSX statement — parsed, normalized & deduped SERVER-SIDE (B.1). */
@@ -175,6 +176,18 @@ export const api = {
     readyToPost: (params?: Record<string, string>) => request(`/api/banking/ready-to-post${params ? "?" + new URLSearchParams(params) : ""}`),
     posted: (params?: Record<string, string>) => request(`/api/banking/posted${params ? "?" + new URLSearchParams(params) : ""}`),
     postingPreview: (txnId: string, data: { bank_account_id?: string; account_id?: string; to_bank_account_id?: string }) => request(`/api/banking/transactions/${txnId}/posting-preview`, { method: "POST", body: JSON.stringify(data) }),
+    // B.4 — reconciliation engine (sessions, manual reconcile, tie-out, report)
+    reconciliations: {
+      list: (params?: Record<string, string>) => request(`/api/banking/reconciliations${params ? "?" + new URLSearchParams(params) : ""}`),
+      create: (data: { client_id: string; bank_account_id: string; statement_start_date: string; statement_end_date: string; opening_balance_paise: number; closing_balance_paise: number }) => request("/api/banking/reconciliations", { method: "POST", body: JSON.stringify(data) }),
+      get: (id: string) => request(`/api/banking/reconciliations/${id}`),
+      update: (id: string, data: { opening_balance_paise?: number; closing_balance_paise?: number; adjustments_paise?: number }) => request(`/api/banking/reconciliations/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+      report: (id: string) => request(`/api/banking/reconciliations/${id}/report`),
+      reconcile: (id: string, transaction_ids: string[]) => request(`/api/banking/reconciliations/${id}/reconcile`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),
+      unreconcile: (id: string, transaction_ids: string[]) => request(`/api/banking/reconciliations/${id}/unreconcile`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),
+      complete: (id: string) => request(`/api/banking/reconciliations/${id}/complete`, { method: "POST" }),
+      exportCsv: (id: string) => downloadFile(`/api/banking/reconciliations/${id}/report.csv`, `reconciliation-${id}.csv`),
+    },
   },
   complianceRecords: {
     list: (params?: Record<string, string>) => request(`/api/compliance-records${params ? "?" + new URLSearchParams(params) : ""}`),

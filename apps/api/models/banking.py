@@ -117,6 +117,44 @@ class MatchIn(BaseModel):
     category: Optional[str] = None
 
 
+class ReconciliationCreateIn(BaseModel):
+    """Open a reconciliation session (B.4) for one bank account + statement period.
+    Balances are integer paise; the period reuses the statement's start/end dates."""
+    client_id: str
+    bank_account_id: str
+    statement_start_date: str
+    statement_end_date: str
+    opening_balance_paise: int = 0
+    closing_balance_paise: int = 0
+
+    @model_validator(mode="after")
+    def validate_period(self) -> "ReconciliationCreateIn":
+        if self.statement_end_date < self.statement_start_date:
+            raise ValueError("statement_end_date must not precede statement_start_date.")
+        return self
+
+
+class ReconciliationUpdateIn(BaseModel):
+    """Adjust an open/in-progress session's balances or documented adjustments.
+    Rejected once the session is completed (immutable)."""
+    opening_balance_paise: Optional[int] = None
+    closing_balance_paise: Optional[int] = None
+    adjustments_paise: Optional[int] = None
+
+
+class ReconcileItemsIn(BaseModel):
+    """Manually reconcile / unreconcile a set of posted transactions (B.4.2).
+    No automatic reconciliation — this is the explicit human confirmation."""
+    transaction_ids: list[str]
+
+    @field_validator("transaction_ids")
+    @classmethod
+    def at_least_one(cls, v: list) -> list:
+        if not v:
+            raise ValueError("Select at least one transaction.")
+        return v
+
+
 class MatchingRuleIn(BaseModel):
     client_id: str
     rule_name: str

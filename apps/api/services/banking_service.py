@@ -213,12 +213,12 @@ class BankingService:
             db, firm_id, client_id, txn, account_id, bank_coa_account_id,
         )
 
+        # Posting records the journal link only; reconciliation (B.4) is a separate
+        # human step that owns the `reconciled` / `reconciled_at` columns.
         db.table("bank_transactions").update({
             "account_id": account_id,
             "match_status": "posted",
-            "reconciled": True,                       # legacy flag, kept in sync
-            "reconciled_journal_id": journal_entry_id,
-            "reconciled_at": _now(),
+            "posted_journal_id": journal_entry_id,
             "updated_at": _now(),
         }).eq("id", txn_id).eq("firm_id", firm_id).execute()
 
