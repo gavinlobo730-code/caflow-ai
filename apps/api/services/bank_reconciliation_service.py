@@ -1,0 +1,333 @@
+"""
+Bank reconciliation service (Banking B.4) — session → tie-out → report.
+
+Reconciles a bank account's POSTED ledger against its statement for a period:
+open a session, manually reconcile/unreconcile posted transactions (never
+automatic — explicit human confirmation), and complete it only when the balance
+ties out (Opening + Deposits − Withdrawals ± Adjustments = Closing). A completed
+session is immutable. All money is integer paise; firm/client isolation is
+enforced on every query.
+"""
+from __future__ import annotations
+
+import csv
+import io
+import logging
+from datetime import datetime, timezone
+from typing import Optional
+
+from fastapi import HTTPException
+
+from domain.banking import reconciliation as recon
+from services.timeline_service import timeline_service
+
+_logger = logging.getLogger("caflow.bank_reconciliation")
+
+_MUTABLE = ("open", "in_progress")
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _d(value) -> str:
+    """Normalise a date/timestamp to YYYY-MM-DD for range comparison."""
+    return str(value)[:10]
+
+
+class BankReconciliationService:
+
+    # ── session fetch / scoping ────────────────────────────────────────────────
+    def _get_session(self, db, firm_id: str, recon_id: str) -> dict:
+        res = (db.table("bank_reconciliations").select("*")
+               .eq("id", recon_id).eq("firm_id", firm_id).single().execute())
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Reconciliation not found.")
+        return res.data
+
+    def _require_mutable(self, session: dict) -> None:
+        if session.get("status") == "completed":
+            raise HTTPException(status_code=409,
+                                detail="Reconciliation is completed and can no longer be edited.")
+
+    def _account_statement_ids(self, db, firm_id: str, bank_account_id: str) -> list[str]:
+        res = (db.table("bank_statements").select("id")
+               .eq("firm_id", firm_id).eq("bank_account_id", bank_account_id).execute())
+        return [r["id"] for r in (res.data or [])]
+
+    def _posted_account_txns(self, db, firm_id: str, bank_account_id: str) -> list[dict]:
+        """All POSTED transactions belonging to the account's statements."""
+        stmt_ids = self._account_statement_ids(db, firm_id, bank_account_id)
+        if not stmt_ids:
+            return []
+        rows = (db.table("bank_transactions").select("*")
+                .eq("firm_id", firm_id).in_("statement_id", stmt_ids).execute().data or [])
+        return [t for t in rows if t.get("posted_journal_id")]
+
+    def _validate_bank_account(self, db, firm_id: str, client_id: str, bank_account_id: str) -> dict:
+        res = (db.table("bank_accounts").select("*")
+               .eq("id", bank_account_id).eq("firm_id", firm_id).limit(1).execute())
+        ba = (res.data or [None])[0]
+        if not ba:
+            raise HTTPException(status_code=422, detail="Bank account not found for this firm.")
+        if ba.get("client_id") and client_id and ba["client_id"] != client_id:
+            raise HTTPException(status_code=422, detail="Bank account does not belong to this client.")
+        return ba
+
+    # ── classification (reconciled / unreconciled / exceptions) ────────────────
+    def _classify(self, session: dict, txns: list[dict]) -> dict:
+        recon_id = session["id"]
+        start, end = _d(session["period_start"]), _d(session["period_end"])
+
+        def in_range(t) -> bool:
+            return start <= _d(t["transaction_date"]) <= end
+
+        reconciled = [t for t in txns if t.get("reconciliation_id") == recon_id]
+        unreconciled = [t for t in txns if t.get("reconciliation_id") is None and in_range(t)]
+        # Posted txns in this period already claimed by ANOTHER session — a conflict
+        # that needs human attention (cannot be reconciled here).
+        exceptions = [
+            {**t, "exception_reason": "Reconciled in another session"}
+            for t in txns
+            if t.get("reconciliation_id") not in (None, recon_id) and in_range(t)
+        ]
+        return {"reconciled": reconciled, "unreconciled": unreconciled, "exceptions": exceptions}
+
+    def _summary(self, session: dict, reconciled: list[dict]) -> dict:
+        deposits, withdrawals = recon.split_amounts(reconciled)
+        return recon.tie_out(
+            opening_balance_paise=int(session.get("opening_balance_paise") or 0),
+            closing_balance_paise=int(session.get("closing_balance_paise") or 0),
+            deposits_paise=deposits,
+            withdrawals_paise=withdrawals,
+            adjustments_paise=int(session.get("adjustments_paise") or 0),
+        )
+
+    @staticmethod
+    def _session_view(session: dict) -> dict:
+        """Expose period_start/period_end under the B.4 statement_* field names."""
+        return {
+            "id": session["id"],
+            "firm_id": session.get("firm_id"),
+            "client_id": session.get("client_id"),
+            "bank_account_id": session.get("bank_account_id"),
+            "account_no": session.get("account_no"),
+            "statement_start_date": _d(session["period_start"]),
+            "statement_end_date": _d(session["period_end"]),
+            "opening_balance_paise": int(session.get("opening_balance_paise") or 0),
+            "closing_balance_paise": int(session.get("closing_balance_paise") or 0),
+            "adjustments_paise": int(session.get("adjustments_paise") or 0),
+            "status": session.get("status"),
+            "completed_at": session.get("completed_at"),
+            "completed_by": session.get("completed_by"),
+            "created_at": session.get("created_at"),
+        }
+
+    # ── B.4.1 session lifecycle ─────────────────────────────────────────────────
+    def create_session(self, db, firm_id, client_id, bank_account_id,
+                        statement_start_date, statement_end_date,
+                        opening_balance_paise=0, closing_balance_paise=0, actor_id=None) -> dict:
+        ba = self._validate_bank_account(db, firm_id, client_id, bank_account_id)
+        row = (db.table("bank_reconciliations").insert({
+            "firm_id": firm_id, "client_id": client_id, "bank_account_id": bank_account_id,
+            "account_no": ba.get("account_no"),
+            "period_start": statement_start_date, "period_end": statement_end_date,
+            "opening_balance_paise": int(opening_balance_paise),
+            "closing_balance_paise": int(closing_balance_paise),
+            "status": "open", "created_by": actor_id, "updated_at": _now(),
+        }).execute().data or [{}])[0]
+        try:
+            timeline_service.log(client_id, "accounting", "Reconciliation Opened",
+                                 f"{ba.get('bank_name', 'Bank')} {statement_start_date} → {statement_end_date}",
+                                 "info", firm_id=firm_id, entity_type="bank_reconciliation",
+                                 entity_id=row.get("id"), actor_id=actor_id)
+        except Exception:  # pragma: no cover - timeline must never block
+            pass
+        return self._session_view(row)
+
+    def list_sessions(self, db, firm_id, client_id: Optional[str],
+                      bank_account_id: Optional[str] = None) -> list[dict]:
+        q = db.table("bank_reconciliations").select("*").eq("firm_id", firm_id)
+        if client_id:
+            q = q.eq("client_id", client_id)
+        if bank_account_id:
+            q = q.eq("bank_account_id", bank_account_id)
+        rows = q.order("period_end", desc=True).execute().data or []
+        return [self._session_view(r) for r in rows]
+
+    def get_session(self, db, firm_id, recon_id) -> dict:
+        session = self._get_session(db, firm_id, recon_id)
+        txns = self._posted_account_txns(db, firm_id, session["bank_account_id"])
+        buckets = self._classify(session, txns)
+        view = self._session_view(session)
+        view["summary"] = self._summary(session, buckets["reconciled"])
+        view["counts"] = {
+            "reconciled": len(buckets["reconciled"]),
+            "unreconciled": len(buckets["unreconciled"]),
+            "exceptions": len(buckets["exceptions"]),
+        }
+        return view
+
+    def update_session(self, db, firm_id, recon_id, fields: dict, actor_id=None) -> dict:
+        session = self._get_session(db, firm_id, recon_id)
+        self._require_mutable(session)
+        update = {k: int(v) for k, v in fields.items()
+                  if k in ("opening_balance_paise", "closing_balance_paise", "adjustments_paise")
+                  and v is not None}
+        if not update:
+            return self.get_session(db, firm_id, recon_id)
+        update["updated_at"] = _now()
+        db.table("bank_reconciliations").update(update).eq("id", recon_id).eq("firm_id", firm_id).execute()
+        return self.get_session(db, firm_id, recon_id)
+
+    # ── B.4.2 manual reconcile / unreconcile (human confirmation only) ──────────
+    def _index_account_txns(self, db, firm_id, session) -> dict:
+        return {t["id"]: t for t in self._posted_account_txns(db, firm_id, session["bank_account_id"])}
+
+    def reconcile(self, db, firm_id, recon_id, txn_ids: list[str], actor_id=None) -> dict:
+        session = self._get_session(db, firm_id, recon_id)
+        self._require_mutable(session)
+        by_id = self._index_account_txns(db, firm_id, session)
+        start, end = _d(session["period_start"]), _d(session["period_end"])
+        for tid in txn_ids:
+            t = by_id.get(tid)
+            if not t:
+                raise HTTPException(status_code=422,
+                                    detail=f"Transaction {tid} is not a posted transaction for this account.")
+            if not (start <= _d(t["transaction_date"]) <= end):
+                raise HTTPException(status_code=422,
+                                    detail=f"Transaction {tid} falls outside the statement period.")
+            existing = t.get("reconciliation_id")
+            if existing and existing != recon_id:
+                raise HTTPException(status_code=409,
+                                    detail=f"Transaction {tid} is already reconciled in another session.")
+        for tid in txn_ids:
+            t = by_id[tid]
+            db.table("bank_transactions").update({
+                "reconciliation_id": recon_id, "reconciled": True, "reconciled_at": _now(),
+                "reconciled_journal_id": t.get("posted_journal_id"), "updated_at": _now(),
+            }).eq("id", tid).eq("firm_id", firm_id).execute()
+        self._advance_to_in_progress(db, firm_id, session)
+        self._log(session, actor_id, "Transactions Reconciled", f"{len(txn_ids)} item(s) reconciled")
+        return self.get_session(db, firm_id, recon_id)
+
+    def unreconcile(self, db, firm_id, recon_id, txn_ids: list[str], actor_id=None) -> dict:
+        session = self._get_session(db, firm_id, recon_id)
+        self._require_mutable(session)
+        by_id = self._index_account_txns(db, firm_id, session)
+        for tid in txn_ids:
+            t = by_id.get(tid)
+            if not t or t.get("reconciliation_id") != recon_id:
+                raise HTTPException(status_code=422,
+                                    detail=f"Transaction {tid} is not reconciled in this session.")
+        for tid in txn_ids:
+            db.table("bank_transactions").update({
+                "reconciliation_id": None, "reconciled": False, "reconciled_at": None,
+                "reconciled_journal_id": None, "updated_at": _now(),
+            }).eq("id", tid).eq("firm_id", firm_id).execute()
+        self._log(session, actor_id, "Transactions Unreconciled", f"{len(txn_ids)} item(s) unreconciled")
+        return self.get_session(db, firm_id, recon_id)
+
+    def _advance_to_in_progress(self, db, firm_id, session) -> None:
+        if session.get("status") == "open":
+            db.table("bank_reconciliations").update({"status": "in_progress", "updated_at": _now()}) \
+                .eq("id", session["id"]).eq("firm_id", firm_id).execute()
+
+    # ── B.4.3 completion (tie-out enforced; immutable thereafter) ───────────────
+    def complete(self, db, firm_id, recon_id, actor_id=None) -> dict:
+        session = self._get_session(db, firm_id, recon_id)
+        if session.get("status") == "completed":
+            raise HTTPException(status_code=409, detail="Reconciliation is already completed.")
+        txns = self._posted_account_txns(db, firm_id, session["bank_account_id"])
+        buckets = self._classify(session, txns)
+        summary = self._summary(session, buckets["reconciled"])
+        if not summary["reconciles"]:
+            raise HTTPException(
+                status_code=422,
+                detail=(f"Cannot complete — statement does not tie out. Difference "
+                        f"₹{summary['difference_paise'] / 100:.2f}. Reconcile the remaining "
+                        f"items or record an adjustment."))
+        db.table("bank_reconciliations").update({
+            "status": "completed", "completed_at": _now(), "completed_by": actor_id, "updated_at": _now(),
+        }).eq("id", recon_id).eq("firm_id", firm_id).execute()
+        self._log(session, actor_id, "Reconciliation Completed",
+                  f"Tied out at ₹{summary['statement_closing_balance_paise'] / 100:.2f}", severity="success")
+        try:
+            from services.audit_service import log_event
+            log_event(firm_id, "bank_reconciliation", recon_id, "status_change", actor_id=actor_id,
+                      new_data={"status": "completed", **summary},
+                      metadata={"source": "bank_reconciliation"})
+        except Exception:  # pragma: no cover
+            pass
+        return self.get_session(db, firm_id, recon_id)
+
+    # ── B.4.4 report + CSV ──────────────────────────────────────────────────────
+    def report(self, db, firm_id, recon_id) -> dict:
+        session = self._get_session(db, firm_id, recon_id)
+        txns = self._posted_account_txns(db, firm_id, session["bank_account_id"])
+        buckets = self._classify(session, txns)
+        summary = self._summary(session, buckets["reconciled"])
+        view = self._session_view(session)
+
+        def line(t: dict) -> dict:
+            return {
+                "id": t["id"], "transaction_date": _d(t["transaction_date"]),
+                "description": t.get("description", ""), "reference_no": t.get("reference_no"),
+                "debit_paise": int(t.get("debit_paise") or 0),
+                "credit_paise": int(t.get("credit_paise") or 0),
+                "posted_journal_id": t.get("posted_journal_id"),
+                "exception_reason": t.get("exception_reason"),
+            }
+        return {
+            "reconciliation": view,
+            "summary": summary,
+            "ties_out": summary["reconciles"],
+            "reconciled": [line(t) for t in buckets["reconciled"]],
+            "unreconciled": [line(t) for t in buckets["unreconciled"]],
+            "exceptions": [line(t) for t in buckets["exceptions"]],
+            "counts": {
+                "reconciled": len(buckets["reconciled"]),
+                "unreconciled": len(buckets["unreconciled"]),
+                "exceptions": len(buckets["exceptions"]),
+            },
+        }
+
+    def report_csv(self, db, firm_id, recon_id) -> str:
+        rep = self.report(db, firm_id, recon_id)
+        s, v = rep["summary"], rep["reconciliation"]
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        rupees = lambda p: f"{p / 100:.2f}"  # noqa: E731 - display only; storage is paise
+        w.writerow(["Bank Reconciliation Report"])
+        w.writerow(["Bank account", v["bank_account_id"], "Account no", v.get("account_no") or ""])
+        w.writerow(["Period", v["statement_start_date"], "to", v["statement_end_date"]])
+        w.writerow(["Status", v["status"]])
+        w.writerow([])
+        w.writerow(["Opening balance", rupees(s["opening_balance_paise"])])
+        w.writerow(["Add: Deposits (reconciled)", rupees(s["deposits_paise"])])
+        w.writerow(["Less: Withdrawals (reconciled)", rupees(s["withdrawals_paise"])])
+        w.writerow(["Adjustments", rupees(s["adjustments_paise"])])
+        w.writerow(["= Reconciled book balance", rupees(s["reconciled_book_balance_paise"])])
+        w.writerow(["Statement closing balance", rupees(s["statement_closing_balance_paise"])])
+        w.writerow(["Difference", rupees(s["difference_paise"])])
+        w.writerow(["Ties out", "YES" if rep["ties_out"] else "NO"])
+        w.writerow([])
+        w.writerow(["Section", "Date", "Description", "Reference", "Debit", "Credit", "Journal", "Note"])
+        for sect in ("reconciled", "unreconciled", "exceptions"):
+            for t in rep[sect]:
+                w.writerow([sect, t["transaction_date"], t["description"], t.get("reference_no") or "",
+                            rupees(t["debit_paise"]), rupees(t["credit_paise"]),
+                            t.get("posted_journal_id") or "", t.get("exception_reason") or ""])
+        return buf.getvalue()
+
+    # ── helpers ─────────────────────────────────────────────────────────────────
+    def _log(self, session, actor_id, title, desc, severity="info") -> None:
+        try:
+            timeline_service.log(session.get("client_id"), "accounting", title, desc, severity,
+                                 firm_id=session.get("firm_id"), entity_type="bank_reconciliation",
+                                 entity_id=session["id"], actor_id=actor_id)
+        except Exception:  # pragma: no cover
+            pass
+
+
+bank_reconciliation_service = BankReconciliationService()

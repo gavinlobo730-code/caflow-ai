@@ -181,10 +181,11 @@ class BankPostingService:
             entry_type=entry_type, lines=lines,
         )
 
+        # Posting records the journal link only. Reconciliation (B.4) is a separate
+        # human step — it owns `reconciled` / `reconciled_at` / `reconciliation_id`.
         db.table("bank_transactions").update({
             "match_status": "posted",
             "posted_journal_id": journal_entry_id, "posted_at": _now(), "posted_by": actor_id,
-            "reconciled": True, "reconciled_journal_id": journal_entry_id, "reconciled_at": _now(),
             "updated_at": _now(),
         }).eq("id", txn_id).eq("firm_id", firm_id).execute()
 

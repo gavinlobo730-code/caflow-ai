@@ -14,6 +14,7 @@ IMPORTANT: posting is explicit and human-initiated — never auto-post.
 CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi.responses import Response
 from typing import Optional
 
 from models.common import api_response
@@ -21,11 +22,13 @@ from models.banking import (
     BankAccountIn, BankAccountUpdateIn, StatementImportIn,
     TransactionAccountIn, PostBankTxnIn, MatchingRuleIn,
     CategorizeIn, MatchIn,
+    ReconciliationCreateIn, ReconciliationUpdateIn, ReconcileItemsIn,
 )
 from core.permissions import rbac
 from services.banking_service import banking_service
 from services.bank_matching_service import bank_matching_service
 from services.bank_posting_service import bank_posting_service
+from services.bank_reconciliation_service import bank_reconciliation_service
 from domain.banking import parse_statement, file_hash, StatementParseError
 
 # Defensive upload cap (bank statements are small; protects the parser/DB).
@@ -341,6 +344,151 @@ def post_transaction(
         to_bank_account_id=data.to_bank_account_id,
         actor_id=current_user.get("auth_user_id"),
     ))
+
+
+# ─── Reconciliation Engine (B.4) ──────────────────────────────────────────────
+
+@router.post("/reconciliations")
+def create_reconciliation(
+    data: ReconciliationCreateIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Open a reconciliation session for a bank account + statement period (B.4.1)."""
+    db = _db()
+    if not db:
+        return api_response(True, {"id": "mock-recon", **data.model_dump()})
+    return api_response(True, bank_reconciliation_service.create_session(
+        db, current_user["firm_id"], data.client_id, data.bank_account_id,
+        data.statement_start_date, data.statement_end_date,
+        opening_balance_paise=data.opening_balance_paise,
+        closing_balance_paise=data.closing_balance_paise,
+        actor_id=current_user.get("auth_user_id")))
+
+
+@router.get("/reconciliations")
+def list_reconciliations(
+    client_id: Optional[str] = Query(None),
+    bank_account_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    db = _db()
+    if not db:
+        return api_response(True, [])
+    return api_response(True, bank_reconciliation_service.list_sessions(
+        db, current_user["firm_id"], client_id, bank_account_id))
+
+
+@router.get("/reconciliations/{recon_id}")
+def get_reconciliation(
+    recon_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Session header + live tie-out summary + counts."""
+    db = _db()
+    if not db:
+        return api_response(True, {"id": recon_id})
+    return api_response(True, bank_reconciliation_service.get_session(
+        db, current_user["firm_id"], recon_id))
+
+
+@router.patch("/reconciliations/{recon_id}")
+def update_reconciliation(
+    recon_id: str,
+    data: ReconciliationUpdateIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Adjust opening/closing balance or adjustments (rejected once completed)."""
+    db = _db()
+    if not db:
+        return api_response(True, {"id": recon_id, **data.model_dump(exclude_none=True)})
+    return api_response(True, bank_reconciliation_service.update_session(
+        db, current_user["firm_id"], recon_id, data.model_dump(exclude_none=True),
+        actor_id=current_user.get("auth_user_id")))
+
+
+@router.get("/reconciliations/{recon_id}/items")
+def reconciliation_items(
+    recon_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Reconciled / unreconciled / exception transactions + summary (B.4.2/B.4.4)."""
+    db = _db()
+    if not db:
+        return api_response(True, {"reconciled": [], "unreconciled": [], "exceptions": []})
+    return api_response(True, bank_reconciliation_service.report(
+        db, current_user["firm_id"], recon_id))
+
+
+@router.post("/reconciliations/{recon_id}/reconcile")
+def reconcile_items(
+    recon_id: str,
+    data: ReconcileItemsIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Manually reconcile posted transactions — explicit human confirmation (B.4.2).
+    No automatic reconciliation."""
+    db = _db()
+    if not db:
+        return api_response(True, {"id": recon_id, "reconciled": data.transaction_ids})
+    return api_response(True, bank_reconciliation_service.reconcile(
+        db, current_user["firm_id"], recon_id, data.transaction_ids,
+        actor_id=current_user.get("auth_user_id")))
+
+
+@router.post("/reconciliations/{recon_id}/unreconcile")
+def unreconcile_items(
+    recon_id: str,
+    data: ReconcileItemsIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Manually unreconcile transactions (B.4.2)."""
+    db = _db()
+    if not db:
+        return api_response(True, {"id": recon_id, "unreconciled": data.transaction_ids})
+    return api_response(True, bank_reconciliation_service.unreconcile(
+        db, current_user["firm_id"], recon_id, data.transaction_ids,
+        actor_id=current_user.get("auth_user_id")))
+
+
+@router.post("/reconciliations/{recon_id}/complete")
+def complete_reconciliation(
+    recon_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Finalize the reconciliation. Allowed only when the balance ties out; the
+    session becomes immutable afterwards (B.4.1/B.4.3)."""
+    db = _db()
+    if not db:
+        return api_response(True, {"id": recon_id, "status": "completed"})
+    return api_response(True, bank_reconciliation_service.complete(
+        db, current_user["firm_id"], recon_id, actor_id=current_user.get("auth_user_id")))
+
+
+@router.get("/reconciliations/{recon_id}/report")
+def reconciliation_report(
+    recon_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Full backend-driven reconciliation report (B.4.4)."""
+    db = _db()
+    if not db:
+        return api_response(True, {"reconciliation": {"id": recon_id}})
+    return api_response(True, bank_reconciliation_service.report(
+        db, current_user["firm_id"], recon_id))
+
+
+@router.get("/reconciliations/{recon_id}/report.csv")
+def reconciliation_report_csv(
+    recon_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """CSV export of the reconciliation report (B.4.4). Returns a file download."""
+    db = _db()
+    csv_text = "" if not db else bank_reconciliation_service.report_csv(
+        db, current_user["firm_id"], recon_id)
+    return Response(
+        content=csv_text, media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="reconciliation-{recon_id}.csv"'})
 
 
 # ─── Matching rules (foundation only — Phase B.2; not wired to UI) ────────────

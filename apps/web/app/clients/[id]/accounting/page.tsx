@@ -13,8 +13,6 @@ import {
   importBankStatement,
   getBankStatements,
   getBankTransactions,
-  postBankTransaction,
-  ignoreBankTransaction,
   type BankStatement,
   type BankTransaction,
 } from "@/lib/data/bankStatements";
@@ -265,7 +263,7 @@ export default function AccountingPage() {
           <BankPostingQueue clientId={clientId} accounts={accounts} />
         )}
         {tab === "reconciliation" && (
-          <BankReconciliation accounts={accounts} clientId={clientId} />
+          <BankReconciliation clientId={clientId} />
         )}
         {tab === "reports" && (
           <FinancialReports clientId={clientId} financialYear={financialYear} />
@@ -2256,147 +2254,247 @@ function BankImportModal({ clientId, onClose, onImported }: { clientId: string; 
 
 // ── Bank Reconciliation ────────────────────────────────────────────────────
 
-function BankReconciliation({ accounts, clientId }: { accounts: Account[]; clientId: string }) {
-  const [statements, setStatements] = useState<BankStatement[]>([]);
-  const [selectedStmtId, setSelectedStmtId] = useState<string>("");
-  const [txns, setTxns] = useState<BankTransaction[]>([]);
-  const [loadingStmts, setLoadingStmts] = useState(true);
-  const [loadingTxns, setLoadingTxns] = useState(false);
-  const [mapping, setMapping] = useState<Record<string, string>>({});
-  const [posting, setPosting] = useState<Record<string, boolean>>({});
-  const [posted, setPosted] = useState<Record<string, boolean>>({});
-  const [ignored, setIgnored] = useState<Record<string, boolean>>({});
+// ── Bank Reconciliation (B.4) — sessions, manual reconcile, tie-out, report ──
+// Fully backend-driven: the browser renders the session tie-out and item buckets
+// and triggers explicit reconcile / unreconcile / complete actions. No accounting
+// math happens here. Posting/categorization live in their own tabs — this is the
+// statement-vs-book reconciliation only.
 
-  // Bank accounts only for the contra-account side
-  const bankAccounts = accounts.filter((a) => {
-    const s = (a.account_subtype ?? "").toLowerCase();
-    return a.account_type === "Asset" && (s.includes("bank") || s.includes("cash"));
-  });
+interface ReconSummary {
+  opening_balance_paise: number; deposits_paise: number; withdrawals_paise: number;
+  adjustments_paise: number; reconciled_book_balance_paise: number;
+  statement_closing_balance_paise: number; difference_paise: number; reconciles: boolean;
+}
+interface ReconSession {
+  id: string; bank_account_id: string; account_no: string | null;
+  statement_start_date: string; statement_end_date: string;
+  opening_balance_paise: number; closing_balance_paise: number; adjustments_paise: number;
+  status: "open" | "in_progress" | "completed"; completed_at: string | null;
+}
+interface ReconLine {
+  id: string; transaction_date: string; description: string; reference_no: string | null;
+  debit_paise: number; credit_paise: number; posted_journal_id: string | null;
+  exception_reason: string | null;
+}
+interface ReconReport {
+  reconciliation: ReconSession; summary: ReconSummary; ties_out: boolean;
+  reconciled: ReconLine[]; unreconciled: ReconLine[]; exceptions: ReconLine[];
+  counts: { reconciled: number; unreconciled: number; exceptions: number };
+}
 
-  useEffect(() => {
+const toPaise = (s: string) => Math.round(parseFloat(s || "0") * 100);
+
+function BankReconciliation({ clientId }: { clientId: string }) {
+  const [sessions, setSessions] = useState<ReconSession[]>([]);
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [report, setReport] = useState<ReconReport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingReport, setLoadingReport] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [view, setView] = useState<"unreconciled" | "reconciled" | "exceptions">("unreconciled");
+  const [sel, setSel] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [bankAccounts, setBankAccounts] = useState<{ id: string; bank_name: string; account_no: string }[]>([]);
+  const [form, setForm] = useState({ bank_account_id: "", start: "", end: "", opening: "", closing: "" });
+  const [adj, setAdj] = useState("");
+
+  const loadSessions = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
-    getBankStatements(clientId).then(setStatements).catch(() => setStatements([])).finally(() => setLoadingStmts(false));
+    setLoading(true);
+    try {
+      const res = (await api.banking.reconciliations.list({ client_id: clientId })) as { success: boolean; data: ReconSession[] };
+      setSessions(res.success ? (res.data ?? []) : []);
+    } catch { setSessions([]); } finally { setLoading(false); }
   }, [clientId]);
 
-  async function loadTxns(stmtId: string) {
-    setSelectedStmtId(stmtId); setLoadingTxns(true);
+  const loadBankAccounts = useCallback(async () => {
     try {
-      const all = await getBankTransactions(stmtId);
-      setTxns(all.filter((t) => t.match_status === "unmatched"));
-      setPosted({}); setIgnored({}); setMapping({});
-    } catch { setTxns([]); }
-    setLoadingTxns(false);
-  }
+      const res = (await api.banking.listBankAccounts({ client_id: clientId })) as { success: boolean; data: { id: string; bank_name: string; account_no: string }[] };
+      if (res.success) setBankAccounts(res.data ?? []);
+    } catch { /* non-blocking */ }
+  }, [clientId]);
 
-  async function postTxn(txn: BankTransaction) {
-    const accountId = mapping[txn.id];
-    const bankAccId = bankAccounts[0]?.id;
-    if (!accountId) return;
-    if (!bankAccId) { alert("No cash/bank account found in Chart of Accounts. Add one first."); return; }
-    setPosting((p) => ({ ...p, [txn.id]: true }));
+  useEffect(() => { loadSessions(); loadBankAccounts(); }, [loadSessions, loadBankAccounts]);
+
+  const loadReport = useCallback(async (id: string) => {
+    setLoadingReport(true); setSel({}); setError(null);
     try {
-      // The backend banking service posts the journal (FY-lock checked) and
-      // records the timeline event — the browser only triggers it.
-      await postBankTransaction(txn.id, accountId, bankAccId);
-      setPosted((p) => ({ ...p, [txn.id]: true }));
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to post");
-    } finally {
-      setPosting((p) => ({ ...p, [txn.id]: false }));
-    }
+      const res = (await api.banking.reconciliations.report(id)) as { success: boolean; data: ReconReport };
+      setReport(res.success ? res.data : null);
+      if (res.success) setAdj(((res.data.reconciliation.adjustments_paise || 0) / 100).toFixed(2));
+    } catch { setReport(null); } finally { setLoadingReport(false); }
+  }, []);
+  useEffect(() => { if (selectedId) loadReport(selectedId); else setReport(null); }, [selectedId, loadReport]);
+
+  async function refresh() { await loadReport(selectedId); await loadSessions(); }
+
+  async function createSession() {
+    setError(null);
+    if (!form.bank_account_id || !form.start || !form.end) { setError("Bank account and statement dates are required."); return; }
+    setBusy(true);
+    try {
+      const res = (await api.banking.reconciliations.create({
+        client_id: clientId, bank_account_id: form.bank_account_id,
+        statement_start_date: form.start, statement_end_date: form.end,
+        opening_balance_paise: toPaise(form.opening), closing_balance_paise: toPaise(form.closing),
+      })) as { success: boolean; data: ReconSession; error: string | null };
+      if (res.success) { setShowNew(false); setForm({ bank_account_id: "", start: "", end: "", opening: "", closing: "" }); await loadSessions(); setSelectedId(res.data.id); }
+      else setError(res.error ?? "Could not open reconciliation.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not open reconciliation."); }
+    finally { setBusy(false); }
   }
 
-  async function ignoreTxn(txnId: string) {
-    await ignoreBankTransaction(txnId);
-    setIgnored((p) => ({ ...p, [txnId]: true }));
+  async function act(fn: () => Promise<unknown>) {
+    setBusy(true); setError(null);
+    try {
+      const res = (await fn()) as { success: boolean; error: string | null };
+      if (res && res.success === false) setError(res.error ?? "Action failed.");
+      await refresh();
+    } catch (e) { setError(e instanceof Error ? e.message : "Action failed."); }
+    finally { setBusy(false); }
   }
 
-  const unprocessed = txns.filter((t) => !posted[t.id] && !ignored[t.id]);
-  const processedCount = Object.keys(posted).length + Object.keys(ignored).length;
-  const total = txns.length;
+  const completed = report?.reconciliation.status === "completed";
+  const lines = report ? report[view] : [];
+  const selectedIds = Object.keys(sel).filter((k) => sel[k]);
+  const statusBadge = (s: string) => s === "completed" ? "bg-green-100 text-green-700" : s === "in_progress" ? "bg-amber-100 text-amber-700" : "bg-[#F1F5F9] text-[#64748B]";
 
   return (
     <div className="space-y-4 max-w-4xl">
-      {/* Statement selector */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-        <label className="block text-xs font-medium text-[#475569] mb-1.5">Select Bank Statement to Reconcile</label>
-        {loadingStmts ? <div className="h-8 bg-[#F8FAFC] rounded animate-pulse" /> : (
-          <select value={selectedStmtId} onChange={(e) => e.target.value && loadTxns(e.target.value)} className="w-full max-w-sm px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="">— Choose statement —</option>
-            {statements.map((s) => <option key={s.id} value={s.id}>{s.bank_name} {s.account_number ? `(${s.account_number})` : ""} · {s.statement_from} → {s.statement_to} · {s.row_count} txns</option>)}
-          </select>
-        )}
+      {/* Session selector */}
+      <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 flex items-end gap-3 flex-wrap">
+        <div className="flex-1 min-w-[240px]">
+          <label className="block text-xs font-medium text-[#475569] mb-1.5">Reconciliation session</label>
+          {loading ? <div className="h-9 bg-[#F8FAFC] rounded animate-pulse" /> : (
+            <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">— Select a reconciliation —</option>
+              {sessions.map((s) => <option key={s.id} value={s.id}>{s.statement_start_date} → {s.statement_end_date} · {s.account_no ?? "account"} · {s.status}</option>)}
+            </select>
+          )}
+        </div>
+        <button onClick={() => { setShowNew((v) => !v); setSelectedId(""); }} className="text-xs px-3 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569]">
+          {showNew ? "Cancel" : "New Reconciliation"}
+        </button>
       </div>
 
-      {selectedStmtId && (
+      {error && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-3">{error}</p>}
+
+      {/* New session form */}
+      {showNew && (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-3">
+          <p className="text-xs font-semibold text-[#334155]">Open a reconciliation</p>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block col-span-2">
+              <span className="text-[11px] font-medium text-[#475569]">Bank account</span>
+              <select value={form.bank_account_id} onChange={(e) => setForm((f) => ({ ...f, bank_account_id: e.target.value }))} className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
+                <option value="">— Select bank account —</option>
+                {bankAccounts.map((b) => <option key={b.id} value={b.id}>{b.bank_name} · {b.account_no}</option>)}
+              </select>
+            </label>
+            <label className="block"><span className="text-[11px] font-medium text-[#475569]">Statement start</span>
+              <input type="date" value={form.start} onChange={(e) => setForm((f) => ({ ...f, start: e.target.value }))} className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500" /></label>
+            <label className="block"><span className="text-[11px] font-medium text-[#475569]">Statement end</span>
+              <input type="date" value={form.end} onChange={(e) => setForm((f) => ({ ...f, end: e.target.value }))} className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500" /></label>
+            <label className="block"><span className="text-[11px] font-medium text-[#475569]">Opening balance (₹)</span>
+              <input type="number" step="0.01" value={form.opening} onChange={(e) => setForm((f) => ({ ...f, opening: e.target.value }))} placeholder="0.00" className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded text-right focus:outline-none focus:ring-1 focus:ring-blue-500" /></label>
+            <label className="block"><span className="text-[11px] font-medium text-[#475569]">Closing balance (₹)</span>
+              <input type="number" step="0.01" value={form.closing} onChange={(e) => setForm((f) => ({ ...f, closing: e.target.value }))} placeholder="0.00" className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded text-right focus:outline-none focus:ring-1 focus:ring-blue-500" /></label>
+          </div>
+          <button onClick={createSession} disabled={busy} className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">Open Reconciliation</button>
+        </div>
+      )}
+
+      {/* Selected session */}
+      {selectedId && (loadingReport ? <div className="h-48 bg-[#F8FAFC] rounded-lg animate-pulse" /> : report && (
         <>
-          {/* Progress bar */}
-          {total > 0 && (
-            <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-medium text-[#334155]">Reconciliation Progress</span>
-                <span className="text-[#64748B]">{processedCount}/{total} processed</span>
+          {/* Tie-out summary (cash-flow style reconciles flag) */}
+          <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-[#334155]">Balance tie-out</p>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusBadge(report.reconciliation.status)}`}>{report.reconciliation.status}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs font-mono">
+              <Row label="Opening balance" paise={report.summary.opening_balance_paise} />
+              <Row label="+ Deposits (reconciled)" paise={report.summary.deposits_paise} />
+              <Row label="− Withdrawals (reconciled)" paise={report.summary.withdrawals_paise} />
+              <Row label="± Adjustments" paise={report.summary.adjustments_paise} />
+              <Row label="= Reconciled book balance" paise={report.summary.reconciled_book_balance_paise} strong />
+              <Row label="Statement closing balance" paise={report.summary.statement_closing_balance_paise} strong />
+            </div>
+            <div className={`flex items-center justify-between rounded-lg px-3 py-2 ${report.ties_out ? "bg-green-50" : "bg-red-50"}`}>
+              <span className={`text-xs font-medium flex items-center gap-1.5 ${report.ties_out ? "text-green-700" : "text-red-700"}`}>
+                {report.ties_out ? <><CheckCircle size={14} /> Statement ties out to the book balance</> : <>Difference {fmt(Math.abs(report.summary.difference_paise))} — does not tie out</>}
+              </span>
+            </div>
+            {!completed && (
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-[11px] text-[#64748B]">Adjustment (₹)</span>
+                <input type="number" step="0.01" value={adj} onChange={(e) => setAdj(e.target.value)} className="w-28 px-2 py-1 text-xs border border-[#E2E8F0] rounded text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                <button onClick={() => act(() => api.banking.reconciliations.update(selectedId, { adjustments_paise: toPaise(adj) }))} disabled={busy} className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">Apply</button>
               </div>
-              <div className="h-2 rounded-full bg-[#F1F5F9] overflow-hidden">
-                <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${total > 0 ? (processedCount/total)*100 : 0}%` }} />
-              </div>
-              {processedCount === total && total > 0 && (
-                <div className="flex items-center gap-1.5 text-xs text-green-700 font-medium">
-                  <CheckCircle size={12} /> All transactions processed
-                </div>
+            )}
+            <div className="flex items-center gap-2 pt-1 border-t border-[#F8FAFC]">
+              <button onClick={() => api.banking.reconciliations.exportCsv(selectedId)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569] flex items-center gap-1.5"><Download size={12} /> Export CSV</button>
+              {!completed && (
+                <button onClick={() => act(() => api.banking.reconciliations.complete(selectedId))} disabled={busy || !report.ties_out} title={report.ties_out ? "" : "Reconcile until the statement ties out"} className="text-xs px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed ml-auto">Complete Reconciliation</button>
               )}
+              {completed && <span className="text-[11px] text-green-700 ml-auto flex items-center gap-1"><CheckCircle size={12} /> Completed {report.reconciliation.completed_at ? String(report.reconciliation.completed_at).slice(0, 10) : ""} · locked</span>}
+            </div>
+          </div>
+
+          {/* Item buckets */}
+          <div className="flex gap-1 bg-[#F1F5F9] p-1 rounded-lg w-fit">
+            {([["unreconciled", "Unreconciled", report.counts.unreconciled], ["reconciled", "Reconciled", report.counts.reconciled], ["exceptions", "Exceptions", report.counts.exceptions]] as const).map(([id, label, n]) => (
+              <button key={id} onClick={() => { setView(id); setSel({}); }} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === id ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"}`}>{label} ({n})</button>
+            ))}
+          </div>
+
+          {!completed && view !== "exceptions" && selectedIds.length > 0 && (
+            <div className="flex items-center gap-2">
+              {view === "unreconciled"
+                ? <button onClick={() => act(() => api.banking.reconciliations.reconcile(selectedId, selectedIds))} disabled={busy} className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">Reconcile {selectedIds.length} selected</button>
+                : <button onClick={() => act(() => api.banking.reconciliations.unreconcile(selectedId, selectedIds))} disabled={busy} className="text-xs px-4 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">Unreconcile {selectedIds.length} selected</button>}
             </div>
           )}
 
-          {loadingTxns ? <div className="h-40 bg-[#F8FAFC] rounded-lg animate-pulse" /> : unprocessed.length > 0 ? (
-            <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-50">
-                <p className="text-xs font-semibold text-[#334155]">{unprocessed.length} unmatched transaction{unprocessed.length !== 1 ? "s" : ""}</p>
-              </div>
-              <div className="divide-y divide-[#F8FAFC]">
-                {unprocessed.map((txn) => (
-                  <div key={txn.id} className="px-4 py-3 space-y-2">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium text-[#1E293B] truncate">{txn.description}</p>
-                        <p className="text-[10px] text-[#94A3B8] mt-0.5">{txn.transaction_date} · {txn.reference_no ?? ""}</p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        {txn.debit_paise > 0 && <p className="text-xs font-mono text-red-700">{fmt(txn.debit_paise)} Dr</p>}
-                        {txn.credit_paise > 0 && <p className="text-xs font-mono text-green-700">{fmt(txn.credit_paise)} Cr</p>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <select value={mapping[txn.id] ?? ""} onChange={(e) => setMapping((m) => ({ ...m, [txn.id]: e.target.value }))} className="flex-1 px-2 py-1 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
-                        <option value="">— Map to account —</option>
-                        {["Asset","Liability","Equity","Revenue","Expense"].map((type) => (
-                          <optgroup key={type} label={type}>
-                            {accounts.filter((a) => a.account_type === type).map((a) => <option key={a.id} value={a.id}>{a.account_code} — {a.account_name}</option>)}
-                          </optgroup>
-                        ))}
-                      </select>
-                      <button onClick={() => postTxn(txn)} disabled={!mapping[txn.id] || posting[txn.id]} className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40 whitespace-nowrap">
-                        {posting[txn.id] ? "Posting…" : "Post"}
-                      </button>
-                      <button onClick={() => ignoreTxn(txn.id)} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#64748B] whitespace-nowrap">Ignore</button>
-                    </div>
+          {lines.length === 0 ? (
+            <div className="bg-white rounded-xl border border-[#F1F5F9] p-8 text-center text-xs text-[#94A3B8]">No {view} transactions.</div>
+          ) : (
+            <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden divide-y divide-[#F8FAFC]">
+              {lines.map((t) => (
+                <label key={t.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#F8FAFC] cursor-pointer">
+                  {!completed && view !== "exceptions" && (
+                    <input type="checkbox" checked={!!sel[t.id]} onChange={(e) => setSel((m) => ({ ...m, [t.id]: e.target.checked }))} className="shrink-0" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-[#1E293B] truncate">{t.description}</p>
+                    <p className="text-[10px] text-[#94A3B8]">{t.transaction_date} · {t.reference_no ?? ""}{t.exception_reason ? ` · ⚠ ${t.exception_reason}` : ""}</p>
                   </div>
-                ))}
-              </div>
+                  <div className="shrink-0 text-right font-mono">
+                    {t.credit_paise > 0 ? <span className="text-xs text-green-700">{fmt(t.credit_paise)} Cr</span> : <span className="text-xs text-red-700">{fmt(t.debit_paise)} Dr</span>}
+                  </div>
+                </label>
+              ))}
             </div>
-          ) : !loadingTxns && selectedStmtId ? (
-            <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-6 text-center">
-              <CheckCircle size={24} className="text-green-500 mx-auto mb-2" />
-              <p className="text-sm text-green-700 font-medium">All transactions reconciled</p>
-              <p className="text-xs text-green-600 mt-0.5">No unmatched transactions remain for this statement.</p>
-            </div>
-          ) : null}
+          )}
         </>
-      )}
+      ))}
 
-      {!selectedStmtId && !loadingStmts && statements.length === 0 && (
-        <div className="text-center py-12 text-[#94A3B8] text-sm">No bank statements imported. Import a statement first from the Banks tab.</div>
+      {!selectedId && !showNew && !loading && (
+        <div className="text-center py-12 text-[#94A3B8] text-sm">
+          {sessions.length === 0 ? "No reconciliations yet. Click “New Reconciliation” to begin." : "Select a reconciliation to view its tie-out."}
+        </div>
       )}
+    </div>
+  );
+}
+
+function Row({ label, paise, strong }: { label: string; paise: number; strong?: boolean }) {
+  return (
+    <div className={`flex items-center justify-between ${strong ? "text-[#0F172A] font-semibold border-t border-[#F8FAFC] pt-1" : "text-[#475569]"}`}>
+      <span className="font-sans text-[11px]">{label}</span>
+      <span>{fmt(paise)}</span>
     </div>
   );
 }
