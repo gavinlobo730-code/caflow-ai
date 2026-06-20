@@ -39,9 +39,7 @@ interface PLData {
   expenseAccounts: AccountBalance[];
   totalIncome: number;
   totalExpenses: number;
-  profitBeforeTax: number;
-  taxExpense: number;
-  profitAfterTax: number;
+  netProfit: number;
 }
 
 interface BSData {
@@ -131,138 +129,79 @@ async function fetchClients(): Promise<Client[]> {
   return (data ?? []) as Client[];
 }
 
-/**
- * Fetch account balances for a given client and FY date range.
- * Uses integer paise arithmetic throughout — never floating point.
- */
-async function fetchAccountBalances(
-  clientId: string,
-  from: string,
-  to: string
-): Promise<AccountBalance[]> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
+// All P&L / Balance Sheet aggregation, classification and totals are computed
+// SERVER-SIDE by the reporting engine (domain.reporting, via api.accounting.*).
+// This page only fetches, adapts the response to the comparison view-model, and
+// renders. No journal aggregation, classification, or tax assumptions in the
+// browser (CLAUDE.md: "zero business logic in the frontend").
 
-  // Fetch chart of accounts for this firm
-  const { data: accounts, error: acctErr } = await sb
-    .from("chart_of_accounts")
-    .select("id, firm_id, code, name, account_type")
-    .eq("firm_id", firmId);
-
-  if (acctErr) throw new Error(acctErr.message);
-  if (!accounts || accounts.length === 0) return [];
-
-  // Fetch journal entries in the FY range for the given client
-  const { data: entries, error: entryErr } = await sb
-    .from("journal_entries")
-    .select("id")
-    .eq("firm_id", firmId)
-    .eq("client_id", clientId)
-    .gte("entry_date", from)
-    .lte("entry_date", to);
-
-  if (entryErr) throw new Error(entryErr.message);
-  if (!entries || entries.length === 0) return [];
-
-  const entryIds = entries.map((e: { id: string }) => e.id);
-
-  // Fetch all journal lines for those entries
-  const { data: lines, error: lineErr } = await sb
-    .from("journal_lines")
-    .select("journal_entry_id, account_id, debit_paise, credit_paise")
-    .in("journal_entry_id", entryIds);
-
-  if (lineErr) throw new Error(lineErr.message);
-
-  // Aggregate per account using integer paise (no floats)
-  const debitMap = new Map<string, number>();
-  const creditMap = new Map<string, number>();
-
-  for (const line of lines ?? []) {
-    const aid = line.account_id as string;
-    debitMap.set(aid, (debitMap.get(aid) ?? 0) + (line.debit_paise as number));
-    creditMap.set(aid, (creditMap.get(aid) ?? 0) + (line.credit_paise as number));
-  }
-
-  return accounts.map(
-    (a: { id: string; code: string; name: string; account_type: string }) => {
-      const debit = debitMap.get(a.id) ?? 0;
-      const credit = creditMap.get(a.id) ?? 0;
-      const type = a.account_type as AccountBalance["accountType"];
-
-      // Normal balance convention:
-      // revenue/liability/equity → credit - debit (credit balance is positive)
-      // asset/expense → debit - credit (debit balance is positive)
-      const balancePaise =
-        type === "revenue" || type === "liability" || type === "equity"
-          ? credit - debit
-          : debit - credit;
-
-      return {
-        accountId: a.id,
-        accountCode: a.code as string,
-        accountName: a.name as string,
-        accountType: type,
-        balancePaise,
-      };
-    }
-  );
+interface PLApiLine { account_id: string; account_name: string; account_code?: string; amount_paise: number }
+interface PLApiData {
+  revenue: { lines: PLApiLine[]; total_paise: number };
+  operating_expenses: { lines: PLApiLine[]; total_paise: number };
+  net_profit_paise: number;
+}
+interface BSApiLine { account_id?: string; account_name: string; account_code?: string; balance_paise: number }
+interface BSApiSection { label: string; lines: BSApiLine[]; total_paise: number }
+interface BSApiData {
+  assets: BSApiSection[];
+  liabilities: BSApiSection[];
+  equity: BSApiSection[];
+  total_assets_paise: number;
+  total_liabilities_equity_paise: number;
 }
 
-async function buildPLData(balances: AccountBalance[]): Promise<PLData> {
-  const incomeAccounts = balances
-    .filter((b) => b.accountType === "revenue" && b.balancePaise !== 0)
-    .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
-
-  const expenseAccounts = balances
-    .filter((b) => b.accountType === "expense" && b.balancePaise !== 0)
-    .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
-
-  // Integer paise arithmetic — no floating point
-  const totalIncome = incomeAccounts.reduce((s, a) => s + a.balancePaise, 0);
-  const totalExpenses = expenseAccounts.reduce((s, a) => s + a.balancePaise, 0);
-  const profitBeforeTax = totalIncome - totalExpenses;
-
-  // 30% tax provision — integer paise (truncated, no rounding float)
-  // IT Act §115JB / normal corporate tax rate
-  const taxExpense = profitBeforeTax > 0 ? Math.trunc(profitBeforeTax * 30) / 100 : 0;
-  const profitAfterTax = profitBeforeTax - taxExpense;
-
+async function fetchPL(clientId: string, from: string, to: string): Promise<PLData> {
+  const res = (await api.accounting.profitLoss({
+    basis: "accrual", start_date: from, end_date: to, client_id: clientId,
+  })) as { success: boolean; data: PLApiData | null; error: string | null };
+  if (!res.success || !res.data) throw new Error(res.error ?? "Failed to load Profit & Loss");
+  const d = res.data;
+  const toBal = (l: PLApiLine, type: AccountBalance["accountType"]): AccountBalance => ({
+    accountId: l.account_id, accountCode: l.account_code ?? "",
+    accountName: l.account_name, accountType: type, balancePaise: l.amount_paise,
+  });
+  const incomeAccounts = (d.revenue?.lines ?? []).filter((l) => l.amount_paise !== 0)
+    .map((l) => toBal(l, "revenue")).sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+  const expenseAccounts = (d.operating_expenses?.lines ?? []).filter((l) => l.amount_paise !== 0)
+    .map((l) => toBal(l, "expense")).sort((a, b) => a.accountCode.localeCompare(b.accountCode));
   return {
     incomeAccounts,
     expenseAccounts,
-    totalIncome,
-    totalExpenses,
-    profitBeforeTax,
-    taxExpense,
-    profitAfterTax,
+    totalIncome: d.revenue?.total_paise ?? 0,
+    totalExpenses: d.operating_expenses?.total_paise ?? 0,
+    netProfit: d.net_profit_paise ?? 0,
   };
 }
 
-async function buildBSData(balances: AccountBalance[]): Promise<BSData> {
-  const assetAccounts = balances
-    .filter((b) => b.accountType === "asset" && b.balancePaise !== 0)
-    .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
-  const liabilityAccounts = balances
-    .filter((b) => b.accountType === "liability" && b.balancePaise !== 0)
-    .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
-  const equityAccounts = balances
-    .filter((b) => b.accountType === "equity" && b.balancePaise !== 0)
-    .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
-
-  // Integer paise
-  const totalAssets = assetAccounts.reduce((s, a) => s + a.balancePaise, 0);
-  const totalLiabilities = liabilityAccounts.reduce((s, a) => s + a.balancePaise, 0);
-  const totalEquity = equityAccounts.reduce((s, a) => s + a.balancePaise, 0);
-
+async function fetchBS(clientId: string, asOf: string): Promise<BSData> {
+  const res = (await api.accounting.balanceSheet({
+    basis: "accrual", as_of_date: asOf, client_id: clientId,
+  })) as { success: boolean; data: BSApiData | null; error: string | null };
+  if (!res.success || !res.data) throw new Error(res.error ?? "Failed to load Balance Sheet");
+  const d = res.data;
+  // Flatten the backend's already-classified, sign-normalised section lines.
+  const flatten = (secs: BSApiSection[] | undefined, type: AccountBalance["accountType"]): AccountBalance[] =>
+    (secs ?? []).flatMap((s) => s.lines ?? [])
+      .filter((l) => l.balance_paise !== 0)
+      .map((l) => ({
+        accountId: l.account_id ?? l.account_name, accountCode: l.account_code ?? "",
+        accountName: l.account_name, accountType: type, balancePaise: l.balance_paise,
+      }))
+      .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+  const assetAccounts = flatten(d.assets, "asset");
+  const liabilityAccounts = flatten(d.liabilities, "liability");
+  const equityAccounts = flatten(d.equity, "equity");
   return {
     assetAccounts,
     liabilityAccounts,
     equityAccounts,
-    totalAssets,
-    totalLiabilities,
-    totalEquity,
-    totalLiabilitiesAndEquity: totalLiabilities + totalEquity,
+    totalAssets: d.total_assets_paise ?? 0,
+    // L and E display subtotals from the backend's line values; the authoritative
+    // combined total comes straight from the engine.
+    totalLiabilities: liabilityAccounts.reduce((s, a) => s + a.balancePaise, 0),
+    totalEquity: equityAccounts.reduce((s, a) => s + a.balancePaise, 0),
+    totalLiabilitiesAndEquity: d.total_liabilities_equity_paise ?? 0,
   };
 }
 
@@ -323,9 +262,7 @@ function exportToExcel(
     }),
     ["TOTAL EXPENSES", r(currentPL.totalExpenses), r(priorPL.totalExpenses), r(currentPL.totalExpenses - priorPL.totalExpenses), variancePct(currentPL.totalExpenses, priorPL.totalExpenses)],
     [],
-    ["PROFIT BEFORE TAX", r(currentPL.profitBeforeTax), r(priorPL.profitBeforeTax), r(currentPL.profitBeforeTax - priorPL.profitBeforeTax), ""],
-    ["Less: Tax Expense (30%)", r(currentPL.taxExpense), r(priorPL.taxExpense), "", ""],
-    ["PROFIT AFTER TAX", r(currentPL.profitAfterTax), r(priorPL.profitAfterTax), r(currentPL.profitAfterTax - priorPL.profitAfterTax), ""],
+    ["NET PROFIT / (LOSS)", r(currentPL.netProfit), r(priorPL.netProfit), r(currentPL.netProfit - priorPL.netProfit), variancePct(currentPL.netProfit, priorPL.netProfit)],
   ];
   const wsP = XLSX.utils.aoa_to_sheet(plRows);
   XLSX.utils.book_append_sheet(wb, wsP, "P&L");
@@ -490,28 +427,16 @@ function PLTable({ currentPL, priorPL, currentFY, priorFY }: PLTableProps) {
             <VarianceCell current={currentPL.totalExpenses} prior={priorPL.totalExpenses} isIncome={false} />
           </tr>
 
-          {/* PBT */}
-          <tr className="border-t-2 border-gray-300 font-semibold bg-[#F8FAFC]">
-            <td className="px-4 py-3 text-[#0F172A]">PROFIT BEFORE TAX</td>
-            <AmountCell paise={currentPL.profitBeforeTax} />
-            <AmountCell paise={priorPL.profitBeforeTax} />
-            <VarianceCell current={currentPL.profitBeforeTax} prior={priorPL.profitBeforeTax} isIncome={true} />
-          </tr>
-          <tr className="hover:bg-[#F8FAFC]">
-            <td className="px-4 py-2 pl-8 text-[#475569] text-sm">Less: Tax Expense (30% provision)</td>
-            <AmountCell paise={currentPL.taxExpense} />
-            <AmountCell paise={priorPL.taxExpense} />
-            <td />
-          </tr>
+          {/* Net Profit — straight from the backend engine (no frontend tax assumption) */}
           <tr className="border-t-2 border-blue-300 font-bold bg-blue-50">
-            <td className="px-4 py-3 text-blue-900 text-base">PROFIT AFTER TAX</td>
-            <td className={`px-4 py-3 text-right tabular-nums text-base font-bold ${currentPL.profitAfterTax >= 0 ? "text-green-700" : "text-red-700"}`}>
-              {formatPaise(currentPL.profitAfterTax)}
+            <td className="px-4 py-3 text-blue-900 text-base">NET PROFIT / (LOSS)</td>
+            <td className={`px-4 py-3 text-right tabular-nums text-base font-bold ${currentPL.netProfit >= 0 ? "text-green-700" : "text-red-700"}`}>
+              {formatPaise(currentPL.netProfit)}
             </td>
-            <td className={`px-4 py-3 text-right tabular-nums text-base font-bold ${priorPL.profitAfterTax >= 0 ? "text-green-700" : "text-red-700"}`}>
-              {formatPaise(priorPL.profitAfterTax)}
+            <td className={`px-4 py-3 text-right tabular-nums text-base font-bold ${priorPL.netProfit >= 0 ? "text-green-700" : "text-red-700"}`}>
+              {formatPaise(priorPL.netProfit)}
             </td>
-            <VarianceCell current={currentPL.profitAfterTax} prior={priorPL.profitAfterTax} isIncome={true} />
+            <VarianceCell current={currentPL.netProfit} prior={priorPL.netProfit} isIncome={true} />
           </tr>
         </tbody>
       </table>
@@ -813,25 +738,18 @@ export default function FinancialStatementsPage() {
       const curRange = fyToDateRange(currentFY);
       const priRange = fyToDateRange(priorFY);
 
-      // Kick off CF fetch immediately so it runs in parallel with Supabase queries.
-      const cfFetch = api.accounting.cashFlow({
-        start_date: curRange.from,
-        end_date: curRange.to,
-        client_id: selectedClientId,
-        basis: "accrual",
-      });
-
-      const [curBalances, priBalances] = await Promise.all([
-        fetchAccountBalances(selectedClientId, curRange.from, curRange.to),
-        fetchAccountBalances(selectedClientId, priRange.from, priRange.to),
-      ]);
-
+      // All four statements come from the backend reporting engine, in parallel.
       const [cPL, pPL, cBS, pBS, cfRaw] = await Promise.all([
-        buildPLData(curBalances),
-        buildPLData(priBalances),
-        buildBSData(curBalances),
-        buildBSData(priBalances),
-        cfFetch,
+        fetchPL(selectedClientId, curRange.from, curRange.to),
+        fetchPL(selectedClientId, priRange.from, priRange.to),
+        fetchBS(selectedClientId, curRange.to),
+        fetchBS(selectedClientId, priRange.to),
+        api.accounting.cashFlow({
+          start_date: curRange.from,
+          end_date: curRange.to,
+          client_id: selectedClientId,
+          basis: "accrual",
+        }),
       ]);
 
       setCurrentPL(cPL);
@@ -880,7 +798,7 @@ export default function FinancialStatementsPage() {
           const prior = priorPL?.expenseAccounts.find((x) => x.accountId === a.accountId);
           rows.push([a.accountName, a.balancePaise / 100, (prior?.balancePaise ?? 0) / 100]);
         }
-        rows.push(["Net Profit / (Loss)", currentPL.profitAfterTax / 100, (priorPL?.profitAfterTax ?? 0) / 100]);
+        rows.push(["Net Profit / (Loss)", currentPL.netProfit / 100, (priorPL?.netProfit ?? 0) / 100]);
       } else if (activeTab === "bs" && currentBS) {
         rows.push(["Balance Sheet", `FY ${currentFY}`, `FY ${priorFY}`]);
         rows.push(["ASSETS"]);

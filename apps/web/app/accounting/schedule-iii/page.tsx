@@ -13,6 +13,7 @@ import * as XLSX from "xlsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api";
 
 // Financial year helpers — FY runs April 1 to March 31 (Indian fiscal year)
 const CURRENT_FY_YEAR = new Date().getMonth() >= 3 ? new Date().getFullYear() : new Date().getFullYear() - 1;
@@ -133,64 +134,63 @@ interface ScheduleData {
   };
 }
 
+// Backend reporting-engine response shapes (domain.reporting). Lines are already
+// classified and sign-normalised (assets debit-positive; L/E/revenue credit-
+// positive; expense debit-positive) so the frontend only buckets for display.
+interface PLApiLine { account_name: string; account_type?: string; account_subtype?: string | null; amount_paise: number }
+interface PLApiData {
+  revenue: { lines: PLApiLine[]; total_paise: number };
+  operating_expenses: { lines: PLApiLine[]; total_paise: number };
+  net_profit_paise: number;
+}
+interface BSApiLine { account_name: string; account_type?: string; account_subtype?: string | null; balance_paise: number }
+interface BSApiSection { label: string; lines: BSApiLine[]; total_paise: number }
+interface BSApiData {
+  assets: BSApiSection[];
+  liabilities: BSApiSection[];
+  equity: BSApiSection[];
+  total_assets_paise: number;
+  total_liabilities_equity_paise: number;
+}
+
 async function fetchScheduleData(
-  firmId: string,
   clientId: string | null,
   fyStart: string,
   fyEnd: string
 ): Promise<ScheduleData> {
-  const sb = getSupabaseClient();
+  // P&L and Balance Sheet are computed SERVER-SIDE by the reporting engine
+  // (CLAUDE.md: zero business logic in the frontend). When clientId is null the
+  // backend returns the firm-wide ("All Clients") consolidation. We only group
+  // the returned, authoritative line amounts into Schedule III buckets.
+  const scope: Record<string, string> = { basis: "accrual" };
+  if (clientId) scope.client_id = clientId;
+  const [plRes, bsRes] = await Promise.all([
+    api.accounting.profitLoss({ ...scope, start_date: fyStart, end_date: fyEnd }) as Promise<{ success: boolean; data: PLApiData | null; error: string | null }>,
+    api.accounting.balanceSheet({ ...scope, as_of_date: fyEnd }) as Promise<{ success: boolean; data: BSApiData | null; error: string | null }>,
+  ]);
+  if (!plRes.success || !plRes.data) throw new Error(plRes.error ?? "Failed to load Profit & Loss");
+  if (!bsRes.success || !bsRes.data) throw new Error(bsRes.error ?? "Failed to load Balance Sheet");
 
-  // Fetch accounts — chart_of_accounts for the firm
-  const accQuery = sb
-    .from("accounts")
-    .select("id, account_name, account_type, account_subtype")
-    .eq("firm_id", firmId);
-  if (clientId) accQuery.eq("client_id", clientId);
-
-  const { data: accounts, error: accErr } = await accQuery;
-  if (accErr) throw new Error(accErr.message);
-
-  // Fetch all posted journal entry lines within FY date range
-  const { data: lines, error: lineErr } = await sb
-    .from("journal_entry_lines")
-    .select("account_id, debit_paise, credit_paise, journal_entries!inner(firm_id, entry_date, status)")
-    .eq("journal_entries.firm_id", firmId)
-    .eq("journal_entries.status", "posted")
-    .gte("journal_entries.entry_date", fyStart)
-    .lte("journal_entries.entry_date", fyEnd);
-  if (lineErr) throw new Error(lineErr.message);
-
-  // Aggregate net balance per account in integer paise — no floating point
-  const balMap = new Map<string, number>();
-  for (const line of (lines ?? [])) {
-    const prev = balMap.get(line.account_id) ?? 0;
-    // Debit increases Assets/Expenses; Credit increases Liabilities/Equity/Revenue
-    balMap.set(line.account_id, prev + (line.debit_paise ?? 0) - (line.credit_paise ?? 0));
-  }
-
-  // Group accounts into Schedule III buckets
   const bsBuckets = new Map<string, number>();
-  const plBuckets = new Map<string, number>();
-
-  for (const acc of (accounts ?? [])) {
-    const raw = balMap.get(acc.id) ?? 0;
-    const type = acc.account_type.toLowerCase();
-
-    if (["asset", "liability", "equity"].includes(type)) {
-      const bucket = bsBucket(acc);
-      if (!bucket) continue;
-      // Normalise: Assets positive = debit; Liabilities/Equity positive = credit
-      const signed = (type === "liability" || type === "equity") ? -raw : raw;
-      bsBuckets.set(bucket, (bsBuckets.get(bucket) ?? 0) + signed);
-    } else if (["revenue", "expense"].includes(type)) {
-      const bucket = plBucket(acc);
-      if (!bucket) continue;
-      // Revenue positive = credit balance; Expense positive = debit balance
-      const signed = type === "revenue" ? -raw : raw;
-      plBuckets.set(bucket, (plBuckets.get(bucket) ?? 0) + signed);
+  const addBs = (lines: BSApiLine[]) => {
+    for (const l of lines) {
+      const bucket = bsBucket({ id: "", account_name: l.account_name, account_type: l.account_type ?? "", account_subtype: l.account_subtype ?? null });
+      if (bucket) bsBuckets.set(bucket, (bsBuckets.get(bucket) ?? 0) + l.balance_paise);
     }
-  }
+  };
+  for (const sec of bsRes.data.assets) addBs(sec.lines);
+  for (const sec of bsRes.data.liabilities) addBs(sec.lines);
+  for (const sec of bsRes.data.equity) addBs(sec.lines);
+
+  const plBuckets = new Map<string, number>();
+  const addPl = (lines: PLApiLine[]) => {
+    for (const l of lines) {
+      const bucket = plBucket({ id: "", account_name: l.account_name, account_type: l.account_type ?? "", account_subtype: l.account_subtype ?? null });
+      if (bucket) plBuckets.set(bucket, (plBuckets.get(bucket) ?? 0) + l.amount_paise);
+    }
+  };
+  addPl(plRes.data.revenue.lines);
+  addPl(plRes.data.operating_expenses.lines);
 
   const get = (map: Map<string, number>, key: string) => map.get(key) ?? 0;
   const toLine = (map: Map<string, number>, key: string): LineItem => ({
@@ -393,10 +393,11 @@ export default function ScheduleIIIPage() {
       .then(async (fid) => {
         const { data: cls } = await sb
           .from("clients")
-          .select("id, name")
+          .select("id, client_name")
           .eq("firm_id", fid)
-          .order("name");
-        setClients((cls ?? []) as Client[]);
+          .order("client_name");
+        setClients(((cls ?? []) as { id: string; client_name: string }[])
+          .map((c) => ({ id: c.id, name: c.client_name })));
       })
       .catch(() => {});
   }, []);
@@ -404,10 +405,7 @@ export default function ScheduleIIIPage() {
   const loadData = useCallback(() => {
     setLoading(true);
     setError(null);
-    getFirmId()
-      .then((fid) =>
-        fetchScheduleData(fid, clientId === "all" ? null : clientId, fy.start, fy.end)
-      )
+    fetchScheduleData(clientId === "all" ? null : clientId, fy.start, fy.end)
       .then(setData)
       .catch((e: Error) => setError(e.message ?? "Failed to load data"))
       .finally(() => setLoading(false));
