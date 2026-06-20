@@ -148,6 +148,19 @@ export const api = {
   banking: {
     listStatements: (params?: Record<string, string>) => request(`/api/banking/statements${params ? "?" + new URLSearchParams(params) : ""}`),
     importStatement: (data: unknown) => request("/api/banking/statements/import", { method: "POST", body: JSON.stringify(data) }),
+    /** Upload a CSV/XLSX statement — parsed, normalized & deduped SERVER-SIDE (B.1). */
+    uploadStatement: async (form: FormData) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const res = await fetch(`${BASE_URL}/api/banking/statements/upload`, {
+        method: "POST",
+        // No Content-Type — the browser sets the multipart boundary.
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+      return res.json();
+    },
     listTransactions: (params?: Record<string, string>) => request(`/api/banking/transactions${params ? "?" + new URLSearchParams(params) : ""}`),
     setTransactionAccount: (txnId: string, data: unknown) => request(`/api/banking/transactions/${txnId}`, { method: "PATCH", body: JSON.stringify(data) }),
     ignoreTransaction: (txnId: string) => request(`/api/banking/transactions/${txnId}/ignore`, { method: "POST" }),
