@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Building2, BookOpen, CheckCircle, ChevronRight, ChevronLeft, KeyRound, Eye, EyeOff } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { api } from "@/lib/api";
+import { api, type ApiResp } from "@/lib/api";
 
 interface SignupStash { firmName?: string; fullName?: string }
 function readSignupStash(): SignupStash {
@@ -51,81 +51,10 @@ const INDIAN_STATES = [
   "Puducherry",
 ];
 
-// ─── CoA accounts to seed (migration 011) ─────────────────────────────────
-// Grouped by account type; account_code is the canonical identifier.
-const COA_ACCOUNTS: { account_code: string; account_name: string; account_type: string }[] = [
-  // Assets (1xxx)
-  { account_code: "1001", account_name: "Cash in Hand", account_type: "Asset" },
-  { account_code: "1002", account_name: "Petty Cash", account_type: "Asset" },
-  { account_code: "1010", account_name: "Bank Account - Current", account_type: "Asset" },
-  { account_code: "1011", account_name: "Bank Account - Savings", account_type: "Asset" },
-  { account_code: "1020", account_name: "Fixed Deposits", account_type: "Asset" },
-  { account_code: "1100", account_name: "Accounts Receivable", account_type: "Asset" },
-  { account_code: "1110", account_name: "Advance to Staff", account_type: "Asset" },
-  { account_code: "1120", account_name: "TDS Receivable", account_type: "Asset" },
-  { account_code: "1130", account_name: "GST Input Credit", account_type: "Asset" },
-  { account_code: "1140", account_name: "Prepaid Expenses", account_type: "Asset" },
-  { account_code: "1200", account_name: "Stock in Trade", account_type: "Asset" },
-  { account_code: "1300", account_name: "Land & Building", account_type: "Asset" },
-  { account_code: "1310", account_name: "Plant & Machinery", account_type: "Asset" },
-  { account_code: "1320", account_name: "Furniture & Fixtures", account_type: "Asset" },
-  { account_code: "1330", account_name: "Computers & Software", account_type: "Asset" },
-  { account_code: "1340", account_name: "Vehicles", account_type: "Asset" },
-  { account_code: "1350", account_name: "Accumulated Depreciation", account_type: "Asset" },
-  // Liabilities (2xxx)
-  { account_code: "2001", account_name: "Accounts Payable", account_type: "Liability" },
-  { account_code: "2010", account_name: "Outstanding Expenses", account_type: "Liability" },
-  { account_code: "2020", account_name: "Advance from Customers", account_type: "Liability" },
-  { account_code: "2100", account_name: "TDS Payable", account_type: "Liability" },
-  { account_code: "2110", account_name: "GST Output Tax", account_type: "Liability" },
-  { account_code: "2120", account_name: "GST TDS Payable", account_type: "Liability" },
-  { account_code: "2130", account_name: "Income Tax Payable", account_type: "Liability" },
-  { account_code: "2140", account_name: "Provident Fund Payable", account_type: "Liability" },
-  { account_code: "2150", account_name: "ESI Payable", account_type: "Liability" },
-  { account_code: "2200", account_name: "Short Term Loans", account_type: "Liability" },
-  { account_code: "2210", account_name: "Bank Overdraft", account_type: "Liability" },
-  { account_code: "2300", account_name: "Long Term Loans", account_type: "Liability" },
-  { account_code: "2310", account_name: "Deferred Tax Liability", account_type: "Liability" },
-  // Equity (3xxx)
-  { account_code: "3001", account_name: "Capital Account", account_type: "Equity" },
-  { account_code: "3010", account_name: "Partners Capital", account_type: "Equity" },
-  { account_code: "3020", account_name: "Retained Earnings", account_type: "Equity" },
-  { account_code: "3030", account_name: "Current Year Profit", account_type: "Equity" },
-  { account_code: "3040", account_name: "Drawings Account", account_type: "Equity" },
-  // Revenue (4xxx)
-  { account_code: "4001", account_name: "Professional Fees", account_type: "Revenue" },
-  { account_code: "4010", account_name: "Audit Fees", account_type: "Revenue" },
-  { account_code: "4020", account_name: "Tax Consultancy Fees", account_type: "Revenue" },
-  { account_code: "4030", account_name: "GST Consultancy Fees", account_type: "Revenue" },
-  { account_code: "4040", account_name: "ROC Filing Fees", account_type: "Revenue" },
-  { account_code: "4100", account_name: "Interest Income", account_type: "Revenue" },
-  { account_code: "4110", account_name: "Dividend Income", account_type: "Revenue" },
-  { account_code: "4200", account_name: "Other Income", account_type: "Revenue" },
-  // Expenses (5xxx)
-  { account_code: "5001", account_name: "Salaries & Wages", account_type: "Expense" },
-  { account_code: "5010", account_name: "Staff Welfare", account_type: "Expense" },
-  { account_code: "5100", account_name: "Rent", account_type: "Expense" },
-  { account_code: "5110", account_name: "Electricity", account_type: "Expense" },
-  { account_code: "5120", account_name: "Internet & Phone", account_type: "Expense" },
-  { account_code: "5130", account_name: "Office Supplies", account_type: "Expense" },
-  { account_code: "5200", account_name: "Professional Fees Paid", account_type: "Expense" },
-  { account_code: "5210", account_name: "Software Subscriptions", account_type: "Expense" },
-  { account_code: "5300", account_name: "Travel & Conveyance", account_type: "Expense" },
-  { account_code: "5310", account_name: "Marketing & Advertising", account_type: "Expense" },
-  { account_code: "5400", account_name: "Bank Charges", account_type: "Expense" },
-  { account_code: "5410", account_name: "Interest on Loans", account_type: "Expense" },
-  { account_code: "5500", account_name: "Depreciation", account_type: "Expense" },
-  { account_code: "5600", account_name: "Audit Fees Paid", account_type: "Expense" },
-  { account_code: "5900", account_name: "Miscellaneous Expenses", account_type: "Expense" },
-];
-
-const COA_GROUPS: { label: string; type: string; color: string }[] = [
-  { label: "Assets", type: "Asset", color: "text-blue-700 bg-blue-50" },
-  { label: "Liabilities", type: "Liability", color: "text-red-700 bg-red-50" },
-  { label: "Equity", type: "Equity", color: "text-purple-700 bg-purple-50" },
-  { label: "Revenue", type: "Revenue", color: "text-green-700 bg-green-50" },
-  { label: "Expenses", type: "Expense", color: "text-orange-700 bg-orange-50" },
-];
+// Phase 3.3A, Part E: the chart of accounts is intentionally NOT defined in the
+// browser anymore. The single canonical source is the backend
+// (services/coa_seed_service.STANDARD_COA), seeded via POST /api/onboarding/seed-coa.
+// Step 3 shows category descriptions only and triggers the server-side seed.
 
 // ─── Validation helpers ────────────────────────────────────────────────────
 // CGST Act Section 25 — GSTIN format: 2-digit state code + PAN (10 chars) + 1 entity digit + Z + 1 check digit
@@ -278,6 +207,9 @@ export default function OnboardingPage() {
   const [coaSeeded, setCoaSeeded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Non-blocking provisioning status for the firm's internal practice client (A2):
+  // surfaced instead of being silently swallowed.
+  const [provisionNote, setProvisionNote] = useState<string | null>(null);
 
   // Step 1 — password
   const [pw, setPw] = useState("");
@@ -449,8 +381,21 @@ export default function OnboardingPage() {
         .eq("id", firmId);
       if (updateError) throw updateError;
       // Provision the internal practice client now that a PAN may be set
-      // (idempotent + non-fatal — onboarding must not fail on this).
-      if (firmForm.pan.trim()) { await api.practice.provision().catch(() => {}); }
+      // (idempotent + non-fatal — onboarding must not fail on this). A2: surface
+      // the outcome instead of swallowing it; the backend audit-logs the result.
+      if (firmForm.pan.trim()) {
+        try {
+          const res = await api.practice.provision() as ApiResp<{ provisioned: boolean; message?: string | null }>;
+          if (!res?.success || !res.data?.provisioned) {
+            setProvisionNote(res?.data?.message || res?.error ||
+              "Your practice books could not be set up automatically. You can set them up later from the Practice section.");
+          } else {
+            setProvisionNote(null);
+          }
+        } catch {
+          setProvisionNote("Your practice books will be set up later — you can trigger it from the Practice section.");
+        }
+      }
       goNext();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save firm profile");
@@ -466,21 +411,11 @@ export default function OnboardingPage() {
     setSaving(true);
     setError(null);
     try {
-      const rows = COA_ACCOUNTS.map((acc) => ({
-        firm_id: firmId,
-        account_code: acc.account_code,
-        account_name: acc.account_name,
-        account_type: acc.account_type,
-        is_active: true,
-      }));
-      // ON CONFLICT (firm_id, account_code) DO NOTHING — duplicates are expected
-      // (the server seeds the same master CoA on firm creation).
-      const { error: insertError } = await supabase
-        .from("chart_of_accounts")
-        .insert(rows, { count: "exact" });
-      if (insertError && !insertError.message.includes("duplicate") && insertError.code !== "23505") {
-        throw insertError;
-      }
+      // CoA seeding is server-side from the single canonical source
+      // (coa_seed_service.STANDARD_COA). Idempotent — safe even though firm
+      // creation already seeds it. No accounting data is written from the browser.
+      const res = await api.account.seedCoa() as ApiResp<{ seeded: number; skipped: boolean }>;
+      if (!res?.success) throw new Error(res?.error || "Failed to set up chart of accounts");
       setCoaSeeded(true);
       await finish();
     } catch (err) {
@@ -509,6 +444,12 @@ export default function OnboardingPage() {
         {error && (
           <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
             {error}
+          </div>
+        )}
+
+        {provisionNote && (
+          <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+            {provisionNote}
           </div>
         )}
 
@@ -686,27 +627,25 @@ export default function OnboardingPage() {
               <h2 className="text-base font-semibold text-[#0F172A]">Chart of Accounts</h2>
             </div>
             <p className="text-sm text-[#64748B] mb-5">
-              We&apos;ve set up {COA_ACCOUNTS.length} standard Indian accounts for your firm. You can add, rename or delete them later from Accounting.
+              We&apos;ll set up a standard Schedule III chart of accounts for your firm — pre-mapped for GST, TDS, payroll and fixed assets. You can add, rename or delete accounts later from Accounting.
             </p>
 
-            <div className="border border-[#F1F5F9] rounded-xl overflow-hidden divide-y divide-[#F8FAFC] max-h-80 overflow-y-auto">
-              {COA_GROUPS.map((group) => {
-                const accounts = COA_ACCOUNTS.filter((a) => a.account_type === group.type);
-                return (
-                  <div key={group.type}>
-                    <div className={`px-4 py-2 flex items-center justify-between ${group.color}`}>
-                      <span className="text-xs font-semibold uppercase tracking-wide">{group.label}</span>
-                      <span className="text-xs font-medium">{accounts.length} accounts</span>
-                    </div>
-                    {accounts.map((acc) => (
-                      <div key={acc.account_code} className="flex items-center justify-between px-4 py-2 hover:bg-[#F8FAFC]">
-                        <span className="text-sm text-[#1E293B]">{acc.account_name}</span>
-                        <span className="text-xs text-[#94A3B8] font-mono">{acc.account_code}</span>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
+            {/* Categories only — the authoritative account list is seeded server-side
+                from the single canonical source (no chart of accounts is defined in
+                the browser). */}
+            <div className="border border-[#F1F5F9] rounded-xl overflow-hidden divide-y divide-[#F8FAFC]">
+              {[
+                { label: "Assets", color: "text-blue-700 bg-blue-50", desc: "Cash, bank, receivables, GST input, fixed assets" },
+                { label: "Liabilities", color: "text-red-700 bg-red-50", desc: "Payables, GST output, TDS, loans" },
+                { label: "Equity", color: "text-purple-700 bg-purple-50", desc: "Capital, drawings, retained earnings" },
+                { label: "Revenue", color: "text-green-700 bg-green-50", desc: "Professional, audit, GST & tax consultancy fees" },
+                { label: "Expenses", color: "text-orange-700 bg-orange-50", desc: "Salaries, rent, software, depreciation" },
+              ].map((group) => (
+                <div key={group.label} className="flex items-center justify-between px-4 py-3">
+                  <span className={`text-xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded ${group.color}`}>{group.label}</span>
+                  <span className="text-xs text-[#94A3B8]">{group.desc}</span>
+                </div>
+              ))}
             </div>
 
             {coaSeeded && (

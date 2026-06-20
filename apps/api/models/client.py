@@ -76,6 +76,26 @@ class ClientCreate(BaseModel):
         return v
 
 
+class PracticeIdentityUpdate(BaseModel):
+    """Partner-only maintenance of the firm's internal practice client identity
+    (Phase 3.3A, Part B). Tax identifiers are immutable on the generic ClientUpdate;
+    this model is the controlled path to set/correct them for the practice client."""
+    pan: Optional[str] = None
+    gstin: Optional[str] = None
+    state: Optional[str] = None
+    state_code: Optional[str] = None
+
+    @field_validator("pan")
+    @classmethod
+    def pan_must_be_valid(cls, v: Optional[str]) -> Optional[str]:
+        return validate_pan(v.upper()) if v else v
+
+    @field_validator("gstin")
+    @classmethod
+    def gstin_must_be_valid(cls, v: Optional[str]) -> Optional[str]:
+        return validate_gstin(v.upper()) if v else v
+
+
 class ClientUpdate(BaseModel):
     client_name: Optional[str] = None
     entity_type: Optional[EntityType] = None

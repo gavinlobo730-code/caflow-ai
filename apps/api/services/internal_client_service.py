@@ -146,11 +146,17 @@ def provision(
     pan: Optional[str],
     entity_type: str = DEFAULT_INTERNAL_ENTITY_TYPE,
     gstin: Optional[str] = None,
+    state: Optional[str] = None,
+    state_code: Optional[str] = None,
+    actor_id: Optional[str] = None,
 ) -> Optional[str]:
     """Idempotently create the firm's internal client and link
     firms.internal_client_id. Returns the internal client id, or None if it could
     not be provisioned (mock mode, or no valid PAN — clients.pan is NOT NULL +
-    regex-validated). Safe to call repeatedly (e.g. on every firm creation)."""
+    regex-validated). Safe to call repeatedly (e.g. on every firm creation).
+
+    state_code is derived (Part C) from the explicit code, then the GSTIN prefix,
+    then the state name — best-effort, never fatal."""
     if _USE_MOCK or not firm_id:
         return None
 
@@ -167,6 +173,9 @@ def provision(
         _logger.warning("Skipping internal-client provisioning for firm %s: no valid PAN", firm_id)
         return None
 
+    from core.validators import derive_state_code
+    derived_state_code = derive_state_code(state_code, state, gstin)
+
     try:
         row = db.table("clients").insert({
             "firm_id": firm_id,
@@ -175,6 +184,8 @@ def provision(
             "entity_type": entity_type if entity_type else DEFAULT_INTERNAL_ENTITY_TYPE,
             "pan": pan_norm,
             "gstin": gstin,
+            "state": state,
+            "state_code": derived_state_code,
             "is_internal": True,
             "status": "active",
         }).execute()
@@ -195,4 +206,13 @@ def provision(
     new_id = row.data[0]["id"]
     db.table("firms").update({"internal_client_id": new_id}).eq("id", firm_id).execute()
     _logger.info("Provisioned internal client %s for firm %s", new_id, firm_id)
+    try:
+        from services.audit_service import log_event
+        log_event(
+            firm_id, "client", new_id, "create", actor_id=actor_id,
+            new_data={"is_internal": True, "client_name": legal_name},
+            metadata={"source": "internal_client_provision", "state_code": derived_state_code},
+        )
+    except Exception:  # pragma: no cover - audit must never block provisioning
+        pass
     return new_id
