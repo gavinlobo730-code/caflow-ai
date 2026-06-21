@@ -323,7 +323,7 @@ def get_credit_note(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("credit_notes").select("*").eq("id", cn_id).limit(1).execute()
+        resp = db.table("credit_notes").select("*").eq("id", cn_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Credit note {cn_id} not found")
         cn = resp.data[0]

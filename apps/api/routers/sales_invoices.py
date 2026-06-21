@@ -604,6 +604,7 @@ def get_invoice(
             db.table("client_sales_invoices")
             .select("*, customers(id,name,email,gstin,phone)")
             .eq("id", invoice_id)
+            .eq("firm_id", current_user.get("firm_id"))
             .is_("deleted_at", None)
             .limit(1)
             .execute()
