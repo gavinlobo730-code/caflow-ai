@@ -427,8 +427,14 @@ export const api = {
   // Phase 4.5.1 — client-facing portal self surface (auth = the client's own
   // Supabase session, resolved server-side via get_current_portal_client).
   portalSelf: {
-    me: () => request("/api/portal/me"),
-    dashboard: () => request("/api/portal/dashboard"),
+    // All client memberships for the signed-in identity (client switcher source).
+    memberships: () => request("/api/portal/memberships"),
+    // me/dashboard select the active client explicitly via X-Portal-Client-Id when
+    // the identity belongs to more than one client (no implicit switching).
+    me: (clientId?: string) =>
+      request("/api/portal/me", clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
+    dashboard: (clientId?: string) =>
+      request("/api/portal/dashboard", clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
   },
   // Phase 11 — AI Copilot Platform
   copilotV2: {
