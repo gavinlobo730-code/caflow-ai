@@ -217,9 +217,13 @@ class ComplianceRecordService:
             "breakdown": breakdown,
         }
 
-    def get_firm_summary(self, firm_id: Optional[str] = None) -> dict:
-        """Firm-wide compliance summary."""
+    def get_firm_summary(self, firm_id: Optional[str] = None, allowed_client_ids: Optional[set] = None) -> dict:
+        """Firm-wide compliance summary. F2: when allowed_client_ids is provided
+        (a non firm-wide caller), aggregate only over those assigned clients;
+        None ⇒ firm-wide (unscoped). Default None preserves existing callers."""
         all_records = self.list_records(firm_id=firm_id)
+        if allowed_client_ids is not None:
+            all_records = [r for r in all_records if str(r.get("client_id")) in allowed_client_ids]
         today_d = date.today()
         week_end = (today_d + timedelta(days=7)).isoformat()
         today_str = today_d.isoformat()
@@ -238,6 +242,8 @@ class ComplianceRecordService:
         ])
 
         clients = client_repo.find_all(firm_id=firm_id)
+        if allowed_client_ids is not None:
+            clients = [c for c in clients if str(c.get("id")) in allowed_client_ids]
         high_risk_clients = sum(
             1 for c in clients
             if self.get_client_health_score(c["id"], firm_id=firm_id)["health_score"] < 50
