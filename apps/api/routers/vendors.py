@@ -197,7 +197,9 @@ def update_vendor(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("vendors").update(data).eq("id", vendor_id).execute()
+        # Tenant isolation (OOS-5): scope the write by firm_id. Under service-role
+        # (RLS bypassed) an unscoped by-id update could mutate another firm's row.
+        resp = db.table("vendors").update(data).eq("id", vendor_id).eq("firm_id", current_user.get("firm_id")).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
         updated = resp.data[0]
@@ -230,7 +232,8 @@ def delete_vendor(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("vendors").update({"is_active": False}).eq("id", vendor_id).execute()
+        # Tenant isolation (OOS-5): firm-scope the soft-delete write.
+        resp = db.table("vendors").update({"is_active": False}).eq("id", vendor_id).eq("firm_id", current_user.get("firm_id")).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
         log_event(
