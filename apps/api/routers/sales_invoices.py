@@ -659,7 +659,7 @@ def update_invoice(
         db = get_supabase()
 
         # Check current status
-        resp = db.table("client_sales_invoices").select("status").eq("id", invoice_id).limit(1).execute()
+        resp = db.table("client_sales_invoices").select("status").eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
         if resp.data[0]["status"] != "draft":
@@ -670,7 +670,7 @@ def update_invoice(
             # Fetch current invoice for the is_interstate flag. An edit may change
             # it (the IGST checkbox) — honour the new value, else keep the stored
             # one. The GST math (_compute_line_gst) itself is unchanged.
-            inv_resp = db.table("client_sales_invoices").select("*").eq("id", invoice_id).limit(1).execute()
+            inv_resp = db.table("client_sales_invoices").select("*").eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
             inv = inv_resp.data[0]
             is_interstate = data.get("is_interstate", inv.get("is_interstate", False))
 
@@ -727,7 +727,7 @@ def update_invoice(
             data["total_paise"]          = total_taxable + total_cgst + total_sgst + total_igst
 
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
-        upd_resp = db.table("client_sales_invoices").update(data).eq("id", invoice_id).execute()
+        upd_resp = db.table("client_sales_invoices").update(data).eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).execute()
         updated = upd_resp.data[0] if upd_resp.data else data
         log_event(
             current_user.get("firm_id", ""), "sales_invoice", invoice_id,
@@ -779,7 +779,7 @@ def issue_invoice(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("client_sales_invoices").select("*").eq("id", invoice_id).limit(1).execute()
+        resp = db.table("client_sales_invoices").select("*").eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
         inv = resp.data[0]
@@ -806,7 +806,7 @@ def issue_invoice(
             "status":           "issued",
             "issued_at":        now_iso,
             "journal_entry_id": journal_id,
-        }).eq("id", invoice_id).execute()
+        }).eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).execute()
         updated_inv = upd.data[0] if upd.data else {**inv, "status": "issued", "journal_entry_id": journal_id}
 
         log_event(
@@ -861,7 +861,7 @@ def cancel_invoice(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("client_sales_invoices").select("status").eq("id", invoice_id).limit(1).execute()
+        resp = db.table("client_sales_invoices").select("status").eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
         if resp.data[0]["status"] == "cancelled":
@@ -870,7 +870,7 @@ def cancel_invoice(
         upd = db.table("client_sales_invoices").update({
             "status":       "cancelled",
             "cancelled_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", invoice_id).execute()
+        }).eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).execute()
 
         updated = upd.data[0] if upd.data else {}
         log_event(
@@ -927,7 +927,7 @@ def delete_invoice(
         db = get_supabase()
         resp = (
             db.table("client_sales_invoices").select("*")
-            .eq("id", invoice_id).is_("deleted_at", None).limit(1).execute()
+            .eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).is_("deleted_at", None).limit(1).execute()
         )
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
@@ -940,7 +940,7 @@ def delete_invoice(
             )
 
         now_iso = datetime.now(timezone.utc).isoformat()
-        db.table("client_sales_invoices").update({"deleted_at": now_iso}).eq("id", invoice_id).execute()
+        db.table("client_sales_invoices").update({"deleted_at": now_iso}).eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).execute()
 
         log_event(
             current_user.get("firm_id", ""), "sales_invoice", invoice_id,
@@ -1040,7 +1040,7 @@ def repost_journal(
         if not journal_id:
             return api_response(False, None, "Cannot repost — journal posting failed. Retry after setup.")
 
-        db.table("client_sales_invoices").update({"journal_entry_id": journal_id}).eq("id", invoice_id).execute()
+        db.table("client_sales_invoices").update({"journal_entry_id": journal_id}).eq("id", invoice_id).eq("firm_id", firm_id).execute()
         log_event(firm_id, "sales_invoice", invoice_id, "repost_journal",
                   actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
                   new_data={"journal_entry_id": journal_id})
