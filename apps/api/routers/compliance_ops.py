@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import filter_by_client
 from core.exceptions import ValidationError, NotFoundError
 from services import compliance_obligation_service as obligations
 from domain.compliance_record_service import compliance_record_service
@@ -36,10 +37,13 @@ def list_obligations(client_id: Optional[str] = Query(None),
                      status: Optional[str] = Query(None),
                      compliance_type: Optional[str] = Query(None),
                      current_user: dict = Depends(rbac("compliance", "read"))):
-    """List compliance obligations (canonical compliance_records), with risk scores."""
+    """List compliance obligations (canonical compliance_records), with risk scores.
+    Assignment-scoped: non firm-wide roles see only obligations for their assigned
+    clients (M2/M5), mirroring routers/compliance.py."""
     rows = compliance_record_service.list_records(
         firm_id=current_user["firm_id"], client_id=client_id,
         status=status, compliance_type=compliance_type)
+    rows = filter_by_client(current_user, rows)   # M2/M5: assignment scope
     return api_response(True, {"obligations": rows, "total": len(rows)})
 
 
@@ -85,8 +89,11 @@ def compliance_dashboard(current_user: dict = Depends(rbac("compliance", "read")
 @router.get("/obligations/calendar")
 def obligations_calendar(client_id: Optional[str] = Query(None),
                          current_user: dict = Depends(rbac("compliance", "read"))):
-    """Calendar projection (upcoming / overdue / completed) over the canonical obligations."""
-    return api_response(True, obligations.calendar(current_user["firm_id"], client_id=client_id))
+    """Calendar projection (upcoming / overdue / completed) over the canonical obligations.
+    Assignment-scoped per bucket (M2/M5), mirroring routers/compliance.py."""
+    cal = obligations.calendar(current_user["firm_id"], client_id=client_id)
+    cal = {bucket: filter_by_client(current_user, rows) for bucket, rows in cal.items()}
+    return api_response(True, cal)
 
 
 @router.post("/run-escalations")

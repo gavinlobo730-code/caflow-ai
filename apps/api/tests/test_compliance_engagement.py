@@ -261,3 +261,52 @@ def test_firm_isolation():
     ob.generate_for_engagement("F1", eng, FY, actor=ACTOR)
     assert compliance_records_repo.find_all(firm_id="F2") == []
     assert ob.dashboard("F2")["summary"]["total_obligations"] == 0
+
+
+# ── Assignment isolation (M2/M5) on the read endpoints ───────────────────────
+# Mock mode is permissive by design (no assignments table), so we stub the exact
+# seam filter_by_client() uses — effective_client_ids — to simulate real scope.
+
+EXEC_A = {"firm_id": FIRM, "role": "Executive", "id": "exec-A", "auth_user_id": "exec-A"}
+PARTNER = {"firm_id": FIRM, "role": "Partner", "id": "ptr", "auth_user_id": "ptr"}
+
+
+def _seed_obl(client_id, obligation_type="GSTR3B", due="2026-06-20", status="Not Started"):
+    return compliance_records_repo.create({
+        "firm_id": FIRM, "client_id": client_id, "compliance_type": "GST",
+        "obligation_type": obligation_type, "period_start": "2025-05-01",
+        "due_date": due, "status": status})
+
+
+def _scope_exec_to_client_a(monkeypatch):
+    import core.authz as authz
+    # Partner / firm-wide → None (all); everyone else → only CL-A.
+    monkeypatch.setattr(authz, "effective_client_ids",
+                        lambda u: None if u.get("role") == "Partner" else {"CL-A"})
+
+
+def test_obligations_list_assignment_scope(monkeypatch):
+    _scope_exec_to_client_a(monkeypatch)
+    _seed_obl("CL-A", "GSTR1"); _seed_obl("CL-A", "GSTR3B"); _seed_obl("CL-B", "GSTR1")
+    from routers.compliance_ops import list_obligations
+    # Positive (sees Client A) + Negative (cannot see Client B)
+    res = list_obligations(client_id=None, status=None, compliance_type=None, current_user=EXEC_A)
+    obs = res["data"]["obligations"]
+    assert {o["client_id"] for o in obs} == {"CL-A"} and len(obs) == 2
+    # Partner still sees all firm obligations
+    resp = list_obligations(client_id=None, status=None, compliance_type=None, current_user=PARTNER)
+    assert len(resp["data"]["obligations"]) == 3
+
+
+def test_calendar_assignment_scope(monkeypatch):
+    _scope_exec_to_client_a(monkeypatch)
+    _seed_obl("CL-A", "GSTR1", "2026-06-20"); _seed_obl("CL-B", "GSTR1", "2026-06-20")
+    from routers.compliance_ops import obligations_calendar
+    res = obligations_calendar(client_id=None, current_user=EXEC_A)
+    cal = res["data"]
+    rows = cal["upcoming"] + cal["overdue"] + cal["completed"]
+    assert {o["client_id"] for o in rows} == {"CL-A"}        # calendar obeys assignment scope
+    resp = obligations_calendar(client_id=None, current_user=PARTNER)
+    calp = resp["data"]
+    rowsp = calp["upcoming"] + calp["overdue"] + calp["completed"]
+    assert {o["client_id"] for o in rowsp} == {"CL-A", "CL-B"}  # Partner sees all
