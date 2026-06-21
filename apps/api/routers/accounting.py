@@ -207,15 +207,17 @@ def reverse_journal_entry(
 @router.get("/ledger")
 def get_ledger(
     account_id: str = Query(...),
+    client_id: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
-    try:
-        lines = accounting_service.get_ledger(account_id, start_date, end_date)
-        return api_response(True, lines)
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    """Per-account general ledger from the single reporting engine — opening,
+    running and closing balances are computed server-side (firm/client scoped,
+    posted-only). The browser only renders the result."""
+    return api_response(True, _reporting_service().ledger(
+        current_user["firm_id"], client_id, account_id, start_date, end_date
+    ))
 
 
 @router.get("/trial-balance")

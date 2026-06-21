@@ -104,6 +104,7 @@ class SupabaseLedgerSource(LedgerSource):
     # reports run whether or not those migrations have been applied.
     _BASE_ACCOUNT_COLS = "id, account_code, account_name, account_type, account_subtype"
     _BASE_ENTRY_COLS = ("id, entry_date, client_id, firm_id, entry_type, "
+                        "reference_no, narration, created_at, "
                         "journal_lines(account_id, debit_paise, credit_paise)")
 
     def __init__(self, db):
@@ -215,6 +216,8 @@ class SupabaseLedgerSource(LedgerSource):
                 firm_id=r.get("firm_id", ""), entry_type=r.get("entry_type", ""),
                 # .get() yields None when the column is absent → entry treated as non-reversal.
                 lines=lines, reversal_of=r.get("reversal_of"),
+                reference_no=r.get("reference_no"), narration=r.get("narration"),
+                created_at=r.get("created_at"),
             )
         return out
 

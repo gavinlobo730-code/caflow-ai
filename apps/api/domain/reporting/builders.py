@@ -9,12 +9,75 @@ frontend and existing consumers need no change. Integer paise throughout.
 from __future__ import annotations
 
 from datetime import date
+from typing import Optional
 
-from .model import Account, ProjectedLine
+from .model import Account, JournalEntry, ProjectedLine
 
 
 def _acc(accounts: dict[str, Account], aid: str) -> Account:
     return accounts.get(aid) or Account(id=aid, code="", name=aid, type="")
+
+
+def ledger(entries_by_id: dict[str, JournalEntry], accounts: dict[str, Account],
+           account_id: str, start: Optional[str], end: Optional[str]) -> dict:
+    """Per-account general ledger with opening / running / closing balances.
+
+    Accrual, posted-only (the source already filters is_posted + deleted_at). The
+    opening balance is the cumulative debit−credit for the account STRICTLY before
+    `start`, so the running balance carries forward across periods (the previous
+    browser implementation wrongly restarted at zero each year). `entries_by_id`
+    is the full posted history for the tenant. Balances are signed integer paise
+    (debit-positive); is_debit reflects the side. Order: entry_date, then
+    created_at, then id — deterministic for same-day and backdated entries.
+    """
+    acct = accounts.get(account_id)
+    hits = [(e, ln) for e in entries_by_id.values()
+            for ln in e.lines if ln.account_id == account_id]
+    hits.sort(key=lambda el: (el[0].entry_date, el[0].created_at or "", el[0].id))
+
+    opening = 0
+    in_range: list[tuple[JournalEntry, object]] = []
+    for e, ln in hits:
+        if start and e.entry_date < start:
+            opening += ln.debit_paise - ln.credit_paise
+        elif end and e.entry_date > end:
+            continue                          # after the window — excluded from this view
+        else:
+            in_range.append((e, ln))
+
+    running = opening
+    total_debit = total_credit = 0
+    rows = []
+    for e, ln in in_range:
+        running += ln.debit_paise - ln.credit_paise
+        total_debit += ln.debit_paise
+        total_credit += ln.credit_paise
+        rows.append({
+            "entry_id": e.id,
+            "entry_date": e.entry_date,
+            "reference_no": e.reference_no,
+            "narration": e.narration,
+            "debit_paise": ln.debit_paise,
+            "credit_paise": ln.credit_paise,
+            "running_balance_paise": running,
+            "is_debit": running >= 0,
+        })
+
+    return {
+        "account_id": account_id,
+        "account_code": acct.code if acct else "",
+        "account_name": acct.name if acct else "",
+        "account_type": acct.type if acct else "",
+        "start_date": start,
+        "end_date": end,
+        "opening_balance_paise": opening,
+        "opening_is_debit": opening >= 0,
+        "closing_balance_paise": running,
+        "closing_is_debit": running >= 0,
+        "total_debit_paise": total_debit,
+        "total_credit_paise": total_credit,
+        "lines": rows,
+    }
 
 
 def trial_balance(lines: list[ProjectedLine], accounts: dict[str, Account],

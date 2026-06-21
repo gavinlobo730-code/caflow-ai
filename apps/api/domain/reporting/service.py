@@ -53,6 +53,16 @@ class ReportingService:
         snap = self.source.snapshot(firm_id, client_id, None, as_of)
         return builders.trial_balance(self._lines(snap, basis), snap.accounts, as_of, basis)
 
+    def ledger(self, firm_id: str, client_id: Optional[str], account_id: str,
+               start_date: Optional[str] = None, end_date: Optional[str] = None) -> dict:
+        """Per-account general ledger (accrual, posted-only) from the same engine
+        and scoped source as every other report. Opening balance carries forward
+        from before `start`; the snapshot's full posted history supplies it."""
+        start = start_date or _fy_start()
+        end = end_date or date.today().isoformat()
+        snap = self.source.snapshot(firm_id, client_id, start, end)
+        return builders.ledger(snap.entries_by_id, snap.accounts, account_id, start, end)
+
     def profit_loss(self, firm_id: str, client_id: Optional[str],
                     start_date: Optional[str], end_date: Optional[str],
                     basis: str = "accrual") -> dict:
