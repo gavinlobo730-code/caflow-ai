@@ -1,6 +1,6 @@
 # QuickBooks-Style Accounting — Implementation Roadmap
 
-**Status: Phase A & B largely shipped; Phase 4 (business modules) in progress · Branch:** `claude/admiring-wozniak-0ajya3`
+**Status: Phase A & B shipped; Phase 4.1 + 4.2 shipped; Phase 4.3 next · Branch:** `claude/admiring-wozniak-0ajya3`
 
 > **Scope changes (permanent, product-owner directive):**
 > **Estimates / Quotations** and **Inventory / items master** are **removed from the
@@ -66,13 +66,13 @@ expansion, not a rebuild.
 | **Cash/Accrual toggle on all reports** | ✅ Done | `domain/reporting` |
 | **Send invoice by email (PDF attached)** | ✅ Done | `email_service.send_invoice_to_customer` |
 | Customer statements | ✅ Done (Phase 4.1) | `services/customer_statement_service.py` |
-| Automated payment reminders (scheduled) | ⏭ **Phase 4.2 — next** | — |
+| Automated payment reminders (scheduled) | ✅ Done (Phase 4.2) | `services/collections_service.py`, migration `106` |
 | Cash Flow Statement | ✅ Done (AS-3) | `domain/reporting/builders.py` |
 | Online "Pay Now" link on invoice | ⏭ Phase 4.6 (optional) | — |
 | Bank "Add" (categorize → entry) | ✅ Done (Banking B.2/B.3) | `services/bank_posting_service.py` |
 | Auto-apply bank rules | ⚠️ table only | `routers/banking.py` |
 | Products/Services (items) master | ❌ **Removed permanently** | — |
-| Recurring invoices | ⏭ Phase 4.3 | — |
+| Recurring invoices | ⏭ **Phase 4.3 — next** | — |
 | Estimates / quotes → invoice | ❌ **Removed permanently** | — |
 | Live bank feed | ❌ manual import | L |
 | Receipt capture / OCR | ❌ | L |
@@ -172,10 +172,10 @@ flow produces is ever auto-posted.
 - **Banking B.0–B.4:** bank feed/import → matching & categorization → posting engine → reconciliation.
 - **Draft Journal Workflow** (Phase 3.5): Draft → Approve → Post; banking aligned to draft-first.
 - **Customer Statements** (Phase 4.1): read-only account statement + PDF + email + audit.
+- **Payment Reminders** (Phase 4.2): overdue-invoice reminders to customers (7/14/21-day cadence, capped; manual single reminder; invoice PDF attached). Collections-only — no journal/statement/GST/cash-flow impact. `invoice_deliveries.kind` + `reminder_settings` (migration `106`); works with the scheduler enabled or disabled.
 
 ### ⏭ Active roadmap — Phase 4 (business modules)
-- **Phase 4.2 — Payment Reminders** *(next)* — scheduled/triggered overdue-invoice reminders (reuses `email_service`, invoice `last_reminded_at`/`reminder_count`, aging). No auto-submit.
-- **Phase 4.3 — Recurring Invoices** — schedule-driven invoice generation (drafts for CA review).
+- **Phase 4.3 — Recurring Invoices** *(next)* — schedule-driven generation of normal sales invoices from templates (weekly/monthly/quarterly/half-yearly/yearly). Reuses the existing invoice engine, email/delivery, and aging/reminder flow; generated invoices are indistinguishable from manual ones. No duplicate accounting logic.
 - **Phase 4.4 — Compliance & Engagement Management**.
 - **Phase 4.5 — Customer Portal**.
 - **Phase 4.6 — Online Payments** *(optional)* — Razorpay/UPI "Pay Now" + draft-receipt webhook (never auto-posted).
