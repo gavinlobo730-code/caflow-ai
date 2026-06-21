@@ -165,7 +165,7 @@ def get_vendor(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("vendors").select("*").eq("id", vendor_id).limit(1).execute()
+        resp = db.table("vendors").select("*").eq("id", vendor_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
         return api_response(True, resp.data[0])

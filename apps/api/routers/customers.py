@@ -209,7 +209,7 @@ def get_customer(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("customers").select("*").eq("id", customer_id).limit(1).execute()
+        resp = db.table("customers").select("*").eq("id", customer_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
         return api_response(True, resp.data[0])

@@ -345,7 +345,7 @@ def get_purchase_bill(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("purchase_bills").select("*").eq("id", bill_id).limit(1).execute()
+        resp = db.table("purchase_bills").select("*").eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
         bill = resp.data[0]
