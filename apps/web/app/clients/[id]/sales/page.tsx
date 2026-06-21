@@ -117,6 +117,11 @@ interface SalesInvoice {
   status: InvoiceStatus;
   supply_state_code: string | null;
   is_interstate: boolean;
+  // Collections metadata (server-maintained by the overdue sweep / reminders).
+  is_overdue?: boolean;
+  days_overdue?: number;
+  reminder_count?: number;
+  last_reminded_at?: string | null;
 }
 
 interface InvoiceLine {
@@ -217,6 +222,7 @@ interface InvoiceDelivery {
   error_message: string | null;
   sent_at: string | null;
   created_at: string;
+  kind?: "invoice" | "reminder";
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -252,6 +258,22 @@ function fmtDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return isNaN(d.getTime()) ? "—" : d.toLocaleString("en-IN");
+}
+
+/**
+ * Whether to surface the "Remind" affordance for an invoice. The authoritative
+ * overdue/aging computation is server-side (collections sweep stores is_overdue);
+ * the due-date fallback here is presentation-only so the button appears even
+ * before the next sweep. The send itself is gated and re-validated by the backend
+ * (it rejects anything not actually overdue), so no money logic lives here.
+ */
+function isOverdueForUi(inv: SalesInvoice): boolean {
+  if (inv.status !== "issued" && inv.status !== "partially_paid") return false;
+  const outstanding = inv.total_paise - (inv.paid_paise ?? 0);
+  if (outstanding <= 0) return false;
+  if (inv.is_overdue) return true;
+  if (inv.due_date) return inv.due_date < new Date().toISOString().slice(0, 10);
+  return false;
 }
 
 /**
@@ -659,6 +681,7 @@ function SalesInvoices({
   const [showImport, setShowImport] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [sendModal, setSendModal] = useState<{ invoice: SalesInvoice; customerEmail: string | null } | null>(null);
+  const [remindModal, setRemindModal] = useState<{ invoice: SalesInvoice; customerEmail: string | null } | null>(null);
   const [deliveryModal, setDeliveryModal] = useState<{ invoice: SalesInvoice; deliveries: InvoiceDelivery[] } | null>(null);
 
   // Edit / detail / delete
@@ -731,7 +754,7 @@ function SalesInvoices({
       supabase
         .from("client_sales_invoices")
         .select(
-          "id, invoice_no, invoice_date, due_date, customer_id, taxable_amount_paise, total_gst_paise, total_paise, paid_paise, status, supply_state_code, is_interstate, customers(name)"
+          "id, invoice_no, invoice_date, due_date, customer_id, taxable_amount_paise, total_gst_paise, total_paise, paid_paise, status, supply_state_code, is_interstate, is_overdue, days_overdue, reminder_count, last_reminded_at, customers(name)"
         )
         .eq("client_id", clientId)
         .is("deleted_at", null)
@@ -750,7 +773,9 @@ function SalesInvoices({
       { id: string; invoice_no: string; invoice_date: string; due_date: string | null;
         customer_id: string; taxable_amount_paise: number; total_gst_paise: number;
         total_paise: number; paid_paise: number; status: string; supply_state_code: string | null;
-        is_interstate: boolean; customers: { name: string } | null }
+        is_interstate: boolean; is_overdue: boolean | null; days_overdue: number | null;
+        reminder_count: number | null; last_reminded_at: string | null;
+        customers: { name: string } | null }
     >).map((r) => ({
       id: r.id,
       invoice_no: r.invoice_no,
@@ -765,6 +790,10 @@ function SalesInvoices({
       status: r.status as InvoiceStatus,
       supply_state_code: r.supply_state_code,
       is_interstate: r.is_interstate,
+      is_overdue: r.is_overdue ?? false,
+      days_overdue: r.days_overdue ?? 0,
+      reminder_count: r.reminder_count ?? 0,
+      last_reminded_at: r.last_reminded_at,
     }));
 
     setInvoices(mapped);
@@ -869,6 +898,24 @@ function SalesInvoices({
     setSendModal({ invoice: inv, customerEmail: cust?.email ?? null });
   }
 
+  function openRemind(inv: SalesInvoice) {
+    const cust = customers.find((c) => c.id === inv.customer_id);
+    setRemindModal({ invoice: inv, customerEmail: cust?.email ?? null });
+  }
+
+  // Manual overdue-payment reminder. Collections-only: the backend emails the
+  // customer (invoice PDF attached) and records the send; it posts no journal
+  // and re-validates that the invoice is actually overdue. Throws on failure so
+  // the modal surfaces the error; reloads to refresh reminder_count on success.
+  async function remindInvoice(inv: SalesInvoice) {
+    const token = await getAuthToken();
+    const result = await apiCall(`/api/sales-invoices/${inv.id}/remind`, "POST", undefined, token);
+    if (!result.success) throw new Error(result.error ?? "Failed to send reminder");
+    showToast(`Payment reminder sent for ${inv.invoice_no}`, "success");
+    setRemindModal(null);
+    load();
+  }
+
   async function loadAndShowDeliveries(inv: SalesInvoice) {
     try {
       const token = await getAuthToken();
@@ -937,6 +984,15 @@ function SalesInvoices({
           defaultEmail={sendModal.customerEmail}
           onSend={(email) => sendInvoice(sendModal.invoice, email, false)}
           onClose={() => setSendModal(null)}
+        />
+      )}
+
+      {remindModal && (
+        <RemindInvoiceModal
+          invoice={remindModal.invoice}
+          customerEmail={remindModal.customerEmail}
+          onConfirm={() => remindInvoice(remindModal.invoice)}
+          onClose={() => setRemindModal(null)}
         />
       )}
 
@@ -1145,7 +1201,10 @@ function SalesInvoices({
                     <td className="px-3 py-2.5 text-right font-mono text-[#334155]">{fmt(inv.taxable_paise)}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-[#334155]">{fmt(inv.gst_paise)}</td>
                     <td className="px-3 py-2.5 text-right font-mono font-semibold text-[#0F172A]">{fmt(inv.total_paise)}</td>
-                    <td className="px-3 py-2.5 text-[#64748B] whitespace-nowrap">{inv.due_date ?? "—"}</td>
+                    <td className={`px-3 py-2.5 whitespace-nowrap ${isOverdueForUi(inv) ? "text-red-600 font-medium" : "text-[#64748B]"}`}>
+                      {inv.due_date ?? "—"}
+                      {isOverdueForUi(inv) && inv.days_overdue ? <span className="ml-1 text-[10px]">({inv.days_overdue}d)</span> : null}
+                    </td>
                     <td className="px-3 py-2.5">
                       <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[inv.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
                         {inv.status.replace("_", " ")}
@@ -1192,11 +1251,22 @@ function SalesInvoices({
                             <Send size={11} /> Send
                           </button>
                         )}
+                        {isOverdueForUi(inv) && (
+                          <button
+                            onClick={() => openRemind(inv)}
+                            className="text-xs text-amber-600 hover:underline flex items-center gap-1"
+                            title={inv.last_reminded_at
+                              ? `Last reminded ${fmtDateTime(inv.last_reminded_at)} · ${inv.reminder_count ?? 0} sent`
+                              : "Send an overdue-payment reminder"}
+                          >
+                            <AlertTriangle size={11} /> Remind{inv.reminder_count ? ` (${inv.reminder_count})` : ""}
+                          </button>
+                        )}
                         {inv.status !== "draft" && inv.status !== "cancelled" && (
                           <button
                             onClick={() => loadAndShowDeliveries(inv)}
                             className="text-[#CBD5E1] hover:text-[#64748B]"
-                            title="Delivery history"
+                            title="Delivery & reminder history"
                           >
                             <Clock size={11} />
                           </button>
@@ -1632,6 +1702,100 @@ function SendInvoiceModal({
   );
 }
 
+// ── Payment Reminder Modal (Phase 4.2) ─────────────────────────────────────
+
+function RemindInvoiceModal({
+  invoice,
+  customerEmail,
+  onConfirm,
+  onClose,
+}: {
+  invoice: SalesInvoice;
+  customerEmail: string | null;
+  onConfirm: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const outstanding = invoice.total_paise - (invoice.paid_paise ?? 0);
+
+  async function handleConfirm() {
+    setSending(true);
+    setError(null);
+    try {
+      await onConfirm();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send reminder");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 w-full max-w-md shadow-xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-[#0F172A]">Send Payment Reminder</h3>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155]"><X size={14} /></button>
+        </div>
+        <div className="space-y-3 text-xs">
+          <div className="rounded-lg bg-[#F8FAFC] border border-[#F1F5F9] p-3 space-y-1">
+            <div className="flex justify-between">
+              <span className="text-[#64748B]">Invoice</span>
+              <span className="font-mono font-medium text-[#1E293B]">{invoice.invoice_no}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[#64748B]">Outstanding</span>
+              <span className="font-mono font-semibold text-[#0F172A]">{fmt(outstanding)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[#64748B]">Due date</span>
+              <span className="text-red-600 font-medium">
+                {invoice.due_date ?? "—"}{invoice.days_overdue ? ` (${invoice.days_overdue}d overdue)` : ""}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[#64748B]">Reminders sent</span>
+              <span className="text-[#334155]">{invoice.reminder_count ?? 0}</span>
+            </div>
+          </div>
+          {customerEmail ? (
+            <p className="text-[#64748B]">
+              A reminder email — with the original invoice PDF attached — will be sent to{" "}
+              <span className="font-medium text-[#334155]">{customerEmail}</span>.
+            </p>
+          ) : (
+            <p className="text-amber-600">
+              No email on the customer record. Add one to the customer before sending a reminder.
+            </p>
+          )}
+          <p className="text-[10px] text-[#94A3B8]">
+            Reminders are a collections communication only — they do not change any accounting entry.
+          </p>
+          {error && <p className="text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+        </div>
+        <div className="flex gap-3 justify-end mt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={sending || !customerEmail}
+            className="text-xs px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 flex items-center gap-1.5"
+          >
+            {sending ? "Sending…" : <><AlertTriangle size={11} /> Send Reminder</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Delivery History Modal ─────────────────────────────────────────────────
 
 const DELIVERY_STATUS_LABEL: Record<string, string> = {
@@ -1674,7 +1838,14 @@ function DeliveryHistoryModal({
             {deliveries.map((d) => (
               <div key={d.id} className="border border-[#F1F5F9] rounded-lg p-3 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-[#334155] font-medium">{d.sent_to}</span>
+                  <span className="text-[#334155] font-medium flex items-center gap-1.5">
+                    {d.sent_to}
+                    {d.kind === "reminder" && (
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700">
+                        Reminder
+                      </span>
+                    )}
+                  </span>
                   <span
                     className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
                       DELIVERY_STATUS_COLOR[d.status] ?? "bg-[#F1F5F9] text-[#64748B]"

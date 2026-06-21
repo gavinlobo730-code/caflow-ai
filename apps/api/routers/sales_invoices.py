@@ -1282,3 +1282,48 @@ def list_invoice_deliveries(
     except Exception as e:
         _logger.error("list_invoice_deliveries %s: %s", invoice_id, e)
         return api_response(False, None, "Unable to fetch delivery history. Please try again.")
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.2 — Payment Reminders (collections only — posts no journal, changes
+# no accounting figure; reminders reuse invoice_deliveries with kind='reminder').
+# ---------------------------------------------------------------------------
+
+@router.post("/{invoice_id}/remind")
+def remind_invoice(
+    invoice_id: str,
+    current_user: dict = Depends(rbac("invoice", "write")),
+):
+    """Manually send an overdue-payment reminder (with the invoice PDF) to the
+    customer. Allowed for any overdue invoice; bypasses the automatic cadence but
+    never sends before the invoice is due. Records the send in invoice_deliveries."""
+    if _USE_MOCK:
+        return api_response(True, {"sent": True, "to": "customer@example.com", "reminder_number": 1})
+    from services import collections_service
+    try:
+        result = collections_service.send_invoice_reminder(
+            current_user.get("firm_id", ""), invoice_id,
+            actor_id=current_user.get("auth_user_id"))
+        return api_response(True, result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("remind_invoice %s: %s", invoice_id, e)
+        return api_response(False, None, "Unable to send reminder. Please try again.")
+
+
+@router.get("/{invoice_id}/reminders")
+def list_invoice_reminders(
+    invoice_id: str,
+    current_user: dict = Depends(rbac("invoice", "read")),
+):
+    """List all reminder sends for an invoice, newest first (kind='reminder')."""
+    if _USE_MOCK:
+        return api_response(True, [])
+    from services import collections_service
+    try:
+        rows = collections_service.invoice_reminder_history(current_user.get("firm_id", ""), invoice_id)
+        return api_response(True, rows)
+    except Exception as e:
+        _logger.error("list_invoice_reminders %s: %s", invoice_id, e)
+        return api_response(False, None, "Unable to fetch reminder history. Please try again.")

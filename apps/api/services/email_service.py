@@ -208,6 +208,57 @@ def send_invoice_to_customer(
     return _send_with_attachment(to, subject, html, pdf_bytes, pdf_filename)
 
 
+def send_payment_reminder_to_customer(
+    to: str,
+    customer_name: str,
+    firm_name: str,
+    invoice_no: str,
+    invoice_date: str,
+    due_date: Optional[str],
+    outstanding_paise: int,
+    reminder_number: int,
+    pdf_bytes: Optional[bytes] = None,
+    pdf_filename: Optional[str] = None,
+) -> tuple[bool, Optional[str]]:
+    """
+    Customer-facing overdue payment reminder (Phase 4.2). Tone escalates with the
+    reminder number (1 = gentle, 2 = firm, 3+ = final). The original invoice PDF is
+    attached when supplied. Returns (success, provider_message_id).
+
+    This is a COLLECTIONS communication only — it posts no journal and changes no
+    accounting figure.
+    """
+    amount_str = _fmt_rupees(max(outstanding_paise, 0))
+    if reminder_number <= 1:
+        subject = f"Payment reminder: Invoice {invoice_no} from {firm_name}"
+        opener = (f"This is a friendly reminder that Invoice <strong>{invoice_no}</strong> "
+                  f"is now past its due date.")
+    elif reminder_number == 2:
+        subject = f"Second reminder: Invoice {invoice_no} is overdue"
+        opener = (f"We notice Invoice <strong>{invoice_no}</strong> remains unpaid. "
+                  f"Please arrange payment at the earliest.")
+    else:
+        subject = f"Final reminder: Invoice {invoice_no} overdue"
+        opener = (f"This is a final reminder that Invoice <strong>{invoice_no}</strong> "
+                  f"is significantly overdue. Please clear the outstanding amount promptly.")
+    html = f"""
+    <p>Dear {customer_name},</p>
+    <p>{opener}</p>
+    <table cellpadding="8">
+      <tr><td><strong>Invoice No</strong></td><td>{invoice_no}</td></tr>
+      <tr><td><strong>Invoice Date</strong></td><td>{invoice_date}</td></tr>
+      <tr><td><strong>Due Date</strong></td><td>{due_date or 'On receipt'}</td></tr>
+      <tr><td><strong>Amount Outstanding</strong></td><td>{amount_str}</td></tr>
+    </table>
+    <p>The original invoice is attached for your reference. If payment has already
+    been made, please disregard this reminder.</p>
+    <p>Regards,<br/><strong>{firm_name}</strong></p>
+    """
+    if pdf_bytes and pdf_filename:
+        return _send_with_attachment(to, subject, html, pdf_bytes, pdf_filename)
+    return (_send(to, subject, html), None)
+
+
 def send_statement_to_customer(
     to: str,
     customer_name: str,
