@@ -1,6 +1,6 @@
 # QuickBooks-Style Accounting — Implementation Roadmap
 
-**Status: Phase A & B shipped; Phase 4.1–4.4 shipped; Phase 4.5 next · Branch:** `claude/admiring-wozniak-0ajya3`
+**Status: Phase A & B shipped; Phase 4.1–4.4 + 4.5.1 shipped; Phase 4.5.2 next · Branch:** `claude/admiring-wozniak-0ajya3`
 
 > **Scope changes (permanent, product-owner directive):**
 > **Estimates / Quotations** and **Inventory / items master** are **removed from the
@@ -175,9 +175,10 @@ flow produces is ever auto-posted.
 - **Payment Reminders** (Phase 4.2): overdue-invoice reminders to customers (7/14/21-day cadence, capped; manual single reminder; invoice PDF attached). Collections-only — no journal/statement/GST/cash-flow impact. `invoice_deliveries.kind` + `reminder_settings` (migration `106`); works with the scheduler enabled or disabled.
 - **Recurring Invoices** (Phase 4.3): per-customer templates generate **draft** sales invoices via the existing invoice engine (weekly/monthly/quarterly/half-yearly/yearly; month-end clamped). Draft-only — never auto-issue/post/email; idempotent (one invoice per template/occurrence); daily scheduler job + manual run. `recurring_invoice_templates`/`_template_lines`/`_runs` + `client_sales_invoices.recurring_template_id`/`recurring_occurrence` (migration `107`). Separate from `billing_schedules`.
 - **Compliance & Engagement Management** (Phase 4.4): operational layer over the canonical `compliance_records` (obligations) + extended `fee_engagements` (lifecycle Draft→…→Closed + preparer/reviewer/partner). Deterministic + idempotent obligation generation from engagements (reuses `compliance_engine` due dates), lifecycle workflow (+Completed), internal-only 7/3/1/overdue escalations (daily job + manual), Practice→Compliance dashboard + calendar projection, full audit+timeline. No filing/portal/OCR; touches no accounting/GST/banking. Migration `108` (additive: extend two tables + idempotency index). `compliance_calendar` is a projection.
+- **Customer Portal — Foundation** (Phase 4.5.1): multi-contact + multi-client portal access. `client_portal_users` (invite→activate→deactivate lifecycle) + additive sibling RLS, backward compatible with the legacy `clients.portal_user_id` (migration `109`). `get_current_portal_client()` reuses Supabase auth (no parallel system), with explicit/deterministic active-client selection (`X-Portal-Client-Id`; no implicit switching). CA invite endpoints + client `/me`/`/memberships`/dashboard **shell** (no data yet). Strict client/firm isolation; every CA mutation audited.
 
 ### ⏭ Active roadmap — Phase 4 (business modules)
-- **Phase 4.5 — Customer Portal** *(next)*.
+- **Phase 4.5.2 — Customer Portal Data Surfaces** *(next)* — read-only, client-safe views of invoices, statements, payment reminders, and compliance status (reuse existing engines; hybrid RLS-direct + client-authenticated backend endpoints; never expose internal fields).
 - **Phase 4.6 — Online Payments** *(optional)* — Razorpay/UPI "Pay Now" + draft-receipt webhook (never auto-posted).
 
 ### ❌ Permanently removed (do not build / scaffold / depend on)
