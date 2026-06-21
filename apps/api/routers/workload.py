@@ -176,8 +176,12 @@ def get_user_workload(user_id: str, current_user: dict = Depends(rbac("workload"
     today = date.today().isoformat()
     week_end = (date.today() + timedelta(days=7)).isoformat()
 
-    user_result = db.table("users").select("id, full_name, email, role").eq("id", user_id).maybe_single().execute()
+    # H1 fix: scope the user lookup to the caller's firm so a cross-firm user_id
+    # cannot disclose another firm's user PII. 404 (not 403) — existence hidden.
+    user_result = db.table("users").select("id, full_name, email, role").eq("id", user_id).eq("firm_id", firm_id).maybe_single().execute()
     user = user_result.data
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
     tasks_result = db.table("tasks").select("*").eq("firm_id", firm_id).or_(f"assigned_to.eq.{user_id},assignee_id.eq.{user_id}").execute()
     tasks = tasks_result.data or []

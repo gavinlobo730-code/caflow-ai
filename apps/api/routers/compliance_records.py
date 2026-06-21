@@ -4,6 +4,7 @@ Compliance Records router.
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from core.permissions import rbac
+from core.authz import filter_by_client, assert_client_access  # H2: assignment-scope (same engine as compliance_ops)
 from typing import Optional, Any
 from models.common import api_response
 from domain.compliance_record_service import compliance_record_service
@@ -44,6 +45,9 @@ def list_compliance_records(
         status=status,
         compliance_type=compliance_type,
     )
+    # H2 fix: drop records for clients this caller is not assigned to (firm-wide
+    # roles are unaffected; mock/dev is permissive). Mirrors compliance_ops.py.
+    records = filter_by_client(current_user, records)
     return api_response(True, records)
 
 
@@ -78,6 +82,8 @@ def get_client_health(client_id: str, current_user: dict = Depends(rbac("complia
 def get_compliance_record(record_id: str, current_user: dict = Depends(rbac("compliance_record", "read"))):
     try:
         record = compliance_record_service.get_record(record_id, firm_id=current_user.get("firm_id"))
+        # H2 fix: 404 (existence hidden) if the caller is not assigned to this record's client.
+        assert_client_access(current_user, record.get("client_id"))
         return api_response(True, record)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))

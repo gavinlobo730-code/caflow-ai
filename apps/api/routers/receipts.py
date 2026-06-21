@@ -23,6 +23,26 @@ _logger = logging.getLogger("caflow.receipts")
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])
 
 
+def _adjust_invoice_paid(db, inv_id: str, delta_paise: int) -> None:
+    """Apply a signed delta to an invoice's paid_paise and recompute status.
+    Integer paise; paid clamped at >= 0. Used to REVERSE then RE-APPLY a receipt's
+    allocations on re-allocation so paid_paise is recomputed from scratch and never
+    inflated (H3)."""
+    if not inv_id or delta_paise == 0:
+        return
+    inv_resp = (db.table("client_sales_invoices")
+                .select("total_paise,paid_paise").eq("id", inv_id).limit(1).execute())
+    if not inv_resp.data:
+        return
+    inv = inv_resp.data[0]
+    total = int(inv.get("total_paise", 0) or 0)
+    new_paid = int(inv.get("paid_paise", 0) or 0) + delta_paise
+    if new_paid < 0:
+        new_paid = 0
+    status = "paid" if (total > 0 and new_paid >= total) else ("partially_paid" if new_paid > 0 else "issued")
+    db.table("client_sales_invoices").update({"paid_paise": new_paid, "status": status}).eq("id", inv_id).execute()
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -168,7 +188,14 @@ def update_allocations(
         if total_allocated > amount_paise:
             raise HTTPException(status_code=422, detail="Allocated amount exceeds receipt amount")
 
-        # Delete existing allocations and reinsert
+        # H3 fix: reverse this receipt's PRIOR allocations before re-applying, so
+        # invoice.paid_paise is recomputed from scratch and never inflated by
+        # repeated re-allocation. (Previously the old allocation rows were deleted
+        # but their amounts were never subtracted from paid_paise.)
+        prior = (db.table("receipt_allocations").select("sales_invoice_id, allocated_paise")
+                 .eq("receipt_id", receipt_id).execute().data) or []
+        for old in prior:
+            _adjust_invoice_paid(db, old.get("sales_invoice_id"), -int(old.get("allocated_paise", 0) or 0))
         db.table("receipt_allocations").delete().eq("receipt_id", receipt_id).execute()
 
         alloc_payloads = []
@@ -182,22 +209,7 @@ def update_allocations(
                 "sales_invoice_id": inv_id,
                 "allocated_paise":  alloc_amt,
             })
-            # Update invoice paid_paise
-            inv_resp = (
-                db.table("client_sales_invoices")
-                .select("total_paise,paid_paise")
-                .eq("id", inv_id)
-                .limit(1)
-                .execute()
-            )
-            if inv_resp.data:
-                inv      = inv_resp.data[0]
-                new_paid = int(inv.get("paid_paise", 0)) + alloc_amt
-                new_status = "paid" if new_paid >= int(inv.get("total_paise", 0)) else "partially_paid"
-                db.table("client_sales_invoices").update({
-                    "paid_paise": new_paid,
-                    "status":     new_status,
-                }).eq("id", inv_id).execute()
+            _adjust_invoice_paid(db, inv_id, alloc_amt)
 
         if alloc_payloads:
             db.table("receipt_allocations").insert(alloc_payloads).execute()
