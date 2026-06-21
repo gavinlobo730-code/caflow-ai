@@ -209,7 +209,7 @@ def get_customer(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("customers").select("*").eq("id", customer_id).limit(1).execute()
+        resp = db.table("customers").select("*").eq("id", customer_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
         return api_response(True, resp.data[0])
@@ -240,7 +240,9 @@ def update_customer(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("customers").update(data).eq("id", customer_id).execute()
+        # Tenant isolation (OOS-5): scope the write by firm_id. Under service-role
+        # (RLS bypassed) an unscoped by-id update could mutate another firm's row.
+        resp = db.table("customers").update(data).eq("id", customer_id).eq("firm_id", current_user.get("firm_id")).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
         updated = resp.data[0]
@@ -273,7 +275,8 @@ def delete_customer(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("customers").update({"is_active": False}).eq("id", customer_id).execute()
+        # Tenant isolation (OOS-5): firm-scope the soft-delete write.
+        resp = db.table("customers").update({"is_active": False}).eq("id", customer_id).eq("firm_id", current_user.get("firm_id")).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
         log_event(

@@ -211,6 +211,14 @@ def create_purchase_payment(
 
     try:
         db = _get_db()
+        # OOS-1 fix: a linked bill must belong to THIS payment's firm+client, validated
+        # before any payment/journal is created (mirrors the receipt-allocation guard).
+        if purchase_bill_id:
+            _bill = (db.table("purchase_bills").select("id")
+                     .eq("id", purchase_bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                     .limit(1).execute().data) or []
+            if not _bill:
+                raise HTTPException(status_code=422, detail="Purchase bill is not part of this client's books.")
         fy = _current_fy()
         seq = _next_payment_seq(db, firm_id, fy)
         payment_no = f"VPMT-{fy}-{seq:04d}"
@@ -248,7 +256,7 @@ def create_purchase_payment(
 
         # Update purchase bill status if linked
         if purchase_bill_id:
-            _update_bill_payment_status(db, purchase_bill_id, amount_paise)
+            _update_bill_payment_status(db, firm_id, client_id, purchase_bill_id, amount_paise)
 
         log_event(
             firm_id, "purchase_payment", payment["id"], "create",
@@ -283,24 +291,26 @@ def create_purchase_payment(
         return api_response(False, None, "Unable to complete payment operation. Please try again.")
 
 
-def _update_bill_payment_status(db, bill_id: str, paid_paise: int) -> None:
-    """Update purchase_bill status based on total payments recorded."""
+def _update_bill_payment_status(db, firm_id: str, client_id: str, bill_id: str, paid_paise: int) -> None:
+    """Update purchase_bill status based on total payments recorded.
+    OOS-1 fix: the bill lookup AND status update are scoped to (firm_id, client_id)
+    so a vendor payment can never read or mutate another firm's/client's bill."""
     try:
-        bill_resp = (
+        rows = (
             db.table("purchase_bills")
             .select("net_payable_paise, status")
-            .eq("id", bill_id)
-            .maybe_single()
+            .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
+            .limit(1)
             .execute()
-        )
-        if not bill_resp.data:
+        ).data or []
+        bill = rows[0] if rows else None
+        if not bill:
             return
-        bill = bill_resp.data
 
         payments_resp = (
             db.table("purchase_payments")
             .select("amount_paise")
-            .eq("purchase_bill_id", bill_id)
+            .eq("purchase_bill_id", bill_id).eq("firm_id", firm_id)
             .execute()
         )
         total_paid = sum(int(p["amount_paise"]) for p in (payments_resp.data or []))
@@ -314,6 +324,7 @@ def _update_bill_payment_status(db, bill_id: str, paid_paise: int) -> None:
         else:
             return
 
-        db.table("purchase_bills").update({"status": new_status, "updated_at": _now_iso()}).eq("id", bill_id).execute()
+        db.table("purchase_bills").update({"status": new_status, "updated_at": _now_iso()}) \
+            .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
     except Exception as e:
         _logger.warning("_update_bill_payment_status error: %s", e)
