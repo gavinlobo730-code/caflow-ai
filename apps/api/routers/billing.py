@@ -128,6 +128,56 @@ def send_reminders(current_user: dict = Depends(rbac("billing", "write"))):
     return api_response(True, collections_service.send_overdue_reminders(current_user["firm_id"]))
 
 
+# ── Phase 4.2 — Customer payment reminders (collections only) ────────────────
+# Emails the CUSTOMER an overdue-payment reminder (with the invoice PDF) and
+# records it in invoice_deliveries (kind='reminder'). Purely informational:
+# NO journal, NO statement, NO GST/cash-flow impact. Works whether the
+# scheduler is enabled or disabled (this manual run is always available).
+
+class ReminderSettingsIn(BaseModel):
+    enabled: Optional[bool] = None
+    interval_days: Optional[int] = None
+    max_reminders: Optional[int] = None
+    attach_pdf: Optional[bool] = None
+
+    @field_validator("interval_days")
+    @classmethod
+    def _interval(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v < 1:
+            raise ValueError("interval_days must be at least 1")
+        return v
+
+    @field_validator("max_reminders")
+    @classmethod
+    def _maxr(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v < 0:
+            raise ValueError("max_reminders must be non-negative")
+        return v
+
+
+@router.post("/collections/run-customer-reminders")
+def run_customer_reminders(client_id: Optional[str] = Query(None),
+                           current_user: dict = Depends(rbac("billing", "write"))):
+    """Run the automatic reminder cadence (7/14/21 days, capped) for the firm's
+    customers. client_id optional → restrict to one client. Manual trigger of the
+    same job the scheduler runs daily; idempotent via the anti-spam window."""
+    return api_response(True, collections_service.run_due_reminders(current_user["firm_id"], client_id))
+
+
+@router.get("/collections/reminder-settings")
+def get_reminder_settings(current_user: dict = Depends(rbac("billing", "read"))):
+    """Per-firm reminder policy (cadence / cap / attach-PDF). Returns defaults if unset."""
+    return api_response(True, collections_service.reminder_settings(current_user["firm_id"]))
+
+
+@router.put("/collections/reminder-settings")
+def put_reminder_settings(body: ReminderSettingsIn,
+                          current_user: dict = Depends(rbac("billing", "write"))):
+    """Update the per-firm reminder policy."""
+    return api_response(True, collections_service.update_reminder_settings(
+        current_user["firm_id"], body.model_dump(exclude_none=True)))
+
+
 # ── Batch 5: billable / cost-rate capture + unbilled-work visibility (Partner-only) ─
 
 class StaffCostRateIn(BaseModel):

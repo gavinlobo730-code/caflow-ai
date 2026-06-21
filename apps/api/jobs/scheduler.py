@@ -170,6 +170,24 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         else:
             firm_result["collections"] = {"skipped": "already ran today"}
 
+        # 5. Customer payment reminders (Phase 4.2) — emails the firm's CUSTOMERS
+        #    an overdue-payment reminder on the 7/14/21-day cadence (capped).
+        #    Collections-only: posts no journal and touches no statement/GST/cash
+        #    flow. Cadence + anti-spam gated; also runnable manually via the API
+        #    so it works whether or not the scheduler is enabled.
+        if force or not _already_ran_today("customer_reminders", fid):
+            try:
+                from services.collections_service import run_due_reminders
+                outcome = run_due_reminders(fid)
+                firm_result["customer_reminders"] = outcome
+                _log_run("customer_reminders", fid, "success", outcome)
+            except Exception as e:
+                logger.error(f"Customer reminders job failed for firm {fid}: {e}", exc_info=True)
+                firm_result["customer_reminders"] = {"error": str(e)}
+                _log_run("customer_reminders", fid, "failed", {"error": str(e)})
+        else:
+            firm_result["customer_reminders"] = {"skipped": "already ran today"}
+
         results["firms"][fid] = firm_result
 
     logger.info(f"Daily scheduler run completed for {len(firm_ids)} firm(s)")

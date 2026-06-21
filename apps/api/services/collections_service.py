@@ -228,3 +228,209 @@ def send_overdue_reminders(firm_id: str, today: Optional[date] = None) -> dict:
             pass
         sent += 1
     return {"reminders_sent": sent}
+
+
+# ── Phase 4.2 — Customer-facing payment reminders (collections only) ──────────
+# These send the CUSTOMER an overdue-payment reminder email (with the invoice PDF)
+# and record the send in invoice_deliveries (kind='reminder'). They are purely
+# informational: NO journal, NO statement, NO GST/cash-flow impact. Distinct from
+# send_overdue_reminders() above, which is the practice's internal fee-collections
+# sweep (timeline-only, Partner dashboard).
+
+REMINDER_DEFAULTS = {"enabled": True, "interval_days": 7, "max_reminders": 3, "attach_pdf": True}
+
+
+def reminder_settings(firm_id: str, db=None) -> dict:
+    """Per-firm reminder policy (cadence / cap / pdf). Falls back to defaults."""
+    if _USE_MOCK:
+        return dict(REMINDER_DEFAULTS)
+    db = db or _db()
+    try:
+        rows = db.table("reminder_settings").select("*").eq("firm_id", firm_id).limit(1).execute().data or []
+        if rows:
+            r = rows[0]
+            return {"enabled": bool(r.get("enabled", True)),
+                    "interval_days": int(r.get("interval_days") or 7),
+                    "max_reminders": int(r.get("max_reminders") or 3),
+                    "attach_pdf": bool(r.get("attach_pdf", True))}
+    except Exception:  # pragma: no cover - settings are best-effort
+        pass
+    return dict(REMINDER_DEFAULTS)
+
+
+def update_reminder_settings(firm_id: str, fields: dict, db=None) -> dict:
+    db = db or _db()
+    payload = {k: v for k, v in fields.items()
+               if k in ("enabled", "interval_days", "max_reminders", "attach_pdf") and v is not None}
+    payload["firm_id"] = firm_id
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    db.table("reminder_settings").upsert(payload, on_conflict="firm_id").execute()
+    return reminder_settings(firm_id, db=db)
+
+
+def reminder_due_number(days_overdue: int, reminder_count: int,
+                        interval_days: int = 7, max_reminders: int = 3) -> Optional[int]:
+    """Which AUTOMATIC reminder is due now (1/2/3 at 7/14/21 days), or None.
+    Pure: never before `interval_days` overdue; stops after `max_reminders`."""
+    if days_overdue < interval_days:
+        return None
+    due = min(max_reminders, days_overdue // interval_days)
+    if reminder_count >= due or reminder_count >= max_reminders:
+        return None
+    return reminder_count + 1
+
+
+def _customer_for(db, firm_id: str, customer_id: Optional[str]) -> dict:
+    if not customer_id:
+        return {}
+    try:
+        rows = (db.table("customers").select("id,name,email")
+                .eq("id", customer_id).eq("firm_id", firm_id).limit(1).execute().data or [])
+        return rows[0] if rows else {}
+    except Exception:  # pragma: no cover
+        return {}
+
+
+def _dispatch_invoice_reminder(db, firm_id: str, inv: dict, customer: dict,
+                               reminder_number: int, actor_id: Optional[str] = None,
+                               attach_pdf: bool = True, manual: bool = False) -> bool:
+    """Send ONE customer reminder, record the delivery, and on success advance
+    last_reminded_at / reminder_count. Returns True on send success."""
+    from services.email_service import send_payment_reminder_to_customer
+    from services.invoice_pdf_service import _load_firm, get_sales_invoice_pdf
+    from services.timeline_service import timeline_service
+
+    to_email = (customer or {}).get("email")
+    if not to_email:
+        return False
+    m = assess_invoice(inv)
+    invoice_id = inv["id"]
+
+    pdf_bytes = pdf_name = None
+    if attach_pdf:
+        try:
+            pdf_bytes, pdf_name = get_sales_invoice_pdf(invoice_id, firm_id)
+        except Exception as e:  # best-effort — still send the reminder text
+            _logger.warning("Reminder PDF generation failed for %s: %s", invoice_id, e)
+
+    delivery_id = None
+    try:
+        d = (db.table("invoice_deliveries").insert({
+            "firm_id": firm_id, "client_id": inv.get("client_id"), "invoice_id": invoice_id,
+            "kind": "reminder", "sent_to": to_email, "sent_by_id": actor_id, "status": "sending",
+        }).execute().data or [{}])[0]
+        delivery_id = d.get("id")
+    except Exception:  # pragma: no cover
+        pass
+
+    firm_name = (_load_firm(firm_id) or {}).get("name") or "Your Chartered Accountant"
+    success, provider = send_payment_reminder_to_customer(
+        to=to_email, customer_name=(customer or {}).get("name") or "Customer",
+        firm_name=firm_name, invoice_no=inv.get("invoice_no", ""),
+        invoice_date=str(inv.get("invoice_date", ""))[:10],
+        due_date=str(inv["due_date"])[:10] if inv.get("due_date") else None,
+        outstanding_paise=m["outstanding_paise"], reminder_number=reminder_number,
+        pdf_bytes=pdf_bytes, pdf_filename=pdf_name)
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if delivery_id:
+        upd = {"status": "sent" if success else "failed"}
+        if provider:
+            upd["provider_message_id"] = provider
+        if success:
+            upd["sent_at"] = now_iso
+        else:
+            upd["error_message"] = "Reminder email failed — check RESEND_API_KEY or recipient address."
+        try:
+            db.table("invoice_deliveries").update(upd).eq("id", delivery_id).execute()
+        except Exception:  # pragma: no cover
+            pass
+
+    if success:
+        try:
+            db.table("client_sales_invoices").update({
+                "last_reminded_at": now_iso, "reminder_count": reminder_number,
+            }).eq("id", invoice_id).eq("firm_id", firm_id).execute()
+        except Exception:  # pragma: no cover
+            pass
+        try:
+            timeline_service.log(inv.get("client_id", ""), "ai", "Payment Reminder Emailed",
+                                 f"Reminder #{reminder_number}{' (manual)' if manual else ''} for "
+                                 f"invoice {inv.get('invoice_no', '')} emailed to {to_email}", "warning",
+                                 firm_id=firm_id, entity_type="sales_invoice", entity_id=invoice_id,
+                                 amount_paise=m["outstanding_paise"])
+        except Exception:  # pragma: no cover
+            pass
+        try:
+            from services.audit_service import log_event
+            log_event(firm_id, "sales_invoice", invoice_id, "reminder_sent", actor_id=actor_id,
+                      new_data={"reminder_number": reminder_number, "sent_to": to_email, "manual": manual},
+                      metadata={"source": "payment_reminder"})
+        except Exception:  # pragma: no cover
+            pass
+    return success
+
+
+def run_due_reminders(firm_id: str, client_id: Optional[str] = None,
+                      today: Optional[date] = None, db=None) -> dict:
+    """Automatic cadence run (7/14/21, capped). client_id=None → all the firm's
+    clients. Respects reminder_settings.enabled and the anti-spam window. Safe from
+    the scheduler OR a manual 'run' — fully functional with the scheduler disabled."""
+    today = today or _today()
+    db = db or _db()
+    s = reminder_settings(firm_id, db=db)
+    if not s["enabled"]:
+        return {"reminders_sent": 0, "skipped": "reminders disabled"}
+    cutoff = datetime.now(timezone.utc) - timedelta(days=s["interval_days"])
+    sent = 0
+    for inv in _open_invoices(firm_id, client_id):
+        m = assess_invoice(inv, today)
+        if not m["is_overdue"]:
+            continue
+        n = reminder_due_number(m["days_overdue"], int(inv.get("reminder_count", 0)),
+                                s["interval_days"], s["max_reminders"])
+        if n is None:
+            continue
+        last = inv.get("last_reminded_at")
+        if last:
+            try:
+                if datetime.fromisoformat(str(last).replace("Z", "+00:00")) > cutoff:
+                    continue  # reminded within the cadence window — skip (anti-spam)
+            except ValueError:
+                pass
+        customer = _customer_for(db, firm_id, inv.get("customer_id"))
+        if _dispatch_invoice_reminder(db, firm_id, inv, customer, n, attach_pdf=s["attach_pdf"]):
+            sent += 1
+    return {"reminders_sent": sent}
+
+
+def send_invoice_reminder(firm_id: str, invoice_id: str, actor_id: Optional[str] = None,
+                          db=None) -> dict:
+    """Manual single-invoice reminder (CA-initiated). Allowed for any OVERDUE
+    invoice; bypasses the automatic cadence/cap but never sends before due."""
+    from fastapi import HTTPException
+    db = db or _db()
+    rows = (db.table("client_sales_invoices").select("*")
+            .eq("id", invoice_id).eq("firm_id", firm_id).limit(1).execute().data or [])
+    inv = rows[0] if rows else None
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found.")
+    if not assess_invoice(inv)["is_overdue"]:
+        raise HTTPException(status_code=422,
+                            detail="Invoice is not overdue — reminders are for overdue invoices only.")
+    customer = _customer_for(db, firm_id, inv.get("customer_id"))
+    if not customer.get("email"):
+        raise HTTPException(status_code=422, detail="Customer has no email address on file.")
+    s = reminder_settings(firm_id, db=db)
+    number = int(inv.get("reminder_count", 0)) + 1
+    if not _dispatch_invoice_reminder(db, firm_id, inv, customer, number, actor_id=actor_id,
+                                      attach_pdf=s["attach_pdf"], manual=True):
+        raise HTTPException(status_code=502, detail="Reminder email could not be sent.")
+    return {"sent": True, "to": customer["email"], "reminder_number": number}
+
+
+def invoice_reminder_history(firm_id: str, invoice_id: str, db=None) -> list[dict]:
+    db = db or _db()
+    return (db.table("invoice_deliveries").select("*")
+            .eq("firm_id", firm_id).eq("invoice_id", invoice_id).eq("kind", "reminder")
+            .order("created_at", desc=True).execute().data or [])
