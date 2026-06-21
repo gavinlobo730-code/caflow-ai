@@ -144,16 +144,19 @@ class BankPostingService:
 
     def _settlement_preview(self, db, firm_id, txn, amount) -> Optional[dict]:
         cat, mt, mid = txn.get("category"), txn.get("matched_entity_type"), txn.get("matched_entity_id")
+        client_id = txn.get("client_id")
         if cat in pmap.SETTLES_SALES_INVOICE and mt == "sales_invoice" and mid:
+            # H4 fix: scope to the txn's firm + client so a foreign matched_entity_id
+            # cannot disclose another firm/client's invoice details.
             inv = (db.table("client_sales_invoices").select("invoice_no, total_paise, paid_paise")
-                   .eq("id", mid).single().execute().data) or {}
+                   .eq("id", mid).eq("firm_id", firm_id).eq("client_id", client_id).maybe_single().execute().data) or {}
             total, paid = int(inv.get("total_paise") or 0), int(inv.get("paid_paise") or 0)
             alloc = min(amount, max(total - paid, 0))
             return {"entity": "sales_invoice", "label": inv.get("invoice_no"),
                     "allocate_paise": alloc, "new_paid_paise": paid + alloc, "total_paise": total}
         if cat in pmap.SETTLES_PURCHASE_BILL and mt == "purchase_bill" and mid:
             bill = (db.table("purchase_bills").select("bill_no, total_paise, paid_paise")
-                    .eq("id", mid).single().execute().data) or {}
+                    .eq("id", mid).eq("firm_id", firm_id).eq("client_id", client_id).maybe_single().execute().data) or {}
             total, paid = int(bill.get("total_paise") or 0), int(bill.get("paid_paise") or 0)
             alloc = min(amount, max(total - paid, 0))
             return {"entity": "purchase_bill", "label": bill.get("bill_no"),
@@ -235,15 +238,21 @@ class BankPostingService:
     # ── B.3.4 settlement ──────────────────────────────────────────────────────
     def _settle(self, db, firm_id, txn, amount) -> Optional[dict]:
         cat, mt, mid = txn.get("category"), txn.get("matched_entity_type"), txn.get("matched_entity_id")
+        client_id = txn.get("client_id")
         if cat in pmap.SETTLES_SALES_INVOICE and mt == "sales_invoice" and mid:
-            return self._settle_doc(db, firm_id, "client_sales_invoices", mid, amount, "invoice_no")
+            return self._settle_doc(db, firm_id, client_id, "client_sales_invoices", mid, amount, "invoice_no")
         if cat in pmap.SETTLES_PURCHASE_BILL and mt == "purchase_bill" and mid:
-            return self._settle_doc(db, firm_id, "purchase_bills", mid, amount, "bill_no")
+            return self._settle_doc(db, firm_id, client_id, "purchase_bills", mid, amount, "bill_no")
         return None
 
-    def _settle_doc(self, db, firm_id, table, doc_id, amount, label_col) -> Optional[dict]:
-        doc = (db.table(table).select(f"id, {label_col}, total_paise, paid_paise, status")
-               .eq("id", doc_id).eq("firm_id", firm_id).single().execute().data)
+    def _settle_doc(self, db, firm_id, client_id, table, doc_id, amount, label_col) -> Optional[dict]:
+        # F3 fix: scope the settled doc to the txn's firm AND client so a
+        # matched_entity_id belonging to another client (even within the firm)
+        # cannot be settled / have its accounting state altered. Mirrors the
+        # preview-path scoping (H4). maybe_single ⇒ no row → no settlement.
+        _rows = (db.table(table).select(f"id, {label_col}, total_paise, paid_paise, status")
+                 .eq("id", doc_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data) or []
+        doc = _rows[0] if _rows else None
         if not doc:
             return None
         total = int(doc.get("total_paise") or 0)
@@ -255,7 +264,7 @@ class BankPostingService:
         new_paid = paid + alloc
         status = "paid" if new_paid >= total else "partially_paid"
         db.table(table).update({"paid_paise": new_paid, "status": status, "updated_at": _now()}) \
-            .eq("id", doc_id).eq("firm_id", firm_id).execute()
+            .eq("id", doc_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
         return {"entity": table, "label": doc.get(label_col), "allocated_paise": alloc,
                 "new_paid_paise": new_paid, "total_paise": total, "status": status}
 

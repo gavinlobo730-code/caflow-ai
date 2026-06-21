@@ -119,6 +119,17 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         phase2_journal_service.journal_for_receipt(receipt, firm_id or "", client_id)
         return {**receipt, "allocations": allocations}
 
+    # F1 fix: allocations must reference THIS client's invoices (firm+client scope),
+    # validated BEFORE the receipt is created so a foreign invoice id can never be
+    # recorded or have its paid_paise mutated.
+    for _a in allocations:
+        _inv = _a.get("sales_invoice_id")
+        if _inv and int(_a.get("allocated_paise", 0) or 0) > 0:
+            chk = (db.table("client_sales_invoices").select("id")
+                   .eq("id", _inv).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
+            if not chk.data:
+                raise HTTPException(status_code=422, detail=f"Invoice {_inv} is not part of this client's books.")
+
     seq = _next_receipt_seq(db, firm_id, client_id, fy)
     receipt_no = f"RCPT-{fy}-{seq:04d}"
 
@@ -157,7 +168,7 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         inv_resp = (
             db.table("client_sales_invoices")
             .select("total_paise,paid_paise")
-            .eq("id", inv_id)
+            .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .limit(1)
             .execute()
         )
@@ -170,7 +181,7 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
             db.table("client_sales_invoices").update({
                 "paid_paise": new_paid,
                 "status":     new_status,
-            }).eq("id", inv_id).execute()
+            }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
 
     if alloc_payloads:
         db.table("receipt_allocations").insert(alloc_payloads).execute()

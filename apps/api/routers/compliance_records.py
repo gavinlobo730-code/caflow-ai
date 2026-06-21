@@ -4,6 +4,7 @@ Compliance Records router.
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from core.permissions import rbac
+from core.authz import filter_by_client, assert_client_access, effective_client_ids  # H2/F2: assignment-scope (same engine as compliance_ops)
 from typing import Optional, Any
 from models.common import api_response
 from domain.compliance_record_service import compliance_record_service
@@ -44,6 +45,9 @@ def list_compliance_records(
         status=status,
         compliance_type=compliance_type,
     )
+    # H2 fix: drop records for clients this caller is not assigned to (firm-wide
+    # roles are unaffected; mock/dev is permissive). Mirrors compliance_ops.py.
+    records = filter_by_client(current_user, records)
     return api_response(True, records)
 
 
@@ -59,13 +63,20 @@ def create_compliance_record(data: ComplianceRecordIn, current_user: dict = Depe
 
 @router.get("/firm/summary")
 def get_firm_summary(current_user: dict = Depends(rbac("compliance_record", "read"))):
-    summary = compliance_record_service.get_firm_summary(firm_id=current_user.get("firm_id"))
+    # F2 fix: scope the aggregate to the caller's assigned clients (None ⇒ firm-wide
+    # role ⇒ unscoped). Reuses effective_client_ids — no second authorization model.
+    summary = compliance_record_service.get_firm_summary(
+        firm_id=current_user.get("firm_id"),
+        allowed_client_ids=effective_client_ids(current_user),
+    )
     return api_response(True, summary)
 
 
 @router.get("/client/{client_id}/health")
 def get_client_health(client_id: str, current_user: dict = Depends(rbac("compliance_record", "read"))):
     try:
+        # F2 fix: 404 (existence hidden) if the caller is not assigned to this client.
+        assert_client_access(current_user, client_id)
         health = compliance_record_service.get_client_health_score(
             client_id, firm_id=current_user.get("firm_id")
         )
@@ -78,6 +89,8 @@ def get_client_health(client_id: str, current_user: dict = Depends(rbac("complia
 def get_compliance_record(record_id: str, current_user: dict = Depends(rbac("compliance_record", "read"))):
     try:
         record = compliance_record_service.get_record(record_id, firm_id=current_user.get("firm_id"))
+        # H2 fix: 404 (existence hidden) if the caller is not assigned to this record's client.
+        assert_client_access(current_user, record.get("client_id"))
         return api_response(True, record)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
