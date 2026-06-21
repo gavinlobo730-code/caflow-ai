@@ -206,3 +206,33 @@ def send_invoice_to_customer(
     <p>Regards,<br/><strong>{firm_name}</strong></p>
     """
     return _send_with_attachment(to, subject, html, pdf_bytes, pdf_filename)
+
+
+def send_statement_to_customer(
+    to: str,
+    customer_name: str,
+    firm_name: str,
+    period_start: str,
+    period_end: str,
+    closing_balance_paise: int,
+    pdf_bytes: bytes,
+    pdf_filename: str,
+) -> tuple[bool, Optional[str]]:
+    """
+    Email a customer statement of account PDF via Resend (Phase 4.1).
+    Returns (success, provider_message_id). Reuses _send_with_attachment.
+    """
+    subject = f"Statement of Account from {firm_name}"
+    html = f"""
+    <p>Dear {customer_name},</p>
+    <p>Please find attached your statement of account from <strong>{firm_name}</strong>
+    for the period <strong>{period_start}</strong> to <strong>{period_end}</strong>.</p>
+    <table cellpadding="8">
+      <tr><td><strong>Period</strong></td><td>{period_start} to {period_end}</td></tr>
+      <tr><td><strong>Closing Outstanding</strong></td><td>{_fmt_rupees(abs(closing_balance_paise))}</td></tr>
+    </table>
+    <p>This is a statement of account for your reference — not a tax invoice.
+    If you have any queries, please contact us.</p>
+    <p>Regards,<br/><strong>{firm_name}</strong></p>
+    """
+    return _send_with_attachment(to, subject, html, pdf_bytes, pdf_filename)
