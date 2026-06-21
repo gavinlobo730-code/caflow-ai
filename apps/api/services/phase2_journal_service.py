@@ -788,12 +788,21 @@ class Phase2JournalService:
         narration: str,
         entry_type: str,
         lines: list[dict],
+        is_posted: bool = True,
+        source_type: Optional[str] = None,
+        source_id: Optional[str] = None,
+        created_by: Optional[str] = None,
     ) -> str:
         """
         Insert a balanced double-entry journal entry and its lines.
         Validates that total debits == total credits before insert.
         All monetary values are integer paise (BIGINT) — never float.
         Returns the journal_entry_id.
+
+        Phase 3.5: pass is_posted=False to create a DRAFT (off-books until a human
+        approves it via journal_posting_service.post_draft). Default True keeps
+        every existing caller's behaviour unchanged. source_type/source_id record
+        the origin so posting the draft can fire its deferred downstream action.
         """
         total_debit  = sum(l["debit_paise"]  for l in lines)
         total_credit = sum(l["credit_paise"] for l in lines)
@@ -824,8 +833,13 @@ class Phase2JournalService:
             "reference_no": reference_no,
             "narration":    narration,
             "entry_type":   entry_type,
-            "is_posted":    True,
-            "posted_at":    now_iso,
+            "is_posted":    is_posted,
+            "status":       "posted" if is_posted else "draft",
+            "posted_at":    now_iso if is_posted else None,
+            "posted_by":    created_by if is_posted else None,
+            "created_by":   created_by,
+            "source_type":  source_type,
+            "source_id":    source_id,
         }
 
         entry_resp = db.table("journal_entries").insert(entry_payload).execute()
@@ -847,8 +861,8 @@ class Phase2JournalService:
         db.table("journal_lines").insert(line_payloads).execute()
 
         _logger.info(
-            "Auto-posted journal %s | ref=%s | dr=%d cr=%d",
-            entry_id, reference_no, total_debit, total_credit,
+            "%s journal %s | ref=%s | dr=%d cr=%d",
+            "Posted" if is_posted else "Drafted", entry_id, reference_no, total_debit, total_credit,
         )
         return entry_id
 

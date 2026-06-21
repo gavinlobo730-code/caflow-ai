@@ -9,6 +9,7 @@ from models.common import api_response
 from models.accounting import AccountIn, AccountUpdateIn, JournalEntryIn, JournalReversalIn
 from domain.accounting_service import accounting_service
 from domain.reporting import ReportingService, SupabaseLedgerSource, mock_ledger_source
+from services.journal_posting_service import journal_posting_service
 from core.exceptions import NotFoundError, ValidationError
 from core.permissions import rbac
 from services.audit_service import log_event
@@ -88,6 +89,43 @@ def create_journal_entry(data: JournalEntryIn, current_user: dict = Depends(rbac
         return api_response(True, entry)
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+
+def _prod_db():
+    """Production Supabase client, or None in mock/dev (no SUPABASE_URL)."""
+    if not os.environ.get("SUPABASE_URL"):
+        return None
+    from core.supabase_client import get_supabase
+    return get_supabase()
+
+
+@router.get("/journals")
+def list_journals_queue(
+    client_id: Optional[str] = Query(None),
+    status: str = Query("draft", pattern="^(draft|posted|all)$"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Phase 3.5 journal approval queue — Draft / Posted, with source + totals.
+    Backed by the production ledger (real journal_entries), the single source for
+    both manual and auto-generated (e.g. bank) drafts."""
+    db = _prod_db()
+    if not db:
+        return api_response(True, [])
+    return api_response(True, journal_posting_service.list_journals(
+        db, current_user["firm_id"], client_id, status))
+
+
+@router.post("/journals/{journal_id}/post")
+def post_draft_journal(journal_id: str, current_user: dict = Depends(rbac("accounting", "approve"))):
+    """Approve & post a DRAFT journal to the ledger (Phase 3.5) — approve permission
+    (Partner) only, FY-lock enforced, audited. Fires deferred downstream actions
+    (e.g. bank settlement) only after the journal is on the books.
+    CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT"""
+    db = _prod_db()
+    if not db:
+        return api_response(True, {"id": journal_id, "is_posted": True})
+    return api_response(True, journal_posting_service.post_draft(
+        db, current_user["firm_id"], journal_id, actor_id=current_user.get("auth_user_id")))
 
 
 @router.patch("/journal/{entry_id}/post")

@@ -142,6 +142,9 @@ export const api = {
     profitLoss: (params?: Record<string, string>) => request(`/api/accounting/profit-loss${params ? "?" + new URLSearchParams(params) : ""}`),
     balanceSheet: (params?: Record<string, string>) => request(`/api/accounting/balance-sheet${params ? "?" + new URLSearchParams(params) : ""}`),
     cashFlow: (params?: Record<string, string>) => request(`/api/accounting/cash-flow${params ? "?" + new URLSearchParams(params) : ""}`),
+    // Phase 3.5 — journal approval queue (Draft → Approve → Post)
+    journalsQueue: (params?: Record<string, string>) => request(`/api/accounting/journals${params ? "?" + new URLSearchParams(params) : ""}`),
+    postDraftJournal: (journalId: string) => request(`/api/accounting/journals/${journalId}/post`, { method: "POST" }),
   },
   // Banking (Phase B.0): all bank mutations go through the backend banking
   // service — the frontend never writes bank rows or journals to Supabase.
@@ -174,6 +177,7 @@ export const api = {
     unmatch: (txnId: string) => request(`/api/banking/transactions/${txnId}/unmatch`, { method: "POST" }),
     // B.3 — posting engine (explicit, human-initiated; never auto-posts)
     readyToPost: (params?: Record<string, string>) => request(`/api/banking/ready-to-post${params ? "?" + new URLSearchParams(params) : ""}`),
+    pending: (params?: Record<string, string>) => request(`/api/banking/pending${params ? "?" + new URLSearchParams(params) : ""}`),
     posted: (params?: Record<string, string>) => request(`/api/banking/posted${params ? "?" + new URLSearchParams(params) : ""}`),
     postingPreview: (txnId: string, data: { bank_account_id?: string; account_id?: string; to_bank_account_id?: string }) => request(`/api/banking/transactions/${txnId}/posting-preview`, { method: "POST", body: JSON.stringify(data) }),
     // B.4 — reconciliation engine (sessions, manual reconcile, tie-out, report)
