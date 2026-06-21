@@ -1,6 +1,11 @@
 # QuickBooks-Style Accounting — Implementation Roadmap
 
-**Status: Planning / awaiting build approval · Branch:** `claude/admiring-wozniak-0ajya3`
+**Status: Phase A & B largely shipped; Phase 4 (business modules) in progress · Branch:** `claude/admiring-wozniak-0ajya3`
+
+> **Scope changes (permanent, product-owner directive):**
+> **Estimates / Quotations** and **Inventory / items master** are **removed from the
+> roadmap permanently.** Do not build, scaffold, future-proof, or create any
+> dependency toward either module. The forward plan is the **Phase 4.x** list below.
 
 ## Why this document
 
@@ -58,20 +63,20 @@ expansion, not a rebuild.
 
 | QuickBooks capability | Us today | Effort |
 | --- | --- | --- |
-| **Cash/Accrual toggle on all reports** | ❌ | S |
-| **Send invoice by email (PDF attached)** | ⚠️ reminder only | S |
-| Customer statements | ❌ | S |
-| Automated payment reminders (scheduled) | ⚠️ manual trigger | S |
-| Cash Flow Statement | ⚠️ FE page exists; verify backend | S |
-| Online "Pay Now" link on invoice | ❌ | M |
-| Bank "Add" (categorize → entry) | ❌ | M |
-| Auto-apply bank rules | ⚠️ table only | M |
-| Products/Services (items) master | ❌ | M |
-| Recurring invoices | ❌ | M |
-| Estimates / quotes → invoice | ❌ | M |
+| **Cash/Accrual toggle on all reports** | ✅ Done | `domain/reporting` |
+| **Send invoice by email (PDF attached)** | ✅ Done | `email_service.send_invoice_to_customer` |
+| Customer statements | ✅ Done (Phase 4.1) | `services/customer_statement_service.py` |
+| Automated payment reminders (scheduled) | ⏭ **Phase 4.2 — next** | — |
+| Cash Flow Statement | ✅ Done (AS-3) | `domain/reporting/builders.py` |
+| Online "Pay Now" link on invoice | ⏭ Phase 4.6 (optional) | — |
+| Bank "Add" (categorize → entry) | ✅ Done (Banking B.2/B.3) | `services/bank_posting_service.py` |
+| Auto-apply bank rules | ⚠️ table only | `routers/banking.py` |
+| Products/Services (items) master | ❌ **Removed permanently** | — |
+| Recurring invoices | ⏭ Phase 4.3 | — |
+| Estimates / quotes → invoice | ❌ **Removed permanently** | — |
 | Live bank feed | ❌ manual import | L |
 | Receipt capture / OCR | ❌ | L |
-| Classes / locations (cost centers) | ❌ | M |
+| Inventory | ❌ **Removed permanently** | — |
 | Multi-currency | ❌ | L |
 
 S = ~days · M = ~1–2 weeks · L = larger.
@@ -159,21 +164,28 @@ flow produces is ever auto-posted.
 
 ## Phased roadmap
 
-**Phase A — "Feels like QuickBooks" (quick wins, ~2 weeks)**
-1. Cash/Accrual basis toggle (P&L, BS, Trial Balance)
-2. Send invoice to client (PDF email + Sent status)
-3. Customer statements + scheduled payment reminders
-4. Verify/complete Cash Flow Statement backend
+### ✅ Completed to date
+- **Cash/Accrual basis toggle** — P&L, Balance Sheet, Trial Balance, Cash Flow (`domain/reporting`).
+- **Cash Flow Statement** (AS-3 indirect) + **single reporting engine** consolidation (incl. **Ledger**, Phase 3.4).
+- **Send invoice to client** (PDF email via Resend + delivery tracking).
+- **Practice-as-Client** foundation + reporting/screen consolidation (Phase 3 / 3.3A).
+- **Banking B.0–B.4:** bank feed/import → matching & categorization → posting engine → reconciliation.
+- **Draft Journal Workflow** (Phase 3.5): Draft → Approve → Post; banking aligned to draft-first.
+- **Customer Statements** (Phase 4.1): read-only account statement + PDF + email + audit.
 
-**Phase B — Banking experience (~3–4 weeks)**
-5. Bank "Add" flow (categorize → draft journal)
-6. Auto-apply bank-rules engine
-7. Razorpay "Pay Now" links + draft-receipt webhook
+### ⏭ Active roadmap — Phase 4 (business modules)
+- **Phase 4.2 — Payment Reminders** *(next)* — scheduled/triggered overdue-invoice reminders (reuses `email_service`, invoice `last_reminded_at`/`reminder_count`, aging). No auto-submit.
+- **Phase 4.3 — Recurring Invoices** — schedule-driven invoice generation (drafts for CA review).
+- **Phase 4.4 — Compliance & Engagement Management**.
+- **Phase 4.5 — Customer Portal**.
+- **Phase 4.6 — Online Payments** *(optional)* — Razorpay/UPI "Pay Now" + draft-receipt webhook (never auto-posted).
 
-**Phase C — Power features (~4–6 weeks)**
-8. Products/Services master + recurring invoices + estimates
-9. Live bank feeds via an Indian Account Aggregator (RBI AA framework)
-10. Receipt OCR, cost centers (classes), richer dashboards
+### ❌ Permanently removed (do not build / scaffold / depend on)
+- **Estimates / Quotations.**
+- **Inventory / Products-Services items master.**
+
+### Deferred / unscheduled (not in Phase 4)
+- Auto-apply bank-rules engine (table exists), live bank feeds (Account Aggregator), receipt OCR, cost centers, multi-currency.
 
 ---
 
