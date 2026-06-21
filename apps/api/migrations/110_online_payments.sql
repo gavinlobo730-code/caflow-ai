@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS public.customer_payments (
     amount_paise        BIGINT NOT NULL CHECK (amount_paise > 0),  -- integer paise; never float
     currency            TEXT NOT NULL DEFAULT 'INR',
     status              TEXT NOT NULL DEFAULT 'created'
-                            CHECK (status IN ('created','authorized','captured','failed','refunded')),
+                            CHECK (status IN ('created','authorized','capturing','captured','failed','refunded')),
     provider            TEXT NOT NULL,
     provider_payment_id TEXT,
     provider_order_id   TEXT,

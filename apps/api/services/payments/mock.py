@@ -29,7 +29,11 @@ class MockProvider(PaymentProvider):
     name = "mock"
 
     def __init__(self, webhook_secret: Optional[str] = None):
-        self._secret = (webhook_secret or os.environ.get("MOCK_WEBHOOK_SECRET", "mock_secret")).encode()
+        # No hardcoded default — without an explicit MOCK_WEBHOOK_SECRET the
+        # provider FAILS CLOSED (verifies nothing). With the webhook now pinned
+        # to the configured provider, mock is only ever reached when explicitly
+        # selected; this removes any guessable-secret footgun.
+        self._secret = (webhook_secret or os.environ.get("MOCK_WEBHOOK_SECRET", "")).encode()
 
     def create_payment_link(self, req: PaymentLinkRequest) -> PaymentLinkResult:
         return PaymentLinkResult(
@@ -44,15 +48,19 @@ class MockProvider(PaymentProvider):
         return CAPTURED
 
     def _sign(self, raw_body: bytes) -> str:
+        if not self._secret:
+            return ""
         return hmac.new(self._secret, raw_body, hashlib.sha256).hexdigest()
 
     def verify_payment(self, *, order_id: str, payment_id: str, signature: str) -> bool:
+        if not self._secret:
+            return False
         expected = hmac.new(self._secret, f"{order_id}|{payment_id}".encode(), hashlib.sha256).hexdigest()
         return hmac.compare_digest(expected, signature or "")
 
     def process_webhook(self, headers: dict, raw_body: bytes) -> VerifiedEvent:
         sig = headers.get("x-webhook-signature") or headers.get("X-Webhook-Signature") or ""
-        verified = hmac.compare_digest(self._sign(raw_body), sig)
+        verified = bool(self._secret) and hmac.compare_digest(self._sign(raw_body), sig)
         try:
             payload = json.loads((raw_body or b"").decode() or "{}")
         except Exception:
