@@ -1,6 +1,6 @@
 # QuickBooks-Style Accounting — Implementation Roadmap
 
-**Status: Phase A & B shipped; Phase 4.1 + 4.2 shipped; Phase 4.3 next · Branch:** `claude/admiring-wozniak-0ajya3`
+**Status: Phase A & B shipped; Phase 4.1 + 4.2 + 4.3 shipped; Phase 4.4 next · Branch:** `claude/admiring-wozniak-0ajya3`
 
 > **Scope changes (permanent, product-owner directive):**
 > **Estimates / Quotations** and **Inventory / items master** are **removed from the
@@ -72,7 +72,7 @@ expansion, not a rebuild.
 | Bank "Add" (categorize → entry) | ✅ Done (Banking B.2/B.3) | `services/bank_posting_service.py` |
 | Auto-apply bank rules | ⚠️ table only | `routers/banking.py` |
 | Products/Services (items) master | ❌ **Removed permanently** | — |
-| Recurring invoices | ⏭ **Phase 4.3 — next** | — |
+| Recurring invoices | ✅ Done (Phase 4.3) | `services/recurring_invoice_service.py`, migration `107` |
 | Estimates / quotes → invoice | ❌ **Removed permanently** | — |
 | Live bank feed | ❌ manual import | L |
 | Receipt capture / OCR | ❌ | L |
@@ -173,10 +173,10 @@ flow produces is ever auto-posted.
 - **Draft Journal Workflow** (Phase 3.5): Draft → Approve → Post; banking aligned to draft-first.
 - **Customer Statements** (Phase 4.1): read-only account statement + PDF + email + audit.
 - **Payment Reminders** (Phase 4.2): overdue-invoice reminders to customers (7/14/21-day cadence, capped; manual single reminder; invoice PDF attached). Collections-only — no journal/statement/GST/cash-flow impact. `invoice_deliveries.kind` + `reminder_settings` (migration `106`); works with the scheduler enabled or disabled.
+- **Recurring Invoices** (Phase 4.3): per-customer templates generate **draft** sales invoices via the existing invoice engine (weekly/monthly/quarterly/half-yearly/yearly; month-end clamped). Draft-only — never auto-issue/post/email; idempotent (one invoice per template/occurrence); daily scheduler job + manual run. `recurring_invoice_templates`/`_template_lines`/`_runs` + `client_sales_invoices.recurring_template_id`/`recurring_occurrence` (migration `107`). Separate from `billing_schedules`.
 
 ### ⏭ Active roadmap — Phase 4 (business modules)
-- **Phase 4.3 — Recurring Invoices** *(next)* — schedule-driven generation of normal sales invoices from templates (weekly/monthly/quarterly/half-yearly/yearly). Reuses the existing invoice engine, email/delivery, and aging/reminder flow; generated invoices are indistinguishable from manual ones. No duplicate accounting logic.
-- **Phase 4.4 — Compliance & Engagement Management**.
+- **Phase 4.4 — Compliance & Engagement Management** *(next)*.
 - **Phase 4.5 — Customer Portal**.
 - **Phase 4.6 — Online Payments** *(optional)* — Razorpay/UPI "Pay Now" + draft-receipt webhook (never auto-posted).
 
@@ -185,6 +185,7 @@ flow produces is ever auto-posted.
 - **Inventory / Products-Services items master.**
 
 ### Deferred / unscheduled (not in Phase 4)
+- **Draft Journal Workflow refinement** — incremental polish on the existing Draft → Approve → Post flow (Phase 3.5); not a major phase.
 - Auto-apply bank-rules engine (table exists), live bank feeds (Account Aggregator), receipt OCR, cost centers, multi-currency.
 
 ---
