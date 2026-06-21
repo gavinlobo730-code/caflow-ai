@@ -1,6 +1,6 @@
 # QuickBooks-Style Accounting — Implementation Roadmap
 
-**Status: Phase A & B shipped; Phase 4.1–4.4 + 4.5.1 shipped; Phase 4.5.2 next · Branch:** `claude/admiring-wozniak-0ajya3`
+**Status: Phase A & B shipped; Phase 4.1–4.4 + 4.5.1 + 4.5.2 + 4.6 shipped — ALL business modules complete & merged to `main`. Feature development is FROZEN; next: full platform audit → E2E testing → security review → UAT → production hardening.**
 
 > **Scope changes (permanent, product-owner directive):**
 > **Estimates / Quotations** and **Inventory / items master** are **removed from the
@@ -68,7 +68,7 @@ expansion, not a rebuild.
 | Customer statements | ✅ Done (Phase 4.1) | `services/customer_statement_service.py` |
 | Automated payment reminders (scheduled) | ✅ Done (Phase 4.2) | `services/collections_service.py`, migration `106` |
 | Cash Flow Statement | ✅ Done (AS-3) | `domain/reporting/builders.py` |
-| Online "Pay Now" link on invoice | ⏭ Phase 4.6 (optional) | — |
+| Online "Pay Now" link on invoice | ✅ Done (Phase 4.6) | `services/payment_service.py`, `services/payments/`, migration `110` |
 | Bank "Add" (categorize → entry) | ✅ Done (Banking B.2/B.3) | `services/bank_posting_service.py` |
 | Auto-apply bank rules | ⚠️ table only | `routers/banking.py` |
 | Products/Services (items) master | ❌ **Removed permanently** | — |
@@ -176,10 +176,11 @@ flow produces is ever auto-posted.
 - **Recurring Invoices** (Phase 4.3): per-customer templates generate **draft** sales invoices via the existing invoice engine (weekly/monthly/quarterly/half-yearly/yearly; month-end clamped). Draft-only — never auto-issue/post/email; idempotent (one invoice per template/occurrence); daily scheduler job + manual run. `recurring_invoice_templates`/`_template_lines`/`_runs` + `client_sales_invoices.recurring_template_id`/`recurring_occurrence` (migration `107`). Separate from `billing_schedules`.
 - **Compliance & Engagement Management** (Phase 4.4): operational layer over the canonical `compliance_records` (obligations) + extended `fee_engagements` (lifecycle Draft→…→Closed + preparer/reviewer/partner). Deterministic + idempotent obligation generation from engagements (reuses `compliance_engine` due dates), lifecycle workflow (+Completed), internal-only 7/3/1/overdue escalations (daily job + manual), Practice→Compliance dashboard + calendar projection, full audit+timeline. No filing/portal/OCR; touches no accounting/GST/banking. Migration `108` (additive: extend two tables + idempotency index). `compliance_calendar` is a projection.
 - **Customer Portal — Foundation** (Phase 4.5.1): multi-contact + multi-client portal access. `client_portal_users` (invite→activate→deactivate lifecycle) + additive sibling RLS, backward compatible with the legacy `clients.portal_user_id` (migration `109`). `get_current_portal_client()` reuses Supabase auth (no parallel system), with explicit/deterministic active-client selection (`X-Portal-Client-Id`; no implicit switching). CA invite endpoints + client `/me`/`/memberships`/dashboard **shell** (no data yet). Strict client/firm isolation; every CA mutation audited.
+- **Customer Portal — Data Surfaces** (Phase 4.5.2): read-only, client-safe views of the firm↔client fee relationship — invoices, **canonical AR dues** (retires the legacy `transactions` dues source), statements, payment-reminder history, and the client's own compliance status. Served by `/api/portal/self/*` (client-authenticated) reusing the 4.1/4.2/4.4 engines via the G3 internal-customer link; every PDF ownership-gated; internal fields (journal ids, assignees, fees, notes, risk) never exposed. No migration (reuses existing tables).
+- **Online Payments** (Phase 4.6): customers pay invoices online; **every** payment flows through the existing invoice→receipt→AR pipeline. The receipt engine was extracted to `services.receipt_service.create_receipt_core` (behaviour-preserving) so the staff router AND the gateway-success path share one engine — a gateway never performs accounting. Provider abstraction (Mock + Razorpay, env-pinned); webhook with HMAC verification, replay protection (`provider_event_id`) and settlement idempotency (`receipt_id` seal + atomic claim). Staff link UI + portal "Pay Now". Migration `110` (additive: `customer_payment_links`/`customer_payments`/`customer_payment_events` + `invoice_deliveries.kind` superset). No column added to `client_sales_invoices`; AR stays invoices+receipts+allocations.
 
-### ⏭ Active roadmap — Phase 4 (business modules)
-- **Phase 4.5.2 — Customer Portal Data Surfaces** *(next)* — read-only, client-safe views of invoices, statements, payment reminders, and compliance status (reuse existing engines; hybrid RLS-direct + client-authenticated backend endpoints; never expose internal fields).
-- **Phase 4.6 — Online Payments** *(optional)* — Razorpay/UPI "Pay Now" + draft-receipt webhook (never auto-posted).
+### ✅ Feature development complete
+All Phase 4 business modules are shipped and merged to `main`. **Do not start new feature phases.** The program now transitions to: full platform audit · end-to-end testing · security review · UAT · production hardening · bug-fixing & polish.
 
 ### ❌ Permanently removed (do not build / scaffold / depend on)
 - **Estimates / Quotations.**
