@@ -78,6 +78,7 @@ from routers.ai_copilot_v2 import router as ai_copilot_v2_router
 from routers.memory_intelligence import router as memory_intelligence_router
 # Client Portal
 from routers.portal import router as portal_router
+from routers import portal_access, portal_self
 
 app = FastAPI(title="PracticeSync AI API", version="2.0.0")
 
@@ -242,6 +243,11 @@ app.include_router(ai_copilot_v2_router, dependencies=_CLIENT_GUARD)
 app.include_router(memory_intelligence_router, dependencies=_CLIENT_GUARD)
 # Client Portal
 app.include_router(portal_router)
+# Phase 4.5.1 — portal foundation. Like portal_router, these use a separate auth
+# audience (CA rbac for invites; get_current_portal_client for the client surface)
+# and are intentionally NOT behind the staff _CLIENT_GUARD.
+app.include_router(portal_access.router)
+app.include_router(portal_self.router)
 # Amendment v1.1 — Practice (firm-as-internal-client), Partner-only
 from routers.practice import router as practice_router
 app.include_router(practice_router, dependencies=_MFA_GUARD)

@@ -415,6 +415,20 @@ export const api = {
       request("/api/portal/messages", { method: "POST", body: JSON.stringify(data) }),
     getDues: (firmId: string, clientId: string) =>
       request(`/api/portal/dues?firm_id=${firmId}&client_id=${clientId}`),
+    // Phase 4.5.1 — CA-side multi-contact management
+    listContacts: (clientId: string) => request(`/api/portal/clients/${clientId}/contacts`),
+    inviteContact: (clientId: string, body: { email: string; name?: string }) =>
+      request(`/api/portal/clients/${clientId}/contacts`, { method: "POST", body: JSON.stringify(body) }),
+    resendInvite: (contactId: string) =>
+      request(`/api/portal/contacts/${contactId}/resend`, { method: "POST" }),
+    deactivateContact: (contactId: string) =>
+      request(`/api/portal/contacts/${contactId}/deactivate`, { method: "POST" }),
+  },
+  // Phase 4.5.1 — client-facing portal self surface (auth = the client's own
+  // Supabase session, resolved server-side via get_current_portal_client).
+  portalSelf: {
+    me: () => request("/api/portal/me"),
+    dashboard: () => request("/api/portal/dashboard"),
   },
   // Phase 11 — AI Copilot Platform
   copilotV2: {
