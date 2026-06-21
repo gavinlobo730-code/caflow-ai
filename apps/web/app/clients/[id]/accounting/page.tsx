@@ -79,15 +79,26 @@ interface JournalEntry {
   lines: { account_id: string; debit_paise: number; credit_paise: number; narration: string | null }[];
 }
 
+// Backend-computed ledger row (running balance comes from the engine, not React).
 interface LedgerLine {
-  id: string;
+  entry_id: string;
   entry_date: string;
-  narration: string;
+  narration: string | null;
   reference_no: string | null;
   debit_paise: number;
   credit_paise: number;
   running_balance_paise: number;
   is_debit: boolean;
+}
+interface LedgerView {
+  account_name: string;
+  opening_balance_paise: number;
+  opening_is_debit: boolean;
+  closing_balance_paise: number;
+  closing_is_debit: boolean;
+  total_debit_paise: number;
+  total_credit_paise: number;
+  lines: LedgerLine[];
 }
 
 interface TrialRow {
@@ -689,38 +700,27 @@ function JournalEntryForm({
 
 function GeneralLedger({ accounts, clientId, financialYear }: { accounts: Account[]; clientId: string; financialYear: string }) {
   const [selectedAccountId, setSelectedAccountId] = useState("");
-  const [lines, setLines] = useState<LedgerLine[]>([]);
+  const [ledger, setLedger] = useState<LedgerView | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // The backend reporting engine computes opening/running/closing balances —
+  // the browser only fetches and renders (Phase 3.4: no accounting math in React).
   async function loadLedger(accountId: string) {
-    if (!accountId || !clientId || clientId === "_placeholder") return;
+    if (!accountId || !clientId || clientId === "_placeholder") { setLedger(null); return; }
     setLoading(true);
     const { start, end } = fyDateRange(financialYear);
-    const supabase = getSupabaseClient();
-    const { data } = await supabase
-      .from("journal_lines")
-      .select("id, debit_paise, credit_paise, narration, journal_entries!inner(entry_date, reference_no, narration, is_posted, client_id, deleted_at)")
-      .eq("account_id", accountId)
-      .eq("journal_entries.client_id", clientId)
-      .eq("journal_entries.is_posted", true)
-      .is("journal_entries.deleted_at", null)
-      .gte("journal_entries.entry_date", start)
-      .lte("journal_entries.entry_date", end)
-      .order("journal_entries(entry_date)", { ascending: true });
-
-    if (data) {
-      let running = 0;
-      const mapped: LedgerLine[] = (data as unknown as Array<{
-        id: string; debit_paise: number; credit_paise: number; narration: string | null;
-        journal_entries: { entry_date: string; reference_no: string | null; narration: string };
-      }>).map((row) => {
-        running += row.debit_paise - row.credit_paise;
-        return { id: row.id, entry_date: row.journal_entries.entry_date, narration: row.narration ?? row.journal_entries.narration, reference_no: row.journal_entries.reference_no, debit_paise: row.debit_paise, credit_paise: row.credit_paise, running_balance_paise: running, is_debit: running >= 0 };
-      });
-      setLines(mapped);
-    }
-    setLoading(false);
+    try {
+      const res = (await api.accounting.ledger({
+        client_id: clientId, account_id: accountId, start_date: start, end_date: end,
+      })) as { success: boolean; data: LedgerView };
+      setLedger(res.success ? res.data : null);
+    } catch { setLedger(null); } finally { setLoading(false); }
   }
+
+  const bal = (paise: number, isDebit: boolean) => (
+    <>{fmt(Math.abs(paise))}<span className="text-[10px] font-normal ml-1 opacity-60">{isDebit ? "Dr" : "Cr"}</span></>
+  );
+  const hasActivity = !!ledger && (ledger.lines.length > 0 || ledger.opening_balance_paise !== 0);
 
   return (
     <div className="space-y-4 max-w-4xl">
@@ -739,29 +739,43 @@ function GeneralLedger({ accounts, clientId, financialYear }: { accounts: Accoun
       {selectedAccountId && (
         <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
-            <p className="text-xs font-semibold text-[#334155]">Ledger — FY {financialYear} — {accounts.find((a) => a.id === selectedAccountId)?.account_name}</p>
+            <p className="text-xs font-semibold text-[#334155]">Ledger — FY {financialYear} — {ledger?.account_name ?? accounts.find((a) => a.id === selectedAccountId)?.account_name}</p>
             {loading && <RefreshCw size={13} className="animate-spin text-[#94A3B8]" />}
           </div>
-          {!loading && lines.length > 0 ? (
+          {!loading && ledger && hasActivity ? (
             <table className="w-full text-xs">
               <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className="px-4 py-2.5 text-left font-semibold">Date</th><th className="px-3 py-2.5 text-left font-semibold">Particulars</th><th className="px-3 py-2.5 text-left font-semibold">Ref</th><th className="px-3 py-2.5 text-right font-semibold">Debit</th><th className="px-3 py-2.5 text-right font-semibold">Credit</th><th className="px-4 py-2.5 text-right font-semibold">Balance</th></tr></thead>
               <tbody className="divide-y divide-[#F8FAFC]">
-                {lines.map((l) => (
-                  <tr key={l.id} className="hover:bg-[#F8FAFC]">
+                <tr className="bg-[#F8FAFC] text-[#64748B]">
+                  <td className="px-4 py-2 whitespace-nowrap" colSpan={3}>Opening Balance</td>
+                  <td className="px-3 py-2 text-right font-mono">—</td>
+                  <td className="px-3 py-2 text-right font-mono">—</td>
+                  <td className="px-4 py-2 text-right font-mono font-semibold">{bal(ledger.opening_balance_paise, ledger.opening_is_debit)}</td>
+                </tr>
+                {ledger.lines.map((l) => (
+                  <tr key={l.entry_id} className="hover:bg-[#F8FAFC]">
                     <td className="px-4 py-2 text-[#64748B] whitespace-nowrap">{l.entry_date}</td>
-                    <td className="px-3 py-2 text-[#334155]">{l.narration}</td>
+                    <td className="px-3 py-2 text-[#334155]">{l.narration ?? "—"}</td>
                     <td className="px-3 py-2 font-mono text-[#94A3B8]">{l.reference_no ?? "—"}</td>
                     <td className="px-3 py-2 text-right font-mono text-[#334155]">{fmt(l.debit_paise)}</td>
                     <td className="px-3 py-2 text-right font-mono text-[#334155]">{fmt(l.credit_paise)}</td>
                     <td className={`px-4 py-2 text-right font-mono font-semibold ${l.is_debit ? "text-blue-700" : "text-orange-700"}`}>
-                      {fmt(Math.abs(l.running_balance_paise))}<span className="text-[10px] font-normal ml-1 opacity-60">{l.is_debit ? "Dr" : "Cr"}</span>
+                      {bal(l.running_balance_paise, l.is_debit)}
                     </td>
                   </tr>
                 ))}
+                <tr className="bg-[#F8FAFC] font-semibold text-[#334155] border-t border-[#E2E8F0]">
+                  <td className="px-4 py-2 whitespace-nowrap" colSpan={3}>Closing Balance</td>
+                  <td className="px-3 py-2 text-right font-mono">{fmt(ledger.total_debit_paise)}</td>
+                  <td className="px-3 py-2 text-right font-mono">{fmt(ledger.total_credit_paise)}</td>
+                  <td className={`px-4 py-2 text-right font-mono ${ledger.closing_is_debit ? "text-blue-700" : "text-orange-700"}`}>
+                    {bal(ledger.closing_balance_paise, ledger.closing_is_debit)}
+                  </td>
+                </tr>
               </tbody>
             </table>
           ) : !loading ? (
-            <div className="text-center py-10 text-[#94A3B8] text-sm">No posted transactions for this account in FY {financialYear}.</div>
+            <div className="text-center py-10 text-[#94A3B8] text-sm">No posted transactions for this account up to FY {financialYear}.</div>
           ) : null}
         </div>
       )}

@@ -50,6 +50,11 @@ class JournalEntry:
     entry_type: str
     lines: tuple[JournalLine, ...]
     reversal_of: Optional[str] = None
+    # Display + ordering metadata (used by the ledger; ignored by aggregation
+    # reports). created_at is the stable tiebreaker for same-day entries.
+    reference_no: Optional[str] = None
+    narration: Optional[str] = None
+    created_at: Optional[str] = None
 
 
 # ── Sales / purchase cycle documents (only the fields the projector needs) ──
