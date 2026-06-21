@@ -10,14 +10,16 @@ from core.exceptions import ValidationError, NotFoundError
 from repositories.compliance_records_repository import compliance_records_repo
 from repositories.client_repository import client_repo
 
-# Valid status transitions
+# Valid status transitions. Phase 4.4 adds the terminal Filed -> Completed step
+# (Module D progression: ... -> Ready To File -> Filed -> Completed).
 VALID_TRANSITIONS: dict[str, list[str]] = {
     "Not Started": ["Awaiting Documents", "In Progress", "Overdue"],
     "Awaiting Documents": ["In Progress", "Overdue"],
     "In Progress": ["Ready For Review", "Awaiting Documents", "Overdue"],
     "Ready For Review": ["Ready To File", "In Progress"],
     "Ready To File": ["Filed"],
-    "Filed": [],
+    "Filed": ["Completed"],
+    "Completed": [],
     "Overdue": ["In Progress", "Awaiting Documents"],
 }
 
@@ -58,6 +60,33 @@ def _compute_risk_score(record: dict) -> int:
         return 25
 
     return 30
+
+
+def _audit_transition(record: dict, old_status: str, new_status: str,
+                      firm_id: Optional[str], actor: Optional[dict]) -> None:
+    """Record a compliance status transition in the firm audit log + client timeline.
+    Best-effort: never raises (compliance work must not be blocked by logging)."""
+    actor = actor or {}
+    try:
+        from services.audit_service import log_event
+        log_event(firm_id or record.get("firm_id") or "", "compliance_record", record["id"],
+                  "status_change", actor_id=actor.get("auth_user_id"), actor_email=actor.get("email"),
+                  old_data={"status": old_status}, new_data={"status": new_status},
+                  metadata={"compliance_type": record.get("compliance_type"),
+                            "obligation_type": record.get("obligation_type")})
+    except Exception:  # pragma: no cover - audit is non-fatal
+        pass
+    try:
+        from services.timeline_service import timeline_service
+        timeline_service.log(record.get("client_id", ""), "compliance",
+                             f"Compliance {new_status}",
+                             f"{record.get('obligation_type') or record.get('compliance_type','')} "
+                             f"{record.get('period_label','')}: {old_status} → {new_status}",
+                             "success" if new_status in ("Filed", "Completed") else "info",
+                             firm_id=firm_id or record.get("firm_id", ""),
+                             entity_type="compliance_record", entity_id=record["id"])
+    except Exception:  # pragma: no cover
+        pass
 
 
 class ComplianceRecordService:
@@ -106,22 +135,26 @@ class ComplianceRecordService:
         record = compliance_records_repo.create(payload)
         return {**record, "risk_score": _compute_risk_score(record)}
 
-    def update_record(self, record_id: str, data: dict, firm_id: Optional[str] = None) -> dict:
+    def update_record(self, record_id: str, data: dict, firm_id: Optional[str] = None,
+                      actor: Optional[dict] = None) -> dict:
         record = self.get_record(record_id, firm_id=firm_id)
         updates: dict = {}
+        old_status = record["status"]
+        new_status = None
 
         if "status" in data:
             new_status = data["status"]
-            current_status = record["status"]
-            allowed = VALID_TRANSITIONS.get(current_status, [])
+            allowed = VALID_TRANSITIONS.get(old_status, [])
             if new_status not in allowed:
                 raise ValidationError(
                     "status",
-                    f"Cannot transition from '{current_status}' to '{new_status}'. Allowed: {allowed}"
+                    f"Cannot transition from '{old_status}' to '{new_status}'. Allowed: {allowed}"
                 )
             updates["status"] = new_status
             if new_status == "Filed" and not record.get("filed_date"):
                 updates["filed_date"] = date.today().isoformat()
+            if new_status == "Completed" and not record.get("completed_at"):
+                updates["completed_at"] = date.today().isoformat()
 
         for field in ("notes", "assigned_to", "priority", "acknowledgement_no"):
             if field in data:
@@ -130,6 +163,11 @@ class ComplianceRecordService:
         updated = compliance_records_repo.update(record_id, updates)
         if not updated:
             raise NotFoundError("ComplianceRecord", record_id)
+
+        # Module D/H: every status transition is audited + timelined (best-effort,
+        # never blocks the mutation). Reuses the firm-wide audit_log + client timeline.
+        if new_status and new_status != old_status:
+            _audit_transition(record, old_status, new_status, firm_id, actor)
         return {**updated, "risk_score": _compute_risk_score(updated)}
 
     def get_client_health_score(self, client_id: str, firm_id: Optional[str] = None) -> dict:
