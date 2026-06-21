@@ -468,6 +468,19 @@ export const api = {
       request("/api/portal/self/reminders", clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
     compliance: (clientId?: string) =>
       request("/api/portal/self/compliance", clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
+    // Phase 4.6 — Pay Now: create/reuse a payment link for the client's own invoice.
+    payInvoice: (invoiceId: string, clientId?: string) =>
+      request(`/api/portal/self/invoices/${invoiceId}/pay`,
+        { method: "POST", ...(clientId ? { headers: { "X-Portal-Client-Id": clientId } } : {}) }),
+  },
+  // Phase 4.6 — Online Payments (staff, accounting-gated). The gateway never does
+  // accounting; receipts are created by the existing engine on a verified capture.
+  payments: {
+    createLink: (invoiceId: string) =>
+      request("/api/payments/links", { method: "POST", body: JSON.stringify({ invoice_id: invoiceId }) }),
+    listLinks: (invoiceId: string) => request(`/api/payments/links?invoice_id=${invoiceId}`),
+    sendLink: (linkId: string) => request(`/api/payments/links/${linkId}/send`, { method: "POST" }),
+    history: (invoiceId: string) => request(`/api/payments?invoice_id=${invoiceId}`),
   },
   // Phase 11 — AI Copilot Platform
   copilotV2: {

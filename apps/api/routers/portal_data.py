@@ -64,6 +64,25 @@ def portal_invoice_pdf(invoice_id: str, portal: dict = Depends(get_current_porta
     )
 
 
+@router.post("/invoices/{invoice_id}/pay")
+def portal_pay_invoice(invoice_id: str, portal: dict = Depends(get_current_portal_client)):
+    """Pay Now (Phase 4.6): create or reuse a payment link for the client's OWN
+    invoice and return the hosted checkout URL. Ownership-gated (same gate as the
+    PDF); exposes NO accounting data — only the amount due and the pay URL."""
+    firm_id, client_id = portal["firm_id"], portal["client_id"]
+    if not portal_data_service.invoice_in_scope(firm_id, client_id, invoice_id):
+        raise HTTPException(status_code=404, detail="Invoice not found.")
+    if _USE_MOCK:
+        raise HTTPException(status_code=501, detail="Online payments not available in mock mode")
+    from core.supabase_client import get_supabase
+    from services import payment_service
+    link = payment_service.create_link(
+        get_supabase(), firm_id, invoice_id,
+        actor={"auth_user_id": None, "email": portal.get("email")})
+    return api_response(True, {"short_url": link.get("short_url"),
+                              "amount_paise": link.get("amount_paise"), "status": link.get("status")})
+
+
 @router.get("/dues")
 def portal_dues(portal: dict = Depends(get_current_portal_client)):
     """Canonical AR: outstanding fee invoices the client owes the firm (integer paise)."""

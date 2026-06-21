@@ -79,6 +79,8 @@ from routers.memory_intelligence import router as memory_intelligence_router
 # Client Portal
 from routers.portal import router as portal_router
 from routers import portal_access, portal_self, portal_data
+# Phase 4.6 — Online Payments (links + public gateway webhook)
+from routers import payments
 
 app = FastAPI(title="PracticeSync AI API", version="2.0.0")
 
@@ -251,6 +253,9 @@ app.include_router(portal_self.router)
 # Phase 4.5.2 — client-facing portal data surfaces (invoices, canonical dues,
 # statements, reminders, compliance). Client-authenticated; NOT behind _CLIENT_GUARD.
 app.include_router(portal_data.router)
+# Phase 4.6 — Online Payments. Staff endpoints carry their own accounting rbac;
+# the gateway webhook is public (signature-verified). NOT behind _CLIENT_GUARD.
+app.include_router(payments.router)
 # Amendment v1.1 — Practice (firm-as-internal-client), Partner-only
 from routers.practice import router as practice_router
 app.include_router(practice_router, dependencies=_MFA_GUARD)
