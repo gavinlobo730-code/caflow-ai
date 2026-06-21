@@ -296,12 +296,25 @@ def ready_to_post_queue(
     return api_response(True, bank_posting_service.ready_to_post(db, current_user["firm_id"], client_id))
 
 
+@router.get("/pending")
+def pending_queue(
+    client_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Phase 3.5: draft journal created from the transaction, awaiting approval in
+    the journal review queue (not yet posted / settled / reconciled)."""
+    db = _db()
+    if not db:
+        return api_response(True, [])
+    return api_response(True, bank_posting_service.pending(db, current_user["firm_id"], client_id))
+
+
 @router.get("/posted")
 def posted_queue(
     client_id: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
-    """Transactions already posted to the ledger (journal id + who/when)."""
+    """Transactions already posted to the ledger (draft approved; journal id + who/when)."""
     db = _db()
     if not db:
         return api_response(True, [])

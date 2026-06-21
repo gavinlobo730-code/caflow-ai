@@ -160,16 +160,19 @@ class BankPostingService:
                     "allocate_paise": alloc, "new_paid_paise": paid + alloc, "total_paise": total}
         return None
 
-    # ── B.3.2 post (explicit, idempotent, FY-locked) ─────────────────────────
+    # ── B.3.2 post → Phase 3.5: create a DRAFT journal (no books impact yet) ───
     def post(self, db, firm_id, txn_id, bank_account_id=None, account_id=None,
              to_bank_account_id=None, actor_id=None) -> dict:
+        """Create a DRAFT journal for the bank transaction. The transaction is NOT
+        settled, NOT marked posted, and NOT reconciled — those happen only when a
+        human approves the draft (journal_posting_service.post_draft →
+        settle_on_post). One draft per transaction (idempotent)."""
         txn = self._get_txn(db, firm_id, txn_id)
         if txn.get("posted_journal_id") or txn.get("match_status") == "posted":
-            raise HTTPException(status_code=409, detail="Transaction already posted to the ledger.")
+            raise HTTPException(status_code=409,
+                                detail="A journal has already been created for this transaction.")
         client_id = txn["client_id"]
         entry_date = str(txn["transaction_date"])[:10]
-        # FY lock (Companies Act §128 / firm policy) — never post into a closed period.
-        period_validation_service.validate_posting_date(firm_id, entry_date)
 
         entry_type, lines, _bank_id = self._plan(
             db, firm_id, txn, bank_account_id, account_id, to_bank_account_id)
@@ -179,38 +182,55 @@ class BankPostingService:
             reference_no=f"BANK-{txn_id}",       # one journal per txn (dedup)
             narration=f"Bank: {txn.get('description', '')}".strip(),
             entry_type=entry_type, lines=lines,
+            is_posted=False, source_type="bank_transaction", source_id=txn_id,
+            created_by=actor_id,
         )
 
-        # Posting records the journal link only. Reconciliation (B.4) is a separate
-        # human step — it owns `reconciled` / `reconciled_at` / `reconciliation_id`.
+        # Link the DRAFT journal. Leave match_status / posted_at / settlement alone
+        # until the draft is approved — posted_at is the "truly posted" marker.
         db.table("bank_transactions").update({
-            "match_status": "posted",
-            "posted_journal_id": journal_entry_id, "posted_at": _now(), "posted_by": actor_id,
-            "updated_at": _now(),
+            "posted_journal_id": journal_entry_id, "updated_at": _now(),
         }).eq("id", txn_id).eq("firm_id", firm_id).execute()
-
-        amount, _ = _amount(txn)
-        settled = self._settle(db, firm_id, txn, amount)
 
         try:
             from services.audit_service import log_event
             log_event(firm_id, "bank_transaction", txn_id, "status_change", actor_id=actor_id,
-                      new_data={"posted_journal_id": journal_entry_id, "category": txn.get("category"),
-                                "matched_entity_type": txn.get("matched_entity_type"),
-                                "matched_entity_id": txn.get("matched_entity_id")},
-                      metadata={"source": "bank_post", "settled": settled})
-        except Exception:  # pragma: no cover - audit must never block the post
+                      new_data={"draft_journal_id": journal_entry_id, "category": txn.get("category")},
+                      metadata={"source": "bank_draft", "stage": "draft_created"})
+        except Exception:  # pragma: no cover - audit must never block
             pass
         try:
-            timeline_service.log(client_id, "accounting", "Bank Transaction Posted",
+            timeline_service.log(client_id, "accounting", "Draft Journal Created",
+                                 f"Draft created from bank transaction ({txn.get('category') or 'mapped'}) — awaiting approval",
+                                 "info", firm_id=firm_id, entity_type="bank_transaction",
+                                 entity_id=txn_id, actor_id=actor_id)
+        except Exception:  # pragma: no cover
+            pass
+
+        return {"id": txn_id, "status": "draft", "draft_journal_id": journal_entry_id}
+
+    # ── Deferred settlement — runs only when the draft journal is posted ───────
+    def settle_on_post(self, db, firm_id, txn_id, journal_id, actor_id=None) -> Optional[dict]:
+        """Called by journal_posting_service.post_draft once the bank draft is on
+        the books: mark the transaction posted and settle its invoice/bill. Idempotent."""
+        txn = self._get_txn(db, firm_id, txn_id)
+        if txn.get("match_status") == "posted":
+            return None                                   # already settled (idempotent)
+        db.table("bank_transactions").update({
+            "match_status": "posted", "posted_at": _now(), "posted_by": actor_id,
+            "posted_journal_id": journal_id, "updated_at": _now(),
+        }).eq("id", txn_id).eq("firm_id", firm_id).execute()
+
+        amount, _ = _amount(txn)
+        settled = self._settle(db, firm_id, txn, amount)
+        try:
+            timeline_service.log(txn["client_id"], "accounting", "Bank Transaction Posted",
                                  f"Posted to ledger ({txn.get('category') or 'mapped'})", "success",
                                  firm_id=firm_id, entity_type="bank_transaction",
                                  entity_id=txn_id, actor_id=actor_id)
         except Exception:  # pragma: no cover
             pass
-
-        return {"id": txn_id, "match_status": "posted", "posted_journal_id": journal_entry_id,
-                "settlement": settled}
+        return settled
 
     # ── B.3.4 settlement ──────────────────────────────────────────────────────
     def _settle(self, db, firm_id, txn, amount) -> Optional[dict]:
@@ -249,12 +269,23 @@ class BankPostingService:
                 if t.get("category") and not t.get("posted_journal_id")
                 and t.get("match_status") not in ("posted", "ignored")]
 
+    def pending(self, db, firm_id, client_id: Optional[str]) -> list[dict]:
+        """Draft journal created, awaiting approval (linked journal but not yet posted)."""
+        q = db.table("bank_transactions").select("*").eq("firm_id", firm_id)
+        if client_id:
+            q = q.eq("client_id", client_id)
+        rows = q.order("transaction_date").execute().data or []
+        return [t for t in rows
+                if t.get("posted_journal_id") and not t.get("posted_at")
+                and t.get("match_status") != "posted"]
+
     def posted(self, db, firm_id, client_id: Optional[str]) -> list[dict]:
+        """Truly posted — the draft was approved (posted_at set)."""
         q = db.table("bank_transactions").select("*").eq("firm_id", firm_id)
         if client_id:
             q = q.eq("client_id", client_id)
         rows = q.order("transaction_date", desc=True).execute().data or []
-        return [t for t in rows if t.get("posted_journal_id")]
+        return [t for t in rows if t.get("posted_at")]
 
 
 bank_posting_service = BankPostingService()

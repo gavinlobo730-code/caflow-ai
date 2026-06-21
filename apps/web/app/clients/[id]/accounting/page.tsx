@@ -31,6 +31,7 @@ type AccountingTab =
   | "banks"
   | "categorize"
   | "post"
+  | "approvals"
   | "reconciliation"
   | "reports";
 
@@ -46,6 +47,7 @@ const TABS: { id: AccountingTab; label: string }[] = [
   { id: "banks",         label: "Banks" },
   { id: "categorize",    label: "Categorize" },
   { id: "post",          label: "Post" },
+  { id: "approvals",     label: "Approvals" },
   { id: "reconciliation",label: "Reconciliation" },
   { id: "reports",       label: "Reports" },
 ];
@@ -272,6 +274,9 @@ export default function AccountingPage() {
         )}
         {tab === "post" && (
           <BankPostingQueue clientId={clientId} accounts={accounts} />
+        )}
+        {tab === "approvals" && (
+          <ApprovalQueue clientId={clientId} />
         )}
         {tab === "reconciliation" && (
           <BankReconciliation clientId={clientId} />
@@ -1742,8 +1747,9 @@ const isBankish = (a: Account) =>
   a.account_type === "Asset" && /bank|cash/i.test(`${a.account_subtype ?? ""} ${a.account_name}`);
 
 function BankPostingQueue({ clientId, accounts }: { clientId: string; accounts: Account[] }) {
-  const [view, setView] = useState<"ready" | "posted">("ready");
+  const [view, setView] = useState<"ready" | "pending" | "posted">("ready");
   const [ready, setReady] = useState<ReadyTxn[]>([]);
+  const [pending, setPending] = useState<ReadyTxn[]>([]);
   const [posted, setPosted] = useState<PostedTxn[]>([]);
   const [loading, setLoading] = useState(false);
   const [reviewing, setReviewing] = useState<ReadyTxn | null>(null);
@@ -1752,13 +1758,15 @@ function BankPostingQueue({ clientId, accounts }: { clientId: string; accounts: 
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
     try {
-      const [r, p] = await Promise.all([
+      const [r, pen, p] = await Promise.all([
         api.banking.readyToPost({ client_id: clientId }) as Promise<{ success: boolean; data: ReadyTxn[] }>,
+        api.banking.pending({ client_id: clientId }) as Promise<{ success: boolean; data: ReadyTxn[] }>,
         api.banking.posted({ client_id: clientId }) as Promise<{ success: boolean; data: PostedTxn[] }>,
       ]);
       setReady(r.success ? (r.data ?? []) : []);
+      setPending(pen.success ? (pen.data ?? []) : []);
       setPosted(p.success ? (p.data ?? []) : []);
-    } catch { setReady([]); setPosted([]); } finally { setLoading(false); }
+    } catch { setReady([]); setPending([]); setPosted([]); } finally { setLoading(false); }
   }, [clientId]);
   useEffect(() => { load(); }, [load]);
 
@@ -1766,7 +1774,7 @@ function BankPostingQueue({ clientId, accounts }: { clientId: string; accounts: 
     <div className="space-y-4 max-w-5xl">
       <div className="flex items-center justify-between">
         <div className="flex gap-1 bg-[#F1F5F9] p-1 rounded-lg w-fit">
-          {([["ready", `Ready to Post (${ready.length})`], ["posted", `Posted (${posted.length})`]] as const).map(([id, label]) => (
+          {([["ready", `Ready to Post (${ready.length})`], ["pending", `Pending Approval (${pending.length})`], ["posted", `Posted (${posted.length})`]] as const).map(([id, label]) => (
             <button key={id} onClick={() => setView(id)}
               className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === id ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"}`}>
               {label}
@@ -1776,7 +1784,38 @@ function BankPostingQueue({ clientId, accounts }: { clientId: string; accounts: 
         <button onClick={load} className="text-xs text-[#64748B] hover:text-[#334155]">Refresh</button>
       </div>
 
-      {loading ? <div className="h-40 bg-[#F8FAFC] rounded-lg animate-pulse" /> : view === "ready" ? (
+      {loading ? <div className="h-40 bg-[#F8FAFC] rounded-lg animate-pulse" /> : view === "pending" ? (
+        pending.length === 0 ? (
+          <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">
+            No drafts awaiting approval. Create one from “Ready to Post”, then approve it under the Approvals tab.
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+            <table className="w-full text-xs">
+              <thead className="bg-[#F8FAFC] text-[#64748B]"><tr>
+                <th className="px-3 py-2 text-left font-medium">Date</th>
+                <th className="px-3 py-2 text-right font-medium">Amount</th>
+                <th className="px-3 py-2 text-left font-medium">Narration</th>
+                <th className="px-3 py-2 text-left font-medium">Category</th>
+                <th className="px-3 py-2 text-left font-medium">Status</th>
+              </tr></thead>
+              <tbody className="divide-y divide-[#F8FAFC]">
+                {pending.map((t) => (
+                  <tr key={t.id} className="hover:bg-[#F8FAFC]">
+                    <td className="px-3 py-2 whitespace-nowrap text-[#475569]">{String(t.transaction_date).slice(0, 10)}</td>
+                    <td className="px-3 py-2 text-right font-mono whitespace-nowrap">
+                      {t.credit_paise > 0 ? <span className="text-green-700">{fmt(t.credit_paise)} Cr</span> : <span className="text-red-700">{fmt(t.debit_paise)} Dr</span>}
+                    </td>
+                    <td className="px-3 py-2 max-w-[220px] truncate text-[#334155]" title={t.description}>{t.description}</td>
+                    <td className="px-3 py-2">{t.category ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">{t.category}</span> : <span className="text-[#94A3B8]">—</span>}</td>
+                    <td className="px-3 py-2"><span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">Draft — awaiting approval</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : view === "ready" ? (
         ready.length === 0 ? (
           <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">
             Nothing ready to post. Categorize transactions under the Categorize tab first.
@@ -1817,7 +1856,7 @@ function BankPostingQueue({ clientId, accounts }: { clientId: string; accounts: 
                     <td className="px-3 py-2 text-right">
                       <button onClick={() => setReviewing(t)}
                         className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
-                        Review &amp; Post
+                        Review &amp; Create Draft
                       </button>
                     </td>
                   </tr>
@@ -1864,7 +1903,7 @@ function BankPostingQueue({ clientId, accounts }: { clientId: string; accounts: 
       )}
 
       <p className="text-[10px] text-[#94A3B8] text-center">
-        Posting is explicit — review the proposed journal and confirm. Nothing is posted automatically.
+        Reviewing creates a DRAFT journal — it does not hit the books. Approve it under the Approvals tab to post and settle. Nothing is posted automatically.
       </p>
 
       {reviewing && (
@@ -1939,7 +1978,7 @@ function PostingReviewDrawer({
     <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose}>
       <div className="w-full max-w-md h-full bg-white shadow-xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-center justify-between sticky top-0 bg-white">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Review &amp; Post Transaction</h3>
+          <h3 className="text-sm font-semibold text-[#0F172A]">Review &amp; Create Draft Journal</h3>
           <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155] text-lg leading-none">×</button>
         </div>
 
@@ -2049,7 +2088,7 @@ function PostingReviewDrawer({
           <button onClick={onClose} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded text-[#475569] hover:bg-[#F8FAFC]">Cancel</button>
           <button onClick={post} disabled={!balanced || posting || loadingPreview}
             className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
-            {posting ? "Posting…" : "Post Transaction"}
+            {posting ? "Creating…" : "Create Draft Journal"}
           </button>
         </div>
       </div>
@@ -2058,6 +2097,119 @@ function PostingReviewDrawer({
 }
 
 // ── Bank Accounts & Statement Import ──────────────────────────────────────
+
+// ── Journal Approval Queue (Phase 3.5) — single Draft → Approve → Post review ──
+// One queue for every draft (manual + auto-generated, e.g. bank). Approving posts
+// the journal to the books (backend-driven: FY-locked, audited) and fires deferred
+// downstream actions like bank settlement. Drafts are off-books until approved.
+
+interface QueueJournal {
+  id: string; entry_date: string | null; reference_no: string | null; narration: string | null;
+  entry_type: string | null; source_type: string | null; created_by: string | null;
+  created_at: string | null; is_posted: boolean; posted_at: string | null;
+  total_debit_paise: number; total_credit_paise: number; line_count: number;
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  bank_transaction: "Bank", sales_invoice: "Sales Invoice", purchase_bill: "Purchase Bill",
+  manual: "Manual",
+};
+
+function ApprovalQueue({ clientId }: { clientId: string }) {
+  const [status, setStatus] = useState<"draft" | "posted">("draft");
+  const [rows, setRows] = useState<QueueJournal[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
+    setLoading(true);
+    try {
+      const res = (await api.accounting.journalsQueue({ client_id: clientId, status })) as { success: boolean; data: QueueJournal[] };
+      setRows(res.success ? (res.data ?? []) : []);
+    } catch { setRows([]); } finally { setLoading(false); }
+  }, [clientId, status]);
+  useEffect(() => { load(); }, [load]);
+
+  async function approve(id: string) {
+    setBusy((b) => ({ ...b, [id]: true })); setError(null);
+    try {
+      const res = (await api.accounting.postDraftJournal(id)) as { success: boolean; error: string | null };
+      if (res && res.success === false) setError(res.error ?? "Could not post the journal.");
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not post the journal."); }
+    finally { setBusy((b) => ({ ...b, [id]: false })); }
+  }
+
+  return (
+    <div className="space-y-4 max-w-5xl">
+      <div className="flex items-center justify-between">
+        <div className="flex gap-1 bg-[#F1F5F9] p-1 rounded-lg w-fit">
+          {([["draft", "Draft"], ["posted", "Posted"]] as const).map(([id, label]) => (
+            <button key={id} onClick={() => setStatus(id)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${status === id ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <button onClick={load} className="text-xs text-[#64748B] hover:text-[#334155]">Refresh</button>
+      </div>
+
+      {error && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-3">{error}</p>}
+
+      {loading ? <div className="h-40 bg-[#F8FAFC] rounded-lg animate-pulse" /> : rows.length === 0 ? (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">
+          {status === "draft" ? "No drafts awaiting approval." : "No posted journals yet."}
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <table className="w-full text-xs">
+            <thead className="bg-[#F8FAFC] text-[#64748B]"><tr>
+              <th className="px-3 py-2 text-left font-medium">Date</th>
+              <th className="px-3 py-2 text-left font-medium">Ref</th>
+              <th className="px-3 py-2 text-left font-medium">Narration</th>
+              <th className="px-3 py-2 text-left font-medium">Source</th>
+              <th className="px-3 py-2 text-right font-medium">Debit</th>
+              <th className="px-3 py-2 text-right font-medium">Credit</th>
+              <th className="px-3 py-2 text-right font-medium">{status === "draft" ? "Action" : "Posted At"}</th>
+            </tr></thead>
+            <tbody className="divide-y divide-[#F8FAFC]">
+              {rows.map((j) => {
+                const balanced = j.total_debit_paise === j.total_credit_paise && j.total_debit_paise > 0;
+                return (
+                  <tr key={j.id} className="hover:bg-[#F8FAFC]">
+                    <td className="px-3 py-2 whitespace-nowrap text-[#475569]">{j.entry_date ? String(j.entry_date).slice(0, 10) : "—"}</td>
+                    <td className="px-3 py-2 font-mono text-[#94A3B8]">{j.reference_no ?? "—"}</td>
+                    <td className="px-3 py-2 max-w-[240px] truncate text-[#334155]" title={j.narration ?? ""}>{j.narration ?? "—"}</td>
+                    <td className="px-3 py-2"><span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#475569]">{SOURCE_LABEL[j.source_type ?? "manual"] ?? "Manual"}</span></td>
+                    <td className="px-3 py-2 text-right font-mono text-[#334155]">{fmt(j.total_debit_paise)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-[#334155]">{fmt(j.total_credit_paise)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      {status === "draft" ? (
+                        <button onClick={() => approve(j.id)} disabled={busy[j.id] || !balanced}
+                          title={balanced ? "Approve & post to the ledger" : "Entry is not balanced"}
+                          className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                          {busy[j.id] ? "Posting…" : "Approve & Post"}
+                        </button>
+                      ) : (
+                        <span className="text-[#475569]">{j.posted_at ? String(j.posted_at).slice(0, 16).replace("T", " ") : "—"}</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <p className="text-[10px] text-[#94A3B8] text-center">
+        Approving posts the draft to the books and triggers any deferred action (e.g. bank settlement). Requires approval permission; locked financial years are blocked.
+      </p>
+    </div>
+  );
+}
 
 function BankAccounts({ clientId }: { clientId: string }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);

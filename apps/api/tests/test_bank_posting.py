@@ -7,6 +7,8 @@ import pytest
 from domain.banking import posting_map as pmap
 import services.bank_posting_service as bps
 from services.bank_posting_service import bank_posting_service
+import services.journal_posting_service as jpsmod
+from services.journal_posting_service import journal_posting_service
 import services.phase2_journal_service as pjs
 
 
@@ -62,15 +64,17 @@ class _Resp:
 class _Q:
     def __init__(self, store, table):
         self.s, self.t = store, table
-        self.op = "select"; self.payload = None; self.f = []; self.single_ = False; self.order_ = None; self.desc = False
+        self.op = "select"; self.cols = ""; self.payload = None; self.f = []
+        self.single_ = False; self.order_ = None; self.desc = False
 
     def insert(self, p): self.op, self.payload = "insert", p; return self
     def update(self, p): self.op, self.payload = "update", p; return self
-    def select(self, *a, **k): self.op = "select"; return self
+    def select(self, *a, **k): self.op = "select"; self.cols = " ".join(str(x) for x in a); return self
     def eq(self, k, v): self.f.append((k, v)); return self
     def or_(self, *_a, **_k): return self
     def ilike(self, *_a, **_k): return self
     def in_(self, k, vals): self.f.append((k, ("__in__", list(vals)))); return self
+    def is_(self, k, _v): self.f.append((k, ("__null__",))); return self
     def limit(self, _n): return self
     def order(self, c, desc=False): self.order_, self.desc = c, desc; return self
     def single(self): self.single_ = True; return self
@@ -83,9 +87,18 @@ class _Q:
             for k, v in self.f:
                 if isinstance(v, tuple) and v and v[0] == "__in__":
                     if r.get(k) not in v[1]: ok = False; break
+                elif isinstance(v, tuple) and v and v[0] == "__null__":
+                    if r.get(k) is not None: ok = False; break
                 elif r.get(k) != v: ok = False; break
             if ok: out.append(r)
         return out
+
+    def _embed(self, rows):
+        if self.t == "journal_entries" and "journal_lines" in self.cols:
+            for r in rows:
+                r["journal_lines"] = [dict(l) for l in self.s.get("journal_lines", [])
+                                      if l.get("journal_entry_id") == r["id"]]
+        return rows
 
     def execute(self):
         rows = self.s.setdefault(self.t, [])
@@ -100,6 +113,7 @@ class _Q:
         if self.op == "update":
             for r in m: r.update(self.payload)
             return _Resp(m)
+        m = self._embed(m)
         if self.order_:
             m = sorted(m, key=lambda r: str(r.get(self.order_)), reverse=self.desc)
         if self.single_:
@@ -148,13 +162,20 @@ def _seed_txn(db, *, credit=0, debit=0, category=None, matched_type=None, matche
 @pytest.fixture(autouse=True)
 def _patch(monkeypatch):
     # FY lock + timeline are external; default no-op (overridden per test).
-    monkeypatch.setattr(bps.period_validation_service, "validate_posting_date", lambda *a, **k: None)
     monkeypatch.setattr(bps.timeline_service, "log", lambda *a, **k: None)
+    monkeypatch.setattr(jpsmod.timeline_service, "log", lambda *a, **k: None)
+    monkeypatch.setattr(jpsmod.period_validation_service, "validate_posting_date", lambda *a, **k: None)
+    monkeypatch.setattr("services.audit_service.log_event", lambda *a, **k: None, raising=False)
     yield
 
 
 def _lines_for(db, je_id):
     return [l for l in db.store.get("journal_lines", []) if l["journal_entry_id"] == je_id]
+
+
+def _approve(db, draft_journal_id, actor="u1"):
+    """Phase 3.5: approve+post a draft (fires deferred bank settlement)."""
+    return journal_posting_service.post_draft(db, FIRM, draft_journal_id, actor_id=actor)
 
 
 # ── B.3.3 every category posts a balanced, correctly-directed journal ─────────
@@ -181,8 +202,8 @@ def test_post_each_category(name, category, credit, debit, account_id, counter):
     _seed_txn(db, credit=credit, debit=debit, category=category)
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank",
                                     account_id=account_id, actor_id="u1")
-    je = res["posted_journal_id"]
-    assert je and res["match_status"] == "posted"
+    je = res["draft_journal_id"]
+    assert je and res["status"] == "draft"        # Phase 3.5: creates a draft
     lines = _lines_for(db, je)
     assert _balanced(lines)                       # integrity: balanced
     is_credit = credit > 0
@@ -200,7 +221,7 @@ def test_transfer_posts_between_banks():
     _seed_txn(db, debit=60000, category="Transfer")   # money out of acc-bank
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank",
                                     to_bank_account_id="acc-bank2", actor_id="u1")
-    lines = _lines_for(db, res["posted_journal_id"])
+    lines = _lines_for(db, res["draft_journal_id"])
     assert _balanced(lines)
     dr = next(l for l in lines if l["debit_paise"])
     assert dr["account_id"] == "acc-bank2"            # destination receives
@@ -225,16 +246,19 @@ def test_full_invoice_settlement():
     _seed_txn(db, credit=118000, category="Customer Payment",
               matched_type="sales_invoice", matched_id="inv-1")
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+    assert db.store["client_sales_invoices"][0]["paid_paise"] == 0   # draft: not settled yet
+    out = _approve(db, res["draft_journal_id"])                       # approve → settle
     inv = db.store["client_sales_invoices"][0]
     assert inv["paid_paise"] == 118000 and inv["status"] == "paid"
-    assert res["settlement"]["allocated_paise"] == 118000
+    assert out["settlement"]["allocated_paise"] == 118000
 
 
 def test_partial_invoice_settlement():
     db = _db_with_accounts(); _seed_invoice(db, 118000, paid=18000, status="partially_paid")
     _seed_txn(db, credit=50000, category="Customer Payment",
               matched_type="sales_invoice", matched_id="inv-1")
-    bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+    res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+    _approve(db, res["draft_journal_id"])
     inv = db.store["client_sales_invoices"][0]
     assert inv["paid_paise"] == 68000 and inv["status"] == "partially_paid"
 
@@ -245,16 +269,18 @@ def test_invoice_never_over_allocates():
     _seed_txn(db, credit=50000, category="Customer Payment",
               matched_type="sales_invoice", matched_id="inv-1")
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+    out = _approve(db, res["draft_journal_id"])
     inv = db.store["client_sales_invoices"][0]
     assert inv["paid_paise"] == 100000 and inv["status"] == "paid"
-    assert res["settlement"]["allocated_paise"] == 10000
+    assert out["settlement"]["allocated_paise"] == 10000
 
 
 def test_full_bill_settlement():
     db = _db_with_accounts(); _seed_bill(db, 59000)
     _seed_txn(db, debit=59000, category="Vendor Payment",
               matched_type="purchase_bill", matched_id="bill-1")
-    bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+    res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+    _approve(db, res["draft_journal_id"])
     bill = db.store["purchase_bills"][0]
     assert bill["paid_paise"] == 59000 and bill["status"] == "paid"
 
@@ -263,7 +289,8 @@ def test_partial_bill_settlement():
     db = _db_with_accounts(); _seed_bill(db, 59000)
     _seed_txn(db, debit=20000, category="Vendor Payment",
               matched_type="purchase_bill", matched_id="bill-1")
-    bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+    res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
+    _approve(db, res["draft_journal_id"])
     bill = db.store["purchase_bills"][0]
     assert bill["paid_paise"] == 20000 and bill["status"] == "partially_paid"
 
@@ -278,14 +305,18 @@ def test_duplicate_post_rejected():
 
 
 def test_fy_locked_blocks_post(monkeypatch):
+    # Phase 3.5: the FY lock is enforced when the draft is APPROVED (books-hitting),
+    # not when the draft is created.
     from fastapi import HTTPException
     db = _db_with_accounts(); _seed_txn(db, credit=100000, category="Customer Payment")
+    res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
     def _locked(*a, **k):
         raise HTTPException(status_code=403, detail="FY locked")
-    monkeypatch.setattr(bps.period_validation_service, "validate_posting_date", _locked)
+    monkeypatch.setattr(jpsmod.period_validation_service, "validate_posting_date", _locked)
     with pytest.raises(HTTPException):
-        bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
-    assert db.store["bank_transactions"][0]["posted_journal_id"] is None  # not posted
+        _approve(db, res["draft_journal_id"])
+    txn = db.store["bank_transactions"][0]
+    assert txn.get("posted_at") is None and txn["match_status"] != "posted"  # never posted/settled
 
 
 def test_missing_account_mapping_rejected():
@@ -323,6 +354,6 @@ def test_paise_precision_preserved():
     db = _db_with_accounts(); _seed_txn(db, debit=12345, category="Expense")
     res = bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank",
                                     account_id="acc-exp", actor_id="u1")
-    lines = _lines_for(db, res["posted_journal_id"])
+    lines = _lines_for(db, res["draft_journal_id"])
     assert all(isinstance(l["debit_paise"], int) and isinstance(l["credit_paise"], int) for l in lines)
     assert sum(l["debit_paise"] for l in lines) == 12345
