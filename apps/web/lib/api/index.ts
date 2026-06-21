@@ -41,12 +41,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 /** Fetch a binary endpoint with auth and trigger a browser blob download. */
-async function downloadFile(path: string, fallbackFilename: string): Promise<void> {
+async function downloadFile(path: string, fallbackFilename: string, extraHeaders?: Record<string, string>): Promise<void> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
 
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(extraHeaders ?? {}),
+    },
   });
   if (!res.ok) {
     const err = await res.text();
@@ -435,6 +438,36 @@ export const api = {
       request("/api/portal/me", clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
     dashboard: (clientId?: string) =>
       request("/api/portal/dashboard", clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
+    // Phase 4.5.2 — client-facing data surfaces. Each carries the active client
+    // via X-Portal-Client-Id (explicit selection; no implicit switching). All
+    // data is the firm↔client fee relationship + the client's compliance status.
+    invoices: (clientId?: string) =>
+      request("/api/portal/self/invoices", clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
+    invoicePdf: (invoiceId: string, clientId?: string) =>
+      downloadFile(`/api/portal/self/invoices/${invoiceId}/pdf`, `invoice-${invoiceId}.pdf`,
+        clientId ? { "X-Portal-Client-Id": clientId } : undefined),
+    dues: (clientId?: string) =>
+      request("/api/portal/self/dues", clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
+    statement: (clientId?: string, start?: string, end?: string) => {
+      const q = new URLSearchParams();
+      if (start) q.set("start", start);
+      if (end) q.set("end", end);
+      const qs = q.toString();
+      return request(`/api/portal/self/statement${qs ? `?${qs}` : ""}`,
+        clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined);
+    },
+    statementPdf: (clientId?: string, start?: string, end?: string) => {
+      const q = new URLSearchParams();
+      if (start) q.set("start", start);
+      if (end) q.set("end", end);
+      const qs = q.toString();
+      return downloadFile(`/api/portal/self/statement/pdf${qs ? `?${qs}` : ""}`, "statement.pdf",
+        clientId ? { "X-Portal-Client-Id": clientId } : undefined);
+    },
+    reminders: (clientId?: string) =>
+      request("/api/portal/self/reminders", clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
+    compliance: (clientId?: string) =>
+      request("/api/portal/self/compliance", clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
   },
   // Phase 11 — AI Copilot Platform
   copilotV2: {
