@@ -188,6 +188,24 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         else:
             firm_result["customer_reminders"] = {"skipped": "already ran today"}
 
+        # 6. Recurring invoices (Phase 4.3) — generate DRAFT invoices for due
+        #    templates via the existing invoice engine. Drafts only: never
+        #    auto-issue, auto-post a journal, or auto-email (locked decisions).
+        #    Idempotent (one invoice per template/occurrence); also runnable
+        #    manually so it works whether or not the scheduler is enabled.
+        if force or not _already_ran_today("recurring_invoices", fid):
+            try:
+                from services.recurring_invoice_service import generate_due_recurring_invoices
+                outcome = generate_due_recurring_invoices(fid)
+                firm_result["recurring_invoices"] = outcome
+                _log_run("recurring_invoices", fid, "success", outcome)
+            except Exception as e:
+                logger.error(f"Recurring invoices job failed for firm {fid}: {e}", exc_info=True)
+                firm_result["recurring_invoices"] = {"error": str(e)}
+                _log_run("recurring_invoices", fid, "failed", {"error": str(e)})
+        else:
+            firm_result["recurring_invoices"] = {"skipped": "already ran today"}
+
         results["firms"][fid] = firm_result
 
     logger.info(f"Daily scheduler run completed for {len(firm_ids)} firm(s)")

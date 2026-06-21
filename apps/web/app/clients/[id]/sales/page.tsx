@@ -17,7 +17,7 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function apiCall(
   endpoint: string,
-  method: "POST" | "PATCH" | "DELETE",
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
   body?: unknown,
   token?: string
 ): Promise<{ success: boolean; data: unknown; error: string | null }> {
@@ -77,9 +77,10 @@ async function apiGet(
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type SalesTab = "invoices" | "customers" | "receipts" | "credit-notes" | "statements";
+type SalesTab = "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "statements";
 const TABS: { id: SalesTab; label: string }[] = [
   { id: "invoices", label: "Sales Invoices" },
+  { id: "recurring", label: "Recurring" },
   { id: "customers", label: "Customers" },
   { id: "receipts", label: "Receipts" },
   { id: "credit-notes", label: "Credit Notes" },
@@ -440,6 +441,9 @@ export default function SalesPage() {
         {tab === "invoices" && (
           <SalesInvoices clientId={clientId} financialYear={financialYear} />
         )}
+        {tab === "recurring" && (
+          <RecurringInvoices clientId={clientId} />
+        )}
         {tab === "customers" && (
           <Customers clientId={clientId} financialYear={financialYear} />
         )}
@@ -452,6 +456,468 @@ export default function SalesPage() {
         {tab === "statements" && (
           <Statements clientId={clientId} financialYear={financialYear} />
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Recurring Invoices (Phase 4.3) — draft generation from templates ─────────
+// Templates generate DRAFT invoices via the existing invoice engine. Never
+// auto-issued, never auto-emailed. All money/GST math is server-side.
+
+interface RecurringLine {
+  description: string; hsn_sac: string | null; quantity: number;
+  rate_paise: number; gst_rate_bps: number; is_service: boolean; sort_order?: number;
+}
+interface RecurringTemplate {
+  id: string; client_id: string; customer_id: string; title: string;
+  description: string | null; frequency: string; start_date: string;
+  end_date: string | null; next_run_date: string | null; notes: string | null;
+  is_inter_state: boolean; status: "active" | "paused" | "archived";
+  lines: RecurringLine[];
+}
+interface RecurringRun {
+  id: string; occurrence_date: string; status: string; created_at: string;
+  invoice: { id: string; invoice_no: string | null; status: string | null; total_paise: number | null } | null;
+}
+type RecEditorLine = { description: string; hsn_sac: string; quantity: string; rate: string; gst: number; is_service: boolean };
+
+const FREQ_LABEL: Record<string, string> = {
+  weekly: "Weekly", monthly: "Monthly", quarterly: "Quarterly", half_yearly: "Half-Yearly", yearly: "Yearly",
+};
+const REC_STATUS_BADGE: Record<string, string> = {
+  active: "bg-green-50 text-green-700", paused: "bg-amber-50 text-amber-700", archived: "bg-[#F1F5F9] text-[#64748B]",
+};
+const recBase = (lines: RecurringLine[]) =>
+  lines.reduce((s, l) => s + Math.round((l.rate_paise || 0) * (l.quantity || 0)), 0);
+
+function RecurringInvoices({ clientId }: { clientId: string }) {
+  const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [editor, setEditor] = useState<RecurringTemplate | "new" | null>(null);
+  const [historyFor, setHistoryFor] = useState<RecurringTemplate | null>(null);
+
+  const showToast = (msg: string, type: "success" | "error") => { setToast({ msg, type }); setTimeout(() => setToast(null), 4000); };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const token = await getAuthToken();
+    const supabase = getSupabaseClient();
+    const [tplRes, { data: custData }] = await Promise.all([
+      apiGet(`/api/recurring-invoices?client_id=${encodeURIComponent(clientId)}`, token),
+      supabase.from("customers")
+        .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
+        .eq("client_id", clientId).eq("is_active", true).order("name"),
+    ]);
+    setTemplates((tplRes.data as RecurringTemplate[]) ?? []);
+    setCustomers((custData as Customer[]) ?? []);
+    setLoading(false);
+  }, [clientId]);
+  useEffect(() => { load(); }, [load]);
+
+  const custName = (id: string) => customers.find((c) => c.id === id)?.name ?? "—";
+
+  async function runNow(t: RecurringTemplate) {
+    try {
+      const token = await getAuthToken();
+      const res = await apiCall(`/api/recurring-invoices/${t.id}/run`, "POST", undefined, token);
+      if (!res.success) throw new Error(res.error ?? "Run failed");
+      const d = res.data as { generated_count: number; skipped_count: number };
+      showToast(`Generated ${d.generated_count} draft${d.generated_count === 1 ? "" : "s"}`
+        + (d.skipped_count ? `; ${d.skipped_count} already existed` : ""), "success");
+      load();
+    } catch (e) { showToast(e instanceof Error ? e.message : "Run failed", "error"); }
+  }
+
+  async function changeStatus(t: RecurringTemplate, action: "pause" | "resume" | "archive") {
+    try {
+      const token = await getAuthToken();
+      const res = await apiCall(`/api/recurring-invoices/${t.id}/${action}`, "POST", undefined, token);
+      if (!res.success) throw new Error(res.error ?? "Update failed");
+      showToast(`Template ${action === "resume" ? "resumed" : action + "d"}`, "success");
+      load();
+    } catch (e) { showToast(e instanceof Error ? e.message : "Update failed", "error"); }
+  }
+
+  return (
+    <div className="space-y-4 max-w-5xl">
+      {toast && <Toast msg={toast.msg} type={toast.type} />}
+
+      {editor && (
+        <RecurringEditor
+          clientId={clientId}
+          customers={customers}
+          existing={editor === "new" ? null : editor}
+          onClose={() => setEditor(null)}
+          onSaved={(msg) => { setEditor(null); showToast(msg, "success"); load(); }}
+        />
+      )}
+      {historyFor && (
+        <RecurringHistoryDrawer
+          template={historyFor}
+          customerName={custName(historyFor.customer_id)}
+          onClose={() => setHistoryFor(null)}
+        />
+      )}
+
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs font-semibold text-[#334155]">
+            {templates.length} template{templates.length !== 1 ? "s" : ""}
+          </p>
+          <p className="text-[11px] text-[#94A3B8] mt-0.5">
+            Recurring templates generate <strong>draft</strong> invoices for CA review — never auto-issued or auto-emailed.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+          </button>
+          <button onClick={() => setEditor("new")}
+            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+            <Plus size={12} /> New Template
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-10 rounded bg-[#F8FAFC] animate-pulse" />)}</div>
+      ) : templates.length === 0 ? (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16">
+          <Clock size={32} className="text-gray-200 mx-auto mb-3" />
+          <p className="text-sm text-[#64748B]">No recurring templates yet</p>
+          <p className="text-xs text-[#94A3B8] mt-1">Create one to auto-generate draft invoices on a schedule.</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                  <th className="px-4 py-3 text-left font-semibold">Template</th>
+                  <th className="px-3 py-3 text-left font-semibold">Customer</th>
+                  <th className="px-3 py-3 text-left font-semibold">Frequency</th>
+                  <th className="px-3 py-3 text-left font-semibold">Next Run</th>
+                  <th className="px-3 py-3 text-right font-semibold">Base (excl. GST)</th>
+                  <th className="px-3 py-3 text-left font-semibold">Status</th>
+                  <th className="px-4 py-3 text-right font-semibold">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F8FAFC]">
+                {templates.map((t) => (
+                  <tr key={t.id} className="hover:bg-[#F8FAFC]">
+                    <td className="px-4 py-2.5">
+                      <div className="font-medium text-[#1E293B]">{t.title}</div>
+                      {t.description && <div className="text-[10px] text-[#94A3B8]">{t.description}</div>}
+                    </td>
+                    <td className="px-3 py-2.5 text-[#334155]">{custName(t.customer_id)}</td>
+                    <td className="px-3 py-2.5 text-[#64748B]">{FREQ_LABEL[t.frequency] ?? t.frequency}</td>
+                    <td className="px-3 py-2.5 text-[#64748B] whitespace-nowrap">
+                      {t.status === "active" ? (t.next_run_date ?? "—") : <span className="text-[#CBD5E1]">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono text-[#334155]">{fmt(recBase(t.lines ?? []))}</td>
+                    <td className="px-3 py-2.5">
+                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${REC_STATUS_BADGE[t.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+                        {t.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center justify-end gap-2.5">
+                        {t.status === "active" && (
+                          <button onClick={() => runNow(t)} className="text-xs text-blue-600 hover:underline">Run now</button>
+                        )}
+                        <button onClick={() => setHistoryFor(t)} className="text-[#94A3B8] hover:text-[#334155]" title="History & upcoming">
+                          <Clock size={13} />
+                        </button>
+                        {t.status !== "archived" && (
+                          <button onClick={() => setEditor(t)} className="text-[#94A3B8] hover:text-blue-600" title="Edit"><Pencil size={13} /></button>
+                        )}
+                        {t.status === "active" && (
+                          <button onClick={() => changeStatus(t, "pause")} className="text-xs text-amber-600 hover:underline">Pause</button>
+                        )}
+                        {t.status === "paused" && (
+                          <button onClick={() => changeStatus(t, "resume")} className="text-xs text-emerald-600 hover:underline">Resume</button>
+                        )}
+                        {t.status !== "archived" && (
+                          <button onClick={() => changeStatus(t, "archive")} className="text-[#CBD5E1] hover:text-red-600" title="Archive"><Trash2 size={13} /></button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RecurringEditor({
+  clientId, customers, existing, onClose, onSaved,
+}: {
+  clientId: string;
+  customers: Customer[];
+  existing: RecurringTemplate | null;
+  onClose: () => void;
+  onSaved: (msg: string) => void;
+}) {
+  const [customerId, setCustomerId] = useState(existing?.customer_id ?? "");
+  const [title, setTitle] = useState(existing?.title ?? "");
+  const [description, setDescription] = useState(existing?.description ?? "");
+  const [frequency, setFrequency] = useState(existing?.frequency ?? "monthly");
+  const [startDate, setStartDate] = useState(existing?.start_date ?? new Date().toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState(existing?.end_date ?? "");
+  const [isInterState, setIsInterState] = useState(existing?.is_inter_state ?? false);
+  const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [lines, setLines] = useState<RecEditorLine[]>(
+    existing?.lines?.length
+      ? existing.lines.map((l) => ({
+          description: l.description, hsn_sac: l.hsn_sac ?? "", quantity: String(l.quantity ?? 1),
+          rate: String((l.rate_paise ?? 0) / 100), gst: (l.gst_rate_bps ?? 1800) / 100, is_service: l.is_service,
+        }))
+      : [{ description: "", hsn_sac: "", quantity: "1", rate: "", gst: 18, is_service: true }]
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const setLine = (i: number, patch: Partial<RecEditorLine>) =>
+    setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  const addLine = () => setLines((ls) => [...ls, { description: "", hsn_sac: "", quantity: "1", rate: "", gst: 18, is_service: true }]);
+  const removeLine = (i: number) => setLines((ls) => (ls.length > 1 ? ls.filter((_, idx) => idx !== i) : ls));
+
+  const baseTotal = lines.reduce((s, l) => s + Math.round((parseFloat(l.rate) || 0) * (parseFloat(l.quantity) || 0) * 100), 0);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!customerId) { setError("Select a customer"); return; }
+    if (!title.trim()) { setError("Title is required"); return; }
+    const payloadLines = lines.filter((l) => l.description.trim()).map((l) => ({
+      description: l.description.trim(), hsn_sac: l.hsn_sac.trim() || null,
+      quantity: parseFloat(l.quantity) || 1, rate_paise: Math.round((parseFloat(l.rate) || 0) * 100),
+      gst_rate_percent: l.gst, is_service: l.is_service,
+    }));
+    if (payloadLines.length === 0) { setError("Add at least one line item"); return; }
+    if (endDate && endDate < startDate) { setError("End date cannot be before start date"); return; }
+    setSaving(true); setError(null);
+    try {
+      const token = await getAuthToken();
+      const body: Record<string, unknown> = {
+        title: title.trim(), description: description.trim() || null, frequency,
+        start_date: startDate, end_date: endDate || null, is_inter_state: isInterState,
+        notes: notes.trim() || null, lines: payloadLines,
+      };
+      let res;
+      if (existing) {
+        res = await apiCall(`/api/recurring-invoices/${existing.id}`, "PUT", body, token);
+      } else {
+        body.client_id = clientId; body.customer_id = customerId;
+        res = await apiCall(`/api/recurring-invoices`, "POST", body, token);
+      }
+      if (!res.success) throw new Error(res.error ?? "Save failed");
+      onSaved(existing ? "Template updated" : "Template created");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 w-full max-w-2xl shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-[#0F172A]">{existing ? "Edit" : "New"} Recurring Template</h3>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155]"><X size={14} /></button>
+        </div>
+        <form onSubmit={submit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Customer</label>
+              <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} disabled={!!existing}
+                className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-[#F8FAFC]">
+                <option value="">Select customer…</option>
+                {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              {existing && <p className="text-[10px] text-[#94A3B8] mt-1">Customer can&apos;t be changed after creation.</p>}
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Title</label>
+              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Monthly bookkeeping fee"
+                className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-[#475569] mb-1">Description (optional)</label>
+            <input value={description} onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Frequency</label>
+              <select value={frequency} onChange={(e) => setFrequency(e.target.value)}
+                className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                {Object.entries(FREQ_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Start date</label>
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+                className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">End date (optional)</label>
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+                className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+          </div>
+
+          {/* Line items */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-medium text-[#475569]">Line items</label>
+              <button type="button" onClick={addLine} className="text-[11px] text-blue-600 hover:underline flex items-center gap-1"><Plus size={11} /> Add line</button>
+            </div>
+            <div className="space-y-2">
+              {lines.map((l, i) => (
+                <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                  <input value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} placeholder="Description"
+                    className="col-span-4 px-2 py-1.5 border border-[#E2E8F0] rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                  <input value={l.hsn_sac} onChange={(e) => setLine(i, { hsn_sac: e.target.value })} placeholder="HSN/SAC"
+                    className="col-span-2 px-2 py-1.5 border border-[#E2E8F0] rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                  <input value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} placeholder="Qty" inputMode="decimal"
+                    className="col-span-1 px-2 py-1.5 border border-[#E2E8F0] rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                  <input value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })} placeholder="Rate ₹" inputMode="decimal"
+                    className="col-span-2 px-2 py-1.5 border border-[#E2E8F0] rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                  <select value={l.gst} onChange={(e) => setLine(i, { gst: parseFloat(e.target.value) })}
+                    className="col-span-2 px-1 py-1.5 border border-[#E2E8F0] rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    {[0, 5, 12, 18, 28].map((g) => <option key={g} value={g}>{g}%</option>)}
+                  </select>
+                  <button type="button" onClick={() => removeLine(i)} className="col-span-1 text-[#CBD5E1] hover:text-red-600 flex justify-center"><Trash2 size={13} /></button>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-[#94A3B8] mt-2">
+              Base (excl. GST): <span className="font-mono text-[#334155]">{fmt(baseTotal)}</span>. GST is computed by the invoice engine at generation.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-[#475569] mb-1">Notes (optional)</label>
+            <input value={notes} onChange={(e) => setNotes(e.target.value)}
+              className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          </div>
+
+          <label className="flex items-center gap-2 text-xs text-[#475569]">
+            <input type="checkbox" checked={isInterState} onChange={(e) => setIsInterState(e.target.checked)} />
+            Inter-state supply (IGST)
+          </label>
+
+          <p className="text-[11px] text-[#94A3B8] bg-[#F8FAFC] rounded px-3 py-2">
+            Each run creates a <strong>draft</strong> invoice for CA review — it is never issued or emailed automatically.
+          </p>
+
+          {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+          <div className="flex gap-3 justify-end">
+            <button type="button" onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+            <button type="submit" disabled={saving}
+              className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              {saving ? "Saving…" : existing ? "Save changes" : "Create template"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function RecurringHistoryDrawer({
+  template, customerName, onClose,
+}: {
+  template: RecurringTemplate;
+  customerName: string;
+  onClose: () => void;
+}) {
+  const [runs, setRuns] = useState<RecurringRun[]>([]);
+  const [upcoming, setUpcoming] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const token = await getAuthToken();
+      const [h, p] = await Promise.all([
+        apiGet(`/api/recurring-invoices/${template.id}/history`, token),
+        apiGet(`/api/recurring-invoices/${template.id}/preview?count=5`, token),
+      ]);
+      if (cancelled) return;
+      setRuns((h.data as RecurringRun[]) ?? []);
+      setUpcoming(((p.data as { occurrences: string[] } | null)?.occurrences) ?? []);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [template.id]);
+
+  return (
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 w-full max-w-lg shadow-xl max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-sm font-semibold text-[#0F172A]">{template.title}</h3>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155]"><X size={14} /></button>
+        </div>
+        <p className="text-[11px] text-[#94A3B8] mb-4">{customerName} · {FREQ_LABEL[template.frequency] ?? template.frequency}</p>
+
+        {loading ? (
+          <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-9 rounded bg-[#F8FAFC] animate-pulse" />)}</div>
+        ) : (
+          <div className="space-y-5">
+            {template.status === "active" && (
+              <div>
+                <p className="text-[11px] font-semibold text-[#475569] mb-2 uppercase tracking-wide">Upcoming</p>
+                {upcoming.length === 0 ? (
+                  <p className="text-xs text-[#94A3B8]">No upcoming runs.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {upcoming.map((d) => <span key={d} className="px-2 py-0.5 rounded bg-[#F8FAFC] border border-[#F1F5F9] text-[11px] text-[#475569]">{d}</span>)}
+                  </div>
+                )}
+              </div>
+            )}
+            <div>
+              <p className="text-[11px] font-semibold text-[#475569] mb-2 uppercase tracking-wide">History</p>
+              {runs.length === 0 ? (
+                <p className="text-xs text-[#94A3B8]">No invoices generated yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {runs.map((r) => (
+                    <div key={r.id} className="border border-[#F1F5F9] rounded-lg p-3 text-xs flex items-center justify-between">
+                      <div>
+                        <div className="font-medium text-[#334155]">{r.occurrence_date}</div>
+                        <div className="text-[10px] text-[#94A3B8]">
+                          {r.invoice?.invoice_no ? `${r.invoice.invoice_no} · ${r.invoice.status ?? "draft"}` : "—"}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {r.invoice?.total_paise != null && <span className="font-mono text-[#334155]">{fmt(r.invoice.total_paise)}</span>}
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${r.status === "generated" ? "bg-green-50 text-green-700" : r.status === "failed" ? "bg-red-50 text-red-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+                          {r.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        <div className="flex justify-end mt-5 pt-4 border-t border-[#F1F5F9]">
+          <button onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Close</button>
+        </div>
       </div>
     </div>
   );
