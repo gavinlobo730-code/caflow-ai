@@ -78,6 +78,26 @@ def send_invoice_overdue(to: str, client_name: str, invoice_number: str, amount_
     return _send(to, subject, html)
 
 
+def send_payment_link_to_customer(to: str, customer_name: str, firm_name: str,
+                                  invoice_no: str, amount_paise: int, pay_url: str) -> bool:
+    """Email a hosted online-payment link to the customer for an outstanding invoice
+    (Phase 4.6). Reuses the Resend transport; has NO accounting side effect.
+    Amount formatted with integer paise arithmetic (₹ = paise // 100)."""
+    amount_str = f"₹{amount_paise // 100:,}.{amount_paise % 100:02d}"
+    subject = f"Payment request: Invoice {invoice_no} from {firm_name}"
+    html = f"""
+    <p>Hi {customer_name or 'there'},</p>
+    <p>{firm_name} has requested payment for the following invoice. You can pay securely online:</p>
+    <table cellpadding="8">
+      <tr><td><strong>Invoice</strong></td><td>{invoice_no}</td></tr>
+      <tr><td><strong>Amount Due</strong></td><td>{amount_str}</td></tr>
+    </table>
+    <p><a href="{pay_url}" style="background:#4f46e5;color:white;padding:10px 20px;text-decoration:none;border-radius:6px;">Pay Now</a></p>
+    <p>Or copy this link into your browser: {pay_url}</p>
+    """
+    return _send(to, subject, html)
+
+
 def send_compliance_due_soon(to: str, client_name: str, compliance_type: str, due_date: str) -> bool:
     subject = f"Compliance due soon: {compliance_type} — {client_name}"
     html = f"""

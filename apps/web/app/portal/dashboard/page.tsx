@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   FileText, FolderOpen, MessageSquare, Receipt, ScrollText, BellRing, ShieldCheck,
-  Download, AlertCircle, type LucideIcon,
+  Download, AlertCircle, CreditCard, type LucideIcon,
 } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
@@ -150,6 +150,21 @@ export default function PortalDashboardPage() {
     finally { setBusy(false); }
   };
 
+  // Pay Now (Phase 4.6) — create/reuse a payment link for this invoice and open
+  // the hosted gateway checkout. The payment flows back through the standard
+  // receipt → AR pipeline server-side; nothing here touches accounting.
+  const payInvoice = async (id: string) => {
+    if (!activeClient) return;
+    setBusy(true); setNotice(null);
+    try {
+      const res = await api.portalSelf.payInvoice(id, activeClient) as ApiResp<{ short_url: string | null }>;
+      const url = res.data?.short_url;
+      if (url) window.open(url, "_blank", "noopener");
+      else setNotice("A payment link could not be created. Please contact your accountant.");
+    } catch (e) { setNotice(e instanceof Error ? e.message : "Could not start the payment"); }
+    finally { setBusy(false); }
+  };
+
   const downloadStatement = async () => {
     if (!activeClient) return;
     setBusy(true); setNotice(null);
@@ -262,7 +277,13 @@ export default function PortalDashboardPage() {
                       <td className="px-3 py-2 tabular-nums">{formatPaise(i.total_paise)}</td>
                       <td className="px-3 py-2 tabular-nums">{formatPaise(i.outstanding_paise)}</td>
                       <td className="px-3 py-2"><StatusBadge status={i.is_overdue ? `overdue ${i.days_overdue}d` : i.status} danger={i.is_overdue} /></td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        {i.outstanding_paise > 0 && (
+                          <button disabled={busy} onClick={() => payInvoice(i.id)}
+                            className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:underline disabled:opacity-40 mr-3">
+                            <CreditCard size={13} /> Pay Now
+                          </button>
+                        )}
                         <button disabled={busy} onClick={() => downloadInvoice(i.id)}
                           className="inline-flex items-center gap-1 text-xs text-[#182350] hover:underline disabled:opacity-40">
                           <Download size={13} /> PDF

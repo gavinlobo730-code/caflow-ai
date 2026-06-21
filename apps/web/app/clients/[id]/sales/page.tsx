@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Plus, RefreshCw, X, FileText, CheckCircle, Upload, Send, Clock,
   Pencil, Trash2, Search, Eye, Download, ArrowUp, ArrowDown, Loader2, AlertTriangle,
+  CreditCard, Copy,
 } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -1149,6 +1150,7 @@ function SalesInvoices({
   const [sendModal, setSendModal] = useState<{ invoice: SalesInvoice; customerEmail: string | null } | null>(null);
   const [remindModal, setRemindModal] = useState<{ invoice: SalesInvoice; customerEmail: string | null } | null>(null);
   const [deliveryModal, setDeliveryModal] = useState<{ invoice: SalesInvoice; deliveries: InvoiceDelivery[] } | null>(null);
+  const [paymentModal, setPaymentModal] = useState<SalesInvoice | null>(null);
 
   // Edit / detail / delete
   const [editing, setEditing] = useState<InvoiceDetail | null>(null);
@@ -1482,6 +1484,10 @@ function SalesInvoices({
         />
       )}
 
+      {paymentModal && (
+        <PaymentLinkModal invoice={paymentModal} onClose={() => setPaymentModal(null)} />
+      )}
+
       {detailId && (
         <InvoiceDetailDrawer
           invoiceId={detailId}
@@ -1737,6 +1743,15 @@ function SalesInvoices({
                             <Clock size={11} />
                           </button>
                         )}
+                        {(inv.status === "issued" || inv.status === "partially_paid") && (
+                          <button
+                            onClick={() => setPaymentModal(inv)}
+                            className="text-xs text-indigo-600 hover:underline flex items-center gap-1"
+                            title="Online payment link & history"
+                          >
+                            <CreditCard size={11} /> Pay link
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1746,6 +1761,147 @@ function SalesInvoices({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Online Payment Link Modal (Phase 4.6) ──────────────────────────────────
+// Generate / copy / send a hosted payment link and view payment history for an
+// invoice. Pure presentation: outstanding, links and payments come from the
+// server; the gateway never touches accounting (a verified capture creates the
+// receipt server-side through the existing receipt engine).
+
+interface PaymentLinkRow { id: string; short_url: string | null; amount_paise: number; status: string; provider: string; created_at?: string }
+interface CustomerPaymentRow { id: string; amount_paise: number; status: string; provider: string; provider_payment_id: string | null; receipt_id: string | null; created_at?: string }
+interface PaymentHistory { outstanding_paise: number; links: PaymentLinkRow[]; payments: CustomerPaymentRow[] }
+
+const PAY_STATUS_BADGE: Record<string, string> = {
+  created: "bg-[#F1F5F9] text-[#64748B]", active: "bg-blue-100 text-blue-700",
+  paid: "bg-green-100 text-green-700", captured: "bg-green-100 text-green-700",
+  authorized: "bg-amber-100 text-amber-700", failed: "bg-red-100 text-red-600",
+  refunded: "bg-purple-100 text-purple-700", expired: "bg-[#F1F5F9] text-[#94A3B8]",
+  cancelled: "bg-red-50 text-red-500",
+};
+
+function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose: () => void }) {
+  const [hist, setHist] = useState<PaymentHistory | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  const load = useCallback(async () => {
+    const token = await getAuthToken();
+    const res = await apiGet(`/api/payments?invoice_id=${invoice.id}`, token);
+    if (res.success) setHist(res.data as PaymentHistory);
+    else setMsg({ text: res.error ?? "Could not load payments", type: "error" });
+  }, [invoice.id]);
+  useEffect(() => { load(); }, [load]);
+
+  async function generate() {
+    setBusy(true); setMsg(null);
+    try {
+      const token = await getAuthToken();
+      const res = await apiCall("/api/payments/links", "POST", { invoice_id: invoice.id }, token);
+      if (!res.success) throw new Error(res.error ?? "Could not create link");
+      setMsg({ text: "Payment link ready", type: "success" });
+      await load();
+    } catch (e) { setMsg({ text: e instanceof Error ? e.message : "Could not create link", type: "error" }); }
+    finally { setBusy(false); }
+  }
+
+  async function copy(url: string | null) {
+    if (!url) return;
+    try { await navigator.clipboard.writeText(url); setMsg({ text: "Link copied to clipboard", type: "success" }); }
+    catch { setMsg({ text: "Copy failed — select the link and copy manually", type: "error" }); }
+  }
+
+  async function send(linkId: string) {
+    setBusy(true); setMsg(null);
+    try {
+      const token = await getAuthToken();
+      const res = await apiCall(`/api/payments/links/${linkId}/send`, "POST", undefined, token);
+      if (!res.success) throw new Error(res.error ?? "Could not send");
+      const d = res.data as { sent: boolean; to: string };
+      setMsg({ text: d.sent ? `Payment link emailed to ${d.to}` : "Email not sent (check customer email / mail config)", type: d.sent ? "success" : "error" });
+    } catch (e) { setMsg({ text: e instanceof Error ? e.message : "Could not send", type: "error" }); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 w-full max-w-lg shadow-xl max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-sm font-semibold text-[#0F172A]">Online Payment · {invoice.invoice_no}</h3>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155]"><X size={14} /></button>
+        </div>
+        <p className="text-[11px] text-[#94A3B8] mb-4">
+          A verified payment posts a receipt automatically through the standard receipt workflow — no manual entry.
+        </p>
+
+        {msg && (
+          <div className={`rounded-lg px-3 py-2 text-xs mb-3 ${msg.type === "success" ? "bg-green-50 text-green-700 border border-green-100" : "bg-red-50 text-red-700 border border-red-100"}`}>
+            {msg.text}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between rounded-lg bg-[#F8FAFC] border border-[#F1F5F9] px-3 py-2.5 mb-4">
+          <div>
+            <p className="text-[10px] uppercase tracking-wide text-[#94A3B8]">Outstanding</p>
+            <p className="text-base font-semibold text-[#0F172A] font-mono">{hist ? fmt(hist.outstanding_paise) : "…"}</p>
+          </div>
+          <button onClick={generate} disabled={busy || !hist || hist.outstanding_paise <= 0}
+            className="flex items-center gap-1.5 text-xs bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+            <CreditCard size={13} /> Generate Payment Link
+          </button>
+        </div>
+
+        {/* Links */}
+        <p className="text-[11px] font-semibold text-[#475569] uppercase tracking-wide mb-2">Payment Links</p>
+        {!hist ? (
+          <div className="h-10 rounded bg-[#F8FAFC] animate-pulse" />
+        ) : hist.links.length === 0 ? (
+          <p className="text-xs text-[#94A3B8] mb-4">No payment links yet. Generate one above.</p>
+        ) : (
+          <div className="space-y-2 mb-4">
+            {hist.links.map((l) => (
+              <div key={l.id} className="border border-[#F1F5F9] rounded-lg p-2.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-[#334155] truncate">{l.short_url ?? "—"}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${PAY_STATUS_BADGE[l.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>{l.status}</span>
+                </div>
+                <div className="flex items-center justify-between mt-1.5">
+                  <span className="font-mono text-[#64748B]">{fmt(l.amount_paise)}</span>
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => copy(l.short_url)} className="text-[#64748B] hover:text-indigo-600 flex items-center gap-1"><Copy size={11} /> Copy</button>
+                    <button onClick={() => send(l.id)} disabled={busy} className="text-emerald-600 hover:underline flex items-center gap-1 disabled:opacity-50"><Send size={11} /> Email</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Payment history / timeline */}
+        <p className="text-[11px] font-semibold text-[#475569] uppercase tracking-wide mb-2">Payment History</p>
+        {!hist || hist.payments.length === 0 ? (
+          <p className="text-xs text-[#94A3B8]">No payments recorded yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {hist.payments.map((p) => (
+              <div key={p.id} className="flex items-center justify-between border border-[#F1F5F9] rounded-lg p-2.5 text-xs">
+                <div>
+                  <div className="font-mono text-[#334155]">{fmt(p.amount_paise)}</div>
+                  <div className="text-[10px] text-[#94A3B8]">{p.provider}{p.receipt_id ? " · receipt posted" : ""}{p.created_at ? ` · ${fmtDateTime(p.created_at)}` : ""}</div>
+                </div>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${PAY_STATUS_BADGE[p.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>{p.status}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex justify-end mt-5 pt-4 border-t border-[#F1F5F9]">
+          <button onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Close</button>
+        </div>
+      </div>
     </div>
   );
 }
