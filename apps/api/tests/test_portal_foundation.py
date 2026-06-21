@@ -1,11 +1,12 @@
 """
-Phase 4.5.1 — Customer Portal Foundation tests (mock mode).
+Phase 4.5.1 — Customer Portal Foundation tests (mock mode), incl. the multi-client
+membership fix.
 
-Covers the multi-contact access model: resolution (active / invited-binds /
-deactivated-denied / legacy backward-compat / unknown), multi-user-per-client,
-strict client isolation, the invite lifecycle (invite → activate → deactivate →
-re-invite), audit logging, and the get_current_portal_client identity layer +
-strict (no-staff-privilege) context.
+Covers: membership listing (one→one, one→many, mixed active/deactivated, legacy
+backward-compat, unknown), explicit/deterministic active-client selection (single
+auto, multiple requires header, non-member denied), the invite lifecycle, audit
+logging, strict client/firm isolation, and the get_current_portal_client identity
+layer (single, multi-with-header, multi-without-header 409, non-member 403).
 """
 import pytest
 from fastapi import HTTPException
@@ -23,74 +24,125 @@ def _isolate(monkeypatch):
     audit: list = []
     import services.audit_service as au
     monkeypatch.setattr(au, "log_event", lambda *a, **k: audit.append((a, k)))
-    # email is best-effort + no-ops without RESEND key, but stub to be safe/silent
     import services.email_service as es
     monkeypatch.setattr(es, "_send", lambda *a, **k: True)
     yield {"audit": audit}
     pa.reset_mock_stores()
 
 
-# ── Resolution ───────────────────────────────────────────────────────────────
+def _ids(memberships):
+    return sorted(m["client_id"] for m in memberships)
 
-def test_invite_then_first_login_binds_and_activates(_isolate):
+
+# ── Pure selection logic ─────────────────────────────────────────────────────
+
+def test_select_active_membership_pure():
+    f = pa.select_active_membership
+    m1, m2 = {"client_id": "CL-1"}, {"client_id": "CL-2"}
+    assert f([], None) == (None, False)
+    assert f([m1], None) == (m1, False)               # single → auto
+    assert f([m1, m2], None) == (None, True)           # multiple → must choose (no implicit)
+    assert f([m1, m2], "CL-2") == (m2, False)          # explicit selection
+    assert f([m1, m2], "CL-9") == (None, False)        # non-member → denied
+
+
+# ── Membership listing ───────────────────────────────────────────────────────
+
+def test_one_user_one_client(_isolate):
     c = pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
-    assert c["status"] == "invited" and not c.get("auth_user_id")
-    # first login: resolve by email → binds auth_user_id + activates
-    ctx = pa.resolve_portal_client("uid-A", "a@c.test")
-    assert ctx is not None
-    assert ctx["client_id"] == "CL-1" and ctx["firm_id"] == FIRM
-    assert ctx["contact_id"] == c["id"] and ctx["legacy"] is False
+    ms = pa.list_portal_memberships("uid-A", "a@c.test")     # first login binds + activates
+    assert _ids(ms) == ["CL-1"]
     bound = pa.MOCK_PORTAL_CONTACTS[0]
     assert bound["auth_user_id"] == "uid-A" and bound["status"] == "active" and bound["activated_at"]
-    # subsequent login resolves directly by auth_user_id
-    assert pa.resolve_portal_client("uid-A", "a@c.test")["client_id"] == "CL-1"
+    assert ms[0]["contact_id"] == c["id"]
 
 
-def test_deactivated_contact_is_denied(_isolate):
-    c = pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
-    pa.resolve_portal_client("uid-A", "a@c.test")          # activate
-    pa.deactivate_contact(FIRM, c["id"], actor=ACTOR)
-    assert pa.resolve_portal_client("uid-A", "a@c.test") is None   # no access via uid
-    assert pa.resolve_portal_client("uid-A", None) is None
+def test_one_user_multiple_clients_binds_all(_isolate):
+    pa.invite_contact(FIRM, "CL-1", "owner@co.test", "Owner", actor=ACTOR)
+    pa.invite_contact(FIRM, "CL-2", "owner@co.test", "Owner", actor=ACTOR)
+    ms = pa.list_portal_memberships("uid-O", "owner@co.test")
+    assert _ids(ms) == ["CL-1", "CL-2"]                # both invites activated on first login
+    # subsequent login resolves both directly by auth_user_id
+    assert _ids(pa.list_portal_memberships("uid-O", "owner@co.test")) == ["CL-1", "CL-2"]
 
 
-def test_legacy_portal_user_id_still_resolves(_isolate):
-    # Backward compatibility: the legacy single-user link keeps working.
+def test_mixed_active_and_deactivated_memberships(_isolate):
+    pa.invite_contact(FIRM, "CL-1", "owner@co.test", "Owner", actor=ACTOR)
+    c2 = pa.invite_contact(FIRM, "CL-2", "owner@co.test", "Owner", actor=ACTOR)
+    pa.list_portal_memberships("uid-O", "owner@co.test")     # activate both
+    pa.deactivate_contact(FIRM, c2["id"], actor=ACTOR)       # revoke CL-2
+    assert _ids(pa.list_portal_memberships("uid-O", "owner@co.test")) == ["CL-1"]
+
+
+def test_legacy_portal_user_id_backward_compatible(_isolate):
     pa.MOCK_LEGACY_PORTAL["legacy-uid"] = {"client_id": "CL-9", "firm_id": FIRM}
-    ctx = pa.resolve_portal_client("legacy-uid", "old@c.test")
-    assert ctx["client_id"] == "CL-9" and ctx["legacy"] is True and ctx["contact_id"] is None
+    ms = pa.list_portal_memberships("legacy-uid", "old@c.test")
+    assert _ids(ms) == ["CL-9"] and ms[0]["legacy"] is True and ms[0]["contact_id"] is None
 
 
-def test_unknown_identity_resolves_to_none(_isolate):
-    assert pa.resolve_portal_client("nobody", "nobody@x.test") is None
+def test_unknown_identity_has_no_memberships(_isolate):
+    assert pa.list_portal_memberships("nobody", "nobody@x.test") == []
 
 
-# ── Multi-user per client + isolation ────────────────────────────────────────
+# ── Identity layer: deterministic, explicit active-client selection ──────────
 
-def test_multiple_contacts_per_client(_isolate):
+def test_identity_single_membership_no_header(_isolate):
     pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
-    pa.invite_contact(FIRM, "CL-1", "b@c.test", "Bob", actor=ACTOR)
-    a = pa.resolve_portal_client("uid-A", "a@c.test")
-    b = pa.resolve_portal_client("uid-B", "b@c.test")
-    assert a["client_id"] == "CL-1" and b["client_id"] == "CL-1"
-    assert a["contact_id"] != b["contact_id"]              # distinct contacts, same client
-    assert len(pa.list_contacts(FIRM, "CL-1")) == 2
+    ctx = get_current_portal_client(jwt_user={"auth_user_id": "uid-A", "email": "a@c.test"},
+                                    x_portal_client_id=None)
+    assert ctx["portal"] is True and ctx["client_id"] == "CL-1" and ctx["role"] == "PortalClient"
+    assert [m["client_id"] for m in ctx["memberships"]] == ["CL-1"]
+    # strict: no staff fields leaked
+    assert "auth_user_id" not in ctx and "access_token" not in ctx and "aal" not in ctx
 
 
-def test_client_isolation_between_contacts(_isolate):
-    pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
-    pa.invite_contact(FIRM, "CL-2", "b@c.test", "Bob", actor=ACTOR)
-    assert pa.resolve_portal_client("uid-A", "a@c.test")["client_id"] == "CL-1"
-    assert pa.resolve_portal_client("uid-B", "b@c.test")["client_id"] == "CL-2"
-    # A's identity can never resolve to CL-2
-    assert pa.resolve_portal_client("uid-A", "a@c.test")["client_id"] != "CL-2"
+def test_identity_multiple_requires_explicit_selection(_isolate):
+    pa.invite_contact(FIRM, "CL-1", "owner@co.test", "Owner", actor=ACTOR)
+    pa.invite_contact(FIRM, "CL-2", "owner@co.test", "Owner", actor=ACTOR)
+    jwt = {"auth_user_id": "uid-O", "email": "owner@co.test"}
+    # no header → 409 (never implicit), available memberships returned
+    with pytest.raises(HTTPException) as ei:
+        get_current_portal_client(jwt_user=jwt, x_portal_client_id=None)
+    assert ei.value.status_code == 409
+    assert sorted(m["client_id"] for m in ei.value.detail["memberships"]) == ["CL-1", "CL-2"]
+    # explicit header → that client; scope changes correctly
+    assert get_current_portal_client(jwt_user=jwt, x_portal_client_id="CL-1")["client_id"] == "CL-1"
+    assert get_current_portal_client(jwt_user=jwt, x_portal_client_id="CL-2")["client_id"] == "CL-2"
 
 
-# ── Invite lifecycle + audit ─────────────────────────────────────────────────
+def test_identity_cannot_select_non_member_client(_isolate):
+    pa.invite_contact(FIRM, "CL-1", "owner@co.test", "Owner", actor=ACTOR)
+    pa.invite_contact(FIRM, "CL-2", "owner@co.test", "Owner", actor=ACTOR)
+    jwt = {"auth_user_id": "uid-O", "email": "owner@co.test"}
+    with pytest.raises(HTTPException) as ei:
+        get_current_portal_client(jwt_user=jwt, x_portal_client_id="CL-OTHER")  # not a member
+    assert ei.value.status_code == 403
 
-def test_invite_is_idempotent_per_email(_isolate):
+
+def test_identity_deactivated_member_denied(_isolate):
+    pa.invite_contact(FIRM, "CL-1", "owner@co.test", "Owner", actor=ACTOR)
+    c2 = pa.invite_contact(FIRM, "CL-2", "owner@co.test", "Owner", actor=ACTOR)
+    jwt = {"auth_user_id": "uid-O", "email": "owner@co.test"}
+    get_current_portal_client(jwt_user=jwt, x_portal_client_id="CL-1")           # activate both
+    pa.deactivate_contact(FIRM, c2["id"], actor=ACTOR)
+    # CL-2 now denied; CL-1 still fine (now the sole membership → no header needed)
+    with pytest.raises(HTTPException) as ei:
+        get_current_portal_client(jwt_user=jwt, x_portal_client_id="CL-2")
+    assert ei.value.status_code == 403
+    assert get_current_portal_client(jwt_user=jwt, x_portal_client_id=None)["client_id"] == "CL-1"
+
+
+def test_identity_rejects_non_portal_user(_isolate):
+    with pytest.raises(HTTPException) as ei:
+        get_current_portal_client(jwt_user={"auth_user_id": "nobody", "email": "nobody@x.test"})
+    assert ei.value.status_code == 403
+
+
+# ── Invite lifecycle + audit + cross-firm isolation ──────────────────────────
+
+def test_invite_idempotent_per_email(_isolate):
     c1 = pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
-    c2 = pa.invite_contact(FIRM, "CL-1", "A@c.test", "Alice R", actor=ACTOR)  # case-insensitive same email
+    c2 = pa.invite_contact(FIRM, "CL-1", "A@c.test", "Alice R", actor=ACTOR)   # same email, case-insensitive
     assert c1["id"] == c2["id"] and len(pa.list_contacts(FIRM, "CL-1")) == 1
 
 
@@ -99,13 +151,12 @@ def test_reinvite_after_deactivate_reactivates(_isolate):
     pa.deactivate_contact(FIRM, c["id"], actor=ACTOR)
     again = pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
     assert again["id"] == c["id"] and again["status"] == "invited" and again["deactivated_at"] is None
-    assert pa.resolve_portal_client("uid-A", "a@c.test")["client_id"] == "CL-1"   # can bind again
+    assert _ids(pa.list_portal_memberships("uid-A", "a@c.test")) == ["CL-1"]
 
 
-def test_resend_requires_existing_and_not_deactivated(_isolate):
+def test_resend_guards(_isolate):
     c = pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
-    out = pa.resend_invite(FIRM, c["id"], actor=ACTOR)
-    assert out["id"] == c["id"]
+    assert pa.resend_invite(FIRM, c["id"], actor=ACTOR)["id"] == c["id"]
     with pytest.raises(HTTPException) as ei:
         pa.resend_invite(FIRM, "missing", actor=ACTOR)
     assert ei.value.status_code == 404
@@ -123,19 +174,3 @@ def test_cross_firm_contact_not_found(_isolate):
     with pytest.raises(HTTPException) as ei:
         pa.deactivate_contact("OTHER_FIRM", c["id"], actor=ACTOR)
     assert ei.value.status_code == 404
-
-
-# ── Identity layer (get_current_portal_client) ───────────────────────────────
-
-def test_identity_layer_returns_strict_context(_isolate):
-    pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
-    ctx = get_current_portal_client(jwt_user={"auth_user_id": "uid-A", "email": "a@c.test"})
-    assert ctx["portal"] is True and ctx["client_id"] == "CL-1" and ctx["role"] == "PortalClient"
-    # strict: no firm-staff fields / no RBAC permission surface leaked
-    assert "auth_user_id" not in ctx and "access_token" not in ctx and "aal" not in ctx
-
-
-def test_identity_layer_rejects_non_portal_user(_isolate):
-    with pytest.raises(HTTPException) as ei:
-        get_current_portal_client(jwt_user={"auth_user_id": "nobody", "email": "nobody@x.test"})
-    assert ei.value.status_code == 403

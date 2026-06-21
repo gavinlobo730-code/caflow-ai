@@ -54,15 +54,15 @@ def _ctx(contact: dict, legacy: bool = False) -> dict:
 
 # ── Resolution (the heart of get_current_portal_client) ──────────────────────
 
-def _find_active_by_auth(auth_user_id: str, db) -> Optional[dict]:
+def _find_all_active_by_auth(auth_user_id: str, db) -> list[dict]:
+    """ALL active memberships for an identity (one identity → many clients)."""
     if not auth_user_id:
-        return None
+        return []
     if _USE_MOCK:
-        return next((c for c in MOCK_PORTAL_CONTACTS
-                     if c.get("auth_user_id") == auth_user_id and c.get("status") == "active"), None)
-    rows = (db.table("client_portal_users").select("*")
-            .eq("auth_user_id", auth_user_id).eq("status", "active").limit(1).execute().data or [])
-    return rows[0] if rows else None
+        return [c for c in MOCK_PORTAL_CONTACTS
+                if c.get("auth_user_id") == auth_user_id and c.get("status") == "active"]
+    return (db.table("client_portal_users").select("*")
+            .eq("auth_user_id", auth_user_id).eq("status", "active").execute().data or [])
 
 
 def _legacy_client(auth_user_id: str, db) -> Optional[dict]:
@@ -77,18 +77,17 @@ def _legacy_client(auth_user_id: str, db) -> Optional[dict]:
     return {"client_id": rows[0]["id"], "firm_id": rows[0]["firm_id"]} if rows else None
 
 
-def _find_invited_by_email(email: str, db) -> Optional[dict]:
+def _find_all_invited_by_email(email: str, db) -> list[dict]:
+    """ALL pending invites for an email (a person may be invited to several clients)."""
     if not email:
-        return None
+        return []
     e = email.strip().lower()
     if _USE_MOCK:
-        return next((c for c in MOCK_PORTAL_CONTACTS
-                     if (c.get("email") or "").strip().lower() == e
-                     and c.get("status") == "invited" and not c.get("auth_user_id")), None)
-    rows = (db.table("client_portal_users").select("*")
-            .ilike("email", e).eq("status", "invited").is_("auth_user_id", "null")
-            .limit(1).execute().data or [])
-    return rows[0] if rows else None
+        return [c for c in MOCK_PORTAL_CONTACTS
+                if (c.get("email") or "").strip().lower() == e
+                and c.get("status") == "invited" and not c.get("auth_user_id")]
+    return (db.table("client_portal_users").select("*")
+            .ilike("email", e).eq("status", "invited").is_("auth_user_id", "null").execute().data or [])
 
 
 def _bind(contact: dict, auth_user_id: str, db) -> None:
@@ -100,23 +99,37 @@ def _bind(contact: dict, auth_user_id: str, db) -> None:
     db.table("client_portal_users").update(fields).eq("id", contact["id"]).execute()
 
 
-def resolve_portal_client(auth_user_id: Optional[str], email: Optional[str], db=None) -> Optional[dict]:
-    """Resolve a Supabase-authenticated identity to a single portal-client context,
-    or None if they are not a portal user. Order: active contact → legacy
-    portal_user_id → invited-by-email (binds + activates). Pure of HTTP concerns."""
+def list_portal_memberships(auth_user_id: Optional[str], email: Optional[str], db=None) -> list[dict]:
+    """ALL client memberships for a Supabase identity (no first-match-wins).
+    On first login, binds + activates EVERY pending invite that matches the email
+    (so a multi-company owner / shared CFO gets all their clients at once). Includes
+    the legacy portal_user_id link. Each entry is a portal-client context."""
     db = db or (None if _USE_MOCK else _db())
-    active = _find_active_by_auth(auth_user_id, db)
-    if active:
-        return _ctx(active)
+    if email:
+        for inv in _find_all_invited_by_email(email, db):
+            _bind(inv, auth_user_id, db)
+    memberships = [_ctx(c) for c in _find_all_active_by_auth(auth_user_id, db)]
     legacy = _legacy_client(auth_user_id, db)
-    if legacy:
-        return {"client_id": legacy["client_id"], "firm_id": legacy.get("firm_id"),
-                "contact_id": None, "email": email, "name": None, "status": "active", "legacy": True}
-    invited = _find_invited_by_email(email, db) if email else None
-    if invited:
-        _bind(invited, auth_user_id, db)
-        return _ctx({**invited, "auth_user_id": auth_user_id})
-    return None
+    if legacy and not any(str(m["client_id"]) == str(legacy["client_id"]) for m in memberships):
+        memberships.append({"client_id": legacy["client_id"], "firm_id": legacy.get("firm_id"),
+                            "contact_id": None, "email": email, "name": None, "status": "active", "legacy": True})
+    return memberships
+
+
+def select_active_membership(memberships: list[dict], requested_client_id: Optional[str] = None):
+    """Deterministic, explicit active-client selection (pure). Returns
+    (active_context_or_None, needs_selection: bool):
+      • no memberships              → (None, False)   — not a portal user
+      • requested client_id given   → (matching membership or None, False)  — None = not a member (deny)
+      • exactly one membership      → (that membership, False)              — single-client unchanged
+      • multiple, none requested    → (None, True)    — caller MUST choose; never implicit."""
+    if not memberships:
+        return None, False
+    if requested_client_id:
+        return next((m for m in memberships if str(m["client_id"]) == str(requested_client_id)), None), False
+    if len(memberships) == 1:
+        return memberships[0], False
+    return None, True
 
 
 # ── CA-side invite lifecycle ─────────────────────────────────────────────────
