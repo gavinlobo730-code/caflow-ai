@@ -204,6 +204,22 @@ export const api = {
   dashboard: {
     summary: () => request("/api/tasks/summary/dashboard"),
   },
+  // Phase 4.4 — Compliance & Engagement operations (canonical = compliance_records).
+  // Thin wrappers; all due-date/aggregation logic is server-side. No filing.
+  complianceOps: {
+    dashboard: () => request("/api/compliance/dashboard"),
+    obligations: (params?: Record<string, string>) =>
+      request(`/api/compliance/obligations${params ? "?" + new URLSearchParams(params) : ""}`),
+    calendar: (clientId?: string) =>
+      request(`/api/compliance/obligations/calendar${clientId ? `?client_id=${clientId}` : ""}`),
+    generate: (params?: Record<string, string>) =>
+      request(`/api/compliance/obligations/generate${params ? "?" + new URLSearchParams(params) : ""}`, { method: "POST" }),
+    assign: (id: string, body: { preparer_id?: string; reviewer_id?: string; approver_id?: string }) =>
+      request(`/api/compliance/obligations/${id}/assign`, { method: "POST", body: JSON.stringify(body) }),
+    transition: (id: string, status: string) =>
+      request(`/api/compliance/obligations/${id}/transition`, { method: "POST", body: JSON.stringify({ status }) }),
+    runEscalations: () => request("/api/compliance/run-escalations", { method: "POST" }),
+  },
   documentIntelligence: {
     list: (client_id?: string) => request(`/api/document-intelligence/documents${client_id ? `?client_id=${client_id}` : ""}`),
     stats: () => request("/api/document-intelligence/stats"),

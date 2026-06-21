@@ -206,6 +206,22 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         else:
             firm_result["recurring_invoices"] = {"skipped": "already ran today"}
 
+        # 7. Compliance escalations (Phase 4.4) — notify the internal team about
+        #    obligations due in 7/3/1 days or overdue. Internal only (never emails
+        #    clients); idempotent per (obligation, tier, day). No filing.
+        if force or not _already_ran_today("compliance_escalations", fid):
+            try:
+                from services.compliance_obligation_service import escalate
+                outcome = escalate(fid)
+                firm_result["compliance_escalations"] = outcome
+                _log_run("compliance_escalations", fid, "success", outcome)
+            except Exception as e:
+                logger.error(f"Compliance escalations job failed for firm {fid}: {e}", exc_info=True)
+                firm_result["compliance_escalations"] = {"error": str(e)}
+                _log_run("compliance_escalations", fid, "failed", {"error": str(e)})
+        else:
+            firm_result["compliance_escalations"] = {"skipped": "already ran today"}
+
         results["firms"][fid] = firm_result
 
     logger.info(f"Daily scheduler run completed for {len(firm_ids)} firm(s)")

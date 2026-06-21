@@ -19,6 +19,11 @@ class EngagementCreate(BaseModel):
     start_date: str
     status: str = "Active"
     notes: Optional[str] = None
+    # Phase 4.4 (Module A) — assignment chain + deadline (all optional, additive)
+    assigned_to: Optional[str] = None
+    reviewer_id: Optional[str] = None
+    partner_id: Optional[str] = None
+    due_date: Optional[str] = None
 
 
 class EngagementUpdate(BaseModel):
@@ -30,6 +35,29 @@ class EngagementUpdate(BaseModel):
     end_date: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+    assigned_to: Optional[str] = None
+    reviewer_id: Optional[str] = None
+    partner_id: Optional[str] = None
+    due_date: Optional[str] = None
+
+
+class EngagementTransition(BaseModel):
+    status: str
+    notes: Optional[str] = None
+
+
+# Phase 4.4 Module A — engagement lifecycle (Draft → Active → In Progress →
+# Review → Completed → Closed). 'Inactive' retained for backward-compatibility
+# (the legacy soft-delete). No hard deletes; audited + timelined.
+ENGAGEMENT_TRANSITIONS: dict[str, list[str]] = {
+    "Draft": ["Active", "Closed"],
+    "Active": ["In Progress", "Closed", "Inactive"],
+    "In Progress": ["Review", "Active", "Closed"],
+    "Review": ["Completed", "In Progress"],
+    "Completed": ["Closed"],
+    "Closed": [],
+    "Inactive": ["Active"],
+}
 
 
 @router.get("")
@@ -119,3 +147,61 @@ def delete_engagement(
 
     updated = engagement_repo.update(engagement_id, {"status": "Inactive"})
     return api_response(True, {"engagement": updated})
+
+
+@router.post("/{engagement_id}/transition")
+def transition_engagement(
+    engagement_id: str,
+    body: EngagementTransition,
+    current_user: dict = Depends(rbac("engagement", "write")),
+):
+    """Advance an engagement through its lifecycle (validated). Audited + timelined; no hard delete."""
+    firm_id = current_user.get("firm_id")
+    engagement = engagement_repo.find_by_id(engagement_id)
+    if not engagement or engagement.get("firm_id") != firm_id:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+
+    old_status = engagement.get("status", "Draft")
+    allowed = ENGAGEMENT_TRANSITIONS.get(old_status, [])
+    if body.status not in allowed:
+        raise HTTPException(status_code=422,
+                            detail=f"Cannot transition engagement from '{old_status}' to '{body.status}'. Allowed: {allowed}")
+    updates = {"status": body.status}
+    if body.notes is not None:
+        updates["notes"] = body.notes
+    updated = engagement_repo.update(engagement_id, updates)
+
+    # Module H — audit + timeline (best-effort; never blocks the transition).
+    try:
+        from services.audit_service import log_event
+        log_event(firm_id, "engagement", engagement_id, "status_change",
+                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                  old_data={"status": old_status}, new_data={"status": body.status})
+    except Exception:
+        pass
+    try:
+        from services.timeline_service import timeline_service
+        timeline_service.log(engagement.get("client_id", ""), "compliance", "Engagement Updated",
+                             f"{engagement.get('service_type', 'Engagement')}: {old_status} → {body.status}",
+                             "info", firm_id=firm_id, entity_type="engagement", entity_id=engagement_id)
+    except Exception:
+        pass
+    return api_response(True, {"engagement": updated})
+
+
+@router.post("/{engagement_id}/generate-obligations")
+def generate_engagement_obligations(
+    engagement_id: str,
+    financial_year: Optional[str] = None,
+    current_user: dict = Depends(rbac("compliance", "write")),
+):
+    """Generate the statutory compliance obligations this engagement implies for the
+    given FY (idempotent; draft obligations only — no filing)."""
+    firm_id = current_user.get("firm_id")
+    engagement = engagement_repo.find_by_id(engagement_id)
+    if not engagement or engagement.get("firm_id") != firm_id:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    from services import compliance_obligation_service as obligations
+    fy = financial_year or obligations._current_fy()
+    result = obligations.generate_for_engagement(firm_id, engagement, fy, actor=current_user)
+    return api_response(True, {"financial_year": fy, **result})
