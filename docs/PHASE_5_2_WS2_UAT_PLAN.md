@@ -165,9 +165,46 @@ isolation case denied; K1–K3 acknowledged or fixed; no Critical/High defects o
 
 ---
 
-## 8. Status
-WS-2 deliverables (this document): persona/role model, demo-firm seed-data
-specification, full UAT scenario catalogue grounded in the WS-1-validated
-workflows, cross-tenant/RBAC matrix, the `USE_USER_JWT` staging tie-in, known
-issues, and a sign-off sheet. Ready to execute once a staging environment is
-available. The optional `scripts/seed_uat.py` provisioner is a small follow-up.
+## 8. Per-role action / expected / acceptance matrix
+
+| Role | Representative actions | Expected outcome | Acceptance criterion |
+|------|------------------------|------------------|----------------------|
+| **Partner (Priya)** | Anything firm-wide: view all clients; approve/post journals; cancel/delete invoices; finalize payroll; manage assignments & billing; run recurring; firm compliance summary | All permitted; sees every client in the firm | Every §3 scenario passes; Partner-only actions (post/approve, delete, billing, payroll-finalize) succeed; cross-firm (Firm-B) denied |
+| **Manager (Manish)** | On **assigned** clients (C1): write invoices/bills, receive/pay, reconcile, approve compliance, send reminders, run recurring | Permitted on assigned clients; **cannot** post/approve journals (Partner-only), delete invoices, write billing/practice, or see unassigned C2 | S1–S5,P1–P3,B1–B2,CO1–CO2,R1–R3,PR1–PR2 pass for C1; C2 not visible (I2); accounting.approve / invoice.delete / billing.write → 403 |
+| **Executive (Arjun)** | On assigned C1: create/issue invoices, create bills, record receipts, write compliance records | Permitted; **cannot** write accounting (journal), approve, or export reports | Invoice/bill/receipt flows pass; accounting.write / *.approve → 403 |
+| **Reviewer (Reena)** | On assigned C2: read invoices/statements/compliance/reports; review | Read/review only; **no** write to accounting/invoice/compliance | Reads succeed; any write → 403; cannot read accounting (Executive+) |
+| **Portal Client** | Log in; view own invoices, statement, compliance, reminders; pay online | Sees ONLY its own client's data; never staff data or other clients | PA3, OP*, portal cycle pass; another client's invoice → 404 (ownership gate); staff endpoints → denied |
+
+These map 1:1 to `tests/test_e2e_permissions.py` (role matrix) and the per-cycle
+isolation legs in `tests/test_e2e_*.py`.
+
+## 9. Demo data package (executable + repeatable)
+
+The demo dataset is provided as an **executable, deterministic fixture**:
+`apps/api/tests/uat_fixtures.py` → `build_demo_dataset(db)` + `demo_callers()`,
+verified by `apps/api/tests/test_uat_fixtures.py` (shape, determinism, usability,
+isolation). It provisions: two firms; the four Firm-A personas + assignment
+scope; clients C1/C2; customers; vendors; a standard COA per client; a fee
+invoice; a received bill; a compliance obligation; and a Firm-B isolation foil.
+It is the canonical contract a staging seed script mirrors (the same ids each
+run make UAT repeatable).
+
+## 10. Per-role sign-off checklist
+
+| Role | Tester | Date | Scenarios executed | Result (Pass/Fail) | Defects | Signature |
+|------|--------|------|--------------------|--------------------|---------|-----------|
+| Partner sign-off | | | all §3 + Partner-only + N1 | | | |
+| Manager sign-off | | | C1 cycles + I2 + 403 checks | | | |
+| Executive sign-off | | | invoice/bill/receipt + 403 checks | | | |
+| Reviewer sign-off | | | read/review + write-denied checks | | | |
+| Portal-client sign-off | | | PA3 + portal cycle + ownership gate | | | |
+
+Run under both `USE_USER_JWT` modes (see WS-3). UAT is complete when all five
+roles sign off Pass with no Critical/High defect open.
+
+## 11. Status
+WS-2 deliverables: persona/role model, **executable repeatable demo fixtures**
+(`tests/uat_fixtures.py`), full UAT scenario catalogue + **per-role
+action/acceptance matrix**, cross-tenant/RBAC matrix, the `USE_USER_JWT` staging
+tie-in (WS-3), known issues, and a **per-role sign-off checklist**. Ready to
+execute once a staging environment is available.
