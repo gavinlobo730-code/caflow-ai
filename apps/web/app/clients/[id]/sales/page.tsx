@@ -77,12 +77,13 @@ async function apiGet(
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type SalesTab = "invoices" | "customers" | "receipts" | "credit-notes";
+type SalesTab = "invoices" | "customers" | "receipts" | "credit-notes" | "statements";
 const TABS: { id: SalesTab; label: string }[] = [
   { id: "invoices", label: "Sales Invoices" },
   { id: "customers", label: "Customers" },
   { id: "receipts", label: "Receipts" },
   { id: "credit-notes", label: "Credit Notes" },
+  { id: "statements", label: "Statements" },
 ];
 
 type InvoiceStatus = "draft" | "issued" | "partially_paid" | "paid" | "cancelled";
@@ -426,7 +427,218 @@ export default function SalesPage() {
         {tab === "credit-notes" && (
           <CreditNotes clientId={clientId} financialYear={financialYear} />
         )}
+        {tab === "statements" && (
+          <Statements clientId={clientId} financialYear={financialYear} />
+        )}
       </div>
+    </div>
+  );
+}
+
+// ── Customer Statements (Phase 4.1) — read-only account statement ────────────
+
+interface StmtTxn {
+  date: string; type: string; reference: string | null; particulars: string;
+  debit_paise: number; credit_paise: number; running_balance_paise: number;
+}
+interface StmtData {
+  customer: { id: string; name: string; email: string | null; gstin: string | null };
+  period: { start_date: string; end_date: string };
+  opening_balance_paise: number; closing_balance_paise: number;
+  transactions: StmtTxn[];
+  totals: { invoiced_paise: number; received_paise: number; credited_paise: number; transaction_count: number };
+}
+
+const stmtRupees = (p: number) => (Math.abs(p) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const stmtBal = (p: number) => `₹${stmtRupees(p)} ${p >= 0 ? "Dr" : "Cr"}`;
+const stmtAmt = (p: number) => (p ? `₹${stmtRupees(p)}` : "—");
+
+function Statements({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+  const def = fyRange(financialYear);
+  const [customers, setCustomers] = useState<{ id: string; name: string; email: string | null }[]>([]);
+  const [customerId, setCustomerId] = useState("");
+  const [search, setSearch] = useState("");
+  const [start, setStart] = useState(def.start);
+  const [end, setEnd] = useState(def.end);
+  const [stmt, setStmt] = useState<StmtData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [emailModal, setEmailModal] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const [emailing, setEmailing] = useState(false);
+  const [emailMsg, setEmailMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("cust")) setCustomerId(p.get("cust") as string);
+    if (p.get("from")) setStart(p.get("from") as string);
+    if (p.get("to")) setEnd(p.get("to") as string);
+  }, []);
+
+  function syncUrl(cust: string, f: string, t: string) {
+    const p = new URLSearchParams(window.location.search);
+    if (cust) p.set("cust", cust); else p.delete("cust");
+    p.set("from", f); p.set("to", t);
+    window.history.replaceState(null, "", `?${p.toString()}`);
+  }
+
+  const loadCustomers = useCallback(async () => {
+    const token = await getAuthToken();
+    const res = await apiGet(`/api/customers/?client_id=${clientId}`, token);
+    if (res.success) setCustomers((res.data as { id: string; name: string; email: string | null }[]) ?? []);
+  }, [clientId]);
+  useEffect(() => { loadCustomers(); }, [loadCustomers]);
+
+  async function generate() {
+    if (!customerId) { setError("Select a customer first."); return; }
+    setLoading(true); setError(null); setStmt(null);
+    try {
+      const token = await getAuthToken();
+      const res = await apiGet(`/api/customer-statements?client_id=${clientId}&customer_id=${customerId}&start_date=${start}&end_date=${end}`, token);
+      if (res.success) { setStmt(res.data as StmtData); syncUrl(customerId, start, end); }
+      else setError(res.error ?? "Could not generate the statement.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not generate the statement."); }
+    finally { setLoading(false); }
+  }
+
+  async function downloadPdf() {
+    if (!stmt) return;
+    const token = await getAuthToken();
+    const res = await fetch(`${API}/api/customer-statements/pdf?client_id=${clientId}&customer_id=${customerId}&start_date=${start}&end_date=${end}`,
+      { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) { setError("PDF download failed."); return; }
+    const blob = await res.blob();
+    window.open(URL.createObjectURL(blob), "_blank");
+  }
+
+  function openEmail() {
+    setEmailTo(stmt?.customer.email ?? "");
+    setEmailMsg(null); setEmailModal(true);
+  }
+  async function sendEmail() {
+    setEmailing(true); setEmailMsg(null);
+    try {
+      const token = await getAuthToken();
+      const res = await apiCall("/api/customer-statements/email", "POST",
+        { client_id: clientId, customer_id: customerId, start_date: start, end_date: end, to_email: emailTo || undefined }, token);
+      if (res.success) { setEmailModal(false); setEmailMsg(null); }
+      else setEmailMsg(res.error ?? "Email failed.");
+    } catch (e) { setEmailMsg(e instanceof Error ? e.message : "Email failed."); }
+    finally { setEmailing(false); }
+  }
+
+  const visibleCustomers = customers.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="space-y-4 max-w-4xl">
+      <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-[#475569] mb-1">Search customer</label>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Type a name…"
+              className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[#475569] mb-1">Customer</label>
+            <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">— Select customer —</option>
+              {visibleCustomers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[#475569] mb-1">From</label>
+            <input type="date" value={start} onChange={(e) => setStart(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[#475569] mb-1">To</label>
+            <input type="date" value={end} onChange={(e) => setEnd(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={generate} disabled={loading || !customerId}
+            className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            {loading ? "Generating…" : "Generate"}
+          </button>
+          {stmt && (
+            <>
+              <button onClick={downloadPdf} className="text-xs px-3 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569] flex items-center gap-1.5"><Download size={13} /> Download PDF</button>
+              <button onClick={openEmail} className="text-xs px-3 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569] flex items-center gap-1.5"><Send size={13} /> Email</button>
+            </>
+          )}
+        </div>
+        {error && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-2.5">{error}</p>}
+      </div>
+
+      {stmt && (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-[#0F172A]">{stmt.customer.name}</p>
+              <p className="text-[10px] text-[#94A3B8]">{stmt.period.start_date} → {stmt.period.end_date}{stmt.customer.gstin ? ` · GSTIN ${stmt.customer.gstin}` : ""}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] text-[#94A3B8]">Closing Outstanding</p>
+              <p className={`text-sm font-mono font-semibold ${stmt.closing_balance_paise >= 0 ? "text-blue-700" : "text-orange-700"}`}>{stmtBal(stmt.closing_balance_paise)}</p>
+            </div>
+          </div>
+          <table className="w-full text-xs">
+            <thead className="bg-[#F8FAFC] text-[#64748B]"><tr>
+              <th className="px-3 py-2 text-left font-medium">Date</th>
+              <th className="px-3 py-2 text-left font-medium">Particulars</th>
+              <th className="px-3 py-2 text-left font-medium">Ref</th>
+              <th className="px-3 py-2 text-right font-medium">Debit</th>
+              <th className="px-3 py-2 text-right font-medium">Credit</th>
+              <th className="px-3 py-2 text-right font-medium">Balance</th>
+            </tr></thead>
+            <tbody className="divide-y divide-[#F8FAFC]">
+              <tr className="bg-[#F8FAFC] font-medium text-[#475569]">
+                <td className="px-3 py-2" colSpan={3}>Opening Balance</td>
+                <td className="px-3 py-2 text-right">—</td><td className="px-3 py-2 text-right">—</td>
+                <td className="px-3 py-2 text-right font-mono">{stmtBal(stmt.opening_balance_paise)}</td>
+              </tr>
+              {stmt.transactions.map((t, i) => (
+                <tr key={i} className="hover:bg-[#F8FAFC]">
+                  <td className="px-3 py-2 whitespace-nowrap text-[#64748B]">{t.date}</td>
+                  <td className="px-3 py-2 text-[#334155]">{t.particulars}</td>
+                  <td className="px-3 py-2 font-mono text-[#94A3B8]">{t.reference ?? "—"}</td>
+                  <td className="px-3 py-2 text-right font-mono text-[#334155]">{stmtAmt(t.debit_paise)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-[#334155]">{stmtAmt(t.credit_paise)}</td>
+                  <td className="px-3 py-2 text-right font-mono">{stmtBal(t.running_balance_paise)}</td>
+                </tr>
+              ))}
+              <tr className="bg-[#F8FAFC] font-semibold text-[#0F172A] border-t border-[#E2E8F0]">
+                <td className="px-3 py-2" colSpan={3}>Closing Outstanding</td>
+                <td className="px-3 py-2 text-right">—</td><td className="px-3 py-2 text-right">—</td>
+                <td className="px-3 py-2 text-right font-mono">{stmtBal(stmt.closing_balance_paise)}</td>
+              </tr>
+            </tbody>
+          </table>
+          {stmt.transactions.length === 0 && (
+            <p className="px-4 py-4 text-center text-xs text-[#94A3B8]">No transactions in this period.</p>
+          )}
+        </div>
+      )}
+
+      {emailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setEmailModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-[#0F172A]">Email statement to customer</h3>
+            <label className="block">
+              <span className="text-xs font-medium text-[#475569]">Recipient email</span>
+              <input value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="customer@example.com"
+                className="mt-1 w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+            {emailMsg && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-2.5">{emailMsg}</p>}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC]">Cancel</button>
+              <button onClick={sendEmail} disabled={emailing || !emailTo} className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">{emailing ? "Sending…" : "Send"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

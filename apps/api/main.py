@@ -53,7 +53,7 @@ from routers import search
 from routers import assignments
 from routers import approvals
 from routers import identity
-from routers import customers, vendors, sales_invoices, receipts, credit_notes
+from routers import customers, vendors, sales_invoices, receipts, credit_notes, customer_statements
 from routers import purchase_bills, purchase_payments, document_intelligence_v1
 from routers import gst_workspace, tds_workspace, mca_workspace, document_intelligence_v2
 from routers import payroll, fixed_assets, banking
@@ -205,6 +205,7 @@ app.include_router(vendors.router, dependencies=_CLIENT_GUARD)
 app.include_router(sales_invoices.router, dependencies=_CLIENT_GUARD)
 app.include_router(receipts.router, dependencies=_CLIENT_GUARD)
 app.include_router(credit_notes.router, dependencies=_CLIENT_GUARD)
+app.include_router(customer_statements.router, dependencies=_CLIENT_GUARD)
 app.include_router(purchase_bills.router, dependencies=_CLIENT_GUARD)
 app.include_router(purchase_payments.router, dependencies=_CLIENT_GUARD)
 app.include_router(document_intelligence_v1.router, dependencies=_CLIENT_GUARD)
