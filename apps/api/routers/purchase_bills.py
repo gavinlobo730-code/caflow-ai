@@ -379,14 +379,16 @@ def update_purchase_bill(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("purchase_bills").select("status").eq("id", bill_id).limit(1).execute()
+        # Tenant isolation (OOS-5): firm-scope the guard read and the write so a
+        # foreign-firm bill id cannot be read or mutated under service-role.
+        resp = db.table("purchase_bills").select("status").eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
         if resp.data[0]["status"] != "draft":
             raise HTTPException(status_code=422, detail="Only draft bills can be updated")
 
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
-        upd = db.table("purchase_bills").update(data).eq("id", bill_id).execute()
+        upd = db.table("purchase_bills").update(data).eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
         updated = upd.data[0] if upd.data else data
         log_event(
             current_user.get("firm_id", ""), "purchase_bill", bill_id,
@@ -431,7 +433,9 @@ def receive_purchase_bill(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("purchase_bills").select("*").eq("id", bill_id).limit(1).execute()
+        # Tenant isolation (OOS-5): firm-scope the guard read and the write so a
+        # foreign-firm bill id cannot be read or mutated under service-role.
+        resp = db.table("purchase_bills").select("*").eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
         bill = resp.data[0]
@@ -442,7 +446,7 @@ def receive_purchase_bill(
         upd = db.table("purchase_bills").update({
             "status":      "received",
             "received_at": now_iso,
-        }).eq("id", bill_id).execute()
+        }).eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
         updated_bill = upd.data[0] if upd.data else {**bill, "status": "received"}
 
         journal_id = phase2_journal_service.journal_for_purchase_bill(
@@ -502,7 +506,9 @@ def cancel_purchase_bill(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("purchase_bills").select("status").eq("id", bill_id).limit(1).execute()
+        # Tenant isolation (OOS-5): firm-scope the guard read and the write so a
+        # foreign-firm bill id cannot be read or mutated under service-role.
+        resp = db.table("purchase_bills").select("status").eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
         if resp.data[0]["status"] == "cancelled":
@@ -511,7 +517,7 @@ def cancel_purchase_bill(
         upd = db.table("purchase_bills").update({
             "status":       "cancelled",
             "cancelled_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", bill_id).execute()
+        }).eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
         updated = upd.data[0] if upd.data else {}
         log_event(
             current_user.get("firm_id", ""), "purchase_bill", bill_id,

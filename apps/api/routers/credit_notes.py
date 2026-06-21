@@ -367,7 +367,9 @@ def issue_credit_note(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("credit_notes").select("*").eq("id", cn_id).limit(1).execute()
+        # Tenant isolation (OOS-5): firm-scope the guard read and the write so a
+        # foreign-firm credit-note id cannot be read or mutated under service-role.
+        resp = db.table("credit_notes").select("*").eq("id", cn_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Credit note {cn_id} not found")
         cn = resp.data[0]
@@ -378,7 +380,7 @@ def issue_credit_note(
         upd = db.table("credit_notes").update({
             "status":    "issued",
             "issued_at": now_iso,
-        }).eq("id", cn_id).execute()
+        }).eq("id", cn_id).eq("firm_id", current_user.get("firm_id")).execute()
         updated_cn = upd.data[0] if upd.data else {**cn, "status": "issued"}
 
         journal_id = phase2_journal_service.journal_for_credit_note(
