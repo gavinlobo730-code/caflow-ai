@@ -268,11 +268,23 @@ def _settle(db, payment: dict, event) -> dict:
 
 
 def _apply_event(db, payment: dict, event, firm_id: str) -> None:
-    updates = {"status": event.status, "updated_at": _now()}
+    # Capture → settle EXACTLY ONCE. The settlement is guarded by an atomic claim:
+    # a single conditional UPDATE flips the row to the 'capturing' sentinel only
+    # while receipt_id IS NULL and it isn't already being claimed. Postgres
+    # serializes concurrent UPDATEs on the row, so a simultaneous duplicate
+    # delivery matches zero rows and bails — no second receipt. (Sequential
+    # redelivery is also covered by event dedupe + the receipt_id seal.)
     if event.status == CAPTURED and not payment.get("receipt_id"):
+        claimed = (db.table("customer_payments")
+                   .update({"status": "capturing", "updated_at": _now()})
+                   .eq("id", payment["id"]).is_("receipt_id", "null")
+                   .neq("status", "capturing").execute().data or [])
+        if not claimed:
+            return  # another delivery is settling / already settled this payment
         receipt = _settle(db, payment, event)
-        updates["receipt_id"] = receipt.get("id")
-        updates["status"] = CAPTURED
+        db.table("customer_payments").update({
+            "status": CAPTURED, "receipt_id": receipt.get("id"), "updated_at": _now(),
+        }).eq("id", payment["id"]).execute()
         if payment.get("payment_link_id"):
             db.table("customer_payment_links").update({"status": "paid", "updated_at": _now()}) \
               .eq("id", payment["payment_link_id"]).execute()
@@ -285,16 +297,22 @@ def _apply_event(db, payment: dict, event, firm_id: str) -> None:
             description=f"Online payment of ₹{int(payment['amount_paise']) // 100:,} captured.",
             severity="success", entity_type="customer_payment", entity_id=str(payment["id"]),
             amount_paise=int(payment["amount_paise"]), actor_type="system")
-    elif event.status in (FAILED, REFUNDED):
+        return
+    # Non-capture transitions (created/authorized/failed/refunded) — no accounting.
+    if event.status in (FAILED, REFUNDED):
         log_event(firm_id, "customer_payment", str(payment["id"]), event.status,
                   new_data={"event_type": event.event_type})
-    db.table("customer_payments").update(updates).eq("id", payment["id"]).execute()
+    db.table("customer_payments").update({"status": event.status, "updated_at": _now()}) \
+      .eq("id", payment["id"]).execute()
 
 
 def process_webhook(db, provider_name: str, headers: dict, raw_body: bytes) -> dict:
     """Verify → dedupe → correlate → transition → (on capture) settle via receipt engine.
     Returns a small status dict; never raises on a bad signature (records + rejects)."""
-    provider = get_provider(provider_name)
+    try:
+        provider = get_provider(provider_name)   # pinned to the configured provider
+    except ValueError:
+        return {"ok": False, "reason": "unknown_provider"}
     event = provider.process_webhook(headers, raw_body)
 
     # (I) Signature gate — refuse to act on unverified events.

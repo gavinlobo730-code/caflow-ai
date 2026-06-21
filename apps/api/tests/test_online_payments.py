@@ -42,6 +42,7 @@ class _Query:
     def __init__(self, db, table):
         self._db, self._table = db, table
         self._filters: list[tuple] = []
+        self._neq: list[tuple] = []
         self._is: list[tuple] = []
         self._like: list[tuple] = []
         self._in = None
@@ -66,6 +67,9 @@ class _Query:
     def eq(self, col, val):
         self._filters.append((col, val)); return self
 
+    def neq(self, col, val):
+        self._neq.append((col, val)); return self
+
     def is_(self, col, val):
         self._is.append((col, val)); return self
 
@@ -83,6 +87,8 @@ class _Query:
 
     def _match(self, row) -> bool:
         if any(row.get(c) != v for c, v in self._filters):
+            return False
+        if any(row.get(c) == v for c, v in self._neq):
             return False
         for col, val in self._is:
             if val == "null" and row.get(col) is not None:
@@ -148,6 +154,8 @@ def _seed_invoice(db, *, firm=FIRM, client=CLIENT, customer=CUSTOMER, iid=INVOIC
 @pytest.fixture(autouse=True)
 def _quiet(monkeypatch):
     """Silence the non-accounting side effects the engine fires (audit/timeline/journal)."""
+    # Explicit mock webhook secret (MockProvider now fails closed without one).
+    monkeypatch.setenv("MOCK_WEBHOOK_SECRET", "test_mock_secret")
     monkeypatch.setattr("services.receipt_service.log_event", lambda *a, **k: None)
     monkeypatch.setattr("services.receipt_service._next_receipt_seq", lambda *a, **k: 1)
     monkeypatch.setattr("services.payment_service.log_event", lambda *a, **k: None)
@@ -175,6 +183,26 @@ def test_mock_provider_webhook_signature_valid_and_tampered():
     assert p.process_webhook(headers, body).signature_verified is True
     # Tamper the body → signature must fail (no exception).
     assert p.process_webhook(headers, body + b" ").signature_verified is False
+
+
+def test_mock_provider_fails_closed_without_secret(monkeypatch):
+    # No hardcoded default → with no secret configured, nothing verifies.
+    monkeypatch.delenv("MOCK_WEBHOOK_SECRET", raising=False)
+    p = MockProvider()
+    ev = p.process_webhook({"x-webhook-signature": "whatever"}, b'{"event":"payment.captured"}')
+    assert ev.signature_verified is False
+    assert p.verify_payment(order_id="o", payment_id="p", signature="x") is False
+
+
+def test_get_provider_pins_to_configured(monkeypatch):
+    from services.payments import get_provider
+    monkeypatch.setenv("PAYMENT_PROVIDER", "razorpay")
+    # The configured provider resolves…
+    assert get_provider().name == "razorpay"
+    assert get_provider("razorpay").name == "razorpay"
+    # …but a mismatched path segment is rejected (webhook can't force mock).
+    with pytest.raises(ValueError):
+        get_provider("mock")
 
 
 # ── Payment links (Deliverable D) ─────────────────────────────────────────────
@@ -277,6 +305,36 @@ def test_webhook_second_capture_same_payment_no_second_receipt():
     ps.process_webhook(db, "mock", h2, b2)
     assert len(db.data["receipts"]) == 1                      # receipt_id seal prevents a second
     assert len(db.data["customer_payments"]) == 1
+
+
+def test_webhook_rejects_unconfigured_provider(monkeypatch):
+    # Pinned: a webhook for a provider that isn't configured is refused outright.
+    monkeypatch.setenv("PAYMENT_PROVIDER", "razorpay")
+    db = FakeDB()
+    out = ps.process_webhook(db, "mock", {"x-webhook-signature": "x"}, b'{"event":"payment.captured"}')
+    assert out["ok"] is False and out["reason"] == "unknown_provider"
+    assert db.data.get("customer_payment_events", []) == []   # nothing recorded for a rejected provider
+
+
+def test_concurrent_capture_double_delivery_settles_once():
+    # Simulate two workers that BOTH resolved the same payment with a stale
+    # receipt_id=None view (the concurrency window). The atomic claim must let
+    # only one settle.
+    from services.payments.base import VerifiedEvent
+    db = FakeDB(); _seed_invoice(db, total=100000, paid=0)
+    link = ps.create_link(db, FIRM, INVOICE, actor={"auth_user_id": "u1", "email": "x"})
+    db.seed("customer_payments", {
+        "id": "P1", "firm_id": FIRM, "client_id": CLIENT, "customer_id": CUSTOMER,
+        "invoice_id": INVOICE, "payment_link_id": link["id"], "amount_paise": 100000,
+        "status": "created", "provider": "mock", "provider_payment_id": "pay-1"})
+    stale = dict(db.data["customer_payments"][0])   # both workers hold this view
+    ev = VerifiedEvent(provider="mock", event_id="e1", event_type="payment.captured",
+                       status="captured", signature_verified=True,
+                       provider_payment_id="pay-1", amount_paise=100000)
+    ps._apply_event(db, dict(stale), ev, FIRM)   # worker A → claims + settles
+    ps._apply_event(db, dict(stale), ev, FIRM)   # worker B → claim fails → no-op
+    assert len(db.data["receipts"]) == 1
+    assert db.data["customer_payments"][0]["receipt_id"] == db.data["receipts"][0]["id"]
 
 
 def test_webhook_invalid_signature_rejected_no_accounting():
