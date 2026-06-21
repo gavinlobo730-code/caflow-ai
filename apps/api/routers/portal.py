@@ -18,6 +18,7 @@ import os
 from models.common import api_response
 from core.permissions import rbac  # M1: applied to every endpoint below (was unauthenticated)
 import domain.portal_service as portal_svc
+from services import portal_data_service  # Phase 4.5.2: canonical AR (retires `transactions` dues)
 
 router = APIRouter(prefix="/api/portal", tags=["portal"])
 
@@ -203,24 +204,12 @@ def get_dues(
     current_user: dict = Depends(rbac("portal", "read")),
 ):
     """
-    Outstanding dues summary for a client.
-    Returns unpaid/overdue transactions from the transactions table.
+    Outstanding dues summary for a client (CA-facing).
+
+    Phase 4.5.2: this now reads the CANONICAL accounts-receivable source — the
+    firm's fee invoices issued to the client (resolved via the firm↔client
+    customer link) — instead of the legacy `transactions` table, which is
+    retired here. The portal client-facing equivalent is GET /api/portal/self/dues.
     All amounts are in integer paise — never float.
     """
-    db = _db()
-    if db is None:
-        # Return empty mock — real data requires the transactions table
-        return api_response(True, {"dues": [], "total_paise": 0, "overdue_count": 0})
-
-    res = (
-        db.table("transactions")
-        .select("id, party_name, transaction_date, reference_no, total_paise, status")
-        .eq("firm_id", firm_id)
-        .eq("client_id", client_id)
-        .neq("status", "posted")
-        .order("transaction_date", desc=True)
-        .execute()
-    )
-    dues = res.data or []
-    summary = portal_svc.compute_dues_summary(dues)
-    return api_response(True, summary)
+    return api_response(True, portal_data_service.dues(firm_id, client_id, db=_db()))

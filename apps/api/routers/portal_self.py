@@ -39,17 +39,17 @@ def portal_me(portal: dict = Depends(get_current_portal_client)):
     })
 
 
-# Dashboard SHELL (foundation). `available=False` sections are scaffolding for
-# Phase 4.5.2+ and intentionally carry NO data yet. The already-live RLS-direct
-# surfaces (documents/messages/requests) are marked available.
+# Dashboard sections. documents/messages/requests are RLS-direct surfaces; the
+# fee-relationship + compliance surfaces (Phase 4.5.2) are served by the
+# client-facing /api/portal/self/* endpoints (portal_data router).
 _DASHBOARD_SECTIONS = [
     {"key": "documents",  "label": "Documents",          "available": True},
     {"key": "requests",   "label": "Document Requests",  "available": True},
     {"key": "messages",   "label": "Messages",           "available": True},
-    {"key": "invoices",   "label": "Invoices",           "available": False},
-    {"key": "statements", "label": "Statements",         "available": False},
-    {"key": "reminders",  "label": "Payment Reminders",  "available": False},
-    {"key": "compliance", "label": "Compliance Status",  "available": False},
+    {"key": "invoices",   "label": "Invoices",           "available": True},
+    {"key": "statements", "label": "Statements",         "available": True},
+    {"key": "reminders",  "label": "Payment Reminders",  "available": True},
+    {"key": "compliance", "label": "Compliance Status",  "available": True},
 ]
 
 

@@ -78,7 +78,7 @@ from routers.ai_copilot_v2 import router as ai_copilot_v2_router
 from routers.memory_intelligence import router as memory_intelligence_router
 # Client Portal
 from routers.portal import router as portal_router
-from routers import portal_access, portal_self
+from routers import portal_access, portal_self, portal_data
 
 app = FastAPI(title="PracticeSync AI API", version="2.0.0")
 
@@ -248,6 +248,9 @@ app.include_router(portal_router)
 # and are intentionally NOT behind the staff _CLIENT_GUARD.
 app.include_router(portal_access.router)
 app.include_router(portal_self.router)
+# Phase 4.5.2 — client-facing portal data surfaces (invoices, canonical dues,
+# statements, reminders, compliance). Client-authenticated; NOT behind _CLIENT_GUARD.
+app.include_router(portal_data.router)
 # Amendment v1.1 — Practice (firm-as-internal-client), Partner-only
 from routers.practice import router as practice_router
 app.include_router(practice_router, dependencies=_MFA_GUARD)
