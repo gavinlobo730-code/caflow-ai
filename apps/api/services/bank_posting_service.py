@@ -144,16 +144,19 @@ class BankPostingService:
 
     def _settlement_preview(self, db, firm_id, txn, amount) -> Optional[dict]:
         cat, mt, mid = txn.get("category"), txn.get("matched_entity_type"), txn.get("matched_entity_id")
+        client_id = txn.get("client_id")
         if cat in pmap.SETTLES_SALES_INVOICE and mt == "sales_invoice" and mid:
+            # H4 fix: scope to the txn's firm + client so a foreign matched_entity_id
+            # cannot disclose another firm/client's invoice details.
             inv = (db.table("client_sales_invoices").select("invoice_no, total_paise, paid_paise")
-                   .eq("id", mid).single().execute().data) or {}
+                   .eq("id", mid).eq("firm_id", firm_id).eq("client_id", client_id).maybe_single().execute().data) or {}
             total, paid = int(inv.get("total_paise") or 0), int(inv.get("paid_paise") or 0)
             alloc = min(amount, max(total - paid, 0))
             return {"entity": "sales_invoice", "label": inv.get("invoice_no"),
                     "allocate_paise": alloc, "new_paid_paise": paid + alloc, "total_paise": total}
         if cat in pmap.SETTLES_PURCHASE_BILL and mt == "purchase_bill" and mid:
             bill = (db.table("purchase_bills").select("bill_no, total_paise, paid_paise")
-                    .eq("id", mid).single().execute().data) or {}
+                    .eq("id", mid).eq("firm_id", firm_id).eq("client_id", client_id).maybe_single().execute().data) or {}
             total, paid = int(bill.get("total_paise") or 0), int(bill.get("paid_paise") or 0)
             alloc = min(amount, max(total - paid, 0))
             return {"entity": "purchase_bill", "label": bill.get("bill_no"),
