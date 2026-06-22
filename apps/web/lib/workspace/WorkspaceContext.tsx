@@ -105,6 +105,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   // Sync active workspace and lastRoute whenever pathname changes
   useEffect(() => {
+    if (pathname.startsWith("/settings")) return; // settings is not a workspace — don't pollute lastRoute
     const ws = getWorkspaceForPathname(pathname);
     dispatch({ type: "SET_WORKSPACE", id: ws });
     dispatch({ type: "UPDATE_LAST_ROUTE", workspaceId: ws, route: pathname });

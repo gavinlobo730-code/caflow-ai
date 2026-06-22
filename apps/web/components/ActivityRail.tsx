@@ -16,12 +16,14 @@ interface ActivityRailProps {
 
 export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
   const { activeWorkspace, setWorkspace } = useWorkspace();
-  const { user, userRole, signOut } = useAuth();
+  const { user, userRole, signOut, fullName } = useAuth();
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const pathname = usePathname();
   const isSettingsRoute = pathname.startsWith("/settings");
 
-  const initials = user?.email?.slice(0, 2).toUpperCase() ?? "CA";
+  const initials = fullName
+    ? fullName.trim().split(" ").filter(Boolean).slice(0, 2).map((n) => n[0].toUpperCase()).join("")
+    : user?.email?.slice(0, 2).toUpperCase() ?? "CA";
 
   const visibleWorkspaces = WORKSPACE_CONFIGS.filter((ws) =>
     canAccessWorkspace(ws.id, userRole)

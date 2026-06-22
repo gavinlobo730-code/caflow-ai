@@ -130,10 +130,12 @@ function getUpcomingDeadlines(today: Date): UpcomingDeadline[] {
     .slice(0, 6);
 }
 
-function getGreeting(email: string): string {
+function getGreeting(fullName: string | null, email: string): string {
   const hour = new Date().getHours();
-  const name = email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const name = fullName
+    ? fullName.trim().split(" ")[0]
+    : email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   return `${greeting}, ${name}`;
 }
 
@@ -179,7 +181,7 @@ function StatusBadge({ status }: { status: string | null }) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function DashboardContent() {
-  const { user } = useAuth();
+  const { user, fullName } = useAuth();
   const supabase = getSupabaseClient();
   const router = useRouter();
 
@@ -273,7 +275,7 @@ export default function DashboardContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  const greeting = user?.email ? getGreeting(user.email) : "Good day";
+  const greeting = user?.email ? getGreeting(fullName, user.email) : "Good day";
   const dateLabel = today.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
   return (
