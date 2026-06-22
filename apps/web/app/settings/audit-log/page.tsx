@@ -15,8 +15,9 @@ import { formatDate } from "@/lib/services/formatting";
 // (with acronym handling) as the fallback so new event types still display well.
 
 const ACRONYMS = new Set([
-  "gst", "tds", "mca", "roc", "gstr", "hsn", "sac", "pan", "tan", "itr",
+  "gst", "tds", "mca", "roc", "gstr", "hsn", "sac", "pan", "tan", "tin", "itr",
   "xbrl", "ca", "kyc", "ip", "2fa", "mfa", "26as", "24q", "26q", "3b", "id",
+  "dsc", "msme", "esi", "pf", "ros", "din", "cin",
 ]);
 
 function titleizeToken(t: string): string {
@@ -49,6 +50,36 @@ const ENTITY_LABELS: Record<string, string> = {
   user_client_assignment: "Client Assignment",
   client_portal_user: "Portal User",
   customer_statement: "Customer Statement",
+  // Entity types produced by the database audit triggers (migration 111).
+  firm: "Firm",
+  account: "Account",
+  client: "Client",
+  it_notice: "IT Notice",
+  it_deduction: "IT Deduction",
+  itr_filing: "ITR Filing",
+  tax_notice: "Tax Notice",
+  tax_audit: "Tax Audit",
+  tax_planning_record: "Tax Planning Record",
+  advance_tax_payment: "Advance Tax Payment",
+  capital_gain: "Capital Gain",
+  fixed_asset: "Fixed Asset",
+  fixed_deposit: "Fixed Deposit",
+  mca_filing: "MCA Filing",
+  mca_company: "MCA Company",
+  mca_director: "MCA Director",
+  msme_payment: "MSME Payment",
+  eway_bill_record: "E-Way Bill Record",
+  einvoice_record: "E-Invoice Record",
+  dsc_record: "DSC Record",
+  fee_engagement: "Fee Engagement",
+  fee_invoice: "Fee Invoice",
+  fee_receipt: "Fee Receipt",
+  purchase_bill: "Purchase Bill",
+  purchase_payment: "Purchase Payment",
+  credit_note: "Credit Note",
+  scheduled_report: "Scheduled Report",
+  salary_slip: "Salary Slip",
+  salary_structure: "Salary Structure",
 };
 
 function formatEntityType(s: string): string {
