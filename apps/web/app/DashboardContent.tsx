@@ -4,13 +4,53 @@ import { useState, useEffect } from "react";
 import {
   Users, Clock, AlertTriangle, FileCheck,
   Calendar, Sparkles, CheckCircle2,
-  ChevronRight, FlaskConical,
+  ChevronRight, FlaskConical, X, UserPlus,
+  Upload, BookOpen, ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { cn } from "@/lib/utils";
+
+// ─── Welcome next-steps shown after onboarding completes ─────────────────────
+const NEXT_STEPS = [
+  {
+    icon: Users,
+    title: "Add Your First Client",
+    desc: "Set up a client to start managing compliance and billing.",
+    href: "/clients",
+    color: "bg-blue-500/20 text-blue-100",
+  },
+  {
+    icon: UserPlus,
+    title: "Invite Team Members",
+    desc: "Add staff and assign roles to collaborate on client work.",
+    href: "/team",
+    color: "bg-indigo-500/20 text-indigo-100",
+  },
+  {
+    icon: Upload,
+    title: "Import Existing Data",
+    desc: "Import bank statements, trial balance, or client lists.",
+    href: "/accounting/bank-import",
+    color: "bg-violet-500/20 text-violet-100",
+  },
+  {
+    icon: Calendar,
+    title: "Review Compliance Calendar",
+    desc: "See upcoming GST, TDS, and ITR deadlines.",
+    href: "/deadlines",
+    color: "bg-amber-500/20 text-amber-100",
+  },
+  {
+    icon: BookOpen,
+    title: "Customize Chart of Accounts",
+    desc: "Add or edit accounts in your auto-generated CoA.",
+    href: "/accounting/chart-of-accounts",
+    color: "bg-emerald-500/20 text-emerald-100",
+  },
+];
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -147,9 +187,22 @@ export default function DashboardContent() {
   const [recentClients, setRecentClients] = useState<RecentClient[] | null>(null);
   const [recentTasks, setRecentTasks] = useState<RecentTask[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   const today = new Date();
   const upcomingDeadlines = getUpcomingDeadlines(today);
+
+  // Detect ?welcome=1 set by the onboarding completion redirect and clear it.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("welcome") === "1") {
+      setShowWelcome(true);
+      params.delete("welcome");
+      const clean = params.toString() ? `?${params}` : window.location.pathname;
+      window.history.replaceState({}, "", clean);
+    }
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -163,11 +216,8 @@ export default function DashboardContent() {
           setRecentClients([]); setRecentTasks([]); setLoading(false); return;
         }
 
-        const [{ data: firmMeta }, { count: coaCount }] = await Promise.all([
-          supabase.from("firms").select("name").eq("id", firmId).maybeSingle(),
-          supabase.from("chart_of_accounts").select("id", { count: "exact", head: true }).eq("firm_id", firmId),
-        ]);
-        if (!firmMeta?.name && (coaCount ?? 0) === 0) { router.replace("/onboarding"); return; }
+        const { data: firmMeta } = await supabase.from("firms").select("name").eq("id", firmId).maybeSingle();
+        if (!firmMeta?.name) { router.replace("/onboarding"); return; }
 
         const todayStr = today.toISOString().split("T")[0];
         const monthStart = todayStr.slice(0, 7) + "-01";
@@ -228,6 +278,49 @@ export default function DashboardContent() {
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+
+      {/* ── Welcome card (shown once after onboarding completes) ─────── */}
+      {showWelcome && (
+        <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-700 p-6 text-white shadow-lg">
+          <button
+            onClick={() => setShowWelcome(false)}
+            className="absolute top-4 right-4 text-white/60 hover:text-white transition-colors"
+            aria-label="Dismiss"
+          >
+            <X size={18} />
+          </button>
+
+          <div className="mb-1">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-white/15 text-white px-2.5 py-1 rounded-full">
+              <CheckCircle2 size={11} /> Workspace ready
+            </span>
+          </div>
+          <h2 className="text-xl font-bold mt-3">Welcome to PracticeSync</h2>
+          <p className="text-sm text-blue-100 mt-1 max-w-lg">
+            Your workspace has been created successfully — a standard Chart of Accounts, compliance calendar, and document folders are all set up. Here&apos;s what to do next.
+          </p>
+
+          <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {NEXT_STEPS.map((step) => {
+              const Icon = step.icon;
+              return (
+                <Link key={step.href} href={step.href}>
+                  <div className="group flex flex-col gap-2 bg-white/10 hover:bg-white/20 transition-colors rounded-xl p-3.5 cursor-pointer h-full">
+                    <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", step.color)}>
+                      <Icon size={15} />
+                    </div>
+                    <p className="text-[13px] font-semibold text-white leading-tight">{step.title}</p>
+                    <p className="text-[11px] text-blue-200 leading-snug flex-1">{step.desc}</p>
+                    <div className="flex items-center gap-1 text-[11px] text-white/70 group-hover:text-white/90 transition-colors mt-auto pt-1">
+                      Go <ArrowRight size={10} />
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between">
