@@ -3,7 +3,7 @@ import { LogoIcon } from "@/components/LogoIcon";
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, BookOpen, CheckCircle, ChevronRight, ChevronLeft, KeyRound, Eye, EyeOff } from "lucide-react";
+import { Building2, CheckCircle, ChevronRight, ChevronLeft, KeyRound, Eye, EyeOff } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { api, type ApiResp } from "@/lib/api";
@@ -51,11 +51,6 @@ const INDIAN_STATES = [
   "Puducherry",
 ];
 
-// Phase 3.3A, Part E: the chart of accounts is intentionally NOT defined in the
-// browser anymore. The single canonical source is the backend
-// (services/coa_seed_service.STANDARD_COA), seeded via POST /api/onboarding/seed-coa.
-// Step 3 shows category descriptions only and triggers the server-side seed.
-
 // ─── Validation helpers ────────────────────────────────────────────────────
 // CGST Act Section 25 — GSTIN format: 2-digit state code + PAN (10 chars) + 1 entity digit + Z + 1 check digit
 function validateGSTIN(gstin: string): boolean {
@@ -97,7 +92,6 @@ const EMPTY_FIRM: FirmForm = {
 const STEPS = [
   { label: "Create Password", icon: KeyRound },
   { label: "Firm Profile", icon: Building2 },
-  { label: "Chart of Accounts", icon: BookOpen },
 ];
 
 // ─── Reusable field component ──────────────────────────────────────────────
@@ -207,7 +201,6 @@ export default function OnboardingPage() {
   const [firmId, setFirmId] = useState<string | null>(null);
   const [firmForm, setFirmForm] = useState<FirmForm>(EMPTY_FIRM);
   const [firmErrors, setFirmErrors] = useState<Partial<Record<keyof FirmForm, string>>>({});
-  const [coaSeeded, setCoaSeeded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Non-blocking provisioning status for the firm's internal practice client (A2):
@@ -284,11 +277,7 @@ export default function OnboardingPage() {
         .select("name")
         .eq("id", firmId)
         .maybeSingle();
-      const { count } = await supabase
-        .from("chart_of_accounts")
-        .select("id", { count: "exact", head: true })
-        .eq("firm_id", firmId);
-      if (firmData?.name && count && count > 0) {
+      if (firmData?.name) {
         router.replace("/");
       }
     }
@@ -309,7 +298,7 @@ export default function OnboardingPage() {
       return;
     }
     await refreshUserContext();
-    router.replace("/");
+    router.replace("/?welcome=1");
   }
 
   // ─── Step 1: Set a password ───────────────────────────────────────────
@@ -396,8 +385,8 @@ export default function OnboardingPage() {
     setError(null);
     try {
       if (!firmId) {
-        // No firm yet — create it now (server-side: firm + Partner user + master
-        // CoA, and the internal client when a PAN is supplied).
+        // No firm yet — create it server-side (firm + Partner user + standard CoA).
+        // Backend seeds the full Chart of Accounts automatically; no onboarding step needed.
         const id = await ensureFirmExists({
           pan: firmForm.pan.trim() || undefined,
           gstin: firmForm.gstin.trim() || undefined,
@@ -407,10 +396,10 @@ export default function OnboardingPage() {
           state: firmForm.state || undefined,
         });
         if (!id) { setError("Could not create your firm. Please check the firm name and try again."); return; }
-        goNext();
+        await finish();
         return;
       }
-      // Firm exists — update its profile fields (anon client; now permitted by RLS).
+      // Firm exists — update its profile fields (permitted by RLS for the firm owner).
       const { error: updateError } = await supabase
         .from("firms")
         .update({
@@ -425,9 +414,10 @@ export default function OnboardingPage() {
         })
         .eq("id", firmId);
       if (updateError) throw updateError;
-      // Provision the internal practice client now that a PAN may be set
-      // (idempotent + non-fatal — onboarding must not fail on this). A2: surface
-      // the outcome instead of swallowing it; the backend audit-logs the result.
+      // Idempotent CoA seed — covers the edge case where firm exists but CoA was
+      // never seeded (e.g. partial onboarding). Non-blocking; failure is not fatal.
+      api.account.seedCoa().catch(() => {});
+      // Provision the internal practice client now that a PAN may be set (non-fatal).
       if (firmForm.pan.trim()) {
         try {
           const res = await api.practice.provision() as ApiResp<{ provisioned: boolean; message?: string | null }>;
@@ -441,30 +431,9 @@ export default function OnboardingPage() {
           setProvisionNote("Your practice books will be set up later — you can trigger it from the Practice section.");
         }
       }
-      goNext();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save firm profile");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // ─── Step 3: Seed Chart of Accounts (idempotent — server already seeds on
-  // firm creation; this is a safety net + the review screen) ───────────────
-  async function seedCoA() {
-    if (!firmId) { setError("No firm found for your account"); return; }
-    setSaving(true);
-    setError(null);
-    try {
-      // CoA seeding is server-side from the single canonical source
-      // (coa_seed_service.STANDARD_COA). Idempotent — safe even though firm
-      // creation already seeds it. No accounting data is written from the browser.
-      const res = await api.account.seedCoa() as ApiResp<{ seeded: number; skipped: boolean }>;
-      if (!res?.success) throw new Error(res?.error || "Failed to set up chart of accounts");
-      setCoaSeeded(true);
       await finish();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to set up chart of accounts");
+      setError(err instanceof Error ? err.message : "Failed to save firm profile");
     } finally {
       setSaving(false);
     }
@@ -687,67 +656,13 @@ export default function OnboardingPage() {
                 disabled={saving}
                 className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
-                {saving ? "Saving…" : "Save & Continue"}
+                {saving ? "Setting up your workspace…" : "Complete Setup"}
                 {!saving && <ChevronRight size={16} />}
               </button>
             </div>
           </div>
         )}
 
-        {/* ── Step 3: Chart of Accounts ───────────────────────────────────── */}
-        {step === 3 && (
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <BookOpen size={18} className="text-blue-600" />
-              <h2 className="text-base font-semibold text-[#0F172A]">Chart of Accounts</h2>
-            </div>
-            <p className="text-sm text-[#64748B] mb-5">
-              We&apos;ll set up a standard Schedule III chart of accounts for your firm — pre-mapped for GST, TDS, payroll and fixed assets. You can add, rename or delete accounts later from Accounting.
-            </p>
-
-            {/* Categories only — the authoritative account list is seeded server-side
-                from the single canonical source (no chart of accounts is defined in
-                the browser). */}
-            <div className="border border-[#F1F5F9] rounded-xl overflow-hidden divide-y divide-[#F8FAFC]">
-              {[
-                { label: "Assets", color: "text-blue-700 bg-blue-50", desc: "Cash, bank, receivables, GST input, fixed assets" },
-                { label: "Liabilities", color: "text-red-700 bg-red-50", desc: "Payables, GST output, TDS, loans" },
-                { label: "Equity", color: "text-purple-700 bg-purple-50", desc: "Capital, drawings, retained earnings" },
-                { label: "Revenue", color: "text-green-700 bg-green-50", desc: "Professional, audit, GST & tax consultancy fees" },
-                { label: "Expenses", color: "text-orange-700 bg-orange-50", desc: "Salaries, rent, software, depreciation" },
-              ].map((group) => (
-                <div key={group.label} className="flex items-center justify-between px-4 py-3">
-                  <span className={`text-xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded ${group.color}`}>{group.label}</span>
-                  <span className="text-xs text-[#94A3B8]">{group.desc}</span>
-                </div>
-              ))}
-            </div>
-
-            {coaSeeded && (
-              <div className="mt-3 flex items-center gap-2 text-sm text-green-700">
-                <CheckCircle size={15} />
-                Chart of Accounts ready
-              </div>
-            )}
-
-            <div className="flex items-center justify-between mt-8 pt-5 border-t border-gray-50">
-              <button
-                onClick={goBack}
-                className="flex items-center gap-1 text-sm text-[#64748B] hover:text-[#334155] transition-colors"
-              >
-                <ChevronLeft size={16} /> Back
-              </button>
-              <button
-                onClick={seedCoA}
-                disabled={saving}
-                className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                {saving ? "Finishing…" : "Finish & Go to Dashboard"}
-                {!saving && <ChevronRight size={16} />}
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
