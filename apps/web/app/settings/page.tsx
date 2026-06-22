@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Building2, AlertTriangle, Calendar, LogOut, ShieldCheck, ChevronLeft } from "lucide-react";
+import { Building2, AlertTriangle, Calendar, LogOut, ShieldCheck, ChevronLeft, User } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useRouter } from "next/navigation";
@@ -187,9 +187,12 @@ function Field({
 
 // ─── Main page ──────────────────────────────────────────────────────────────
 export default function SettingsPage() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, fullName, refreshUserContext } = useAuth();
   const router = useRouter();
   const supabase = getSupabaseClient();
+
+  const [personalName, setPersonalName] = useState(fullName ?? "");
+  const [savingPersonal, setSavingPersonal] = useState(false);
 
   const [form, setForm] = useState<FirmForm>(EMPTY_FORM);
   const [firmId, setFirmId] = useState<string | null>(null);
@@ -200,6 +203,35 @@ export default function SettingsPage() {
   const [errors, setErrors] = useState<Partial<Record<keyof FirmForm, string>>>({});
 
   const fy = getCurrentFinancialYear();
+
+  // Sync personalName when fullName resolves from AuthContext (may be null on first render)
+  useEffect(() => {
+    if (fullName !== null) setPersonalName(fullName);
+  }, [fullName]);
+
+  // ─── Save personal profile ───────────────────────────────────────────────
+  async function savePersonalProfile() {
+    if (!personalName.trim()) {
+      setToast({ message: "Full name cannot be empty", type: "error" });
+      return;
+    }
+    setSavingPersonal(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) throw new Error("Not authenticated");
+      const { error } = await supabase
+        .from("users")
+        .update({ full_name: personalName.trim() })
+        .eq("auth_user_id", session.user.id);
+      if (error) throw error;
+      await refreshUserContext();
+      setToast({ message: "Personal profile saved", type: "success" });
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Failed to save", type: "error" });
+    } finally {
+      setSavingPersonal(false);
+    }
+  }
 
   // ─── Load firm data on mount ─────────────────────────────────────────────
   const loadFirmData = useCallback(async () => {
@@ -353,6 +385,47 @@ export default function SettingsPage() {
         </Link>
         <h1 className="text-xl font-semibold text-[#0F172A]">Settings</h1>
         <p className="text-sm text-[#64748B] mt-0.5">Firm configuration and preferences</p>
+      </div>
+
+      {/* ── Personal Profile — all users ──────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+          <User size={15} className="text-[#64748B]" />
+          <h2 className="text-sm font-semibold text-[#0F172A]">Personal Profile</h2>
+        </div>
+        <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-medium text-[#64748B] block mb-1">
+              Full Name<span className="text-red-500 ml-0.5">*</span>
+            </label>
+            <input
+              type="text"
+              value={personalName}
+              onChange={(e) => setPersonalName(e.target.value)}
+              placeholder="e.g. CA Gavin Lobo"
+              className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[#64748B] block mb-1">Email</label>
+            <input
+              type="email"
+              value={user?.email ?? ""}
+              disabled
+              className="w-full text-sm text-[#94A3B8] border border-[#E2E8F0] rounded-lg px-3 py-2 bg-[#F8FAFC] cursor-not-allowed"
+            />
+            <p className="text-xs text-[#94A3B8] mt-1">Email cannot be changed here</p>
+          </div>
+        </div>
+        <div className="px-5 py-3 border-t border-gray-50 flex justify-end">
+          <button
+            onClick={savePersonalProfile}
+            disabled={savingPersonal}
+            className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {savingPersonal ? "Saving…" : "Save Profile"}
+          </button>
+        </div>
       </div>
 
       {/* ── Firm Profile — Partner only (firm financials) ────────────────── */}

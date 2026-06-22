@@ -19,18 +19,18 @@ import { normalizeRole, type UserRole } from "@/lib/auth/permissions";
  * freshly-signed-up account with no firm yet resolves to hasFirm=false so the
  * guard can route it to onboarding instead of dropping it on an empty dashboard.
  */
-async function resolveUserContext(user: User | null): Promise<{ role: UserRole | null; hasFirm: boolean }> {
-  if (!user) return { role: null, hasFirm: false };
+async function resolveUserContext(user: User | null): Promise<{ role: UserRole | null; hasFirm: boolean; fullName: string | null }> {
+  if (!user) return { role: null, hasFirm: false, fullName: null };
   try {
     const { data } = await getSupabaseClient()
       .from("users")
-      .select("role, firm_id")
+      .select("role, firm_id, full_name")
       .eq("auth_user_id", user.id)
       .maybeSingle();
     const raw = (data?.role as string | undefined) ?? (user.user_metadata?.role as string | undefined);
-    return { role: normalizeRole(raw), hasFirm: !!data?.firm_id };
+    return { role: normalizeRole(raw), hasFirm: !!data?.firm_id, fullName: (data?.full_name as string | null) ?? null };
   } catch {
-    return { role: normalizeRole(user.user_metadata?.role as string | undefined), hasFirm: false };
+    return { role: normalizeRole(user.user_metadata?.role as string | undefined), hasFirm: false, fullName: null };
   }
 }
 
@@ -47,6 +47,8 @@ interface AuthContextValue {
   mfaPending: boolean | null;
   /** Whether the signed-in user has a users row linked to a firm. null = resolving. */
   hasFirm: boolean | null;
+  /** The user's full name from the users table. null = not yet resolved or not set. */
+  fullName: string | null;
   /** Re-resolve role + firm membership (call after creating a firm in onboarding). */
   refreshUserContext: () => Promise<boolean>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
@@ -73,13 +75,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [mfaPending, setMfaPending] = useState<boolean | null>(null);
   const [hasFirm, setHasFirm] = useState<boolean | null>(null);
+  const [fullName, setFullName] = useState<string | null>(null);
 
   function applyContext(u: User | null) {
     setHasFirm(null);
-    resolveUserContext(u).then(({ role, hasFirm }) => {
+    resolveUserContext(u).then(({ role, hasFirm, fullName }) => {
       setUserRole(role);
       setHasFirm(hasFirm);
-    }).catch(() => { setUserRole(null); setHasFirm(false); });
+      setFullName(fullName);
+    }).catch(() => { setUserRole(null); setHasFirm(false); setFullName(null); });
   }
 
   useEffect(() => {
@@ -137,9 +141,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // so the guard sees hasFirm=true before navigating to the dashboard.
   const refreshUserContext = useCallback(async (): Promise<boolean> => {
     const { data: { session } } = await supabase.auth.getSession();
-    const { role, hasFirm } = await resolveUserContext(session?.user ?? null);
+    const { role, hasFirm, fullName } = await resolveUserContext(session?.user ?? null);
     setUserRole(role);
     setHasFirm(hasFirm);
+    setFullName(fullName);
     return hasFirm;
   }, []);
 
@@ -163,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ session, user, userRole, loading, mfaPending, hasFirm, refreshUserContext, signIn, signOut }}>
+    <AuthContext.Provider value={{ session, user, userRole, loading, mfaPending, hasFirm, fullName, refreshUserContext, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

@@ -209,6 +209,7 @@ export default function OnboardingPage() {
   const supabase = getSupabaseClient();
 
   const [step, setStep] = useState(1);
+  const [ownerName, setOwnerName] = useState(() => readSignupStash().fullName?.trim() ?? "");
   const [firmId, setFirmId] = useState<string | null>(null);
   const [firmForm, setFirmForm] = useState<FirmForm>(EMPTY_FIRM);
   const [firmErrors, setFirmErrors] = useState<Partial<Record<keyof FirmForm, string>>>({});
@@ -242,7 +243,7 @@ export default function OnboardingPage() {
       const stash = readSignupStash();
       const name = firmForm.name.trim() || stash.firmName || "";
       if (!name) return null;
-      const partner = stash.fullName?.trim() || user.email;
+      const partner = ownerName.trim() || stash.firmName || user.email;
       try {
         const resp = await api.account.createFirm({
           firm_name: name,
@@ -261,7 +262,7 @@ export default function OnboardingPage() {
         return null;
       }
     },
-    [firmId, user, firmForm.name, refreshUserContext],
+    [firmId, user, firmForm.name, ownerName, refreshUserContext],
   );
 
   // ─── Load firm_id on mount ────────────────────────────────────────────
@@ -327,6 +328,7 @@ export default function OnboardingPage() {
   async function savePassword() {
     setError(null);
     setPwError(null);
+    if (!ownerName.trim()) { setPwError("Please enter your full name."); return; }
     if (pw.length < 10) { setPwError("Use at least 10 characters."); return; }
     if (pw !== pw2) { setPwError("Passwords do not match."); return; }
     setSaving(true);
@@ -548,6 +550,17 @@ export default function OnboardingPage() {
             </p>
 
             <div className="space-y-4 max-w-md">
+              <div>
+                <label className="text-xs font-medium text-[#64748B] block mb-1">Full Name<span className="text-red-500 ml-0.5">*</span></label>
+                <input
+                  type="text"
+                  value={ownerName}
+                  onChange={(e) => setOwnerName(e.target.value)}
+                  placeholder="e.g. CA Gavin Lobo"
+                  autoComplete="name"
+                  className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                />
+              </div>
               <div>
                 <label className="text-xs font-medium text-[#64748B] block mb-1">Password<span className="text-red-500 ml-0.5">*</span></label>
                 <div className="relative">
