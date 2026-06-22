@@ -174,7 +174,7 @@ export function getWorkspaceForPathname(pathname: string): WorkspaceId {
   if (pathname.startsWith("/work") || pathname.startsWith("/tasks"))
     return "work";
 
-  if (pathname.startsWith("/team") || pathname.startsWith("/tasks"))
+  if (pathname.startsWith("/team") || pathname.startsWith("/approvals"))
     return "team";
 
   if (
