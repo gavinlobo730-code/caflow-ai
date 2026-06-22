@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { HomePanel } from "@/components/panels/HomePanel";
 import { ClientsPanel } from "@/components/panels/ClientsPanel";
@@ -12,6 +13,7 @@ import { RelationshipsPanel } from "@/components/panels/RelationshipsPanel";
 import { HealthPanel } from "@/components/panels/HealthPanel";
 import { PracticePanel } from "@/components/panels/PracticePanel";
 import { KnowledgePanel } from "@/components/panels/KnowledgePanel";
+import { SettingsPanel } from "@/components/panels/SettingsPanel";
 
 interface ContextPanelProps {
   onOpenSearch: () => void;
@@ -19,22 +21,30 @@ interface ContextPanelProps {
 
 export function ContextPanel({ onOpenSearch }: ContextPanelProps) {
   const { activeWorkspace } = useWorkspace();
+  const pathname = usePathname();
+  const isSettings = pathname.startsWith("/settings");
 
   return (
     <div className="flex flex-col h-full w-[220px] shrink-0 bg-white border-r border-gray-200">
-      {activeWorkspace === "home" && <HomePanel />}
-      {activeWorkspace === "clients" && (
-        <ClientsPanel onOpenSearch={onOpenSearch} />
+      {isSettings ? (
+        <SettingsPanel />
+      ) : (
+        <>
+          {activeWorkspace === "home" && <HomePanel />}
+          {activeWorkspace === "clients" && (
+            <ClientsPanel onOpenSearch={onOpenSearch} />
+          )}
+          {activeWorkspace === "deadlines" && <DeadlinesPanel />}
+          {activeWorkspace === "work" && <WorkPanel />}
+          {activeWorkspace === "team" && <TeamPanel />}
+          {activeWorkspace === "ai" && <AIPanel />}
+          {activeWorkspace === "accounting" && <AccountingPanel />}
+          {activeWorkspace === "relationships" && <RelationshipsPanel />}
+          {activeWorkspace === "health" && <HealthPanel />}
+          {activeWorkspace === "practice" && <PracticePanel />}
+          {activeWorkspace === "knowledge" && <KnowledgePanel />}
+        </>
       )}
-      {activeWorkspace === "deadlines" && <DeadlinesPanel />}
-      {activeWorkspace === "work" && <WorkPanel />}
-      {activeWorkspace === "team" && <TeamPanel />}
-      {activeWorkspace === "ai" && <AIPanel />}
-      {activeWorkspace === "accounting" && <AccountingPanel />}
-      {activeWorkspace === "relationships" && <RelationshipsPanel />}
-      {activeWorkspace === "health" && <HealthPanel />}
-      {activeWorkspace === "practice" && <PracticePanel />}
-      {activeWorkspace === "knowledge" && <KnowledgePanel />}
     </div>
   );
 }

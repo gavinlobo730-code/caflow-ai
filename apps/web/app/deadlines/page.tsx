@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Calendar, AlertTriangle, Clock, CheckCircle, FileText, ExternalLink, FlaskConical } from "lucide-react";
+import { Calendar, AlertTriangle, Clock, CheckCircle, FileText, ExternalLink, FlaskConical, Users, ArrowRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
@@ -329,7 +329,55 @@ export default function DeadlinesPage() {
             </tbody>
           </table>
           {filtered.length === 0 && (
-            <div className="text-center py-8 text-sm text-[#94A3B8]">No compliance records found</div>
+            <div className="py-14 px-8 text-center">
+              {records.length === 0 && clients.length === 0 ? (
+                <div className="max-w-xs mx-auto space-y-3">
+                  <div className="w-12 h-12 rounded-xl bg-[#F1F5F9] flex items-center justify-center mx-auto">
+                    <Users size={20} className="text-[#94A3B8]" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-[#0F172A]">No clients yet</p>
+                    <p className="text-xs text-[#64748B] mt-1 leading-relaxed">
+                      Deadlines are tracked per-client. Add your first client to start managing compliance schedules.
+                    </p>
+                  </div>
+                  <Link
+                    href="/clients"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Add First Client <ArrowRight size={13} />
+                  </Link>
+                </div>
+              ) : records.length === 0 ? (
+                <div className="max-w-xs mx-auto space-y-3">
+                  <div className="w-12 h-12 rounded-xl bg-[#F1F5F9] flex items-center justify-center mx-auto">
+                    <Calendar size={20} className="text-[#94A3B8]" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-[#0F172A]">No compliance records yet</p>
+                    <p className="text-xs text-[#64748B] mt-1 leading-relaxed">
+                      Open a client and go to the Compliance tab to seed their filing schedule for this year.
+                    </p>
+                  </div>
+                  <Link
+                    href="/clients"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 border border-[#E2E8F0] text-[#475569] text-xs font-semibold rounded-lg hover:bg-[#F8FAFC] transition-colors"
+                  >
+                    View Clients <ArrowRight size={13} />
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-[#94A3B8]">No records match your filters.</p>
+                  <button
+                    onClick={() => { setStatusFilter(""); setTypeFilter(""); setClientFilter(""); }}
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    Clear filters
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </Card>

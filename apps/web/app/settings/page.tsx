@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Building2, AlertTriangle, Calendar, LogOut, ShieldCheck } from "lucide-react";
+import { Building2, AlertTriangle, Calendar, LogOut, ShieldCheck, ChevronLeft } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useRouter } from "next/navigation";
@@ -344,6 +344,13 @@ export default function SettingsPage() {
       )}
 
       <div>
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1 text-xs text-[#94A3B8] hover:text-[#475569] transition-colors mb-1"
+        >
+          <ChevronLeft size={13} />
+          Dashboard
+        </Link>
         <h1 className="text-xl font-semibold text-[#0F172A]">Settings</h1>
         <p className="text-sm text-[#64748B] mt-0.5">Firm configuration and preferences</p>
       </div>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Search, Settings, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -17,6 +18,8 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
   const { activeWorkspace, setWorkspace } = useWorkspace();
   const { user, userRole, signOut } = useAuth();
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
+  const pathname = usePathname();
+  const isSettingsRoute = pathname.startsWith("/settings");
 
   const initials = user?.email?.slice(0, 2).toUpperCase() ?? "CA";
 
@@ -87,8 +90,16 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
         <Link
           href="/settings"
           title="Settings"
-          className="flex items-center justify-center w-9 h-9 rounded-[9px] text-slate-500 hover:text-white hover:bg-white/10 transition-all duration-100"
+          className={cn(
+            "relative flex items-center justify-center w-9 h-9 rounded-[9px] transition-all duration-100",
+            isSettingsRoute
+              ? "bg-blue-600 text-white"
+              : "text-slate-500 hover:text-white hover:bg-white/10"
+          )}
         >
+          {isSettingsRoute && (
+            <span className="absolute left-[-1px] h-5 w-[3px] rounded-r-[2px] bg-blue-400" />
+          )}
           <Settings size={15} />
         </Link>
 
