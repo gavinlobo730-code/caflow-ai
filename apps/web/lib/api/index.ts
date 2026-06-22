@@ -666,6 +666,22 @@ export const api = {
       request(`/api/approvals/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),
     cancel: (id: string) => request(`/api/approvals/${id}/cancel`, { method: "POST" }),
   },
+  // Module 9.0/M1: authoritative, append-only audit trail (Partner-only read).
+  // Backed by the audit_log table, written server-side by audit_service.log_event
+  // across every sensitive mutation (journals, invoices, compliance, clients,
+  // users/roles, year-end, GST/TDS, platform actions, …).
+  audit: {
+    list: (params?: { entity_type?: string; entity_id?: string; actor_id?: string; limit?: number }) => {
+      const q = new URLSearchParams(
+        Object.entries(params ?? {})
+          .filter(([, v]) => v != null && v !== "")
+          .map(([k, v]) => [k, String(v)]),
+      ).toString();
+      return request(`/api/audit${q ? `?${q}` : ""}`) as Promise<
+        ApiResp<{ entries: AuditEntry[]; total: number }>
+      >;
+    },
+  },
   // M6: identity administration (audited, server-side; Partner-only writes).
   identity: {
     listUsers: () => request("/api/identity/users"),
@@ -682,6 +698,20 @@ export const api = {
     recordLoginEvent: (event: "login" | "logout") =>
       request("/api/identity/login-event", { method: "POST", body: JSON.stringify({ event }) }),
   },
+};
+
+export type AuditEntry = {
+  id: string;
+  firm_id: string;
+  actor_id?: string | null;
+  actor_email?: string | null;
+  entity_type: string;
+  entity_id?: string | null;
+  action: string;
+  old_data?: Record<string, unknown> | null;
+  new_data?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
 };
 
 export type LoginEvent = {
