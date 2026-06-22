@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from models.common import api_response
 from core.permissions import rbac
+from core.auth import mfa_guard
 import services.approval_service as approvals
 
 router = APIRouter(prefix="/api/approvals", tags=["approvals"])
@@ -51,12 +52,21 @@ def create_approval(body: RequestBody, current_user: dict = Depends(rbac("approv
 
 
 @router.post("/{request_id}/approve")
-def approve_request(request_id: str, current_user: dict = Depends(rbac("approval", "approve"))):
+def approve_request(
+    request_id: str,
+    current_user: dict = Depends(rbac("approval", "approve")),
+    _mfa: dict = Depends(mfa_guard),  # Approve executes the real privileged action — MFA required
+):
     return api_response(True, approvals.approve(current_user["firm_id"], request_id, current_user))
 
 
 @router.post("/{request_id}/reject")
-def reject_request(request_id: str, body: RejectBody, current_user: dict = Depends(rbac("approval", "approve"))):
+def reject_request(
+    request_id: str,
+    body: RejectBody,
+    current_user: dict = Depends(rbac("approval", "approve")),
+    _mfa: dict = Depends(mfa_guard),  # Reject is a governance action — MFA required
+):
     return api_response(True, approvals.reject(current_user["firm_id"], request_id, current_user, body.reason))
 
 
