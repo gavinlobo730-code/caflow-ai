@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { UserCheck, CheckSquare, LayoutGrid, Users, Link2, ShieldCheck, History } from "lucide-react";
+import { UserCheck, LayoutGrid, Users, Link2, ShieldCheck, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TEAM_ITEMS = [
@@ -10,7 +10,6 @@ const TEAM_ITEMS = [
   { href: "/team/assignments", label: "Assignments", icon: Link2 },
   { href: "/approvals", label: "Approvals", icon: ShieldCheck },
   { href: "/team/login-history", label: "Login History", icon: History },
-  { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/team/work-allocation", label: "Work Allocation", icon: LayoutGrid },
   { href: "/payroll/attendance", label: "Attendance", icon: Users },
 ];
