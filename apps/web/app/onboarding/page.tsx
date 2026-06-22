@@ -312,15 +312,32 @@ export default function OnboardingPage() {
   // ─── Step 1: Set a password ───────────────────────────────────────────
   // The account was created via a magic link (passwordless), so we set a real
   // password here — otherwise the email+password login page would be unusable.
+  //
+  // Supabase requires reauthentication before updateUser({ password }) when the
+  // session was established via OTP/magic link. If that error fires, send a
+  // one-time verification code and show the OTP input below.
+  const [needsReauth, setNeedsReauth] = useState(false);
+  const [reauthOtp, setReauthOtp] = useState("");
+  const [reauthError, setReauthError] = useState<string | null>(null);
+  const [reauthSending, setReauthSending] = useState(false);
+
   async function savePassword() {
     setError(null);
     setPwError(null);
-    if (pw.length < 8) { setPwError("Use at least 8 characters."); return; }
+    if (pw.length < 10) { setPwError("Use at least 10 characters."); return; }
     if (pw !== pw2) { setPwError("Passwords do not match."); return; }
     setSaving(true);
     try {
       const { error: upErr } = await supabase.auth.updateUser({ password: pw });
-      if (upErr) throw new Error(upErr.message);
+      if (upErr) {
+        if (upErr.message.toLowerCase().includes("reauthentication")) {
+          const { error: raErr } = await supabase.auth.reauthenticate();
+          if (raErr) throw new Error("Could not send verification code. Please try again.");
+          setNeedsReauth(true);
+          return;
+        }
+        throw new Error(upErr.message);
+      }
       setPwSet(true);
       // Clear the in-memory password values once set.
       setPw(""); setPw2("");
@@ -329,6 +346,31 @@ export default function OnboardingPage() {
       setPwError(err instanceof Error ? err.message : "Could not set your password. Please try again.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function verifyAndSetPassword() {
+    if (!user?.email) return;
+    setReauthError(null);
+    setReauthSending(true);
+    try {
+      const { error: otpErr } = await supabase.auth.verifyOtp({
+        email: user.email,
+        token: reauthOtp,
+        type: "email",
+      });
+      if (otpErr) throw new Error("Invalid verification code. Please try again.");
+      const { error: upErr } = await supabase.auth.updateUser({ password: pw });
+      if (upErr) throw new Error(upErr.message);
+      setNeedsReauth(false);
+      setReauthOtp("");
+      setPwSet(true);
+      setPw(""); setPw2("");
+      goNext();
+    } catch (err) {
+      setReauthError(err instanceof Error ? err.message : "Verification failed. Please try again.");
+    } finally {
+      setReauthSending(false);
     }
   }
 
@@ -472,7 +514,7 @@ export default function OnboardingPage() {
                     type={showPw ? "text" : "password"}
                     value={pw}
                     onChange={(e) => setPw(e.target.value)}
-                    placeholder="At least 8 characters"
+                    placeholder="At least 10 characters"
                     autoComplete="new-password"
                     className={`w-full text-sm text-[#0F172A] border rounded-lg px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] ${pwError ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"}`}
                   />
@@ -496,12 +538,40 @@ export default function OnboardingPage() {
               {pwSet && (
                 <div className="flex items-center gap-2 text-sm text-green-700"><CheckCircle size={15} /> Password set</div>
               )}
+
+              {needsReauth && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+                  <p className="text-sm font-medium text-blue-900">Check your email for a verification code</p>
+                  <p className="text-sm text-blue-700">
+                    We sent a 6-digit code to <span className="font-medium">{user?.email}</span>. Enter it below to set your password.
+                  </p>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={reauthOtp}
+                    onChange={(e) => { setReauthError(null); setReauthOtp(e.target.value.replace(/\D/g, "")); }}
+                    placeholder="6-digit code"
+                    autoComplete="one-time-code"
+                    className="w-full text-sm border border-blue-300 rounded-lg px-3 py-2 tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  />
+                  {reauthError && <p className="text-xs text-red-500">{reauthError}</p>}
+                  <button
+                    onClick={verifyAndSetPassword}
+                    disabled={reauthSending || reauthOtp.length < 6}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  >
+                    {reauthSending ? "Verifying…" : "Verify & Set Password"}
+                    {!reauthSending && <ChevronRight size={14} />}
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-end mt-8 pt-5 border-t border-gray-50">
               <button
                 onClick={savePassword}
-                disabled={saving || !pw || !pw2}
+                disabled={saving || !pw || !pw2 || needsReauth}
                 className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
                 {saving ? "Saving…" : "Set Password & Continue"}
