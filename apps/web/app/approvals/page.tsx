@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ShieldCheck, Check, X, Clock, Loader2, Ban } from "lucide-react";
+import { ShieldCheck, Check, X, Clock, Loader2, Ban, Lock } from "lucide-react";
+import Link from "next/link";
 import { api, type ApprovalRequest } from "@/lib/api";
 import { useAuth } from "@/lib/auth/AuthContext";
+
+function isMfaError(msg: string) {
+  return msg.toLowerCase().includes("multi-factor") || msg.toLowerCase().includes("mfa");
+}
 
 // Module 9.0 M4 — Governance Approval Inbox (maker-checker).
 // Partners approve/reject; everyone with access sees pending + history.
@@ -79,16 +84,36 @@ export default function ApprovalsPage() {
         ))}
       </div>
 
-      {error && <div className="text-[12px] text-red-600 mb-3">{error}</div>}
+      {error && (isMfaError(error) ? (
+        <div className="flex flex-col items-center gap-3 py-14 text-center">
+          <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center">
+            <Lock size={20} className="text-amber-600" />
+          </div>
+          <div>
+            <p className="text-[14px] font-semibold text-[#182350]">Multi-factor authentication required</p>
+            <p className="text-[12px] text-gray-500 mt-1 max-w-xs mx-auto">
+              This area contains sensitive approval workflows. Enable MFA to continue.
+            </p>
+          </div>
+          <Link
+            href="/settings/security"
+            className="mt-1 px-4 py-2 rounded-lg bg-[#182350] text-white text-[12.5px] font-medium hover:bg-[#1e2d5e] transition-colors"
+          >
+            Set Up MFA
+          </Link>
+        </div>
+      ) : (
+        <div className="text-[12px] text-red-600 mb-3">{error}</div>
+      ))}
 
-      {loading ? (
+      {!error && loading ? (
         <div className="text-sm text-gray-500">Loading…</div>
-      ) : items.length === 0 ? (
+      ) : !error && items.length === 0 ? (
         <div className="py-12 text-center text-[12px] text-gray-400">
           <Clock size={22} className="mx-auto mb-2 opacity-40" />
           No {tab} approvals.
         </div>
-      ) : (
+      ) : !error ? (
         <div className="space-y-2">
           {items.map((r) => (
             <div key={r.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
@@ -126,7 +151,7 @@ export default function ApprovalsPage() {
             </div>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -194,7 +194,7 @@ app.include_router(audit.router)
 app.include_router(onboarding.router)
 app.include_router(search.router)  # M2: authorization-scoped global search
 app.include_router(assignments.router, dependencies=_MFA_GUARD)  # M3: client-assignment administration
-app.include_router(approvals.router, dependencies=_MFA_GUARD)  # M4: governance approval workflows
+app.include_router(approvals.router)  # M4: governance approval workflows; MFA enforced per-action (approve/reject) not on read endpoints
 app.include_router(identity.router, dependencies=_MFA_GUARD)  # M6: identity administration (audited, server-side)
 # Phase 14 — Tax/XBRL/integrations routers (previously written but never mounted;
 # their frontend pages were dead 404s until now). All client-scoped → guarded.
