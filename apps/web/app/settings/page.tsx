@@ -133,6 +133,55 @@ function Toast({
   );
 }
 
+// ─── Field component — module scope (MUST NOT be defined inside SettingsPage:
+// an inner component gets a new function identity on every render, causing React
+// to unmount/remount the <input> on each keystroke and steal focus after one word.)
+function Field({
+  label,
+  field,
+  form,
+  onChange,
+  errors,
+  type = "text",
+  placeholder,
+  hint,
+  required,
+}: {
+  label: string;
+  field: keyof FirmForm;
+  form: FirmForm;
+  onChange: (field: keyof FirmForm, value: string) => void;
+  errors: Partial<Record<keyof FirmForm, string>>;
+  type?: string;
+  placeholder?: string;
+  hint?: string;
+  required?: boolean;
+}) {
+  return (
+    <div>
+      <label className="text-xs font-medium text-[#64748B] block mb-1">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      <input
+        type={type}
+        value={form[field]}
+        onChange={(e) => onChange(field, e.target.value)}
+        placeholder={placeholder}
+        className={`w-full text-sm text-[#0F172A] border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] ${
+          errors[field] ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"
+        }`}
+      />
+      {hint && !errors[field] && (
+        <p className="text-xs text-[#94A3B8] mt-1">{hint}</p>
+      )}
+      {errors[field] && (
+        <p className="text-xs text-red-500 mt-1">{errors[field]}</p>
+      )}
+    </div>
+  );
+}
+
 // ─── Main page ──────────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const { user, signOut } = useAuth();
@@ -281,47 +330,6 @@ export default function SettingsPage() {
     router.push("/login");
   }
 
-  // ─── Input component ─────────────────────────────────────────────────────
-  function Field({
-    label,
-    field,
-    type = "text",
-    placeholder,
-    hint,
-    required,
-  }: {
-    label: string;
-    field: keyof FirmForm;
-    type?: string;
-    placeholder?: string;
-    hint?: string;
-    required?: boolean;
-  }) {
-    return (
-      <div>
-        <label className="text-xs font-medium text-[#64748B] block mb-1">
-          {label}
-          {required && <span className="text-red-500 ml-0.5">*</span>}
-        </label>
-        <input
-          type={type}
-          value={form[field]}
-          onChange={(e) => handleChange(field, e.target.value)}
-          placeholder={placeholder}
-          className={`w-full text-sm text-[#0F172A] border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] ${
-            errors[field] ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"
-          }`}
-        />
-        {hint && !errors[field] && (
-          <p className="text-xs text-[#94A3B8] mt-1">{hint}</p>
-        )}
-        {errors[field] && (
-          <p className="text-xs text-red-500 mt-1">{errors[field]}</p>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-5">
       {toast && (
@@ -353,19 +361,25 @@ export default function SettingsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Row 1: Firm name spans full width */}
               <div className="sm:col-span-2">
-                <Field label="Firm Name" field="name" placeholder="e.g. Gavin Lobo & Associates" required />
+                <Field label="Firm Name" field="name" form={form} onChange={handleChange} errors={errors} placeholder="e.g. Gavin Lobo & Associates" required />
               </div>
 
               {/* Row 2: GSTIN + PAN */}
               <Field
                 label="GSTIN"
                 field="gstin"
+                form={form}
+                onChange={handleChange}
+                errors={errors}
                 placeholder="e.g. 27AABCU9603R1ZX"
                 hint="15-char GST Identification Number (CGST Act §25)"
               />
               <Field
                 label="PAN"
                 field="pan"
+                form={form}
+                onChange={handleChange}
+                errors={errors}
                 placeholder="e.g. AABCU9603R"
                 hint="10-char Permanent Account Number (IT Act §139A)"
               />
@@ -374,21 +388,24 @@ export default function SettingsPage() {
               <Field
                 label="Registration / ICAI MRN"
                 field="icai_mrn"
+                form={form}
+                onChange={handleChange}
+                errors={errors}
                 placeholder="e.g. ICAI-MRN-123456"
               />
-              <Field label="Phone" field="phone" type="tel" placeholder="+91 98765 43210" />
+              <Field label="Phone" field="phone" form={form} onChange={handleChange} errors={errors} type="tel" placeholder="+91 98765 43210" />
 
               {/* Row 4: Email + Website */}
-              <Field label="Email" field="email" type="email" placeholder="firm@example.com" />
-              <Field label="Website" field="website" type="url" placeholder="https://example.com" />
+              <Field label="Email" field="email" form={form} onChange={handleChange} errors={errors} type="email" placeholder="firm@example.com" />
+              <Field label="Website" field="website" form={form} onChange={handleChange} errors={errors} type="url" placeholder="https://example.com" />
 
               {/* Row 5: Address line 1 spans full */}
               <div className="sm:col-span-2">
-                <Field label="Address Line 1" field="address_line1" placeholder="Street, Building, Suite" />
+                <Field label="Address Line 1" field="address_line1" form={form} onChange={handleChange} errors={errors} placeholder="Street, Building, Suite" />
               </div>
 
               {/* Row 6: City + State + Pincode */}
-              <Field label="City" field="city" placeholder="e.g. Mumbai" />
+              <Field label="City" field="city" form={form} onChange={handleChange} errors={errors} placeholder="e.g. Mumbai" />
 
               <div>
                 <label className="text-xs font-medium text-[#64748B] block mb-1">State</label>
@@ -406,7 +423,7 @@ export default function SettingsPage() {
                 </select>
               </div>
 
-              <Field label="Pincode" field="pincode" placeholder="e.g. 400001" hint="6-digit postal code" />
+              <Field label="Pincode" field="pincode" form={form} onChange={handleChange} errors={errors} placeholder="e.g. 400001" hint="6-digit postal code" />
             </div>
           </div>
         )}

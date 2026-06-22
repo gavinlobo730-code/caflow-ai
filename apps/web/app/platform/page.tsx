@@ -25,7 +25,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export default function PlatformAdminPage() {
-  const { session, loading: authLoading } = useAuth();
+  const { session, loading: authLoading, signOut, refreshUserContext } = useAuth();
   const router = useRouter();
   // "error" is distinct from "denied": denied = the server authoritatively said
   // "not a platform admin" (→ redirect); error = we could NOT get an answer
@@ -126,6 +126,11 @@ export default function PlatformAdminPage() {
       notify(ok, true);
       await load();
       setDetail(null);
+      // If the current user's own firm was deleted, sign them out cleanly.
+      try {
+        const stillHasFirm = await refreshUserContext();
+        if (!stillHasFirm) { await signOut(); router.replace("/login"); return; }
+      } catch { /* network error — leave session intact */ }
     } catch (e) {
       notify(e instanceof Error ? e.message.replace(/^API error \d+:\s*/, "") : "Action failed", false);
     } finally {
@@ -177,6 +182,11 @@ export default function PlatformAdminPage() {
       setPurgeTarget(null);
       await load();
       setDetail(null);
+      // If the purged firm was the current user's own firm, sign them out.
+      try {
+        const stillHasFirm = await refreshUserContext();
+        if (!stillHasFirm) { await signOut(); router.replace("/login"); return; }
+      } catch { /* network error — leave session intact */ }
     } catch (e) {
       setPurgeErr(e instanceof Error ? e.message.replace(/^API error \d+:\s*/, "") : "Permanent delete failed.");
     } finally {
