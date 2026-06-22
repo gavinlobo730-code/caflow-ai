@@ -436,14 +436,6 @@ export interface Transaction {
 
 // ─── MODULE STATUS TYPES ───────────────────────────────────────────────────
 
-export type GSTReturnStatus =
-  | "Draft"
-  | "Awaiting Docs"
-  | "Ready for Review"
-  | "Approved"
-  | "Ready to File"
-  | "Filed";
-
 export type ITRStatus =
   | "Draft"
   | "Awaiting Docs"

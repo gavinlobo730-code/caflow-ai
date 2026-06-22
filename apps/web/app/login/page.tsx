@@ -141,7 +141,7 @@ export default function LoginPage() {
               <div className="space-y-1.5">
                 <label className="block text-[13px] font-semibold text-[#0F172A]">Authentication code</label>
                 <input
-                  autoFocus inputMode="numeric" value={mfaCode}
+                  autoFocus inputMode="numeric" value={mfaCode} maxLength={6}
                   onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   placeholder="123456"
                   className="w-full bg-white border border-[#E2E8F0] rounded-lg px-4 py-3 text-[18px] tracking-[0.3em] text-center font-mono text-[#0F172A] placeholder:text-[#CBD5E1] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"

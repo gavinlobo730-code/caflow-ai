@@ -66,10 +66,16 @@ function CompaniesTab({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   async function saveNew() {
+    const cinUp = form.cin.trim().toUpperCase();
+    if (cinUp && !/^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$/.test(cinUp)) {
+      alert("Invalid CIN. Format: U74999MH2020PTC123456 (21 chars, starts with L or U). Companies Act 2013.");
+      return;
+    }
     await apiFetch("/api/mca-workspace/companies", {
       method: "POST",
       body: JSON.stringify({
         ...form,
+        cin: cinUp,
         client_id: clientId,
         authorized_capital_paise: parseInt(form.authorized_capital_paise) || 0,
         paid_up_capital_paise: parseInt(form.paid_up_capital_paise) || 0,
@@ -93,18 +99,18 @@ function CompaniesTab({ clientId }: { clientId: string }) {
         <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
           <p className="text-sm font-medium">Register Company</p>
           <div className="grid grid-cols-2 gap-3">
-            {[
-              { key: "cin", placeholder: "CIN (e.g. U74999MH2020PTC123456)" },
+            {(([
+              { key: "cin", placeholder: "CIN (e.g. U74999MH2020PTC123456)", maxLength: 21 },
               { key: "company_name", placeholder: "Company Name" },
               { key: "incorporation_date", placeholder: "Incorporation Date (YYYY-MM-DD)" },
               { key: "authorized_capital_paise", placeholder: "Authorised Capital (paise)" },
               { key: "paid_up_capital_paise", placeholder: "Paid-up Capital (paise)" },
-            ].map(({ key, placeholder }) => (
-              <input key={key} placeholder={placeholder}
+            ] as { key: string; placeholder: string; maxLength?: number }[]).map(({ key, placeholder, maxLength }) => (
+              <input key={key} placeholder={placeholder} maxLength={maxLength}
                 value={(form as Record<string, string>)[key]}
                 onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
                 className="border rounded px-3 py-1.5 text-sm" />
-            ))}
+            )))}
             <input placeholder="Registered Address" value={form.registered_address}
               onChange={(e) => setForm((f) => ({ ...f, registered_address: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm col-span-2" />
@@ -162,6 +168,14 @@ function DirectorsTab({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   async function saveNew() {
+    if (form.din && !/^\d{8}$/.test(form.din)) {
+      alert("DIN must be exactly 8 digits. IT Act / Companies Act 2013.");
+      return;
+    }
+    if (form.pan && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(form.pan)) {
+      alert("PAN format must be ABCDE1234F (5 letters + 4 digits + 1 letter). IT Act §139A.");
+      return;
+    }
     await apiFetch("/api/mca-workspace/directors", {
       method: "POST",
       body: JSON.stringify({ ...form, client_id: clientId }),
@@ -192,17 +206,17 @@ function DirectorsTab({ clientId }: { clientId: string }) {
         <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
           <p className="text-sm font-medium">Add Director</p>
           <div className="grid grid-cols-2 gap-3">
-            {[
-              { key: "din", placeholder: "DIN (8 digits)" },
+            {(([
+              { key: "din", placeholder: "DIN (8 digits)", maxLength: 8 },
               { key: "name", placeholder: "Full Name" },
-              { key: "pan", placeholder: "PAN" },
+              { key: "pan", placeholder: "PAN (e.g. ABCDE1234F)", maxLength: 10, uppercase: true },
               { key: "date_of_appointment", placeholder: "Date of Appointment (YYYY-MM-DD)" },
-            ].map(({ key, placeholder }) => (
-              <input key={key} placeholder={placeholder}
+            ] as { key: string; placeholder: string; maxLength?: number; uppercase?: boolean }[]).map(({ key, placeholder, maxLength, uppercase }) => (
+              <input key={key} placeholder={placeholder} maxLength={maxLength}
                 value={(form as Record<string, string>)[key]}
-                onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                onChange={(e) => setForm((f) => ({ ...f, [key]: uppercase ? e.target.value.toUpperCase() : e.target.value }))}
                 className="border rounded px-3 py-1.5 text-sm" />
-            ))}
+            )))}
             <select value={form.designation} onChange={(e) => setForm((f) => ({ ...f, designation: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm">
               {["Managing Director", "Whole-time Director", "Director", "Independent Director", "Nominee Director"].map((d) => (

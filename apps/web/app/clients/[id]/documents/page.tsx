@@ -297,6 +297,7 @@ export default function DocumentsPage() {
                 <input
                   ref={fileInputRef}
                   type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv,.doc,.docx,.txt,.zip"
                   onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
                   className="w-full text-sm text-[#475569] file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                 />

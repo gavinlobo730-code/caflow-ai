@@ -41,14 +41,16 @@ import { useToast } from "@/components/ui/use-toast";
 
 // ─── TDS Section Rates — IT Act Chapter XVII-B ───────────────────────────────
 const TDS_SECTIONS: Record<string, { label: string; rate: number; rateLabel: string }> = {
-  "192":  { label: "Salary",                      rate: 0,    rateLabel: "As per slab" },
-  "194A": { label: "Interest",                    rate: 10,   rateLabel: "10%" },
-  "194C": { label: "Contractor Payments",         rate: 2,    rateLabel: "1%/2%" },
-  "194D": { label: "Insurance Commission",        rate: 5,    rateLabel: "5%" },
-  "194H": { label: "Commission/Brokerage",        rate: 5,    rateLabel: "5%" },
-  "194I": { label: "Rent",                        rate: 10,   rateLabel: "10%" },
-  "194J": { label: "Professional/Technical Fees", rate: 10,   rateLabel: "10%" },
-  "194Q": { label: "Purchase of Goods",           rate: 0.1,  rateLabel: "0.1%" },
+  "192":   { label: "Salary",                      rate: 0,    rateLabel: "As per slab" },
+  "194A":  { label: "Interest",                    rate: 10,   rateLabel: "10%" },
+  "194B":  { label: "Lottery/Winnings",            rate: 30,   rateLabel: "30%" },
+  "194C":  { label: "Contractor Payments",         rate: 2,    rateLabel: "1%/2%" },
+  "194D":  { label: "Insurance Commission",        rate: 5,    rateLabel: "5%" },
+  "194H":  { label: "Commission/Brokerage",        rate: 5,    rateLabel: "5%" },
+  "194I":  { label: "Rent",                        rate: 10,   rateLabel: "10%" },
+  "194IA": { label: "Purchase of Immovable Property", rate: 1, rateLabel: "1%" },
+  "194J":  { label: "Professional/Technical Fees", rate: 10,   rateLabel: "10%" },
+  "194Q":  { label: "Purchase of Goods",           rate: 0.1,  rateLabel: "0.1%" },
 };
 
 const QUARTERS = ["Q1 (Apr-Jun)", "Q2 (Jul-Sep)", "Q3 (Oct-Dec)", "Q4 (Jan-Mar)"];

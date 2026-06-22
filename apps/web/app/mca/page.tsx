@@ -150,7 +150,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
         due_date: dueDate,
         filed_date: status === "Filed" ? TODAY.toISOString().slice(0, 10) : null,
         srn: srn.trim() || null,
-        status: status.toLowerCase(),             // DB stores lowercase
+        status: status === "Pending" ? "not_started" : status.toLowerCase(),  // DB: not_started|filed|overdue
         notes: notes.trim() || null,
       }).select().single();
       if (error) throw new Error(error.message);
