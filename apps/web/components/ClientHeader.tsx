@@ -51,7 +51,7 @@ export function ClientHeader() {
   const fyOptions = getFYOptions();
 
   return (
-    <header className="flex items-center gap-4 h-12 px-4 bg-white border-b border-gray-200 shrink-0">
+    <header className="flex items-center gap-4 h-12 pl-12 pr-4 md:px-4 bg-white border-b border-gray-200 shrink-0">
       <Building2 size={15} className="text-gray-400 shrink-0" />
 
       <div className="flex items-center gap-3 min-w-0 flex-1">
