@@ -189,7 +189,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               <input
                 value={form.gstin}
                 onChange={e => set("gstin", e.target.value.toUpperCase())}
-                placeholder="27ABCDE1234F1ZB"
+                placeholder="27ABCDE1234F1Z5"
                 maxLength={15}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />

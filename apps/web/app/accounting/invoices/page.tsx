@@ -106,7 +106,8 @@ const INDIAN_STATES = [
 ];
 
 const UNITS = ["Nos","Kg","Mtrs","Hours","Litres","Box","Pcs","Set","Sqft","Days"];
-const GST_RATES = [0, 5, 12, 18, 28];
+// CGST Act Schedule — all notified rates
+const GST_RATES = [0, 0.1, 0.25, 1, 1.5, 3, 5, 6, 7.5, 12, 18, 28];
 const STATUS_BADGE: Record<string, string> = {
   draft: "bg-amber-100 text-amber-700",
   sent: "bg-blue-100 text-blue-700",
@@ -399,7 +400,7 @@ function NewInvoiceForm({
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-medium text-[#334155] mb-1">Invoice No</label>
-                <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.invoice_no} onChange={e => setForm(f => ({ ...f, invoice_no: e.target.value }))} />
+                <input maxLength={16} className="w-full border rounded-lg px-3 py-2 text-sm" value={form.invoice_no} onChange={e => setForm(f => ({ ...f, invoice_no: e.target.value }))} />
               </div>
               <div>
                 <label className="block text-xs font-medium text-[#334155] mb-1">Invoice Date</label>

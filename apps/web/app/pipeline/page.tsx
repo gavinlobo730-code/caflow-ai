@@ -367,8 +367,11 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               </label>
               <input
                 required
+                type="tel"
+                inputMode="numeric"
+                maxLength={10}
                 value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, "").slice(0, 10) })}
                 placeholder="10-digit mobile"
                 className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />

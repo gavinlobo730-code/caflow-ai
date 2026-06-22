@@ -146,6 +146,7 @@ function Field({
   placeholder,
   hint,
   required,
+  maxLength,
 }: {
   label: string;
   field: keyof FirmForm;
@@ -156,6 +157,7 @@ function Field({
   placeholder?: string;
   hint?: string;
   required?: boolean;
+  maxLength?: number;
 }) {
   return (
     <div>
@@ -168,6 +170,7 @@ function Field({
         value={form[field]}
         onChange={(e) => onChange(field, e.target.value)}
         placeholder={placeholder}
+        maxLength={maxLength}
         className={`w-full text-sm text-[#0F172A] border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] ${
           errors[field] ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"
         }`}
@@ -279,7 +282,7 @@ export default function SettingsPage() {
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
       newErrors.email = "Invalid email address";
     }
-    if (form.pincode && !/^[0-9]{6}$/.test(form.pincode)) {
+    if (form.pincode && !/^[1-9][0-9]{5}$/.test(form.pincode)) {
       newErrors.pincode = "Pincode must be 6 digits";
     }
 
@@ -373,6 +376,7 @@ export default function SettingsPage() {
                 errors={errors}
                 placeholder="e.g. 27AABCU9603R1ZX"
                 hint="15-char GST Identification Number (CGST Act §25)"
+                maxLength={15}
               />
               <Field
                 label="PAN"
@@ -382,6 +386,7 @@ export default function SettingsPage() {
                 errors={errors}
                 placeholder="e.g. AABCU9603R"
                 hint="10-char Permanent Account Number (IT Act §139A)"
+                maxLength={10}
               />
 
               {/* Row 3: Registration number + Phone */}

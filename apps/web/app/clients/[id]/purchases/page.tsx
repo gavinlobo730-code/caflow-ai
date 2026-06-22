@@ -141,24 +141,42 @@ const STATUS_COLORS: Record<string, string> = {
 // ── TDS section options ────────────────────────────────────────────────────
 
 const TDS_SECTIONS = [
-  { value: "194C", label: "194C — Contractors (1%/2%)" },
-  { value: "194I", label: "194I — Rent (10%)" },
-  { value: "194J", label: "194J — Professional/Technical (10%)" },
-  { value: "194H", label: "194H — Commission (5%)" },
+  { value: "192", label: "192 — Salary" },
   { value: "194A", label: "194A — Interest (10%)" },
+  { value: "194B", label: "194B — Lottery/Winnings (30%)" },
+  { value: "194C", label: "194C — Contractors (1%/2%)" },
+  { value: "194D", label: "194D — Insurance Commission (5%)" },
+  { value: "194H", label: "194H — Commission/Brokerage (5%)" },
+  { value: "194I", label: "194I — Rent (10%)" },
+  { value: "194IA", label: "194IA — Purchase of Immovable Property (1%)" },
+  { value: "194J", label: "194J — Professional/Technical (10%)" },
+  { value: "194Q", label: "194Q — Purchase of Goods (0.1%)" },
 ];
 
 const TDS_DEFAULT_RATES: Record<string, number> = {
-  "194C": 200,  // 2% in bps
-  "194I": 1000, // 10%
-  "194J": 1000, // 10%
-  "194H": 500,  // 5%
-  "194A": 1000, // 10%
+  "192":   0,    // variable
+  "194A":  1000, // 10%
+  "194B":  3000, // 30%
+  "194C":  200,  // 2% in bps
+  "194D":  500,  // 5%
+  "194H":  500,  // 5%
+  "194I":  1000, // 10%
+  "194IA": 100,  // 1%
+  "194J":  1000, // 10%
+  "194Q":  10,   // 0.1%
 };
 
+// CGST Act Schedule — all notified rates
 const GST_RATES = [
   { label: "0%", bps: 0 },
+  { label: "0.1%", bps: 10 },
+  { label: "0.25%", bps: 25 },
+  { label: "1%", bps: 100 },
+  { label: "1.5%", bps: 150 },
+  { label: "3%", bps: 300 },
   { label: "5%", bps: 500 },
+  { label: "6%", bps: 600 },
+  { label: "7.5%", bps: 750 },
   { label: "12%", bps: 1200 },
   { label: "18%", bps: 1800 },
   { label: "28%", bps: 2800 },

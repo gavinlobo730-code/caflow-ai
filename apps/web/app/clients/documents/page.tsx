@@ -157,6 +157,7 @@ function UploadModal({ onClose, onUploaded, clientId, firmId }: UploadModalProps
               )}
             </div>
             <input ref={fileRef} type="file" className="hidden"
+              accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv,.doc,.docx,.txt,.zip"
               onChange={e => { if (e.target.files?.[0]) setFile(e.target.files[0]); }} />
           </div>
         </div>

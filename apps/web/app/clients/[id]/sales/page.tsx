@@ -355,7 +355,8 @@ const STATUS_BADGE: Record<string, string> = {
   cancelled: "bg-red-100 text-red-600",
 };
 
-const GST_RATES = [0, 5, 12, 18, 28];
+// CGST Act Schedule — all notified rates
+const GST_RATES = [0, 0.1, 0.25, 1, 1.5, 3, 5, 6, 7.5, 12, 18, 28];
 const PAYMENT_MODES = ["bank", "cash", "cheque", "upi", "neft", "rtgs"];
 const INDIAN_STATES = [
   { code: "01", name: "Jammu & Kashmir" }, { code: "02", name: "Himachal Pradesh" },

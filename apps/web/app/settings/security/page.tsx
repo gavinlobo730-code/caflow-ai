@@ -167,6 +167,7 @@ export default function SecuritySettingsPage() {
                     value={code}
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                     inputMode="numeric"
+                    maxLength={6}
                     placeholder="123456"
                     className="w-36 text-center tracking-widest font-mono text-base border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />

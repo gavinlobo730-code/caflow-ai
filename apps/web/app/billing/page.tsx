@@ -18,7 +18,7 @@ import type { Client } from "@/lib/types";
 
 type ServiceType = "GST Filing" | "ITR Filing" | "Accounting" | "Payroll" | "MCA" | "Audit" | "Advisory";
 type BillingCycle = "Monthly" | "Quarterly" | "Annual";
-type InvoiceStatus = "Draft" | "Sent" | "Paid" | "Overdue";
+type InvoiceStatus = "Draft" | "Issued" | "Paid" | "Overdue";
 type PaymentMode = "NEFT" | "RTGS" | "Cheque" | "Cash" | "UPI";
 
 interface Engagement {
@@ -102,7 +102,7 @@ function fmtDate(date: string): string {
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
   Draft: "bg-[#F1F5F9] text-[#475569]",
-  Sent: "bg-blue-100 text-blue-700",
+  Issued: "bg-blue-100 text-blue-700",
   Paid: "bg-green-100 text-green-700",
   Overdue: "bg-red-100 text-red-700",
 };
@@ -464,7 +464,7 @@ export default function BillingPage() {
   }
 
   const _paidInvoices = invoices.filter(i => i.status === "Paid");
-  const _sentInvoices = invoices.filter(i => i.status === "Sent");
+  const _sentInvoices = invoices.filter(i => i.status === "Issued");
   const _overdueInvoices = invoices.filter(i => i.status === "Overdue");
   const _draftInvoices = invoices.filter(i => i.status === "Draft");
   const _activeEngs = engagements.filter(e => e.status === "Active");
@@ -534,7 +534,7 @@ export default function BillingPage() {
             <div className="bg-white border rounded-xl p-4">
               <p className="text-xs text-[#64748B]">Outstanding</p>
               <p className={`text-xl font-bold mt-1 ${dash.outstandingPaise > 0 ? "text-amber-700" : "text-[#0F172A]"}`}>{fmtPaise(dash.outstandingPaise)}</p>
-              <p className="text-[11px] text-[#94A3B8] mt-0.5">{dash.sentCount} sent invoices</p>
+              <p className="text-[11px] text-[#94A3B8] mt-0.5">{dash.sentCount} issued invoices</p>
             </div>
             <div className={`bg-white border rounded-xl p-4 ${dash.overduePaise > 0 ? "border-red-200" : ""}`}>
               <p className="text-xs text-[#64748B]">Overdue</p>
@@ -553,7 +553,7 @@ export default function BillingPage() {
               <div className="space-y-2">
                 {[
                   { label: "Draft", paise: dash.draftPaise, count: dash.draftCount, color: "bg-gray-300" },
-                  { label: "Sent / Issued", paise: dash.outstandingPaise, count: dash.sentCount, color: "bg-blue-400" },
+                  { label: "Issued", paise: dash.outstandingPaise, count: dash.sentCount, color: "bg-blue-400" },
                   { label: "Overdue", paise: dash.overduePaise, count: dash.overdueCount, color: "bg-red-400" },
                   { label: "Paid", paise: dash.totalRevenuePaise, count: dash.paidCount, color: "bg-green-500" },
                 ].map(row => (

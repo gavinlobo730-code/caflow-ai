@@ -115,6 +115,7 @@ function Field<T extends Record<string, string>>({
   placeholder,
   hint,
   required,
+  maxLength,
 }: {
   label: string;
   field: keyof T;
@@ -125,6 +126,7 @@ function Field<T extends Record<string, string>>({
   placeholder?: string;
   hint?: string;
   required?: boolean;
+  maxLength?: number;
 }) {
   return (
     <div>
@@ -137,6 +139,7 @@ function Field<T extends Record<string, string>>({
         value={form[field] as string}
         onChange={(e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))}
         placeholder={placeholder}
+        maxLength={maxLength}
         className={`w-full text-sm text-[#0F172A] border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] ${
           errors[field] ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"
         }`}
@@ -382,7 +385,7 @@ export default function OnboardingPage() {
     if (firmForm.pan && !validatePAN(firmForm.pan)) errs.pan = "Invalid PAN (e.g. AABCU9603R)";
     // CGST Act Section 25 — GSTIN validation
     if (firmForm.gstin && !validateGSTIN(firmForm.gstin)) errs.gstin = "Invalid GSTIN (e.g. 27AABCU9603R1ZX)";
-    if (firmForm.pincode && !/^[0-9]{6}$/.test(firmForm.pincode)) errs.pincode = "Pincode must be 6 digits";
+    if (firmForm.pincode && !/^[1-9][0-9]{5}$/.test(firmForm.pincode)) errs.pincode = "Pincode must be 6 digits starting with a non-zero digit";
     setFirmErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -543,22 +546,22 @@ export default function OnboardingPage() {
                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
                   <p className="text-sm font-medium text-blue-900">Check your email for a verification code</p>
                   <p className="text-sm text-blue-700">
-                    We sent a 6-digit code to <span className="font-medium">{user?.email}</span>. Enter it below to set your password.
+                    We sent an 8-digit code to <span className="font-medium">{user?.email}</span>. Enter it below to set your password.
                   </p>
                   <input
                     type="text"
                     inputMode="numeric"
-                    maxLength={6}
+                    maxLength={8}
                     value={reauthOtp}
                     onChange={(e) => { setReauthError(null); setReauthOtp(e.target.value.replace(/\D/g, "")); }}
-                    placeholder="6-digit code"
+                    placeholder="8-digit code"
                     autoComplete="one-time-code"
                     className="w-full text-sm border border-blue-300 rounded-lg px-3 py-2 tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                   />
                   {reauthError && <p className="text-xs text-red-500">{reauthError}</p>}
                   <button
                     onClick={verifyAndSetPassword}
-                    disabled={reauthSending || reauthOtp.length < 6}
+                    disabled={reauthSending || reauthOtp.length < 8}
                     className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                   >
                     {reauthSending ? "Verifying…" : "Verify & Set Password"}
@@ -609,6 +612,7 @@ export default function OnboardingPage() {
                 errors={firmErrors}
                 placeholder="e.g. AABCU9603R"
                 hint="IT Act §139A — 10-char PAN"
+                maxLength={10}
               />
               <Field
                 label="GSTIN (optional)"
@@ -618,6 +622,7 @@ export default function OnboardingPage() {
                 errors={firmErrors}
                 placeholder="e.g. 27AABCU9603R1ZX"
                 hint="CGST Act §25 — 15-char GSTIN"
+                maxLength={15}
               />
               <Field
                 label="Phone"
