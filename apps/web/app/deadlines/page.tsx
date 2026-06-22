@@ -1,7 +1,12 @@
 "use client";
 
+import { Suspense } from "react";
 import { useState, useEffect } from "react";
-import { Calendar, AlertTriangle, Clock, CheckCircle, FileText, ExternalLink, FlaskConical, Users, ArrowRight } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import {
+  Calendar, AlertTriangle, Clock, CheckCircle, FileText,
+  ExternalLink, FlaskConical, Users, ArrowRight,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
@@ -14,15 +19,42 @@ import DemoFilingModal from "@/components/DemoFilingModal";
 import { getDemoFilingsByEntry, saveDemoFiling, type DemoFiling } from "@/lib/data/demoFilings";
 import { isSimulatable, DEMO_STATUS_LABEL } from "@/lib/filing/demoFiling";
 
-const FILING_STATUS_COLORS: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-700",
-  in_progress: "bg-blue-100 text-blue-700",
-  filed: "bg-green-100 text-green-700",
-  overdue: "bg-red-100 text-red-700",
-  na: "bg-[#F1F5F9] text-[#64748B]",
+// ─── Type filter mapping ───────────────────────────────────────────────────
+// URL param → compliance_type predicate. TDS and MCA use prefix matching because
+// the DB stores subtypes (TDS24Q, TDS26Q, MCA_AOC4, MCA_MGT7).
+function matchesUrlType(complianceType: string, urlType: string): boolean {
+  if (urlType === "TDS") return complianceType.startsWith("TDS") || complianceType === "TCS_RETURN";
+  if (urlType === "MCA") return complianceType.startsWith("MCA");
+  return complianceType === urlType;
+}
+
+const TYPE_LABELS: Record<string, string> = {
+  GSTR1:  "GSTR-1",
+  GSTR3B: "GSTR-3B",
+  ITR:    "Income Tax",
+  TDS:    "TDS",
+  MCA:    "MCA",
 };
 
-const ALL_TYPES = ["GSTR1", "GSTR3B", "GSTR9", "ITR", "TDS24Q", "TDS26Q", "ADVANCE_TAX"];
+interface EmptyStateCopy { title: string; desc: string }
+const TYPE_EMPTY_STATES: Record<string, EmptyStateCopy> = {
+  GSTR1:  { title: "No GSTR-1 deadlines found",      desc: "Create a client and add a GSTR-1 compliance obligation to begin tracking filings." },
+  GSTR3B: { title: "No GSTR-3B deadlines found",     desc: "Create a client and add a GSTR-3B compliance obligation." },
+  ITR:    { title: "No Income Tax deadlines found",   desc: "Create a client and add an Income Tax compliance obligation." },
+  TDS:    { title: "No TDS deadlines found",          desc: "Create a client and add a TDS compliance obligation." },
+  MCA:    { title: "No MCA deadlines found",          desc: "Create a client and add an MCA compliance obligation." },
+};
+
+// ─── Styling ───────────────────────────────────────────────────────────────
+const FILING_STATUS_COLORS: Record<string, string> = {
+  pending:     "bg-amber-100 text-amber-700",
+  in_progress: "bg-blue-100 text-blue-700",
+  filed:       "bg-green-100 text-green-700",
+  overdue:     "bg-red-100 text-red-700",
+  na:          "bg-[#F1F5F9] text-[#64748B]",
+};
+
+const ALL_TYPES = ["GSTR1", "GSTR3B", "GSTR9", "ITR", "TDS24Q", "TDS26Q", "ADVANCE_TAX", "MCA_AOC4", "MCA_MGT7"];
 const ALL_STATUSES = ["pending", "in_progress", "filed", "overdue", "na"];
 
 function LoadingSpinner() {
@@ -37,12 +69,13 @@ function LoadingSpinner() {
   );
 }
 
-interface MarkFiledForm {
-  id: string;
-  arn: string;
-}
+interface MarkFiledForm { id: string; arn: string }
 
-export default function DeadlinesPage() {
+// ─── Inner component — reads search params ─────────────────────────────────
+function DeadlinesContent() {
+  const searchParams = useSearchParams();
+  const urlType = searchParams.get("type"); // e.g. "GSTR1", "TDS", null
+
   const [records, setRecords] = useState<ComplianceEntry[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,22 +88,16 @@ export default function DeadlinesPage() {
   const [demoFilings, setDemoFilings] = useState<Record<string, DemoFiling>>({});
   const [demoEntry, setDemoEntry] = useState<ComplianceEntry | null>(null);
 
-  async function loadData(clientId?: string) {
+  async function loadData() {
     setLoading(true);
     setError(null);
     try {
       const [recs, cls, demos] = await Promise.all([
-        getComplianceCalendar(clientId || undefined),
+        getComplianceCalendar(undefined),
         getClients().catch(() => [] as Client[]),
-        getDemoFilingsByEntry(clientId || undefined).catch(() => ({} as Record<string, DemoFiling>)),
+        getDemoFilingsByEntry(undefined).catch(() => ({} as Record<string, DemoFiling>)),
       ]);
-      if (clientId && recs.length === 0) {
-        await seedComplianceCalendar(clientId).catch(() => undefined);
-        const seeded = await getComplianceCalendar(clientId).catch(() => [] as ComplianceEntry[]);
-        setRecords(seeded);
-      } else {
-        setRecords(recs);
-      }
+      setRecords(recs);
       setClients(cls);
       setDemoFilings(demos);
     } catch (err) {
@@ -79,6 +106,15 @@ export default function DeadlinesPage() {
       setLoading(false);
     }
   }
+
+  // Clear in-page sub-filters when the URL type changes so prior selections don't bleed over
+  useEffect(() => {
+    setStatusFilter("");
+    setTypeFilter("");
+    setClientFilter("");
+  }, [urlType]);
+
+  useEffect(() => { loadData(); }, []);
 
   async function handleSimulated(demoReference: string) {
     if (!demoEntry) return;
@@ -95,8 +131,6 @@ export default function DeadlinesPage() {
     }));
   }
 
-  useEffect(() => { loadData(); }, []);
-
   async function handleMarkFiled() {
     if (!markFiled) return;
     setFilingLoading(true);
@@ -112,7 +146,6 @@ export default function DeadlinesPage() {
   }
 
   if (loading) return <LoadingSpinner />;
-
   if (error) {
     return (
       <div className="p-6 max-w-7xl mx-auto">
@@ -124,26 +157,33 @@ export default function DeadlinesPage() {
   const today = new Date().toISOString().split("T")[0];
   const in7Days = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
 
-  const overdue = records.filter(r => r.due_date < today && r.filing_status !== "filed" && r.filing_status !== "na").length;
-  const dueThisWeek = records.filter(r => r.due_date >= today && r.due_date <= in7Days && r.filing_status !== "filed").length;
-  const inProgress = records.filter(r => r.filing_status === "in_progress").length;
-  const filed = records.filter(r => r.filing_status === "filed").length;
-  const pending = records.filter(r => r.filing_status === "pending").length;
+  // Apply URL type filter first (drives the stats cards too)
+  const typeRecords = urlType
+    ? records.filter(r => matchesUrlType(r.compliance_type, urlType))
+    : records;
 
-  const demoCount = Object.keys(demoFilings).length;
+  const overdue     = typeRecords.filter(r => r.due_date < today && r.filing_status !== "filed" && r.filing_status !== "na").length;
+  const dueThisWeek = typeRecords.filter(r => r.due_date >= today && r.due_date <= in7Days && r.filing_status !== "filed").length;
+  const inProgress  = typeRecords.filter(r => r.filing_status === "in_progress").length;
+  const filed       = typeRecords.filter(r => r.filing_status === "filed").length;
+  const pending     = typeRecords.filter(r => r.filing_status === "pending").length;
+  const demoCount   = Object.values(demoFilings).filter(d =>
+    urlType ? matchesUrlType(d.compliance_type, urlType) : true
+  ).length;
 
   const STATS = [
-    { label: "Due This Week", value: dueThisWeek, icon: Clock, color: "text-amber-600", bg: "bg-amber-50" },
-    { label: "Overdue", value: overdue, icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50" },
-    { label: "In Progress", value: inProgress, icon: FileText, color: "text-blue-600", bg: "bg-blue-50" },
-    { label: "Pending", value: pending, icon: Calendar, color: "text-purple-600", bg: "bg-purple-50" },
-    { label: "Filed", value: filed, icon: CheckCircle, color: "text-green-600", bg: "bg-green-50" },
-    { label: "Demo Filed", value: demoCount, icon: FlaskConical, color: "text-amber-600", bg: "bg-amber-50" },
+    { label: "Due This Week", value: dueThisWeek, icon: Clock,          color: "text-amber-600", bg: "bg-amber-50"  },
+    { label: "Overdue",       value: overdue,      icon: AlertTriangle,  color: "text-red-600",   bg: "bg-red-50"    },
+    { label: "In Progress",   value: inProgress,   icon: FileText,       color: "text-blue-600",  bg: "bg-blue-50"   },
+    { label: "Pending",       value: pending,       icon: Calendar,       color: "text-purple-600",bg: "bg-purple-50" },
+    { label: "Filed",         value: filed,         icon: CheckCircle,   color: "text-green-600", bg: "bg-green-50"  },
+    { label: "Demo Filed",    value: demoCount,    icon: FlaskConical,   color: "text-amber-600", bg: "bg-amber-50"  },
   ];
 
   const clientMap = Object.fromEntries(clients.map(c => [c.id, c.client_name]));
 
-  const filtered = records.filter(r => {
+  // Secondary in-page filters (status, explicit type dropdown, client name search)
+  const filtered = typeRecords.filter(r => {
     if (statusFilter && r.filing_status !== statusFilter) return false;
     if (typeFilter && r.compliance_type !== typeFilter) return false;
     if (clientFilter) {
@@ -153,15 +193,21 @@ export default function DeadlinesPage() {
     return true;
   });
 
+  const pageTitle = urlType && TYPE_LABELS[urlType]
+    ? `Deadlines — ${TYPE_LABELS[urlType]}`
+    : "All Deadlines";
+
+  // Empty state copy — type-specific when URL has a type param
+  const emptyStateCopy: EmptyStateCopy | null =
+    urlType && TYPE_EMPTY_STATES[urlType] ? TYPE_EMPTY_STATES[urlType] : null;
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Deadlines</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
-            Cross-client compliance calendar — triage here, file inside each client
-          </p>
-        </div>
+      <div>
+        <h1 className="text-xl font-semibold text-[#0F172A]">{pageTitle}</h1>
+        <p className="text-sm text-[#64748B] mt-0.5">
+          Cross-client compliance calendar — triage here, file inside each client
+        </p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
@@ -215,6 +261,7 @@ export default function DeadlinesPage() {
         </Card>
       )}
 
+      {/* Secondary in-page filters — type dropdown hidden when URL already sets type */}
       <div className="flex flex-wrap gap-3">
         <div>
           <label className="text-xs text-[#64748B]">Status</label>
@@ -224,14 +271,16 @@ export default function DeadlinesPage() {
             {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-        <div>
-          <label className="text-xs text-[#64748B]">Type</label>
-          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-            className="block mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="">All types</option>
-            {ALL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
+        {!urlType && (
+          <div>
+            <label className="text-xs text-[#64748B]">Type</label>
+            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
+              className="block mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">All types</option>
+              {ALL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        )}
         <div>
           <label className="text-xs text-[#64748B]">Client</label>
           <input value={clientFilter} onChange={e => setClientFilter(e.target.value)}
@@ -242,7 +291,7 @@ export default function DeadlinesPage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">{filtered.length} records</CardTitle>
+          <CardTitle className="text-sm">{filtered.length} record{filtered.length !== 1 ? "s" : ""}</CardTitle>
         </CardHeader>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -261,10 +310,7 @@ export default function DeadlinesPage() {
               {filtered.map((r) => (
                 <tr key={r.id} className="hover:bg-[#F8FAFC]">
                   <td className="px-5 py-3 text-sm font-medium">
-                    <Link
-                      href={`/clients/${r.client_id}`}
-                      className="text-blue-600 hover:underline"
-                    >
+                    <Link href={`/clients/${r.client_id}`} className="text-blue-600 hover:underline">
                       {clientMap[r.client_id] ?? r.client_id.slice(0, 8)}
                     </Link>
                   </td>
@@ -328,9 +374,28 @@ export default function DeadlinesPage() {
               ))}
             </tbody>
           </table>
+
           {filtered.length === 0 && (
             <div className="py-14 px-8 text-center">
-              {records.length === 0 && clients.length === 0 ? (
+              {/* Type-specific empty state when panel link is active */}
+              {emptyStateCopy && typeRecords.length === 0 ? (
+                <div className="max-w-xs mx-auto space-y-3">
+                  <div className="w-12 h-12 rounded-xl bg-[#F1F5F9] flex items-center justify-center mx-auto">
+                    <Calendar size={20} className="text-[#94A3B8]" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-[#0F172A]">{emptyStateCopy.title}</p>
+                    <p className="text-xs text-[#64748B] mt-1 leading-relaxed">{emptyStateCopy.desc}</p>
+                  </div>
+                  <Link
+                    href="/clients"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 border border-[#E2E8F0] text-[#475569] text-xs font-semibold rounded-lg hover:bg-[#F8FAFC] transition-colors"
+                  >
+                    View Clients <ArrowRight size={13} />
+                  </Link>
+                </div>
+              ) : records.length === 0 && clients.length === 0 ? (
+                /* No clients at all */
                 <div className="max-w-xs mx-auto space-y-3">
                   <div className="w-12 h-12 rounded-xl bg-[#F1F5F9] flex items-center justify-center mx-auto">
                     <Users size={20} className="text-[#94A3B8]" />
@@ -349,6 +414,7 @@ export default function DeadlinesPage() {
                   </Link>
                 </div>
               ) : records.length === 0 ? (
+                /* Clients exist but no compliance records seeded yet */
                 <div className="max-w-xs mx-auto space-y-3">
                   <div className="w-12 h-12 rounded-xl bg-[#F1F5F9] flex items-center justify-center mx-auto">
                     <Calendar size={20} className="text-[#94A3B8]" />
@@ -367,6 +433,7 @@ export default function DeadlinesPage() {
                   </Link>
                 </div>
               ) : (
+                /* Records exist but secondary filters hide them */
                 <div className="space-y-2">
                   <p className="text-sm text-[#94A3B8]">No records match your filters.</p>
                   <button
@@ -391,5 +458,14 @@ export default function DeadlinesPage() {
         />
       )}
     </div>
+  );
+}
+
+// ─── Page export — Suspense required for useSearchParams in App Router ────────
+export default function DeadlinesPage() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <DeadlinesContent />
+    </Suspense>
   );
 }
