@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Building2, CheckCircle, ChevronRight, ChevronLeft, KeyRound, Eye, EyeOff } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
 import { api, type ApiResp } from "@/lib/api";
 
 interface SignupStash { firmName?: string; fullName?: string }
@@ -62,6 +63,16 @@ function validateGSTIN(gstin: string): boolean {
 function validatePAN(pan: string): boolean {
   if (!pan) return true;
   return /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan);
+}
+
+// ─── Diagnostic trace for the password / reauthentication flow ──────────────
+// Captures each step's method, payload metadata and the raw provider response so
+// the OTP flow can be traced end-to-end. The raw one-time code is only logged
+// outside production to avoid leaking a live nonce into production logs.
+function otpTrace(step: string, detail: Record<string, unknown> = {}) {
+  const safe = process.env.NODE_ENV === "production" ? { ...detail, token: undefined } : detail;
+  // eslint-disable-next-line no-console
+  console.info(`[onboarding:otp] ${step}`, safe);
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -320,16 +331,32 @@ export default function OnboardingPage() {
     if (pw !== pw2) { setPwError("Passwords do not match."); return; }
     setSaving(true);
     try {
+      // Step 1 & 2 — try to set the password directly.
+      otpTrace("step 1: updateUser({ password }) — direct set attempt", { email: user?.email });
       const { error: upErr } = await supabase.auth.updateUser({ password: pw });
       if (upErr) {
+        otpTrace("step 1 response: updateUser returned error", {
+          code: upErr.code, status: upErr.status, message: upErr.message,
+        });
+        // "Secure password change" is enabled, so a magic-link session that isn't
+        // "recently signed in" must reauthenticate first. reauthenticate() emails a
+        // nonce that is later consumed by updateUser({ password, nonce }).
         if (upErr.message.toLowerCase().includes("reauthentication")) {
+          otpTrace("step 2: reauthenticate() — emailing nonce", { email: user?.email });
           const { error: raErr } = await supabase.auth.reauthenticate();
-          if (raErr) throw new Error("Could not send verification code. Please try again.");
+          if (raErr) {
+            otpTrace("step 2 response: reauthenticate error", {
+              code: raErr.code, status: raErr.status, message: raErr.message,
+            });
+            throw new Error("Could not send verification code. Please try again.");
+          }
+          otpTrace("step 2 response: reauthenticate OK — verification code emailed");
           setNeedsReauth(true);
           return;
         }
         throw new Error(upErr.message);
       }
+      otpTrace("step 1 response: password set without reauthentication");
       setPwSet(true);
       // Clear the in-memory password values once set.
       setPw(""); setPw2("");
@@ -345,15 +372,35 @@ export default function OnboardingPage() {
     if (!user?.email) return;
     setReauthError(null);
     setReauthSending(true);
+    // The reauthentication code is sent verbatim — no truncation/parseInt/slice.
+    const nonce = reauthOtp.trim();
     try {
-      const { error: otpErr } = await supabase.auth.verifyOtp({
-        email: user.email,
-        token: reauthOtp,
-        type: "email",
+      // ── ROOT-CAUSE FIX ─────────────────────────────────────────────────────
+      // The code emailed by reauthenticate() is a REAUTHENTICATION NONCE, not an
+      // email OTP. The Supabase SDK is explicit: "After receiving the OTP, include
+      // it as the `nonce` in your updateUser() call to finalize the password
+      // change." The nonce is NOT a verifyOtp() token — EmailOtpType has no
+      // 'reauthentication' member ('signup'|'invite'|'magiclink'|'recovery'|
+      // 'email_change'|'email'), so the previous verifyOtp({ type: "email" }) call
+      // could never match the nonce and rejected every correct code as "invalid".
+      // Correct flow: reauthenticate() → updateUser({ password, nonce }).
+      otpTrace("step 3: OTP entered by user", { email: user.email, tokenLength: nonce.length, token: nonce });
+      otpTrace("steps 4-7: updateUser({ password, nonce }) — verify nonce + set password", {
+        method: "auth.updateUser", email: user.email, tokenLength: nonce.length, token: nonce,
       });
-      if (otpErr) throw new Error("Invalid verification code. Please try again.");
-      const { error: upErr } = await supabase.auth.updateUser({ password: pw });
-      if (upErr) throw new Error(upErr.message);
+      const { error: upErr } = await setPasswordWithReauthNonce(supabase.auth, pw, nonce);
+      if (upErr) {
+        otpTrace("verify response: updateUser returned error", {
+          code: upErr.code, status: upErr.status, message: upErr.message,
+        });
+        // Surface the real reason so the user knows whether to request a new code.
+        throw new Error(
+          isInvalidNonceError(upErr)
+            ? "That code is incorrect or has expired. Request a new code and try again."
+            : upErr.message,
+        );
+      }
+      otpTrace("verify response: password updated — reauthentication accepted");
       setNeedsReauth(false);
       setReauthOtp("");
       setPwSet(true);
@@ -361,6 +408,28 @@ export default function OnboardingPage() {
       goNext();
     } catch (err) {
       setReauthError(err instanceof Error ? err.message : "Verification failed. Please try again.");
+    } finally {
+      setReauthSending(false);
+    }
+  }
+
+  // Re-send a fresh reauthentication nonce (e.g. the previous code expired).
+  async function resendReauthCode() {
+    setReauthError(null);
+    setReauthSending(true);
+    try {
+      otpTrace("resend: reauthenticate() — emailing a fresh nonce", { email: user?.email });
+      const { error: raErr } = await supabase.auth.reauthenticate();
+      if (raErr) {
+        otpTrace("resend response: reauthenticate error", {
+          code: raErr.code, status: raErr.status, message: raErr.message,
+        });
+        throw new Error("Could not resend the code. Please try again in a moment.");
+      }
+      setReauthOtp("");
+      setReauthError("A new code has been sent to your email.");
+    } catch (err) {
+      setReauthError(err instanceof Error ? err.message : "Could not resend the code.");
     } finally {
       setReauthSending(false);
     }
@@ -528,14 +597,24 @@ export default function OnboardingPage() {
                     className="w-full text-sm border border-blue-300 rounded-lg px-3 py-2 tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                   />
                   {reauthError && <p className="text-xs text-red-500">{reauthError}</p>}
-                  <button
-                    onClick={verifyAndSetPassword}
-                    disabled={reauthSending || reauthOtp.length < 8}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                  >
-                    {reauthSending ? "Verifying…" : "Verify & Set Password"}
-                    {!reauthSending && <ChevronRight size={14} />}
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={verifyAndSetPassword}
+                      disabled={reauthSending || reauthOtp.length < 8}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    >
+                      {reauthSending ? "Verifying…" : "Verify & Set Password"}
+                      {!reauthSending && <ChevronRight size={14} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resendReauthCode}
+                      disabled={reauthSending}
+                      className="text-sm text-blue-700 hover:text-blue-900 hover:underline disabled:opacity-50"
+                    >
+                      Resend code
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
