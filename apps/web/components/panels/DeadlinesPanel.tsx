@@ -1,7 +1,8 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   Calendar,
   Receipt,
@@ -14,16 +15,18 @@ import {
 import { cn } from "@/lib/utils";
 
 const DEADLINE_ITEMS = [
-  { href: "/deadlines", label: "All Deadlines", icon: Calendar, exact: true },
-  { href: "/deadlines?type=GSTR1", label: "GSTR-1", icon: Receipt, exact: false },
-  { href: "/deadlines?type=GSTR3B", label: "GSTR-3B", icon: Receipt, exact: false },
-  { href: "/deadlines?type=ITR", label: "Income Tax", icon: Calculator, exact: false },
-  { href: "/deadlines?type=TDS", label: "TDS", icon: Landmark, exact: false },
-  { href: "/deadlines?type=MCA", label: "MCA", icon: Building2, exact: false },
+  { href: "/deadlines", label: "All Deadlines", icon: Calendar, typeParam: null },
+  { href: "/deadlines?type=GSTR1",  label: "GSTR-1",      icon: Receipt,    typeParam: "GSTR1"  },
+  { href: "/deadlines?type=GSTR3B", label: "GSTR-3B",     icon: Receipt,    typeParam: "GSTR3B" },
+  { href: "/deadlines?type=ITR",    label: "Income Tax",  icon: Calculator, typeParam: "ITR"    },
+  { href: "/deadlines?type=TDS",    label: "TDS",         icon: Landmark,   typeParam: "TDS"    },
+  { href: "/deadlines?type=MCA",    label: "MCA",         icon: Building2,  typeParam: "MCA"    },
 ];
 
-export function DeadlinesPanel() {
+function DeadlinesPanelInner() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activeType = searchParams.get("type"); // null when on /deadlines with no param
 
   return (
     <div className="flex flex-col h-full">
@@ -53,10 +56,11 @@ export function DeadlinesPanel() {
           By Type
         </p>
         <div className="space-y-0.5">
-          {DEADLINE_ITEMS.map(({ href, label, icon: Icon, exact }) => {
-            const active = exact
-              ? pathname === "/deadlines"
-              : false;
+          {DEADLINE_ITEMS.map(({ href, label, icon: Icon, typeParam }) => {
+            const active =
+              typeParam === null
+                ? pathname === "/deadlines" && !activeType  // "All Deadlines"
+                : activeType === typeParam;                  // type-specific items
             return (
               <Link
                 key={href}
@@ -70,10 +74,7 @@ export function DeadlinesPanel() {
               >
                 <Icon
                   size={15}
-                  className={cn(
-                    "shrink-0",
-                    active ? "text-white" : "text-gray-500"
-                  )}
+                  className={cn("shrink-0", active ? "text-white" : "text-gray-500")}
                 />
                 <span className="truncate">{label}</span>
               </Link>
@@ -98,9 +99,7 @@ export function DeadlinesPanel() {
               size={15}
               className={cn(
                 "shrink-0",
-                pathname.startsWith("/settings/dsc-tracker")
-                  ? "text-white"
-                  : "text-gray-500"
+                pathname.startsWith("/settings/dsc-tracker") ? "text-white" : "text-gray-500"
               )}
             />
             <span className="truncate">DSC Tracker</span>
@@ -108,5 +107,13 @@ export function DeadlinesPanel() {
         </div>
       </nav>
     </div>
+  );
+}
+
+export function DeadlinesPanel() {
+  return (
+    <Suspense fallback={<div className="flex flex-col h-full" />}>
+      <DeadlinesPanelInner />
+    </Suspense>
   );
 }
