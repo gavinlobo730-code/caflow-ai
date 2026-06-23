@@ -25,21 +25,21 @@ def _assert_firm(client: dict, firm_id: str | None) -> None:
 
 def _check_delete_blockers(client_id: str, firm_id: str) -> list[str]:
     """
-    Return human-readable blockers that prevent soft-deletion.
-    Deletion is safe only when all compliance obligations are filed.
+    Return human-readable blockers that prevent permanent deletion.
+    Historical records must be fully resolved before a client can be deleted.
     IT Act Section 139 / CGST Act Section 37 — obligations persist until filed.
     """
     blockers: list[str] = []
 
-    open_tasks = [
+    open_compliance = [
         t for t in compliance_repo.find_all(firm_id=firm_id, client_id=client_id)
         if t.get("status") not in ("filed", "not_applicable")
     ]
-    if open_tasks:
+    if open_compliance:
         blockers.append(
-            f"{len(open_tasks)} open compliance task(s): "
-            + ", ".join(t.get("compliance_type", "?") for t in open_tasks[:3])
-            + (" and more" if len(open_tasks) > 3 else "")
+            f"{len(open_compliance)} open compliance task(s): "
+            + ", ".join(t.get("compliance_type", "?") for t in open_compliance[:3])
+            + (" and more" if len(open_compliance) > 3 else "")
         )
 
     active_records = [
@@ -50,6 +50,17 @@ def _check_delete_blockers(client_id: str, firm_id: str) -> list[str]:
         blockers.append(
             f"{len(active_records)} active compliance record(s) not yet filed"
         )
+
+    active_work = [
+        t for t in task_repo.find_all(firm_id=firm_id, client_id=client_id)
+        if t.get("status") != "completed"
+    ]
+    if active_work:
+        blockers.append(f"{len(active_work)} active work item(s)")
+
+    docs = document_repo.find_all(firm_id=firm_id, client_id=client_id)
+    if docs:
+        blockers.append(f"{len(docs)} document(s) attached")
 
     return blockers
 
@@ -167,7 +178,12 @@ def archive_client(client_id: str, current_user: dict = Depends(rbac("client", "
     _assert_firm(client, firm_id)
     if client.get("status") == "archived":
         raise HTTPException(status_code=409, detail="Client is already archived")
-    updated = client_repo.archive(client_id)
+    actor_id = current_user.get("auth_user_id")
+    updated = client_repo.archive(client_id, actor_id=actor_id)
+    log_event(firm_id, "client", client_id, "archive",
+              actor_id=actor_id, actor_email=current_user.get("email"),
+              old_data={"status": client.get("status")},
+              new_data={"status": "archived"})
     return api_response(True, {"client": updated})
 
 
@@ -180,16 +196,21 @@ def restore_client(client_id: str, current_user: dict = Depends(rbac("client", "
     _assert_firm(client, firm_id)
     if client.get("status") != "archived":
         raise HTTPException(status_code=409, detail="Client is not archived")
+    actor_id = current_user.get("auth_user_id")
     updated = client_repo.restore(client_id)
+    log_event(firm_id, "client", client_id, "restore",
+              actor_id=actor_id, actor_email=current_user.get("email"),
+              old_data={"status": "archived"},
+              new_data={"status": "active"})
     return api_response(True, {"client": updated})
 
 
 @router.delete("/{client_id}")
 def delete_client(client_id: str, current_user: dict = Depends(rbac("client", "delete"))):
     """
-    Soft-delete a client (sets deleted_at). Blocked when open compliance
-    obligations or active records exist.
-    Historical data is never removed — only the client row is hidden.
+    Soft-delete a client (Partner only). Blocked when any historical records exist.
+    Historical data is never hard-deleted — only the client row is hidden.
+    Callers should archive the client instead when records are present.
     """
     firm_id = current_user.get("firm_id")
     client = client_repo.find_by_id(client_id, firm_id)
@@ -202,12 +223,17 @@ def delete_client(client_id: str, current_user: dict = Depends(rbac("client", "d
         raise HTTPException(
             status_code=409,
             detail={
-                "message": "Client cannot be deleted — resolve the following obligations first",
+                "message": "Client cannot be permanently deleted because historical records exist. Archive the client instead.",
                 "blockers": blockers,
             },
         )
 
-    success = client_repo.soft_delete(client_id)
+    actor_id = current_user.get("auth_user_id")
+    success = client_repo.soft_delete(client_id, actor_id=actor_id)
     if not success:
         raise HTTPException(status_code=500, detail="Delete failed")
+    log_event(firm_id, "client", client_id, "delete",
+              actor_id=actor_id, actor_email=current_user.get("email"),
+              old_data={"client_name": client.get("client_name"), "status": client.get("status")},
+              new_data={"deleted": True})
     return api_response(True, {"message": "Client deleted", "client_id": client_id})

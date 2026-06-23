@@ -118,21 +118,38 @@ class ClientRepository(BaseRepository[dict]):
         result = _get_db().table("clients").update({**data, "updated_at": self.now_iso()}).eq("id", id).execute()
         return result.data[0] if result.data else None
 
-    def archive(self, id: str) -> Optional[dict]:
-        return self.update(id, {"status": "archived"})
+    def archive(self, id: str, actor_id: Optional[str] = None) -> Optional[dict]:
+        from datetime import datetime, timezone
+        return self.update(id, {
+            "status": "archived",
+            "is_archived": True,
+            "archived_at": datetime.now(timezone.utc).isoformat(),
+            "archived_by": actor_id,
+        })
 
     def restore(self, id: str) -> Optional[dict]:
-        return self.update(id, {"status": "active"})
+        return self.update(id, {
+            "status": "active",
+            "is_archived": False,
+            "archived_at": None,
+            "archived_by": None,
+        })
 
-    def soft_delete(self, id: str) -> bool:
+    def soft_delete(self, id: str, actor_id: Optional[str] = None) -> bool:
         if _USE_MOCK:
             client = CLIENT_INDEX.get(id)
             if not client:
                 return False
             client["deleted_at"] = self.now_iso()
+            client["is_deleted"] = True
+            client["deleted_by"] = actor_id
             client["updated_at"] = self.now_iso()
             return True
-        result = _get_db().table("clients").update({"deleted_at": self.now_iso()}).eq("id", id).execute()
+        result = _get_db().table("clients").update({
+            "deleted_at": self.now_iso(),
+            "is_deleted": True,
+            "deleted_by": actor_id,
+        }).eq("id", id).execute()
         return bool(result.data)
 
     def count(self, firm_id: Optional[str] = None, include_internal: bool = False) -> int:

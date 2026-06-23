@@ -1,18 +1,26 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
-import { ChevronRight, Plus, Search, RefreshCw, Pencil, KanbanSquare, Upload } from "lucide-react";
+import {
+  ChevronRight, Plus, Search, RefreshCw, Pencil, KanbanSquare, Upload,
+  MoreVertical, Archive, RotateCcw, Trash2,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ClientFormModal } from "@/components/ClientFormModal";
-import { getClients } from "@/lib/data/clients";
+import {
+  getClients, archiveClient, restoreClient, permanentDeleteClient,
+  type ClientFilter, DeleteBlockedError,
+} from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getLatestHealthScores } from "@/lib/services/health-score-compute";
 import { HealthBadgeLight } from "@/components/HealthBadge";
+import { useAuth } from "@/lib/auth/AuthContext";
+import { hasRole } from "@/lib/auth/permissions";
 
 const CLIENT_IMPORT_COLUMNS = [
   { key: "client_name",  label: "Client Name",    required: true,  hint: "e.g. ABC Pvt Ltd" },
@@ -37,55 +45,73 @@ const ENTITY_LABELS: Record<string, string> = {
   Trust: "Trust", Society: "Society", Individual: "Individual",
 };
 
+const FILTER_TABS: { id: ClientFilter; label: string }[] = [
+  { id: "active",   label: "Active"   },
+  { id: "archived", label: "Archived" },
+  { id: "all",      label: "All"      },
+];
+
 export default function ClientsPage() {
-  const [clients, setClients] = useState<Client[]>([]);
-  const [filtered, setFiltered] = useState<Client[]>([]);
+  const [filter, setFilter]       = useState<ClientFilter>("active");
+  const [clients, setClients]     = useState<Client[]>([]);
+  const [filtered, setFiltered]   = useState<Client[]>([]);
   const [healthScores, setHealthScores] = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState<string | null>(null);
+  const [search, setSearch]       = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editClient, setEditClient] = useState<Client | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+
+  // Action dropdown
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Lifecycle modals
+  const [archiveTarget, setArchiveTarget]         = useState<Client | null>(null);
+  const [restoreTarget, setRestoreTarget]         = useState<Client | null>(null);
+  const [deleteTarget, setDeleteTarget]           = useState<Client | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
+  const [deleteBlockers, setDeleteBlockers]       = useState<string[] | null>(null);
+  const [actionBusy, setActionBusy]               = useState(false);
+  const [actionError, setActionError]             = useState<string | null>(null);
+
+  const { userRole } = useAuth();
+  const canArchive = hasRole(userRole, ["Partner", "Manager"]);
+  const canDelete  = hasRole(userRole, ["Partner"]);
+  const hasActions = canArchive || canDelete;
+
+  // ── Data loading ────────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getClients();
+      const data = await getClients(filter);
       setClients(data);
       setFiltered(data);
-      // Load health scores in ONE batched query (was N+1 per client) — non-blocking.
       getLatestHealthScores(data.map((c) => c.id)).then(setHealthScores).catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load clients");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filter]);
 
-  // Wait for Supabase session to be restored before fetching.
-  // Without this, the query fires before auth.uid() is available,
-  // get_my_firm_id() returns NULL, and RLS filters out all rows.
+  // Wait for Supabase session before fetching (RLS requires auth.uid()).
   useEffect(() => {
     const sb = getSupabaseClient();
-    // getSession() resolves once the session is restored from storage.
     sb.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        load();
-      } else {
-        // No session — clear loading state
-        setLoading(false);
-      }
+      if (data.session) load();
+      else setLoading(false);
     });
-
-    // Also reload whenever the user signs in mid-session
     const { data: { subscription } } = sb.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_IN") load();
     });
     return () => subscription.unsubscribe();
   }, [load]);
 
+  // Client-side search filter
   useEffect(() => {
     const q = search.toLowerCase();
     setFiltered(
@@ -97,6 +123,20 @@ export default function ClientsPage() {
       )
     );
   }, [search, clients]);
+
+  // Close action dropdown on outside click
+  useEffect(() => {
+    if (!menuOpenId) return;
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpenId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [menuOpenId]);
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
 
   function handleSaved(client: Client) {
     setClients(prev => {
@@ -120,6 +160,58 @@ export default function ClientsPage() {
   function openCreate() {
     setEditClient(null);
     setModalOpen(true);
+  }
+
+  async function handleArchive() {
+    if (!archiveTarget) return;
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      await archiveClient(archiveTarget.id);
+      setArchiveTarget(null);
+      load();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Archive failed");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleRestore() {
+    if (!restoreTarget) return;
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      await restoreClient(restoreTarget.id);
+      setRestoreTarget(null);
+      load();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Restore failed");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget || deleteConfirmName !== deleteTarget.client_name) return;
+    setActionBusy(true);
+    setActionError(null);
+    setDeleteBlockers(null);
+    try {
+      await permanentDeleteClient(deleteTarget.id);
+      setDeleteTarget(null);
+      setDeleteConfirmName("");
+      load();
+    } catch (e) {
+      if (e instanceof DeleteBlockedError) {
+        setDeleteBlockers(e.blockers);
+        setActionError(null);
+      } else {
+        setActionError(e instanceof Error ? e.message : "Delete failed");
+      }
+    } finally {
+      setActionBusy(false);
+    }
   }
 
   async function handleClientImport(rows: ImportRow[]) {
@@ -149,8 +241,11 @@ export default function ClientsPage() {
     return { imported, errors };
   }
 
+  // ── Render ──────────────────────────────────────────────────────────────────
+
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-4">
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -189,6 +284,23 @@ export default function ClientsPage() {
             Add Client
           </button>
         </div>
+      </div>
+
+      {/* Filter tabs */}
+      <div className="flex border-b border-[#E2E8F0]">
+        {FILTER_TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => { setFilter(tab.id); setSearch(""); }}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+              filter === tab.id
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-[#64748B] hover:text-[#0F172A]"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* Search */}
@@ -231,16 +343,22 @@ export default function ClientsPage() {
       {!loading && !error && clients.length === 0 && (
         <div className="text-center py-16">
           <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
-            <Plus size={24} className="text-blue-500" />
+            {filter === "archived" ? <Archive size={24} className="text-gray-400" /> : <Plus size={24} className="text-blue-500" />}
           </div>
-          <h3 className="text-base font-semibold text-[#0F172A] mb-1">No clients yet</h3>
-          <p className="text-sm text-[#64748B] mb-4">Add your first client to get started</p>
-          <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            <Plus size={15} /> Add Client
-          </button>
+          <h3 className="text-base font-semibold text-[#0F172A] mb-1">
+            {filter === "archived" ? "No archived clients" : "No clients yet"}
+          </h3>
+          <p className="text-sm text-[#64748B] mb-4">
+            {filter === "archived" ? "Archived clients will appear here" : "Add your first client to get started"}
+          </p>
+          {filter === "active" && (
+            <button
+              onClick={openCreate}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              <Plus size={15} /> Add Client
+            </button>
+          )}
         </div>
       )}
 
@@ -255,46 +373,293 @@ export default function ClientsPage() {
       {!loading && filtered.length > 0 && (
         <Card>
           <CardContent className="p-0 divide-y divide-[#F1F5F9]">
-            {filtered.map((c) => (
-              <Link
-                key={c.id}
-                href={`/clients/${c.id}`}
-                className="flex items-center gap-4 px-6 py-4 hover:bg-[#F8FAFC] transition-colors group"
-              >
-                <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm shrink-0">
-                  {c.client_name[0]}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-[#0F172A]">{c.client_name}</p>
-                  <p className="text-xs text-[#64748B] font-mono mt-0.5">
-                    {c.gstin ?? c.pan}
-                  </p>
-                </div>
-                <div className="text-right mr-2">
-                  <p className="text-xs text-[#64748B]">{ENTITY_LABELS[c.entity_type] ?? c.entity_type}</p>
-                  <p className="text-xs font-mono text-[#475569]">{c.pan}</p>
-                </div>
-                {healthScores[c.id] !== undefined && (
-                  <HealthBadgeLight score={healthScores[c.id]} />
-                )}
-                <Badge variant="secondary" className="bg-green-100 text-green-700 text-xs">
-                  {c.status}
-                </Badge>
-                <button
-                  onClick={e => openEdit(e, c)}
-                  className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-[#F1F5F9] text-[#64748B] transition-all"
-                  title="Edit client"
+            {filtered.map((c) => {
+              const isArchived = c.status === "archived";
+              return (
+                <div
+                  key={c.id}
+                  className="relative flex items-center gap-4 px-6 py-4 hover:bg-[#F8FAFC] transition-colors group"
                 >
-                  <Pencil size={13} />
-                </button>
-                <ChevronRight size={16} className="text-[#94A3B8] group-hover:text-[#475569] shrink-0" />
-              </Link>
-            ))}
+                  {/* Full-row clickable link, behind buttons */}
+                  <Link
+                    href={`/clients/${c.id}`}
+                    className="absolute inset-0"
+                    aria-label={`Open ${c.client_name}`}
+                  />
+
+                  {/* Avatar */}
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${
+                    isArchived ? "bg-gray-100 text-gray-400" : "bg-blue-100 text-blue-700"
+                  }`}>
+                    {c.client_name[0]}
+                  </div>
+
+                  {/* Name + identifier */}
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-semibold ${isArchived ? "text-[#94A3B8]" : "text-[#0F172A]"}`}>
+                      {c.client_name}
+                    </p>
+                    <p className="text-xs text-[#64748B] font-mono mt-0.5">{c.gstin ?? c.pan}</p>
+                  </div>
+
+                  {/* Entity + PAN */}
+                  <div className="text-right mr-2">
+                    <p className="text-xs text-[#64748B]">{ENTITY_LABELS[c.entity_type] ?? c.entity_type}</p>
+                    <p className="text-xs font-mono text-[#475569]">{c.pan}</p>
+                  </div>
+
+                  {healthScores[c.id] !== undefined && (
+                    <HealthBadgeLight score={healthScores[c.id]} />
+                  )}
+
+                  <Badge
+                    variant="secondary"
+                    className={`text-xs ${isArchived ? "bg-gray-100 text-gray-500" : "bg-green-100 text-green-700"}`}
+                  >
+                    {c.status}
+                  </Badge>
+
+                  {/* Edit button */}
+                  <button
+                    onClick={e => openEdit(e, c)}
+                    className="relative z-10 p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-[#F1F5F9] text-[#64748B] transition-all"
+                    title="Edit client"
+                  >
+                    <Pencil size={13} />
+                  </button>
+
+                  {/* Action dropdown */}
+                  {hasActions && (
+                    <div
+                      className="relative z-10"
+                      ref={menuOpenId === c.id ? menuRef : undefined}
+                    >
+                      <button
+                        onClick={e => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setMenuOpenId(menuOpenId === c.id ? null : c.id);
+                        }}
+                        className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-[#F1F5F9] text-[#64748B] transition-all"
+                        title="More actions"
+                      >
+                        <MoreVertical size={13} />
+                      </button>
+
+                      {menuOpenId === c.id && (
+                        <div className="absolute right-0 top-8 bg-white rounded-lg shadow-lg border border-[#E2E8F0] py-1 min-w-40">
+                          {canArchive && !isArchived && (
+                            <button
+                              onClick={() => {
+                                setMenuOpenId(null);
+                                setArchiveTarget(c);
+                                setActionError(null);
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[#475569] hover:bg-[#F8FAFC]"
+                            >
+                              <Archive size={13} /> Archive
+                            </button>
+                          )}
+                          {canArchive && isArchived && (
+                            <button
+                              onClick={() => {
+                                setMenuOpenId(null);
+                                setRestoreTarget(c);
+                                setActionError(null);
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[#475569] hover:bg-[#F8FAFC]"
+                            >
+                              <RotateCcw size={13} /> Restore
+                            </button>
+                          )}
+                          {canDelete && (
+                            <>
+                              {canArchive && <div className="my-1 border-t border-[#F1F5F9]" />}
+                              <button
+                                onClick={() => {
+                                  setMenuOpenId(null);
+                                  setDeleteTarget(c);
+                                  setDeleteConfirmName("");
+                                  setDeleteBlockers(null);
+                                  setActionError(null);
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                              >
+                                <Trash2 size={13} /> Permanent Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <ChevronRight size={16} className="relative z-10 text-[#94A3B8] group-hover:text-[#475569] shrink-0" />
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
       )}
 
-      {/* Modal */}
+      {/* ── Archive modal ─────────────────────────────────────────────────── */}
+      {archiveTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                <Archive size={16} className="text-amber-600" />
+              </div>
+              <h2 className="text-base font-semibold text-[#0F172A]">Archive Client</h2>
+            </div>
+            <p className="text-sm text-[#475569] mb-1">
+              Archive <span className="font-semibold">{archiveTarget.client_name}</span>?
+            </p>
+            <p className="text-sm text-[#64748B] mb-4">
+              This client will be hidden from the active list. All data and history are preserved and can be restored at any time.
+            </p>
+            {actionError && <p className="text-sm text-red-600 mb-3">{actionError}</p>}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setArchiveTarget(null); setActionError(null); }}
+                disabled={actionBusy}
+                className="px-4 py-2 text-sm rounded-lg border border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleArchive}
+                disabled={actionBusy}
+                className="px-4 py-2 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                {actionBusy ? "Archiving…" : "Archive"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Restore modal ─────────────────────────────────────────────────── */}
+      {restoreTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                <RotateCcw size={16} className="text-green-600" />
+              </div>
+              <h2 className="text-base font-semibold text-[#0F172A]">Restore Client</h2>
+            </div>
+            <p className="text-sm text-[#475569] mb-4">
+              Restore <span className="font-semibold">{restoreTarget.client_name}</span> to the active client list?
+            </p>
+            {actionError && <p className="text-sm text-red-600 mb-3">{actionError}</p>}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setRestoreTarget(null); setActionError(null); }}
+                disabled={actionBusy}
+                className="px-4 py-2 text-sm rounded-lg border border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRestore}
+                disabled={actionBusy}
+                className="px-4 py-2 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+              >
+                {actionBusy ? "Restoring…" : "Restore"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete modal ──────────────────────────────────────────────────── */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <Trash2 size={16} className="text-red-600" />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-[#0F172A]">Permanently Delete</h2>
+                <p className="text-xs font-medium text-red-600">This cannot be undone</p>
+              </div>
+            </div>
+
+            {!deleteBlockers && (
+              <>
+                <p className="text-sm text-[#475569] mb-3">
+                  Permanently delete <span className="font-semibold">{deleteTarget.client_name}</span>? Consider archiving to preserve history instead.
+                </p>
+                <label className="block text-xs font-medium text-[#475569] mb-1">
+                  Type <span className="font-mono font-bold">{deleteTarget.client_name}</span> to confirm
+                </label>
+                <input
+                  value={deleteConfirmName}
+                  onChange={e => setDeleteConfirmName(e.target.value)}
+                  placeholder={deleteTarget.client_name}
+                  className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 mb-4"
+                />
+                {actionError && <p className="text-sm text-red-600 mb-3">{actionError}</p>}
+              </>
+            )}
+
+            {deleteBlockers && (
+              <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-xs font-semibold text-amber-800 mb-1">Cannot delete — linked records exist:</p>
+                <ul className="text-xs text-amber-700 list-disc list-inside space-y-0.5">
+                  {deleteBlockers.map((b, i) => <li key={i}>{b}</li>)}
+                </ul>
+                <p className="text-xs font-medium text-amber-800 mt-2">Archive this client instead to preserve all history.</p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setDeleteTarget(null);
+                  setDeleteConfirmName("");
+                  setDeleteBlockers(null);
+                  setActionError(null);
+                }}
+                disabled={actionBusy}
+                className="px-4 py-2 text-sm rounded-lg border border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50"
+              >
+                {deleteBlockers ? "Close" : "Cancel"}
+              </button>
+
+              {deleteBlockers && canArchive && (
+                <button
+                  onClick={() => {
+                    const target = deleteTarget;
+                    setDeleteTarget(null);
+                    setDeleteBlockers(null);
+                    setDeleteConfirmName("");
+                    setActionError(null);
+                    setArchiveTarget(target);
+                  }}
+                  className="px-4 py-2 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700"
+                >
+                  Archive Instead
+                </button>
+              )}
+
+              {!deleteBlockers && (
+                <button
+                  onClick={handleDelete}
+                  disabled={actionBusy || deleteConfirmName !== deleteTarget.client_name}
+                  className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-40"
+                >
+                  {actionBusy ? "Deleting…" : "Delete Permanently"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Form modal ────────────────────────────────────────────────────── */}
       <ClientFormModal
         open={modalOpen}
         onClose={() => { setModalOpen(false); setEditClient(null); }}

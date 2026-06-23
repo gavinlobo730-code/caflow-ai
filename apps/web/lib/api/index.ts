@@ -79,6 +79,9 @@ export const api = {
     getWorkspace: (id: string) => request(`/api/clients/${id}`),
     create: (body: unknown) => request("/api/clients", { method: "POST", body: JSON.stringify(body) }),
     update: (id: string, body: unknown) => request(`/api/clients/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    archive: (id: string) => request(`/api/clients/${id}/archive`, { method: "POST" }),
+    restore: (id: string) => request(`/api/clients/${id}/restore`, { method: "POST" }),
+    permanentDelete: (id: string) => request(`/api/clients/${id}`, { method: "DELETE" }),
   },
   compliance: {
     tasks: (params?: { client_id?: string; status?: string }) => {
