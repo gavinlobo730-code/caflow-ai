@@ -13,6 +13,7 @@ import {
   Calendar,
   ArrowRight,
   UserCheck,
+  FileText,
 } from "lucide-react";
 import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -47,7 +48,16 @@ async function apiFetch(path: string, opts?: RequestInit) {
 // Types
 // ---------------------------------------------------------------------------
 
-type Stage = "Lead" | "Proposal Sent" | "Proposal Accepted" | "Onboarding";
+type Stage =
+  | "Lead"
+  | "Qualified"
+  | "Proposal Sent"
+  | "Engagement Drafted"
+  | "Engagement Sent"
+  | "Engagement Signed"
+  | "Proposal Accepted"
+  | "Onboarding";
+
 type Source = "Referral" | "Website" | "Cold Call" | "Event" | "Other";
 type EntityType =
   | "Proprietorship"
@@ -79,7 +89,17 @@ interface Lead {
 // Constants
 // ---------------------------------------------------------------------------
 
-const STAGES: Stage[] = ["Lead", "Proposal Sent", "Proposal Accepted", "Onboarding"];
+// Note: "Proposal Accepted" excluded from STAGES (still in Stage type for DB compat)
+const STAGES: Stage[] = [
+  "Lead",
+  "Qualified",
+  "Proposal Sent",
+  "Engagement Drafted",
+  "Engagement Sent",
+  "Engagement Signed",
+  "Onboarding",
+];
+
 const SOURCES: Source[] = ["Referral", "Website", "Cold Call", "Event", "Other"];
 
 // Maps between human-readable Source labels and DB CHECK values
@@ -114,10 +134,30 @@ const STAGE_COLORS: Record<Stage, { bg: string; header: string; badge: string }>
     header: "bg-[#F1F5F9] border-[#E2E8F0]",
     badge: "bg-gray-100 text-[#334155]",
   },
+  Qualified: {
+    bg: "bg-sky-50",
+    header: "bg-sky-100 border-sky-200",
+    badge: "bg-sky-200 text-sky-800",
+  },
   "Proposal Sent": {
     bg: "bg-blue-50",
     header: "bg-blue-100 border-blue-200",
     badge: "bg-blue-200 text-blue-800",
+  },
+  "Engagement Drafted": {
+    bg: "bg-violet-50",
+    header: "bg-violet-100 border-violet-200",
+    badge: "bg-violet-200 text-violet-800",
+  },
+  "Engagement Sent": {
+    bg: "bg-indigo-50",
+    header: "bg-indigo-100 border-indigo-200",
+    badge: "bg-indigo-200 text-indigo-800",
+  },
+  "Engagement Signed": {
+    bg: "bg-teal-50",
+    header: "bg-teal-100 border-teal-200",
+    badge: "bg-teal-200 text-teal-800",
   },
   "Proposal Accepted": {
     bg: "bg-yellow-50",
@@ -662,6 +702,33 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
             <UserCheck size={12} />
             Convert to Client
           </button>
+        ) : lead.stage === "Proposal Sent" ? (
+          <>
+            {next && (
+              <button
+                onClick={() => onMoveNext(lead)}
+                className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors border border-blue-200"
+              >
+                Move to {next}
+                <ArrowRight size={12} />
+              </button>
+            )}
+            <Link
+              href="/engagements"
+              className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100 transition-colors border border-green-200"
+            >
+              <FileText size={12} />
+              Create Engagement
+            </Link>
+          </>
+        ) : lead.stage === "Engagement Signed" ? (
+          <button
+            onClick={() => onMoveNext(lead)}
+            className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700 transition-colors"
+          >
+            Start Onboarding
+            <ArrowRight size={12} />
+          </button>
         ) : next ? (
           <button
             onClick={() => onMoveNext(lead)}
@@ -926,7 +993,7 @@ export default function PipelinePage() {
             {formatRupees(estimatedMRRPaise)}
           </p>
         </div>
-        {STAGES.map((stage) => {
+        {STAGES.slice(0, 2).map((stage) => {
           const count = leads.filter((l) => l.stage === stage).length;
           return (
             <div
@@ -976,14 +1043,14 @@ export default function PipelinePage() {
       {loading && (
         <div className="text-center py-10 text-sm text-[#94A3B8]">Loading leads…</div>
       )}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="flex gap-4 overflow-x-auto pb-4">
         {STAGES.map((stage) => {
           const stageLeads = leads.filter((l) => l.stage === stage);
           const colors = STAGE_COLORS[stage];
           return (
             <div
               key={stage}
-              className={`rounded-xl border ${colors.header} overflow-hidden`}
+              className={`min-w-[280px] flex-none rounded-xl border ${colors.header} overflow-hidden`}
             >
               {/* Column header */}
               <div className={`px-4 py-3 border-b ${colors.header}`}>

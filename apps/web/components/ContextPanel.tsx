@@ -14,6 +14,7 @@ import { HealthPanel } from "@/components/panels/HealthPanel";
 import { PracticePanel } from "@/components/panels/PracticePanel";
 import { KnowledgePanel } from "@/components/panels/KnowledgePanel";
 import { SettingsPanel } from "@/components/panels/SettingsPanel";
+import { EngagementsPanel } from "@/components/panels/EngagementsPanel";
 
 interface ContextPanelProps {
   onOpenSearch: () => void;
@@ -43,6 +44,7 @@ export function ContextPanel({ onOpenSearch }: ContextPanelProps) {
           {activeWorkspace === "health" && <HealthPanel />}
           {activeWorkspace === "practice" && <PracticePanel />}
           {activeWorkspace === "knowledge" && <KnowledgePanel />}
+          {activeWorkspace === "engagements" && <EngagementsPanel />}
         </>
       )}
     </div>

@@ -60,6 +60,7 @@ from routers import purchase_bills, purchase_payments, document_intelligence_v1
 from routers import gst_workspace, tds_workspace, mca_workspace, document_intelligence_v2
 from routers import payroll, fixed_assets, banking
 from routers import timeline
+from routers import engagement_letters
 # Phase 14 routers that existed but were never mounted (production-readiness fix)
 from routers import einvoice, eway_bill, tally_migration, xbrl_engine, itr_workspace, form_26as, gst_portal
 # Phase 6 — Year End
@@ -187,6 +188,7 @@ app.include_router(time_tracking.router, dependencies=_CLIENT_GUARD)
 app.include_router(workload.router)
 app.include_router(analytics.router, dependencies=_CLIENT_GUARD)
 app.include_router(engagements.router, dependencies=_CLIENT_GUARD)
+app.include_router(engagement_letters.router, dependencies=_CLIENT_GUARD)
 app.include_router(invoices.router, dependencies=_CLIENT_GUARD)
 app.include_router(intelligence.router, dependencies=_CLIENT_GUARD)
 app.include_router(scheduler_status.router)
