@@ -10,7 +10,7 @@ export type EntityType =
   | "Society"
   | "Individual";
 
-export type ClientStatus = "active" | "inactive";
+export type ClientStatus = "active" | "inactive" | "archived";
 
 export type GSTFilingFrequency = "monthly" | "quarterly";
 
@@ -32,6 +32,9 @@ export interface Client {
   status: ClientStatus;
   assigned_to?: string;
   notes?: string;
+  is_archived?: boolean;
+  archived_at?: string | null;
+  deleted_at?: string | null;
   created_at: string;
 }
 

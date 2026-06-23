@@ -1,7 +1,7 @@
 """
 Client lifecycle management tests.
 Covers: archive, restore, soft-delete, is_test filtering,
-        deletion blockers, and tenant isolation for new endpoints.
+        deletion blockers, audit logging, and tenant isolation for new endpoints.
 """
 import pytest
 from fastapi import HTTPException
@@ -41,12 +41,13 @@ class TestArchiveClient:
 
     def test_archive_active_client_succeeds(self):
         from routers.clients import archive_client
-        with patch("routers.clients.client_repo") as mock_repo:
+        with patch("routers.clients.client_repo") as mock_repo, \
+             patch("routers.clients.log_event"):
             mock_repo.find_by_id.return_value = ACTIVE_CLIENT
             mock_repo.archive.return_value = {**ACTIVE_CLIENT, "status": "archived"}
             result = archive_client(client_id="c-active", current_user=USER_PARTNER_A)
         assert result["data"]["client"]["status"] == "archived"
-        mock_repo.archive.assert_called_once_with("c-active")
+        mock_repo.archive.assert_called_once_with("c-active", actor_id="u1")
 
     def test_archive_already_archived_returns_409(self):
         from routers.clients import archive_client
@@ -74,7 +75,8 @@ class TestArchiveClient:
 
     def test_manager_can_archive(self):
         from routers.clients import archive_client
-        with patch("routers.clients.client_repo") as mock_repo:
+        with patch("routers.clients.client_repo") as mock_repo, \
+             patch("routers.clients.log_event"):
             mock_repo.find_by_id.return_value = ACTIVE_CLIENT
             mock_repo.archive.return_value = {**ACTIVE_CLIENT, "status": "archived"}
             result = archive_client(client_id="c-active", current_user=USER_MANAGER_A)
@@ -87,7 +89,8 @@ class TestRestoreClient:
 
     def test_restore_archived_client_succeeds(self):
         from routers.clients import restore_client
-        with patch("routers.clients.client_repo") as mock_repo:
+        with patch("routers.clients.client_repo") as mock_repo, \
+             patch("routers.clients.log_event"):
             mock_repo.find_by_id.return_value = ARCHIVED_CLIENT
             mock_repo.restore.return_value = {**ARCHIVED_CLIENT, "status": "active"}
             result = restore_client(client_id="c-archived", current_user=USER_PARTNER_A)
@@ -129,12 +132,14 @@ class TestDeleteClient:
 
     def test_partner_can_delete_clean_client(self):
         from routers.clients import delete_client
-        with patch("routers.clients.client_repo") as mock_repo, self._no_blockers():
+        with patch("routers.clients.client_repo") as mock_repo, \
+             patch("routers.clients.log_event"), \
+             self._no_blockers():
             mock_repo.find_by_id.return_value = ACTIVE_CLIENT
             mock_repo.soft_delete.return_value = True
             result = delete_client(client_id="c-active", current_user=USER_PARTNER_A)
         assert result["success"] is True
-        mock_repo.soft_delete.assert_called_once_with("c-active")
+        mock_repo.soft_delete.assert_called_once_with("c-active", actor_id="u1")
 
     def test_delete_blocked_when_open_compliance_obligations(self):
         from routers.clients import delete_client
@@ -173,6 +178,44 @@ class TestDeleteClient:
         assert exc_info.value.status_code == 500
 
 
+# ── Audit logging ─────────────────────────────────────────────────────────────
+
+class TestAuditLogging:
+
+    def test_archive_calls_log_event_with_archive_action(self):
+        from routers.clients import archive_client
+        with patch("routers.clients.client_repo") as mock_repo, \
+             patch("routers.clients.log_event") as mock_log:
+            mock_repo.find_by_id.return_value = ACTIVE_CLIENT
+            mock_repo.archive.return_value = {**ACTIVE_CLIENT, "status": "archived"}
+            archive_client(client_id="c-active", current_user=USER_PARTNER_A)
+        mock_log.assert_called_once()
+        args = mock_log.call_args[0]
+        assert args[3] == "archive"
+        assert args[2] == "c-active"
+
+    def test_restore_calls_log_event_with_restore_action(self):
+        from routers.clients import restore_client
+        with patch("routers.clients.client_repo") as mock_repo, \
+             patch("routers.clients.log_event") as mock_log:
+            mock_repo.find_by_id.return_value = ARCHIVED_CLIENT
+            mock_repo.restore.return_value = {**ARCHIVED_CLIENT, "status": "active"}
+            restore_client(client_id="c-archived", current_user=USER_PARTNER_A)
+        mock_log.assert_called_once()
+        assert mock_log.call_args[0][3] == "restore"
+
+    def test_delete_calls_log_event_with_delete_action(self):
+        from routers.clients import delete_client
+        with patch("routers.clients.client_repo") as mock_repo, \
+             patch("routers.clients._check_delete_blockers", return_value=[]), \
+             patch("routers.clients.log_event") as mock_log:
+            mock_repo.find_by_id.return_value = ACTIVE_CLIENT
+            mock_repo.soft_delete.return_value = True
+            delete_client(client_id="c-active", current_user=USER_PARTNER_A)
+        mock_log.assert_called_once()
+        assert mock_log.call_args[0][3] == "delete"
+
+
 # ── is_test filtering ─────────────────────────────────────────────────────────
 
 class TestIsTestFiltering:
@@ -181,7 +224,6 @@ class TestIsTestFiltering:
 
     def test_default_listing_excludes_archived(self):
         from routers.clients import list_clients
-        # Normal clients and test clients visible, archived hidden
         with patch("routers.clients.client_repo") as mock_repo:
             mock_repo.find_all.return_value = [ACTIVE_CLIENT, TEST_CLIENT]
             result = list_clients(
@@ -314,24 +356,42 @@ class TestRepositorySoftDeleteMockMode:
 
 # ── Deletion blocker logic ────────────────────────────────────────────────────
 
+def _all_empty_repos():
+    """Context manager that stubs all four blocker-check repos to return empty."""
+    return (
+        patch("routers.clients.compliance_repo"),
+        patch("routers.clients.compliance_records_repo"),
+        patch("routers.clients.task_repo"),
+        patch("routers.clients.document_repo"),
+    )
+
+
 class TestDeleteBlockerLogic:
 
     def test_no_blockers_for_clean_client(self):
         from routers.clients import _check_delete_blockers
-        with patch("routers.clients.compliance_repo") as mock_ctasks, \
-             patch("routers.clients.compliance_records_repo") as mock_repo:
-            mock_ctasks.find_all.return_value = []
-            mock_repo.find_all.return_value = []
+        with patch("routers.clients.compliance_repo") as ct, \
+             patch("routers.clients.compliance_records_repo") as cr, \
+             patch("routers.clients.task_repo") as tk, \
+             patch("routers.clients.document_repo") as doc:
+            ct.find_all.return_value = []
+            cr.find_all.return_value = []
+            tk.find_all.return_value = []
+            doc.find_all.return_value = []
             blockers = _check_delete_blockers("c-clean", FIRM_A)
         assert blockers == []
 
     def test_open_compliance_task_blocks_delete(self):
         from routers.clients import _check_delete_blockers
         open_task = {"client_id": "c-001", "firm_id": FIRM_A, "status": "pending", "compliance_type": "GSTR1"}
-        with patch("routers.clients.compliance_repo") as mock_ctasks, \
-             patch("routers.clients.compliance_records_repo") as mock_repo:
-            mock_ctasks.find_all.return_value = [open_task]
-            mock_repo.find_all.return_value = []
+        with patch("routers.clients.compliance_repo") as ct, \
+             patch("routers.clients.compliance_records_repo") as cr, \
+             patch("routers.clients.task_repo") as tk, \
+             patch("routers.clients.document_repo") as doc:
+            ct.find_all.return_value = [open_task]
+            cr.find_all.return_value = []
+            tk.find_all.return_value = []
+            doc.find_all.return_value = []
             blockers = _check_delete_blockers("c-001", FIRM_A)
         assert len(blockers) == 1
         assert "GSTR1" in blockers[0]
@@ -339,20 +399,28 @@ class TestDeleteBlockerLogic:
     def test_filed_compliance_task_does_not_block(self):
         from routers.clients import _check_delete_blockers
         filed_task = {"client_id": "c-001", "firm_id": FIRM_A, "status": "filed", "compliance_type": "GSTR1"}
-        with patch("routers.clients.compliance_repo") as mock_ctasks, \
-             patch("routers.clients.compliance_records_repo") as mock_repo:
-            mock_ctasks.find_all.return_value = [filed_task]
-            mock_repo.find_all.return_value = []
+        with patch("routers.clients.compliance_repo") as ct, \
+             patch("routers.clients.compliance_records_repo") as cr, \
+             patch("routers.clients.task_repo") as tk, \
+             patch("routers.clients.document_repo") as doc:
+            ct.find_all.return_value = [filed_task]
+            cr.find_all.return_value = []
+            tk.find_all.return_value = []
+            doc.find_all.return_value = []
             blockers = _check_delete_blockers("c-001", FIRM_A)
         assert blockers == []
 
     def test_active_compliance_record_blocks_delete(self):
         from routers.clients import _check_delete_blockers
         active_record = {"id": "cr-1", "firm_id": FIRM_A, "client_id": "c-001", "status": "In Progress"}
-        with patch("routers.clients.compliance_repo") as mock_ctasks, \
-             patch("routers.clients.compliance_records_repo") as mock_repo:
-            mock_ctasks.find_all.return_value = []
-            mock_repo.find_all.return_value = [active_record]
+        with patch("routers.clients.compliance_repo") as ct, \
+             patch("routers.clients.compliance_records_repo") as cr, \
+             patch("routers.clients.task_repo") as tk, \
+             patch("routers.clients.document_repo") as doc:
+            ct.find_all.return_value = []
+            cr.find_all.return_value = [active_record]
+            tk.find_all.return_value = []
+            doc.find_all.return_value = []
             blockers = _check_delete_blockers("c-001", FIRM_A)
         assert len(blockers) == 1
         assert "compliance record" in blockers[0]
@@ -360,20 +428,85 @@ class TestDeleteBlockerLogic:
     def test_filed_compliance_record_does_not_block(self):
         from routers.clients import _check_delete_blockers
         filed_record = {"id": "cr-1", "firm_id": FIRM_A, "client_id": "c-001", "status": "Filed"}
-        with patch("routers.clients.compliance_repo") as mock_ctasks, \
-             patch("routers.clients.compliance_records_repo") as mock_repo:
-            mock_ctasks.find_all.return_value = []  # no open compliance tasks
-            mock_repo.find_all.return_value = [filed_record]  # only filed records
+        with patch("routers.clients.compliance_repo") as ct, \
+             patch("routers.clients.compliance_records_repo") as cr, \
+             patch("routers.clients.task_repo") as tk, \
+             patch("routers.clients.document_repo") as doc:
+            ct.find_all.return_value = []
+            cr.find_all.return_value = [filed_record]
+            tk.find_all.return_value = []
+            doc.find_all.return_value = []
             blockers = _check_delete_blockers("c-001", FIRM_A)
         assert blockers == []
+
+    def test_active_work_task_blocks_delete(self):
+        from routers.clients import _check_delete_blockers
+        work_task = {"id": "t-1", "firm_id": FIRM_A, "client_id": "c-001", "status": "in_progress", "title": "Tax Filing"}
+        with patch("routers.clients.compliance_repo") as ct, \
+             patch("routers.clients.compliance_records_repo") as cr, \
+             patch("routers.clients.task_repo") as tk, \
+             patch("routers.clients.document_repo") as doc:
+            ct.find_all.return_value = []
+            cr.find_all.return_value = []
+            tk.find_all.return_value = [work_task]
+            doc.find_all.return_value = []
+            blockers = _check_delete_blockers("c-001", FIRM_A)
+        assert len(blockers) == 1
+        assert "work item" in blockers[0]
+
+    def test_completed_work_task_does_not_block(self):
+        from routers.clients import _check_delete_blockers
+        done_task = {"id": "t-1", "firm_id": FIRM_A, "client_id": "c-001", "status": "completed", "title": "Tax Filing"}
+        with patch("routers.clients.compliance_repo") as ct, \
+             patch("routers.clients.compliance_records_repo") as cr, \
+             patch("routers.clients.task_repo") as tk, \
+             patch("routers.clients.document_repo") as doc:
+            ct.find_all.return_value = []
+            cr.find_all.return_value = []
+            tk.find_all.return_value = [done_task]
+            doc.find_all.return_value = []
+            blockers = _check_delete_blockers("c-001", FIRM_A)
+        assert blockers == []
+
+    def test_attached_document_blocks_delete(self):
+        from routers.clients import _check_delete_blockers
+        doc_record = {"id": "d-1", "firm_id": FIRM_A, "client_id": "c-001", "file_name": "form16.pdf"}
+        with patch("routers.clients.compliance_repo") as ct, \
+             patch("routers.clients.compliance_records_repo") as cr, \
+             patch("routers.clients.task_repo") as tk, \
+             patch("routers.clients.document_repo") as doc:
+            ct.find_all.return_value = []
+            cr.find_all.return_value = []
+            tk.find_all.return_value = []
+            doc.find_all.return_value = [doc_record]
+            blockers = _check_delete_blockers("c-001", FIRM_A)
+        assert len(blockers) == 1
+        assert "document" in blockers[0]
+
+    def test_multiple_blockers_all_reported(self):
+        from routers.clients import _check_delete_blockers
+        with patch("routers.clients.compliance_repo") as ct, \
+             patch("routers.clients.compliance_records_repo") as cr, \
+             patch("routers.clients.task_repo") as tk, \
+             patch("routers.clients.document_repo") as doc:
+            ct.find_all.return_value = [{"status": "pending", "compliance_type": "GSTR1"}]
+            cr.find_all.return_value = [{"status": "In Progress"}]
+            tk.find_all.return_value = [{"status": "in_progress"}]
+            doc.find_all.return_value = [{"file_name": "doc.pdf"}]
+            blockers = _check_delete_blockers("c-001", FIRM_A)
+        assert len(blockers) == 4
 
     def test_cross_firm_tasks_not_counted_as_blockers(self):
         from routers.clients import _check_delete_blockers
         # compliance_repo.find_all already filters by firm_id — returns empty for cross-firm
-        with patch("routers.clients.compliance_repo") as mock_ctasks, \
-             patch("routers.clients.compliance_records_repo") as mock_repo:
-            mock_ctasks.find_all.return_value = []
-            mock_repo.find_all.return_value = []
+        with patch("routers.clients.compliance_repo") as ct, \
+             patch("routers.clients.compliance_records_repo") as cr, \
+             patch("routers.clients.task_repo") as tk, \
+             patch("routers.clients.document_repo") as doc:
+            ct.find_all.return_value = []
+            cr.find_all.return_value = []
+            tk.find_all.return_value = []
+            doc.find_all.return_value = []
             blockers = _check_delete_blockers("c-001", FIRM_A)
         assert blockers == []
 
