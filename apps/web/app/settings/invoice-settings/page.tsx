@@ -202,7 +202,7 @@ export default function InvoiceSettingsPage() {
                       onChange={(e) => update("starting_number", Math.max(1, Number(e.target.value)))}
                       className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
                     />
-                    <p className="text-xs text-[#94A3B8] mt-1">Use this to continue from a previous system's sequence</p>
+                    <p className="text-xs text-[#94A3B8] mt-1">Use this to continue from a previous system&apos;s sequence</p>
                   </div>
                 </div>
 

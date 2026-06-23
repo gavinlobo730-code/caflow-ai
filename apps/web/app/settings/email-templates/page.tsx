@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ChevronLeft, Mail, Save, Plus } from "lucide-react";
+import { ChevronLeft, Mail, Save } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
@@ -193,7 +193,7 @@ function TemplateEditor({
       <div>
         <p className="text-xs font-medium text-[#64748B] mb-2">Insert merge field</p>
         <div className="flex flex-wrap gap-1.5">
-          {MERGE_FIELDS.map(({ field, label }) => (
+          {MERGE_FIELDS.map(({ field }) => (
             <button
               key={field}
               onClick={() => insertMergeField(field)}

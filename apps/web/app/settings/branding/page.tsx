@@ -148,7 +148,7 @@ function BrandingPreview({ branding, firmName }: { branding: Branding; firmName:
 export default function BrandingPage() {
   const { user } = useAuth();
   const [branding, setBranding] = useState<Branding>(DEFAULT_BRANDING);
-  const [firmName, setFirmName] = useState("");
+  const firmName = "";
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -165,7 +165,7 @@ export default function BrandingPage() {
       if (res.success && res.data.branding && Object.keys(res.data.branding).length > 0) {
         setBranding({ ...DEFAULT_BRANDING, ...res.data.branding });
       }
-    } catch (e) {
+    } catch {
       showToast("Failed to load branding settings", "error");
     } finally {
       setLoading(false);
@@ -227,7 +227,7 @@ export default function BrandingPage() {
             <ChevronLeft size={13} /> Settings
           </Link>
           <h1 className="text-xl font-semibold text-[#0F172A]">Firm Branding</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Customize your firm's visual identity across all documents and client communications.</p>
+          <p className="text-sm text-[#64748B] mt-0.5">Customize your firm&apos;s visual identity across all documents and client communications.</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

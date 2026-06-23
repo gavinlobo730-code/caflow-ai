@@ -30,8 +30,6 @@ const TEMPLATE_DESCRIPTIONS: Record<InvoiceTemplate["template_type"], { label: s
 };
 
 const LOGO_POSITIONS = ["left", "center", "right"] as const;
-const HEADER_STYLES = ["standard", "compact", "full"] as const;
-const FOOTER_STYLES = ["standard", "minimal", "detailed"] as const;
 const SIG_PLACEMENTS = ["left", "center", "right", "none"] as const;
 
 // ── Toast ──────────────────────────────────────────────────────────────────
@@ -55,8 +53,8 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   const [name, setName] = useState("");
   const [type, setType] = useState<InvoiceTemplate["template_type"]>("classic");
   const [logoPos, setLogoPos] = useState<"left" | "center" | "right">("left");
-  const [headerStyle, setHeaderStyle] = useState<"standard" | "compact" | "full">("standard");
-  const [footerStyle, setFooterStyle] = useState<"standard" | "minimal" | "detailed">("standard");
+  const headerStyle = "standard";
+  const footerStyle = "standard";
   const [sigPlacement, setSigPlacement] = useState<"left" | "center" | "right" | "none">("right");
   const [isDefault, setIsDefault] = useState(false);
   const [saving, setSaving] = useState(false);
