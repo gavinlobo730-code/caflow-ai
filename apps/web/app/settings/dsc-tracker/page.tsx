@@ -9,8 +9,31 @@
 import { useState, useEffect } from "react";
 import { Shield, Plus, X, AlertCircle, AlertTriangle, CheckCircle } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { getFirmId } from "@/lib/data/getFirmId";
 import { useToast } from "@/components/ui/use-toast";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+async function apiFetch(path: string, opts?: RequestInit) {
+  const { data: { session } } = await getSupabaseClient().auth.getSession();
+  const token = session?.access_token ?? "";
+  const res = await fetch(`${API}${path}`, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(opts?.headers ?? {}),
+    },
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = await res.json() as { error?: string; detail?: string };
+      detail = body.error ?? body.detail ?? detail;
+    } catch { /* not JSON */ }
+    throw new Error(detail);
+  }
+  return res.json();
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -21,8 +44,8 @@ interface DSCRecord {
   pan: string;
   dsc_type: "Class 2" | "Class 3";
   purpose: string;
-  issuing_ca: string;
-  issue_date: string;
+  issued_by: string;
+  issued_date: string;
   expiry_date: string;
   notes: string | null;
   created_at: string;
@@ -57,8 +80,7 @@ function getDSCStatus(expiryDate: string): DSCStatus {
 
 // ─── Add DSC Modal ────────────────────────────────────────────────────────────
 
-function AddDSCModal({ firmId, onClose, onAdded }: {
-  firmId: string;
+function AddDSCModal({ onClose, onAdded }: {
   onClose: () => void;
   onAdded: (d: DSCRecord) => void;
 }) {
@@ -81,20 +103,20 @@ function AddDSCModal({ firmId, onClose, onAdded }: {
     }
     setSaving(true); setErr(null);
     try {
-      const sb = getSupabaseClient();
-      const { data, error } = await sb.from("dsc_records").insert({
-        firm_id: firmId,
-        holder_name: holderName.trim(),
-        pan: pan.trim().toUpperCase(),
-        dsc_type: dscType,
-        purpose,
-        issuing_ca: issuingCA,
-        issue_date: issueDate,
-        expiry_date: expiryDate,
-        notes: notes.trim() || null,
-      }).select().single();
-      if (error) throw new Error(error.message);
-      onAdded(data as DSCRecord);
+      const res = await apiFetch("/api/dsc", {
+        method: "POST",
+        body: JSON.stringify({
+          holder_name: holderName.trim(),
+          pan: pan.trim().toUpperCase() || null,
+          dsc_type: dscType,
+          purpose,
+          issued_by: issuingCA,
+          issued_date: issueDate,
+          expiry_date: expiryDate,
+          notes: notes.trim() || null,
+        }),
+      });
+      onAdded(res.data.dsc_record as DSCRecord);
       toast({ title: "DSC record added" });
       onClose();
     } catch (e) {
@@ -167,7 +189,6 @@ function AddDSCModal({ firmId, onClose, onAdded }: {
 
 export default function DSCTrackerPage() {
   const [dscs, setDscs] = useState<DSCRecord[]>([]);
-  const [firmId, setFirmId] = useState("");
   const [loading, setLoading] = useState(true);
   const [tableError, setTableError] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -175,13 +196,11 @@ export default function DSCTrackerPage() {
   useEffect(() => {
     async function load() {
       try {
-        const fid = await getFirmId().catch(() => "");
-        setFirmId(fid);
-        if (!fid) return;
-        const sb = getSupabaseClient();
-        const { data, error } = await sb.from("dsc_records").select("*").eq("firm_id", fid).order("expiry_date");
-        if (error) { setTableError(true); }
-        else { setDscs((data ?? []) as DSCRecord[]); }   // real data only; empty firm → empty state
+        // firm_id is derived server-side from the caller's JWT — no need to resolve it here
+        const res = await apiFetch("/api/dsc");
+        setDscs((res.data?.dsc_records ?? []) as DSCRecord[]);   // real data only; empty firm → empty state
+      } catch {
+        setTableError(true);
       } finally {
         setLoading(false);
       }
@@ -271,8 +290,8 @@ export default function DSCTrackerPage() {
                         <span className="text-xs font-medium text-[#334155] bg-[#F1F5F9] px-1.5 py-0.5 rounded">{d.dsc_type}</span>
                       </td>
                       <td className="px-4 py-3 text-xs text-[#475569]">{d.purpose}</td>
-                      <td className="px-4 py-3 text-xs text-[#475569]">{d.issuing_ca}</td>
-                      <td className="px-4 py-3 text-xs text-[#475569]">{new Date(d.issue_date).toLocaleDateString("en-IN")}</td>
+                      <td className="px-4 py-3 text-xs text-[#475569]">{d.issued_by}</td>
+                      <td className="px-4 py-3 text-xs text-[#475569]">{new Date(d.issued_date).toLocaleDateString("en-IN")}</td>
                       <td className="px-4 py-3 text-xs text-[#475569] font-medium">{new Date(d.expiry_date).toLocaleDateString("en-IN")}</td>
                       <td className="px-4 py-3 text-xs font-medium">
                         <span className={days < 0 ? "text-red-600" : days <= 30 ? "text-amber-600" : days <= 90 ? "text-yellow-600" : "text-green-600"}>
@@ -291,8 +310,8 @@ export default function DSCTrackerPage() {
         )}
       </div>
 
-      {showModal && firmId && (
-        <AddDSCModal firmId={firmId} onClose={() => setShowModal(false)} onAdded={d => setDscs(prev => [...prev, d])} />
+      {showModal && (
+        <AddDSCModal onClose={() => setShowModal(false)} onAdded={d => setDscs(prev => [...prev, d])} />
       )}
     </div>
   );

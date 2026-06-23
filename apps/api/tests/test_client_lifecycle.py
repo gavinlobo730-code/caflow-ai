@@ -95,7 +95,7 @@ class TestRestoreClient:
             mock_repo.restore.return_value = {**ARCHIVED_CLIENT, "status": "active"}
             result = restore_client(client_id="c-archived", current_user=USER_PARTNER_A)
         assert result["data"]["client"]["status"] == "active"
-        mock_repo.restore.assert_called_once_with("c-archived")
+        mock_repo.restore.assert_called_once_with("c-archived", actor_id="u1")
 
     def test_restore_active_client_returns_409(self):
         from routers.clients import restore_client
@@ -354,6 +354,61 @@ class TestRepositorySoftDeleteMockMode:
         assert "c-test" not in ids
 
 
+# ── Canonical/mirror consistency on archive ↔ restore ─────────────────────────
+
+class TestArchiveRestoreMirrorConsistency:
+    """archive()/restore() must keep the canonical fields (status) and the mirror
+    booleans (is_archived) consistent so the two encodings never drift."""
+
+    def test_archive_then_restore_round_trips_canonical_and_mirror(self):
+        from repositories.client_repository import ClientRepository
+        repo = ClientRepository()
+        client = {
+            "id": "c-rt", "firm_id": FIRM_A, "client_name": "RoundTrip Corp",
+            "status": "active", "is_archived": False, "is_test": False,
+            "deleted_at": None,
+        }
+        index = {"c-rt": client}
+
+        with patch("repositories.client_repository._USE_MOCK", True), \
+             patch("repositories.client_repository.CLIENT_INDEX", index):
+            archived = repo.archive("c-rt", actor_id="u1")
+            # Canonical + mirror both reflect archived state.
+            assert archived["status"] == "archived"
+            assert archived["is_archived"] is True
+            assert archived["archived_by"] == "u1"
+            assert archived["archived_at"] is not None
+            assert client["status"] == "archived"
+            assert client["is_archived"] is True
+
+            restored = repo.restore("c-rt", actor_id="u1")
+            # Canonical + mirror both reflect active state again.
+            assert restored["status"] == "active"
+            assert restored["is_archived"] is False
+            assert restored["archived_at"] is None
+            assert restored["archived_by"] is None
+            assert client["status"] == "active"
+            assert client["is_archived"] is False
+
+    def test_restore_accepts_actor_id_kwarg(self):
+        from repositories.client_repository import ClientRepository
+        repo = ClientRepository()
+        client = {
+            "id": "c-actor", "firm_id": FIRM_A, "client_name": "Actor Corp",
+            "status": "archived", "is_archived": True, "is_test": False,
+            "deleted_at": None,
+        }
+        index = {"c-actor": client}
+
+        with patch("repositories.client_repository._USE_MOCK", True), \
+             patch("repositories.client_repository.CLIENT_INDEX", index):
+            # Must accept actor_id for audit symmetry without raising.
+            result = repo.restore("c-actor", actor_id="u-auditor")
+        assert result is not None
+        assert result["status"] == "active"
+        assert result["is_archived"] is False
+
+
 # ── Deletion blocker logic ────────────────────────────────────────────────────
 
 def _all_empty_repos():
@@ -503,6 +558,64 @@ class TestDeleteBlockerLogic:
              patch("routers.clients.compliance_records_repo") as cr, \
              patch("routers.clients.task_repo") as tk, \
              patch("routers.clients.document_repo") as doc:
+            ct.find_all.return_value = []
+            cr.find_all.return_value = []
+            tk.find_all.return_value = []
+            doc.find_all.return_value = []
+            blockers = _check_delete_blockers("c-001", FIRM_A)
+        assert blockers == []
+
+    def test_active_engagement_letter_blocks_delete(self):
+        """A non-terminal engagement letter for the client (mock mode) blocks delete."""
+        from routers.clients import _check_delete_blockers
+        active_letter = {
+            "id": "el-1", "firm_id": FIRM_A, "client_id": "c-001",
+            "status": "Sent",
+        }
+        with patch("routers.clients.compliance_repo") as ct, \
+             patch("routers.clients.compliance_records_repo") as cr, \
+             patch("routers.clients.task_repo") as tk, \
+             patch("routers.clients.document_repo") as doc, \
+             patch("routers.engagement_letters._MOCK_ENGAGEMENTS", [active_letter]):
+            ct.find_all.return_value = []
+            cr.find_all.return_value = []
+            tk.find_all.return_value = []
+            doc.find_all.return_value = []
+            blockers = _check_delete_blockers("c-001", FIRM_A)
+        assert len(blockers) == 1
+        assert "engagement letter" in blockers[0]
+
+    def test_terminal_engagement_letter_does_not_block(self):
+        """A Rejected/Expired engagement letter must NOT block deletion."""
+        from routers.clients import _check_delete_blockers
+        rejected_letter = {
+            "id": "el-2", "firm_id": FIRM_A, "client_id": "c-001",
+            "status": "Rejected",
+        }
+        with patch("routers.clients.compliance_repo") as ct, \
+             patch("routers.clients.compliance_records_repo") as cr, \
+             patch("routers.clients.task_repo") as tk, \
+             patch("routers.clients.document_repo") as doc, \
+             patch("routers.engagement_letters._MOCK_ENGAGEMENTS", [rejected_letter]):
+            ct.find_all.return_value = []
+            cr.find_all.return_value = []
+            tk.find_all.return_value = []
+            doc.find_all.return_value = []
+            blockers = _check_delete_blockers("c-001", FIRM_A)
+        assert blockers == []
+
+    def test_cross_firm_engagement_letter_does_not_block(self):
+        """An engagement letter belonging to another firm must NOT block deletion."""
+        from routers.clients import _check_delete_blockers
+        other_firm_letter = {
+            "id": "el-3", "firm_id": FIRM_B, "client_id": "c-001",
+            "status": "Sent",
+        }
+        with patch("routers.clients.compliance_repo") as ct, \
+             patch("routers.clients.compliance_records_repo") as cr, \
+             patch("routers.clients.task_repo") as tk, \
+             patch("routers.clients.document_repo") as doc, \
+             patch("routers.engagement_letters._MOCK_ENGAGEMENTS", [other_firm_letter]):
             ct.find_all.return_value = []
             cr.find_all.return_value = []
             tk.find_all.return_value = []

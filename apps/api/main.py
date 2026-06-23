@@ -50,6 +50,7 @@ from routers import time_tracking, workload, analytics, engagements, invoices
 from routers import intelligence
 from routers import scheduler_status, audit, onboarding
 from routers import search
+from routers import dsc  # H6: DSC (Digital Signature Certificate) backend
 from routers import assignments
 from routers import approvals
 from routers import identity
@@ -195,6 +196,8 @@ app.include_router(scheduler_status.router)
 app.include_router(audit.router)
 app.include_router(onboarding.router)
 app.include_router(search.router)  # M2: authorization-scoped global search
+# H6: DSC tracker — firm-level settings resource (no client_id surface), so NO _CLIENT_GUARD
+app.include_router(dsc.router)
 app.include_router(assignments.router, dependencies=_MFA_GUARD)  # M3: client-assignment administration
 app.include_router(approvals.router)  # M4: governance approval workflows; MFA enforced per-action (approve/reject) not on read endpoints
 app.include_router(identity.router, dependencies=_MFA_GUARD)  # M6: identity administration (audited, server-side)
@@ -277,8 +280,15 @@ app.include_router(knowledge_router, dependencies=_CLIENT_GUARD)
 
 
 # Phase 10B — Workflow Scheduler (daily jobs + workflow schedule runner)
-from jobs.scheduler import start_scheduler, run_due_schedules
+from jobs.scheduler import start_scheduler, run_due_schedules, log_scheduler_startup_health
 start_scheduler()
+# H11: emit a clear startup health line so operators see at boot whether the
+# scheduler is actually enabled/running (otherwise compliance reminders + recurring
+# jobs silently never run). Non-fatal — never blocks app start.
+try:
+    log_scheduler_startup_health()
+except Exception:
+    _logger.exception("scheduler startup health check failed")
 
 # Phase 13 — AI Memory Scheduler
 from jobs.memory_job import start_memory_scheduler

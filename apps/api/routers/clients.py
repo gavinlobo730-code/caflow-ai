@@ -17,17 +17,30 @@ from core.authz import effective_client_ids
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
 
+def _supabase_enabled() -> bool:
+    """True when a real Supabase backend is configured (i.e. not mock mode).
+    Mirrors the _db() guard used elsewhere so DB-only blocker checks are skipped
+    in mock mode and never crash on a missing client."""
+    import os
+    return bool(os.environ.get("SUPABASE_URL"))
+
+
 def _assert_firm(client: dict, firm_id: str | None) -> None:
     """Raise 404 if client belongs to a different firm."""
     if client.get("firm_id") and client["firm_id"] != firm_id:
         raise HTTPException(status_code=404, detail="Client not found")
 
 
-def _check_delete_blockers(client_id: str, firm_id: str) -> list[str]:
+def _check_delete_blockers(client_id: str, firm_id: str, client_pan: str | None = None) -> list[str]:
     """
     Return human-readable blockers that prevent permanent deletion.
     Historical records must be fully resolved before a client can be deleted.
     IT Act Section 139 / CGST Act Section 37 — obligations persist until filed.
+
+    client_pan (optional) lets the DSC check match firm-scoped DSC records by PAN.
+    All dependent-entity DB lookups are NON-FATAL: a missing table or DB error must
+    never crash the delete path, so each is wrapped in try/except (mirroring how the
+    existing checks tolerate empty/erroring repos).
     """
     blockers: list[str] = []
 
@@ -61,6 +74,90 @@ def _check_delete_blockers(client_id: str, firm_id: str) -> list[str]:
     docs = document_repo.find_all(firm_id=firm_id, client_id=client_id)
     if docs:
         blockers.append(f"{len(docs)} document(s) attached")
+
+    # ── Active fee engagements (fee_engagements table; DB-only, skip in mock) ──
+    # Ongoing billing relationships must be closed before the client is removed.
+    if _supabase_enabled():
+        try:
+            from core.supabase_client import get_supabase
+            res = (
+                get_supabase()
+                .table("fee_engagements")
+                .select("id", count="exact")
+                .eq("firm_id", firm_id)
+                .eq("client_id", client_id)
+                .eq("status", "Active")
+                .execute()
+            )
+            n = res.count if res.count is not None else len(res.data or [])
+            if n > 0:
+                blockers.append(f"{n} active fee engagement(s)")
+        except Exception:
+            pass
+
+    # ── Active engagement letters (engagements table) ──────────────────────────
+    # CGST Act Section 31 — a live engagement letter documents an active mandate.
+    _TERMINAL_LETTER_STATUSES = ("Rejected", "Expired")
+    active_letters = 0
+    if _supabase_enabled():
+        try:
+            from core.supabase_client import get_supabase
+            res = (
+                get_supabase()
+                .table("engagements")
+                .select("id, status")
+                .eq("firm_id", firm_id)
+                .eq("client_id", client_id)
+                .execute()
+            )
+            active_letters = len([
+                e for e in (res.data or [])
+                if e.get("status") not in _TERMINAL_LETTER_STATUSES
+            ])
+        except Exception:
+            active_letters = 0
+    else:
+        try:
+            from routers.engagement_letters import _MOCK_ENGAGEMENTS
+            active_letters = len([
+                e for e in _MOCK_ENGAGEMENTS
+                if e.get("firm_id") == firm_id
+                and e.get("client_id") == client_id
+                and e.get("status") not in _TERMINAL_LETTER_STATUSES
+            ])
+        except Exception:
+            active_letters = 0
+    if active_letters > 0:
+        blockers.append(f"{active_letters} active engagement letter(s)")
+
+    # ── Fee invoices on record (financial history must not be orphaned) ────────
+    # invoice_repo.find_all already excludes soft-deleted invoices.
+    try:
+        from repositories.invoice_repository import invoice_repo
+        invoices = invoice_repo.find_all(firm_id=firm_id, client_id=client_id)
+        if invoices:
+            blockers.append(f"{len(invoices)} fee invoice(s) on record")
+    except Exception:
+        pass
+
+    # ── DSC records registered to this client's PAN (firm-scoped, DB-only) ──────
+    # dsc_records is firm-scoped (no client_id) but carries a pan column.
+    if client_pan and _supabase_enabled():
+        try:
+            from core.supabase_client import get_supabase
+            res = (
+                get_supabase()
+                .table("dsc_records")
+                .select("id", count="exact")
+                .eq("firm_id", firm_id)
+                .eq("pan", client_pan)
+                .execute()
+            )
+            n = res.count if res.count is not None else len(res.data or [])
+            if n > 0:
+                blockers.append(f"{n} DSC record(s) registered to this PAN")
+        except Exception:
+            pass
 
     return blockers
 
@@ -197,7 +294,7 @@ def restore_client(client_id: str, current_user: dict = Depends(rbac("client", "
     if client.get("status") != "archived":
         raise HTTPException(status_code=409, detail="Client is not archived")
     actor_id = current_user.get("auth_user_id")
-    updated = client_repo.restore(client_id)
+    updated = client_repo.restore(client_id, actor_id=actor_id)
     log_event(firm_id, "client", client_id, "restore",
               actor_id=actor_id, actor_email=current_user.get("email"),
               old_data={"status": "archived"},
@@ -218,7 +315,7 @@ def delete_client(client_id: str, current_user: dict = Depends(rbac("client", "d
         raise HTTPException(status_code=404, detail="Client not found")
     _assert_firm(client, firm_id)
 
-    blockers = _check_delete_blockers(client_id, firm_id)
+    blockers = _check_delete_blockers(client_id, firm_id, client_pan=client.get("pan"))
     if blockers:
         raise HTTPException(
             status_code=409,

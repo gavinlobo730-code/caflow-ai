@@ -136,13 +136,3 @@ export async function permanentDeleteClient(id: string): Promise<void> {
     throw e;
   }
 }
-
-/** Legacy direct soft-delete via Supabase (deprecated — prefer permanentDeleteClient). */
-export async function deleteClient(id: string): Promise<void> {
-  const sb = getSupabaseClient();
-  const { error } = await sb
-    .from("clients")
-    .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id);
-  if (error) throw new Error(error.message);
-}

@@ -714,7 +714,7 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
               </button>
             )}
             <Link
-              href="/engagements"
+              href={`/engagements?new=1&lead_id=${lead.id}&name=${encodeURIComponent(lead.businessName || lead.name || "")}`}
               className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100 transition-colors border border-green-200"
             >
               <FileText size={12} />

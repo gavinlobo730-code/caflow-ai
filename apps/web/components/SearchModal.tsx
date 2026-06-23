@@ -1,13 +1,22 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Search, Users, CheckSquare, FileText, Shield, X } from "lucide-react";
+import { Search, Users, UserPlus, CheckSquare, FileText, Shield, ShieldCheck, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
 type SearchResult = {
   id: string;
-  category: "clients" | "tasks" | "compliance" | "journals" | "accounts";
+  category:
+    | "clients"
+    | "tasks"
+    | "compliance"
+    | "journals"
+    | "accounts"
+    | "leads"
+    | "engagements"
+    | "documents"
+    | "dsc";
   title: string;
   subtitle: string;
   href: string;
@@ -19,6 +28,10 @@ const CATEGORY_ICONS = {
   compliance: Shield,
   journals: FileText,
   accounts: FileText,
+  leads: UserPlus,
+  engagements: FileText,
+  documents: FileText,
+  dsc: ShieldCheck,
 };
 
 const CATEGORY_LABELS = {
@@ -27,6 +40,10 @@ const CATEGORY_LABELS = {
   compliance: "Compliance",
   journals: "Journal Entries",
   accounts: "Accounts",
+  leads: "Leads",
+  engagements: "Engagements",
+  documents: "Documents",
+  dsc: "DSC",
 };
 
 // M2: search now goes through the backend /api/search, which enforces client
