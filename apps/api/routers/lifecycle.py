@@ -144,8 +144,10 @@ _AVG_DAYS_BY_ENTITY = {
 
 _VALID_SOURCES = {"referral", "website", "cold", "event", "other"}
 _VALID_STAGES  = {
-    "Lead", "Qualified", "Proposal Sent", "Proposal Accepted",
-    "Onboarding", "Active", "Dormant", "Renewal Due", "Exiting", "Exited",
+    "Lead", "Qualified", "Proposal Sent",
+    "Engagement Drafted", "Engagement Sent", "Engagement Signed",
+    "Proposal Accepted", "Onboarding", "Active", "Dormant",
+    "Renewal Due", "Exiting", "Exited", "_deleted",
 }
 
 

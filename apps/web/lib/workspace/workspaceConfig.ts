@@ -10,13 +10,14 @@ import {
   Activity,
   Building2,
   Library,
+  FileText,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export type WorkspaceId =
   | "home" | "clients" | "deadlines" | "work" | "team" | "ai"
   | "accounting" | "relationships" | "health"
-  | "practice" | "knowledge";
+  | "practice" | "knowledge" | "engagements";
 
 export interface WorkspaceConfig {
   id: WorkspaceId;
@@ -106,6 +107,13 @@ export const WORKSPACE_CONFIGS: WorkspaceConfig[] = [
     defaultRoute: "/knowledge",
     icon: Library,
   },
+  {
+    id: "engagements",
+    label: "Engagements",
+    description: "Engagement letters & agreements",
+    defaultRoute: "/engagements",
+    icon: FileText,
+  },
 ];
 
 export const DEFAULT_WORKSPACE_ROUTES: Record<WorkspaceId, string> = {
@@ -120,6 +128,7 @@ export const DEFAULT_WORKSPACE_ROUTES: Record<WorkspaceId, string> = {
   health: "/health",
   practice: "/practice",
   knowledge: "/knowledge",
+  engagements: "/engagements",
 };
 
 /**
@@ -170,6 +179,9 @@ export function getWorkspaceForPathname(pathname: string): WorkspaceId {
 
   if (pathname.startsWith("/knowledge"))
     return "knowledge";
+
+  if (pathname.startsWith("/engagements"))
+    return "engagements";
 
   if (pathname.startsWith("/work") || pathname.startsWith("/tasks"))
     return "work";
