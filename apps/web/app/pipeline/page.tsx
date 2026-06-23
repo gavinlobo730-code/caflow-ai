@@ -30,6 +30,16 @@ async function apiFetch(path: string, opts?: RequestInit) {
       ...(opts?.headers ?? {}),
     },
   });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = await res.json() as { error?: string; detail?: string };
+      detail = body.error ?? body.detail ?? detail;
+    } catch {
+      // body is not JSON — keep the status string
+    }
+    throw new Error(detail);
+  }
   return res.json();
 }
 
@@ -37,8 +47,8 @@ async function apiFetch(path: string, opts?: RequestInit) {
 // Types
 // ---------------------------------------------------------------------------
 
-type Stage = "Lead" | "Proposal Sent" | "Negotiation" | "Onboarded";
-type Source = "Referral" | "Website" | "Walk-in" | "LinkedIn";
+type Stage = "Lead" | "Proposal Sent" | "Proposal Accepted" | "Onboarding";
+type Source = "Referral" | "Website" | "Cold Call" | "Event" | "Other";
 type EntityType =
   | "Proprietorship"
   | "Partnership"
@@ -69,8 +79,24 @@ interface Lead {
 // Constants
 // ---------------------------------------------------------------------------
 
-const STAGES: Stage[] = ["Lead", "Proposal Sent", "Negotiation", "Onboarded"];
-const SOURCES: Source[] = ["Referral", "Website", "Walk-in", "LinkedIn"];
+const STAGES: Stage[] = ["Lead", "Proposal Sent", "Proposal Accepted", "Onboarding"];
+const SOURCES: Source[] = ["Referral", "Website", "Cold Call", "Event", "Other"];
+
+// Maps between human-readable Source labels and DB CHECK values
+const SOURCE_TO_DB: Record<Source, string> = {
+  Referral: "referral",
+  Website: "website",
+  "Cold Call": "cold",
+  Event: "event",
+  Other: "other",
+};
+const DB_TO_SOURCE: Record<string, Source> = {
+  referral: "Referral",
+  website: "Website",
+  cold: "Cold Call",
+  event: "Event",
+  other: "Other",
+};
 const ENTITY_TYPES: EntityType[] = [
   "Proprietorship",
   "Partnership",
@@ -93,12 +119,12 @@ const STAGE_COLORS: Record<Stage, { bg: string; header: string; badge: string }>
     header: "bg-blue-100 border-blue-200",
     badge: "bg-blue-200 text-blue-800",
   },
-  Negotiation: {
+  "Proposal Accepted": {
     bg: "bg-yellow-50",
     header: "bg-yellow-100 border-yellow-200",
     badge: "bg-yellow-200 text-yellow-800",
   },
-  Onboarded: {
+  Onboarding: {
     bg: "bg-green-50",
     header: "bg-green-100 border-green-200",
     badge: "bg-green-200 text-green-800",
@@ -112,29 +138,31 @@ const STAGE_COLORS: Record<Stage, { bg: string; header: string; badge: string }>
 /** Map backend lead row → frontend Lead shape */
 function fromApiLead(row: Record<string, unknown>): Lead {
   const meta = (row.notes as string | null) ?? "";
-  // Extract lastContactDate and nextFollowUpDate from embedded JSON in notes
   let lastContactDate = new Date().toISOString().split("T")[0];
   let nextFollowUpDate = "";
   let notes = meta;
+  let entityType: EntityType = "Proprietorship";
   try {
     const parsed = JSON.parse(meta) as Record<string, string>;
     if (parsed.__caflow_meta__) {
       lastContactDate = parsed.lastContactDate ?? lastContactDate;
       nextFollowUpDate = parsed.nextFollowUpDate ?? "";
       notes = parsed.userNotes ?? "";
+      if (parsed.entityType) entityType = parsed.entityType as EntityType;
     }
   } catch {
     // plain text notes — leave as-is
   }
+  const dbSource = (row.source as string) ?? "";
   return {
     id: row.id as string,
     name: (row.contact_name as string) ?? "",
     phone: (row.phone as string) ?? "",
     email: (row.email as string) ?? "",
     businessName: (row.company_name as string) ?? "",
-    entityType: ((row.assigned_to as string) ?? "Proprietorship") as EntityType, // assigned_to repurposed for entityType
+    entityType,
     estimatedMonthlyFee: (row.estimated_value_paise as number) ?? 0,
-    source: ((row.source as string) ?? "Referral") as Source,
+    source: DB_TO_SOURCE[dbSource] ?? "Other",
     notes,
     stage: ((row.stage as string) ?? "Lead") as Stage,
     lastContactDate,
@@ -145,9 +173,10 @@ function fromApiLead(row: Record<string, unknown>): Lead {
 
 /** Map frontend Lead → backend LeadIn body */
 function toApiBody(lead: Lead) {
-  // Embed extra frontend fields in notes as JSON so round-trip is lossless
+  // Embed frontend-only fields in notes JSON so the round-trip is lossless
   const notesMeta = JSON.stringify({
     __caflow_meta__: true,
+    entityType: lead.entityType,
     lastContactDate: lead.lastContactDate,
     nextFollowUpDate: lead.nextFollowUpDate,
     userNotes: lead.notes,
@@ -157,11 +186,9 @@ function toApiBody(lead: Lead) {
     contact_name: lead.name,
     email: lead.email || null,
     phone: lead.phone || null,
-    source: lead.source,
+    source: SOURCE_TO_DB[lead.source] ?? "other",
     stage: lead.stage,
     estimated_value_paise: lead.estimatedMonthlyFee,
-    // Repurpose assigned_to to carry entity_type (no direct backend field)
-    assigned_to: lead.entityType,
     notes: notesMeta,
   };
 }
@@ -273,7 +300,7 @@ const EMPTY_FORM = {
   businessName: "",
   entityType: "Proprietorship" as EntityType,
   estimatedMonthlyFeeRupees: "",
-  source: "Referral" as Source,
+  source: "Referral" as Source, // maps to "referral" in DB
   notes: "",
   lastContactDate: new Date().toISOString().split("T")[0],
   nextFollowUpDate: "",
@@ -627,7 +654,7 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
 
       {/* Actions */}
       <div className="pt-1 space-y-2">
-        {lead.stage === "Onboarded" ? (
+        {lead.stage === "Onboarding" ? (
           <button
             onClick={() => onConvert(lead)}
             className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700 transition-colors"
@@ -787,6 +814,7 @@ export default function PipelinePage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editLead, setEditLead] = useState<Lead | null>(null);
   const [convertLead, setConvertLead] = useState<Lead | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Load from API on mount
   useEffect(() => {
@@ -798,6 +826,7 @@ export default function PipelinePage() {
   }, []);
 
   async function handleSave(lead: Lead) {
+    setSaveError(null);
     try {
       const isNew = !leads.find((l) => l.id === lead.id);
       if (isNew) {
@@ -807,8 +836,9 @@ export default function PipelinePage() {
         const updated = await apiUpdateLead(lead);
         setLeads((prev) => prev.map((l) => (l.id === lead.id ? updated : l)));
       }
-    } catch {
-      // Optimistic fallback — keep local state as-is
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to save lead";
+      setSaveError(msg);
     }
   }
 
@@ -921,6 +951,24 @@ export default function PipelinePage() {
             </span>{" "}
             {overdueLeads.map((l) => l.name).join(", ")}
           </div>
+        </div>
+      )}
+
+      {/* Save error banner */}
+      {saveError && (
+        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+          <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+          <div className="flex-1 text-sm text-red-700">
+            <span className="font-semibold">Failed to save lead: </span>
+            {saveError}
+          </div>
+          <button
+            onClick={() => setSaveError(null)}
+            className="text-red-400 hover:text-red-600 shrink-0"
+            aria-label="Dismiss"
+          >
+            <X size={14} />
+          </button>
         </div>
       )}
 

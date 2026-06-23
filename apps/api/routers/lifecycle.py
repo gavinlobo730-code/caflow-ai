@@ -142,6 +142,13 @@ _AVG_DAYS_BY_ENTITY = {
 
 # ─── Pydantic Models ──────────────────────────────────────────────────────────
 
+_VALID_SOURCES = {"referral", "website", "cold", "event", "other"}
+_VALID_STAGES  = {
+    "Lead", "Qualified", "Proposal Sent", "Proposal Accepted",
+    "Onboarding", "Active", "Dormant", "Renewal Due", "Exiting", "Exited",
+}
+
+
 class LeadIn(BaseModel):
     company_name: str
     contact_name: Optional[str] = None
@@ -290,6 +297,18 @@ def create_lead(
         "updated_at":            now,
     }
 
+    # Validate source and stage before hitting the DB
+    if data.source and data.source not in _VALID_SOURCES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid source '{data.source}'. Must be one of: {sorted(_VALID_SOURCES)}",
+        )
+    if data.stage not in _VALID_STAGES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid stage '{data.stage}'. Must be one of: {sorted(_VALID_STAGES)}",
+        )
+
     if not db:
         _MOCK_LEADS.append(mock_row)
         timeline_service.log(
@@ -310,14 +329,17 @@ def create_lead(
         "source":                data.source,
         "stage":                 data.stage,
         "estimated_value_paise": int(data.estimated_value_paise),
-        "assigned_to":           data.assigned_to,
+        "assigned_to":           None,   # frontend no longer sends entityType here
         "expected_close_date":   data.expected_close_date,
         "notes":                 data.notes,
         "is_converted":          False,
         "created_at":            now,
         "updated_at":            now,
     }
-    db.table("leads").insert(db_row).execute()
+    try:
+        db.table("leads").insert(db_row).execute()
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     timeline_service.log(
         db_row["id"], "lifecycle", "Lead Created",
