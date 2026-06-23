@@ -18,8 +18,8 @@ class DocumentRepository(BaseRepository[dict]):
 
     def find_by_id(self, id: str) -> Optional[dict]:
         if _USE_MOCK:
-            return next((d for d in MOCK_DOCUMENTS if d["id"] == id), None)
-        result = _get_db().table("documents").select("*").eq("id", id).maybe_single().execute()
+            return next((d for d in MOCK_DOCUMENTS if d["id"] == id and not d.get("deleted_at")), None)
+        result = _get_db().table("documents").select("*").eq("id", id).is_("deleted_at", None).maybe_single().execute()
         return result.data
 
     def find_all(

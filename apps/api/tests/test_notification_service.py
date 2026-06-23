@@ -108,7 +108,7 @@ def test_notify_due_soon(sample_task, sample_assignee):
 
     assert notification is not None
     assert notification["type"] == "due_soon"
-    assert notification["severity"] == "warning"
+    assert notification["severity"] == "medium"
     assert "3 days" in notification["title"]
     assert notification["user_id"] == sample_assignee["id"]
 

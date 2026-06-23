@@ -127,7 +127,7 @@ class NotificationService:
                 "type": "due_soon",
                 "title": f"Task due in 3 days: {task.get('title')}",
                 "body": f"Client: {client_name}, Due date: {task.get('due_date', 'Not set')}",
-                "severity": "warning",
+                "severity": "medium",
                 "client_id": task.get("client_id"),
                 "metadata": {
                     "task_id": task.get("id"),

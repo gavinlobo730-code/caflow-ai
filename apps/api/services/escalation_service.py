@@ -94,9 +94,10 @@ class EscalationService:
                                 notifications_repo.create({
                                     "firm_id": firm_id,
                                     "user_id": manager["id"],
-                                    "type": "task_overdue_escalation",
+                                    "type": "task_overdue",
                                     "title": f"Task Escalated: {task['title']}",
-                                    "message": f"Task '{task['title']}' was overdue and has been reassigned to {new_assignee.get('full_name', 'Unknown')}.",
+                                    "body": f"Task '{task['title']}' was overdue and has been reassigned to {new_assignee.get('full_name', 'Unknown')}.",
+                                    "severity": "high",
                                     "metadata": {
                                         "task_id": task["id"],
                                         "escalation_rule_id": rule["id"],
@@ -116,9 +117,10 @@ class EscalationService:
                         notifications_repo.create({
                             "firm_id": firm_id,
                             "user_id": manager["id"],
-                            "type": "task_overdue_notification",
+                            "type": "task_overdue",
                             "title": f"Overdue Task: {task['title']}",
-                            "message": f"Task '{task['title']}' is overdue and assigned to {task.get('assigned_to', 'Unassigned')}.",
+                            "body": f"Task '{task['title']}' is overdue and assigned to {task.get('assigned_to', 'Unassigned')}.",
+                            "severity": "high",
                             "metadata": {
                                 "task_id": task["id"],
                                 "escalation_rule_id": rule["id"],
@@ -230,9 +232,10 @@ class EscalationService:
         notification = notifications_repo.create({
             "firm_id": firm_id,
             "user_id": user["id"],
-            "type": f"task_{escalation_type}",
+            "type": "due_soon",
             "title": f"Task Due Soon: {task['title']}",
-            "message": f"Task '{task['title']}' is due in {days_threshold} day(s).",
+            "body": f"Task '{task['title']}' is due in {days_threshold} day(s).",
+            "severity": "medium",
             "metadata": {
                 "task_id": task["id"],
                 "escalation_type": escalation_type,
