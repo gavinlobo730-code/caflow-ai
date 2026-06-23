@@ -25,7 +25,7 @@ export default function TasksPage() {
 
   useEffect(() => {
     if (!clientId || clientId === "_placeholder") return;
-    getTasks(clientId)
+    getTasks({ clientId, limit: 100 })
       .catch(() => [] as Task[])
       .then(setTasks)
       .finally(() => setLoading(false));

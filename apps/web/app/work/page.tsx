@@ -9,11 +9,11 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getTasks } from "@/lib/data/tasks";
-import { getClients } from "@/lib/data/clients";
+import { getTasks, getTaskCounts } from "@/lib/data/tasks";
 import { getTeamWorkload } from "@/lib/data/analytics";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import type { Task, TaskStatus, Client, TeamWorkload } from "@/lib/types";
+import { getUserProfile } from "@/lib/data/getFirmId";
+import type { Task, TaskStatus, TeamWorkload } from "@/lib/types";
+import type { TaskCounts } from "@/lib/data/tasks";
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   todo: "bg-[#F1F5F9] text-[#475569]",
@@ -47,9 +47,7 @@ function fmt(date?: string) {
 
 function isToday(dateStr?: string) {
   if (!dateStr) return false;
-  const today = new Date();
-  const d = new Date(dateStr);
-  return d.toDateString() === today.toDateString();
+  return dateStr === new Date().toISOString().split("T")[0];
 }
 
 function isThisWeek(dateStr?: string) {
@@ -63,7 +61,7 @@ function isThisWeek(dateStr?: string) {
 
 function isOverdue(dateStr?: string) {
   if (!dateStr) return false;
-  return new Date(dateStr) < new Date(new Date().toDateString());
+  return dateStr < new Date().toISOString().split("T")[0];
 }
 
 function TaskRow({ task }: { task: Task }) {
@@ -95,69 +93,62 @@ function TaskRow({ task }: { task: Task }) {
 }
 
 export default function WorkPage() {
-  const [myTasks, setMyTasks] = useState<Task[]>([]);
+  const [counts, setCounts] = useState<TaskCounts | null>(null);
+  const [activeTasks, setActiveTasks] = useState<Task[]>([]);
+  const [recentDone, setRecentDone] = useState<Task[]>([]);
   const [workload, setWorkload] = useState<TeamWorkload | null>(null);
-  // Two independent loading states: tasks controls the main spinner;
-  // workload controls only the Team Overview section at the bottom.
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [loadingWorkload, setLoadingWorkload] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isManager, setIsManager] = useState(false);
-  const [, setUserId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoadingTasks(true);
     setLoadingWorkload(true);
     setError(null);
 
-    // Fire workload fetch immediately — it runs in parallel with tasks+clients.
-    // It may 403 for non-managers, which is expected and handled silently.
+    const t0 = Date.now();
+
+    // Workload fires immediately — runs in parallel, may 403 for non-managers.
     const workloadPromise = getTeamWorkload()
       .then((wl) => { setWorkload(wl); setIsManager(true); })
       .catch(() => { setIsManager(false); })
       .finally(() => setLoadingWorkload(false));
 
     try {
-      const { data: { session } } = await getSupabaseClient().auth.getSession();
-      const uid = session?.user?.id ?? null;
-      setUserId(uid);
+      const { authUserId, userId } = await getUserProfile();
 
-      const [taskList, clientList] = await Promise.all([
-        getTasks(),
-        getClients().catch(() => [] as Client[]),
+      // Three server-side queries in parallel: aggregate counts + active tasks + recently done.
+      const [taskCounts, active, done] = await Promise.all([
+        getTaskCounts(authUserId, userId),
+        getTasks({ assignedTo: authUserId, assigneeId: userId, excludeStatus: "completed", limit: 50 }),
+        getTasks({ assignedTo: authUserId, assigneeId: userId, status: "completed", limit: 5 }),
       ]);
 
-      // Only enrich with client names if we have tasks — avoids building the map
-      // from a full client list when the task list is empty.
-      const mine = taskList.length > 0 ? (() => {
-        const clientMap = new Map(clientList.map(c => [c.id, c.client_name]));
-        const enriched = taskList.map(t => ({
-          ...t,
-          client_name: clientMap.get(t.client_id) ?? t.client_name,
-        }));
-        return enriched.filter(t =>
-          t.assigned_to === uid ||
-          t.assigned_to === session?.user?.email
-        );
-      })() : [];
+      setCounts(taskCounts);
+      setActiveTasks(active);
+      setRecentDone(done);
 
-      setMyTasks(mine);
+      if (process.env.NODE_ENV === "development") {
+        // eslint-disable-next-line no-console
+        console.debug(`[PracticeSync/work-page] total load: ${Date.now() - t0}ms`);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load tasks");
     } finally {
       setLoadingTasks(false);
-      // workloadPromise continues in the background; its finally() handles loadingWorkload.
       void workloadPromise;
     }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const today = myTasks.filter(t => t.status !== "completed" && isToday(t.due_date));
-  const thisWeek = myTasks.filter(t => t.status !== "completed" && !isToday(t.due_date) && isThisWeek(t.due_date));
-  const overdue = myTasks.filter(t => t.status !== "completed" && isOverdue(t.due_date));
-  const recentDone = myTasks.filter(t => t.status === "completed").slice(0, 5);
-  const active = myTasks.filter(t => t.status !== "completed");
+  // Client-side splits of the 50-row active window for the display sections.
+  const todayTasks = activeTasks.filter(t => isToday(t.due_date));
+  const thisWeekTasks = activeTasks.filter(t => !isToday(t.due_date) && isThisWeek(t.due_date));
+  const overdueTasks = activeTasks.filter(t => isOverdue(t.due_date));
+
+  const isEmpty = !loadingTasks && counts !== null && counts.active === 0;
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
@@ -183,8 +174,7 @@ export default function WorkPage() {
         <div className="flex items-center justify-center py-20 text-[#94A3B8]">
           <Loader2 className="animate-spin mr-2" size={18} /> Loading your work…
         </div>
-      ) : myTasks.length === 0 ? (
-        // Immediate empty state — no tasks assigned to this user.
+      ) : isEmpty ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
           <div className="w-12 h-12 rounded-full bg-[#F1F5F9] flex items-center justify-center">
             <InboxIcon size={20} className="text-[#94A3B8]" />
@@ -201,35 +191,35 @@ export default function WorkPage() {
         </div>
       ) : (
         <>
-          {/* Workload summary */}
+          {/* Stat cards — sourced from COUNT(*) queries, accurate even beyond the 50-row fetch window */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
               <CardContent className="py-4">
                 <div className="flex items-center gap-1.5 text-xs text-[#64748B] mb-1">
                   <CheckSquare size={11} /> My Tasks
                 </div>
-                <p className="text-2xl font-bold text-[#0F172A]">{active.length}</p>
+                <p className="text-2xl font-bold text-[#0F172A]">{counts?.active ?? 0}</p>
                 <p className="text-[11px] text-[#94A3B8]">active</p>
               </CardContent>
             </Card>
-            <Card className={today.length > 0 ? "border-amber-200 bg-amber-50/30" : ""}>
+            <Card className={(counts?.due_today ?? 0) > 0 ? "border-amber-200 bg-amber-50/30" : ""}>
               <CardContent className="py-4">
                 <div className="flex items-center gap-1.5 text-xs text-[#64748B] mb-1">
                   <Clock size={11} /> Due Today
                 </div>
-                <p className={`text-2xl font-bold ${today.length > 0 ? "text-amber-700" : "text-[#0F172A]"}`}>
-                  {today.length}
+                <p className={`text-2xl font-bold ${(counts?.due_today ?? 0) > 0 ? "text-amber-700" : "text-[#0F172A]"}`}>
+                  {counts?.due_today ?? 0}
                 </p>
                 <p className="text-[11px] text-[#94A3B8]">tasks</p>
               </CardContent>
             </Card>
-            <Card className={overdue.length > 0 ? "border-red-200 bg-red-50/20" : ""}>
+            <Card className={(counts?.overdue ?? 0) > 0 ? "border-red-200 bg-red-50/20" : ""}>
               <CardContent className="py-4">
                 <div className="flex items-center gap-1.5 text-xs text-[#64748B] mb-1">
                   <AlertTriangle size={11} /> Overdue
                 </div>
-                <p className={`text-2xl font-bold ${overdue.length > 0 ? "text-red-600" : "text-[#0F172A]"}`}>
-                  {overdue.length}
+                <p className={`text-2xl font-bold ${(counts?.overdue ?? 0) > 0 ? "text-red-600" : "text-[#0F172A]"}`}>
+                  {counts?.overdue ?? 0}
                 </p>
                 <p className="text-[11px] text-[#94A3B8]">tasks</p>
               </CardContent>
@@ -239,8 +229,8 @@ export default function WorkPage() {
                 <div className="flex items-center gap-1.5 text-xs text-[#64748B] mb-1">
                   <CheckCircle2 size={11} /> Done
                 </div>
-                <p className="text-2xl font-bold text-green-600">{recentDone.length}</p>
-                <p className="text-[11px] text-[#94A3B8]">recent</p>
+                <p className="text-2xl font-bold text-green-600">{counts?.completed_recent ?? 0}</p>
+                <p className="text-[11px] text-[#94A3B8]">last 7 days</p>
               </CardContent>
             </Card>
           </div>
@@ -251,35 +241,35 @@ export default function WorkPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-1.5">
                   <Clock size={13} className="text-amber-500" /> Due Today
-                  {today.length > 0 && (
-                    <Badge className="ml-1 text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700">{today.length}</Badge>
+                  {todayTasks.length > 0 && (
+                    <Badge className="ml-1 text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700">{todayTasks.length}</Badge>
                   )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-2">
-                {today.length === 0 ? (
+                {todayTasks.length === 0 ? (
                   <p className="text-sm text-[#94A3B8] text-center py-4">Nothing due today</p>
                 ) : (
-                  today.map(t => <TaskRow key={t.id} task={t} />)
+                  todayTasks.map(t => <TaskRow key={t.id} task={t} />)
                 )}
               </CardContent>
             </Card>
 
             {/* Overdue */}
-            <Card className={overdue.length > 0 ? "border-red-100" : ""}>
+            <Card className={overdueTasks.length > 0 ? "border-red-100" : ""}>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-1.5">
                   <AlertTriangle size={13} className="text-red-500" /> Overdue
-                  {overdue.length > 0 && (
-                    <Badge className="ml-1 text-[10px] px-1.5 py-0 bg-red-100 text-red-700">{overdue.length}</Badge>
+                  {overdueTasks.length > 0 && (
+                    <Badge className="ml-1 text-[10px] px-1.5 py-0 bg-red-100 text-red-700">{overdueTasks.length}</Badge>
                   )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-2">
-                {overdue.length === 0 ? (
+                {overdueTasks.length === 0 ? (
                   <p className="text-sm text-[#94A3B8] text-center py-4">No overdue tasks</p>
                 ) : (
-                  overdue.map(t => <TaskRow key={t.id} task={t} />)
+                  overdueTasks.map(t => <TaskRow key={t.id} task={t} />)
                 )}
               </CardContent>
             </Card>
@@ -289,16 +279,16 @@ export default function WorkPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-1.5">
                   <Calendar size={13} className="text-blue-600" /> Due This Week
-                  {thisWeek.length > 0 && (
-                    <Badge className="ml-1 text-[10px] px-1.5 py-0 bg-blue-50 text-blue-600">{thisWeek.length}</Badge>
+                  {thisWeekTasks.length > 0 && (
+                    <Badge className="ml-1 text-[10px] px-1.5 py-0 bg-blue-50 text-blue-600">{thisWeekTasks.length}</Badge>
                   )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-2">
-                {thisWeek.length === 0 ? (
+                {thisWeekTasks.length === 0 ? (
                   <p className="text-sm text-[#94A3B8] text-center py-4">Nothing else due this week</p>
                 ) : (
-                  thisWeek.slice(0, 8).map(t => <TaskRow key={t.id} task={t} />)
+                  thisWeekTasks.slice(0, 8).map(t => <TaskRow key={t.id} task={t} />)
                 )}
               </CardContent>
             </Card>
