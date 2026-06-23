@@ -129,6 +129,14 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "read":   _AT_LEAST_MANAGER,
         "write":  _PARTNER_ONLY,
     },
+    # ── DSC (Digital Signature Certificate) tracker ──────────────────────────
+    # All staff may read the firm's DSC inventory; Partner/Manager manage
+    # (create / renew / soft-delete) certificates.
+    "dsc": {
+        "read":   _ALL_STAFF,
+        "write":  _AT_LEAST_MANAGER,
+        "delete": _AT_LEAST_MANAGER,
+    },
     # ── Accounting ───────────────────────────────────────────────────────────
     "accounting": {
         "read":   _AT_LEAST_EXECUTIVE,

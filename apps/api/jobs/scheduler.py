@@ -5,6 +5,11 @@ Runs (per firm, once per day):
   1. Recurring task generation (assignment rules applied inside the service)
   2. Escalation rules (due-soon + overdue)
   3. Invoice overdue transitions (Issued -> Overdue)
+  4. Collections — AR overdue sweep + reminders
+  5. Customer payment reminders
+  6. Recurring invoices (DRAFT generation)
+  7. Compliance obligation generation (idempotent; rolls forward near FY end)
+  8. Compliance escalations (internal due-soon/overdue notifications)
 
 Idempotency:
   - recurring generation is idempotent per-day inside the service
@@ -28,6 +33,25 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _MOCK_RUNS: list[dict] = []
 
 _scheduler = None
+
+# All per-firm job names recorded in scheduler_runs, in run order. Kept in sync
+# with run_daily_jobs() so health reporting can surface every job's last run.
+KNOWN_JOBS = [
+    "recurring_generation",
+    "escalations",
+    "invoice_overdue",
+    "collections",
+    "customer_reminders",
+    "recurring_invoices",
+    "compliance_generation",
+    "compliance_escalations",
+]
+
+
+def _scheduler_enabled() -> bool:
+    """Whether the in-process scheduler is enabled via ENABLE_SCHEDULER env
+    (same check used by start_scheduler)."""
+    return os.environ.get("ENABLE_SCHEDULER", "").lower() in ("1", "true", "yes")
 
 
 def _get_db():
@@ -206,7 +230,39 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         else:
             firm_result["recurring_invoices"] = {"skipped": "already ran today"}
 
-        # 7. Compliance escalations (Phase 4.4) — notify the internal team about
+        # 7. Compliance obligation generation (H7) — idempotently materialise the
+        #    statutory obligations (GST/TDS/ITR/ROC) for every active engagement so
+        #    there is always something to escalate. Backed by the engine's unique
+        #    index (firm_id, client_id, obligation_type, period_start), so repeated
+        #    runs only fill gaps; the _already_ran_today gate prevents same-day
+        #    re-runs. Placed BEFORE escalations so freshly-generated obligations can
+        #    be escalated in the same run. Near FY end (Jan/Feb/Mar) we also roll
+        #    forward into the NEXT FY so April-onward periods exist before the year
+        #    turns. Generation only — never files or emails anything.
+        if force or not _already_ran_today("compliance_generation", fid):
+            try:
+                from services.compliance_obligation_service import generate_due, _current_fy
+                current_fy = _current_fy()
+                gen_detail: dict = {}
+                outcome = generate_due(fid, financial_year=current_fy)
+                gen_detail["current_fy"] = outcome
+                # Roll forward near FY end (31 Mar) so next-FY periods pre-exist.
+                if date.today().month in (1, 2, 3):
+                    # Match _current_fy()'s format, e.g. "2026-27".
+                    start = int(current_fy[:4]) + 1
+                    next_fy = f"{start}-{str(start + 1)[2:]}"
+                    next_outcome = generate_due(fid, financial_year=next_fy)
+                    gen_detail["next_fy"] = next_outcome
+                firm_result["compliance_generation"] = gen_detail
+                _log_run("compliance_generation", fid, "success", gen_detail)
+            except Exception as e:
+                logger.error(f"Compliance generation job failed for firm {fid}: {e}", exc_info=True)
+                firm_result["compliance_generation"] = {"error": str(e)}
+                _log_run("compliance_generation", fid, "failed", {"error": str(e)})
+        else:
+            firm_result["compliance_generation"] = {"skipped": "already ran today"}
+
+        # 8. Compliance escalations (Phase 4.4) — notify the internal team about
         #    obligations due in 7/3/1 days or overdue. Internal only (never emails
         #    clients); idempotent per (obligation, tier, day). No filing.
         if force or not _already_ran_today("compliance_escalations", fid):
@@ -231,7 +287,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
 def start_scheduler() -> None:
     """Start the APScheduler background scheduler (called from app startup)."""
     global _scheduler
-    if os.environ.get("ENABLE_SCHEDULER", "").lower() not in ("1", "true", "yes"):
+    if not _scheduler_enabled():
         logger.info("Scheduler disabled (set ENABLE_SCHEDULER=true to enable)")
         return
     if _scheduler is not None:
@@ -251,6 +307,146 @@ def stop_scheduler() -> None:
     if _scheduler is not None:
         _scheduler.shutdown(wait=False)
         _scheduler = None
+
+
+# ── H11 — Scheduler reliability + health visibility ───────────────────────────
+
+# Scheduled trigger hour (IST) — see start_scheduler's CronTrigger(hour=6).
+_SCHEDULED_HOUR_IST = 6
+
+_DISABLED_WARNING = (
+    "Scheduler is DISABLED (ENABLE_SCHEDULER not set) — compliance reminders and "
+    "recurring jobs will not run automatically. Configure an external cron to POST "
+    "/api/scheduler/run, or set ENABLE_SCHEDULER=true."
+)
+
+
+def _all_runs_today() -> list[dict]:
+    """Every scheduler_runs row for today (mock or DB). Defensive: [] on error."""
+    today = date.today().isoformat()
+    if _USE_MOCK:
+        return [r for r in _MOCK_RUNS if r.get("run_date") == today]
+    try:
+        result = (
+            _get_db().table("scheduler_runs").select("job_name,status,run_date")
+            .eq("run_date", today).execute()
+        )
+        return result.data or []
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning(f"scheduler_runs today lookup failed: {e}")
+        return []
+
+
+def _last_run_for_job(job_name: str) -> Optional[dict]:
+    """Most recent run (date + status) for a job, or None. Defensive."""
+    if _USE_MOCK:
+        rows = [r for r in _MOCK_RUNS if r.get("job_name") == job_name]
+        if not rows:
+            return None
+        latest = rows[-1]
+        return {"run_date": latest.get("run_date"), "status": latest.get("status")}
+    try:
+        result = (
+            _get_db().table("scheduler_runs").select("run_date,status")
+            .eq("job_name", job_name)
+            .order("started_at", desc=True).limit(1).execute()
+        )
+        if result.data:
+            row = result.data[0]
+            return {"run_date": row.get("run_date"), "status": row.get("status")}
+        return None
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning(f"last-run lookup failed ({job_name}): {e}")
+        return None
+
+
+def _past_scheduled_hour() -> bool:
+    """True if the current IST time is at/after the scheduled run hour (06:00 IST).
+    Falls back to True (so staleness can still be flagged) if tz lookup fails."""
+    try:
+        import pytz
+        now_ist = datetime.now(pytz.timezone("Asia/Kolkata"))
+        return now_ist.hour >= _SCHEDULED_HOUR_IST
+    except Exception:  # pragma: no cover - defensive
+        return True
+
+
+def scheduler_health() -> dict:
+    """
+    Deployment-safe scheduler health snapshot. Does NOT require the in-process
+    APScheduler to be running (works behind an external cron too). Fully
+    defensive — always returns a dict, never raises.
+
+    Returns: {enabled, running, last_runs, stale, warnings}
+    """
+    enabled = False
+    running = False
+    last_runs: dict = {}
+    stale = False
+    warnings: list[str] = []
+
+    try:
+        enabled = _scheduler_enabled()
+    except Exception:  # pragma: no cover - defensive
+        enabled = False
+
+    try:
+        running = bool(_scheduler is not None and getattr(_scheduler, "running", False))
+    except Exception:  # pragma: no cover - defensive
+        running = False
+
+    try:
+        for job_name in KNOWN_JOBS:
+            last_runs[job_name] = _last_run_for_job(job_name)
+    except Exception:  # pragma: no cover - defensive
+        last_runs = {}
+
+    # Staleness: configured but not producing runs today after the scheduled hour.
+    try:
+        if enabled and _past_scheduled_hour():
+            today_runs = _all_runs_today()
+            had_run_today = any(r.get("status") == "success" for r in today_runs)
+            stale = not had_run_today
+    except Exception:  # pragma: no cover - defensive
+        stale = False
+
+    if not enabled:
+        warnings.append(_DISABLED_WARNING)
+    if stale:
+        warnings.append(
+            "Scheduler appears configured (ENABLE_SCHEDULER=true) but no successful "
+            "job run was recorded today after the scheduled hour (06:00 IST). The "
+            "scheduler may not be running — check the worker process or trigger "
+            "POST /api/scheduler/run."
+        )
+
+    return {
+        "enabled": enabled,
+        "running": running,
+        "last_runs": last_runs,
+        "stale": stale,
+        "warnings": warnings,
+    }
+
+
+def log_scheduler_startup_health() -> dict:
+    """
+    Startup health hook (wired into app startup by main.py — NOT called at import
+    time). Logs a WARNING line per health warning so operators see scheduler
+    misconfiguration at boot. Returns the health dict for convenience.
+    """
+    try:
+        health = scheduler_health()
+    except Exception as e:  # pragma: no cover - defensive
+        logger.error(f"Scheduler health check failed at startup: {e}")
+        return {"enabled": False, "running": False, "last_runs": {},
+                "stale": False, "warnings": []}
+    for warning in health.get("warnings", []):
+        logger.warning(warning)
+    if not health.get("warnings"):
+        logger.info("Scheduler health OK at startup (enabled=%s, running=%s)",
+                    health.get("enabled"), health.get("running"))
+    return health
 
 
 # ── Phase 10B — Workflow Schedule Runner ──────────────────────────────────────

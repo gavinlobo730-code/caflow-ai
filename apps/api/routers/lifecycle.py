@@ -15,6 +15,7 @@ import uuid
 from models.common import api_response
 from core.permissions import rbac
 from services.timeline_service import timeline_service
+from services.audit_service import log_event
 
 router = APIRouter(prefix="/api/lifecycle", tags=["lifecycle"])
 
@@ -311,6 +312,18 @@ def create_lead(
             detail=f"Invalid stage '{data.stage}'. Must be one of: {sorted(_VALID_STAGES)}",
         )
 
+    # H10: immutable audit_log record for lead creation (covers mock + DB paths;
+    # both reuse mock_row["id"] as the lead id).
+    try:
+        log_event(
+            current_user["firm_id"], "lead", mock_row["id"], "create",
+            actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            new_data={"company_name": data.company_name, "stage": data.stage},
+        )
+    except Exception:
+        pass
+
     if not db:
         _MOCK_LEADS.append(mock_row)
         timeline_service.log(
@@ -386,6 +399,24 @@ def update_lead(
                         f"Stage changed from {old_stage} to {data.stage}", "info",
                         firm_id=current_user["firm_id"],
                     )
+                # H10: audit the edit (and stage move, if any).
+                try:
+                    log_event(
+                        current_user["firm_id"], "lead", lead_id, "update",
+                        actor_id=current_user.get("auth_user_id"),
+                        actor_email=current_user.get("email"),
+                        new_data=update,
+                    )
+                    if data.stage and data.stage != old_stage:
+                        log_event(
+                            current_user["firm_id"], "lead", lead_id, "stage_change",
+                            actor_id=current_user.get("auth_user_id"),
+                            actor_email=current_user.get("email"),
+                            old_data={"stage": old_stage},
+                            new_data={"stage": data.stage},
+                        )
+                except Exception:
+                    pass
                 return api_response(True, lead)
         raise HTTPException(status_code=404, detail="Lead not found")
 
@@ -420,6 +451,25 @@ def update_lead(
         except Exception:
             pass
 
+    # H10: audit the edit (and stage move, if any).
+    try:
+        log_event(
+            current_user["firm_id"], "lead", lead_id, "update",
+            actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            new_data=update,
+        )
+        if data.stage and data.stage != old_stage:
+            log_event(
+                current_user["firm_id"], "lead", lead_id, "stage_change",
+                actor_id=current_user.get("auth_user_id"),
+                actor_email=current_user.get("email"),
+                old_data={"stage": old_stage},
+                new_data={"stage": data.stage},
+            )
+    except Exception:
+        pass
+
     return api_response(True, result)
 
 
@@ -453,6 +503,16 @@ def convert_lead(
                     "Lead converted to active client", "success",
                     firm_id=current_user["firm_id"],
                 )
+                # H10: audit the conversion (mock path — converted client id may be None).
+                try:
+                    log_event(
+                        current_user["firm_id"], "client", data.client_id, "convert",
+                        actor_id=current_user.get("auth_user_id"),
+                        actor_email=current_user.get("email"),
+                        new_data={"lead_id": lead_id, "converted_client_id": data.client_id},
+                    )
+                except Exception:
+                    pass
                 return api_response(True, lead)
         raise HTTPException(status_code=404, detail="Lead not found")
 
@@ -478,6 +538,9 @@ def convert_lead(
             detail="A signed engagement letter is required before converting a lead to a client. "
                    "Create and obtain a signed engagement letter first."
         )
+    # H16: capture the signed engagement so onboarding + the engagement row can be
+    # linked back to it (Lead → Engagement → Signed → Onboarding → Client chain).
+    signed_engagement_id = signed_engagements[0]["id"]
     if lead_in_db:
         existing = existing[0]
         if existing.get("is_converted"):
@@ -524,6 +587,16 @@ def convert_lead(
         except Exception as e:
             raise HTTPException(status_code=422, detail=f"Failed to create client: {e}")
 
+    # H16: stamp the signed engagement with the resulting client so it is no longer
+    # lead-only — keeps the engagement from being orphaned. Non-fatal.
+    try:
+        db.table("engagements").update({
+            "client_id": client_id,
+            "updated_at": now,
+        }).eq("id", signed_engagement_id).eq("firm_id", firm_id).execute()
+    except Exception:
+        pass
+
     # Create fee engagement (table: fee_engagements, not engagements)
     try:
         db.table("fee_engagements").insert({
@@ -545,12 +618,14 @@ def convert_lead(
         workflow_id = str(uuid.uuid4())
         try:
             db.table("onboarding_workflows").insert({
-                "id":         workflow_id,
-                "firm_id":    firm_id,
-                "client_id":  client_id,
-                "status":     "in_progress",   # lowercase — DB CHECK constraint
-                "created_at": now,
-                "updated_at": now,
+                "id":            workflow_id,
+                "firm_id":       firm_id,
+                "client_id":     client_id,
+                "lead_id":       lead_id,             # H16: back-reference to originating lead
+                "engagement_id": signed_engagement_id, # H16: back-reference to signed engagement
+                "status":        "in_progress",   # lowercase — DB CHECK constraint
+                "created_at":    now,
+                "updated_at":    now,
             }).execute()
             tasks = [
                 {
@@ -598,6 +673,17 @@ def convert_lead(
             "description": f"Client created from lead",
             "created_at":  now,
         }).execute()
+    except Exception:
+        pass
+
+    # H10: audit the conversion (DB path).
+    try:
+        log_event(
+            firm_id, "client", client_id, "convert",
+            actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            new_data={"lead_id": lead_id, "converted_client_id": client_id},
+        )
     except Exception:
         pass
 

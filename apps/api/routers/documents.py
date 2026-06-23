@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from models.common import api_response
 from repositories.document_repository import document_repo
 from services.activity_service import log_activity
+from services.audit_service import log_event
 from core.permissions import rbac
 from core.authz import assert_client_access
 from services.internal_client_service import assert_partner_for_internal_id
@@ -104,6 +105,17 @@ async def upload_document(
             "review_status": "pending_review",
             "uploaded_by": current_user.get("auth_user_id"),
         })
+        # H10: immutable audit_log record for the upload (mock path).
+        try:
+            log_event(
+                firm_id, "document", doc.get("id"), "upload",
+                actor_id=current_user.get("auth_user_id"),
+                actor_email=current_user.get("email"),
+                new_data={"file_name": safe_name, "document_type": document_type,
+                          "client_id": client_id},
+            )
+        except Exception:
+            pass
         return api_response(True, {"document": doc, "download_url": None})
 
     from core.supabase_client import get_supabase
@@ -140,6 +152,17 @@ async def upload_document(
         client_id=client_id,
         entity_type="document",
     )
+    # H10: immutable audit_log record for the upload (DB path).
+    try:
+        log_event(
+            firm_id, "document", doc.get("id"), "upload",
+            actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            new_data={"file_name": safe_name, "document_type": document_type,
+                      "client_id": client_id},
+        )
+    except Exception:
+        pass
 
     return api_response(True, {"document": doc, "download_url": download_url})
 
@@ -186,6 +209,17 @@ def delete_document(
         client_id=doc.get("client_id"),
         entity_type="document",
     )
+    # H10: immutable audit_log record for the delete.
+    try:
+        log_event(
+            current_user["firm_id"], "document", doc_id, "delete",
+            actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            old_data={"file_name": doc.get("file_name"),
+                      "client_id": doc.get("client_id")},
+        )
+    except Exception:
+        pass
 
     return api_response(True, {"deleted": True})
 

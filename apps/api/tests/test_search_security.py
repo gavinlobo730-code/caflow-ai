@@ -33,8 +33,10 @@ EXEC = {"id": "e", "firm_id": "F1", "role": "Executive"}
 def test_partner_sees_all_matches(monkeypatch):
     c = _client(PARTNER, monkeypatch, None)  # None ⇒ firm-wide
     r = c.get("/api/search?q=Mehta").json()
-    ids = {x["id"] for x in r["data"]["results"]}
-    assert ids == {"C1", "C2"}
+    # Search now spans multiple entity types (H12); this test asserts client
+    # discoverability specifically — a firm-wide Partner sees BOTH matching clients.
+    client_ids = {x["id"] for x in r["data"]["results"] if x["category"] == "clients"}
+    assert client_ids == {"C1", "C2"}
 
 
 def test_executive_only_sees_assigned(monkeypatch):

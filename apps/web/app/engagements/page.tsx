@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Plus,
   X,
@@ -155,9 +156,11 @@ interface CreateEngagementModalProps {
   onClose: () => void;
   templates: EngagementTemplate[];
   onCreated: (letter: EngagementLetter) => void;
+  initialLeadId?: string | null;
+  initialName?: string | null;
 }
 
-function CreateEngagementModal({ open, onClose, templates, onCreated }: CreateEngagementModalProps) {
+function CreateEngagementModal({ open, onClose, templates, onCreated, initialLeadId, initialName }: CreateEngagementModalProps) {
   const [form, setForm] = useState({
     title: "",
     template_id: "",
@@ -172,10 +175,10 @@ function CreateEngagementModal({ open, onClose, templates, onCreated }: CreateEn
 
   useEffect(() => {
     if (open) {
-      setForm({ title: "", template_id: "", recipient_name: "", fee_rupees: "", recipient_email: "", start_date: "", expiry_date: "" });
+      setForm({ title: "", template_id: "", recipient_name: initialName ?? "", fee_rupees: "", recipient_email: "", start_date: "", expiry_date: "" });
       setErr(null);
     }
-  }, [open]);
+  }, [open, initialName]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -192,6 +195,8 @@ function CreateEngagementModal({ open, onClose, templates, onCreated }: CreateEn
           recipient_email: form.recipient_email.trim() || null,
           start_date: form.start_date || null,
           expiry_date: form.expiry_date || null,
+          // Carry the originating lead so the engagement is linked for lead conversion (H16)
+          lead_id: initialLeadId || undefined,
         }),
       });
       if (!json.success) throw new Error(json.error ?? "Failed to create engagement");
@@ -697,7 +702,9 @@ function DetailModal({ letter, onClose, onUpdated }: DetailModalProps) {
 // Main page
 // ---------------------------------------------------------------------------
 
-export default function EngagementsPage() {
+function EngagementsPageInner() {
+  const searchParams = useSearchParams();
+
   const [letters, setLetters] = useState<EngagementLetter[]>([]);
   const [templates, setTemplates] = useState<EngagementTemplate[]>([]);
   const [activeTab, setActiveTab] = useState<ActiveTab>("all");
@@ -709,6 +716,22 @@ export default function EngagementsPage() {
   const [showCreateTemplate, setShowCreateTemplate] = useState(false);
   const [editTemplate, setEditTemplate] = useState<EngagementTemplate | null>(null);
   const [detailLetter, setDetailLetter] = useState<EngagementLetter | null>(null);
+
+  // Incoming lead context (from pipeline "Create Engagement" — H16). Prefills + links the new engagement.
+  const [incomingLeadId, setIncomingLeadId] = useState<string | null>(null);
+  const [incomingName, setIncomingName] = useState<string | null>(null);
+
+  // On mount, read lead context from query params and auto-open the create modal.
+  useEffect(() => {
+    const leadId = searchParams.get("lead_id");
+    const name = searchParams.get("name");
+    const isNew = searchParams.get("new") === "1";
+    if (isNew || leadId) {
+      setIncomingLeadId(leadId);
+      setIncomingName(name);
+      setShowCreateEngagement(true);
+    }
+  }, [searchParams]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -1023,8 +1046,14 @@ export default function EngagementsPage() {
       {/* Modals */}
       <CreateEngagementModal
         open={showCreateEngagement}
-        onClose={() => setShowCreateEngagement(false)}
+        onClose={() => {
+          setShowCreateEngagement(false);
+          setIncomingLeadId(null);
+          setIncomingName(null);
+        }}
         templates={templates}
+        initialLeadId={incomingLeadId}
+        initialName={incomingName}
         onCreated={(letter) => {
           setLetters((prev) => [letter, ...prev]);
         }}
@@ -1056,5 +1085,22 @@ export default function EngagementsPage() {
         }}
       />
     </div>
+  );
+}
+
+// useSearchParams() must be inside a Suspense boundary or `next build` fails with
+// "useSearchParams() should be wrapped in a suspense boundary" (App Router static rendering).
+export default function EngagementsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8] gap-2">
+          <Loader2 size={16} className="animate-spin" />
+          Loading…
+        </div>
+      }
+    >
+      <EngagementsPageInner />
+    </Suspense>
   );
 }

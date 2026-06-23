@@ -25,12 +25,24 @@ def _db():
     return get_supabase()
 
 
+def _in_scope(eff, client_id) -> bool:
+    """Assignment-scope gate. eff is None ⇒ firm-wide (no extra filter).
+    Entities without a client association (client_id falsy) are always included
+    for firm staff — they are firm-level resources, not client-scoped."""
+    if eff is None:
+        return True
+    if not client_id:
+        return True
+    return str(client_id) in eff
+
+
 @router.get("")
 def global_search(
     q: str = Query("", description="Search query (min 2 chars)"),
     current_user: dict = Depends(rbac("client", "read")),
 ):
-    """Authorization-scoped search across clients, accounts and journals."""
+    """Authorization-scoped search across clients, accounts, journals, leads,
+    engagements, tasks, documents and DSC records."""
     query = (q or "").strip()
     if len(query) < 2:
         return api_response(True, {"results": []})
@@ -94,5 +106,144 @@ def global_search(
                 })
         except Exception:
             pass
+
+    # ── Leads (pipeline) — firm-scoped; assignment-scoped via converted client ──
+    try:
+        leads: list[dict] = []
+        if _USE_MOCK or not firm_id:
+            from routers.lifecycle import _MOCK_LEADS
+            leads = [l for l in _MOCK_LEADS if l.get("firm_id") == firm_id]
+        else:
+            like = f"%{query}%"
+            lr = (_db().table("leads")
+                  .select("id, company_name, contact_name, email, phone, stage, converted_client_id")
+                  .eq("firm_id", firm_id)
+                  .or_(f"company_name.ilike.{like},contact_name.ilike.{like},"
+                       f"email.ilike.{like},phone.ilike.{like}")
+                  .limit(8).execute())
+            leads = lr.data or []
+        count = 0
+        for l in leads:
+            if not _in_scope(eff, l.get("converted_client_id")):
+                continue
+            hay = " ".join(str(l.get(k, "")) for k in
+                           ("company_name", "contact_name", "email", "phone")).lower()
+            if ql in hay:
+                results.append({
+                    "id": l.get("id"),
+                    "category": "leads",
+                    "title": l.get("company_name") or l.get("contact_name") or "—",
+                    "subtitle": l.get("stage") or l.get("email") or "",
+                    "href": "/pipeline",
+                })
+                count += 1
+            if count >= 8:
+                break
+    except Exception:
+        pass
+
+    # ── Engagement letters — firm-scoped (no per-client assignment column) ──────
+    try:
+        engagements: list[dict] = []
+        if _USE_MOCK or not firm_id:
+            from routers.engagement_letters import _MOCK_ENGAGEMENTS
+            engagements = [e for e in _MOCK_ENGAGEMENTS if e.get("firm_id") == firm_id]
+        else:
+            like = f"%{query}%"
+            er = (_db().table("engagements")
+                  .select("id, title, engagement_number, recipient_name, status, client_id")
+                  .eq("firm_id", firm_id)
+                  .or_(f"title.ilike.{like},engagement_number.ilike.{like},"
+                       f"recipient_name.ilike.{like}")
+                  .limit(8).execute())
+            engagements = er.data or []
+        count = 0
+        for e in engagements:
+            if not _in_scope(eff, e.get("client_id")):
+                continue
+            hay = " ".join(str(e.get(k, "")) for k in
+                           ("title", "engagement_number", "recipient_name")).lower()
+            if ql in hay:
+                num = e.get("engagement_number") or ""
+                status = e.get("status") or ""
+                subtitle = f"{status} · {num}".strip(" ·") if (status or num) else ""
+                results.append({
+                    "id": e.get("id"),
+                    "category": "engagements",
+                    "title": e.get("title") or num or "—",
+                    "subtitle": subtitle,
+                    "href": "/engagements",
+                })
+                count += 1
+            if count >= 8:
+                break
+    except Exception:
+        pass
+
+    # ── Tasks — firm-scoped via repo; assignment-scoped on client_id ───────────
+    try:
+        from repositories.task_repository import task_repo
+        count = 0
+        for t in task_repo.find_all(firm_id=firm_id):
+            if not _in_scope(eff, t.get("client_id")):
+                continue
+            hay = " ".join(str(t.get(k, "")) for k in ("title", "description")).lower()
+            if ql in hay:
+                results.append({
+                    "id": t.get("id"),
+                    "category": "tasks",
+                    "title": t.get("title") or "—",
+                    "subtitle": t.get("status") or "",
+                    "href": "/work",
+                })
+                count += 1
+            if count >= 8:
+                break
+    except Exception:
+        pass
+
+    # ── Documents — firm-scoped via repo; assignment-scoped on client_id ───────
+    try:
+        from repositories.document_repository import document_repo
+        count = 0
+        for d in document_repo.find_all(firm_id=firm_id):
+            if not _in_scope(eff, d.get("client_id")):
+                continue
+            hay = " ".join(str(d.get(k, "")) for k in ("file_name", "document_type")).lower()
+            if ql in hay:
+                results.append({
+                    "id": d.get("id"),
+                    "category": "documents",
+                    "title": d.get("file_name") or "—",
+                    "subtitle": d.get("document_type") or "",
+                    "href": "/documents",
+                })
+                count += 1
+            if count >= 8:
+                break
+    except Exception:
+        pass
+
+    # ── DSC records — firm-level (no client association) ────────────────────────
+    # Lazily imported & try/excepted so search still works if the repo is absent.
+    try:
+        from repositories.dsc_repository import dsc_repo
+        count = 0
+        for s in dsc_repo.find_all(firm_id=firm_id):
+            hay = " ".join(str(s.get(k, "")) for k in ("holder_name", "pan")).lower()
+            if ql in hay:
+                expiry = s.get("expiry_date") or ""
+                results.append({
+                    "id": s.get("id"),
+                    "category": "dsc",
+                    "title": s.get("holder_name") or "—",
+                    "subtitle": f"DSC · expires {expiry}".rstrip(" ") if expiry else "DSC",
+                    "href": "/settings/dsc-tracker",
+                })
+                count += 1
+            if count >= 8:
+                break
+    except Exception:
+        pass
 
     return api_response(True, {"results": results})

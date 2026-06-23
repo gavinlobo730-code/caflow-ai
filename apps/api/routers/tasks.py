@@ -8,6 +8,7 @@ from repositories.task_repository import task_repo
 from repositories.client_repository import client_repo
 from services.task_service import is_valid_transition, group_tasks_by_status
 from services.activity_service import log_activity
+from services.audit_service import log_event
 from datetime import datetime, timezone
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -98,6 +99,24 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
         entity_type="task",
         entity_id=task["id"],
     )
+    # H10: immutable audit_log records (log_activity above is a no-op stub).
+    try:
+        log_event(
+            current_user.get("firm_id"), "task", task["id"], "create",
+            actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            new_data={"title": task["title"], "status": task.get("status"),
+                      "assigned_to": body.assigned_to},
+        )
+        if body.assigned_to:
+            log_event(
+                current_user.get("firm_id"), "task", task["id"], "assign",
+                actor_id=current_user.get("auth_user_id"),
+                actor_email=current_user.get("email"),
+                new_data={"assigned_to": body.assigned_to},
+            )
+    except Exception:
+        pass
     try:
         from repositories.task_extras_repository import task_extras_repo
         task_extras_repo.log_event(
@@ -199,6 +218,40 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
                 old_value={"priority": task.get("priority")},
                 new_value={"priority": updates["priority"]},
             )
+    except Exception:
+        pass
+
+    # H10: immutable audit_log records for assignment + completion transitions
+    # (the task_extras_repo events above write task_timeline_events, a different store).
+    try:
+        old_status = task.get("status")
+        old_assignee = task.get("assigned_to")
+        if "assigned_to" in updates and updates["assigned_to"] != old_assignee:
+            action = "reassign" if old_assignee else "assign"
+            log_event(
+                firm_id, "task", task_id, action,
+                actor_id=current_user.get("auth_user_id"),
+                actor_email=current_user.get("email"),
+                old_data={"assigned_to": old_assignee},
+                new_data={"assigned_to": updates["assigned_to"]},
+            )
+        if "status" in updates and updates["status"] != old_status:
+            if updates["status"] == "completed":
+                log_event(
+                    firm_id, "task", task_id, "complete",
+                    actor_id=current_user.get("auth_user_id"),
+                    actor_email=current_user.get("email"),
+                    old_data={"status": old_status},
+                    new_data={"status": updates["status"]},
+                )
+            elif old_status == "completed":
+                log_event(
+                    firm_id, "task", task_id, "reopen",
+                    actor_id=current_user.get("auth_user_id"),
+                    actor_email=current_user.get("email"),
+                    old_data={"status": old_status},
+                    new_data={"status": updates["status"]},
+                )
     except Exception:
         pass
 

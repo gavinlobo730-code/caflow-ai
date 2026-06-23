@@ -15,6 +15,18 @@ def _get_db():
 
 
 class ClientRepository(BaseRepository[dict]):
+    """
+    Authoritative client lifecycle model.
+
+    A client is LIVE when deleted_at IS NULL. It is ARCHIVED when
+    status='archived'. The is_archived/is_deleted booleans are derived MIRRORS
+    kept in sync by archive()/restore()/soft_delete() for index support;
+    status + deleted_at are the read-canonical fields.
+
+    All read paths (find_all/find_by_id/find_by_pan/find_by_gstin) filter on the
+    canonical fields (deleted_at IS NULL, status != 'archived') — never on the
+    mirror booleans. The mirrors exist only to back partial indexes.
+    """
 
     def find_by_id(self, id: str, firm_id: Optional[str] = None) -> Optional[dict]:
         # firm_id is an optional defense-in-depth scope. Callers SHOULD pass it
@@ -127,7 +139,9 @@ class ClientRepository(BaseRepository[dict]):
             "archived_by": actor_id,
         })
 
-    def restore(self, id: str) -> Optional[dict]:
+    def restore(self, id: str, actor_id: Optional[str] = None) -> Optional[dict]:
+        # actor_id is accepted for audit symmetry with archive()/soft_delete()
+        # even though restore stores no actor column (it clears archived_by).
         return self.update(id, {
             "status": "active",
             "is_archived": False,
