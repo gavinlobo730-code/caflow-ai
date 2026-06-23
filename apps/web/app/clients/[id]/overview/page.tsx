@@ -44,7 +44,7 @@ export default function OverviewPage() {
       try {
         const [c, t, firmId] = await Promise.all([
           getClient(clientId),
-          getTasks(clientId).catch(() => [] as Task[]),
+          getTasks({ clientId, limit: 50 }).catch(() => [] as Task[]),
           getFirmId().catch(() => null),
         ]);
         if (cancelled) return;

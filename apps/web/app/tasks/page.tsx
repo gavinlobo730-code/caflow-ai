@@ -429,7 +429,7 @@ export default function TasksPage() {
     setError(null);
     try {
       const [taskList, clientList, memberList] = await Promise.all([
-        getTasks(),
+        getTasks({ limit: 200 }),
         getClients(),
         getTeamMembers().catch(() => [] as FirmUser[]),
       ]);
