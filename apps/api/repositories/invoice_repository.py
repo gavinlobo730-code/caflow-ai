@@ -128,12 +128,12 @@ class InvoiceRepository(BaseRepository[dict]):
 
     def generate_next_invoice_number(self, firm_id: str, current_date: Optional[str] = None) -> str:
         """
-        Generate next invoice number: CF-{fiscal_year}-{sequential}
-        Example: CF-2025-001
+        Generate next invoice number using firm's invoice_settings (migration 126).
+        Falls back to CF-{fiscal_year}-{seq:03d} when no settings exist.
 
-        Fiscal year in India runs April 1 to March 31.
-        Uses atomic DB sequence (next_invoice_number function) in production
-        to prevent duplicate invoice numbers under concurrent requests.
+        Indian fiscal year runs April 1 to March 31 (Finance Act).
+        Atomic DB sequence (next_invoice_number RPC, migration 124) prevents
+        duplicate invoice numbers under concurrent requests.
         """
         if current_date is None:
             current_date = datetime.now(timezone.utc).isoformat()
@@ -141,24 +141,42 @@ class InvoiceRepository(BaseRepository[dict]):
         date_obj = datetime.fromisoformat(current_date.replace('Z', '+00:00'))
         fiscal_year = date_obj.year - 1 if date_obj.month < 4 else date_obj.year
 
+        # Load firm's invoice settings for prefix / FY / sequence length
+        prefix = "CF"
+        include_fy = True
+        seq_length = 3
+        try:
+            from repositories.branding_repository import branding_repo
+            settings = branding_repo.get_invoice_settings(firm_id)
+            if settings:
+                prefix = (settings.get("prefix") or "CF").strip() or "CF"
+                include_fy = bool(settings.get("include_financial_year", True))
+                seq_length = max(3, min(6, int(settings.get("sequence_length", 3))))
+        except Exception:
+            pass  # Non-fatal — fall back to defaults
+
+        def _format(seq: int) -> str:
+            fy_part = f"-{fiscal_year}" if include_fy else ""
+            return f"{prefix}{fy_part}-{seq:0{seq_length}d}"
+
         if _USE_MOCK:
             invoices = self.find_all(firm_id=firm_id)
             max_seq = 0
             for inv in invoices:
                 inv_no = inv.get("invoice_no", "")
                 if inv_no:
+                    # Extract last numeric segment regardless of prefix
                     parts = inv_no.split("-")
-                    if len(parts) == 3:
-                        try:
-                            max_seq = max(max_seq, int(parts[2]))
-                        except ValueError:
-                            pass
-            return f"CF-{fiscal_year}-{max_seq + 1:03d}"
+                    try:
+                        max_seq = max(max_seq, int(parts[-1]))
+                    except (ValueError, IndexError):
+                        pass
+            return _format(max_seq + 1)
 
         # Atomic DB sequence — prevents race conditions under concurrent invoice generation
         result = _get_db().rpc("next_invoice_number", {"p_firm_id": firm_id}).execute()
         next_seq = result.data if isinstance(result.data, int) else 1
-        return f"CF-{fiscal_year}-{next_seq:03d}"
+        return _format(next_seq)
 
     def soft_delete(self, id: str) -> bool:
         if _USE_MOCK:
