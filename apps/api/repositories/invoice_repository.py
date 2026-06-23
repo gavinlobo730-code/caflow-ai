@@ -20,8 +20,8 @@ class InvoiceRepository(BaseRepository[dict]):
     def find_by_id(self, id: str) -> Optional[dict]:
         if _USE_MOCK:
             inv = INVOICE_INDEX.get(id)
-            return inv if inv else None
-        result = _get_db().table("fee_invoices").select("*").eq("id", id).maybe_single().execute()
+            return inv if inv and not inv.get("is_deleted") else None
+        result = _get_db().table("fee_invoices").select("*").eq("id", id).eq("is_deleted", False).maybe_single().execute()
         return result.data
 
     def find_all(

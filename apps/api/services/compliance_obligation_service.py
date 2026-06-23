@@ -370,9 +370,10 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) 
                                   rec.get("approver_id"), rec.get("assigned_to")) if r}
         for uid in recipients:
             notifications_repo.create({
-                "firm_id": firm_id, "user_id": uid, "type": "compliance_escalation",
+                "firm_id": firm_id, "user_id": uid, "type": "compliance_due",
                 "title": f"Compliance {label}: {rec.get('obligation_type', '')}",
                 "body": f"{rec.get('period_label', '')} due {str(rec.get('due_date'))[:10]}",
+                "severity": "critical" if tier in ("overdue", "due_1") else "high",
                 "metadata": {"compliance_record_id": rec.get("id"), "tier": tier},
             })
     except Exception:  # pragma: no cover - notifications are best-effort
