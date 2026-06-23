@@ -261,9 +261,9 @@ def create_invoice_template(body: InvoiceTemplateCreate, current_user: dict = De
         **body.model_dump(),
         "name": name,
     }
-    # If this is marked as default, clear existing default first
+    # If this is marked as default, clear existing default before inserting
     if body.is_default:
-        branding_repo.set_default_template(firm_id, "__NONE__")  # clears all
+        branding_repo.clear_default_templates(firm_id)
 
     template = branding_repo.create_invoice_template(data)
     _audit(firm_id, template["id"], "create", current_user, new_data=data)

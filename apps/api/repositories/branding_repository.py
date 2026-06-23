@@ -148,6 +148,15 @@ class BrandingRepository(BaseRepository[dict]):
         r = _svc().table("invoice_templates").update({"is_default": True, "updated_at": self.now_iso()}).eq("id", template_id).eq("firm_id", firm_id).execute()
         return bool(r.data)
 
+    def clear_default_templates(self, firm_id: str) -> None:
+        """Clear is_default on all templates for the firm (pre-insert step when creating a new default)."""
+        if _USE_MOCK:
+            for t in _MOCK_INVOICE_TEMPLATES:
+                if t["firm_id"] == firm_id:
+                    t["is_default"] = False
+            return
+        _svc().table("invoice_templates").update({"is_default": False}).eq("firm_id", firm_id).eq("is_default", True).execute()
+
     def delete_invoice_template(self, template_id: str) -> bool:
         if _USE_MOCK:
             before = len(_MOCK_INVOICE_TEMPLATES)
@@ -191,12 +200,39 @@ class BrandingRepository(BaseRepository[dict]):
             }
             _MOCK_EMAIL_TEMPLATES.append(record)
             return record
-        # Upsert on (firm_id, template_type) — unique constraint exists when is_active=true
-        # Use service role to bypass RLS for this write
-        r = _svc().table("email_templates").upsert(
-            {"firm_id": firm_id, "template_type": template_type, **data, "updated_at": self.now_iso()},
-            on_conflict="firm_id,template_type",
-        ).execute()
+        # Partial unique index (WHERE is_active=true) cannot be used with ON CONFLICT.
+        # Look up existing active record first, then update or insert.
+        existing_r = (
+            _svc()
+            .table("email_templates")
+            .select("id")
+            .eq("firm_id", firm_id)
+            .eq("template_type", template_type)
+            .eq("is_active", True)
+            .maybe_single()
+            .execute()
+        )
+        if existing_r.data:
+            r = (
+                _svc()
+                .table("email_templates")
+                .update({**data, "updated_at": self.now_iso()})
+                .eq("id", existing_r.data["id"])
+                .execute()
+            )
+            return r.data[0]
+        r = (
+            _svc()
+            .table("email_templates")
+            .insert({
+                "firm_id": firm_id,
+                "template_type": template_type,
+                **data,
+                "created_at": self.now_iso(),
+                "updated_at": self.now_iso(),
+            })
+            .execute()
+        )
         return r.data[0]
 
     def update_email_template(self, template_id: str, data: dict) -> Optional[dict]:
