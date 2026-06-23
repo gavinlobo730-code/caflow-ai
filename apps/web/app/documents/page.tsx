@@ -59,8 +59,31 @@ const FINANCIAL_YEARS = ["2023-24", "2024-25", "2025-26"] as const;
 type FinancialYear = (typeof FINANCIAL_YEARS)[number];
 
 const STORAGE_BUCKET = "Documents";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+async function apiFetch(path: string, opts?: RequestInit) {
+  const { data: { session } } = await getSupabaseClient().auth.getSession();
+  const token = session?.access_token ?? "";
+  const res = await fetch(`${API}${path}`, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(opts?.headers ?? {}),
+    },
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = await res.json() as { error?: string; detail?: string };
+      detail = body.error ?? body.detail ?? detail;
+    } catch { /* not JSON */ }
+    throw new Error(detail);
+  }
+  return res.json();
+}
 
 async function getFirmId(): Promise<string> {
   const sb = getSupabaseClient();
@@ -378,15 +401,10 @@ export default function DocumentsPage() {
   }, []);
 
   async function handleDelete(doc: Document) {
-    if (!confirm(`Delete "${doc.file_name}"? This cannot be undone.`)) return;
+    if (!confirm(`Delete "${doc.file_name}"?`)) return;
     setDeleting(doc.id);
     try {
-      const sb = getSupabaseClient();
-      // Remove from storage
-      await sb.storage.from(doc.storage_bucket).remove([doc.storage_path]);
-      // Remove DB record
-      const { error } = await sb.from("documents").delete().eq("id", doc.id);
-      if (error) throw new Error(error.message);
+      await apiFetch(`/api/documents/${doc.id}`, { method: "DELETE" });
       setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
     } catch (err) {
       alert(err instanceof Error ? err.message : "Delete failed");

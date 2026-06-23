@@ -77,6 +77,12 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
     client = client_repo.find_by_id(body.client_id, current_user.get("firm_id"))
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
+    # C4: verify assignee belongs to the same firm before creating the task.
+    if body.assigned_to:
+        from repositories.user_repository import user_repo
+        assignee = user_repo.find_by_id(body.assigned_to)
+        if not assignee or assignee.get("firm_id") != current_user.get("firm_id"):
+            raise HTTPException(status_code=422, detail="Assignee not found in this firm")
     now = datetime.now(timezone.utc).isoformat()
     task = task_repo.create({
         **body.model_dump(),
@@ -138,6 +144,13 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
         raise HTTPException(status_code=404, detail="Task not found")
 
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
+
+    # C4: verify assignee belongs to the same firm before applying the update.
+    if "assigned_to" in updates and updates["assigned_to"] is not None:
+        from repositories.user_repository import user_repo
+        assignee = user_repo.find_by_id(updates["assigned_to"])
+        if not assignee or assignee.get("firm_id") != firm_id:
+            raise HTTPException(status_code=422, detail="Assignee not found in this firm")
 
     if "status" in updates:
         if not is_valid_transition(task["status"], updates["status"]):

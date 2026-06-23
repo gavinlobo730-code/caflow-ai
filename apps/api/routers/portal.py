@@ -40,7 +40,6 @@ def _now() -> str:
 # ── Pydantic request models ───────────────────────────────────────────────────
 
 class CreateDocRequestBody(BaseModel):
-    firm_id: str
     client_id: str
     title: str
     description: Optional[str] = None
@@ -49,7 +48,6 @@ class CreateDocRequestBody(BaseModel):
 
 
 class SendMessageBody(BaseModel):
-    firm_id: str
     client_id: str
     text: str
     from_ca: bool = True
@@ -59,11 +57,11 @@ class SendMessageBody(BaseModel):
 
 @router.get("/document-requests")
 def list_document_requests(
-    firm_id: str = Query(...),
     client_id: str = Query(...),
     current_user: dict = Depends(rbac("portal", "read")),
 ):
     """List all document requests for a client."""
+    firm_id = current_user["firm_id"]
     db = _db()
     if db is None:
         rows = portal_svc.list_document_requests(firm_id, client_id)
@@ -86,10 +84,11 @@ def create_document_request(
     current_user: dict = Depends(rbac("portal", "write")),
 ):
     """Create a new document request from CA to client."""
+    firm_id = current_user["firm_id"]
     db = _db()
     if db is None:
         record = portal_svc.create_document_request(
-            firm_id=body.firm_id,
+            firm_id=firm_id,
             client_id=body.client_id,
             title=body.title,
             description=body.description,
@@ -101,7 +100,7 @@ def create_document_request(
     now = _now()
     record = {
         "id": str(uuid.uuid4()),
-        "firm_id": body.firm_id,
+        "firm_id": firm_id,
         "client_id": body.client_id,
         "title": body.title,
         "description": body.description,
@@ -122,6 +121,7 @@ def complete_document_request(
     current_user: dict = Depends(rbac("portal", "write")),
 ):
     """Mark a document request as fulfilled."""
+    firm_id = current_user["firm_id"]
     db = _db()
     now = _now()
 
@@ -129,7 +129,21 @@ def complete_document_request(
         updated = portal_svc.complete_document_request(request_id)
         if updated is None:
             return api_response(False, None, "Document request not found")
+        if updated.get("firm_id") and updated["firm_id"] != firm_id:
+            return api_response(False, None, "Document request not found")
         return api_response(True, updated)
+
+    fetch_res = (
+        db.table("document_requests")
+        .select("id, firm_id")
+        .eq("id", request_id)
+        .execute()
+    )
+    if not fetch_res.data:
+        return api_response(False, None, "Document request not found")
+    existing = fetch_res.data[0]
+    if existing.get("firm_id") != firm_id:
+        return api_response(False, None, "Document request not found")
 
     res = (
         db.table("document_requests")
@@ -144,11 +158,11 @@ def complete_document_request(
 
 @router.get("/messages")
 def list_messages(
-    firm_id: str = Query(...),
     client_id: str = Query(...),
     current_user: dict = Depends(rbac("portal", "read")),
 ):
     """List all portal messages for a client (CA → client broadcasts)."""
+    firm_id = current_user["firm_id"]
     db = _db()
     if db is None:
         rows = portal_svc.list_messages(firm_id, client_id)
@@ -171,10 +185,11 @@ def send_message(
     current_user: dict = Depends(rbac("portal", "write")),
 ):
     """Send a portal message from CA to client."""
+    firm_id = current_user["firm_id"]
     db = _db()
     if db is None:
         record = portal_svc.send_message(
-            firm_id=body.firm_id,
+            firm_id=firm_id,
             client_id=body.client_id,
             text=body.text,
             from_ca=body.from_ca,
@@ -184,7 +199,7 @@ def send_message(
     now = _now()
     record = {
         "id": str(uuid.uuid4()),
-        "firm_id": body.firm_id,
+        "firm_id": firm_id,
         "client_id": body.client_id,
         "text": body.text,
         "from_ca": body.from_ca,
@@ -199,7 +214,6 @@ def send_message(
 
 @router.get("/dues")
 def get_dues(
-    firm_id: str = Query(...),
     client_id: str = Query(...),
     current_user: dict = Depends(rbac("portal", "read")),
 ):
@@ -212,4 +226,5 @@ def get_dues(
     retired here. The portal client-facing equivalent is GET /api/portal/self/dues.
     All amounts are in integer paise — never float.
     """
+    firm_id = current_user["firm_id"]
     return api_response(True, portal_data_service.dues(firm_id, client_id, db=_db()))

@@ -599,7 +599,7 @@ function DetailModal({ letter, onClose, onUpdated }: DetailModalProps) {
                 className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
                 {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
-                Generate PDF
+                Mark as Generated
               </button>
             )}
 
@@ -610,7 +610,7 @@ function DetailModal({ letter, onClose, onUpdated }: DetailModalProps) {
                 className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
                 {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-                Send to Client
+                Mark as Sent
               </button>
             )}
 
@@ -979,7 +979,7 @@ export default function EngagementsPage() {
                               className="flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
                             >
                               <FileText size={11} />
-                              Generate
+                              Mark Generated
                             </button>
                           )}
                           {letter.status === "Generated" && (
@@ -988,7 +988,7 @@ export default function EngagementsPage() {
                               className="flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
                             >
                               <Send size={11} />
-                              Send
+                              Mark Sent
                             </button>
                           )}
                           {(letter.status === "Sent" || letter.status === "Viewed") && (

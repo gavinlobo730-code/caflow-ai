@@ -32,7 +32,7 @@ const DSC_TYPES = ["Class 2", "Class 3"];
 const DSC_PURPOSES = ["GST", "MCA", "Income Tax", "All"];
 const ISSUING_CAS = ["eMudhra", "NSDL e-Governance", "Sify Technologies", "CDAC", "MTNL TrustLine"];
 
-const TODAY = new Date("2026-06-02");
+const TODAY = new Date();
 
 function getDaysRemaining(expiryDate: string): number {
   return Math.ceil((new Date(expiryDate).getTime() - TODAY.getTime()) / 86400000);

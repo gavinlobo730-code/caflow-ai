@@ -131,7 +131,7 @@ def ensure_customer_link(firm_id: str, practice_client_id: str, internal_client_
         return cust_id
     except Exception as e:  # unique(firm_id, client_id) race — another link won
         _logger.warning("customer-link race for client %s: %s", practice_client_id, e)
-        db.table("customers").delete().eq("id", cust_id).execute()
+        db.table("customers").update({"is_active": False}).eq("id", cust_id).execute()
         again = (
             db.table("client_firm_customer_links").select("internal_customer_id")
             .eq("firm_id", firm_id).eq("client_id", practice_client_id).limit(1).execute()
