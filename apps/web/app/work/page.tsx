@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   CheckSquare, Clock, AlertTriangle, CheckCircle2,
-  Calendar, Loader2, AlertCircle, ExternalLink, Activity,
+  Calendar, Loader2, AlertCircle, ExternalLink, Activity, InboxIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -97,14 +97,26 @@ function TaskRow({ task }: { task: Task }) {
 export default function WorkPage() {
   const [myTasks, setMyTasks] = useState<Task[]>([]);
   const [workload, setWorkload] = useState<TeamWorkload | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Two independent loading states: tasks controls the main spinner;
+  // workload controls only the Team Overview section at the bottom.
+  const [loadingTasks, setLoadingTasks] = useState(true);
+  const [loadingWorkload, setLoadingWorkload] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isManager, setIsManager] = useState(false);
   const [, setUserId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    setLoadingTasks(true);
+    setLoadingWorkload(true);
     setError(null);
+
+    // Fire workload fetch immediately — it runs in parallel with tasks+clients.
+    // It may 403 for non-managers, which is expected and handled silently.
+    const workloadPromise = getTeamWorkload()
+      .then((wl) => { setWorkload(wl); setIsManager(true); })
+      .catch(() => { setIsManager(false); })
+      .finally(() => setLoadingWorkload(false));
+
     try {
       const { data: { session } } = await getSupabaseClient().auth.getSession();
       const uid = session?.user?.id ?? null;
@@ -115,32 +127,27 @@ export default function WorkPage() {
         getClients().catch(() => [] as Client[]),
       ]);
 
-      const clientMap = new Map(clientList.map(c => [c.id, c.client_name]));
-      const enriched = taskList.map(t => ({
-        ...t,
-        client_name: clientMap.get(t.client_id) ?? t.client_name,
-      }));
+      // Only enrich with client names if we have tasks — avoids building the map
+      // from a full client list when the task list is empty.
+      const mine = taskList.length > 0 ? (() => {
+        const clientMap = new Map(clientList.map(c => [c.id, c.client_name]));
+        const enriched = taskList.map(t => ({
+          ...t,
+          client_name: clientMap.get(t.client_id) ?? t.client_name,
+        }));
+        return enriched.filter(t =>
+          t.assigned_to === uid ||
+          t.assigned_to === session?.user?.email
+        );
+      })() : [];
 
-      // Filter to user's tasks (by assigned_to matching session user id or email)
-      const mine = enriched.filter(t =>
-        t.assigned_to === uid ||
-        t.assigned_to === session?.user?.email ||
-        t.assigned_to === session?.user?.user_metadata?.full_name
-      );
-      setMyTasks(mine.length > 0 ? mine : enriched.slice(0, 20));
-
-      // Try to load workload for managers
-      try {
-        const wl = await getTeamWorkload();
-        setWorkload(wl);
-        setIsManager(true);
-      } catch {
-        setIsManager(false);
-      }
+      setMyTasks(mine);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load tasks");
     } finally {
-      setLoading(false);
+      setLoadingTasks(false);
+      // workloadPromise continues in the background; its finally() handles loadingWorkload.
+      void workloadPromise;
     }
   }, []);
 
@@ -172,9 +179,25 @@ export default function WorkPage() {
         </div>
       )}
 
-      {loading ? (
+      {loadingTasks ? (
         <div className="flex items-center justify-center py-20 text-[#94A3B8]">
           <Loader2 className="animate-spin mr-2" size={18} /> Loading your work…
+        </div>
+      ) : myTasks.length === 0 ? (
+        // Immediate empty state — no tasks assigned to this user.
+        <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+          <div className="w-12 h-12 rounded-full bg-[#F1F5F9] flex items-center justify-center">
+            <InboxIcon size={20} className="text-[#94A3B8]" />
+          </div>
+          <div>
+            <p className="text-[14px] font-medium text-[#334155]">No tasks assigned to you</p>
+            <p className="text-[12px] text-[#94A3B8] mt-1">Tasks assigned to you will appear here.</p>
+          </div>
+          <Link href="/tasks">
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs mt-1">
+              <ExternalLink size={12} /> Browse All Tasks
+            </Button>
+          </Link>
         </div>
       ) : (
         <>
@@ -297,8 +320,8 @@ export default function WorkPage() {
             </Card>
           </div>
 
-          {/* Team Overview — managers only */}
-          {isManager && workload && (
+          {/* Team Overview — managers only; independent loading state */}
+          {loadingWorkload ? null : isManager && workload ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-[#334155] flex items-center gap-1.5">
@@ -339,7 +362,7 @@ export default function WorkPage() {
                 </Card>
               </div>
             </div>
-          )}
+          ) : null}
         </>
       )}
     </div>
