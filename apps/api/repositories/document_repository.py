@@ -31,6 +31,7 @@ class DocumentRepository(BaseRepository[dict]):
     ) -> list[dict]:
         if _USE_MOCK:
             docs = list(MOCK_DOCUMENTS)
+            docs = [d for d in docs if not d.get("deleted_at")]
             if client_id:
                 docs = [d for d in docs if d["client_id"] == client_id]
             if document_type:
@@ -39,7 +40,7 @@ class DocumentRepository(BaseRepository[dict]):
                 docs = [d for d in docs if d["review_status"] == review_status]
             return docs
 
-        query = _get_db().table("documents").select("*")
+        query = _get_db().table("documents").select("*").is_("deleted_at", None)
         if firm_id:
             query = query.eq("firm_id", firm_id)
         if client_id:
@@ -83,6 +84,20 @@ class DocumentRepository(BaseRepository[dict]):
             update_data["reviewed_by"] = reviewer_id
         result = _get_db().table("documents").update(update_data).eq("id", id).execute()
         return result.data[0] if result.data else None
+
+    def soft_delete(self, id: str, deleted_by: Optional[str] = None) -> bool:
+        if _USE_MOCK:
+            doc = self.find_by_id(id)
+            if not doc:
+                return False
+            doc["deleted_at"] = self.now_iso()
+            doc["deleted_by"] = deleted_by
+            return True
+        result = _get_db().table("documents").update({
+            "deleted_at": self.now_iso(),
+            "deleted_by": deleted_by,
+        }).eq("id", id).execute()
+        return bool(result.data)
 
     def update_storage_path(self, id: str, storage_path: str) -> Optional[dict]:
         """Persist Supabase Storage path after a successful upload."""

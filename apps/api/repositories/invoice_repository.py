@@ -36,6 +36,7 @@ class InvoiceRepository(BaseRepository[dict]):
     ) -> list[dict]:
         if _USE_MOCK:
             invoices = list(MOCK_INVOICES)
+            invoices = [i for i in invoices if not i.get("is_deleted")]
             if firm_id:
                 invoices = [i for i in invoices if i.get("firm_id") == firm_id]
             if client_id:
@@ -50,7 +51,7 @@ class InvoiceRepository(BaseRepository[dict]):
                 invoices = [i for i in invoices if i.get("invoice_date", "") <= date_to]
             return invoices
 
-        query = _get_db().table("fee_invoices").select("*")
+        query = _get_db().table("fee_invoices").select("*").eq("is_deleted", False)
         if firm_id:
             query = query.eq("firm_id", firm_id)
         if client_id:
@@ -116,11 +117,14 @@ class InvoiceRepository(BaseRepository[dict]):
             invoice = INVOICE_INDEX.get(id)
             if not invoice:
                 return False
-            MOCK_INVOICES.remove(invoice)
-            del INVOICE_INDEX[id]
+            invoice["is_deleted"] = True
+            invoice["deleted_at"] = self.now_iso()
             return True
-        result = _get_db().table("fee_invoices").delete().eq("id", id).execute()
-        return len(result.data) > 0
+        _get_db().table("fee_invoices").update({
+            "is_deleted": True,
+            "deleted_at": self.now_iso(),
+        }).eq("id", id).execute()
+        return True
 
     def generate_next_invoice_number(self, firm_id: str, current_date: Optional[str] = None) -> str:
         """
@@ -161,10 +165,12 @@ class InvoiceRepository(BaseRepository[dict]):
             invoice = INVOICE_INDEX.get(id)
             if not invoice:
                 return False
-            invoice["updated_at"] = self.now_iso()
+            invoice["is_deleted"] = True
+            invoice["deleted_at"] = self.now_iso()
             return True
         result = _get_db().table("fee_invoices").update({
-            "updated_at": self.now_iso(),
+            "is_deleted": True,
+            "deleted_at": self.now_iso(),
         }).eq("id", id).execute()
         return bool(result.data)
 

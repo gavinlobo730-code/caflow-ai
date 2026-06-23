@@ -1,5 +1,6 @@
 import os
 import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from models.common import api_response
 from repositories.document_repository import document_repo
@@ -163,6 +164,30 @@ def get_download_url(
     signed = sb.storage.from_(BUCKET).create_signed_url(doc["storage_path"], expires_in=3600)
     download_url = signed.get("signedURL") if isinstance(signed, dict) else None
     return api_response(True, {"download_url": download_url})
+
+
+@router.delete("/{doc_id}")
+def delete_document(
+    doc_id: str,
+    current_user: dict = Depends(rbac("document", "write")),
+):
+    """Soft-delete a document by setting deleted_at and deleted_by. The row is
+    kept for audit purposes — no hard deletes on document records."""
+    doc = document_repo.get_or_raise(doc_id)
+
+    if doc.get("firm_id") != current_user["firm_id"]:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    document_repo.soft_delete(doc_id, deleted_by=current_user.get("auth_user_id"))
+
+    log_activity(
+        action="document_deleted",
+        description=f"Document deleted: {doc.get('file_name', doc_id)}",
+        client_id=doc.get("client_id"),
+        entity_type="document",
+    )
+
+    return api_response(True, {"deleted": True})
 
 
 @router.post("/parse")

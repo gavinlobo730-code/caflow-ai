@@ -440,6 +440,14 @@ def convert_lead(
                 lead["converted_at"] = now
                 lead["converted_client_id"] = data.client_id
                 lead["updated_at"] = now
+                # Check mock engagement store
+                from routers.engagement_letters import _MOCK_ENGAGEMENTS
+                signed = [e for e in _MOCK_ENGAGEMENTS if e.get("lead_id") == lead_id and e.get("status") == "Signed"]
+                if not signed:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="A signed engagement letter is required before converting a lead to a client."
+                    )
                 timeline_service.log(
                     lead_id, "lifecycle", "Lead Converted",
                     "Lead converted to active client", "success",
@@ -451,6 +459,25 @@ def convert_lead(
     # Try to fetch lead from DB — if not found (e.g. localStorage lead), use request body data
     existing = db.table("leads").select("*").eq("id", lead_id).eq("firm_id", current_user["firm_id"]).limit(1).execute().data
     lead_in_db = bool(existing)
+
+    # C7: Require a signed engagement letter before allowing lead conversion.
+    # CGST Act Section 31 — service must be preceded by a documented engagement.
+    signed_engagements = (
+        db.table("engagements")
+        .select("id")
+        .eq("lead_id", lead_id)
+        .eq("firm_id", current_user["firm_id"])
+        .eq("status", "Signed")
+        .limit(1)
+        .execute()
+        .data
+    )
+    if not signed_engagements:
+        raise HTTPException(
+            status_code=409,
+            detail="A signed engagement letter is required before converting a lead to a client. "
+                   "Create and obtain a signed engagement letter first."
+        )
     if lead_in_db:
         existing = existing[0]
         if existing.get("is_converted"):
