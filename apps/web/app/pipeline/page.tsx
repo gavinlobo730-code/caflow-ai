@@ -234,16 +234,12 @@ function toApiBody(lead: Lead) {
 }
 
 async function apiLoadLeads(): Promise<Lead[]> {
-  try {
-    const json = await apiFetch("/api/lifecycle/leads?limit=200");
-    if (!json.success) return [];
-    // Drop soft-deleted rows on the raw stage string before mapping to Lead.
-    return (json.data as Record<string, unknown>[])
-      .filter((row) => row.stage !== "_deleted")
-      .map(fromApiLead);
-  } catch {
-    return [];
-  }
+  const json = await apiFetch("/api/lifecycle/leads?limit=200");
+  if (!json.success) throw new Error(json.error ?? "Failed to load leads");
+  // Drop soft-deleted rows on the raw stage string before mapping to Lead.
+  return (json.data as Record<string, unknown>[])
+    .filter((row) => row.stage !== "_deleted")
+    .map(fromApiLead);
 }
 
 async function apiCreateLead(lead: Lead): Promise<Lead> {
@@ -882,14 +878,22 @@ export default function PipelinePage() {
   const [editLead, setEditLead] = useState<Lead | null>(null);
   const [convertLead, setConvertLead] = useState<Lead | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Load from API on mount
   useEffect(() => {
     setLoading(true);
-    void apiLoadLeads().then((data) => {
-      setLeads(data);
-      setLoading(false);
-    });
+    setLoadError(null);
+    apiLoadLeads()
+      .then((data) => {
+        setLeads(data);
+      })
+      .catch((e) => {
+        setLoadError(e instanceof Error ? e.message : "Failed to load leads");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, []);
 
   async function handleSave(lead: Lead) {
@@ -1031,6 +1035,24 @@ export default function PipelinePage() {
           </div>
           <button
             onClick={() => setSaveError(null)}
+            className="text-red-400 hover:text-red-600 shrink-0"
+            aria-label="Dismiss"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Load error banner */}
+      {loadError && (
+        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+          <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+          <div className="flex-1 text-sm text-red-700">
+            <span className="font-semibold">Failed to load leads: </span>
+            {loadError}
+          </div>
+          <button
+            onClick={() => setLoadError(null)}
             className="text-red-400 hover:text-red-600 shrink-0"
             aria-label="Dismiss"
           >

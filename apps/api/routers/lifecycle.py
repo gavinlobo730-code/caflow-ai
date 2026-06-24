@@ -255,14 +255,27 @@ def list_leads(
 ):
     db = _db()
     if not db:
-        result = list(_MOCK_LEADS)
+        # Exclude soft-deleted and converted leads — only active pipeline leads.
+        result = [
+            l for l in _MOCK_LEADS
+            if l.get("stage") != "_deleted" and not l.get("is_converted")
+        ]
         if stage:
             result = [l for l in result if l.get("stage") == stage]
         if assigned_to:
             result = [l for l in result if l.get("assigned_to") == assigned_to]
         return api_response(True, result[offset: offset + limit])
 
-    q = db.table("leads").select("*").eq("firm_id", current_user["firm_id"])
+    # Exclude soft-deleted and converted leads at the query level so the pipeline
+    # only ever receives active leads. is_converted is nullable, so treat NULL as
+    # "not converted" (is.null OR is.false) to avoid hiding legitimate leads.
+    q = (
+        db.table("leads")
+        .select("*")
+        .eq("firm_id", current_user["firm_id"])
+        .neq("stage", "_deleted")
+        .or_("is_converted.is.null,is_converted.is.false")
+    )
     if stage:
         q = q.eq("stage", stage)
     if assigned_to:
