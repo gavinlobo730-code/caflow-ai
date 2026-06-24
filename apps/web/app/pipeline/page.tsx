@@ -14,9 +14,11 @@ import {
   ArrowRight,
   UserCheck,
   FileText,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { useToast } from "@/components/ui/use-toast";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -325,7 +327,7 @@ function formatDate(dateStr: string): string {
 interface ModalProps {
   open: boolean;
   onClose: () => void;
-  onSave: (lead: Lead) => void;
+  onSave: (lead: Lead) => Promise<void>;
   initial?: Lead | null;
 }
 
@@ -344,9 +346,13 @@ const EMPTY_FORM = {
 
 function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
   const [form, setForm] = useState(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
+      setErr(null);
+      setSaving(false);
       if (initial) {
         setForm({
           name: initial.name,
@@ -368,8 +374,9 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
     }
   }, [open, initial]);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (saving) return; // guard against duplicate submissions (double-click / Enter)
     const lead: Lead = {
       id: initial?.id ?? `lead_${Date.now()}`,
       name: form.name.trim(),
@@ -386,8 +393,19 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
       nextFollowUpDate: form.nextFollowUpDate,
       createdAt: initial?.createdAt ?? new Date().toISOString(),
     };
-    onSave(lead);
-    onClose();
+    setSaving(true);
+    setErr(null);
+    try {
+      // onSave resolves only once the lead actually persists, and throws on
+      // failure. We close on success; on failure we keep the modal open so the
+      // user sees the error and can retry without re-entering everything.
+      await onSave(lead);
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to save lead. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (!open) return null;
@@ -408,6 +426,17 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          {/* Inline error — shown in-place so the user sees it without the modal closing */}
+          {err && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-600"
+            >
+              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+              <span>{err}</span>
+            </div>
+          )}
+
           {/* Name */}
           <div>
             <label className="block text-xs font-medium text-[#334155] mb-1">
@@ -574,15 +603,24 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] transition-colors"
+              disabled={saving}
+              className="flex-1 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+              disabled={saving}
+              className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
-              {initial ? "Save Changes" : "Add Lead"}
+              {saving && <Loader2 size={14} className="animate-spin" />}
+              {saving
+                ? initial
+                  ? "Saving…"
+                  : "Creating Lead…"
+                : initial
+                  ? "Save Changes"
+                  : "Add Lead"}
             </button>
           </div>
         </form>
@@ -884,12 +922,12 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
 // ---------------------------------------------------------------------------
 
 export default function PipelinePage() {
+  const { toast } = useToast();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editLead, setEditLead] = useState<Lead | null>(null);
   const [convertLead, setConvertLead] = useState<Lead | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Load from API on mount
@@ -908,20 +946,18 @@ export default function PipelinePage() {
       });
   }, []);
 
+  // Throws on failure so AddLeadModal can keep itself open, surface the error
+  // inline and re-enable its button. On success we update state + toast.
   async function handleSave(lead: Lead) {
-    setSaveError(null);
-    try {
-      const isNew = !leads.find((l) => l.id === lead.id);
-      if (isNew) {
-        const created = await apiCreateLead(lead);
-        setLeads((prev) => [created, ...prev]);
-      } else {
-        const updated = await apiUpdateLead(lead);
-        setLeads((prev) => prev.map((l) => (l.id === lead.id ? updated : l)));
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to save lead";
-      setSaveError(msg);
+    const isNew = !leads.find((l) => l.id === lead.id);
+    if (isNew) {
+      const created = await apiCreateLead(lead);
+      setLeads((prev) => [created, ...prev]);
+      toast({ title: "Lead created", description: `${created.name} added to your pipeline.` });
+    } else {
+      const updated = await apiUpdateLead(lead);
+      setLeads((prev) => prev.map((l) => (l.id === lead.id ? updated : l)));
+      toast({ title: "Lead updated", description: `${updated.name} saved.` });
     }
   }
 
@@ -929,18 +965,34 @@ export default function PipelinePage() {
     const next = nextStage(lead.stage);
     if (!next) return;
     const updated = { ...lead, stage: next };
+    // Optimistic move — revert and tell the user if the write doesn't persist.
     setLeads((prev) => prev.map((l) => (l.id === lead.id ? updated : l)));
     try {
       await apiUpdateLead(updated);
-    } catch {
-      // Revert on error
+    } catch (e) {
       setLeads((prev) => prev.map((l) => (l.id === lead.id ? lead : l)));
+      toast({
+        variant: "destructive",
+        title: "Couldn't move lead",
+        description: e instanceof Error ? e.message : "Please try again.",
+      });
     }
   }
 
   async function handleDelete(id: string) {
+    // Optimistic remove — restore on failure so the UI never lies about state.
+    const snapshot = leads;
     setLeads((prev) => prev.filter((l) => l.id !== id));
-    await apiDeleteLead(id);
+    try {
+      await apiDeleteLead(id);
+    } catch (e) {
+      setLeads(snapshot);
+      toast({
+        variant: "destructive",
+        title: "Couldn't delete lead",
+        description: e instanceof Error ? e.message : "Please try again.",
+      });
+    }
   }
 
   function openAdd() {
@@ -1034,24 +1086,6 @@ export default function PipelinePage() {
             </span>{" "}
             {overdueLeads.map((l) => l.name).join(", ")}
           </div>
-        </div>
-      )}
-
-      {/* Save error banner */}
-      {saveError && (
-        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-          <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
-          <div className="flex-1 text-sm text-red-700">
-            <span className="font-semibold">Failed to save lead: </span>
-            {saveError}
-          </div>
-          <button
-            onClick={() => setSaveError(null)}
-            className="text-red-400 hover:text-red-600 shrink-0"
-            aria-label="Dismiss"
-          >
-            <X size={14} />
-          </button>
         </div>
       )}
 
