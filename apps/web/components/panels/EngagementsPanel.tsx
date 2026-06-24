@@ -1,7 +1,8 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   FileText,
   Edit3,
@@ -12,15 +13,17 @@ import {
 import { cn } from "@/lib/utils";
 
 const ENGAGEMENTS_ITEMS = [
-  { href: "/engagements", label: "All Engagements", icon: FileText },
-  { href: "/engagements?tab=draft", label: "Drafts", icon: Edit3 },
-  { href: "/engagements?tab=sent", label: "Awaiting Signature", icon: Send },
-  { href: "/engagements?tab=signed", label: "Signed", icon: CheckCircle },
-  { href: "/engagements?tab=templates", label: "Templates", icon: LayoutTemplate },
+  { href: "/engagements", label: "All Engagements", icon: FileText, tabParam: null },
+  { href: "/engagements?tab=draft", label: "Drafts", icon: Edit3, tabParam: "draft" },
+  { href: "/engagements?tab=sent", label: "Awaiting Signature", icon: Send, tabParam: "sent" },
+  { href: "/engagements?tab=signed", label: "Signed", icon: CheckCircle, tabParam: "signed" },
+  { href: "/engagements?tab=templates", label: "Templates", icon: LayoutTemplate, tabParam: "templates" },
 ];
 
-export function EngagementsPanel() {
+function EngagementsPanelInner() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activeTab = searchParams.get("tab"); // null when on /engagements with no param
 
   return (
     <div className="flex flex-col h-full">
@@ -38,11 +41,11 @@ export function EngagementsPanel() {
           Navigate
         </p>
         <div className="space-y-0.5">
-          {ENGAGEMENTS_ITEMS.map(({ href, label, icon: Icon }) => {
-            const isEngagementsRoot = href === "/engagements";
-            const active = isEngagementsRoot
-              ? pathname === "/engagements"
-              : pathname.startsWith("/engagements");
+          {ENGAGEMENTS_ITEMS.map(({ href, label, icon: Icon, tabParam }) => {
+            const active =
+              tabParam === null
+                ? pathname === "/engagements" && !activeTab // "All Engagements"
+                : activeTab === tabParam;                    // tab-specific items
             return (
               <Link
                 key={href}
@@ -78,5 +81,13 @@ export function EngagementsPanel() {
         </div>
       </nav>
     </div>
+  );
+}
+
+export function EngagementsPanel() {
+  return (
+    <Suspense fallback={<div className="flex flex-col h-full" />}>
+      <EngagementsPanelInner />
+    </Suspense>
   );
 }
