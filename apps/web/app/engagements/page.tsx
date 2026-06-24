@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
   X,
@@ -703,11 +703,31 @@ function DetailModal({ letter, onClose, onUpdated }: DetailModalProps) {
 // ---------------------------------------------------------------------------
 
 function EngagementsPageInner() {
+  const router = useRouter();
   const searchParams = useSearchParams();
+
+  // URL is the single source of truth for the active tab. The sidebar
+  // (EngagementsPanel) reads the same `?tab=` param, so the two never drift.
+  // An unknown or missing param resolves to "all". Deriving instead of
+  // storing makes deep-links, refresh and browser back/forward all work with
+  // no duplicated React state to keep in sync.
+  const tabParam = searchParams.get("tab");
+  const activeTab: ActiveTab =
+    tabParam === "draft" || tabParam === "sent" || tabParam === "signed" || tabParam === "templates"
+      ? tabParam
+      : "all";
+
+  // Switching tabs writes the URL (push so back/forward steps through tabs).
+  // "all" is the canonical no-param route.
+  const setActiveTab = useCallback(
+    (tab: ActiveTab) => {
+      router.push(tab === "all" ? "/engagements" : `/engagements?tab=${tab}`);
+    },
+    [router]
+  );
 
   const [letters, setLetters] = useState<EngagementLetter[]>([]);
   const [templates, setTemplates] = useState<EngagementTemplate[]>([]);
-  const [activeTab, setActiveTab] = useState<ActiveTab>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
