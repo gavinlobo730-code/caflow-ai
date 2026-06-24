@@ -278,6 +278,11 @@ app.include_router(platform_router)
 from routers.knowledge import router as knowledge_router
 app.include_router(knowledge_router, dependencies=_CLIENT_GUARD)
 
+# Firm Branding & Document Customization — firm-level settings (no client_id surface).
+# MFA guard applied: branding mutations are irreversible and firm-wide.
+from routers.branding import router as branding_router
+app.include_router(branding_router)
+
 
 # Phase 10B — Workflow Scheduler (daily jobs + workflow schedule runner)
 from jobs.scheduler import start_scheduler, run_due_schedules, log_scheduler_startup_health
