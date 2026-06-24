@@ -685,6 +685,50 @@ export const api = {
       >;
     },
   },
+  // Firm Branding & Document Customization
+  branding: {
+    get: () => request("/api/settings/branding"),
+    update: (body: unknown) =>
+      request("/api/settings/branding", { method: "PUT", body: JSON.stringify(body) }),
+    uploadLogo: async (file: File) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`${BASE_URL}/api/settings/branding/logo`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+      return res.json();
+    },
+  },
+  invoiceSettings: {
+    get: () => request("/api/settings/invoice-settings"),
+    update: (body: unknown) =>
+      request("/api/settings/invoice-settings", { method: "PUT", body: JSON.stringify(body) }),
+  },
+  invoiceTemplates: {
+    list: () => request("/api/settings/invoice-templates"),
+    create: (body: unknown) =>
+      request("/api/settings/invoice-templates", { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, body: unknown) =>
+      request(`/api/settings/invoice-templates/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    delete: (id: string) =>
+      request(`/api/settings/invoice-templates/${id}`, { method: "DELETE" }),
+    setDefault: (id: string) =>
+      request(`/api/settings/invoice-templates/${id}/set-default`, { method: "POST" }),
+  },
+  emailTemplates: {
+    list: () => request("/api/settings/email-templates"),
+    upsert: (body: unknown) =>
+      request("/api/settings/email-templates", { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, body: unknown) =>
+      request(`/api/settings/email-templates/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    delete: (id: string) =>
+      request(`/api/settings/email-templates/${id}`, { method: "DELETE" }),
+  },
   // M6: identity administration (audited, server-side; Partner-only writes).
   identity: {
     listUsers: () => request("/api/identity/users"),

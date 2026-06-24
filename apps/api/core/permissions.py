@@ -298,6 +298,13 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "read":    _AT_LEAST_MANAGER,
         "approve": _PARTNER_ONLY,
     },
+    # ── Firm Branding & Document Customization ────────────────────────────────
+    # Branding (logo, colors, invoice templates, email templates) affects all
+    # documents the firm sends to clients. Partner-only writes; Manager+ reads.
+    "branding": {
+        "read":  _AT_LEAST_MANAGER,
+        "write": _PARTNER_ONLY,
+    },
 }
 
 

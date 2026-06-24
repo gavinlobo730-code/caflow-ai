@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Building2, AlertTriangle, Calendar, LogOut, ShieldCheck, ChevronLeft, User } from "lucide-react";
+import { Building2, AlertTriangle, Calendar, LogOut, ShieldCheck, ChevronLeft, User, Palette, Hash, FileText, Mail } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useRouter } from "next/navigation";
@@ -604,6 +604,82 @@ export default function SettingsPage() {
           </Link>
         </div>
       </div>
+
+      {/* ── Firm Branding & Document Customization — Partner only ────────── */}
+      <RoleGuard allowed={["Partner"]} redirect={false}>
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+            <Palette size={15} className="text-violet-600" />
+            <h2 className="text-sm font-semibold text-[#0F172A]">Branding &amp; Document Customization</h2>
+          </div>
+
+          <div className="divide-y divide-[#F8FAFC]">
+            <div className="px-5 py-4 flex items-center justify-between">
+              <div className="flex items-start gap-3">
+                <Palette size={15} className="text-violet-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-[#0F172A]">Firm Branding</p>
+                  <p className="text-xs text-[#94A3B8] mt-0.5">Logo, colors, fonts and social links applied to all client documents.</p>
+                </div>
+              </div>
+              <Link
+                href="/settings/branding"
+                className="px-4 py-1.5 border border-violet-200 text-violet-700 text-sm font-medium rounded-lg hover:bg-violet-50 transition-colors whitespace-nowrap"
+              >
+                Customize →
+              </Link>
+            </div>
+
+            <div className="px-5 py-4 flex items-center justify-between">
+              <div className="flex items-start gap-3">
+                <Hash size={15} className="text-blue-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-[#0F172A]">Invoice Settings</p>
+                  <p className="text-xs text-[#94A3B8] mt-0.5">Invoice numbering format, bank details, UPI, and footer text.</p>
+                </div>
+              </div>
+              <Link
+                href="/settings/invoice-settings"
+                className="px-4 py-1.5 border border-blue-200 text-blue-600 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors whitespace-nowrap"
+              >
+                Configure →
+              </Link>
+            </div>
+
+            <div className="px-5 py-4 flex items-center justify-between">
+              <div className="flex items-start gap-3">
+                <FileText size={15} className="text-indigo-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-[#0F172A]">Invoice Templates</p>
+                  <p className="text-xs text-[#94A3B8] mt-0.5">Layout styles: Classic, Modern, Professional CA, Corporate, Minimal.</p>
+                </div>
+              </div>
+              <Link
+                href="/settings/invoice-templates"
+                className="px-4 py-1.5 border border-indigo-200 text-indigo-700 text-sm font-medium rounded-lg hover:bg-indigo-50 transition-colors whitespace-nowrap"
+              >
+                Manage →
+              </Link>
+            </div>
+
+            <div className="px-5 py-4 flex items-center justify-between">
+              <div className="flex items-start gap-3">
+                <Mail size={15} className="text-teal-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-[#0F172A]">Email Templates</p>
+                  <p className="text-xs text-[#94A3B8] mt-0.5">Customize emails sent for invoices, engagements, documents, and reminders.</p>
+                </div>
+              </div>
+              <Link
+                href="/settings/email-templates"
+                className="px-4 py-1.5 border border-teal-200 text-teal-700 text-sm font-medium rounded-lg hover:bg-teal-50 transition-colors whitespace-nowrap"
+              >
+                Edit →
+              </Link>
+            </div>
+          </div>
+        </div>
+      </RoleGuard>
 
       {/* ── Danger Zone ──────────────────────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-red-100 overflow-hidden">
