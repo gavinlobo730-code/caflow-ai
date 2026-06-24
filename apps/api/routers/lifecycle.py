@@ -152,6 +152,153 @@ _VALID_STAGES  = {
 }
 
 
+# ─── Pipeline stage auto-sync (driven by the engagement-letter lifecycle) ──────
+#
+# leads.stage and engagements.status used to be two disconnected state machines
+# kept in sync by hand. The engagement-letter lifecycle now drives the lead
+# stage automatically (see routers/engagement_letters.py):
+#     letter created          → "Engagement Drafted"
+#     letter sent             → "Engagement Sent"
+#     letter signed           → "Engagement Signed"
+#     letter rejected/expired → no change (the lead stays where it is)
+#
+# Advancement is FORWARD-ONLY (a new draft must never pull a signed lead back),
+# idempotent, and never raises — an engagement action must not fail because of a
+# sync issue. Every applied change is audit-logged.
+
+# Canonical forward order of the pipeline stages we auto-advance through.
+_PIPELINE_STAGE_ORDER = [
+    "Lead", "Qualified", "Proposal Sent",
+    "Engagement Drafted", "Engagement Sent", "Engagement Signed",
+    "Onboarding", "Active",
+]
+
+
+def _stage_rank(stage: Optional[str]) -> int:
+    """Position of a stage in the canonical pipeline order, or -1 if unknown."""
+    try:
+        return _PIPELINE_STAGE_ORDER.index(stage)  # type: ignore[arg-type]
+    except (ValueError, TypeError):
+        return -1
+
+
+def _pick_signed_engagement(rows: list[dict]) -> Optional[dict]:
+    """
+    Choose the authoritative signed engagement when more than one exists for a
+    lead (Objective 5). Rule: the most recently SIGNED letter wins (fallback:
+    most recently created). Callers pass rows already filtered to
+    status == 'Signed'. Deterministic and non-destructive — a CA may legitimately
+    re-issue revised terms, and the latest signature represents the live mandate.
+    """
+    candidates = [r for r in (rows or []) if r]
+    if not candidates:
+        return None
+    return sorted(
+        candidates,
+        key=lambda e: (e.get("signed_at") or "", e.get("created_at") or ""),
+        reverse=True,
+    )[0]
+
+
+def _audit_auto_stage_change(db, lead_id, firm_id, old_stage, new_stage, actor_id, actor_email, now) -> None:
+    """Record an automatic lead stage advance across all three audit surfaces."""
+    try:
+        timeline_service.log(
+            lead_id, "lifecycle", "Lead Stage Auto-Advanced",
+            f"Stage auto-advanced from {old_stage} to {new_stage} by the engagement workflow",
+            "info",
+            firm_id=firm_id, entity_type="lead", entity_id=lead_id, actor_id=actor_id,
+        )
+    except Exception:
+        pass
+    try:
+        log_event(
+            firm_id, "lead", lead_id, "stage_change",
+            actor_id=actor_id, actor_email=actor_email,
+            old_data={"stage": old_stage},
+            new_data={"stage": new_stage},
+            metadata={"automatic": True, "source": "engagement_letter"},
+        )
+    except Exception:
+        pass
+    if db:
+        try:
+            db.table("client_lifecycle_events").insert({
+                "id":          str(uuid.uuid4()),
+                "firm_id":     firm_id,
+                "entity_id":   lead_id,
+                "entity_type": "lead",
+                "event_type":  "lead_stage_changed",
+                "description": f"Stage auto-advanced from '{old_stage}' to '{new_stage}' by engagement workflow",
+                "metadata":    {"from_stage": old_stage, "to_stage": new_stage, "automatic": True},
+                "created_at":  now,
+            }).execute()
+        except Exception:
+            pass
+
+
+def advance_lead_stage(
+    lead_id: Optional[str],
+    firm_id: str,
+    target_stage: str,
+    actor_id: Optional[str] = None,
+    actor_email: Optional[str] = None,
+) -> bool:
+    """
+    Auto-advance a lead's pipeline stage in response to an engagement-letter
+    event. SAFE by construction:
+      • no-op if lead_id is falsy or the lead does not exist (never crashes)
+      • no-op if the lead is already converted
+      • no-op if the lead is already at or beyond target_stage (no regression)
+      • every applied change is audit-logged (audit_log + timeline + lifecycle event)
+    Returns True if the stage changed, else False. Never raises.
+    """
+    if not lead_id or target_stage not in _VALID_STAGES:
+        return False
+    target_rank = _stage_rank(target_stage)
+    if target_rank < 0:
+        return False
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        db = _db()
+        if not db:
+            lead = next(
+                (l for l in _MOCK_LEADS
+                 if l.get("id") == lead_id and l.get("firm_id") == firm_id),
+                None,
+            )
+            if not lead or lead.get("is_converted"):
+                return False
+            old_stage = lead.get("stage")
+            old_rank = _stage_rank(old_stage)
+            if old_rank < 0 or old_rank >= target_rank:
+                return False
+            lead["stage"] = target_stage
+            lead["updated_at"] = now
+        else:
+            rows = (
+                db.table("leads").select("stage, is_converted")
+                .eq("id", lead_id).eq("firm_id", firm_id)
+                .limit(1).execute().data
+            ) or []
+            if not rows:
+                return False
+            if rows[0].get("is_converted"):
+                return False
+            old_stage = rows[0].get("stage")
+            old_rank = _stage_rank(old_stage)
+            if old_rank < 0 or old_rank >= target_rank:
+                return False
+            (db.table("leads")
+               .update({"stage": target_stage, "updated_at": now})
+               .eq("id", lead_id).eq("firm_id", firm_id).execute())
+        _audit_auto_stage_change(db, lead_id, firm_id, old_stage, target_stage, actor_id, actor_email, now)
+        return True
+    except Exception:
+        # Sync is best-effort; never break the engagement action that triggered it.
+        return False
+
+
 class LeadIn(BaseModel):
     company_name: str
     contact_name: Optional[str] = None
@@ -496,56 +643,68 @@ def convert_lead(
     now = datetime.now(timezone.utc).isoformat()
 
     if not db:
-        for lead in _MOCK_LEADS:
-            if lead["id"] == lead_id:
-                lead["is_converted"] = True
-                lead["stage"] = "Active"
-                lead["converted_at"] = now
-                lead["converted_client_id"] = data.client_id
-                lead["updated_at"] = now
-                # Check mock engagement store
-                from routers.engagement_letters import _MOCK_ENGAGEMENTS
-                signed = [e for e in _MOCK_ENGAGEMENTS if e.get("lead_id") == lead_id and e.get("status") == "Signed"]
-                if not signed:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="A signed engagement letter is required before converting a lead to a client."
-                    )
-                timeline_service.log(
-                    lead_id, "lifecycle", "Lead Converted",
-                    "Lead converted to active client", "success",
-                    firm_id=current_user["firm_id"],
-                )
-                # H10: audit the conversion (mock path — converted client id may be None).
-                try:
-                    log_event(
-                        current_user["firm_id"], "client", data.client_id, "convert",
-                        actor_id=current_user.get("auth_user_id"),
-                        actor_email=current_user.get("email"),
-                        new_data={"lead_id": lead_id, "converted_client_id": data.client_id},
-                    )
-                except Exception:
-                    pass
-                return api_response(True, lead)
-        raise HTTPException(status_code=404, detail="Lead not found")
+        # Integrity: verify the lead exists and that a signed engagement gates the
+        # conversion BEFORE mutating any in-memory state — otherwise a missing
+        # engagement left the mock lead half-converted (state changed, then 409).
+        lead = next((l for l in _MOCK_LEADS if l["id"] == lead_id), None)
+        if not lead:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        from routers.engagement_letters import _MOCK_ENGAGEMENTS
+        signed = [
+            e for e in _MOCK_ENGAGEMENTS
+            if e.get("lead_id") == lead_id and e.get("status") == "Signed"
+        ]
+        if not _pick_signed_engagement(signed):
+            raise HTTPException(
+                status_code=409,
+                detail="A signed engagement letter is required before converting a lead to a client.",
+            )
+        lead["is_converted"] = True
+        lead["stage"] = "Active"
+        lead["converted_at"] = now
+        lead["converted_client_id"] = data.client_id
+        lead["updated_at"] = now
+        timeline_service.log(
+            lead_id, "lifecycle", "Lead Converted",
+            "Lead converted to active client", "success",
+            firm_id=current_user["firm_id"],
+        )
+        # H10: audit the conversion (mock path — converted client id may be None).
+        try:
+            log_event(
+                current_user["firm_id"], "client", data.client_id, "convert",
+                actor_id=current_user.get("auth_user_id"),
+                actor_email=current_user.get("email"),
+                new_data={"lead_id": lead_id, "converted_client_id": data.client_id},
+            )
+        except Exception:
+            pass
+        return api_response(True, lead)
 
     # Try to fetch lead from DB — if not found (e.g. localStorage lead), use request body data
     existing = db.table("leads").select("*").eq("id", lead_id).eq("firm_id", current_user["firm_id"]).limit(1).execute().data
     lead_in_db = bool(existing)
 
+    # Track non-fatal integrity issues so the caller is never left guessing
+    # (Objective 3 — no silent data corruption).
+    warnings: list[str] = []
+
     # C7: Require a signed engagement letter before allowing lead conversion.
     # CGST Act Section 31 — service must be preceded by a documented engagement.
+    # Objective 5: more than one signed letter can exist (revised terms); select the
+    # most recently signed as the authoritative mandate rather than an arbitrary row.
     signed_engagements = (
         db.table("engagements")
-        .select("id")
+        .select("id, fee_amount_paise, template_id, title, start_date, "
+                "engagement_number, signed_at, created_at")
         .eq("lead_id", lead_id)
         .eq("firm_id", current_user["firm_id"])
         .eq("status", "Signed")
-        .limit(1)
         .execute()
         .data
-    )
-    if not signed_engagements:
+    ) or []
+    chosen_engagement = _pick_signed_engagement(signed_engagements)
+    if not chosen_engagement:
         raise HTTPException(
             status_code=409,
             detail="A signed engagement letter is required before converting a lead to a client. "
@@ -553,7 +712,13 @@ def convert_lead(
         )
     # H16: capture the signed engagement so onboarding + the engagement row can be
     # linked back to it (Lead → Engagement → Signed → Onboarding → Client chain).
-    signed_engagement_id = signed_engagements[0]["id"]
+    signed_engagement_id = chosen_engagement["id"]
+    if len(signed_engagements) > 1:
+        warnings.append(
+            f"{len(signed_engagements)} signed engagement letters exist for this lead; "
+            f"used the most recently signed one "
+            f"({chosen_engagement.get('engagement_number') or signed_engagement_id})."
+        )
     if lead_in_db:
         existing = existing[0]
         if existing.get("is_converted"):
@@ -601,14 +766,43 @@ def convert_lead(
             raise HTTPException(status_code=422, detail=f"Failed to create client: {e}")
 
     # H16: stamp the signed engagement with the resulting client so it is no longer
-    # lead-only — keeps the engagement from being orphaned. Non-fatal.
+    # lead-only — keeps the engagement from being orphaned. Reported, not silent.
     try:
         db.table("engagements").update({
             "client_id": client_id,
             "updated_at": now,
         }).eq("id", signed_engagement_id).eq("firm_id", firm_id).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        warnings.append(f"Client created, but linking the signed engagement to it failed: {e}")
+
+    # Objective 4: populate the fee engagement from the SIGNED letter instead of a
+    # meaningless "General"/₹0 placeholder. The letter carries the fee and (via its
+    # template) the service type; the letter is referenced in notes for traceability.
+    service_type = (chosen_engagement.get("title") or "").strip()
+    if chosen_engagement.get("template_id"):
+        try:
+            tmpl = (
+                db.table("engagement_templates")
+                .select("service_type")
+                .eq("id", chosen_engagement["template_id"])
+                .eq("firm_id", firm_id)
+                .limit(1)
+                .execute()
+                .data
+            ) or []
+            if tmpl and tmpl[0].get("service_type"):
+                service_type = tmpl[0]["service_type"]
+        except Exception:
+            pass
+    if not service_type:
+        service_type = "General"
+    fee_paise = int(chosen_engagement.get("fee_amount_paise") or 0)
+    fe_start = chosen_engagement.get("start_date") or now[:10]
+    fe_notes = (
+        f"Auto-created from signed engagement "
+        f"{chosen_engagement.get('engagement_number') or signed_engagement_id}"
+        + (f" — {chosen_engagement.get('title')}" if chosen_engagement.get("title") else "")
+    )
 
     # Create fee engagement (table: fee_engagements, not engagements)
     try:
@@ -616,15 +810,16 @@ def convert_lead(
             "id":           str(uuid.uuid4()),
             "firm_id":      firm_id,
             "client_id":    client_id,
-            "service_type": "General",
-            "fee_paise":    0,
+            "service_type": service_type,
+            "fee_paise":    fee_paise,
             "status":       "Active",
-            "start_date":   now[:10],
+            "start_date":   fe_start,
+            "notes":        fe_notes,
             "created_at":   now,
             "updated_at":   now,
         }).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        warnings.append(f"Client created, but the fee engagement record could not be created: {e}")
 
     # Create onboarding workflow
     if data.create_onboarding:
@@ -654,10 +849,12 @@ def convert_lead(
                 for i, t in enumerate(_DEFAULT_ONBOARDING_TASKS)
             ]
             db.table("onboarding_tasks").insert(tasks).execute()
-        except Exception:
-            pass
+        except Exception as e:
+            warnings.append(f"Client created, but the onboarding workflow could not be created: {e}")
 
-    # Update lead in DB only if it was there
+    # Update lead in DB only if it was there. CRITICAL: if this fails the client
+    # exists but the lead still shows as unconverted — surface it loudly rather
+    # than corrupting the pipeline silently.
     if lead_in_db:
         try:
             db.table("leads").update({
@@ -666,8 +863,11 @@ def convert_lead(
                 "converted_client_id":  client_id,
                 "updated_at":           now,
             }).eq("id", lead_id).eq("firm_id", firm_id).execute()
-        except Exception:
-            pass  # Non-fatal if lead update fails
+        except Exception as e:
+            warnings.append(
+                f"CRITICAL: client {client_id} was created but the lead could not be "
+                f"marked converted (it may still appear in the pipeline): {e}"
+            )
 
     timeline_service.log(
         client_id, "lifecycle", "Lead Converted",
@@ -700,7 +900,11 @@ def convert_lead(
     except Exception:
         pass
 
-    return api_response(True, {"converted_client_id": client_id, "lead_id": lead_id})
+    return api_response(True, {
+        "converted_client_id": client_id,
+        "lead_id": lead_id,
+        "warnings": warnings,
+    })
 
 
 # ─── Proposals ────────────────────────────────────────────────────────────────

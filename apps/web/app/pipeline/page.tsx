@@ -755,6 +755,7 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
   const [converting, setConverting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   if (!lead) return null;
 
@@ -777,6 +778,7 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
       });
       if (!json.success) throw new Error(json.error ?? "Conversion failed");
       const clientId = json.data?.converted_client_id ?? "";
+      setWarnings((json.data?.warnings as string[] | undefined) ?? []);
       setDone(clientId);
       onConverted(lead!.id);
     } catch (e) {
@@ -804,6 +806,16 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
             <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">
               ✓ Client created successfully. Onboarding workflow started.
             </div>
+            {warnings.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-800 space-y-1">
+                <p className="font-semibold">Completed with warnings:</p>
+                <ul className="list-disc list-inside space-y-0.5">
+                  {warnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div className="flex gap-3">
               <button onClick={onClose} className="flex-1 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC]">Close</button>
               <Link

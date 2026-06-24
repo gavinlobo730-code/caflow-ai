@@ -42,6 +42,26 @@ def _db():
     return get_supabase()
 
 
+def _advance_lead(lead_id, firm_id, target_stage, current_user) -> None:
+    """
+    Auto-advance the linked lead's pipeline stage after an engagement-letter
+    transition (Objectives 1 & 2). No-op when there is no lead. The lazy import
+    avoids a circular import with the lifecycle router, and any failure is
+    swallowed — an engagement action must never fail because of a sync issue.
+    """
+    if not lead_id:
+        return
+    try:
+        from routers.lifecycle import advance_lead_stage
+        advance_lead_stage(
+            lead_id, firm_id, target_stage,
+            actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+        )
+    except Exception:
+        pass
+
+
 # ─── Default templates ────────────────────────────────────────────────────────
 
 _DEFAULT_TEMPLATES = [
@@ -754,6 +774,8 @@ def create_engagement(
         _MOCK_ENGAGEMENTS.append(row)
         _log_engagement_event(db, engagement_id, firm_id, "created",
                               current_user.get("auth_user_id"))
+        # Objective 1: creating a letter advances the linked lead to "Engagement Drafted".
+        _advance_lead(row.get("lead_id"), firm_id, "Engagement Drafted", current_user)
         return api_response(True, {"engagement": row})
 
     try:
@@ -773,6 +795,8 @@ def create_engagement(
                              "fee_amount_paise": fee_paise})
     except Exception:
         pass
+    # Objective 1: creating a letter advances the linked lead to "Engagement Drafted".
+    _advance_lead(created.get("lead_id") or body.lead_id, firm_id, "Engagement Drafted", current_user)
     return api_response(True, {"engagement": created})
 
 
@@ -1075,12 +1099,14 @@ def send_engagement(
         eng["updated_at"] = now
         _log_engagement_event(db, engagement_id, firm_id, "sent",
                               current_user.get("auth_user_id"))
+        # Objective 1: sending a letter advances the linked lead to "Engagement Sent".
+        _advance_lead(eng.get("lead_id"), firm_id, "Engagement Sent", current_user)
         return api_response(True, {"engagement": eng})
 
     try:
         eng_res = (
             db.table("engagements")
-            .select("status")
+            .select("status, lead_id")
             .eq("id", engagement_id)
             .eq("firm_id", firm_id)
             .single()
@@ -1117,6 +1143,8 @@ def send_engagement(
                   new_data={"status": "Sent", "sent_at": now})
     except Exception:
         pass
+    # Objective 1: sending a letter advances the linked lead to "Engagement Sent".
+    _advance_lead(eng.get("lead_id"), firm_id, "Engagement Sent", current_user)
     return api_response(True, {"engagement": updated})
 
 
@@ -1155,12 +1183,14 @@ def sign_engagement(
         _log_engagement_event(db, engagement_id, firm_id, "signed",
                               current_user.get("auth_user_id"),
                               {"signed_pdf_url": body.signed_pdf_url})
+        # Objective 1: signing a letter advances the linked lead to "Engagement Signed".
+        _advance_lead(eng.get("lead_id"), firm_id, "Engagement Signed", current_user)
         return api_response(True, {"engagement": eng})
 
     try:
         eng_res = (
             db.table("engagements")
-            .select("status")
+            .select("status, lead_id")
             .eq("id", engagement_id)
             .eq("firm_id", firm_id)
             .single()
@@ -1202,6 +1232,8 @@ def sign_engagement(
                   new_data={"status": "Signed", "signed_at": now})
     except Exception:
         pass
+    # Objective 1: signing a letter advances the linked lead to "Engagement Signed".
+    _advance_lead(eng.get("lead_id"), firm_id, "Engagement Signed", current_user)
     return api_response(True, {"engagement": updated})
 
 
