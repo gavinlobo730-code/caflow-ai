@@ -61,8 +61,10 @@ interface EngagementLetter {
   expiry_date: string | null;
   sent_at: string | null;
   signed_at: string | null;
+  signed_by_name: string | null;
   rejected_at: string | null;
   rejection_notes: string | null;
+  sign_token: string | null;
   created_at: string;
 }
 
@@ -498,6 +500,7 @@ function DetailModal({ letter, onClose, onUpdated }: DetailModalProps) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [showSendInput, setShowSendInput] = useState(false);
   const [sendEmail, setSendEmail] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (letter) {
@@ -594,6 +597,31 @@ function DetailModal({ letter, onClose, onUpdated }: DetailModalProps) {
               <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-4 py-3 text-sm text-[#334155] whitespace-pre-wrap max-h-48 overflow-y-auto font-mono text-xs">
                 {letter.content}
               </div>
+            </div>
+          )}
+
+          {/* Client signing link — shareable for self-serve e-sign (also sent in the email) */}
+          {(letter.status === "Sent" || letter.status === "Viewed") && letter.sign_token && (
+            <div>
+              <p className="text-xs font-medium text-[#94A3B8] uppercase tracking-wider mb-1.5">Client Signing Link</p>
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  value={`${typeof window !== "undefined" ? window.location.origin : ""}/sign/?t=${letter.sign_token}`}
+                  className="flex-1 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-xs text-[#475569] outline-none"
+                />
+                <button
+                  onClick={() => {
+                    navigator.clipboard?.writeText(`${window.location.origin}/sign/?t=${letter.sign_token}`);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="shrink-0 rounded-lg border border-[#E2E8F0] px-3 py-2 text-xs font-medium text-[#475569] hover:bg-[#F8FAFC]"
+                >
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-[#94A3B8]">The client can review and e-sign here — no login needed. This link is in the email; share it via WhatsApp too if you like.</p>
             </div>
           )}
 

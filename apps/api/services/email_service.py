@@ -288,18 +288,35 @@ def send_engagement_letter(
     letter_html: str,
     pdf_bytes: Optional[bytes] = None,
     pdf_filename: Optional[str] = None,
+    sign_url: Optional[str] = None,
 ) -> tuple[bool, Optional[str]]:
     """
     Email an engagement letter to the prospective client.
 
     The rendered letter is shown inline in the email body; when a PDF is supplied
     it is also attached for the client's records (CGST Act Section 31 — written
-    engagement record). Returns (success, provider_message_id).
+    engagement record). When sign_url is supplied, a prominent "Review & Sign
+    Online" button lets the recipient accept the letter electronically without an
+    account. Returns (success, provider_message_id).
 
     This is a CLIENT communication only — it is NOT a government-portal
     submission and has no accounting side effect.
     """
     subject = f"Engagement Letter {engagement_number} from {firm_name}"
+    accept_instruction = (
+        "To accept this engagement, click the button below to review and sign online."
+        if sign_url else
+        "To accept this engagement, please sign and return a copy to us."
+    )
+    sign_button = f"""
+    <p style="text-align:center;margin:22px 0;">
+      <a href="{sign_url}" style="background:#4f46e5;color:#ffffff;padding:12px 28px;
+         text-decoration:none;border-radius:8px;font-weight:600;display:inline-block;">
+        Review &amp; Sign Online
+      </a>
+    </p>
+    <p style="color:#64748b;font-size:13px;">Or paste this link into your browser:<br/>{sign_url}</p>
+    """ if sign_url else ""
     intro = f"""
     <p>Dear {recipient_name or 'Client'},</p>
     <p>Please find below our engagement letter
@@ -307,8 +324,8 @@ def send_engagement_letter(
     regarding <strong>{title}</strong>.{
         ' A PDF copy is attached for your records.' if pdf_bytes else ''
     }</p>
-    <p>Kindly review the terms set out below. To accept this engagement, please
-    sign and return a copy to us.</p>
+    <p>{accept_instruction}</p>
+    {sign_button}
     <hr/>
     """
     closing = f"""

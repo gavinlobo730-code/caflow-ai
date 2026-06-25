@@ -19,6 +19,8 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone, date
 import logging
+import os
+import secrets
 import uuid
 
 from models.common import api_response
@@ -443,10 +445,12 @@ def _firm_name(db, firm_id: str) -> str:
         return "Your Chartered Accountant"
 
 
-def _deliver_engagement_email(db, eng: dict, firm_id: str, to_email: Optional[str]) -> dict:
+def _deliver_engagement_email(db, eng: dict, firm_id: str, to_email: Optional[str],
+                              sign_url: Optional[str] = None) -> dict:
     """
     Email the engagement letter to the client — rendered inline in the body, with
-    a PDF copy attached. Returns a delivery dict:
+    a PDF copy attached and (when provided) a "Review & Sign Online" link so the
+    recipient can accept it electronically. Returns a delivery dict:
         {success: bool, to: str|None, provider_message_id: str|None, error: str|None}
 
     NEVER raises — the caller inspects `success` to decide whether to advance the
@@ -495,6 +499,7 @@ def _deliver_engagement_email(db, eng: dict, firm_id: str, to_email: Optional[st
         letter_html=eng.get("content", ""),
         pdf_bytes=pdf_bytes,
         pdf_filename=pdf_filename,
+        sign_url=sign_url,
     )
     if not success:
         return {"success": False, "to": dest, "provider_message_id": provider_id,
@@ -1240,8 +1245,17 @@ def send_engagement(
         raise HTTPException(status_code=409,
                             detail=f"Cannot send: engagement is '{eng['status']}'. Expected one of: {sorted(_VALID_SEND_STATUSES)}.")
 
+    # Mint a public, unguessable sign token (reuse an existing one on re-send) and
+    # build the tokenized "Review & Sign Online" link included in the email.
+    sign_token = eng.get("sign_token") or secrets.token_urlsafe(32)
+    frontend_url = os.environ.get("FRONTEND_URL", "").strip().rstrip("/")
+    # Query-param form (not a path segment): the web app is a Next.js static
+    # export, so /sign/ is one static page that reads the token client-side.
+    # token_urlsafe output (A–Z a–z 0–9 _ -) is query-safe without encoding.
+    sign_url = f"{frontend_url}/sign/?t={sign_token}" if frontend_url else None
+
     # Actually email the letter to the client. Only advance to "Sent" if it goes out.
-    delivery = _deliver_engagement_email(db, eng, firm_id, override)
+    delivery = _deliver_engagement_email(db, eng, firm_id, override, sign_url)
     if not delivery["success"]:
         _log_engagement_event(db, engagement_id, firm_id, "send_failed",
                               current_user.get("auth_user_id"),
@@ -1253,7 +1267,8 @@ def send_engagement(
     try:
         res = (
             db.table("engagements")
-            .update({"status": "Sent", "sent_at": now, "updated_at": now})
+            .update({"status": "Sent", "sent_at": now, "updated_at": now,
+                     "sign_token": sign_token})
             .eq("id", engagement_id)
             .eq("firm_id", firm_id)
             .execute()
