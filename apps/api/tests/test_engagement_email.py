@@ -9,6 +9,7 @@ leaves the letter in its current status so the CA knows it did not send.
 No financial arithmetic is performed in this path — the fee is already rendered
 upstream — so these tests assert delivery behaviour, not money math.
 """
+import logging
 from contextlib import contextmanager
 from unittest.mock import patch, MagicMock
 
@@ -182,9 +183,17 @@ def test_delivery_failure_does_not_advance():
     with mock_send(db, email_result=(False, None)) as (email_mock, _):
         res = send_engagement("E1", current_user=USER)
     assert res["success"] is False
-    assert "Email delivery failed" in res["error"]
+    # The user sees a friendly, non-technical message — and the SAME message is
+    # echoed in data.delivery.error. Internal config/provider details never leak.
+    assert res["error"] == (
+        "We couldn't send the engagement email right now. "
+        "Please try again later or contact your administrator."
+    )
+    assert res["data"]["delivery"]["error"] == res["error"]
+    for leak in ("RESEND_API_KEY", "Resend", "recipient address", "httpx"):
+        assert leak not in res["error"]
     email_mock.assert_called_once()
-    assert "engagements" not in db.updates
+    assert "engagements" not in db.updates   # engagement remains, status unchanged
     assert any(e.get("event_type") == "send_failed"
                for e in db.inserts.get("engagement_events", []))
 
@@ -284,3 +293,95 @@ def test_email_send_body_only_when_no_pdf():
     assert ok is True and mid is None
     plain.assert_called_once()
     att.assert_not_called()
+
+
+# ── Transport layer: failures logged IN FULL server-side, never leaked to user ─
+#
+# Maps to the prompt's QA matrix: missing API key, invalid API key (provider
+# rejection), and network failure each return False and write the full provider
+# detail (status, error code/name, body) to the SERVER LOG only.
+
+class _FakeResp:
+    """Minimal stand-in for an httpx.Response from Resend."""
+
+    def __init__(self, status_code, json_data=None, text=""):
+        self.status_code = status_code
+        self._json = json_data
+        self.text = text
+
+    def json(self):
+        if self._json is None:
+            raise ValueError("no json body")
+        return self._json
+
+
+def test_send_missing_api_key_warns_and_returns_false(caplog):
+    # QA: "Missing API key" — distinguishable in logs, no send attempted.
+    import services.email_service as es
+    with patch.object(es, "_RESEND_API_KEY", ""):
+        with caplog.at_level(logging.WARNING):
+            ok = es._send("client@x.in", "Subject", "<p>hi</p>")
+    assert ok is False
+    # The env var IS named in the server log (for the admin) …
+    assert "RESEND_API_KEY" in caplog.text
+
+
+def test_send_logs_full_provider_error_and_returns_false(caplog):
+    # QA: "Invalid API key" / unverified domain — provider rejects with a body
+    # that explains exactly why; that full detail must reach the server log.
+    import services.email_service as es
+    fake = _FakeResp(
+        422,
+        {"name": "validation_error", "statusCode": 422,
+         "message": "The from address is not verified."},
+        text='{"name":"validation_error","message":"The from address is not verified."}',
+    )
+    with patch.object(es, "_RESEND_API_KEY", "re_test"), \
+         patch("httpx.post", return_value=fake):
+        with caplog.at_level(logging.ERROR):
+            ok = es._send("client@x.in", "Subject", "<p>hi</p>")
+    assert ok is False
+    blob = caplog.text
+    assert "422" in blob
+    assert "validation_error" in blob
+    assert "not verified" in blob          # the provider body is captured verbatim
+
+
+def test_send_network_error_logs_and_returns_false(caplog):
+    # QA: "Network failure" — transport exception logged, non-fatal False return.
+    import services.email_service as es
+
+    def boom(*a, **k):
+        raise RuntimeError("connection reset by peer")
+
+    with patch.object(es, "_RESEND_API_KEY", "re_test"), \
+         patch("httpx.post", side_effect=boom):
+        with caplog.at_level(logging.ERROR):
+            ok = es._send("client@x.in", "Subject", "<p>hi</p>")
+    assert ok is False
+    assert "connection reset by peer" in caplog.text
+
+
+def test_send_with_attachment_logs_provider_error(caplog):
+    import services.email_service as es
+    fake = _FakeResp(
+        401,
+        {"name": "unauthorized", "statusCode": 401, "message": "Invalid API key"},
+        text='{"name":"unauthorized","message":"Invalid API key"}',
+    )
+    with patch.object(es, "_RESEND_API_KEY", "re_bad"), \
+         patch("httpx.post", return_value=fake):
+        with caplog.at_level(logging.ERROR):
+            ok, mid = es._send_with_attachment(
+                "client@x.in", "Subject", "<p>hi</p>", b"%PDF", "f.pdf"
+            )
+    assert ok is False and mid is None
+    assert "401" in caplog.text
+    assert "Invalid API key" in caplog.text
+
+
+def test_generic_failure_message_exposes_no_internals():
+    # The user-facing copy must not name the env var, the provider, or transport.
+    from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
+    for leak in ("RESEND_API_KEY", "Resend", "httpx", "API key"):
+        assert leak not in GENERIC_SEND_FAILURE_MESSAGE
