@@ -279,6 +279,67 @@ def send_payment_reminder_to_customer(
     return (_send(to, subject, html), None)
 
 
+def send_engagement_letter(
+    to: str,
+    recipient_name: str,
+    firm_name: str,
+    engagement_number: str,
+    title: str,
+    letter_html: str,
+    pdf_bytes: Optional[bytes] = None,
+    pdf_filename: Optional[str] = None,
+    sign_url: Optional[str] = None,
+) -> tuple[bool, Optional[str]]:
+    """
+    Email an engagement letter to the prospective client.
+
+    The rendered letter is shown inline in the email body; when a PDF is supplied
+    it is also attached for the client's records (CGST Act Section 31 — written
+    engagement record). When sign_url is supplied, a prominent "Review & Sign
+    Online" button lets the recipient accept the letter electronically without an
+    account. Returns (success, provider_message_id).
+
+    This is a CLIENT communication only — it is NOT a government-portal
+    submission and has no accounting side effect.
+    """
+    subject = f"Engagement Letter {engagement_number} from {firm_name}"
+    accept_instruction = (
+        "To accept this engagement, click the button below to review and sign online."
+        if sign_url else
+        "To accept this engagement, please sign and return a copy to us."
+    )
+    sign_button = f"""
+    <p style="text-align:center;margin:22px 0;">
+      <a href="{sign_url}" style="background:#4f46e5;color:#ffffff;padding:12px 28px;
+         text-decoration:none;border-radius:8px;font-weight:600;display:inline-block;">
+        Review &amp; Sign Online
+      </a>
+    </p>
+    <p style="color:#64748b;font-size:13px;">Or paste this link into your browser:<br/>{sign_url}</p>
+    """ if sign_url else ""
+    intro = f"""
+    <p>Dear {recipient_name or 'Client'},</p>
+    <p>Please find below our engagement letter
+    (<strong>{engagement_number}</strong>) from <strong>{firm_name}</strong>
+    regarding <strong>{title}</strong>.{
+        ' A PDF copy is attached for your records.' if pdf_bytes else ''
+    }</p>
+    <p>{accept_instruction}</p>
+    {sign_button}
+    <hr/>
+    """
+    closing = f"""
+    <hr/>
+    <p style="color:#64748b;font-size:13px;">This engagement letter was sent via
+    PracticeSync on behalf of {firm_name}. If you have any questions, simply
+    reply to this email.</p>
+    """
+    html = intro + (letter_html or "") + closing
+    if pdf_bytes and pdf_filename:
+        return _send_with_attachment(to, subject, html, pdf_bytes, pdf_filename)
+    return (_send(to, subject, html), None)
+
+
 def send_statement_to_customer(
     to: str,
     customer_name: str,

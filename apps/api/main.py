@@ -261,6 +261,11 @@ app.include_router(portal_data.router)
 # Phase 4.6 — Online Payments. Staff endpoints carry their own accounting rbac;
 # the gateway webhook is public (signature-verified). NOT behind _CLIENT_GUARD.
 app.include_router(payments.router)
+# Public engagement-letter signing — a prospect reviews and e-signs via a
+# tokenized link (no login; the unguessable sign_token is the credential).
+# Intentionally public, like the hosted payment link. NOT behind _CLIENT_GUARD.
+from routers import engagement_sign_public
+app.include_router(engagement_sign_public.router)
 # Amendment v1.1 — Practice (firm-as-internal-client), Partner-only
 from routers.practice import router as practice_router
 app.include_router(practice_router, dependencies=_MFA_GUARD)

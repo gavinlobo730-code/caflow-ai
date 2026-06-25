@@ -18,11 +18,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone, date
+import logging
+import os
+import secrets
 import uuid
 
 from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
+
+_logger = logging.getLogger("caflow.engagement_letters")
 
 router = APIRouter(prefix="/api/engagement-letters", tags=["engagement-letters"])
 
@@ -289,6 +294,12 @@ class EngagementUpdate(BaseModel):
     recipient_email: Optional[str] = None
 
 
+class SendIn(BaseModel):
+    # Optional override for the destination address. When omitted, the letter's
+    # recipient_email (falling back to the linked lead/client email) is used.
+    to_email: Optional[str] = None
+
+
 class SignIn(BaseModel):
     signed_pdf_url: Optional[str] = None   # URL to uploaded signed copy
 
@@ -392,6 +403,108 @@ def _log_engagement_event(
             db.table("engagement_events").insert(event_row).execute()
         except Exception:
             pass
+
+
+# ─── Engagement letter email delivery ─────────────────────────────────────────
+
+def _resolve_recipient_email(db, eng: dict, override: Optional[str]) -> Optional[str]:
+    """
+    Pick the destination address for the engagement letter:
+      explicit override → letter's recipient_email → linked lead/client email.
+    Returns None when none can be found.
+    """
+    if override and override.strip():
+        return override.strip()
+    if eng.get("recipient_email"):
+        return eng["recipient_email"]
+    if db and eng.get("lead_id"):
+        try:
+            r = db.table("leads").select("email").eq("id", eng["lead_id"]).single().execute()
+            if r.data and r.data.get("email"):
+                return r.data["email"]
+        except Exception:
+            pass
+    if db and eng.get("client_id"):
+        try:
+            r = db.table("clients").select("email").eq("id", eng["client_id"]).single().execute()
+            if r.data and r.data.get("email"):
+                return r.data["email"]
+        except Exception:
+            pass
+    return None
+
+
+def _firm_name(db, firm_id: str) -> str:
+    """Resolve the firm's display name for the letter/email; safe default on failure."""
+    if not db:
+        return "Your Chartered Accountant"
+    try:
+        r = db.table("firms").select("name").eq("id", firm_id).maybe_single().execute()
+        return (r.data or {}).get("name") or "Your Chartered Accountant"
+    except Exception:
+        return "Your Chartered Accountant"
+
+
+def _deliver_engagement_email(db, eng: dict, firm_id: str, to_email: Optional[str],
+                              sign_url: Optional[str] = None) -> dict:
+    """
+    Email the engagement letter to the client — rendered inline in the body, with
+    a PDF copy attached and (when provided) a "Review & Sign Online" link so the
+    recipient can accept it electronically. Returns a delivery dict:
+        {success: bool, to: str|None, provider_message_id: str|None, error: str|None}
+
+    NEVER raises — the caller inspects `success` to decide whether to advance the
+    letter to "Sent". A failed send leaves the letter in its current status so the
+    CA knows it did not go out and can retry.
+
+    This delivers to the CLIENT only — it is never a government-portal submission
+    and is triggered by an explicit CA "Send to Client" action.
+    """
+    from services.email_service import send_engagement_letter
+
+    dest = _resolve_recipient_email(db, eng, to_email)
+    if not dest:
+        return {"success": False, "to": None, "provider_message_id": None,
+                "error": "No email address available — add a recipient email to the letter or enter one before sending."}
+
+    # Validate format using the same validator as the invoice send flow.
+    try:
+        from email_validator import validate_email as _ve
+        _ve(dest, check_deliverability=False)
+    except Exception:
+        return {"success": False, "to": dest, "provider_message_id": None,
+                "error": f"Invalid email address: {dest}"}
+
+    firm_name = _firm_name(db, firm_id)
+
+    # Render the PDF attachment. On failure, degrade gracefully to a body-only
+    # email — the full letter is already in the body, so the client still gets it.
+    pdf_bytes = None
+    pdf_filename = None
+    try:
+        from services.engagement_pdf_service import render_engagement_pdf
+        pdf_bytes, pdf_filename = render_engagement_pdf(
+            eng.get("content", ""), eng.get("engagement_number", "")
+        )
+    except Exception as exc:
+        _logger.warning("engagement PDF render failed for %s (sending body-only): %s",
+                        eng.get("engagement_number"), exc)
+
+    success, provider_id = send_engagement_letter(
+        to=dest,
+        recipient_name=eng.get("recipient_name") or "Client",
+        firm_name=firm_name,
+        engagement_number=eng.get("engagement_number") or "",
+        title=eng.get("title") or "Engagement Letter",
+        letter_html=eng.get("content", ""),
+        pdf_bytes=pdf_bytes,
+        pdf_filename=pdf_filename,
+        sign_url=sign_url,
+    )
+    if not success:
+        return {"success": False, "to": dest, "provider_message_id": provider_id,
+                "error": "Email delivery failed — check RESEND_API_KEY in the API environment, or the recipient address."}
+    return {"success": True, "to": dest, "provider_message_id": provider_id, "error": None}
 
 
 # ─── Template Endpoints ───────────────────────────────────────────────────────
@@ -1071,19 +1184,30 @@ def generate_engagement(
 @router.post("/{engagement_id}/send")
 def send_engagement(
     engagement_id: str,
+    body: Optional[SendIn] = None,
     current_user: dict = Depends(rbac("client", "write")),
 ):
     """
-    Transition Generated/Draft → Sent. Records sent_at timestamp. Manager+.
-    CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT without explicit CA confirmation.
+    Send the engagement letter to the client and transition Generated/Draft → Sent.
+
+    The letter is emailed to the recipient (rendered inline in the body, with a
+    PDF copy attached) via the firm's configured email provider. The status only
+    advances to "Sent" if the email actually goes out — a failed delivery leaves
+    the letter editable/re-sendable and tells the CA why. Manager+.
+
+    CA REVIEW REQUIRED — delivery is to the CLIENT only, never to a government
+    portal, and is triggered by this explicit CA action.
     """
     db = _db()
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
+    override = body.to_email if body else None
 
     _VALID_SEND_STATUSES = {"Draft", "Generated"}
 
     if not db:
+        # Mock mode (no Supabase configured — local/dev/tests): record the status
+        # transition only. Real email delivery requires the DB-backed path below.
         eng = next(
             (e for e in _MOCK_ENGAGEMENTS
              if e["id"] == engagement_id and e.get("firm_id") == firm_id),
@@ -1106,7 +1230,7 @@ def send_engagement(
     try:
         eng_res = (
             db.table("engagements")
-            .select("status, lead_id")
+            .select("*")
             .eq("id", engagement_id)
             .eq("firm_id", firm_id)
             .single()
@@ -1121,10 +1245,30 @@ def send_engagement(
         raise HTTPException(status_code=409,
                             detail=f"Cannot send: engagement is '{eng['status']}'. Expected one of: {sorted(_VALID_SEND_STATUSES)}.")
 
+    # Mint a public, unguessable sign token (reuse an existing one on re-send) and
+    # build the tokenized "Review & Sign Online" link included in the email.
+    sign_token = eng.get("sign_token") or secrets.token_urlsafe(32)
+    frontend_url = os.environ.get("FRONTEND_URL", "").strip().rstrip("/")
+    # Query-param form (not a path segment): the web app is a Next.js static
+    # export, so /sign/ is one static page that reads the token client-side.
+    # token_urlsafe output (A–Z a–z 0–9 _ -) is query-safe without encoding.
+    sign_url = f"{frontend_url}/sign/?t={sign_token}" if frontend_url else None
+
+    # Actually email the letter to the client. Only advance to "Sent" if it goes out.
+    delivery = _deliver_engagement_email(db, eng, firm_id, override, sign_url)
+    if not delivery["success"]:
+        _log_engagement_event(db, engagement_id, firm_id, "send_failed",
+                              current_user.get("auth_user_id"),
+                              {"to": delivery.get("to"), "error": delivery.get("error")})
+        # Return 200 with success=false (matches the invoice send pattern) so the
+        # UI shows a clean message; the letter stays in its current status.
+        return api_response(False, {"engagement": eng, "delivery": delivery}, delivery["error"])
+
     try:
         res = (
             db.table("engagements")
-            .update({"status": "Sent", "sent_at": now, "updated_at": now})
+            .update({"status": "Sent", "sent_at": now, "updated_at": now,
+                     "sign_token": sign_token})
             .eq("id", engagement_id)
             .eq("firm_id", firm_id)
             .execute()
@@ -1134,18 +1278,21 @@ def send_engagement(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     _log_engagement_event(db, engagement_id, firm_id, "sent",
-                          current_user.get("auth_user_id"))
+                          current_user.get("auth_user_id"),
+                          {"to": delivery.get("to"),
+                           "provider_message_id": delivery.get("provider_message_id")})
     try:
         log_event(firm_id, "engagement", engagement_id, "status_change",
                   actor_id=current_user.get("auth_user_id"),
                   actor_email=current_user.get("email"),
                   old_data={"status": eng["status"]},
-                  new_data={"status": "Sent", "sent_at": now})
+                  new_data={"status": "Sent", "sent_at": now,
+                             "emailed_to": delivery.get("to")})
     except Exception:
         pass
     # Objective 1: sending a letter advances the linked lead to "Engagement Sent".
     _advance_lead(eng.get("lead_id"), firm_id, "Engagement Sent", current_user)
-    return api_response(True, {"engagement": updated})
+    return api_response(True, {"engagement": updated, "delivery": delivery})
 
 
 @router.post("/{engagement_id}/sign")
