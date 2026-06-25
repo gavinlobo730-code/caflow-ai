@@ -10,11 +10,56 @@ _logger = logging.getLogger("caflow.email")
 _RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 _FROM_EMAIL = os.environ.get("EMAIL_FROM", "PracticeSync AI <noreply@caflow.ai>")
 
+# Single, non-technical message shown to end users for ANY email-delivery failure.
+# The true cause (missing/invalid API key, unverified sending domain, provider
+# rejection, network error) is captured in the SERVER LOG only — never expose the
+# env var name, the provider, the response body, or a stack trace to the user.
+GENERIC_SEND_FAILURE_MESSAGE = (
+    "We couldn't send the email right now. "
+    "Please try again later or contact your administrator."
+)
+
+
+def _log_provider_error(resp, to: str, subject: str) -> None:
+    """
+    Record the FULL provider error — HTTP status, error code/name, and the raw
+    response body — plus request context, to the server log. This is what lets an
+    administrator distinguish a missing/invalid API key from an unverified sending
+    domain or a bad recipient. It must NEVER be returned to the client.
+    """
+    try:
+        body_text = resp.text or ""
+    except Exception:
+        body_text = ""
+    error_code = error_name = None
+    try:
+        payload = resp.json()
+        if isinstance(payload, dict):
+            # Resend error shape: {"statusCode": <int>, "name": "...", "message": "..."}
+            error_name = payload.get("name")
+            error_code = payload.get("statusCode") or payload.get("code")
+    except Exception:
+        pass
+    _logger.error(
+        "Resend rejected email: http_status=%s error_code=%s error_name=%s "
+        "to=%s subject=%r body=%s",
+        getattr(resp, "status_code", "?"), error_code, error_name,
+        to, subject, body_text[:1000],
+    )
+
 
 def _send(to: str, subject: str, html: str) -> bool:
-    """Send email via Resend. Returns True on success, False on failure (non-fatal)."""
+    """
+    Send email via Resend. Returns True on success, False on failure (non-fatal).
+
+    Every failure is logged in full server-side; callers must surface only a
+    generic, non-technical message to end users (see GENERIC_SEND_FAILURE_MESSAGE).
+    """
     if not _RESEND_API_KEY:
-        _logger.info("RESEND_API_KEY not set — skipping email to %s: %s", to, subject)
+        _logger.warning(
+            "Email NOT sent — provider not configured (RESEND_API_KEY missing). "
+            "to=%s subject=%r", to, subject,
+        )
         return False
     try:
         import httpx
@@ -26,10 +71,11 @@ def _send(to: str, subject: str, html: str) -> bool:
         )
         if resp.status_code in (200, 201):
             return True
-        _logger.warning("Resend returned %s for email to %s", resp.status_code, to)
+        _log_provider_error(resp, to, subject)
         return False
     except Exception as e:
-        _logger.error("Email send failed to %s: %s", to, e)
+        _logger.error("Email transport error to %s (subject=%r): %s: %s",
+                      to, subject, type(e).__name__, e)
         return False
 
 
@@ -159,7 +205,10 @@ def _send_with_attachment(
     """
     import base64
     if not _RESEND_API_KEY:
-        _logger.info("RESEND_API_KEY not set — skipping email+attachment to %s: %s", to, subject)
+        _logger.warning(
+            "Email+attachment NOT sent — provider not configured (RESEND_API_KEY "
+            "missing). to=%s subject=%r", to, subject,
+        )
         return False, None
     try:
         import httpx
@@ -187,10 +236,11 @@ def _send_with_attachment(
         if resp.status_code in (200, 201):
             message_id = resp.json().get("id")
             return True, message_id
-        _logger.warning("Resend returned %s for email+attachment to %s", resp.status_code, to)
+        _log_provider_error(resp, to, subject)
         return False, None
     except Exception as e:
-        _logger.error("Email+attachment send failed to %s: %s", to, e)
+        _logger.error("Email+attachment transport error to %s (subject=%r): %s: %s",
+                      to, subject, type(e).__name__, e)
         return False, None
 
 

@@ -20,6 +20,7 @@ from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
 from services.internal_client_service import is_internal_client, assert_partner_for_internal_id, is_partner
+from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.sales_invoices")
@@ -1191,7 +1192,7 @@ def _do_send_invoice(invoice_id: str, body: _SendInvoiceBody, current_user: dict
     if success:
         update_data["sent_at"] = now_iso
     else:
-        update_data["error_message"] = "Email delivery failed — check RESEND_API_KEY or recipient address"
+        update_data["error_message"] = GENERIC_SEND_FAILURE_MESSAGE
     db.table("invoice_deliveries").update(update_data).eq("id", delivery_id).execute()
 
     # 10. Audit log
@@ -1208,7 +1209,7 @@ def _do_send_invoice(invoice_id: str, body: _SendInvoiceBody, current_user: dict
     final = (
         db.table("invoice_deliveries").select("*").eq("id", delivery_id).maybe_single().execute()
     ).data
-    return {"success": success, "data": final, "error": None if success else "Email delivery failed"}
+    return {"success": success, "data": final, "error": None if success else GENERIC_SEND_FAILURE_MESSAGE}
 
 
 @router.post("/{invoice_id}/send")

@@ -19,6 +19,7 @@ from models.common import api_response
 from core.permissions import rbac
 from services.customer_statement_service import customer_statement_service
 from services.audit_service import log_event
+from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 
 _logger = logging.getLogger("caflow.customer_statements")
 
@@ -124,7 +125,7 @@ def email_statement(
 
     customer_statement_service.finish_delivery(
         db, delivery_id, success, provider_id,
-        None if success else "Email delivery failed — check RESEND_API_KEY or recipient address")
+        None if success else GENERIC_SEND_FAILURE_MESSAGE)
     _audit(current_user, data.customer_id, "email", data.client_id, data.start_date, data.end_date,
            extra={"sent_to": to_email, "success": success})
     if not success:
