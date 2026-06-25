@@ -299,6 +299,170 @@ def advance_lead_stage(
         return False
 
 
+# ─── Pipeline stage REVERT (driven by engagement rejection / deletion) ─────────
+#
+# advance_lead_stage() only ever moves a lead FORWARD. When an engagement letter
+# is rejected or deleted, the lead must be allowed to move BACK so it is never
+# orphaned mid-engagement (stuck at "Engagement Sent" with no live letter and no
+# way to re-engage). revert_lead_after_engagement_closed() recomputes the lead's
+# stage from its REMAINING live letters — returning it to "Lead" when none remain
+# so a fresh engagement can be drafted. There is no "Lost/Closed Lost" stage in
+# the pipeline (Exited is for churned ACTIVE clients), so "Lead" is the correct,
+# re-engageable resting stage for a prospect whose engagement fell through.
+
+# Lead stages that represent an in-progress engagement — only these are eligible
+# to be rolled back. A lead already at Onboarding/Active (or converted) is never
+# pulled back by an engagement closure.
+_ENGAGEMENT_PHASE_STAGES = {"Engagement Drafted", "Engagement Sent", "Engagement Signed"}
+
+# Engagement-letter statuses that still count as a "live" mandate for the lead.
+# Rejected / Expired (and soft-deleted) letters do NOT keep a lead in-engagement.
+_LIVE_ENGAGEMENT_STATUSES = {"Draft", "Generated", "Sent", "Viewed", "Signed"}
+
+
+def _stage_for_engagement_status(status: Optional[str]) -> str:
+    """The lead pipeline stage implied by a single live engagement-letter status."""
+    if status == "Signed":
+        return "Engagement Signed"
+    if status in ("Sent", "Viewed"):
+        return "Engagement Sent"
+    return "Engagement Drafted"   # Draft / Generated
+
+
+def _compute_stage_from_engagements(live_engagements: list[dict]) -> str:
+    """Most-advanced remaining live engagement → lead stage; 'Lead' if none remain."""
+    best = "Lead"
+    best_rank = _stage_rank("Lead")
+    for e in live_engagements:
+        stage = _stage_for_engagement_status(e.get("status"))
+        rank = _stage_rank(stage)
+        if rank > best_rank:
+            best_rank, best = rank, stage
+    return best
+
+
+def _audit_lead_stage_revert(db, lead_id, firm_id, old_stage, new_stage, actor_id, actor_email, now) -> None:
+    """Record a lead stage REVERT (engagement rejected/deleted) across all surfaces."""
+    try:
+        timeline_service.log(
+            lead_id, "lifecycle", "Lead Stage Reverted",
+            f"Stage reverted from {old_stage} to {new_stage} after an engagement was rejected/deleted",
+            "warning",
+            firm_id=firm_id, entity_type="lead", entity_id=lead_id, actor_id=actor_id,
+        )
+    except Exception:
+        pass
+    try:
+        log_event(
+            firm_id, "lead", lead_id, "stage_change",
+            actor_id=actor_id, actor_email=actor_email,
+            old_data={"stage": old_stage},
+            new_data={"stage": new_stage},
+            metadata={"automatic": True, "source": "engagement_closed"},
+        )
+    except Exception:
+        pass
+    if db:
+        try:
+            db.table("client_lifecycle_events").insert({
+                "id":          str(uuid.uuid4()),
+                "firm_id":     firm_id,
+                "entity_id":   lead_id,
+                "entity_type": "lead",
+                "event_type":  "lead_stage_changed",
+                "description": f"Stage reverted from '{old_stage}' to '{new_stage}' after an engagement was rejected/deleted",
+                "metadata":    {"from_stage": old_stage, "to_stage": new_stage,
+                                "automatic": True, "source": "engagement_closed"},
+                "created_at":  now,
+            }).execute()
+        except Exception:
+            pass
+
+
+def revert_lead_after_engagement_closed(
+    lead_id: Optional[str],
+    firm_id: str,
+    actor_id: Optional[str] = None,
+    actor_email: Optional[str] = None,
+) -> bool:
+    """
+    Recompute a lead's pipeline stage after one of its engagement letters is
+    rejected or deleted, so the lead is never orphaned mid-engagement.
+
+    The lead's stage is set to the one implied by its most-advanced REMAINING
+    live letter (not rejected, not expired, not soft-deleted); if none remain,
+    the lead returns to "Lead" so a new engagement can be drafted. CRM data
+    (contact, value, notes, history) is untouched — only `stage` moves.
+
+    SAFE by construction:
+      • no-op if lead_id is falsy / lead missing / lead already converted
+      • no-op if the lead is not currently in an engagement phase
+      • only writes when the recomputed stage differs from the current one
+      • audit-logged; never raises (a reject/delete must not fail on sync).
+    Returns True if the stage changed, else False.
+    """
+    if not lead_id:
+        return False
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        db = _db()
+        if not db:
+            lead = next(
+                (l for l in _MOCK_LEADS
+                 if l.get("id") == lead_id and l.get("firm_id") == firm_id),
+                None,
+            )
+            if not lead or lead.get("is_converted"):
+                return False
+            old_stage = lead.get("stage")
+            if old_stage not in _ENGAGEMENT_PHASE_STAGES:
+                return False
+            from routers.engagement_letters import _MOCK_ENGAGEMENTS
+            live = [
+                e for e in _MOCK_ENGAGEMENTS
+                if e.get("lead_id") == lead_id and e.get("firm_id") == firm_id
+                and not e.get("is_deleted")
+                and e.get("status") in _LIVE_ENGAGEMENT_STATUSES
+            ]
+            new_stage = _compute_stage_from_engagements(live)
+            if new_stage == old_stage:
+                return False
+            lead["stage"] = new_stage
+            lead["updated_at"] = now
+        else:
+            rows = (
+                db.table("leads").select("stage, is_converted")
+                .eq("id", lead_id).eq("firm_id", firm_id)
+                .limit(1).execute().data
+            ) or []
+            if not rows or rows[0].get("is_converted"):
+                return False
+            old_stage = rows[0].get("stage")
+            if old_stage not in _ENGAGEMENT_PHASE_STAGES:
+                return False
+            eng_rows = (
+                db.table("engagements").select("status, is_deleted")
+                .eq("lead_id", lead_id).eq("firm_id", firm_id)
+                .execute().data
+            ) or []
+            live = [
+                e for e in eng_rows
+                if not e.get("is_deleted")
+                and e.get("status") in _LIVE_ENGAGEMENT_STATUSES
+            ]
+            new_stage = _compute_stage_from_engagements(live)
+            if new_stage == old_stage:
+                return False
+            (db.table("leads")
+               .update({"stage": new_stage, "updated_at": now})
+               .eq("id", lead_id).eq("firm_id", firm_id).execute())
+        _audit_lead_stage_revert(db, lead_id, firm_id, old_stage, new_stage, actor_id, actor_email, now)
+        return True
+    except Exception:
+        # Revert is best-effort; never break the reject/delete that triggered it.
+        return False
+
+
 class LeadIn(BaseModel):
     company_name: str
     contact_name: Optional[str] = None

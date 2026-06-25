@@ -88,8 +88,9 @@ def _eng(**over):
 def world(db):
     with patch.object(esp, "_db", return_value=db), \
          patch.object(esp, "_advance_lead") as adv, \
+         patch.object(esp, "_revert_lead") as rev, \
          patch("services.audit_service.log_event"):
-        yield adv
+        yield adv, rev
 
 
 # ── view ──────────────────────────────────────────────────────────────────────
@@ -147,7 +148,7 @@ def test_sign_records_signature_and_advances_lead():
     db = FakeDB()
     db.selects["engagements"] = [_eng(status="Viewed")]
     db.selects["firms"] = [{"name": "Sharma & Co"}]
-    with world(db) as adv:
+    with world(db) as (adv, _rev):
         res = sign_letter(TOKEN, SignBody(signer_name="Rahul Patel", consent=True), FakeRequest())
     assert res["success"] is True
     assert res["data"]["status"] == "Signed"
@@ -166,7 +167,7 @@ def test_sign_records_signature_and_advances_lead():
 def test_sign_requires_consent():
     db = FakeDB()
     db.selects["engagements"] = [_eng(status="Viewed")]
-    with world(db) as adv:
+    with world(db) as (adv, _rev):
         res = sign_letter(TOKEN, SignBody(signer_name="Rahul", consent=False), FakeRequest())
     assert res["success"] is False
     assert "consent" in res["error"].lower()
@@ -187,7 +188,7 @@ def test_sign_is_idempotent_when_already_signed():
     db = FakeDB()
     db.selects["engagements"] = [_eng(status="Signed", signed_by_name="Rahul Patel")]
     db.selects["firms"] = [{"name": "Sharma & Co"}]
-    with world(db) as adv:
+    with world(db) as (adv, _rev):
         res = sign_letter(TOKEN, SignBody(signer_name="Someone Else", consent=True), FakeRequest())
     assert res["success"] is True
     assert res["data"]["status"] == "Signed"
@@ -239,3 +240,14 @@ def test_reject_blocked_when_already_signed():
         res = reject_letter(TOKEN, RejectBody(reason="changed mind"), FakeRequest())
     assert res["success"] is False
     assert "engagements" not in db.updates
+
+
+def test_reject_reverts_linked_lead():
+    # Declining via the public link must hand the lead back to the pipeline.
+    db = FakeDB()
+    db.selects["engagements"] = [_eng(status="Sent")]
+    db.selects["firms"] = [{"name": "Sharma & Co"}]
+    with world(db) as (_adv, rev):
+        res = reject_letter(TOKEN, RejectBody(reason="Fee too high"), FakeRequest())
+    assert res["success"] is True
+    rev.assert_called_once_with("L1", FIRM, {"auth_user_id": None, "email": "owner@patelfoods.in"})

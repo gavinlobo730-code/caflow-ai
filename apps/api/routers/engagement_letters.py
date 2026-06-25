@@ -67,6 +67,27 @@ def _advance_lead(lead_id, firm_id, target_stage, current_user) -> None:
         pass
 
 
+def _revert_lead(lead_id, firm_id, current_user) -> None:
+    """
+    Revert the linked lead's pipeline stage after an engagement letter is rejected
+    or deleted, so the lead is never orphaned mid-engagement (it recomputes from
+    the lead's remaining live letters, falling back to "Lead"). No-op when there
+    is no lead. Mirrors _advance_lead: lazy import to avoid a circular dependency,
+    and any failure is swallowed — a reject/delete must never fail on a sync issue.
+    """
+    if not lead_id:
+        return
+    try:
+        from routers.lifecycle import revert_lead_after_engagement_closed
+        revert_lead_after_engagement_closed(
+            lead_id, firm_id,
+            actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+        )
+    except Exception:
+        pass
+
+
 # ─── Default templates ────────────────────────────────────────────────────────
 
 _DEFAULT_TEMPLATES = [
@@ -778,7 +799,10 @@ def list_engagements(
     firm_id = current_user["firm_id"]
 
     if not db:
-        result = [e for e in _MOCK_ENGAGEMENTS if e.get("firm_id") == firm_id]
+        result = [
+            e for e in _MOCK_ENGAGEMENTS
+            if e.get("firm_id") == firm_id and not e.get("is_deleted")
+        ]
         if status:
             result = [e for e in result if e.get("status") == status]
         if lead_id:
@@ -792,6 +816,7 @@ def list_engagements(
             db.table("engagements")
             .select("*")
             .eq("firm_id", firm_id)
+            .eq("is_deleted", False)
         )
         if status:
             q = q.eq("status", status)
@@ -878,6 +903,7 @@ def create_engagement(
         "signed_at":         None,
         "rejected_at":       None,
         "rejection_notes":   None,
+        "is_deleted":        False,
         "created_by":        current_user.get("auth_user_id"),
         "created_at":        now,
         "updated_at":        now,
@@ -925,7 +951,8 @@ def get_engagement(
     if not db:
         eng = next(
             (e for e in _MOCK_ENGAGEMENTS
-             if e["id"] == engagement_id and e.get("firm_id") == firm_id),
+             if e["id"] == engagement_id and e.get("firm_id") == firm_id
+             and not e.get("is_deleted")),
             None,
         )
         if not eng:
@@ -945,7 +972,7 @@ def get_engagement(
         eng = eng_res.data
     except Exception:
         eng = None
-    if not eng:
+    if not eng or eng.get("is_deleted"):
         raise HTTPException(status_code=404, detail="Engagement not found")
 
     try:
@@ -1419,12 +1446,14 @@ def reject_engagement(
         _log_engagement_event(db, engagement_id, firm_id, "rejected",
                               current_user.get("auth_user_id"),
                               {"rejection_notes": body.rejection_notes})
+        # A rejected letter must not orphan the lead — revert it to an active stage.
+        _revert_lead(eng.get("lead_id"), firm_id, current_user)
         return api_response(True, {"engagement": eng})
 
     try:
         eng_res = (
             db.table("engagements")
-            .select("status")
+            .select("status, lead_id")
             .eq("id", engagement_id)
             .eq("firm_id", firm_id)
             .single()
@@ -1467,4 +1496,85 @@ def reject_engagement(
                              "rejection_notes": body.rejection_notes})
     except Exception:
         pass
+    # A rejected letter must not orphan the lead — revert it to an active stage.
+    _revert_lead(eng.get("lead_id"), firm_id, current_user)
     return api_response(True, {"engagement": updated})
+
+
+@router.delete("/{engagement_id}")
+def delete_engagement(
+    engagement_id: str,
+    current_user: dict = Depends(rbac("client", "write")),
+):
+    """
+    Soft-delete (discard/cancel) an engagement letter. Manager+.
+
+    The record is preserved (is_deleted=true) so audit history stays intact — it
+    simply stops appearing in lists. A signed letter cannot be deleted (it is the
+    binding mandate that gates lead→client conversion). Deleting reverts the linked
+    lead to an active pipeline stage so it is never orphaned.
+    """
+    db = _db()
+    firm_id = current_user["firm_id"]
+    now = datetime.now(timezone.utc).isoformat()
+
+    if not db:
+        eng = next(
+            (e for e in _MOCK_ENGAGEMENTS
+             if e["id"] == engagement_id and e.get("firm_id") == firm_id
+             and not e.get("is_deleted")),
+            None,
+        )
+        if not eng:
+            raise HTTPException(status_code=404, detail="Engagement not found")
+        if eng["status"] == "Signed":
+            raise HTTPException(status_code=409,
+                                detail="Cannot delete a signed engagement letter. It is the binding mandate for this client.")
+        eng["is_deleted"] = True
+        eng["updated_at"] = now
+        _log_engagement_event(db, engagement_id, firm_id, "deleted",
+                              current_user.get("auth_user_id"),
+                              {"prior_status": eng.get("status")})
+        # Discarding a letter must not orphan the lead — revert it to an active stage.
+        _revert_lead(eng.get("lead_id"), firm_id, current_user)
+        return api_response(True, {"message": "Engagement deleted", "engagement_id": engagement_id})
+
+    try:
+        eng_res = (
+            db.table("engagements")
+            .select("status, lead_id, is_deleted")
+            .eq("id", engagement_id)
+            .eq("firm_id", firm_id)
+            .single()
+            .execute()
+        )
+        eng = eng_res.data
+    except Exception:
+        eng = None
+    if not eng or eng.get("is_deleted"):
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    if eng["status"] == "Signed":
+        raise HTTPException(status_code=409,
+                            detail="Cannot delete a signed engagement letter. It is the binding mandate for this client.")
+
+    try:
+        db.table("engagements").update({
+            "is_deleted": True, "updated_at": now,
+        }).eq("id", engagement_id).eq("firm_id", firm_id).execute()
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    _log_engagement_event(db, engagement_id, firm_id, "deleted",
+                          current_user.get("auth_user_id"),
+                          {"prior_status": eng.get("status")})
+    try:
+        log_event(firm_id, "engagement", engagement_id, "delete",
+                  actor_id=current_user.get("auth_user_id"),
+                  actor_email=current_user.get("email"),
+                  old_data={"status": eng.get("status")},
+                  new_data={"is_deleted": True})
+    except Exception:
+        pass
+    # Discarding a letter must not orphan the lead — revert it to an active stage.
+    _revert_lead(eng.get("lead_id"), firm_id, current_user)
+    return api_response(True, {"message": "Engagement deleted", "engagement_id": engagement_id})

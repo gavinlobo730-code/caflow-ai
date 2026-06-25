@@ -30,7 +30,7 @@ from pydantic import BaseModel
 from models.common import api_response
 # Reuse the canonical helpers so the public path shares the same audit-event and
 # forward-only lead-advance behaviour as the staff path.
-from routers.engagement_letters import _log_engagement_event, _advance_lead
+from routers.engagement_letters import _log_engagement_event, _advance_lead, _revert_lead
 
 router = APIRouter(prefix="/api/public/engagement-letters", tags=["engagement_sign_public"])
 _logger = logging.getLogger("caflow.engagement_sign_public")
@@ -222,4 +222,6 @@ def reject_letter(token: str, body: RejectBody, request: Request):
     _log_engagement_event(db, eng["id"], eng["firm_id"], "rejected", None,
                           {"reason": update.get("rejection_notes"),
                            "channel": "public_link", "ip": _client_ip(request)})
+    # A declined letter must not orphan the lead — revert it to an active stage.
+    _revert_lead(eng.get("lead_id"), eng["firm_id"], _actor(eng))
     return api_response(True, _public_view(eng, _firm_name(db, eng.get("firm_id"))))
