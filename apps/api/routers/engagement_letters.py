@@ -428,6 +428,16 @@ def _log_engagement_event(
 
 # ─── Engagement letter email delivery ─────────────────────────────────────────
 
+# Non-technical message shown to the CA when delivery fails for any infrastructure
+# reason. The real cause (missing/invalid key, unverified sending domain, provider
+# rejection, network error) is captured in the email transport logs — it is never
+# exposed to the user (no env var names, config, provider details, or stack traces).
+_GENERIC_SEND_FAILURE = (
+    "We couldn't send the engagement email right now. "
+    "Please try again later or contact your administrator."
+)
+
+
 def _resolve_recipient_email(db, eng: dict, override: Optional[str]) -> Optional[str]:
     """
     Pick the destination address for the engagement letter:
@@ -523,8 +533,16 @@ def _deliver_engagement_email(db, eng: dict, firm_id: str, to_email: Optional[st
         sign_url=sign_url,
     )
     if not success:
+        # The true cause is logged in full by the email transport layer
+        # (services.email_service._log_provider_error); surface only a generic,
+        # non-technical message — never the env var, provider, or response body.
+        _logger.error(
+            "Engagement letter %s email delivery failed to %s (firm=%s) — see "
+            "email transport logs for the provider error.",
+            eng.get("engagement_number"), dest, firm_id,
+        )
         return {"success": False, "to": dest, "provider_message_id": provider_id,
-                "error": "Email delivery failed — check RESEND_API_KEY in the API environment, or the recipient address."}
+                "error": _GENERIC_SEND_FAILURE}
     return {"success": True, "to": dest, "provider_message_id": provider_id, "error": None}
 
 
