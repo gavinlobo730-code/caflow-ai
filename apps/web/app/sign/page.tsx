@@ -25,6 +25,7 @@ type Letter = {
   signed_at: string | null;
   signed_by_name: string | null;
   rejected_at: string | null;
+  expired: boolean;
 };
 
 function fmtDate(iso: string | null): string {
@@ -82,7 +83,10 @@ export default function SignPage() {
       .then(async (r) => {
         const j = await r.json().catch(() => null);
         if (!r.ok || !j?.success) {
-          throw new Error(j?.error || "This engagement letter link is invalid or has expired.");
+          // Read both shapes: api_response uses `error`, FastAPI HTTPException
+          // uses `detail`. Without `detail` a 503 (service issue) would be
+          // mis-shown as the generic "invalid/expired" fallback.
+          throw new Error(j?.error || j?.detail || "This engagement letter link is invalid or has expired.");
         }
         setLetter(j.data as Letter);
       })
@@ -101,7 +105,7 @@ export default function SignPage() {
         body: JSON.stringify(body),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok || !j?.success) throw new Error(j?.error || "Something went wrong. Please try again.");
+      if (!r.ok || !j?.success) throw new Error(j?.error || j?.detail || "Something went wrong. Please try again.");
       setLetter(j.data as Letter);
     } catch (e) {
       setActionErr(e instanceof Error ? e.message : "Something went wrong.");
@@ -170,11 +174,25 @@ export default function SignPage() {
                 </div>
               )}
 
+              {/* Expired — past validity date, can no longer be signed */}
+              {letter.expired && letter.status !== "Signed" && letter.status !== "Rejected" && (
+                <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                  <AlertCircle size={20} className="mt-0.5 shrink-0 text-amber-600" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">This letter has expired</p>
+                    <p className="text-sm text-amber-700">
+                      This engagement letter is past its validity date and can no longer be signed
+                      online. Please contact {letter.firm_name} to request an updated copy.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Letter body */}
               <LetterFrame html={letter.content} />
 
-              {/* Acceptance form — only when still actionable */}
-              {(letter.status === "Sent" || letter.status === "Viewed") && (
+              {/* Acceptance form — only when still actionable and not expired */}
+              {(letter.status === "Sent" || letter.status === "Viewed") && !letter.expired && (
                 <div className="space-y-4 border-t border-slate-100 pt-5">
                   {!showDecline ? (
                     <>

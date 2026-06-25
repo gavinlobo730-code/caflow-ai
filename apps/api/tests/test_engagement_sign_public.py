@@ -38,6 +38,7 @@ class _Q:
         self.db.updates.setdefault(self.t, []).append(p); return self
 
     def eq(self, *a, **k): return self
+    def limit(self, *a, **k): return self
     def maybe_single(self): self._single = True; return self
     def single(self): self._single = True; return self
 
@@ -135,7 +136,7 @@ def test_view_projection_does_not_leak_internal_fields():
         res = view_letter(TOKEN, FakeRequest())
     assert set(res["data"].keys()) == {
         "engagement_number", "title", "content", "status", "recipient_name",
-        "firm_name", "signed_at", "signed_by_name", "rejected_at",
+        "firm_name", "signed_at", "signed_by_name", "rejected_at", "expired",
     }
     # Never leak ids, the token, IP, or email.
     for leaked in ("id", "firm_id", "lead_id", "client_id", "sign_token", "signed_ip", "recipient_email"):
@@ -251,3 +252,104 @@ def test_reject_reverts_linked_lead():
         res = reject_letter(TOKEN, RejectBody(reason="Fee too high"), FakeRequest())
     assert res["success"] is True
     rev.assert_called_once_with("L1", FIRM, {"auth_user_id": None, "email": "owner@patelfoods.in"})
+
+
+# ── lookup robustness — the actual root-cause regression ────────────────────────
+
+class _RaisingDB:
+    """Simulates a real backend failure on the SELECT — exactly how supabase-py
+    behaves when the service_role lacks a table grant ("permission denied for
+    table engagements"). The ORIGINAL bug swallowed this and returned a 404
+    "invalid or has expired" link, hiding the missing grant for everyone."""
+    def table(self, name): return self
+    def select(self, *a, **k): return self
+    def eq(self, *a, **k): return self
+    def limit(self, *a, **k): return self
+    def execute(self): raise RuntimeError("permission denied for table engagements")
+
+
+def test_backend_lookup_error_is_503_not_masked_as_invalid_link():
+    # A DB/permission failure must surface honestly (503), NEVER be disguised as
+    # an invalid/expired token (404). This is the regression that proves the
+    # missing-service_role-grant root cause can no longer hide.
+    from fastapi import HTTPException
+    db = _RaisingDB()
+    with world(db):
+        with pytest.raises(HTTPException) as exc:
+            view_letter(TOKEN, FakeRequest())
+    assert exc.value.status_code == 503
+    assert "invalid" not in (exc.value.detail or "").lower()
+    assert "expired" not in (exc.value.detail or "").lower()
+
+
+def test_backend_lookup_error_blocks_sign_with_503():
+    from fastapi import HTTPException
+    db = _RaisingDB()
+    with world(db):
+        with pytest.raises(HTTPException) as exc:
+            sign_letter(TOKEN, SignBody(signer_name="Rahul", consent=True), FakeRequest())
+    assert exc.value.status_code == 503
+
+
+# ── valid-token / freshly-sent link works immediately ──────────────────────────
+
+def test_valid_token_opens_freshly_sent_letter():
+    # A link clicked minutes after sending (status "Sent", token present) must
+    # resolve to the letter — the exact scenario reported as broken.
+    db = FakeDB()
+    db.selects["engagements"] = [_eng(status="Sent")]
+    db.selects["firms"] = [{"name": "Sharma & Co"}]
+    with world(db):
+        res = view_letter(TOKEN, FakeRequest())
+    assert res["success"] is True
+    assert res["data"]["engagement_number"] == "EL-2026-0001"
+    assert res["data"]["status"] == "Viewed"   # first open advances Sent → Viewed
+    assert res["data"]["expired"] is False
+
+
+# ── deleted engagements ─────────────────────────────────────────────────────────
+
+def test_deleted_engagement_link_returns_404():
+    from fastapi import HTTPException
+    db = FakeDB()
+    db.selects["engagements"] = [_eng(status="Sent", is_deleted=True)]
+    with world(db):
+        with pytest.raises(HTTPException) as exc:
+            view_letter(TOKEN, FakeRequest())
+    assert exc.value.status_code == 404
+
+
+# ── expiry ───────────────────────────────────────────────────────────────────
+
+def test_expired_letter_cannot_be_signed():
+    db = FakeDB()
+    db.selects["engagements"] = [_eng(status="Sent", expiry_date="2020-01-01")]
+    db.selects["firms"] = [{"name": "Sharma & Co"}]
+    with world(db) as (adv, _rev):
+        res = sign_letter(TOKEN, SignBody(signer_name="Rahul Patel", consent=True), FakeRequest())
+    assert res["success"] is False
+    assert "expired" in res["error"].lower()
+    assert "engagements" not in db.updates   # nothing signed
+    adv.assert_not_called()
+
+
+def test_view_exposes_expired_flag():
+    db = FakeDB()
+    db.selects["engagements"] = [_eng(status="Viewed", expiry_date="2020-01-01")]
+    db.selects["firms"] = [{"name": "Sharma & Co"}]
+    with world(db):
+        res = view_letter(TOKEN, FakeRequest())
+    assert res["success"] is True
+    assert res["data"]["expired"] is True
+
+
+def test_future_dated_letter_is_signable():
+    db = FakeDB()
+    db.selects["engagements"] = [_eng(status="Viewed", expiry_date="2099-12-31")]
+    db.selects["firms"] = [{"name": "Sharma & Co"}]
+    with world(db) as (adv, _rev):
+        res = sign_letter(TOKEN, SignBody(signer_name="Rahul Patel", consent=True), FakeRequest())
+    assert res["success"] is True
+    assert res["data"]["status"] == "Signed"
+    assert res["data"]["expired"] is False
+    adv.assert_called_once()
