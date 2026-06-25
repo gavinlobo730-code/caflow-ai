@@ -21,7 +21,7 @@ Registered in main.py WITHOUT the staff _CLIENT_GUARD (it is intentionally
 public, like the hosted invoice payment link).
 """
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, date
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -37,6 +37,23 @@ _logger = logging.getLogger("caflow.engagement_sign_public")
 
 # Statuses from which a recipient may still act on the letter.
 _ACTIONABLE = {"Sent", "Viewed"}
+
+# Business timezone for date-only expiry comparisons. expiry_date is a DATE, and
+# the financial year / due dates are all reckoned in IST — comparing against UTC
+# would expire a letter up to 5.5h early (just after IST midnight). A letter
+# "expiring 30 Jun" therefore stays signable through all of 30 Jun IST.
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+class _LookupError(Exception):
+    """A real backend failure while resolving a sign token (NOT a missing token).
+
+    Kept distinct from "token not found" so an infrastructure problem — e.g. the
+    service_role missing a table grant, or a transport/DB error — is surfaced
+    honestly as a 503 with the true cause logged, instead of being masked as a
+    404 "invalid/expired" link. That masking is precisely what hid the original
+    missing-grant root cause of this bug.
+    """
 
 
 class SignBody(BaseModel):
@@ -68,10 +85,19 @@ def _public_view(eng: dict, firm_name: str) -> dict:
         "signed_at": eng.get("signed_at"),
         "signed_by_name": eng.get("signed_by_name"),
         "rejected_at": eng.get("rejected_at"),
+        "expired": _is_expired(eng),
     }
 
 
 def _load_by_token(db, token: str) -> Optional[dict]:
+    """Resolve a live (non-deleted) engagement by its public sign token.
+
+    Returns None when the token simply matches no live letter (caller → 404).
+    Raises _LookupError on an ACTUAL backend failure (permission/transport/DB)
+    so the caller can return a distinct 503 instead of a misleading
+    "invalid or has expired" — the previous bare `except: return None` is what
+    disguised the missing service_role grant as an invalid link.
+    """
     # Cheap guard against trivially short/garbage tokens before hitting the DB.
     if not token or len(token) < 20:
         return None
@@ -80,12 +106,51 @@ def _load_by_token(db, token: str) -> Optional[dict]:
             db.table("engagements")
             .select("*")
             .eq("sign_token", token)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
-        return res.data
-    except Exception:
+    except Exception as exc:
+        _logger.error("sign-token lookup failed (token_len=%s): %s", len(token or ""), exc)
+        raise _LookupError(str(exc)) from exc
+    rows = res.data or []
+    eng = rows[0] if rows else None
+    # A soft-deleted letter's link must not resolve.
+    if eng and eng.get("is_deleted"):
         return None
+    return eng
+
+
+def _get_letter_or_http(db, token: str) -> dict:
+    """Load the letter for a token or raise the correct HTTPException:
+      * backend failure (_LookupError) → 503 (true cause already logged)
+      * genuinely no match              → 404 (invalid/expired link)
+    """
+    try:
+        eng = _load_by_token(db, token)
+    except _LookupError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="The signing service is temporarily unavailable. Please try again in a moment.",
+        ) from exc
+    if not eng:
+        raise HTTPException(
+            status_code=404,
+            detail="This engagement letter link is invalid or has expired.",
+        )
+    return eng
+
+
+def _is_expired(eng: dict) -> bool:
+    """True when the letter is past its expiry_date (date-only, reckoned in IST).
+    Letters with no expiry_date never expire."""
+    exp = eng.get("expiry_date")
+    if not exp:
+        return False
+    try:
+        exp_date = date.fromisoformat(str(exp)[:10])
+    except Exception:
+        return False
+    return datetime.now(_IST).date() > exp_date
 
 
 def _firm_name(db, firm_id) -> str:
@@ -115,10 +180,7 @@ def _actor(eng: dict) -> dict:
 def view_letter(token: str, request: Request):
     """Public: fetch the letter for review. First open advances Sent → Viewed."""
     db = _db()
-    eng = _load_by_token(db, token)
-    if not eng:
-        raise HTTPException(status_code=404,
-                            detail="This engagement letter link is invalid or has expired.")
+    eng = _get_letter_or_http(db, token)
 
     if eng.get("status") == "Sent":
         now = datetime.now(timezone.utc).isoformat()
@@ -145,10 +207,7 @@ def sign_letter(token: str, body: SignBody, request: Request):
         return api_response(False, None, "Please type your full name to sign.")
 
     db = _db()
-    eng = _load_by_token(db, token)
-    if not eng:
-        raise HTTPException(status_code=404,
-                            detail="This engagement letter link is invalid or has expired.")
+    eng = _get_letter_or_http(db, token)
 
     status = eng.get("status")
     if status == "Signed":
@@ -157,6 +216,10 @@ def sign_letter(token: str, body: SignBody, request: Request):
     if status not in _ACTIONABLE:
         return api_response(False, None,
                             f"This letter can no longer be signed (current status: {status}).")
+    # An expired letter must not be signable, even though it is still "Sent".
+    if _is_expired(eng):
+        return api_response(False, None,
+                            "This engagement letter has expired. Please contact the firm to request a new copy.")
 
     now = datetime.now(timezone.utc).isoformat()
     update = {
@@ -196,10 +259,7 @@ def sign_letter(token: str, body: SignBody, request: Request):
 def reject_letter(token: str, body: RejectBody, request: Request):
     """Public: let the recipient decline the engagement."""
     db = _db()
-    eng = _load_by_token(db, token)
-    if not eng:
-        raise HTTPException(status_code=404,
-                            detail="This engagement letter link is invalid or has expired.")
+    eng = _get_letter_or_http(db, token)
 
     status = eng.get("status")
     if status == "Rejected":
