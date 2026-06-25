@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Sparkles } from "lucide-react";
+import { Send, Bot, User, Sparkles, Plus } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 
@@ -17,6 +17,58 @@ const SUGGESTED_PROMPTS = [
   "How to reconcile GSTR-2B with purchase register?",
 ];
 
+// Chat history is kept ONLY in this browser (localStorage) — it is never sent to
+// or stored on our servers, since conversations can contain client PII/financials.
+// It auto-expires 24h after the last message; "New chat" clears it immediately.
+const HISTORY_KEY = "ps-ai-assistant-history-v1";
+const HISTORY_TTL_MS = 24 * 60 * 60 * 1000; // 1 day
+
+function isValidMessage(m: unknown): m is Message {
+  if (!m || typeof m !== "object") return false;
+  const role = (m as Message).role;
+  const content = (m as Message).content;
+  return (role === "user" || role === "assistant") && typeof content === "string";
+}
+
+function loadHistory(): Message[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { savedAt?: number; messages?: unknown };
+    if (!parsed?.savedAt || Date.now() - parsed.savedAt > HISTORY_TTL_MS) {
+      window.localStorage.removeItem(HISTORY_KEY); // expired — purge
+      return [];
+    }
+    return Array.isArray(parsed.messages)
+      ? (parsed.messages.filter(isValidMessage) as Message[])
+      : [];
+  } catch {
+    try {
+      window.localStorage.removeItem(HISTORY_KEY);
+    } catch {
+      /* ignore */
+    }
+    return [];
+  }
+}
+
+function saveHistory(messages: Message[]) {
+  if (typeof window === "undefined") return;
+  try {
+    if (messages.length === 0) {
+      window.localStorage.removeItem(HISTORY_KEY);
+    } else {
+      window.localStorage.setItem(
+        HISTORY_KEY,
+        JSON.stringify({ savedAt: Date.now(), messages })
+      );
+    }
+  } catch {
+    /* storage full or blocked — non-fatal, history just won't persist */
+  }
+}
+
 export default function AIAssistantPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -29,12 +81,19 @@ export default function AIAssistantPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
+  // Restore any conversation saved in this browser (auto-purged after 24h).
+  useEffect(() => {
+    const saved = loadHistory();
+    if (saved.length > 0) setMessages(saved);
+  }, []);
+
   async function sendMessage(text: string) {
     if (!text.trim() || loading) return;
 
     const userMessage: Message = { role: "user", content: text.trim() };
     const newHistory = [...messages, userMessage];
     setMessages(newHistory);
+    saveHistory(newHistory);
     setInput("");
     setError(null);
     setLoading(true);
@@ -53,7 +112,9 @@ export default function AIAssistantPage() {
       const reply: string = json.data.answer ?? json.data.reply ?? "";
       if (!reply) throw new Error("Empty response from AI service");
 
-      setMessages([...newHistory, { role: "assistant", content: reply }]);
+      const finalHistory: Message[] = [...newHistory, { role: "assistant", content: reply }];
+      setMessages(finalHistory);
+      saveHistory(finalHistory);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
@@ -67,6 +128,14 @@ export default function AIAssistantPage() {
       e.preventDefault();
       sendMessage(input);
     }
+  }
+
+  function startNewChat() {
+    setMessages([]);
+    setInput("");
+    setError(null);
+    saveHistory([]); // clears the saved copy in this browser too
+    textareaRef.current?.focus();
   }
 
   return (
@@ -85,8 +154,18 @@ export default function AIAssistantPage() {
           <h1 className="text-sm font-semibold text-[#0F172A]">AI Assistant</h1>
         </div>
         <span className="text-xs text-[#94A3B8] hidden sm:block">
-          Powered by AI &mdash; ask about GST, Income Tax, TDS, and practice management
+          Ask about GST, Income Tax, TDS, and practice management
         </span>
+        {messages.length > 0 && (
+          <button
+            onClick={startNewChat}
+            title="Start a new chat (clears this conversation)"
+            className="ml-auto flex items-center gap-1.5 text-xs font-medium text-[#64748B] hover:text-[#0F172A] border border-[#E2E8F0] hover:border-[#CBD5E1] rounded-lg px-2.5 py-1.5 transition-colors shrink-0"
+          >
+            <Plus size={13} />
+            New chat
+          </button>
+        )}
       </div>
 
       {/* ── Message area ────────────────────────────────────────────────────── */}
