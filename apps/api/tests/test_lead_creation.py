@@ -83,12 +83,28 @@ class TestStageValidation:
 
     def test_valid_stages_accepted(self):
         valid = [
-            "Lead", "Qualified", "Proposal Sent", "Proposal Accepted",
-            "Onboarding", "Active", "Dormant", "Renewal Due", "Exiting", "Exited",
+            "Lead", "Engagement Drafted", "Engagement Sent", "Engagement Signed",
+            "Proposal Accepted", "Onboarding", "Active", "Dormant", "Renewal Due", "Exiting", "Exited",
         ]
         for stage in valid:
             lead_in = _make_lead_in(stage=stage)
             assert lead_in.stage == stage
+
+    def test_qualified_rejected(self):
+        from routers.lifecycle import create_lead
+        lead_in = _make_lead_in(stage="Qualified")  # removed stage
+        with patch("routers.lifecycle._db", return_value=None):
+            with pytest.raises(HTTPException) as exc_info:
+                create_lead(lead_in, current_user=USER_MANAGER)
+        assert exc_info.value.status_code == 422
+
+    def test_proposal_sent_rejected(self):
+        from routers.lifecycle import create_lead
+        lead_in = _make_lead_in(stage="Proposal Sent")  # removed stage
+        with patch("routers.lifecycle._db", return_value=None):
+            with pytest.raises(HTTPException) as exc_info:
+                create_lead(lead_in, current_user=USER_MANAGER)
+        assert exc_info.value.status_code == 422
 
     def test_negotiation_rejected(self):
         from routers.lifecycle import create_lead
