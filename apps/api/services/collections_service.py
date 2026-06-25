@@ -19,6 +19,7 @@ from datetime import date, datetime, timezone, timedelta
 from typing import Optional
 
 from services.internal_client_service import get_internal_client_id
+from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.collections")
@@ -340,7 +341,7 @@ def _dispatch_invoice_reminder(db, firm_id: str, inv: dict, customer: dict,
         if success:
             upd["sent_at"] = now_iso
         else:
-            upd["error_message"] = "Reminder email failed — check RESEND_API_KEY or recipient address."
+            upd["error_message"] = GENERIC_SEND_FAILURE_MESSAGE
         try:
             db.table("invoice_deliveries").update(upd).eq("id", delivery_id).execute()
         except Exception:  # pragma: no cover
