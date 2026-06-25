@@ -56,15 +56,6 @@ export function AIPanel() {
             );
           })}
         </div>
-
-        <div className="mt-4 mx-2 p-2.5 rounded-[7px] bg-[#FEFAEF] border border-[#B9915E]/20">
-          <p className="text-[11px] text-[#B9915E] leading-relaxed">
-            Powered by{" "}
-            <span className="text-[#B9915E] font-medium">
-              Groq llama-3.3-70b
-            </span>
-          </p>
-        </div>
       </nav>
     </div>
   );
