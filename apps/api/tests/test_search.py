@@ -38,7 +38,7 @@ SEEDED_LEAD = {
     "contact_name": "Priya Nair",
     "email": "priya@zentron-quartz.example",
     "phone": "9000000001",
-    "stage": "Qualified",
+    "stage": "Lead",
 }
 
 SEEDED_ENGAGEMENT = {

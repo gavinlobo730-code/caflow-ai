@@ -2,7 +2,7 @@
 Lifecycle router — Lead pipeline, proposals, onboarding workflows, and renewals.
 
 Covers the full client acquisition and retention lifecycle for a CA firm:
-  Lead → Proposal → Onboarding → Active Client → Renewal
+  Lead → Engagement Drafted → Engagement Sent → Engagement Signed → Onboarding → Active Client → Renewal
 
 All monetary values stored in integer paise (₹1 = 100 paise) — never float.
 """
@@ -145,7 +145,7 @@ _AVG_DAYS_BY_ENTITY = {
 
 _VALID_SOURCES = {"referral", "website", "cold", "event", "other"}
 _VALID_STAGES  = {
-    "Lead", "Qualified", "Proposal Sent",
+    "Lead",
     "Engagement Drafted", "Engagement Sent", "Engagement Signed",
     "Proposal Accepted", "Onboarding", "Active", "Dormant",
     "Renewal Due", "Exiting", "Exited", "_deleted",
@@ -168,7 +168,7 @@ _VALID_STAGES  = {
 
 # Canonical forward order of the pipeline stages we auto-advance through.
 _PIPELINE_STAGE_ORDER = [
-    "Lead", "Qualified", "Proposal Sent",
+    "Lead",
     "Engagement Drafted", "Engagement Sent", "Engagement Signed",
     "Onboarding", "Active",
 ]

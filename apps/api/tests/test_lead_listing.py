@@ -33,7 +33,7 @@ class TestListLeadsMockPath:
             {"id": "1", "firm_id": "firm-aaa", "stage": "Lead",      "is_converted": False},
             {"id": "2", "firm_id": "firm-aaa", "stage": "_deleted",  "is_converted": False},
             {"id": "3", "firm_id": "firm-aaa", "stage": "Active",    "is_converted": True},
-            {"id": "4", "firm_id": "firm-aaa", "stage": "Qualified", "is_converted": None},
+            {"id": "4", "firm_id": "firm-aaa", "stage": "Engagement Drafted", "is_converted": None},
         ]
         with patch("routers.lifecycle._db", return_value=None), \
              patch("routers.lifecycle._MOCK_LEADS", fake_leads):

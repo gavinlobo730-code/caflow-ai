@@ -41,7 +41,7 @@ def mock_world(leads, engagements):
         yield mock_log
 
 
-def _lead(stage="Proposal Sent", **over):
+def _lead(stage="Lead", **over):
     base = {"id": "L1", "firm_id": FIRM, "stage": stage, "is_converted": False}
     base.update(over)
     return base
@@ -58,7 +58,7 @@ def _eng(status="Draft", **over):
 class TestEngagementAdvancesLead:
 
     def test_create_advances_to_engagement_drafted(self):
-        lead = _lead("Proposal Sent")
+        lead = _lead("Lead")
         with mock_world([lead], []):
             res = create_engagement(EngagementIn(title="GST FY26", lead_id="L1"), current_user=USER)
         assert res["success"] is True
