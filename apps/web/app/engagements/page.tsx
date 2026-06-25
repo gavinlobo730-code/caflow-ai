@@ -200,7 +200,8 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
         }),
       });
       if (!json.success) throw new Error(json.error ?? "Failed to create engagement");
-      onCreated(json.data as EngagementLetter);
+      // Backend wraps the row as { engagement: {...} } — unwrap it (not the raw data envelope).
+      onCreated((json.data as { engagement: EngagementLetter }).engagement);
       onClose();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to create engagement");
@@ -379,7 +380,8 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
         });
       }
       if (!json.success) throw new Error(json.error ?? "Failed to save template");
-      onSaved(json.data as EngagementTemplate);
+      // Backend wraps the row as { template: {...} } — unwrap it.
+      onSaved((json.data as { template: EngagementTemplate }).template);
       onClose();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to save template");
@@ -514,7 +516,11 @@ function DetailModal({ letter, onClose, onUpdated }: DetailModalProps) {
         body: JSON.stringify(body ?? {}),
       });
       if (!json.success) throw new Error(json.error ?? "Action failed");
-      onUpdated(json.data as EngagementLetter);
+      // generate/send/sign/reject all return { engagement: {...} } — unwrap the row
+      // so the new status flows into both the list row and this modal. Treating the
+      // whole envelope as the letter left status/id undefined, so the UI never
+      // advanced (the row stayed "Draft" while the backend was already "Generated").
+      onUpdated((json.data as { engagement: EngagementLetter }).engagement);
     } catch (e) {
       setActionErr(e instanceof Error ? e.message : "Action failed");
     } finally {
