@@ -4,14 +4,7 @@ import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "./AuthContext";
 import { LogoIcon } from "@/components/LogoIcon";
-
-// /platform is self-gated (checks platform-admin status server-side), so it is
-// excluded from the firm AuthGuard's session/firm/MFA routing.
-const PUBLIC_PREFIXES = ["/login", "/signup", "/onboarding", "/join", "/auth", "/portal", "/platform"];
-
-function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
-}
+import { isPublicPath } from "./public-paths";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { session, loading, mfaPending, hasFirm } = useAuth();

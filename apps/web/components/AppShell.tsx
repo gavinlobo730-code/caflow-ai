@@ -16,6 +16,7 @@ const NO_SHELL_PREFIXES = [
   "/join",
   "/auth",
   "/portal",
+  "/sign",
 ];
 
 // Matches /clients/[UUID] and any sub-path — client layout owns its own rails
