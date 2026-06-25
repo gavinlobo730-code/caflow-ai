@@ -52,8 +52,6 @@ async function apiFetch(path: string, opts?: RequestInit) {
 
 type Stage =
   | "Lead"
-  | "Qualified"
-  | "Proposal Sent"
   | "Engagement Drafted"
   | "Engagement Sent"
   | "Engagement Signed"
@@ -94,8 +92,6 @@ interface Lead {
 // Note: "Proposal Accepted" excluded from STAGES (still in Stage type for DB compat)
 const STAGES: Stage[] = [
   "Lead",
-  "Qualified",
-  "Proposal Sent",
   "Engagement Drafted",
   "Engagement Sent",
   "Engagement Signed",
@@ -135,16 +131,6 @@ const STAGE_COLORS: Record<Stage, { bg: string; header: string; badge: string }>
     bg: "bg-[#F8FAFC]",
     header: "bg-[#F1F5F9] border-[#E2E8F0]",
     badge: "bg-gray-100 text-[#334155]",
-  },
-  Qualified: {
-    bg: "bg-sky-50",
-    header: "bg-sky-100 border-sky-200",
-    badge: "bg-sky-200 text-sky-800",
-  },
-  "Proposal Sent": {
-    bg: "bg-blue-50",
-    header: "bg-blue-100 border-blue-200",
-    badge: "bg-blue-200 text-blue-800",
   },
   "Engagement Drafted": {
     bg: "bg-violet-50",
@@ -736,23 +722,14 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
             <UserCheck size={12} />
             Convert to Client
           </button>
-        ) : lead.stage === "Proposal Sent" ? (
+        ) : lead.stage === "Lead" ? (
           <>
-            {next && (
-              <button
-                onClick={() => onMoveNext(lead)}
-                className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors border border-blue-200"
-              >
-                Move to {next}
-                <ArrowRight size={12} />
-              </button>
-            )}
             <Link
               href={`/engagements?new=1&lead_id=${lead.id}&name=${encodeURIComponent(lead.businessName || lead.name || "")}`}
-              className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100 transition-colors border border-green-200"
+              className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-100 transition-colors border border-violet-200"
             >
               <FileText size={12} />
-              Create Engagement
+              Draft Engagement
             </Link>
           </>
         ) : lead.stage === "Engagement Signed" ? (

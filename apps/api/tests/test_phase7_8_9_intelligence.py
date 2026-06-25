@@ -17,8 +17,8 @@ CLIENT_B = str(uuid.uuid4())
 
 class TestLeadLifecycleStages:
     VALID_STAGES = [
-        "Lead", "Qualified", "Proposal Sent", "Proposal Accepted",
-        "Onboarding", "Active", "Dormant", "Renewal Due", "Exiting", "Exited",
+        "Lead", "Engagement Drafted", "Engagement Sent", "Engagement Signed",
+        "Proposal Accepted", "Onboarding", "Active", "Dormant", "Renewal Due", "Exiting", "Exited",
     ]
 
     def test_valid_stage_transitions(self):
