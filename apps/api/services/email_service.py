@@ -279,6 +279,50 @@ def send_payment_reminder_to_customer(
     return (_send(to, subject, html), None)
 
 
+def send_engagement_letter(
+    to: str,
+    recipient_name: str,
+    firm_name: str,
+    engagement_number: str,
+    title: str,
+    letter_html: str,
+    pdf_bytes: Optional[bytes] = None,
+    pdf_filename: Optional[str] = None,
+) -> tuple[bool, Optional[str]]:
+    """
+    Email an engagement letter to the prospective client.
+
+    The rendered letter is shown inline in the email body; when a PDF is supplied
+    it is also attached for the client's records (CGST Act Section 31 — written
+    engagement record). Returns (success, provider_message_id).
+
+    This is a CLIENT communication only — it is NOT a government-portal
+    submission and has no accounting side effect.
+    """
+    subject = f"Engagement Letter {engagement_number} from {firm_name}"
+    intro = f"""
+    <p>Dear {recipient_name or 'Client'},</p>
+    <p>Please find below our engagement letter
+    (<strong>{engagement_number}</strong>) from <strong>{firm_name}</strong>
+    regarding <strong>{title}</strong>.{
+        ' A PDF copy is attached for your records.' if pdf_bytes else ''
+    }</p>
+    <p>Kindly review the terms set out below. To accept this engagement, please
+    sign and return a copy to us.</p>
+    <hr/>
+    """
+    closing = f"""
+    <hr/>
+    <p style="color:#64748b;font-size:13px;">This engagement letter was sent via
+    PracticeSync on behalf of {firm_name}. If you have any questions, simply
+    reply to this email.</p>
+    """
+    html = intro + (letter_html or "") + closing
+    if pdf_bytes and pdf_filename:
+        return _send_with_attachment(to, subject, html, pdf_bytes, pdf_filename)
+    return (_send(to, subject, html), None)
+
+
 def send_statement_to_customer(
     to: str,
     customer_name: str,
