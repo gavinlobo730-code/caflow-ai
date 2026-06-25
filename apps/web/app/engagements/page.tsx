@@ -14,6 +14,7 @@ import {
   Loader2,
   Edit3,
   Eye,
+  Trash2,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
@@ -489,9 +490,10 @@ interface DetailModalProps {
   letter: EngagementLetter | null;
   onClose: () => void;
   onUpdated: (letter: EngagementLetter) => void;
+  onDeleted: (letterId: string) => void;
 }
 
-function DetailModal({ letter, onClose, onUpdated }: DetailModalProps) {
+function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps) {
   const [actionErr, setActionErr] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [signedPdfUrl, setSignedPdfUrl] = useState("");
@@ -530,6 +532,24 @@ function DetailModal({ letter, onClose, onUpdated }: DetailModalProps) {
       onUpdated((json.data as { engagement: EngagementLetter }).engagement);
     } catch (e) {
       setActionErr(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function doDelete() {
+    if (!letter) return;
+    if (!window.confirm("Delete this engagement letter? The linked lead returns to the pipeline so you can draft a new one. This can't be undone.")) {
+      return;
+    }
+    setActionLoading(true);
+    setActionErr(null);
+    try {
+      const json = await apiFetch(`/api/engagement-letters/${letter.id}`, { method: "DELETE" });
+      if (!json.success) throw new Error(json.error ?? "Delete failed");
+      onDeleted(letter.id);
+    } catch (e) {
+      setActionErr(e instanceof Error ? e.message : "Delete failed");
     } finally {
       setActionLoading(false);
     }
@@ -759,6 +779,24 @@ function DetailModal({ letter, onClose, onUpdated }: DetailModalProps) {
               </>
             )}
           </div>
+
+          {/* Delete / discard — available for any letter except a signed one.
+              Returns the linked lead to the pipeline so it can be re-engaged. */}
+          {letter.status !== "Signed" && (
+            <div className="border-t border-[#F1F5F9] pt-3">
+              <button
+                disabled={actionLoading}
+                onClick={doDelete}
+                className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+              >
+                <Trash2 size={13} />
+                Delete engagement
+              </button>
+              <p className="mt-1 text-xs text-[#94A3B8]">
+                Discards this letter and returns the linked lead to the pipeline so you can draft a new one.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1169,6 +1207,10 @@ function EngagementsPageInner() {
         onUpdated={(updated) => {
           setLetters((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
           setDetailLetter(updated);
+        }}
+        onDeleted={(letterId) => {
+          setLetters((prev) => prev.filter((l) => l.id !== letterId));
+          setDetailLetter(null);
         }}
       />
     </div>

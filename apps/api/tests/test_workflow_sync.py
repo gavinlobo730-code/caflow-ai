@@ -3,7 +3,7 @@ Regression tests for the Lead → Engagement → Client workflow integrity sprin
 
 Covers:
   • engagement create / send / sign auto-advance the linked lead's pipeline stage
-  • rejected engagements do NOT advance the lead
+  • rejected engagements do NOT advance the lead — they revert it (never orphaned)
   • advancement is forward-only (a new draft never regresses a signed lead)
   • converted / missing leads are never touched and never crash
   • multiple signed engagements → the most recently signed is authoritative
@@ -82,14 +82,17 @@ class TestEngagementAdvancesLead:
         assert eng["status"] == "Signed"
         assert lead["stage"] == "Engagement Signed"
 
-    def test_reject_does_not_advance(self):
+    def test_reject_does_not_advance_but_reverts(self):
+        # Rejecting must never ADVANCE the lead; and (rejection workflow fix) it
+        # now REVERTS the lead so it is not orphaned mid-engagement. With no other
+        # live letter, the lead returns to "Lead" to be re-engaged.
         lead = _lead("Engagement Sent")
         eng = _eng("Sent")
         with mock_world([lead], [eng]):
             res = reject_engagement("E1", RejectIn(), current_user=USER)
         assert res["success"] is True
         assert eng["status"] == "Rejected"
-        assert lead["stage"] == "Engagement Sent"  # unchanged
+        assert lead["stage"] == "Lead"
 
 
 # ── Objective 2: safety — forward-only, converted, missing ────────────────────
