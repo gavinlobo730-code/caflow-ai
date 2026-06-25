@@ -496,6 +496,8 @@ function DetailModal({ letter, onClose, onUpdated }: DetailModalProps) {
   const [rejectionNotes, setRejectionNotes] = useState("");
   const [showSignInput, setShowSignInput] = useState(false);
   const [showRejectInput, setShowRejectInput] = useState(false);
+  const [showSendInput, setShowSendInput] = useState(false);
+  const [sendEmail, setSendEmail] = useState("");
 
   useEffect(() => {
     if (letter) {
@@ -504,6 +506,8 @@ function DetailModal({ letter, onClose, onUpdated }: DetailModalProps) {
       setRejectionNotes("");
       setShowSignInput(false);
       setShowRejectInput(false);
+      setShowSendInput(false);
+      setSendEmail(letter.recipient_email ?? "");
     }
   }, [letter]);
 
@@ -615,14 +619,43 @@ function DetailModal({ letter, onClose, onUpdated }: DetailModalProps) {
             )}
 
             {letter.status === "Generated" && (
-              <button
-                disabled={actionLoading}
-                onClick={() => doAction(`/api/engagement-letters/${letter.id}/send`)}
-                className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-              >
-                {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-                Mark as Sent
-              </button>
+              !showSendInput ? (
+                <button
+                  disabled={actionLoading}
+                  onClick={() => setShowSendInput(true)}
+                  className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                >
+                  <Send size={13} />
+                  Send to Client
+                </button>
+              ) : (
+                <div className="w-full space-y-2">
+                  <label className="text-xs font-medium text-[#334155]">Client email</label>
+                  <input
+                    type="email"
+                    value={sendEmail}
+                    onChange={(e) => setSendEmail(e.target.value)}
+                    placeholder="client@example.com"
+                    className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                  />
+                  <p className="text-xs text-[#64748B]">
+                    The letter will be emailed to this address with a PDF copy attached, then marked as Sent.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      disabled={actionLoading || !sendEmail.trim()}
+                      onClick={() => doAction(`/api/engagement-letters/${letter.id}/send`, { to_email: sendEmail.trim() })}
+                      className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                    >
+                      {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                      Send Now
+                    </button>
+                    <button onClick={() => setShowSendInput(false)} className="rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm text-[#475569] hover:bg-[#F8FAFC]">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )
             )}
 
             {(letter.status === "Sent" || letter.status === "Viewed") && (
@@ -1037,7 +1070,7 @@ function EngagementsPageInner() {
                               className="flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
                             >
                               <Send size={11} />
-                              Mark Sent
+                              Send
                             </button>
                           )}
                           {(letter.status === "Sent" || letter.status === "Viewed") && (
