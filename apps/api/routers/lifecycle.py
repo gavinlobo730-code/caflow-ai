@@ -10,12 +10,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, Any
 from datetime import datetime, timezone, date, timedelta
+import logging
 import uuid
 
 from models.common import api_response
 from core.permissions import rbac
+from core.validators import validate_pan, validate_gstin
 from services.timeline_service import timeline_service
 from services.audit_service import log_event
+
+_logger = logging.getLogger("caflow.lifecycle")
 
 router = APIRouter(prefix="/api/lifecycle", tags=["lifecycle"])
 
@@ -910,6 +914,25 @@ def convert_lead(
         )
         # entity_type CHECK: Proprietorship|Partnership|LLP|Private Limited|Public Limited|Trust|Society|Individual
         entity_type = data.entity_type or "Individual"
+
+        # Validate the Indian tax identifiers BEFORE the insert (Objective 2 —
+        # never rely on a DB constraint for validation). Both are OPTIONAL at
+        # conversion: PAN is collected/verified during onboarding (clients.pan is
+        # nullable — migration 133) and not every client is GST-registered. Each
+        # is format-checked only when actually provided, and an empty value is
+        # stored as NULL (an empty string would fail the clients_pan_check /
+        # clients_gstin_check regex constraints).
+        pan_clean = (data.pan or "").strip().upper()
+        gstin_clean = (data.gstin or "").strip().upper()
+        validation_errors = [
+            msg for msg in (
+                validate_pan(pan_clean),                          # None when empty or well-formed
+                validate_gstin(gstin_clean) if gstin_clean else None,
+            ) if msg
+        ]
+        if validation_errors:
+            raise HTTPException(status_code=422, detail=" ".join(validation_errors))
+
         new_client = {
             "id":          str(uuid.uuid4()),
             "firm_id":     firm_id,
@@ -917,8 +940,8 @@ def convert_lead(
             "entity_type": entity_type,
             "email":       data.email or existing.get("email"),
             "mobile":      data.phone or existing.get("phone"),
-            "pan":         (data.pan or "").upper() or None,
-            "gstin":       (data.gstin or "").upper() or None,
+            "pan":         pan_clean or None,
+            "gstin":       gstin_clean or None,
             "status":      "active",
             "created_at":  now,
             "updated_at":  now,
@@ -926,8 +949,21 @@ def convert_lead(
         try:
             client_res = db.table("clients").insert(new_client).execute()
             client_id = (client_res.data or [new_client])[0]["id"]
+        except HTTPException:
+            raise
         except Exception as e:
-            raise HTTPException(status_code=422, detail=f"Failed to create client: {e}")
+            # Objective 3 — never surface raw PostgreSQL/driver errors (constraint
+            # names, SQL, stack traces, JSON) to the user. Log the full detail
+            # server-side and return a friendly, generic message.
+            _logger.exception(
+                "convert_lead: client insert failed (lead=%s firm=%s): %s",
+                lead_id, firm_id, e,
+            )
+            raise HTTPException(
+                status_code=422,
+                detail="We couldn't create the client. Please check the details and try again, "
+                       "or contact support if the problem continues.",
+            )
 
     # H16: stamp the signed engagement with the resulting client so it is no longer
     # lead-only — keeps the engagement from being orphaned. Reported, not silent.
