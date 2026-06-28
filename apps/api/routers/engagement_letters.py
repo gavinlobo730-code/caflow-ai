@@ -17,7 +17,7 @@ CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT any letter without explicit CA approva
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 import logging
 import os
 import secrets
@@ -321,6 +321,26 @@ class SendIn(BaseModel):
     to_email: Optional[str] = None
 
 
+class ResendIn(BaseModel):
+    # Optional ONE-OFF override address for this send only (does NOT persist as
+    # the recipient — use PATCH /recipient for a durable change). When omitted,
+    # the letter's saved recipient_email is reused.
+    to_email: Optional[str] = None
+    # Acknowledge the "this letter has expired" warning and resend anyway.
+    force: bool = False
+
+
+class RecipientIn(BaseModel):
+    recipient_email: str
+    resend: bool = False   # email the letter immediately after saving the address
+    force: bool = False     # acknowledge an expiry warning when resend=True
+
+
+class RegenerateLinkIn(BaseModel):
+    resend: bool = False   # email the freshly-minted link after regenerating
+    force: bool = False     # acknowledge an expiry warning when resend=True
+
+
 class SignIn(BaseModel):
     signed_pdf_url: Optional[str] = None   # URL to uploaded signed copy
 
@@ -437,6 +457,43 @@ _GENERIC_SEND_FAILURE = (
     "Please try again later or contact your administrator."
 )
 
+# Statuses from which a letter may be resent / its link copied or regenerated:
+# it has already been sent to the client and is awaiting their signature.
+_RESENDABLE = {"Sent", "Viewed"}
+
+# Business timezone for date-only expiry checks (the FY and all due dates are
+# reckoned in IST; comparing expiry_date against UTC would expire a letter up to
+# 5.5h early). Mirrors engagement_sign_public._IST — kept local to avoid a
+# circular import (engagement_sign_public already imports from this module).
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _is_expired(eng: dict) -> bool:
+    """True when the letter is past its expiry_date (date-only, IST). Letters
+    with no expiry_date never expire."""
+    exp = eng.get("expiry_date")
+    if not exp:
+        return False
+    try:
+        exp_date = date.fromisoformat(str(exp)[:10])
+    except Exception:
+        return False
+    return datetime.now(_IST).date() > exp_date
+
+
+def _build_sign_url(sign_token: Optional[str]) -> Optional[str]:
+    """Build the public "Review & Sign Online" URL for a token.
+
+    Query-param form (not a path segment): the web app is a Next.js static
+    export, so /sign/ is one static page that reads the token client-side.
+    token_urlsafe output (A-Z a-z 0-9 _ -) is query-safe without encoding.
+    Returns None when FRONTEND_URL is not configured or no token is given.
+    """
+    if not sign_token:
+        return None
+    frontend_url = os.environ.get("FRONTEND_URL", "").strip().rstrip("/")
+    return f"{frontend_url}/sign/?t={sign_token}" if frontend_url else None
+
 
 def _resolve_recipient_email(db, eng: dict, override: Optional[str]) -> Optional[str]:
     """
@@ -544,6 +601,76 @@ def _deliver_engagement_email(db, eng: dict, firm_id: str, to_email: Optional[st
         return {"success": False, "to": dest, "provider_message_id": provider_id,
                 "error": _GENERIC_SEND_FAILURE}
     return {"success": True, "to": dest, "provider_message_id": provider_id, "error": None}
+
+
+def _load_engagement(db, engagement_id: str, firm_id: str) -> Optional[dict]:
+    """Load a single engagement row scoped to the firm; None if absent/error."""
+    try:
+        res = (
+            db.table("engagements")
+            .select("*")
+            .eq("id", engagement_id)
+            .eq("firm_id", firm_id)
+            .single()
+            .execute()
+        )
+        return res.data
+    except Exception:
+        return None
+
+
+def _do_resend(db, eng: dict, firm_id: str, to_email: Optional[str], actor: dict) -> dict:
+    """
+    Re-deliver the SAME letter email REUSING eng's existing sign_token, then on
+    success bump last_sent_at + resend_count and log a 'resent' audit event.
+
+    This is the single shared send-again implementation behind /resend,
+    /recipient (resend=true) and /regenerate-link (resend=true), so the delivery
+    + history-tracking logic is never duplicated. The caller is responsible for
+    all guards (status, not-deleted, expiry-confirmation) BEFORE calling this.
+
+    Mutates `eng` in place to reflect the new last_sent_at/resend_count (and a
+    self-healed sign_token if one was somehow missing) so the caller can return
+    `eng` as the updated engagement. Returns the delivery dict
+    {success, to, provider_message_id, error}; never raises on a send failure
+    (only on a DB write failure, surfaced as 422).
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    engagement_id = eng["id"]
+    # Reuse the existing token so previously shared links keep working; only
+    # mint one if it is somehow missing (self-heal — should not happen post-send).
+    sign_token = eng.get("sign_token") or secrets.token_urlsafe(32)
+    sign_url = _build_sign_url(sign_token)
+
+    delivery = _deliver_engagement_email(db, eng, firm_id, to_email, sign_url)
+    if not delivery["success"]:
+        _log_engagement_event(db, engagement_id, firm_id, "resend_failed",
+                              actor.get("auth_user_id"),
+                              {"to": delivery.get("to"), "error": delivery.get("error")})
+        return delivery
+
+    new_count = int(eng.get("resend_count") or 0) + 1
+    update = {"last_sent_at": now, "updated_at": now, "resend_count": new_count}
+    if not eng.get("sign_token"):
+        update["sign_token"] = sign_token   # self-heal a missing token, never overwrite
+    try:
+        db.table("engagements").update(update).eq("id", engagement_id).eq("firm_id", firm_id).execute()
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    eng.update(update)
+
+    _log_engagement_event(db, engagement_id, firm_id, "resent",
+                          actor.get("auth_user_id"),
+                          {"to": delivery.get("to"),
+                           "provider_message_id": delivery.get("provider_message_id"),
+                           "resend_count": new_count})
+    try:
+        log_event(firm_id, "engagement", engagement_id, "resend",
+                  actor_id=actor.get("auth_user_id"), actor_email=actor.get("email"),
+                  new_data={"emailed_to": delivery.get("to"), "resend_count": new_count})
+    except Exception:
+        pass
+    return delivery
 
 
 # ─── Template Endpoints ───────────────────────────────────────────────────────
@@ -1265,6 +1392,7 @@ def send_engagement(
                                 detail=f"Cannot send: engagement is '{eng['status']}'. Expected one of: {sorted(_VALID_SEND_STATUSES)}.")
         eng["status"] = "Sent"
         eng["sent_at"] = now
+        eng["last_sent_at"] = now
         eng["updated_at"] = now
         _log_engagement_event(db, engagement_id, firm_id, "sent",
                               current_user.get("auth_user_id"))
@@ -1293,11 +1421,7 @@ def send_engagement(
     # Mint a public, unguessable sign token (reuse an existing one on re-send) and
     # build the tokenized "Review & Sign Online" link included in the email.
     sign_token = eng.get("sign_token") or secrets.token_urlsafe(32)
-    frontend_url = os.environ.get("FRONTEND_URL", "").strip().rstrip("/")
-    # Query-param form (not a path segment): the web app is a Next.js static
-    # export, so /sign/ is one static page that reads the token client-side.
-    # token_urlsafe output (A–Z a–z 0–9 _ -) is query-safe without encoding.
-    sign_url = f"{frontend_url}/sign/?t={sign_token}" if frontend_url else None
+    sign_url = _build_sign_url(sign_token)
 
     # Actually email the letter to the client. Only advance to "Sent" if it goes out.
     delivery = _deliver_engagement_email(db, eng, firm_id, override, sign_url)
@@ -1312,8 +1436,8 @@ def send_engagement(
     try:
         res = (
             db.table("engagements")
-            .update({"status": "Sent", "sent_at": now, "updated_at": now,
-                     "sign_token": sign_token})
+            .update({"status": "Sent", "sent_at": now, "last_sent_at": now,
+                     "updated_at": now, "sign_token": sign_token})
             .eq("id", engagement_id)
             .eq("firm_id", firm_id)
             .execute()
@@ -1338,6 +1462,293 @@ def send_engagement(
     # Objective 1: sending a letter advances the linked lead to "Engagement Sent".
     _advance_lead(eng.get("lead_id"), firm_id, "Engagement Sent", current_user)
     return api_response(True, {"engagement": updated, "delivery": delivery})
+
+
+@router.post("/{engagement_id}/resend")
+def resend_engagement(
+    engagement_id: str,
+    body: Optional[ResendIn] = None,
+    current_user: dict = Depends(rbac("client", "write")),
+):
+    """
+    Resend the SAME engagement letter — same subject, same PDF, same engagement
+    number, same signing link/token. Reuses the existing engagement; never
+    creates a new one, never changes status, never regenerates the token, so
+    every previously shared link (email/WhatsApp) keeps working. Updates
+    last_sent_at and increments resend_count, and records a 'resent' audit event.
+
+    Pass to_email for a one-off send to a different address (does NOT persist —
+    use PATCH /recipient for that). An expired letter is resent only with
+    force=true. Manager+.
+    """
+    db = _db()
+    firm_id = current_user["firm_id"]
+    now = datetime.now(timezone.utc).isoformat()
+    override = body.to_email if body else None
+    force = bool(body.force) if body else False
+
+    if not db:
+        eng = next((e for e in _MOCK_ENGAGEMENTS
+                    if e["id"] == engagement_id and e.get("firm_id") == firm_id
+                    and not e.get("is_deleted")), None)
+        if not eng:
+            raise HTTPException(status_code=404, detail="Engagement not found")
+        if eng["status"] not in _RESENDABLE:
+            raise HTTPException(status_code=409,
+                                detail=f"Cannot resend: engagement is '{eng['status']}'. Only sent letters awaiting signature can be resent.")
+        eng["last_sent_at"] = now
+        eng["resend_count"] = int(eng.get("resend_count") or 0) + 1
+        eng["updated_at"] = now
+        _log_engagement_event(db, engagement_id, firm_id, "resent",
+                              current_user.get("auth_user_id"),
+                              {"to": override or eng.get("recipient_email"),
+                               "resend_count": eng["resend_count"]})
+        return api_response(True, {"engagement": eng})
+
+    eng = _load_engagement(db, engagement_id, firm_id)
+    if not eng or eng.get("is_deleted"):
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    if eng["status"] not in _RESENDABLE:
+        raise HTTPException(status_code=409,
+                            detail=f"Cannot resend: engagement is '{eng['status']}'. Only sent letters awaiting signature can be resent.")
+    # Security: an expired letter must not be resent without an explicit warning.
+    if _is_expired(eng) and not force:
+        return api_response(
+            False,
+            {"engagement": eng, "needs_confirmation": True, "reason": "expired",
+             "expiry_date": eng.get("expiry_date")},
+            f"This engagement letter expired on {eng.get('expiry_date')}. Resend anyway?")
+
+    delivery = _do_resend(db, eng, firm_id, override, current_user)
+    if not delivery["success"]:
+        return api_response(False, {"engagement": eng, "delivery": delivery}, delivery["error"])
+    return api_response(True, {"engagement": eng, "delivery": delivery})
+
+
+@router.get("/{engagement_id}/signing-link")
+def get_signing_link(
+    engagement_id: str,
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    """
+    Return the EXACT public signing URL that was emailed, so the CA can copy it
+    ("Copy Signing Link") and share it over WhatsApp etc. Available only while
+    the letter is awaiting signature and has a token. Read access.
+    """
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        eng = next((e for e in _MOCK_ENGAGEMENTS
+                    if e["id"] == engagement_id and e.get("firm_id") == firm_id
+                    and not e.get("is_deleted")), None)
+    else:
+        eng = _load_engagement(db, engagement_id, firm_id)
+    if not eng or eng.get("is_deleted"):
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    if eng.get("status") not in _RESENDABLE:
+        raise HTTPException(status_code=409,
+                            detail="A signing link is available only while the letter is awaiting signature.")
+    token = eng.get("sign_token")
+    if not token:
+        raise HTTPException(status_code=409,
+                            detail="This letter has no signing link yet — send it to the client first.")
+    # sign_url may be None if FRONTEND_URL is unset server-side; the client then
+    # falls back to building the link from its own origin + sign_token.
+    return api_response(True, {"sign_url": _build_sign_url(token), "sign_token": token})
+
+
+@router.patch("/{engagement_id}/recipient")
+def change_recipient(
+    engagement_id: str,
+    body: RecipientIn,
+    current_user: dict = Depends(rbac("client", "write")),
+):
+    """
+    Change the recipient email on an already-sent letter ("send it to my Gmail
+    instead") WITHOUT creating a new engagement or regenerating the token.
+    Optionally resend immediately (resend=true). Manager+.
+    """
+    db = _db()
+    firm_id = current_user["firm_id"]
+    now = datetime.now(timezone.utc).isoformat()
+
+    new_email = (body.recipient_email or "").strip()
+    if not new_email:
+        raise HTTPException(status_code=422, detail="recipient_email is required.")
+    try:
+        from email_validator import validate_email as _ve
+        _ve(new_email, check_deliverability=False)
+    except Exception:
+        raise HTTPException(status_code=422, detail=f"Invalid email address: {new_email}")
+
+    if not db:
+        eng = next((e for e in _MOCK_ENGAGEMENTS
+                    if e["id"] == engagement_id and e.get("firm_id") == firm_id
+                    and not e.get("is_deleted")), None)
+        if not eng:
+            raise HTTPException(status_code=404, detail="Engagement not found")
+        eng["recipient_email"] = new_email
+        eng["updated_at"] = now
+        _log_engagement_event(db, engagement_id, firm_id, "recipient_changed",
+                              current_user.get("auth_user_id"), {"to": new_email})
+        return api_response(True, {"engagement": eng})
+
+    eng = _load_engagement(db, engagement_id, firm_id)
+    if not eng or eng.get("is_deleted"):
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    if eng["status"] in ("Signed", "Rejected"):
+        raise HTTPException(status_code=409,
+                            detail=f"Cannot change the recipient on a '{eng['status']}' letter.")
+
+    try:
+        res = (db.table("engagements")
+               .update({"recipient_email": new_email, "updated_at": now})
+               .eq("id", engagement_id).eq("firm_id", firm_id).execute())
+        updated = (res.data or [{}])[0]
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    eng["recipient_email"] = new_email   # reflect for an immediate resend below
+
+    _log_engagement_event(db, engagement_id, firm_id, "recipient_changed",
+                          current_user.get("auth_user_id"), {"to": new_email})
+    try:
+        log_event(firm_id, "engagement", engagement_id, "recipient_change",
+                  actor_id=current_user.get("auth_user_id"),
+                  actor_email=current_user.get("email"),
+                  new_data={"recipient_email": new_email})
+    except Exception:
+        pass
+
+    # Optional immediate resend (only meaningful while awaiting signature).
+    if body.resend and eng["status"] in _RESENDABLE:
+        if _is_expired(eng) and not body.force:
+            return api_response(
+                True,
+                {"engagement": updated, "needs_confirmation": True,
+                 "reason": "expired", "expiry_date": eng.get("expiry_date")},
+                None)
+        delivery = _do_resend(db, eng, firm_id, new_email, current_user)
+        return api_response(bool(delivery["success"]),
+                            {"engagement": eng, "delivery": delivery},
+                            None if delivery["success"] else delivery["error"])
+
+    return api_response(True, {"engagement": updated})
+
+
+@router.post("/{engagement_id}/regenerate-link")
+def regenerate_link(
+    engagement_id: str,
+    body: Optional[RegenerateLinkIn] = None,
+    current_user: dict = Depends(rbac("client", "write")),
+):
+    """
+    ADVANCED: mint a brand-new signing token, INVALIDATING every previously
+    shared link (the public lookup is by sign_token, so old links stop resolving).
+    The UI confirms this destructive action first. Optionally resend the new link
+    (resend=true). Cannot regenerate a signed/rejected/deleted letter's link.
+    Manager+.
+    """
+    db = _db()
+    firm_id = current_user["firm_id"]
+    now = datetime.now(timezone.utc).isoformat()
+    do_resend = bool(body.resend) if body else False
+    force = bool(body.force) if body else False
+    new_token = secrets.token_urlsafe(32)
+
+    if not db:
+        eng = next((e for e in _MOCK_ENGAGEMENTS
+                    if e["id"] == engagement_id and e.get("firm_id") == firm_id
+                    and not e.get("is_deleted")), None)
+        if not eng:
+            raise HTTPException(status_code=404, detail="Engagement not found")
+        if eng["status"] not in _RESENDABLE:
+            raise HTTPException(status_code=409,
+                                detail=f"Cannot regenerate the link for a '{eng['status']}' letter.")
+        eng["sign_token"] = new_token
+        eng["updated_at"] = now
+        _log_engagement_event(db, engagement_id, firm_id, "link_regenerated",
+                              current_user.get("auth_user_id"))
+        return api_response(True, {"engagement": eng})
+
+    eng = _load_engagement(db, engagement_id, firm_id)
+    if not eng or eng.get("is_deleted"):
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    # Only a letter awaiting signature has a link worth rotating; a signed letter
+    # must never have its (now-evidentiary) link silently changed.
+    if eng["status"] not in _RESENDABLE:
+        raise HTTPException(status_code=409,
+                            detail=f"Cannot regenerate the link for a '{eng['status']}' letter.")
+
+    try:
+        res = (db.table("engagements")
+               .update({"sign_token": new_token, "updated_at": now})
+               .eq("id", engagement_id).eq("firm_id", firm_id).execute())
+        updated = (res.data or [{}])[0]
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    eng["sign_token"] = new_token   # so a resend below uses the NEW token
+
+    _log_engagement_event(db, engagement_id, firm_id, "link_regenerated",
+                          current_user.get("auth_user_id"))
+    try:
+        log_event(firm_id, "engagement", engagement_id, "link_regenerate",
+                  actor_id=current_user.get("auth_user_id"),
+                  actor_email=current_user.get("email"),
+                  new_data={"link_regenerated": True})
+    except Exception:
+        pass
+
+    if do_resend:
+        if _is_expired(eng) and not force:
+            return api_response(
+                True,
+                {"engagement": updated, "needs_confirmation": True,
+                 "reason": "expired", "expiry_date": eng.get("expiry_date")},
+                None)
+        delivery = _do_resend(db, eng, firm_id, None, current_user)
+        return api_response(bool(delivery["success"]),
+                            {"engagement": eng, "delivery": delivery},
+                            None if delivery["success"] else delivery["error"])
+
+    return api_response(True, {"engagement": eng})
+
+
+@router.get("/{engagement_id}/pdf")
+def download_engagement_pdf(
+    engagement_id: str,
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    """
+    Download the engagement letter PDF. It is re-rendered from the stored
+    content, which is deterministic — the same content always yields the same PDF
+    — so this is byte-for-byte the copy that was emailed. (The MVP does not
+    persist PDFs to object storage; the immutable sent content IS the source of
+    truth.) Read access.
+    """
+    from fastapi.responses import Response
+    from services.engagement_pdf_service import render_engagement_pdf
+
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        eng = next((e for e in _MOCK_ENGAGEMENTS
+                    if e["id"] == engagement_id and e.get("firm_id") == firm_id
+                    and not e.get("is_deleted")), None)
+    else:
+        eng = _load_engagement(db, engagement_id, firm_id)
+    if not eng or eng.get("is_deleted"):
+        raise HTTPException(status_code=404, detail="Engagement not found")
+
+    try:
+        pdf_bytes, filename = render_engagement_pdf(
+            eng.get("content", ""), eng.get("engagement_number", ""))
+    except Exception as exc:
+        _logger.warning("engagement PDF download render failed for %s: %s",
+                        eng.get("engagement_number"), exc)
+        raise HTTPException(status_code=422, detail="Could not render the engagement PDF.") from exc
+
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 @router.post("/{engagement_id}/sign")

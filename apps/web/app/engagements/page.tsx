@@ -15,8 +15,13 @@ import {
   Edit3,
   Eye,
   Trash2,
+  Copy,
+  Download,
+  RefreshCw,
+  Mail,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { useToast } from "@/components/ui/use-toast";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -61,6 +66,8 @@ interface EngagementLetter {
   start_date: string | null;
   expiry_date: string | null;
   sent_at: string | null;
+  last_sent_at: string | null;
+  resend_count: number;
   signed_at: string | null;
   signed_by_name: string | null;
   rejected_at: string | null;
@@ -94,6 +101,17 @@ function formatDate(iso: string | null): string {
     day: "2-digit",
     month: "short",
     year: "numeric",
+  });
+}
+
+function formatDateTime(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
@@ -494,6 +512,7 @@ interface DetailModalProps {
 }
 
 function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps) {
+  const { toast } = useToast();
   const [actionErr, setActionErr] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [signedPdfUrl, setSignedPdfUrl] = useState("");
@@ -503,6 +522,9 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
   const [showSendInput, setShowSendInput] = useState(false);
   const [sendEmail, setSendEmail] = useState("");
   const [copied, setCopied] = useState(false);
+  const [showRecipientInput, setShowRecipientInput] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [showRegenConfirm, setShowRegenConfirm] = useState(false);
 
   useEffect(() => {
     if (letter) {
@@ -513,6 +535,9 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
       setShowRejectInput(false);
       setShowSendInput(false);
       setSendEmail(letter.recipient_email ?? "");
+      setShowRecipientInput(false);
+      setRecipientEmail(letter.recipient_email ?? "");
+      setShowRegenConfirm(false);
     }
   }, [letter]);
 
@@ -550,6 +575,155 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
       onDeleted(letter.id);
     } catch (e) {
       setActionErr(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  // Resend the SAME letter (reuses the existing token, so old links keep working).
+  // An expired letter triggers a confirm-then-force round-trip.
+  async function doResend(force = false) {
+    if (!letter) return;
+    setActionLoading(true);
+    setActionErr(null);
+    try {
+      const json = await apiFetch(`/api/engagement-letters/${letter.id}/resend`, {
+        method: "POST",
+        body: JSON.stringify({ force }),
+      });
+      if (!json.success) {
+        if (json.data?.needs_confirmation && !force) {
+          const when = json.data?.expiry_date ? ` on ${formatDate(json.data.expiry_date)}` : "";
+          if (window.confirm(`This engagement letter expired${when}. Resend anyway?`)) {
+            await doResend(true);
+          }
+          return;
+        }
+        throw new Error(json.error ?? "Resend failed");
+      }
+      onUpdated((json.data as { engagement: EngagementLetter }).engagement);
+      const to = json.data?.delivery?.to ?? letter.recipient_email ?? "the client";
+      toast({ title: "Email resent", description: `Sent to ${to}.` });
+    } catch (e) {
+      setActionErr(e instanceof Error ? e.message : "Resend failed");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  // Copy the EXACT public signing URL that was emailed (server-authoritative,
+  // with a same-origin fallback if FRONTEND_URL isn't configured).
+  async function doCopyLink() {
+    if (!letter) return;
+    try {
+      let url = "";
+      try {
+        const json = await apiFetch(`/api/engagement-letters/${letter.id}/signing-link`);
+        url = (json?.data?.sign_url as string) || "";
+      } catch { /* fall back to origin + token below */ }
+      if (!url && letter.sign_token) {
+        url = `${window.location.origin}/sign/?t=${letter.sign_token}`;
+      }
+      if (!url) throw new Error("No signing link available yet — send the letter first.");
+      await navigator.clipboard?.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({ title: "Signing link copied." });
+    } catch (e) {
+      setActionErr(e instanceof Error ? e.message : "Couldn't copy the link");
+    }
+  }
+
+  // Change recipient email (no new engagement, no new token); optionally resend.
+  async function doChangeRecipient(resend: boolean, force = false) {
+    if (!letter) return;
+    const email = recipientEmail.trim();
+    if (!email) { setActionErr("Enter an email address."); return; }
+    setActionLoading(true);
+    setActionErr(null);
+    try {
+      const json = await apiFetch(`/api/engagement-letters/${letter.id}/recipient`, {
+        method: "PATCH",
+        body: JSON.stringify({ recipient_email: email, resend, force }),
+      });
+      if (json.success && json.data?.needs_confirmation && resend && !force) {
+        if (window.confirm("This engagement letter has expired. Send to the new address anyway?")) {
+          await doChangeRecipient(true, true);
+        } else {
+          onUpdated((json.data as { engagement: EngagementLetter }).engagement);
+          setShowRecipientInput(false);
+        }
+        return;
+      }
+      if (!json.success) throw new Error(json.error ?? "Couldn't update recipient");
+      onUpdated((json.data as { engagement: EngagementLetter }).engagement);
+      setShowRecipientInput(false);
+      toast({
+        title: resend ? "Recipient updated & email resent" : "Recipient updated",
+        description: email,
+      });
+    } catch (e) {
+      setActionErr(e instanceof Error ? e.message : "Couldn't update recipient");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  // Advanced: mint a new token, invalidating every previously shared link.
+  async function doRegenerate(alsoSend: boolean) {
+    if (!letter) return;
+    setActionLoading(true);
+    setActionErr(null);
+    try {
+      let json = await apiFetch(`/api/engagement-letters/${letter.id}/regenerate-link`, {
+        method: "POST",
+        body: JSON.stringify({ resend: alsoSend }),
+      });
+      if (json.success && json.data?.needs_confirmation && alsoSend) {
+        if (window.confirm("This engagement letter has expired. Email the new link anyway?")) {
+          json = await apiFetch(`/api/engagement-letters/${letter.id}/regenerate-link`, {
+            method: "POST",
+            body: JSON.stringify({ resend: true, force: true }),
+          });
+        }
+      }
+      if (!json.success) throw new Error(json.error ?? "Couldn't regenerate the link");
+      onUpdated((json.data as { engagement: EngagementLetter }).engagement);
+      setShowRegenConfirm(false);
+      toast({
+        title: "New signing link generated",
+        description: "Previously shared links no longer work.",
+      });
+    } catch (e) {
+      setActionErr(e instanceof Error ? e.message : "Couldn't regenerate the link");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  // Download the engagement PDF (binary — bypasses the JSON apiFetch helper).
+  async function doDownloadPdf() {
+    if (!letter) return;
+    setActionLoading(true);
+    setActionErr(null);
+    try {
+      const { data: { session } } = await getSupabaseClient().auth.getSession();
+      const token = session?.access_token ?? "";
+      const res = await fetch(`${API}/api/engagement-letters/${letter.id}/pdf`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`Couldn't download the PDF (HTTP ${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `engagement-letter-${letter.engagement_number}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setActionErr(e instanceof Error ? e.message : "Couldn't download the PDF");
     } finally {
       setActionLoading(false);
     }
@@ -610,6 +784,31 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
             </div>
           </div>
 
+          {/* Send history — Created / First Sent / Last Sent / Sent Count */}
+          {letter.sent_at && (
+            <div>
+              <p className="text-xs font-medium text-[#94A3B8] uppercase tracking-wider mb-1.5">Send History</p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-sm bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-4 py-3">
+                <div>
+                  <p className="text-xs text-[#94A3B8]">Created</p>
+                  <p className="text-[#334155]">{formatDate(letter.created_at)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-[#94A3B8]">First Sent</p>
+                  <p className="text-[#334155]">{formatDateTime(letter.sent_at)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-[#94A3B8]">Last Sent</p>
+                  <p className="text-[#334155]">{formatDateTime(letter.last_sent_at ?? letter.sent_at)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-[#94A3B8]">Sent Count</p>
+                  <p className="text-[#334155] font-medium">{(letter.resend_count ?? 0) + 1}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Content preview */}
           {letter.content && (
             <div>
@@ -631,11 +830,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                   className="flex-1 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-xs text-[#475569] outline-none"
                 />
                 <button
-                  onClick={() => {
-                    navigator.clipboard?.writeText(`${window.location.origin}/sign/?t=${letter.sign_token}`);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 2000);
-                  }}
+                  onClick={doCopyLink}
                   className="shrink-0 rounded-lg border border-[#E2E8F0] px-3 py-2 text-xs font-medium text-[#475569] hover:bg-[#F8FAFC]"
                 >
                   {copied ? "Copied" : "Copy"}
@@ -708,23 +903,131 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
 
             {(letter.status === "Sent" || letter.status === "Viewed") && (
               <>
-                {!showSignInput && !showRejectInput && (
+                {!showSignInput && !showRejectInput && !showRecipientInput && !showRegenConfirm && (
                   <>
                     <button
-                      onClick={() => { setShowSignInput(true); setShowRejectInput(false); }}
+                      disabled={actionLoading}
+                      onClick={() => doResend()}
+                      className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                    >
+                      {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                      Send Again
+                    </button>
+                    <button
+                      disabled={actionLoading}
+                      onClick={doCopyLink}
+                      className="flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50 transition-colors"
+                    >
+                      <Copy size={13} />
+                      Copy Signing Link
+                    </button>
+                    <button
+                      disabled={actionLoading}
+                      onClick={() => { setShowRecipientInput(true); setRecipientEmail(letter.recipient_email ?? ""); }}
+                      className="flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50 transition-colors"
+                    >
+                      <Mail size={13} />
+                      Change Recipient
+                    </button>
+                    <button
+                      disabled={actionLoading}
+                      onClick={doDownloadPdf}
+                      className="flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50 transition-colors"
+                    >
+                      <Download size={13} />
+                      Download PDF
+                    </button>
+                    <button
+                      onClick={() => { setShowSignInput(true); }}
                       className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors"
                     >
                       <CheckCircle size={13} />
                       Mark as Signed
                     </button>
                     <button
-                      onClick={() => { setShowRejectInput(true); setShowSignInput(false); }}
+                      onClick={() => { setShowRejectInput(true); }}
                       className="flex items-center gap-1.5 rounded-lg bg-red-50 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-100 border border-red-200 transition-colors"
                     >
                       <XCircle size={13} />
                       Reject
                     </button>
+                    <button
+                      disabled={actionLoading}
+                      onClick={() => setShowRegenConfirm(true)}
+                      className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                    >
+                      <RefreshCw size={13} />
+                      Generate New Signing Link
+                    </button>
                   </>
+                )}
+
+                {showRecipientInput && (
+                  <div className="w-full space-y-2">
+                    <label className="text-xs font-medium text-[#334155]">New recipient email</label>
+                    <input
+                      type="email"
+                      value={recipientEmail}
+                      onChange={(e) => setRecipientEmail(e.target.value)}
+                      placeholder="client@example.com"
+                      className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    />
+                    <p className="text-xs text-[#64748B]">
+                      Updates the recipient on this same engagement — the signing link and token stay the same.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        disabled={actionLoading || !recipientEmail.trim()}
+                        onClick={() => doChangeRecipient(false)}
+                        className="flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50 transition-colors"
+                      >
+                        {actionLoading && <Loader2 size={13} className="animate-spin" />}
+                        Save
+                      </button>
+                      <button
+                        disabled={actionLoading || !recipientEmail.trim()}
+                        onClick={() => doChangeRecipient(true)}
+                        className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                      >
+                        {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                        Save &amp; Resend
+                      </button>
+                      <button onClick={() => setShowRecipientInput(false)} className="rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm text-[#475569] hover:bg-[#F8FAFC]">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {showRegenConfirm && (
+                  <div className="w-full space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-sm font-semibold text-amber-800">Generate a new signing link?</p>
+                    <p className="text-xs text-amber-700">
+                      This will <strong>invalidate every previously shared link</strong> (email and WhatsApp).
+                      Anyone opening an old link will see &ldquo;invalid or expired&rdquo;. A fresh link is created.
+                    </p>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        disabled={actionLoading}
+                        onClick={() => doRegenerate(false)}
+                        className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                      >
+                        {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                        Generate Only
+                      </button>
+                      <button
+                        disabled={actionLoading}
+                        onClick={() => doRegenerate(true)}
+                        className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                      >
+                        {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                        Generate &amp; Email
+                      </button>
+                      <button onClick={() => setShowRegenConfirm(false)} className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-2 text-sm text-[#475569] hover:bg-[#F8FAFC]">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {showSignInput && (
