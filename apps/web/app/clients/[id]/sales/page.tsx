@@ -155,6 +155,7 @@ interface InvoiceDetail {
   invoice_no: string;
   invoice_date: string;
   due_date: string | null;
+  credit_days?: number | null;
   customer_id: string;
   supply_state_code: string | null;
   is_interstate: boolean;
@@ -544,7 +545,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
   }
 
   return (
-    <div className="space-y-4 max-w-5xl">
+    <div className="space-y-4 max-w-7xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       {editor && (
@@ -1020,7 +1021,7 @@ function Statements({ clientId, financialYear }: { clientId: string; financialYe
   const visibleCustomers = customers.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 max-w-7xl">
       <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -1444,7 +1445,7 @@ function SalesInvoices({
     debouncedSearch.trim() !== "" || statusFilter !== "all" || customerFilter !== "all";
 
   return (
-    <div className="space-y-4 max-w-5xl">
+    <div className="space-y-4 max-w-7xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       {sendModal && (
@@ -1909,6 +1910,23 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
 
 // ── Invoice Create Form ────────────────────────────────────────────────────
 
+/** Add N calendar days to an ISO (YYYY-MM-DD) date; "" on bad input. */
+function addDaysISO(dateStr: string, days: number): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return "";
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+/** Whole-day difference toStr − fromStr; null on bad input. */
+function diffDaysISO(fromStr: string, toStr: string): number | null {
+  if (!fromStr || !toStr) return null;
+  const a = new Date(fromStr + "T00:00:00");
+  const b = new Date(toStr + "T00:00:00");
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
+  return Math.round((b.getTime() - a.getTime()) / 86_400_000);
+}
+
 function InvoiceForm({
   clientId,
   customers,
@@ -1938,6 +1956,16 @@ function InvoiceForm({
   const [customerId, setCustomerId] = useState(existing?.customer_id ?? "");
   const [invoiceDate, setInvoiceDate] = useState(existing?.invoice_date ?? today);
   const [dueDate, setDueDate] = useState(existing?.due_date ?? "");
+  // Credit Days drives the default Due Date. For a NEW invoice it is seeded from
+  // the selected customer's credit_days; on EDIT we keep the invoice's own stored
+  // terms (snapshot) so existing invoices never shift.
+  const [creditDays, setCreditDays] = useState<string>(
+    existing
+      ? (existing.credit_days != null
+          ? String(existing.credit_days)
+          : (existing.due_date ? String(diffDaysISO(existing.invoice_date, existing.due_date) ?? "") : ""))
+      : "",
+  );
   const [supplyStateCode, setSupplyStateCode] = useState(existing?.supply_state_code ?? "");
   const [isInterstate, setIsInterstate] = useState(existing?.is_interstate ?? false);
   const [notes, setNotes] = useState(existing?.notes ?? "");
@@ -1946,6 +1974,32 @@ function InvoiceForm({
   const [error, setError] = useState<string | null>(null);
 
   const gst = computeGst(lines, isInterstate);
+
+  // Seed credit days + due date from the chosen customer (new invoices only).
+  function onCustomerChange(id: string) {
+    setCustomerId(id);
+    if (isEdit) return;
+    const cust = customers.find((c) => c.id === id);
+    if (cust && cust.credit_days != null) {
+      setCreditDays(String(cust.credit_days));
+      setDueDate(addDaysISO(invoiceDate, cust.credit_days));
+    }
+  }
+  function onInvoiceDateChange(v: string) {
+    setInvoiceDate(v);
+    const n = parseInt(creditDays, 10);
+    if (!Number.isNaN(n) && v) setDueDate(addDaysISO(v, n));
+  }
+  function onCreditDaysChange(v: string) {
+    setCreditDays(v);
+    const n = parseInt(v, 10);
+    if (!Number.isNaN(n) && invoiceDate) setDueDate(addDaysISO(invoiceDate, n));
+  }
+  function onDueDateChange(v: string) {
+    setDueDate(v); // direct override; keep credit days in sync with the gap
+    const n = diffDaysISO(invoiceDate, v);
+    if (n != null && n >= 0) setCreditDays(String(n));
+  }
 
   function setLine(idx: number, patch: Partial<InvoiceLine>) {
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
@@ -1985,6 +2039,7 @@ function InvoiceForm({
             customer_id: customerId,
             invoice_date: invoiceDate,
             due_date: dueDate || undefined,
+            credit_days: creditDays !== "" ? parseInt(creditDays, 10) : undefined,
             supply_state_code: supplyStateCode || undefined,
             notes: notes.trim() || undefined,
             is_inter_state: isInterstate,
@@ -2002,6 +2057,7 @@ function InvoiceForm({
             customer_id: customerId,
             invoice_date: invoiceDate,
             due_date: dueDate || undefined,
+            credit_days: creditDays !== "" ? parseInt(creditDays, 10) : undefined,
             supply_state_code: supplyStateCode || undefined,
             is_inter_state: isInterstate,
             notes: notes.trim() || undefined,
@@ -2033,7 +2089,7 @@ function InvoiceForm({
           <label className="block text-xs font-medium text-[#475569] mb-1">Customer *</label>
           <select
             value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
+            onChange={(e) => onCustomerChange(e.target.value)}
             className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">— Select customer —</option>
@@ -2047,7 +2103,18 @@ function InvoiceForm({
           <input
             type="date"
             value={invoiceDate}
-            onChange={(e) => setInvoiceDate(e.target.value)}
+            onChange={(e) => onInvoiceDateChange(e.target.value)}
+            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-[#475569] mb-1">Credit Days</label>
+          <input
+            type="number"
+            min={0}
+            value={creditDays}
+            onChange={(e) => onCreditDaysChange(e.target.value)}
+            placeholder="e.g. 30"
             className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -2056,9 +2123,10 @@ function InvoiceForm({
           <input
             type="date"
             value={dueDate ?? ""}
-            onChange={(e) => setDueDate(e.target.value)}
+            onChange={(e) => onDueDateChange(e.target.value)}
             className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          <p className="mt-1 text-[10px] text-[#94A3B8]">Defaults from the customer&apos;s credit days; override here.</p>
         </div>
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">Supply State</label>
@@ -2895,7 +2963,7 @@ function Customers({
   }
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 max-w-7xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       <div className="flex items-center justify-between">
@@ -3312,7 +3380,7 @@ function Receipts({
   }
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 max-w-7xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       <div className="flex items-center justify-between">
@@ -3691,7 +3759,7 @@ function CreditNotes({
   }
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 max-w-7xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       <div className="flex items-center justify-between">

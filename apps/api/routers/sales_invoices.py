@@ -7,7 +7,7 @@ import os
 import re
 import uuid
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal
 from typing import Optional
 
@@ -364,6 +364,66 @@ def list_invoices(
         return api_response(False, None, "Unable to complete invoice operation. Please try again.")
 
 
+_DEFAULT_CREDIT_DAYS = 30  # fallback when neither invoice nor customer sets terms (mirrors collections_service)
+
+
+def _resolve_credit_terms(
+    invoice_date: str,
+    due_date: Optional[str],
+    credit_days: Optional[int],
+    customer_credit_days: Optional[int],
+) -> tuple[Optional[str], Optional[int]]:
+    """
+    Resolve the credit terms to SNAPSHOT onto a new invoice, in priority order:
+      1. explicit due_date (kept; credit_days derived from the gap when absent)
+      2. explicit credit_days override
+      3. the customer's credit_days default
+      4. _DEFAULT_CREDIT_DAYS
+    Returns (due_date_iso, credit_days). Pure; never raises on malformed input.
+    Snapshotting here is what makes a saved invoice immune to later changes to the
+    customer's Credit Days.
+    """
+    try:
+        inv_d: Optional[date] = date.fromisoformat(str(invoice_date)[:10])
+    except (ValueError, TypeError):
+        inv_d = None
+
+    if due_date:
+        cd = credit_days
+        if cd is None and inv_d is not None:
+            try:
+                cd = (date.fromisoformat(str(due_date)[:10]) - inv_d).days
+            except (ValueError, TypeError):
+                cd = None
+        return str(due_date)[:10], (int(cd) if cd is not None else None)
+
+    cd = credit_days
+    if cd is None:
+        cd = customer_credit_days
+    if cd is None:
+        cd = _DEFAULT_CREDIT_DAYS
+    cd = max(0, int(cd))
+    due = (inv_d + timedelta(days=cd)).isoformat() if inv_d is not None else None
+    return due, cd
+
+
+def _apply_credit_days_due_date(data: dict, base_invoice_date: Optional[str]) -> None:
+    """On a draft edit: when credit_days is set without an explicit due_date,
+    recompute due_date from the (new or stored) invoice_date in place, so an edited
+    credit period reflects in the stored due date. No-op otherwise."""
+    if data.get("credit_days") is None or data.get("due_date"):
+        return
+    if not base_invoice_date:
+        return
+    try:
+        data["due_date"] = (
+            date.fromisoformat(str(base_invoice_date)[:10])
+            + timedelta(days=max(0, int(data["credit_days"])))
+        ).isoformat()
+    except (ValueError, TypeError):
+        pass
+
+
 @router.post("/")
 def create_invoice(
     data: SalesInvoiceIn,
@@ -398,7 +458,7 @@ def create_invoice(
             # Fetch customer state code
             cust_resp = (
                 db.table("customers")
-                .select("state_code, gstin")
+                .select("state_code, gstin, credit_days")
                 .eq("id", data["customer_id"])
                 .limit(1)
                 .execute()
@@ -466,6 +526,15 @@ def create_invoice(
 
         total_paise = total_taxable_paise + total_cgst_paise + total_sgst_paise + total_igst_paise
 
+        # Snapshot credit terms onto the invoice. The customer's credit_days is the
+        # DEFAULT; an explicit due_date or credit_days on the request overrides it.
+        # Storing the resolved values here means later edits to the customer's
+        # Credit Days never change this (or any existing) invoice.
+        eff_due_date, eff_credit_days = _resolve_credit_terms(
+            data["invoice_date"], data.get("due_date"), data.get("credit_days"),
+            customer.get("credit_days"),
+        )
+
         # Validate posting date is not in a locked financial year (migration 020)
         period_validation_service.validate_posting_date(firm_id or "", data["invoice_date"])
 
@@ -481,7 +550,8 @@ def create_invoice(
                 "customer_id":           data["customer_id"],
                 "invoice_no":            invoice_no,
                 "invoice_date":          data["invoice_date"],
-                "due_date":              data.get("due_date"),
+                "due_date":              eff_due_date,
+                "credit_days":           eff_credit_days,
                 "supply_state_code":     effective_supply_state,
                 "is_interstate":         is_interstate,
                 "taxable_amount_paise":  total_taxable_paise,
@@ -514,7 +584,8 @@ def create_invoice(
             "customer_id":           data["customer_id"],
             "invoice_no":            invoice_no,
             "invoice_date":          data["invoice_date"],
-            "due_date":              data.get("due_date"),
+            "due_date":              eff_due_date,
+            "credit_days":           eff_credit_days,
             "supply_state_code":     effective_supply_state,
             "is_interstate":         is_interstate,
             "taxable_amount_paise":  total_taxable_paise,
@@ -653,6 +724,7 @@ def update_invoice(
                 if inv["id"] == invoice_id:
                     if inv.get("status") != "draft":
                         raise HTTPException(status_code=422, detail="Only draft invoices can be updated")
+                    _apply_credit_days_due_date(data, data.get("invoice_date") or inv.get("invoice_date"))
                     MOCK_SALES_INVOICES[i] = {**inv, **data, "updated_at": datetime.now(timezone.utc).isoformat()}
                     return api_response(True, MOCK_SALES_INVOICES[i])
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
@@ -666,6 +738,16 @@ def update_invoice(
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
         if resp.data[0]["status"] != "draft":
             raise HTTPException(status_code=422, detail="Only draft invoices can be updated")
+
+        # Recompute due_date from an edited credit period (credit_days set, no
+        # explicit due_date). Snapshot stays on the invoice only.
+        if data.get("credit_days") is not None and not data.get("due_date"):
+            base_date = data.get("invoice_date")
+            if not base_date:
+                d2 = (db.table("client_sales_invoices").select("invoice_date")
+                      .eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute())
+                base_date = d2.data[0]["invoice_date"] if d2.data else None
+            _apply_credit_days_due_date(data, base_date)
 
         # If lines are provided, recompute GST
         if "lines" in data:

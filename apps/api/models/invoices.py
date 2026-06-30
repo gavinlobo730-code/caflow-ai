@@ -31,6 +31,10 @@ class SalesInvoiceIn(BaseModel):
     customer_id: str
     invoice_date: str  # YYYY-MM-DD
     due_date: Optional[str] = None
+    # Optional override of the credit period (days). When neither due_date nor
+    # credit_days is given, the customer's credit_days is used as the default and
+    # the resulting due_date + credit_days are snapshotted onto the invoice.
+    credit_days: Optional[int] = None
     lines: list[InvoiceLineIn]
     reference_no: Optional[str] = None
     notes: Optional[str] = None
@@ -54,6 +58,7 @@ class SalesInvoiceUpdateIn(BaseModel):
     customer_id: Optional[str] = None
     invoice_date: Optional[str] = None
     due_date: Optional[str] = None
+    credit_days: Optional[int] = None
     supply_state_code: Optional[str] = None
     lines: Optional[list[InvoiceLineIn]] = None
     reference_no: Optional[str] = None
