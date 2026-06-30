@@ -73,6 +73,8 @@ class CustomerUpdateIn(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     pincode: Optional[str] = None
+    opening_balance_paise: Optional[int] = None
+    opening_balance_date: Optional[str] = None
     credit_days: Optional[int] = None
     is_active: Optional[bool] = None
 
@@ -172,6 +174,8 @@ class VendorUpdateIn(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     pincode: Optional[str] = None
+    opening_balance_paise: Optional[int] = None
+    opening_balance_date: Optional[str] = None
     credit_days: Optional[int] = None
     tds_applicable: Optional[bool] = None
     tds_section: Optional[str] = None

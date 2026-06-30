@@ -106,29 +106,16 @@ class OpeningBalancePostIn(BaseModel):
     opening_date: Optional[str] = None  # defaults to the client's FY start
 
 
-@router.get("/opening-balances/status")
-def opening_balances_status_endpoint(
-    client_id: str = Query(...),
-    current_user: dict = Depends(rbac("accounting", "read")),
-):
-    """Whether the client's master opening balances are reflected in the GL, so the
-    UI can prompt a (re)post and never show Statement ≠ Trial Balance silently."""
-    db = _prod_db()
-    if not db:
-        return api_response(True, {"needs_posting": False, "ar_paise": 0, "ap_paise": 0,
-                                   "bank_paise": 0, "has_opening_journal": False})
-    from services.opening_balance_service import opening_balance_status
-    return api_response(True, opening_balance_status(current_user["firm_id"], client_id))
-
-
 @router.post("/opening-balances")
 def post_opening_balances_endpoint(
     data: OpeningBalancePostIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
-    """(Re)post the client's opening-balance journal from master records so the
-    Trial Balance / Balance Sheet reconcile with customer/vendor balances.
-    Idempotent (safe to re-run); refuses to write into a locked financial year."""
+    """Internal/backfill: (re)post a client's opening-balance journal from master
+    records. Opening balances now post AUTOMATICALLY when a customer/vendor/bank
+    opening balance is created or edited; this endpoint is retained only for
+    one-off backfill of records entered before auto-posting existed. Idempotent;
+    refuses to write into a locked financial year."""
     from services.opening_balance_service import post_opening_balances
     try:
         result = post_opening_balances(

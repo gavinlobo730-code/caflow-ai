@@ -17,6 +17,7 @@ import {
   termLabelForDays,
   daysForTermLabel,
 } from "@/lib/sales/paymentTerms";
+import { clearReports } from "@/lib/accounting/reportCache";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -3201,7 +3202,7 @@ function Customers({
       }
     }
 
-    if (imported > 0) load();
+    if (imported > 0) { load(); clearReports(clientId); }
     return { imported, errors, skipped, skippedDetail };
   }
 
@@ -3578,26 +3579,28 @@ function CustomerForm({
       const token = await getAuthToken();
 
       if (existing) {
-        // UPDATE: still use Supabase directly (no dedicated PATCH endpoint for customers)
-        const supabase = getSupabaseClient();
-        const { error: updErr } = await supabase
-          .from("customers")
-          .update({
-            client_id: clientId,
+        // UPDATE via the backend PATCH so an opening-balance change auto-posts to
+        // the General Ledger (the backend regenerates the opening journal). No
+        // direct Supabase write, no manual "post" step.
+        const result = await apiCall(
+          `/api/customers/${existing.id}`,
+          "PATCH",
+          {
             name: name.trim(),
-            gstin: gstin.trim() || null,
-            state_code: stateCode || null,
-            pan: pan.trim() || null,
-            email: email.trim() || null,
-            phone: phone.trim() || null,
-            city: city.trim() || null,
-            state: state.trim() || null,
+            gstin: gstin.trim(),
+            state_code: stateCode,
+            pan: pan.trim(),
+            email: email.trim(),
+            phone: phone.trim(),
+            city: city.trim(),
+            state: state.trim(),
             opening_balance_paise: openingBalancePaise,
             credit_days: parseInt(creditDays) || 30,
             is_active: true,
-          })
-          .eq("id", existing.id);
-        if (updErr) throw new Error(updErr.message);
+          },
+          token
+        );
+        if (!result.success) throw new Error(result.error ?? "Failed to save customer");
       } else {
         const result = await apiCall(
           "/api/customers/",
@@ -3619,6 +3622,9 @@ function CustomerForm({
         );
         if (!result.success) throw new Error(result.error ?? "Failed to save customer");
       }
+      // The backend may have auto-posted/updated the opening-balance journal, so
+      // invalidate cached accounting reports for this client.
+      clearReports(clientId);
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save customer");

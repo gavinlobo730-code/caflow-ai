@@ -151,10 +151,6 @@ export const api = {
     // Phase 3.5 — journal approval queue (Draft → Approve → Post)
     journalsQueue: (params?: Record<string, string>) => request(`/api/accounting/journals${params ? "?" + new URLSearchParams(params) : ""}`),
     postDraftJournal: (journalId: string) => request(`/api/accounting/journals/${journalId}/post`, { method: "POST" }),
-    // Opening balances → General Ledger (idempotent post + status for the prompt banner)
-    openingBalanceStatus: (clientId: string) => request(`/api/accounting/opening-balances/status?client_id=${clientId}`),
-    postOpeningBalances: (body: { client_id: string; opening_date?: string }) =>
-      request("/api/accounting/opening-balances", { method: "POST", body: JSON.stringify(body) }),
   },
   // Banking (Phase B.0): all bank mutations go through the backend banking
   // service — the frontend never writes bank rows or journals to Supabase.

@@ -204,6 +204,22 @@ def create_customer(
         resp = db.table("customers").insert(data).execute()
         customer = resp.data[0] if resp.data else data
         customer_id = customer.get("id", "")
+
+        # Auto-sync opening balances to the GL — no manual "post" step. Only when an
+        # opening balance was actually entered. Idempotent regenerate; if it fails we
+        # roll back the just-created customer so the books never go partial.
+        if int(data.get("opening_balance_paise") or 0) != 0:
+            try:
+                from services.opening_balance_service import post_opening_balances
+                post_opening_balances(firm_id, client_id, created_by=current_user.get("auth_user_id"))
+            except Exception as sync_err:
+                _logger.error("create_customer opening-balance sync failed; rolling back: %s", sync_err)
+                try:
+                    db.table("customers").delete().eq("id", customer_id).eq("firm_id", firm_id).execute()
+                except Exception:
+                    pass
+                return api_response(False, None, "Unable to save customer. Please try again.")
+
         log_event(
             data["firm_id"], "customer", customer_id,
             "create", actor_id=current_user.get("auth_user_id"),
@@ -331,12 +347,36 @@ def update_customer(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
+        firm_id = current_user.get("firm_id")
+        # Snapshot the prior row for opening-balance change detection + rollback.
+        prior_resp = db.table("customers").select("*").eq("id", customer_id).eq("firm_id", firm_id).limit(1).execute()
+        if not prior_resp.data:
+            raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
+        prior = prior_resp.data[0]
+
         # Tenant isolation (OOS-5): scope the write by firm_id. Under service-role
         # (RLS bypassed) an unscoped by-id update could mutate another firm's row.
-        resp = db.table("customers").update(data).eq("id", customer_id).eq("firm_id", current_user.get("firm_id")).execute()
+        resp = db.table("customers").update(data).eq("id", customer_id).eq("firm_id", firm_id).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
         updated = resp.data[0]
+
+        # Auto-sync opening balances to the GL ONLY when the opening balance actually
+        # changed (not on name/email/phone/credit-days/GSTIN edits). Idempotent
+        # regenerate; on failure restore the prior values so no partial save lands.
+        if int(updated.get("opening_balance_paise") or 0) != int(prior.get("opening_balance_paise") or 0):
+            try:
+                from services.opening_balance_service import post_opening_balances
+                post_opening_balances(firm_id, updated.get("client_id") or prior.get("client_id"),
+                                      created_by=current_user.get("auth_user_id"))
+            except Exception as sync_err:
+                _logger.error("update_customer opening-balance sync failed; rolling back: %s", sync_err)
+                try:
+                    db.table("customers").update({k: prior.get(k) for k in data.keys()}).eq("id", customer_id).eq("firm_id", firm_id).execute()
+                except Exception:
+                    pass
+                return api_response(False, None, "Unable to save customer. Please try again.")
+
         log_event(
             current_user.get("firm_id", ""), "customer", customer_id,
             "update", actor_id=current_user.get("auth_user_id"),

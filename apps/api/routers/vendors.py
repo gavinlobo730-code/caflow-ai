@@ -115,6 +115,22 @@ def create_vendor(
             )
         vendor = resp.data[0]
         vendor_id = vendor.get("id", "")
+
+        # Auto-sync opening balances to the GL — no manual "post" step. Only when an
+        # opening balance was entered. Idempotent regenerate; roll back on failure.
+        if int(payload.get("opening_balance_paise") or 0) != 0:
+            try:
+                from services.opening_balance_service import post_opening_balances
+                post_opening_balances(payload["firm_id"], payload.get("client_id"),
+                                      created_by=current_user.get("auth_user_id"))
+            except Exception as sync_err:
+                _logger.error("create_vendor opening-balance sync failed; rolling back: %s", sync_err)
+                try:
+                    db.table("vendors").delete().eq("id", vendor_id).eq("firm_id", payload["firm_id"]).execute()
+                except Exception:
+                    pass
+                return api_response(False, None, "Unable to save vendor. Please try again.")
+
         log_event(
             payload["firm_id"], "vendor", vendor_id,
             "create", actor_id=current_user.get("auth_user_id"),
@@ -197,12 +213,33 @@ def update_vendor(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
+        firm_id = current_user.get("firm_id")
+        prior_resp = db.table("vendors").select("*").eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute()
+        if not prior_resp.data:
+            raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
+        prior = prior_resp.data[0]
+
         # Tenant isolation (OOS-5): scope the write by firm_id. Under service-role
         # (RLS bypassed) an unscoped by-id update could mutate another firm's row.
-        resp = db.table("vendors").update(data).eq("id", vendor_id).eq("firm_id", current_user.get("firm_id")).execute()
+        resp = db.table("vendors").update(data).eq("id", vendor_id).eq("firm_id", firm_id).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
         updated = resp.data[0]
+
+        # Auto-sync opening balances only when the opening balance actually changed.
+        if int(updated.get("opening_balance_paise") or 0) != int(prior.get("opening_balance_paise") or 0):
+            try:
+                from services.opening_balance_service import post_opening_balances
+                post_opening_balances(firm_id, updated.get("client_id") or prior.get("client_id"),
+                                      created_by=current_user.get("auth_user_id"))
+            except Exception as sync_err:
+                _logger.error("update_vendor opening-balance sync failed; rolling back: %s", sync_err)
+                try:
+                    db.table("vendors").update({k: prior.get(k) for k in data.keys()}).eq("id", vendor_id).eq("firm_id", firm_id).execute()
+                except Exception:
+                    pass
+                return api_response(False, None, "Unable to save vendor. Please try again.")
+
         log_event(
             current_user.get("firm_id", ""), "vendor", vendor_id,
             "update", actor_id=current_user.get("auth_user_id"),
