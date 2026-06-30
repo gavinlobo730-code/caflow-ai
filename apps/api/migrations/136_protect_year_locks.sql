@@ -9,10 +9,13 @@
 -- when locked_financial_years actually changes). Migrations / admin SQL (postgres,
 -- supabase_admin) are allowed so the column can still be maintained operationally.
 
+-- SECURITY INVOKER (default): the guard must see the REAL caller. Under
+-- SECURITY DEFINER, current_user becomes the function owner (an admin role),
+-- which would always satisfy the admin allow-list and defeat the check.
 CREATE OR REPLACE FUNCTION public.guard_locked_financial_years()
 RETURNS trigger
 LANGUAGE plpgsql
-SECURITY DEFINER
+SECURITY INVOKER
 AS $$
 DECLARE
   jwt_role text;
