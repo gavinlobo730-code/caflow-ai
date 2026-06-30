@@ -11,6 +11,12 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
 import { buildCustomers, CUSTOMER_IMPORT_COLUMNS, buildReceipts, RECEIPT_IMPORT_COLUMNS } from "@/lib/imports/mappers";
+import {
+  PAYMENT_TERM_PRESETS,
+  CUSTOM_TERM,
+  termLabelForDays,
+  daysForTermLabel,
+} from "@/lib/sales/paymentTerms";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -1145,6 +1151,8 @@ function SalesInvoices({
 }) {
   const [invoices, setInvoices] = useState<SalesInvoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  // The selling client's own GST state code, used to auto-determine IGST vs CGST+SGST.
+  const [clientStateCode, setClientStateCode] = useState("");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -1220,7 +1228,7 @@ function SalesInvoices({
     setLoading(true);
     const supabase = getSupabaseClient();
 
-    const [{ data: invData }, { data: custData }] = await Promise.all([
+    const [{ data: invData }, { data: custData }, { data: clientData }] = await Promise.all([
       supabase
         .from("client_sales_invoices")
         .select(
@@ -1237,6 +1245,11 @@ function SalesInvoices({
         .eq("client_id", clientId)
         .eq("is_active", true)
         .order("name"),
+      supabase
+        .from("clients")
+        .select("gstin, state_code")
+        .eq("id", clientId)
+        .maybeSingle(),
     ]);
 
     const mapped: SalesInvoice[] = ((invData ?? []) as unknown as Array<
@@ -1268,6 +1281,9 @@ function SalesInvoices({
 
     setInvoices(mapped);
     setCustomers((custData as Customer[]) ?? []);
+    // Client's own GST state: explicit state_code, else the GSTIN's first 2 digits.
+    const c = clientData as { gstin: string | null; state_code: string | null } | null;
+    setClientStateCode((c?.state_code || (c?.gstin ? c.gstin.slice(0, 2) : "")) ?? "");
 
     // Summary: outstanding = issued + partially_paid (total_paise), paid FY, issued FY
     let outstanding = 0, issued = 0, paid = 0;
@@ -1606,6 +1622,7 @@ function SalesInvoices({
       {(showForm || editing) && (
         <InvoiceForm
           clientId={clientId}
+          clientStateCode={clientStateCode}
           customers={customers}
           existing={editing}
           onSaved={() => {
@@ -1926,15 +1943,28 @@ function diffDaysISO(fromStr: string, toStr: string): number | null {
   if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
   return Math.round((b.getTime() - a.getTime()) / 86_400_000);
 }
+/** A customer's GST state code: explicit state_code, else the GSTIN's first 2 digits. */
+function customerStateCode(c: Customer | undefined): string {
+  if (!c) return "";
+  return (c.state_code || (c.gstin ? c.gstin.slice(0, 2) : "")) ?? "";
+}
+/** Human-readable state name for a 2-digit GST state code (falls back to the code). */
+function stateNameForCode(code: string): string {
+  if (!code) return "";
+  return INDIAN_STATES.find((s) => s.code === code)?.name ?? code;
+}
 
 function InvoiceForm({
   clientId,
+  clientStateCode,
   customers,
   existing,
   onSaved,
   onCancel,
 }: {
   clientId: string;
+  /** The selling client's own GST state code — used to auto-determine interstate. */
+  clientStateCode: string;
   customers: Customer[];
   existing?: InvoiceDetail | null;
   onSaved: () => void;
@@ -1968,6 +1998,13 @@ function InvoiceForm({
   );
   const [supplyStateCode, setSupplyStateCode] = useState(existing?.supply_state_code ?? "");
   const [isInterstate, setIsInterstate] = useState(existing?.is_interstate ?? false);
+  // Payment Terms is a label over creditDays. "Custom" is sticky: it stays Custom
+  // even if the day count happens to equal a preset (e.g. a hand-picked due date).
+  const [termCustom, setTermCustom] = useState<boolean>(() => {
+    if (creditDays === "") return false;
+    const n = parseInt(creditDays, 10);
+    return termLabelForDays(Number.isNaN(n) ? null : n) === CUSTOM_TERM;
+  });
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [lines, setLines] = useState<InvoiceLine[]>(initialLines);
   const [saving, setSaving] = useState(false);
@@ -1975,15 +2012,49 @@ function InvoiceForm({
 
   const gst = computeGst(lines, isInterstate);
 
-  // Seed credit days + due date from the chosen customer (new invoices only).
+  const termValue = (() => {
+    if (termCustom) return CUSTOM_TERM;
+    if (creditDays === "") return "";
+    const n = parseInt(creditDays, 10);
+    return termLabelForDays(Number.isNaN(n) ? null : n);
+  })();
+  // Did we auto-derive interstate from known states (vs. leaving it manual)?
+  const gstAuto = !!(clientStateCode && supplyStateCode);
+
+  // Auto-determine interstate from the seller's state vs the place of supply
+  // (CGST Act §8 / IGST Act §7). Returns the prior value when either side is
+  // unknown so we never override a deliberate choice with a guess.
+  function deriveInterstate(supplyState: string, fallback: boolean): boolean {
+    if (clientStateCode && supplyState) return clientStateCode !== supplyState;
+    return fallback;
+  }
+
+  // Selecting a customer pulls in everything already known: payment terms + due
+  // date (default), supply state, and GST treatment. New invoices only — editing
+  // a draft must keep its own snapshot so historical invoices never shift.
   function onCustomerChange(id: string) {
     setCustomerId(id);
     if (isEdit) return;
     const cust = customers.find((c) => c.id === id);
-    if (cust && cust.credit_days != null) {
+    if (!cust) return;
+    if (cust.credit_days != null) {
       setCreditDays(String(cust.credit_days));
+      setTermCustom(termLabelForDays(cust.credit_days) === CUSTOM_TERM);
       setDueDate(addDaysISO(invoiceDate, cust.credit_days));
     }
+    const custState = customerStateCode(cust);
+    if (custState) {
+      setSupplyStateCode(custState);
+      setIsInterstate((prev) => deriveInterstate(custState, prev));
+    }
+  }
+  function onTermChange(label: string) {
+    if (label === CUSTOM_TERM) { setTermCustom(true); return; }
+    const d = daysForTermLabel(label);
+    if (d == null) return;
+    setTermCustom(false);
+    setCreditDays(String(d));
+    if (invoiceDate) setDueDate(addDaysISO(invoiceDate, d));
   }
   function onInvoiceDateChange(v: string) {
     setInvoiceDate(v);
@@ -1996,9 +2067,14 @@ function InvoiceForm({
     if (!Number.isNaN(n) && invoiceDate) setDueDate(addDaysISO(invoiceDate, n));
   }
   function onDueDateChange(v: string) {
-    setDueDate(v); // direct override; keep credit days in sync with the gap
+    setDueDate(v); // manual override → a custom due date
     const n = diffDaysISO(invoiceDate, v);
     if (n != null && n >= 0) setCreditDays(String(n));
+    setTermCustom(true);
+  }
+  function onSupplyStateChange(code: string) {
+    setSupplyStateCode(code);
+    setIsInterstate((prev) => deriveInterstate(code, prev));
   }
 
   function setLine(idx: number, patch: Partial<InvoiceLine>) {
@@ -2108,15 +2184,29 @@ function InvoiceForm({
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Credit Days</label>
-          <input
-            type="number"
-            min={0}
-            value={creditDays}
-            onChange={(e) => onCreditDaysChange(e.target.value)}
-            placeholder="e.g. 30"
+          <label className="block text-xs font-medium text-[#475569] mb-1">Payment Terms</label>
+          <select
+            value={termValue}
+            onChange={(e) => onTermChange(e.target.value)}
             className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          >
+            {termValue === "" && <option value="">— Select —</option>}
+            {PAYMENT_TERM_PRESETS.map((t) => (
+              <option key={t.label} value={t.label}>{t.label}</option>
+            ))}
+            <option value={CUSTOM_TERM}>Custom</option>
+          </select>
+          {termCustom && (
+            <input
+              type="number"
+              min={0}
+              value={creditDays}
+              onChange={(e) => onCreditDaysChange(e.target.value)}
+              placeholder="Credit days"
+              aria-label="Custom credit days"
+              className="mt-1 w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          )}
         </div>
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">Due Date</label>
@@ -2126,13 +2216,13 @@ function InvoiceForm({
             onChange={(e) => onDueDateChange(e.target.value)}
             className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <p className="mt-1 text-[10px] text-[#94A3B8]">Defaults from the customer&apos;s credit days; override here.</p>
+          <p className="mt-1 text-[10px] text-[#94A3B8]">Auto-set from payment terms; edit for a custom due date.</p>
         </div>
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">Supply State</label>
           <select
             value={supplyStateCode ?? ""}
-            onChange={(e) => setSupplyStateCode(e.target.value)}
+            onChange={(e) => onSupplyStateChange(e.target.value)}
             className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">— Select —</option>
@@ -2141,7 +2231,7 @@ function InvoiceForm({
             ))}
           </select>
         </div>
-        <div className="flex items-end pb-1.5">
+        <div className="flex flex-col justify-end pb-1.5">
           <label className="flex items-center gap-2 text-xs text-[#475569] cursor-pointer">
             <input
               type="checkbox"
@@ -2151,6 +2241,14 @@ function InvoiceForm({
             />
             Interstate supply (IGST)
           </label>
+          {gstAuto ? (
+            <p className="mt-1 text-[10px] text-[#94A3B8]">
+              Auto: {stateNameForCode(clientStateCode)} → {stateNameForCode(supplyStateCode)} ={" "}
+              {isInterstate ? "IGST" : "CGST + SGST"}
+            </p>
+          ) : (
+            <p className="mt-1 text-[10px] text-[#94A3B8]">Set automatically from the supply state.</p>
+          )}
         </div>
       </div>
 
@@ -2757,6 +2855,10 @@ function InvoiceDetailDrawer({
               <DetailRow label="Customer" value={customerName} />
               <DetailRow label="Invoice Date" value={inv.invoice_date} />
               <DetailRow label="Due Date" value={inv.due_date ?? "—"} />
+              {(() => {
+                const days = inv.credit_days ?? (inv.due_date ? diffDaysISO(inv.invoice_date, inv.due_date) : null);
+                return <DetailRow label="Payment Terms" value={days == null ? "—" : termLabelForDays(days)} />;
+              })()}
               <DetailRow label="Amount" value={fmt(inv.total_paise)} />
               <DetailRow label="Outstanding" value={fmt(outstanding)} />
               <DetailRow label="Created By" value={inv.created_by_name ?? "—"} />
@@ -3200,8 +3302,24 @@ function CustomerForm({
     existing ? (existing.opening_balance_paise / 100).toFixed(2) : ""
   );
   const [creditDays, setCreditDays] = useState(String(existing?.credit_days ?? 30));
+  // Payment Terms = a label over credit days (the default for this customer's
+  // future invoices). "Custom" reveals a free credit-days input.
+  const [termCustom, setTermCustom] = useState<boolean>(
+    () => termLabelForDays(existing?.credit_days ?? 30) === CUSTOM_TERM
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const termValue = termCustom
+    ? CUSTOM_TERM
+    : termLabelForDays(parseInt(creditDays, 10));
+  function onTermChange(label: string) {
+    if (label === CUSTOM_TERM) { setTermCustom(true); return; }
+    const d = daysForTermLabel(label);
+    if (d == null) return;
+    setTermCustom(false);
+    setCreditDays(String(d));
+  }
 
   // Auto-fill state code from GSTIN (first 2 digits)
   function handleGstinChange(val: string) {
@@ -3382,15 +3500,29 @@ function CustomerForm({
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Credit Days</label>
-          <input
-            type="number"
-            min="0"
-            value={creditDays}
-            onChange={(e) => setCreditDays(e.target.value)}
-            placeholder="30"
+          <label className="block text-xs font-medium text-[#475569] mb-1">Payment Terms</label>
+          <select
+            value={termValue}
+            onChange={(e) => onTermChange(e.target.value)}
             className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          >
+            {PAYMENT_TERM_PRESETS.map((t) => (
+              <option key={t.label} value={t.label}>{t.label}</option>
+            ))}
+            <option value={CUSTOM_TERM}>Custom</option>
+          </select>
+          {termCustom && (
+            <input
+              type="number"
+              min="0"
+              value={creditDays}
+              onChange={(e) => setCreditDays(e.target.value)}
+              placeholder="Credit days"
+              aria-label="Custom credit days"
+              className="mt-1 w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          )}
+          <p className="mt-1 text-[10px] text-[#94A3B8]">Default terms for this customer&apos;s new invoices.</p>
         </div>
       </div>
 
