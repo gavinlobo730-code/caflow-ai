@@ -71,7 +71,7 @@ def test_idempotent_repost_does_not_duplicate(monkeypatch):
     obs.post_opening_balances(FIRM, "CLI")
     obs.post_opening_balances(FIRM, "CLI")        # run again
 
-    opening = [e for e in db.rows("journal_entries") if e.get("entry_type") == "opening_balance"]
+    opening = [e for e in db.rows("journal_entries") if e.get("entry_type") == obs.OPENING_ENTRY_TYPE]
     assert len(opening) == 1                       # not duplicated
     assert account_balance(db, coa_id(db, FIRM, "ar")) == 500_000   # not doubled
 
@@ -89,7 +89,7 @@ def test_repost_reflects_changed_opening_balance(monkeypatch):
     obs.post_opening_balances(FIRM, "CLI")
 
     assert account_balance(db, coa_id(db, FIRM, "ar")) == 700_000
-    opening = [e for e in db.rows("journal_entries") if e.get("entry_type") == "opening_balance"]
+    opening = [e for e in db.rows("journal_entries") if e.get("entry_type") == obs.OPENING_ENTRY_TYPE]
     assert len(opening) == 1
 
 
@@ -112,7 +112,7 @@ def test_no_openings_posts_nothing(monkeypatch):
     _cust(db, 0)
     res = obs.post_opening_balances(FIRM, "CLI")
     assert res["posted"] is False
-    assert not any(e.get("entry_type") == "opening_balance" for e in db.rows("journal_entries"))
+    assert not any(e.get("entry_type") == obs.OPENING_ENTRY_TYPE for e in db.rows("journal_entries"))
 
 
 def test_reconciles_with_customer_balances(monkeypatch):
