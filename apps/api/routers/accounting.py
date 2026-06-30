@@ -3,6 +3,7 @@ Accounting router — Chart of Accounts, Journal Entries, Ledger, Trial Balance,
 """
 import os
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone
 from models.common import api_response
@@ -97,6 +98,41 @@ def _prod_db():
         return None
     from core.supabase_client import get_supabase
     return get_supabase()
+
+
+class OpeningBalancePostIn(BaseModel):
+    client_id: str
+    opening_date: Optional[str] = None  # defaults to the client's FY start
+
+
+@router.post("/opening-balances")
+def post_opening_balances_endpoint(
+    data: OpeningBalancePostIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """(Re)post the client's opening-balance journal from master records so the
+    Trial Balance / Balance Sheet reconcile with customer/vendor balances.
+    Idempotent (safe to re-run); refuses to write into a locked financial year."""
+    from services.opening_balance_service import post_opening_balances
+    try:
+        result = post_opening_balances(
+            firm_id=current_user["firm_id"],
+            client_id=data.client_id,
+            opening_date=data.opening_date,
+            created_by=current_user.get("auth_user_id"),
+        )
+        if result.get("posted") and result.get("journal_entry_id"):
+            log_event(
+                current_user["firm_id"], "journal_entry", result["journal_entry_id"],
+                "opening_balance_post", actor_id=current_user.get("auth_user_id"),
+                actor_email=current_user.get("email"), new_data=result,
+            )
+        return api_response(True, result)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        # e.g. required COA account missing
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.get("/journals")
