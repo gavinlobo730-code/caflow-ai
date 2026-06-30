@@ -54,7 +54,7 @@ def test_create_customer_without_opening_balance_posts_nothing(monkeypatch):
     db = _setup(monkeypatch, [cust, obs])
     res = _create_customer(opening_balance_paise=0)
     assert res["success"] is True
-    assert not any(e.get("entry_type") == "opening_balance" for e in db.rows("journal_entries"))
+    assert not any(e.get("entry_type") == obs.OPENING_ENTRY_TYPE for e in db.rows("journal_entries"))
 
 
 def test_edit_opening_balance_resyncs_gl(monkeypatch):
@@ -68,11 +68,11 @@ def test_edit_opening_balance_resyncs_gl(monkeypatch):
 def test_edit_unrelated_field_does_not_regenerate(monkeypatch):
     db = _setup(monkeypatch, [cust, obs])
     cid = _create_customer(opening_balance_paise=500_000)["data"]["id"]
-    jid_before = next(e["id"] for e in db.rows("journal_entries") if e.get("entry_type") == "opening_balance")
+    jid_before = next(e["id"] for e in db.rows("journal_entries") if e.get("entry_type") == obs.OPENING_ENTRY_TYPE)
 
     cust.update_customer(cid, CustomerUpdateIn(email="new@firma.test"), CALLER)
 
-    opening = [e for e in db.rows("journal_entries") if e.get("entry_type") == "opening_balance"]
+    opening = [e for e in db.rows("journal_entries") if e.get("entry_type") == obs.OPENING_ENTRY_TYPE]
     assert len(opening) == 1 and opening[0]["id"] == jid_before   # untouched → not regenerated
     assert account_balance(db, coa_id(db, FIRM, "ar")) == 500_000
 
@@ -87,7 +87,7 @@ def test_create_rolls_back_when_autopost_fails(monkeypatch):
     assert res["success"] is False
     assert "Unable to save customer" in (res["error"] or "")
     assert not any(c.get("name") == "Acme" for c in db.rows("customers"))   # rolled back
-    assert not any(e.get("entry_type") == "opening_balance" for e in db.rows("journal_entries"))
+    assert not any(e.get("entry_type") == obs.OPENING_ENTRY_TYPE for e in db.rows("journal_entries"))
 
 
 # ── vendors ──────────────────────────────────────────────────────────────────

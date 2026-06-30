@@ -43,7 +43,12 @@ from services.period_validation_service import period_validation_service
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.opening_balance")
 
-OPENING_ENTRY_TYPE = "opening_balance"
+# entry_type MUST be one of the values allowed by the journal_entries CHECK
+# constraint (Sales/Purchase/Payment/Receipt/Journal/Contra/Opening). "Opening" is
+# the canonical opening-balance type. The auto-generated journal is identified by
+# its fixed reference_no (not entry_type), so a sync never touches a user's own
+# manually-created "Opening" entry.
+OPENING_ENTRY_TYPE = "Opening"
 OPENING_REFERENCE = "OPENING-BALANCE"
 
 
@@ -83,7 +88,7 @@ def _delete_existing(db, firm_id: str, client_id: str) -> None:
     existing = (
         db.table("journal_entries").select("id")
         .eq("firm_id", firm_id).eq("client_id", client_id)
-        .eq("entry_type", OPENING_ENTRY_TYPE).execute()
+        .eq("reference_no", OPENING_REFERENCE).execute()
     )
     for e in (existing.data or []):
         db.table("journal_lines").delete().eq("journal_entry_id", e["id"]).execute()
@@ -229,7 +234,7 @@ def opening_balance_status(firm_id: str, client_id: str) -> dict:
 
     existing = (db.table("journal_entries").select("id")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
-                .eq("entry_type", OPENING_ENTRY_TYPE).execute().data or [])
+                .eq("reference_no", OPENING_REFERENCE).execute().data or [])
     posted_total = 0
     for e in existing:
         lines = db.table("journal_lines").select("debit_paise").eq("journal_entry_id", e["id"]).execute().data or []
