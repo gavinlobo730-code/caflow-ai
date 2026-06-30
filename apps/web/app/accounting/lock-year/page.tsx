@@ -7,6 +7,34 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { RoleGuard } from "@/components/RoleGuard";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+/** Year locks are written ONLY through the Partner-gated backend endpoint (a DB
+ *  trigger blocks direct table writes). The PIN is verified server-side and never
+ *  sent to the browser. Returns the standard { success, data, error } envelope. */
+async function callApi(
+  path: string,
+  method: "GET" | "POST",
+  body?: unknown,
+): Promise<{ success: boolean; data: unknown; error: string | null }> {
+  const sb = getSupabaseClient();
+  const { data: { session } } = await sb.auth.getSession();
+  const token = session?.access_token;
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const text = await res.text().catch(() => "");
+  let json: Record<string, unknown> = {};
+  try { json = text ? (JSON.parse(text) as Record<string, unknown>) : {}; } catch { /* non-JSON error body */ }
+  if (!res.ok) {
+    const detail = json.detail ?? json.error ?? text;
+    return { success: false, data: null, error: typeof detail === "string" ? detail : "Request failed" };
+  }
+  return json as { success: boolean; data: unknown; error: string | null };
+}
+
 // Indian FY list — label used for DB storage
 const FY_LIST = [
   { label: "2025-26", display: "FY 2025-26 (Apr 2025 – Mar 2026)" },
@@ -19,10 +47,10 @@ const FY_LIST = [
 type PinDialog = { fy: string; isLocked: boolean } | null;
 
 function PinModal({
-  dialog, lockPin, onConfirm, onClose,
+  dialog, pinSet, onConfirm, onClose,
 }: {
   dialog: PinDialog;
-  lockPin: string | null;
+  pinSet: boolean;
   onConfirm: (fy: string, isLocked: boolean, enteredPin: string) => void;
   onClose: () => void;
 }) {
@@ -34,7 +62,7 @@ function PinModal({
 
   if (!dialog) return null;
   const d = dialog; // narrowed non-null for use inside callbacks
-  const isSettingPin = !lockPin;
+  const isSettingPin = !pinSet;
 
   function submit() {
     setErr("");
@@ -43,7 +71,8 @@ function PinModal({
       if (newPin !== confirmPin) { setErr("PINs do not match"); return; }
       onConfirm(d.fy, d.isLocked, newPin);
     } else {
-      if (pin !== lockPin) { setErr("Incorrect PIN"); return; }
+      // The PIN is verified server-side; we just collect it here.
+      if (!pin) { setErr("Enter the firm PIN"); return; }
       onConfirm(d.fy, d.isLocked, pin);
     }
   }
@@ -133,9 +162,8 @@ function PinModal({
 }
 
 function LockYearContent() {
-  const [firmId, setFirmId] = useState<string | null>(null);
   const [lockedYears, setLockedYears] = useState<string[]>([]);
-  const [lockPin, setLockPin] = useState<string | null>(null);
+  const [pinSet, setPinSet] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -146,24 +174,11 @@ function LockYearContent() {
     setLoading(true);
     setError(null);
     try {
-      const sb = getSupabaseClient();
-      const { data: { session } } = await sb.auth.getSession();
-      if (!session) throw new Error("Not authenticated");
-      const { data: user } = await sb
-        .from("users")
-        .select("firm_id")
-        .eq("auth_user_id", session.user.id)
-        .maybeSingle();
-      if (!user?.firm_id) throw new Error("Firm not found — please complete onboarding first");
-      setFirmId(user.firm_id);
-      const { data: firm, error: firmErr } = await sb
-        .from("firms")
-        .select("locked_financial_years, lock_pin")
-        .eq("id", user.firm_id)
-        .maybeSingle();
-      if (firmErr) throw new Error(firmErr.message);
-      setLockedYears(firm?.locked_financial_years ?? []);
-      setLockPin(firm?.lock_pin ?? null);
+      const res = await callApi("/api/accounting/year-lock", "GET");
+      if (!res.success) throw new Error(res.error ?? "Failed to load");
+      const d = res.data as { locked_financial_years?: string[]; pin_set?: boolean };
+      setLockedYears(d.locked_financial_years ?? []);
+      setPinSet(!!d.pin_set);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -174,29 +189,18 @@ function LockYearContent() {
   useEffect(() => { load(); }, [load]);
 
   async function toggleLock(fy: string, currentlyLocked: boolean, enteredPin: string) {
-    if (!firmId) return;
     setSaving(fy);
     setPinDialog(null);
     try {
-      const sb = getSupabaseClient();
-      const newLocked = currentlyLocked
-        ? lockedYears.filter((y) => y !== fy)
-        : [...lockedYears, fy];
-
-      const updatePayload: Record<string, unknown> = { locked_financial_years: newLocked };
-      // If PIN was just set for the first time, save it too
-      if (!lockPin) {
-        updatePayload.lock_pin = enteredPin;
-        setLockPin(enteredPin);
-      }
-
-      const { error: updateErr } = await sb
-        .from("firms")
-        .update(updatePayload)
-        .eq("id", firmId);
-
-      if (updateErr) throw new Error(updateErr.message);
-      setLockedYears(newLocked);
+      const res = await callApi("/api/accounting/year-lock", "POST", {
+        financial_year: fy,
+        lock: !currentlyLocked,
+        pin: enteredPin || undefined,
+      });
+      if (!res.success) throw new Error(res.error ?? "Failed to update");
+      const d = res.data as { locked_financial_years?: string[]; pin_set?: boolean };
+      setLockedYears(d.locked_financial_years ?? []);
+      setPinSet(!!d.pin_set);
       setToast(currentlyLocked ? `FY ${fy} unlocked` : `FY ${fy} locked — no further edits allowed`);
       setTimeout(() => setToast(null), 4000);
     } catch (e) {
@@ -282,8 +286,8 @@ function LockYearContent() {
         <div className="flex items-center gap-2 text-sm text-[#475569]">
           <KeyRound size={14} className="text-[#94A3B8]" />
           <span>Lock PIN: </span>
-          <span className={`font-medium ${lockPin ? "text-green-700" : "text-amber-600"}`}>
-            {lockPin ? "Set" : "Not set — will be created on first lock"}
+          <span className={`font-medium ${pinSet ? "text-green-700" : "text-amber-600"}`}>
+            {pinSet ? "Set" : "Not set — will be created on first lock"}
           </span>
         </div>
       </div>
@@ -294,7 +298,7 @@ function LockYearContent() {
 
       <PinModal
         dialog={pinDialog}
-        lockPin={lockPin}
+        pinSet={pinSet}
         onConfirm={(fy, isLocked, pin) => toggleLock(fy, isLocked, pin)}
         onClose={() => setPinDialog(null)}
       />

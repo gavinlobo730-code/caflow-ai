@@ -136,6 +136,43 @@ def post_opening_balances_endpoint(
         raise HTTPException(status_code=422, detail=str(e))
 
 
+class YearLockIn(BaseModel):
+    financial_year: str           # e.g. "2025-26"
+    lock: bool                    # True = lock, False = unlock
+    pin: Optional[str] = None     # firm lock PIN (verified server-side)
+
+
+@router.get("/year-lock")
+def get_year_lock(current_user: dict = Depends(rbac("accounting", "read"))):
+    """Current year-lock state for the firm: {locked_financial_years, pin_set}.
+    The PIN itself is never returned to the client."""
+    db = _prod_db()
+    if not db:
+        return api_response(True, {"locked_financial_years": [], "pin_set": False})
+    from services.year_lock_service import get_state
+    return api_response(True, get_state(db, current_user["firm_id"]))
+
+
+@router.post("/year-lock")
+def set_year_lock(data: YearLockIn, current_user: dict = Depends(rbac("accounting", "approve"))):
+    """Lock / unlock a financial year — Partner only (accounting.approve), audited.
+    The ONLY sanctioned writer of firms.locked_financial_years; a DB trigger
+    (migration 136) blocks every other session from changing it directly."""
+    db = _prod_db()
+    if not db:
+        return api_response(True, {
+            "locked_financial_years": [data.financial_year] if data.lock else [],
+            "pin_set": bool(data.pin),
+        })
+    from services.year_lock_service import set_lock
+    state = set_lock(
+        db, current_user["firm_id"], data.financial_year, data.lock,
+        pin=data.pin, actor_id=current_user.get("auth_user_id"),
+        actor_email=current_user.get("email"),
+    )
+    return api_response(True, state)
+
+
 @router.get("/journals")
 def list_journals_queue(
     client_id: Optional[str] = Query(None),
