@@ -13,11 +13,27 @@ are intentionally NOT wired to the UI yet.
 IMPORTANT: posting is explicit and human-initiated — never auto-post.
 CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import Response
 from typing import Optional
 
 from models.common import api_response
+
+_logger = logging.getLogger("caflow.banking")
+
+
+def _sync_opening_balances(db, firm_id: str, client_id: str, actor_id) -> bool:
+    """Idempotently regenerate the client's opening-balance journal after a bank
+    opening balance changes. Returns True on success, False on failure (caller
+    rolls back). The reporting engine is unchanged — only the trigger moved here."""
+    try:
+        from services.opening_balance_service import post_opening_balances
+        post_opening_balances(firm_id, client_id, created_by=actor_id)
+        return True
+    except Exception as e:
+        _logger.error("bank opening-balance sync failed: %s", e)
+        return False
 from models.banking import (
     BankAccountIn, BankAccountUpdateIn, StatementImportIn,
     TransactionAccountIn, PostBankTxnIn, MatchingRuleIn,
@@ -69,10 +85,20 @@ def create_bank_account(
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
-    row = db.table("bank_accounts").insert(
-        {"firm_id": current_user["firm_id"], **data.model_dump()}
-    ).execute()
-    return api_response(True, (row.data or [{}])[0])
+    payload = {"firm_id": current_user["firm_id"], **data.model_dump()}
+    row = db.table("bank_accounts").insert(payload).execute()
+    account = (row.data or [{}])[0]
+    # Auto-sync opening balances to the GL (no manual post). Roll back on failure.
+    if int(payload.get("opening_balance_paise") or 0) != 0 and payload.get("client_id"):
+        if not _sync_opening_balances(db, current_user["firm_id"], payload["client_id"],
+                                      current_user.get("auth_user_id")):
+            try:
+                if account.get("id"):
+                    db.table("bank_accounts").delete().eq("id", account["id"]).eq("firm_id", current_user["firm_id"]).execute()
+            except Exception:
+                pass
+            return api_response(False, None, "Unable to save bank account. Please try again.")
+    return api_response(True, account)
 
 
 @router.patch("/accounts/{account_id}")
@@ -85,9 +111,22 @@ def update_bank_account(
     update = data.model_dump(exclude_none=True)
     if not db:
         return api_response(True, update)
+    firm_id = current_user["firm_id"]
+    prior = (db.table("bank_accounts").select("*")
+             .eq("id", account_id).eq("firm_id", firm_id).limit(1).execute().data or [{}])[0]
     row = (db.table("bank_accounts").update(update)
-           .eq("id", account_id).eq("firm_id", current_user["firm_id"]).execute())
-    return api_response(True, (row.data or [{}])[0])
+           .eq("id", account_id).eq("firm_id", firm_id).execute())
+    account = (row.data or [{}])[0]
+    # Auto-sync opening balances only when the opening balance actually changed.
+    if int(account.get("opening_balance_paise") or 0) != int(prior.get("opening_balance_paise") or 0):
+        client_id = account.get("client_id") or prior.get("client_id")
+        if client_id and not _sync_opening_balances(db, firm_id, client_id, current_user.get("auth_user_id")):
+            try:
+                db.table("bank_accounts").update({k: prior.get(k) for k in update.keys()}).eq("id", account_id).eq("firm_id", firm_id).execute()
+            except Exception:
+                pass
+            return api_response(False, None, "Unable to save bank account. Please try again.")
+    return api_response(True, account)
 
 
 # ─── Statements ───────────────────────────────────────────────────────────────
