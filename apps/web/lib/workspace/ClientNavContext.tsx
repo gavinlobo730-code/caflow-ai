@@ -57,6 +57,9 @@ export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   { id: "instructions", label: "Instructions",   href: (id) => `/clients/${id}/instructions/` },
 ];
 
+/** localStorage key for the persisted financial-year selection. */
+const FY_STORAGE_KEY = "caflow.financialYear";
+
 export function getCurrentFinancialYear(): string {
   const now = new Date();
   const year = now.getFullYear();
@@ -109,10 +112,29 @@ export function ClientNavProvider({
     setClientId(m ? decodeURIComponent(m[1]) : "");
   }, [pathname]);
   const [activeSection, setActiveSection] = useState<ClientSection>(initialSection);
-  const [financialYear, setFinancialYear] = useState(getCurrentFinancialYear());
+  // Persist the selected FY so it survives a page refresh / direct link, instead
+  // of silently resetting to the current FY on every mount. Priority on init:
+  // ?fy= URL param → localStorage → current FY.
+  const [financialYear, setFinancialYearState] = useState<string>(() => {
+    if (typeof window === "undefined") return getCurrentFinancialYear();
+    const fromUrl = new URLSearchParams(window.location.search).get("fy");
+    if (fromUrl) return fromUrl;
+    const stored = window.localStorage.getItem(FY_STORAGE_KEY);
+    return stored || getCurrentFinancialYear();
+  });
 
   const setSection = useCallback((section: ClientSection) => {
     setActiveSection(section);
+  }, []);
+
+  const setFinancialYear = useCallback((fy: string) => {
+    setFinancialYearState(fy);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(FY_STORAGE_KEY, fy);
+      const p = new URLSearchParams(window.location.search);
+      p.set("fy", fy);
+      window.history.replaceState(null, "", `${window.location.pathname}?${p.toString()}`);
+    }
   }, []);
 
   const value: ClientNavContextValue = {

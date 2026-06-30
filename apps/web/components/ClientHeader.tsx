@@ -79,9 +79,18 @@ export function ClientHeader() {
       <div className="relative shrink-0">
         <button
           onClick={() => setFyOpen((o) => !o)}
-          className="flex items-center gap-1.5 text-[11px] font-medium text-gray-500 hover:text-[#182350] bg-gray-100 hover:bg-gray-200 px-2.5 py-1.5 rounded-lg transition-colors"
+          title={financialYear === getCurrentFinancialYear() ? undefined : "You are viewing a non-current financial year"}
+          className={cn(
+            "flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1.5 rounded-lg transition-colors",
+            financialYear === getCurrentFinancialYear()
+              ? "text-gray-500 hover:text-[#182350] bg-gray-100 hover:bg-gray-200"
+              : "text-amber-700 bg-amber-100 hover:bg-amber-200",
+          )}
         >
           FY {financialYear}
+          {financialYear !== getCurrentFinancialYear() && (
+            <span className="text-[9px] uppercase tracking-wide">• not current</span>
+          )}
           <ChevronDown size={11} className={cn("transition-transform", fyOpen && "rotate-180")} />
         </button>
 
