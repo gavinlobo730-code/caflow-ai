@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Plus, RefreshCw, X, FileText, CheckCircle, Upload, Send, Clock,
   Pencil, Trash2, Search, Eye, Download, ArrowUp, ArrowDown, Loader2, AlertTriangle,
-  CreditCard, Copy,
+  CreditCard, Copy, MoreHorizontal, RotateCcw, Ban, BookOpen,
 } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -423,6 +423,18 @@ export default function SalesPage() {
   const { clientId, financialYear } = useClientNav();
   const [tab, setTab] = useState<SalesTab>("invoices");
 
+  // Cross-tab navigation (e.g. Customers → "View Invoices" / "View Ledger").
+  // The target customer is stashed in the URL (?cust=) and the tab switches;
+  // the destination tab hydrates its customer filter from that param on mount.
+  function navigateTo(target: SalesTab, custId?: string) {
+    if (custId) {
+      const p = new URLSearchParams(window.location.search);
+      p.set("cust", custId);
+      window.history.replaceState(null, "", `${window.location.pathname}?${p.toString()}`);
+    }
+    setTab(target);
+  }
+
   if (!clientId || clientId === "_placeholder") return <LoadingSkeleton />;
 
   return (
@@ -454,7 +466,7 @@ export default function SalesPage() {
           <RecurringInvoices clientId={clientId} />
         )}
         {tab === "customers" && (
-          <Customers clientId={clientId} financialYear={financialYear} />
+          <Customers clientId={clientId} financialYear={financialYear} onNavigate={navigateTo} />
         )}
         {tab === "receipts" && (
           <Receipts clientId={clientId} financialYear={financialYear} />
@@ -3004,35 +3016,53 @@ function DeleteInvoiceModal({
 
 // ── Customers Tab ──────────────────────────────────────────────────────────
 
+type CustomerStatusFilter = "active" | "inactive" | "all";
+
+interface CustomerDependencies {
+  can_delete: boolean;
+  dependencies: Record<string, number>;
+  total: number;
+}
+
 function Customers({
   clientId,
+  onNavigate,
 }: {
   clientId: string;
   financialYear: string;
+  onNavigate: (tab: SalesTab, custId?: string) => void;
 }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<CustomerStatusFilter>("active");
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<Customer | null>(null);
   const [deactivating, setDeactivating] = useState(false);
+  // Row actions overflow menu (anchored to the viewport to avoid table clipping).
+  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  // Permanent-delete flow: target + the dependency report that gates it.
+  const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
+  const [deleteDeps, setDeleteDeps] = useState<CustomerDependencies | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = getSupabaseClient();
-    const { data } = await supabase
+    let q = supabase
       .from("customers")
       .select(
         "id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active"
       )
-      .eq("client_id", clientId)
-      .eq("is_active", true)
-      .order("name");
+      .eq("client_id", clientId);
+    if (statusFilter === "active") q = q.eq("is_active", true);
+    else if (statusFilter === "inactive") q = q.eq("is_active", false);
+    const { data } = await q.order("name");
     setCustomers((data as Customer[]) ?? []);
     setLoading(false);
-  }, [clientId]);
+  }, [clientId, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -3062,6 +3092,52 @@ function Customers({
     showToast("Customer deactivated", "success");
     setDeactivateTarget(null);
     load();
+  }
+
+  // Reactivate an inactive customer (Inactive → Active). History is untouched;
+  // it simply becomes selectable for new invoices again.
+  async function reactivateCustomer(c: Customer) {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.from("customers").update({ is_active: true }).eq("id", c.id);
+    if (error) { showToast("Failed to reactivate customer", "error"); return; }
+    showToast("Customer reactivated", "success");
+    load();
+  }
+
+  // Open the permanent-delete flow: ask the backend which accounting records (if
+  // any) reference this customer, then show either the blocked or confirm dialog.
+  async function startDelete(c: Customer) {
+    setDeleteTarget(c);
+    setDeleteDeps(null);
+    const token = await getAuthToken();
+    const res = await apiGet(`/api/customers/${c.id}/dependencies`, token);
+    if (res.success) setDeleteDeps(res.data as CustomerDependencies);
+    else { showToast("Could not check customer dependencies", "error"); setDeleteTarget(null); }
+  }
+
+  // Permanent delete — only reachable when the dependency check returned clean.
+  // The backend re-checks and refuses (409) if anything was created meanwhile.
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    const token = await getAuthToken();
+    const res = await apiCall(`/api/customers/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token);
+    setDeleteBusy(false);
+    if (!res.success) {
+      showToast(res.error ?? "Failed to delete customer", "error");
+      return;
+    }
+    showToast("Customer deleted", "success");
+    setDeleteTarget(null);
+    setDeleteDeps(null);
+    load();
+  }
+
+  // Anchor the overflow menu to the viewport (the table scrolls/clips, so an
+  // in-flow dropdown would be cut off). Right-align a 176px menu under the button.
+  function openMenuFor(e: React.MouseEvent, c: Customer) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setMenu({ id: c.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
   }
 
   /** Bulk-import customers through the EXISTING /api/customers/ endpoint.
@@ -3133,10 +3209,27 @@ function Customers({
     <div className="space-y-4 max-w-screen-2xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">
-          {customers.length} active customer{customers.length !== 1 ? "s" : ""}
-        </p>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <p className="text-xs font-semibold text-[#334155]">
+            {customers.length} {statusFilter === "all" ? "" : `${statusFilter} `}customer{customers.length !== 1 ? "s" : ""}
+          </p>
+          <div className="flex bg-[#F8FAFC] rounded-lg p-0.5 border border-[#E2E8F0]">
+            {(["active", "inactive", "all"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={`px-2.5 py-1 text-[11px] rounded-md capitalize transition-colors ${
+                  statusFilter === s
+                    ? "bg-white text-[#0F172A] shadow-sm font-medium"
+                    : "text-[#64748B] hover:text-[#334155]"
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex gap-2">
           <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
@@ -3192,7 +3285,8 @@ function Customers({
                 longer be available for new invoices.
               </p>
               <p className="text-sm text-[#475569]">
-                Existing invoices and accounting records will remain unchanged.
+                Existing invoices and accounting records will remain unchanged. You can reactivate
+                this customer later.
               </p>
             </div>
             <div className="px-6 py-4 border-t border-[#F1F5F9] flex justify-end gap-2">
@@ -3215,13 +3309,154 @@ function Customers({
         </div>
       )}
 
+      {/* Permanent-delete flow: checking → blocked (has records) → confirm (clean) */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            {deleteDeps === null ? (
+              <div className="px-6 py-10 flex items-center justify-center gap-2 text-sm text-[#475569]">
+                <Loader2 size={16} className="animate-spin" /> Checking for linked records…
+              </div>
+            ) : deleteDeps.can_delete ? (
+              <>
+                <div className="px-6 py-5 border-b border-[#F1F5F9]">
+                  <h2 className="text-base font-semibold text-[#0F172A]">Delete Customer?</h2>
+                </div>
+                <div className="px-6 py-5 space-y-2">
+                  <p className="text-sm text-[#475569]">
+                    <span className="font-medium text-[#1E293B]">{deleteTarget.name}</span> has no
+                    linked invoices, receipts, credit notes or opening balance.
+                  </p>
+                  <p className="text-sm text-[#475569]">
+                    This permanently removes the customer and cannot be undone.
+                  </p>
+                </div>
+                <div className="px-6 py-4 border-t border-[#F1F5F9] flex justify-end gap-2">
+                  <button
+                    onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
+                    disabled={deleteBusy}
+                    className="px-4 py-2 text-sm text-[#475569] rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmDelete}
+                    disabled={deleteBusy}
+                    className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {deleteBusy ? "Deleting…" : "Delete permanently"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="px-6 py-5 border-b border-[#F1F5F9] flex items-center gap-2">
+                  <AlertTriangle size={18} className="text-amber-500" />
+                  <h2 className="text-base font-semibold text-[#0F172A]">Can&apos;t delete this customer</h2>
+                </div>
+                <div className="px-6 py-5 space-y-3">
+                  <p className="text-sm text-[#475569]">
+                    <span className="font-medium text-[#1E293B]">{deleteTarget.name}</span> has linked
+                    accounting records, so it can&apos;t be permanently deleted:
+                  </p>
+                  <ul className="text-sm text-[#475569] space-y-1">
+                    {([
+                      ["invoices", "Invoices"],
+                      ["receipts", "Receipts"],
+                      ["credit_notes", "Credit notes"],
+                      ["recurring_templates", "Recurring templates"],
+                      ["opening_balance", "Opening balance"],
+                    ] as const)
+                      .filter(([k]) => (deleteDeps.dependencies?.[k] ?? 0) > 0)
+                      .map(([k, label]) => (
+                        <li key={k} className="flex items-center gap-2">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                          {k === "opening_balance"
+                            ? "Has an opening balance"
+                            : `${label}: ${deleteDeps.dependencies[k]}`}
+                        </li>
+                      ))}
+                  </ul>
+                  <p className="text-sm text-[#475569]">
+                    Deactivate the customer instead — this keeps all history and removes it from new
+                    invoices.
+                  </p>
+                </div>
+                <div className="px-6 py-4 border-t border-[#F1F5F9] flex justify-end gap-2">
+                  <button
+                    onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
+                    className="px-4 py-2 text-sm text-[#475569] rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                  >
+                    Close
+                  </button>
+                  {deleteTarget.is_active && (
+                    <button
+                      onClick={() => { const t = deleteTarget; setDeleteTarget(null); setDeleteDeps(null); setDeactivateTarget(t); }}
+                      className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-blue-600 hover:bg-blue-700"
+                    >
+                      Deactivate instead
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Row actions overflow menu (viewport-anchored to dodge table clipping) */}
+      {menu && (() => {
+        const c = customers.find((x) => x.id === menu.id);
+        if (!c) return null;
+        return (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
+            <div
+              className="fixed z-50 w-44 bg-white rounded-lg border border-[#E2E8F0] shadow-lg py-1 text-xs"
+              style={{ top: menu.top, left: menu.left }}
+            >
+              <button onClick={() => { setMenu(null); setEditCustomer(c); setShowForm(true); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                <Pencil size={13} /> Edit
+              </button>
+              <button onClick={() => { setMenu(null); onNavigate("invoices", c.id); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                <FileText size={13} /> View Invoices
+              </button>
+              <button onClick={() => { setMenu(null); onNavigate("statements", c.id); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                <BookOpen size={13} /> View Ledger
+              </button>
+              <div className="my-1 border-t border-[#F1F5F9]" />
+              {c.is_active ? (
+                <button onClick={() => { setMenu(null); setDeactivateTarget(c); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                  <Ban size={13} /> Deactivate
+                </button>
+              ) : (
+                <button onClick={() => { setMenu(null); reactivateCustomer(c); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-green-700">
+                  <RotateCcw size={13} /> Reactivate
+                </button>
+              )}
+              <button onClick={() => { setMenu(null); startDelete(c); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                <Trash2 size={13} /> Delete
+              </button>
+            </div>
+          </>
+        );
+      })()}
+
       {loading ? (
         <div className="space-y-2">
           {[...Array(3)].map((_, i) => <div key={i} className="h-10 rounded bg-[#F8FAFC] animate-pulse" />)}
         </div>
       ) : customers.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16">
-          <p className="text-sm text-[#64748B]">No customers yet</p>
+          <p className="text-sm text-[#64748B]">
+            {statusFilter === "inactive" ? "No inactive customers" : statusFilter === "all" ? "No customers yet" : "No active customers"}
+          </p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
@@ -3234,7 +3469,8 @@ function Customers({
                   <th className="px-3 py-3 text-left font-semibold">State</th>
                   <th className="px-3 py-3 text-right font-semibold">Credit Days</th>
                   <th className="px-3 py-3 text-right font-semibold">Opening Balance</th>
-                  <th className="px-4 py-3 text-left font-semibold">Action</th>
+                  <th className="px-3 py-3 text-left font-semibold">Status</th>
+                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F8FAFC]">
@@ -3250,21 +3486,21 @@ function Customers({
                     <td className="px-3 py-2.5 text-right font-mono text-[#334155]">
                       {fmt(c.opening_balance_paise ?? 0)}
                     </td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => { setEditCustomer(c); setShowForm(true); }}
-                          className="text-xs text-blue-600 hover:underline"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => setDeactivateTarget(c)}
-                          className="text-xs text-red-500 hover:underline"
-                        >
-                          Deactivate
-                        </button>
-                      </div>
+                    <td className="px-3 py-2.5">
+                      {c.is_active ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700">Active</span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">Inactive</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <button
+                        onClick={(e) => openMenuFor(e, c)}
+                        aria-label={`Actions for ${c.name}`}
+                        className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
+                      >
+                        <MoreHorizontal size={16} />
+                      </button>
                     </td>
                   </tr>
                 ))}

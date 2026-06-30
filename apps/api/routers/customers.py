@@ -88,6 +88,39 @@ def _match_existing(candidates: list[dict], gstin: str, pan: str) -> Optional[di
     return None
 
 
+# Tables that hold a customer's accounting history. EVERY FK that references
+# customers is ON DELETE CASCADE, so a raw hard-delete would silently wipe these
+# rows. CGST Act §35/36 (and IT Act §44AA) require books & records to be
+# preserved, so we BLOCK a permanent delete at the application layer whenever any
+# of these exist and steer the user to deactivation instead.
+_DEPENDENCY_TABLES: list[tuple[str, str]] = [
+    ("invoices", "client_sales_invoices"),
+    ("receipts", "receipts"),
+    ("credit_notes", "credit_notes"),
+    ("recurring_templates", "recurring_invoice_templates"),
+]
+
+
+def _customer_dependencies(db, customer_id: str, opening_balance_paise: int) -> dict:
+    """Count the accounting records linked to a customer.
+
+    A non-zero opening balance is itself an accounting dependency. Returns
+    {counts: {...}, total: int, has_any: bool}. customer_id is a globally unique
+    UUID, so filtering dependents by customer_id alone is sufficient and correct.
+    """
+    counts: dict[str, int] = {}
+    for label, table in _DEPENDENCY_TABLES:
+        try:
+            resp = db.table(table).select("id").eq("customer_id", customer_id).execute()
+            counts[label] = len(resp.data or [])
+        except Exception as e:  # a missing/locked table must never mask a dependency
+            _logger.warning("dependency count failed for %s: %s", table, e)
+            counts[label] = 0
+    counts["opening_balance"] = 1 if (opening_balance_paise or 0) != 0 else 0
+    total = sum(counts.values())
+    return {"counts": counts, "total": total, "has_any": total > 0}
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -317,28 +350,115 @@ def update_customer(
         return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
+@router.get("/{customer_id}/dependencies")
+def get_customer_dependencies(
+    customer_id: str,
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    """Report the accounting records linked to a customer so the UI can decide
+    whether a permanent delete is safe (it is only when there are none)."""
+    try:
+        firm_id = current_user.get("firm_id")
+        if _USE_MOCK:
+            cust = next((c for c in MOCK_CUSTOMERS if c["id"] == customer_id), None)
+            if not cust:
+                raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
+            opening = cust.get("opening_balance_paise") or 0
+            deps = {"counts": {"invoices": 0, "receipts": 0, "credit_notes": 0,
+                               "recurring_templates": 0,
+                               "opening_balance": 1 if opening else 0},
+                    "total": 1 if opening else 0, "has_any": bool(opening)}
+        else:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+            cust_resp = (
+                db.table("customers").select("opening_balance_paise")
+                .eq("id", customer_id).eq("firm_id", firm_id).limit(1).execute()
+            )
+            if not cust_resp.data:
+                raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
+            opening = cust_resp.data[0].get("opening_balance_paise") or 0
+            deps = _customer_dependencies(db, customer_id, opening)
+        return api_response(True, {
+            "can_delete": not deps["has_any"],
+            "dependencies": deps["counts"],
+            "total": deps["total"],
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("get_customer_dependencies: %s", e)
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
+
+
 @router.delete("/{customer_id}")
 def delete_customer(
     customer_id: str,
     current_user: dict = Depends(rbac("client", "delete")),
+    # Plain default (not Query(...)) so direct callers get a real bool, not a
+    # truthy FieldInfo. FastAPI still exposes it as the ?permanent= query param.
+    permanent: bool = False,
 ):
-    """Soft delete — Partner only (via client.delete RBAC)."""
+    """Customer lifecycle removal — Partner only (via client.delete RBAC).
+
+    Default (permanent=False): soft delete = deactivate (is_active=False). The
+    customer leaves new-invoice pickers but all history stays intact and it can
+    be reactivated.
+
+    permanent=True: hard delete. Allowed ONLY when the customer has no linked
+    accounting records (invoices, receipts, credit notes, recurring templates,
+    opening balance). Every FK is ON DELETE CASCADE, so this guard — not the
+    database — is what protects the books; we refuse with 409 when records exist.
+    """
     try:
+        firm_id = current_user.get("firm_id")
         if _USE_MOCK:
             for i, c in enumerate(MOCK_CUSTOMERS):
                 if c["id"] == customer_id:
+                    if permanent:
+                        if (c.get("opening_balance_paise") or 0) != 0:
+                            raise HTTPException(status_code=409, detail="Customer has accounting records and cannot be deleted. Deactivate instead.")
+                        MOCK_CUSTOMERS.pop(i)
+                        return api_response(True, {"id": customer_id, "deleted": True})
                     MOCK_CUSTOMERS[i]["is_active"] = False
                     return api_response(True, {"id": customer_id, "is_active": False})
             raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        # Tenant isolation (OOS-5): firm-scope the soft-delete write.
-        resp = db.table("customers").update({"is_active": False}).eq("id", customer_id).eq("firm_id", current_user.get("firm_id")).execute()
+
+        if permanent:
+            # Verify the customer exists in this firm and gather its opening balance.
+            cust_resp = (
+                db.table("customers").select("opening_balance_paise")
+                .eq("id", customer_id).eq("firm_id", firm_id).limit(1).execute()
+            )
+            if not cust_resp.data:
+                raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
+            opening = cust_resp.data[0].get("opening_balance_paise") or 0
+            deps = _customer_dependencies(db, customer_id, opening)
+            if deps["has_any"]:
+                # CASCADE FKs would otherwise destroy these records silently.
+                raise HTTPException(
+                    status_code=409,
+                    detail="This customer has linked accounting records and cannot be permanently deleted. Deactivate the customer instead to preserve history.",
+                )
+            del_resp = db.table("customers").delete().eq("id", customer_id).eq("firm_id", firm_id).execute()
+            if not del_resp.data:
+                raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
+            log_event(
+                firm_id or "", "customer", customer_id,
+                "delete_permanent", actor_id=current_user.get("auth_user_id"),
+                actor_email=current_user.get("email"),
+            )
+            return api_response(True, {"id": customer_id, "deleted": True})
+
+        # Soft delete (deactivate). Tenant isolation (OOS-5): firm-scope the write.
+        resp = db.table("customers").update({"is_active": False}).eq("id", customer_id).eq("firm_id", firm_id).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
         log_event(
-            current_user.get("firm_id", ""), "customer", customer_id,
+            firm_id or "", "customer", customer_id,
             "delete", actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"),
         )
