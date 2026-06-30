@@ -61,6 +61,33 @@ def _get_next_seq_mock() -> int:
     return len(MOCK_CUSTOMERS) + 1
 
 
+def _norm(v: Optional[str]) -> str:
+    """Normalise an identifier for comparison (trim + upper). GSTIN/PAN are
+    canonically uppercase, so case never distinguishes two real records."""
+    return (v or "").strip().upper()
+
+
+def _match_existing(candidates: list[dict], gstin: str, pan: str) -> Optional[dict]:
+    """Master-data duplicate detection.
+
+    Match priority (CAFLOW customer-module spec):
+      1) GSTIN — CGST Act §25: a GSTIN uniquely identifies a registration.
+      2) PAN   — IT Act §139A: identifies the entity, used only when no GSTIN.
+    Only ACTIVE customers block creation: a previously deactivated namesake must
+    never prevent re-creating the customer. Returns the matched row or None.
+    """
+    if gstin:
+        for c in candidates:
+            if c.get("is_active", True) and _norm(c.get("gstin")) == gstin:
+                return c
+        return None
+    if pan:
+        for c in candidates:
+            if c.get("is_active", True) and _norm(c.get("pan")) == pan:
+                return c
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -103,13 +130,44 @@ def create_customer(
         payload["created_at"] = datetime.now(timezone.utc).isoformat()
         data = payload
 
+        # ── Duplicate guard (master-data integrity) ─────────────────────────
+        # Never silently create a second customer that matches an existing active
+        # one by GSTIN (preferred) or PAN for the same client. Re-importing the
+        # same file must NOT create duplicates. When a match is found we return
+        # the EXISTING record flagged duplicate=True (no insert), so the caller
+        # can report it as "already exists / skipped".
+        gstin = _norm(data.get("gstin"))
+        pan = _norm(data.get("pan"))
+        client_id = data.get("client_id")
+        firm_id = data.get("firm_id")
+
         if _USE_MOCK:
+            candidates = [
+                c for c in MOCK_CUSTOMERS
+                if c.get("client_id") == client_id and c.get("firm_id") == firm_id
+            ]
+            existing = _match_existing(candidates, gstin, pan)
+            if existing:
+                return api_response(True, {**existing, "duplicate": True})
             data["id"] = str(uuid.uuid4())
             MOCK_CUSTOMERS.append(data)
             return api_response(True, data)
 
         from core.supabase_client import get_supabase
         db = get_supabase()
+        if gstin or pan:
+            existing_resp = (
+                db.table("customers")
+                .select("*")
+                .eq("client_id", client_id)
+                .eq("firm_id", firm_id)
+                .eq("is_active", True)
+                .execute()
+            )
+            existing = _match_existing(existing_resp.data or [], gstin, pan)
+            if existing:
+                return api_response(True, {**existing, "duplicate": True})
+
         resp = db.table("customers").insert(data).execute()
         customer = resp.data[0] if resp.data else data
         customer_id = customer.get("id", "")

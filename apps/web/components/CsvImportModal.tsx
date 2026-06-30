@@ -30,11 +30,22 @@ export interface ParsedRow {
   errors: string[];     // field-level validation errors
 }
 
+/** Outcome of a bulk import. `imported` = new records created. `skipped` /
+ *  `skippedDetail` are optional: importers with duplicate detection (e.g.
+ *  customers) report records that already existed and were intentionally not
+ *  re-created, so the summary never looks like a silent failure. */
+export interface ImportResult {
+  imported: number;
+  errors: string[];
+  skipped?: number;
+  skippedDetail?: string[];
+}
+
 interface Props {
   title: string;
   columns: CsvColumn[];
   templateFilename: string;
-  onImport: (rows: ImportRow[]) => Promise<{ imported: number; errors: string[] }>;
+  onImport: (rows: ImportRow[]) => Promise<ImportResult>;
   onClose: () => void;
   /** Optional extra validation per row, returns error strings */
   validateRow?: (row: ImportRow) => string[];
@@ -92,7 +103,7 @@ function parseCsv(text: string, columns: CsvColumn[]): ParsedRow[] {
 export default function CsvImportModal({ title, columns, templateFilename, onImport, onClose, validateRow }: Props) {
   const [step, setStep] = useState<"upload" | "preview" | "importing" | "done">("upload");
   const [rows, setRows] = useState<ParsedRow[]>([]);
-  const [result, setResult] = useState<{ imported: number; errors: string[] } | null>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -381,11 +392,39 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
             <div className="py-8 space-y-4">
               <div className="text-center">
                 <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
-                <p className="text-lg font-semibold text-[#0F172A]">{result.imported} rows imported successfully</p>
-                {result.errors.length > 0 && (
-                  <p className="text-sm text-red-600 mt-1">{result.errors.length} rows failed</p>
-                )}
+                <p className="text-lg font-semibold text-[#0F172A]">
+                  {result.imported} new {result.imported === 1 ? "record" : "records"} imported
+                </p>
+                <p className="text-xs text-[#94A3B8] mt-1">Import complete</p>
               </div>
+
+              {/* Summary breakdown — New / Existing (skipped) / Failed */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-xl border border-green-100 bg-green-50 px-3 py-2.5 text-center">
+                  <p className="text-lg font-semibold text-green-700 tabular-nums">{result.imported}</p>
+                  <p className="text-[11px] text-green-600">New</p>
+                </div>
+                <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5 text-center">
+                  <p className="text-lg font-semibold text-amber-700 tabular-nums">{result.skipped ?? 0}</p>
+                  <p className="text-[11px] text-amber-600">Already existed</p>
+                </div>
+                <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-center">
+                  <p className="text-lg font-semibold text-red-600 tabular-nums">{result.errors.length}</p>
+                  <p className="text-[11px] text-red-500">Failed</p>
+                </div>
+              </div>
+
+              {result.skippedDetail && result.skippedDetail.length > 0 && (
+                <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 space-y-1 max-h-40 overflow-y-auto">
+                  <p className="text-xs font-semibold text-amber-700 mb-1">
+                    Skipped (already in your customer list — no duplicates created):
+                  </p>
+                  {result.skippedDetail.map((s, i) => (
+                    <p key={i} className="text-xs text-amber-700">{s}</p>
+                  ))}
+                </div>
+              )}
+
               {result.errors.length > 0 && (
                 <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 space-y-1 max-h-40 overflow-y-auto">
                   {result.errors.map((e, i) => (

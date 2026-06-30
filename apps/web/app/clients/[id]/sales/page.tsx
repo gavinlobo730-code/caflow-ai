@@ -545,7 +545,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
   }
 
   return (
-    <div className="space-y-4 max-w-7xl">
+    <div className="space-y-4 max-w-screen-2xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       {editor && (
@@ -1021,7 +1021,7 @@ function Statements({ clientId, financialYear }: { clientId: string; financialYe
   const visibleCustomers = customers.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="space-y-4 max-w-7xl">
+    <div className="space-y-4 max-w-screen-2xl">
       <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -1445,7 +1445,7 @@ function SalesInvoices({
     debouncedSearch.trim() !== "" || statusFilter !== "all" || customerFilter !== "all";
 
   return (
-    <div className="space-y-4 max-w-7xl">
+    <div className="space-y-4 max-w-screen-2xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       {sendModal && (
@@ -2913,6 +2913,8 @@ function Customers({
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<Customer | null>(null);
+  const [deactivating, setDeactivating] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   const load = useCallback(async () => {
@@ -2937,33 +2939,96 @@ function Customers({
     setTimeout(() => setToast(null), 4000);
   }
 
-  async function deactivateCustomer(id: string) {
+  // Deactivation is destructive (the customer disappears from new-invoice
+  // pickers), so it is gated behind an explicit confirmation modal. We only
+  // flip is_active; existing invoices, receipts and journal entries are never
+  // touched — accounting history must remain intact.
+  async function confirmDeactivate() {
+    if (!deactivateTarget) return;
+    setDeactivating(true);
     const supabase = getSupabaseClient();
     const { error } = await supabase
       .from("customers")
       .update({ is_active: false })
-      .eq("id", id);
-    if (error) { showToast("Failed to deactivate customer", "error"); return; }
+      .eq("id", deactivateTarget.id);
+    setDeactivating(false);
+    if (error) {
+      showToast("Failed to deactivate customer", "error");
+      setDeactivateTarget(null);
+      return;
+    }
     showToast("Customer deactivated", "success");
+    setDeactivateTarget(null);
     load();
   }
 
-  /** Bulk-import customers through the EXISTING /api/customers/ endpoint. */
-  async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
+  /** Bulk-import customers through the EXISTING /api/customers/ endpoint.
+   *  Master-data integrity: re-importing the same file must NOT create
+   *  duplicates. We detect existing customers BEFORE inserting — by GSTIN
+   *  (CGST Act §25, preferred), then PAN (IT Act §139A), then normalised name —
+   *  and skip them. The backend applies the same guard as a second line of
+   *  defence, so a match it returns (duplicate=true) is also counted as skipped. */
+  async function handleImport(
+    rows: ImportRow[]
+  ): Promise<{ imported: number; errors: string[]; skipped: number; skippedDetail: string[] }> {
     const { records, errors } = buildCustomers(rows, clientId);
     const token = await getAuthToken();
-    let imported = 0;
-    for (const c of records) {
-      const result = await apiCall("/api/customers/", "POST", c, token);
-      if (result.success) imported++;
-      else errors.push(`Customer "${c.name}": ${result.error ?? "failed to create"}`);
+
+    // Snapshot the current active customers to match against.
+    const supabase = getSupabaseClient();
+    const { data: existingRows } = await supabase
+      .from("customers")
+      .select("name, gstin, pan")
+      .eq("client_id", clientId)
+      .eq("is_active", true);
+
+    const keyOf = (r: { gstin?: string | null; pan?: string | null; name?: string | null }): string | null => {
+      if (r.gstin) return "g:" + r.gstin.trim().toUpperCase();
+      if (r.pan) return "p:" + r.pan.trim().toUpperCase();
+      if (r.name) return "n:" + r.name.trim().toLowerCase();
+      return null;
+    };
+
+    const seen = new Set<string>();
+    for (const e of existingRows ?? []) {
+      const k = keyOf(e);
+      if (k) seen.add(k);
     }
+
+    let imported = 0;
+    let skipped = 0;
+    const skippedDetail: string[] = [];
+
+    for (const c of records) {
+      const k = keyOf(c);
+      // Already present (in the firm's books or earlier in this same file).
+      if (k && seen.has(k)) {
+        skipped++;
+        skippedDetail.push(`"${c.name}" already exists — skipped`);
+        continue;
+      }
+      const result = await apiCall("/api/customers/", "POST", c, token);
+      if (result.success) {
+        const created = result.data as { duplicate?: boolean } | null;
+        if (created?.duplicate) {
+          // Backend caught a duplicate (e.g. GSTIN/PAN match) — not inserted.
+          skipped++;
+          skippedDetail.push(`"${c.name}" already exists — skipped`);
+        } else {
+          imported++;
+          if (k) seen.add(k);
+        }
+      } else {
+        errors.push(`Customer "${c.name}": ${result.error ?? "failed to create"}`);
+      }
+    }
+
     if (imported > 0) load();
-    return { imported, errors };
+    return { imported, errors, skipped, skippedDetail };
   }
 
   return (
-    <div className="space-y-4 max-w-7xl">
+    <div className="space-y-4 max-w-screen-2xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       <div className="flex items-center justify-between">
@@ -3013,6 +3078,41 @@ function Customers({
         />
       )}
 
+      {deactivateTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="px-6 py-5 border-b border-[#F1F5F9]">
+              <h2 className="text-base font-semibold text-[#0F172A]">Deactivate Customer?</h2>
+            </div>
+            <div className="px-6 py-5 space-y-2">
+              <p className="text-sm text-[#475569]">
+                <span className="font-medium text-[#1E293B]">{deactivateTarget.name}</span> will no
+                longer be available for new invoices.
+              </p>
+              <p className="text-sm text-[#475569]">
+                Existing invoices and accounting records will remain unchanged.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t border-[#F1F5F9] flex justify-end gap-2">
+              <button
+                onClick={() => setDeactivateTarget(null)}
+                disabled={deactivating}
+                className="px-4 py-2 text-sm text-[#475569] rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeactivate}
+                disabled={deactivating}
+                className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50"
+              >
+                {deactivating ? "Deactivating…" : "Deactivate"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-2">
           {[...Array(3)].map((_, i) => <div key={i} className="h-10 rounded bg-[#F8FAFC] animate-pulse" />)}
@@ -3057,7 +3157,7 @@ function Customers({
                           Edit
                         </button>
                         <button
-                          onClick={() => deactivateCustomer(c.id)}
+                          onClick={() => setDeactivateTarget(c)}
                           className="text-xs text-red-500 hover:underline"
                         >
                           Deactivate
@@ -3380,7 +3480,7 @@ function Receipts({
   }
 
   return (
-    <div className="space-y-4 max-w-7xl">
+    <div className="space-y-4 max-w-screen-2xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       <div className="flex items-center justify-between">
@@ -3759,7 +3859,7 @@ function CreditNotes({
   }
 
   return (
-    <div className="space-y-4 max-w-7xl">
+    <div className="space-y-4 max-w-screen-2xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       <div className="flex items-center justify-between">
