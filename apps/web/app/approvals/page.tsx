@@ -5,6 +5,7 @@ import { ShieldCheck, Check, X, Clock, Loader2, Ban, Lock } from "lucide-react";
 import Link from "next/link";
 import { api, type ApprovalRequest } from "@/lib/api";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { ListSkeleton } from "@/components/ui/skeleton";
 
 function isMfaError(msg: string) {
   return msg.toLowerCase().includes("multi-factor") || msg.toLowerCase().includes("mfa");
@@ -107,7 +108,7 @@ export default function ApprovalsPage() {
       ))}
 
       {!error && loading ? (
-        <div className="text-sm text-gray-500">Loading…</div>
+        <ListSkeleton rows={4} />
       ) : !error && items.length === 0 ? (
         <div className="py-12 text-center text-[12px] text-gray-400">
           <Clock size={22} className="mx-auto mb-2 opacity-40" />

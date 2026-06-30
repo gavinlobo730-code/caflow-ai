@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Building2, AlertTriangle, Calendar, LogOut, ShieldCheck, ChevronLeft, User, Palette, Hash, FileText, Mail } from "lucide-react";
+import { FormSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useRouter } from "next/navigation";
@@ -438,7 +439,7 @@ export default function SettingsPage() {
         </div>
 
         {loading ? (
-          <div className="px-5 py-10 text-center text-sm text-[#94A3B8]">Loading…</div>
+          <div className="px-5 py-5"><FormSkeleton fields={6} /></div>
         ) : (
           <div className="px-5 py-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

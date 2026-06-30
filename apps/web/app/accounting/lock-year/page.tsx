@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, Lock, Unlock, Shield, AlertTriangle, KeyRound, X, Eye, EyeOff } from "lucide-react";
+import { TableSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { RoleGuard } from "@/components/RoleGuard";
 
@@ -238,7 +239,7 @@ function LockYearContent() {
           <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Financial Years</p>
         </div>
         {loading ? (
-          <div className="px-5 py-8 text-center text-sm text-[#94A3B8] animate-pulse">Loading…</div>
+          <TableSkeleton bare rows={4} cols={3} />
         ) : (
           <div className="divide-y divide-[#F8FAFC]">
             {FY_LIST.map((fy) => {

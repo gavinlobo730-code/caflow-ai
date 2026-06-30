@@ -17,6 +17,7 @@ import {
   Loader2,
 } from "lucide-react";
 import Link from "next/link";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -1084,10 +1085,21 @@ export default function PipelinePage() {
         </div>
       )}
 
-      {/* Kanban board */}
-      {loading && (
-        <div className="text-center py-10 text-sm text-[#94A3B8]">Loading leads…</div>
-      )}
+      {/* Kanban board — skeleton columns while loading, real board otherwise */}
+      {loading ? (
+        <div className="flex gap-4 overflow-x-auto pb-4">
+          {STAGES.map((stage) => (
+            <div key={stage} className="min-w-[280px] flex-none">
+              <Skeleton className="h-11 w-full rounded-xl" />
+              <div className="mt-3 space-y-3">
+                {[0, 1, 2].map((i) => (
+                  <Skeleton key={i} className="h-28 w-full rounded-xl" />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
       <div className="flex gap-4 overflow-x-auto pb-4">
         {STAGES.map((stage) => {
           const stageLeads = leads.filter((l) => l.stage === stage);
@@ -1133,6 +1145,7 @@ export default function PipelinePage() {
           );
         })}
       </div>
+      )}
 
       {/* Modals */}
       <AddLeadModal
