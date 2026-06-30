@@ -211,7 +211,9 @@ def create_customer(
         if int(data.get("opening_balance_paise") or 0) != 0:
             try:
                 from services.opening_balance_service import post_opening_balances
-                post_opening_balances(firm_id, client_id, created_by=current_user.get("auth_user_id"))
+                # journal_entries.created_by FKs to public.users.id (the INTERNAL id),
+                # NOT the Supabase auth id. current_user carries both — use "id".
+                post_opening_balances(firm_id, client_id, created_by=current_user.get("id"))
             except Exception as sync_err:
                 _logger.error("create_customer opening-balance sync failed; rolling back: %s", sync_err)
                 try:
@@ -368,7 +370,7 @@ def update_customer(
             try:
                 from services.opening_balance_service import post_opening_balances
                 post_opening_balances(firm_id, updated.get("client_id") or prior.get("client_id"),
-                                      created_by=current_user.get("auth_user_id"))
+                                      created_by=current_user.get("id"))
             except Exception as sync_err:
                 _logger.error("update_customer opening-balance sync failed; rolling back: %s", sync_err)
                 try:

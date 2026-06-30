@@ -90,6 +90,25 @@ def test_create_rolls_back_when_autopost_fails(monkeypatch):
     assert not any(e.get("entry_type") == obs.OPENING_ENTRY_TYPE for e in db.rows("journal_entries"))
 
 
+def test_autopost_uses_internal_user_id_not_auth_id(monkeypatch):
+    # Regression (production FK violation): journal_entries.created_by FKs to
+    # public.users.id — the INTERNAL id — not the Supabase auth id. current_user
+    # carries both: "id" (internal) and "auth_user_id" (auth sub). The router was
+    # passing auth_user_id, which is never a valid users.id → the insert hit
+    # journal_entries_created_by_fkey and create_customer rolled back with
+    # "Unable to save customer. Please try again." The journal must carry "id".
+    db = _setup(monkeypatch, [cust, obs])
+    caller = {"firm_id": FIRM, "id": "internal-uid", "auth_user_id": "auth-sub-xyz",
+              "email": "ca@firma.test", "role": "Partner"}
+    res = cust.create_customer(
+        CustomerIn(client_id="CLI", name="Acme", opening_balance_paise=500_000), caller)
+    assert res["success"] is True
+    opening = [e for e in db.rows("journal_entries") if e.get("entry_type") == obs.OPENING_ENTRY_TYPE]
+    assert len(opening) == 1
+    assert opening[0]["created_by"] == "internal-uid"     # internal users.id
+    assert opening[0]["created_by"] != "auth-sub-xyz"     # never the auth id
+
+
 # ── vendors ──────────────────────────────────────────────────────────────────
 
 def test_create_vendor_with_opening_balance_autoposts(monkeypatch):

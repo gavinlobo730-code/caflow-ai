@@ -121,8 +121,9 @@ def create_vendor(
         if int(payload.get("opening_balance_paise") or 0) != 0:
             try:
                 from services.opening_balance_service import post_opening_balances
+                # created_by FKs to public.users.id (internal), not the Supabase auth id.
                 post_opening_balances(payload["firm_id"], payload.get("client_id"),
-                                      created_by=current_user.get("auth_user_id"))
+                                      created_by=current_user.get("id"))
             except Exception as sync_err:
                 _logger.error("create_vendor opening-balance sync failed; rolling back: %s", sync_err)
                 try:
@@ -231,7 +232,7 @@ def update_vendor(
             try:
                 from services.opening_balance_service import post_opening_balances
                 post_opening_balances(firm_id, updated.get("client_id") or prior.get("client_id"),
-                                      created_by=current_user.get("auth_user_id"))
+                                      created_by=current_user.get("id"))
             except Exception as sync_err:
                 _logger.error("update_vendor opening-balance sync failed; rolling back: %s", sync_err)
                 try:
