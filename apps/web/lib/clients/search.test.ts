@@ -5,11 +5,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { filterClients, clientMatchesQuery } from "./search.ts";
+import type { Client } from "@/lib/types";
 
-// Build a Client-shaped object; `as any` lets us inject null/undefined fields
-// that the (stricter) TS type would otherwise forbid — exactly the runtime
-// shape the API returns now that several columns are nullable.
-function mk(over = {}) {
+// Build a Client-shaped object. The `as unknown as Client` cast lets us inject
+// null/undefined/non-string fields that the (stricter) TS type would forbid —
+// exactly the runtime shape the API returns now that several columns are
+// nullable. (Avoids `any`, which the project's ESLint config rejects.)
+function mk(over: Record<string, unknown> = {}): Client {
   return {
     id: "c1",
     client_name: "Acme Industries Pvt Ltd",
@@ -25,7 +27,7 @@ function mk(over = {}) {
     status: "active",
     created_at: "2026-01-01",
     ...over,
-  } as any;
+  } as unknown as Client;
 }
 
 // ── The exact crash repro ──────────────────────────────────────────────────────
