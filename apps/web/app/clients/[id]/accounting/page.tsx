@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Plus, RefreshCw, Upload, CheckCircle, X, Printer, FileText, Download, Share2 } from "lucide-react";
+import { Plus, RefreshCw, Upload, CheckCircle, X, Printer, FileText, Download, Share2, AlertTriangle } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
@@ -200,11 +200,94 @@ function bsBucket(type: string, subtype: string | null): string {
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 
+// Surfaces the opening-balance → GL gap (audit Part 1) and lets the user post in
+// one click, so the Trial Balance can never silently disagree with Statements.
+function OpeningBalanceBanner({
+  clientId, financialYear, onPosted,
+}: {
+  clientId: string;
+  financialYear: string;
+  onPosted: () => void;
+}) {
+  const [status, setStatus] = useState<
+    { needs_posting: boolean; ar_paise: number; ap_paise: number; bank_paise: number } | null
+  >(null);
+  const [posting, setPosting] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const loadStatus = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
+    try {
+      const res = (await api.accounting.openingBalanceStatus(clientId)) as {
+        success: boolean;
+        data: { needs_posting: boolean; ar_paise: number; ap_paise: number; bank_paise: number } | null;
+      };
+      if (res.success && res.data) setStatus(res.data);
+    } catch { /* backend unreachable — stay silent, the reports will say so */ }
+  }, [clientId]);
+
+  useEffect(() => { loadStatus(); }, [loadStatus, financialYear]);
+
+  async function post() {
+    setPosting(true); setErr(null); setMsg(null);
+    try {
+      const res = (await api.accounting.postOpeningBalances({ client_id: clientId })) as {
+        success: boolean; error: string | null;
+      };
+      if (!res.success) throw new Error(res.error ?? "Failed to post opening balances");
+      setMsg("Opening balances posted to the ledger — Trial Balance and Balance Sheet updated.");
+      await loadStatus();
+      onPosted();
+      setTimeout(() => setMsg(null), 5000);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to post opening balances");
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  if (!status?.needs_posting && !msg) return null;
+  const fmt = (p: number) => `₹${(p / 100).toLocaleString("en-IN")}`;
+
+  if (!status?.needs_posting && msg) {
+    return (
+      <div className="mx-6 mt-3 flex items-center gap-2 rounded-xl border border-green-100 bg-green-50 px-4 py-2.5 text-sm text-green-700">
+        <CheckCircle className="w-4 h-4 shrink-0" /> {msg}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-6 mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-amber-900">Opening balances are not yet in the ledger</p>
+          <p className="text-xs text-amber-700 mt-0.5">
+            Debtors {fmt(status?.ar_paise ?? 0)} · Creditors {fmt(status?.ap_paise ?? 0)} · Bank {fmt(status?.bank_paise ?? 0)} are
+            stored on customers/vendors but not posted — so the Trial Balance and Balance Sheet won&apos;t show them yet.
+          </p>
+          {err && <p className="text-xs text-red-600 mt-1">{err}</p>}
+        </div>
+        <button
+          onClick={post}
+          disabled={posting}
+          className="shrink-0 text-xs px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium disabled:opacity-50"
+        >
+          {posting ? "Posting…" : "Post to Ledger"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AccountingPage() {
   const { clientId, financialYear } = useClientNav();
   const [tab, setTab] = useState<AccountingTab>("dashboard");
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accsLoading, setAccsLoading] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const loadAccounts = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
@@ -241,7 +324,13 @@ export default function AccountingPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
+      <OpeningBalanceBanner
+        clientId={clientId}
+        financialYear={financialYear}
+        onPosted={() => setReloadKey((k) => k + 1)}
+      />
+
+      <div key={reloadKey} className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
         {tab === "dashboard" && (
           <AccountingDashboard clientId={clientId} financialYear={financialYear} accounts={accounts} onNavigate={setTab} />
         )}

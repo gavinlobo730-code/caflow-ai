@@ -195,3 +195,52 @@ def post_opening_balances(
         "bank_paise": bank_total,
         "opening_equity_paise": opening_equity,
     }
+
+
+def opening_balance_status(firm_id: str, client_id: str) -> dict:
+    """Report whether the client's master opening balances are reflected in the GL.
+
+    Lets the UI surface "₹X opening balances are not yet in the ledger" and decide
+    whether to prompt a (re)post — so the Trial Balance can never silently disagree
+    with Customer Statements.
+
+    needs_posting is true when the posted opening journal's gross debit total does
+    not equal what the current master records imply — i.e. nothing posted yet,
+    figures changed since posting, or balances were cleared but a stale journal
+    remains. Comparing the scalar gross debit total is exact for this journal shape
+    (Dr AR + Dr Bank + Cr AP, contra Opening Balance Equity).
+    """
+    if _USE_MOCK:
+        return {"needs_posting": False, "ar_paise": 0, "ap_paise": 0, "bank_paise": 0,
+                "expected_total_paise": 0, "posted_total_paise": 0, "has_opening_journal": False}
+
+    db = _db()
+    customers = (db.table("customers").select("opening_balance_paise")
+                 .eq("client_id", client_id).eq("is_active", True).execute().data or [])
+    vendors = (db.table("vendors").select("opening_balance_paise")
+               .eq("client_id", client_id).eq("is_active", True).execute().data or [])
+    banks = (db.table("bank_accounts").select("opening_balance_paise")
+             .eq("client_id", client_id).eq("is_active", True).execute().data or [])
+    ar = _sum_opening(customers)
+    ap = _sum_opening(vendors)
+    bank = _sum_opening(banks)
+    # Gross debit total the opening journal should carry for these figures.
+    expected_total = max(ar + bank, ap)
+
+    existing = (db.table("journal_entries").select("id")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .eq("entry_type", OPENING_ENTRY_TYPE).execute().data or [])
+    posted_total = 0
+    for e in existing:
+        lines = db.table("journal_lines").select("debit_paise").eq("journal_entry_id", e["id"]).execute().data or []
+        posted_total += sum(int(l.get("debit_paise") or 0) for l in lines)
+
+    return {
+        "needs_posting": expected_total != posted_total,
+        "ar_paise": ar,
+        "ap_paise": ap,
+        "bank_paise": bank,
+        "expected_total_paise": expected_total,
+        "posted_total_paise": posted_total,
+        "has_opening_journal": bool(existing),
+    }

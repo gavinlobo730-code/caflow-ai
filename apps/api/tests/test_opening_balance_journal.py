@@ -122,3 +122,43 @@ def test_reconciles_with_customer_balances(monkeypatch):
     _cust(db, 375_000)
     obs.post_opening_balances(FIRM, "CLI")
     assert account_balance(db, coa_id(db, FIRM, "ar")) == 500_000
+
+
+# ── status (drives the UI "post to ledger" prompt) ───────────────────────────
+
+def test_status_no_openings_does_not_need_posting(monkeypatch):
+    db = _setup(monkeypatch)
+    st = obs.opening_balance_status(FIRM, "CLI")
+    assert st["needs_posting"] is False
+
+
+def test_status_flags_unposted_openings(monkeypatch):
+    db = _setup(monkeypatch)
+    _cust(db, 500_000)
+    st = obs.opening_balance_status(FIRM, "CLI")
+    assert st["needs_posting"] is True
+    assert st["ar_paise"] == 500_000
+    assert st["posted_total_paise"] == 0
+
+
+def test_status_clears_after_posting(monkeypatch):
+    db = _setup(monkeypatch)
+    _cust(db, 500_000)
+    _vendor(db, 200_000)
+    obs.post_opening_balances(FIRM, "CLI")
+    st = obs.opening_balance_status(FIRM, "CLI")
+    assert st["needs_posting"] is False
+    assert st["has_opening_journal"] is True
+
+
+def test_status_flags_changed_openings_after_posting(monkeypatch):
+    db = _setup(monkeypatch)
+    db.seed("customers", {"id": "C1", "firm_id": FIRM, "client_id": "CLI",
+                          "is_active": True, "opening_balance_paise": 500_000})
+    obs.post_opening_balances(FIRM, "CLI")
+    assert obs.opening_balance_status(FIRM, "CLI")["needs_posting"] is False
+    # CA raises the opening balance — GL is now stale until re-posted.
+    for c in db.rows("customers"):
+        if c["id"] == "C1":
+            c["opening_balance_paise"] = 800_000
+    assert obs.opening_balance_status(FIRM, "CLI")["needs_posting"] is True
