@@ -39,16 +39,21 @@ def _today() -> date:
 
 
 def reference_due_date(inv: dict, credit_days: int = DEFAULT_CREDIT_DAYS) -> Optional[date]:
-    """due_date when present, else invoice_date + credit_days."""
+    """due_date when present, else invoice_date + the invoice's OWN snapshotted
+    credit_days (preferred) or the supplied fallback. Invoices created after the
+    credit-terms snapshot always carry due_date, so this fallback only applies to
+    older rows."""
     if inv.get("due_date"):
         try:
             return date.fromisoformat(str(inv["due_date"])[:10])
         except ValueError:
             pass
+    cd = inv.get("credit_days")
+    eff_credit_days = int(cd) if cd is not None else credit_days
     if inv.get("invoice_date"):
         try:
-            return date.fromisoformat(str(inv["invoice_date"])[:10]) + timedelta(days=credit_days)
-        except ValueError:
+            return date.fromisoformat(str(inv["invoice_date"])[:10]) + timedelta(days=eff_credit_days)
+        except (ValueError, TypeError):
             return None
     return None
 
