@@ -53,7 +53,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
       setForm({
         client_name: editClient.client_name,
         entity_type: editClient.entity_type,
-        pan: editClient.pan,
+        pan: editClient.pan ?? "",
         gstin: editClient.gstin ?? "",
         mobile: editClient.mobile ?? "",
         email: editClient.email ?? "",
