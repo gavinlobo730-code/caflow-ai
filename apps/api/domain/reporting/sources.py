@@ -114,32 +114,59 @@ class SupabaseLedgerSource(LedgerSource):
         # order between those migrations and this code no longer matters.
         self._has_system_key: bool | None = None
         self._has_reversal_of: bool | None = None
+        # Per-request memo of the (date-independent) base fetch, keyed by
+        # (firm_id, client_id). A fresh source is created per request, so this only
+        # dedupes repeated fetches WITHIN one request (e.g. cash_flow calls
+        # snapshot() 3× with different date windows; a reports bundle calls it once
+        # per report) — never across requests, so there is no staleness risk.
+        self._base_cache: dict[tuple[str, Optional[str]], dict] = {}
+
+    def _base(self, firm_id, client_id) -> dict:
+        """Fetch (once per request) all tenant-scoped rows the reports need. Only the
+        entry date-window differs between report calls, so everything here is cached
+        and snapshot() just re-applies the date filter."""
+        key = (firm_id, client_id)
+        cached = self._base_cache.get(key)
+        if cached is not None:
+            return cached
+        receipts = self._receipts(firm_id, client_id)
+        data = {
+            "accounts": self._accounts(firm_id, client_id),
+            "entries_by_id": self._entries(firm_id, client_id),
+            "invoices": self._invoices(firm_id, client_id),
+            "receipts": receipts,
+            "allocations_by_receipt": self._allocations(list(receipts.keys())),
+            "credit_notes": self._credit_notes(firm_id, client_id),
+            "bills": self._bills(firm_id, client_id),
+            "payments": self._payments(firm_id, client_id),
+        }
+        self._base_cache[key] = data
+        return data
 
     def snapshot(self, firm_id, client_id, start_date, end_date) -> LedgerSnapshot:
-        accounts = self._accounts(firm_id, client_id)
-        entries_by_id = self._entries(firm_id, client_id)
+        b = self._base(firm_id, client_id)
+        entries_by_id = b["entries_by_id"]
         in_range = [e for e in entries_by_id.values() if _in_range(e.entry_date, start_date, end_date)]
         in_range.sort(key=lambda e: e.entry_date)
 
-        invoices = self._invoices(firm_id, client_id)
-        receipts = self._receipts(firm_id, client_id)
-        allocations_by_receipt = self._allocations(list(receipts.keys()))
-        credit_notes = self._credit_notes(firm_id, client_id)
-        bills = self._bills(firm_id, client_id)
-        payments = self._payments(firm_id, client_id)
+        invoices = b["invoices"]
+        receipts = b["receipts"]
+        credit_notes = b["credit_notes"]
+        bills = b["bills"]
+        payments = b["payments"]
 
         return LedgerSnapshot(
-            accounts=accounts,
+            accounts=b["accounts"],
             entries_in_range=in_range,
             entries_by_id=entries_by_id,
             invoices=invoices,
-            allocations_by_receipt=allocations_by_receipt,
+            allocations_by_receipt=b["allocations_by_receipt"],
             credit_notes=credit_notes,
             bills=bills,
             receipt_by_journal={r.journal_entry_id: r for r in receipts.values() if r.journal_entry_id},
             payment_by_journal={p.journal_entry_id: p for p in payments if p.journal_entry_id},
             invoice_by_journal={i.journal_entry_id: i for i in invoices.values() if i.journal_entry_id},
-            bill_by_journal={b.journal_entry_id: b for b in bills.values() if b.journal_entry_id},
+            bill_by_journal={b2.journal_entry_id: b2 for b2 in bills.values() if b2.journal_entry_id},
             creditnote_by_journal={c.journal_entry_id: c for c in credit_notes if c.journal_entry_id},
         )
 

@@ -7,6 +7,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { api } from "@/lib/api";
+import { cachedReport, reportKey, clearReports } from "@/lib/accounting/reportCache";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import {
   parseCSV,
@@ -327,7 +328,7 @@ export default function AccountingPage() {
       <OpeningBalanceBanner
         clientId={clientId}
         financialYear={financialYear}
-        onPosted={() => setReloadKey((k) => k + 1)}
+        onPosted={() => { clearReports(clientId); setReloadKey((k) => k + 1); }}
       />
 
       <div key={reloadKey} className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
@@ -338,7 +339,12 @@ export default function AccountingPage() {
           <ChartOfAccounts accounts={accounts} loading={accsLoading} onRefresh={loadAccounts} />
         )}
         {tab === "journal" && (
-          <JournalEntryForm accounts={accounts} clientId={clientId} financialYear={financialYear} onPosted={loadAccounts} />
+          <JournalEntryForm
+            accounts={accounts}
+            clientId={clientId}
+            financialYear={financialYear}
+            onPosted={() => { clearReports(clientId); loadAccounts(); setReloadKey((k) => k + 1); }}
+          />
         )}
         {tab === "ledger" && (
           <GeneralLedger accounts={accounts} clientId={clientId} financialYear={financialYear} />
@@ -804,9 +810,12 @@ function GeneralLedger({ accounts, clientId, financialYear }: { accounts: Accoun
     setLoading(true);
     const { start, end } = fyDateRange(financialYear);
     try {
-      const res = (await api.accounting.ledger({
-        client_id: clientId, account_id: accountId, start_date: start, end_date: end,
-      })) as { success: boolean; data: LedgerView };
+      const res = (await cachedReport(
+        reportKey([clientId, financialYear, "ledger", accountId]),
+        () => api.accounting.ledger({
+          client_id: clientId, account_id: accountId, start_date: start, end_date: end,
+        }),
+      )) as { success: boolean; data: LedgerView };
       setLedger(res.success ? res.data : null);
     } catch { setLedger(null); } finally { setLoading(false); }
   }
@@ -902,9 +911,10 @@ function TrialBalance({ clientId, financialYear }: { clientId: string; financial
     // Both bases are computed server-side from the same posted ledger, scoped to
     // this client (IT Act §145). The frontend only passes parameters (CLAUDE.md).
     const { end } = fyDateRange(financialYear);
-    const res = (await api.accounting.trialBalance({
-      basis, as_of_date: end, client_id: clientId,
-    })) as { success: boolean; data: TBApiData | null };
+    const res = (await cachedReport(
+      reportKey([clientId, financialYear, basis, "tb"]),
+      () => api.accounting.trialBalance({ basis, as_of_date: end, client_id: clientId }),
+    )) as { success: boolean; data: TBApiData | null };
     if (res.success && res.data) {
       setRows(res.data.lines ?? []);
       setTotals({
@@ -1026,9 +1036,10 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
     // client (IT Act §44AA). The frontend only passes parameters and groups the
     // returned account lines for display (Schedule III) — no financial math here.
     const { start, end } = fyDateRange(financialYear);
-    const res = (await api.accounting.profitLoss({
-      basis, start_date: start, end_date: end, client_id: clientId,
-    })) as { success: boolean; data: PLApiData | null };
+    const res = (await cachedReport(
+      reportKey([clientId, financialYear, basis, "pl"]),
+      () => api.accounting.profitLoss({ basis, start_date: start, end_date: end, client_id: clientId }),
+    )) as { success: boolean; data: PLApiData | null };
 
     if (basis === "cash") {
       if (res.success && res.data) setCashPL(res.data as unknown as CashPLData);
@@ -1262,9 +1273,10 @@ function BalanceSheet({ clientId, financialYear }: { clientId: string; financial
     // the backend and returned in the equity section. The frontend only groups
     // the returned balances for Schedule III presentation — no financial math.
     const { end } = fyDateRange(financialYear);
-    const res = (await api.accounting.balanceSheet({
-      basis, as_of_date: end, client_id: clientId,
-    })) as { success: boolean; data: BSApiData | null };
+    const res = (await cachedReport(
+      reportKey([clientId, financialYear, basis, "bs"]),
+      () => api.accounting.balanceSheet({ basis, as_of_date: end, client_id: clientId }),
+    )) as { success: boolean; data: BSApiData | null };
 
     if (basis === "cash") {
       if (res.success && res.data) setCashBS(res.data as unknown as CashBSData);
@@ -1531,9 +1543,10 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
     // request the accrual stream because the operating reconciliation uses the
     // accrual P&L. All figures come from the backend AS-3 engine.
     const { start, end } = fyDateRange(financialYear);
-    const res = (await api.accounting.cashFlow({
-      basis: "accrual", start_date: start, end_date: end, client_id: clientId,
-    })) as { success: boolean; data: CFData | null };
+    const res = (await cachedReport(
+      reportKey([clientId, financialYear, "accrual", "cf"]),
+      () => api.accounting.cashFlow({ basis: "accrual", start_date: start, end_date: end, client_id: clientId }),
+    )) as { success: boolean; data: CFData | null };
     setCf(res.success && res.data ? res.data : null);
     setLoading(false); setLoaded(true);
   }, [clientId, financialYear]);
