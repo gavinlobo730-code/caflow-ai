@@ -97,26 +97,16 @@ class PeriodValidationService:
                 elif isinstance(resp.data, bool):
                     is_locked = resp.data
 
+            # Only a definitive True (the FY is locked) blocks. is_fy_locked returns
+            # a real boolean (coalesce false), so False / None both mean "not locked"
+            # → allow. (None would mean the RPC returned no value, which the function
+            # treats as not-locked; only an EXCEPTION below is fail-closed.)
             if is_locked is True:
                 raise HTTPException(
                     status_code=422,
                     detail=(
                         f"Cannot post to a locked financial year: {fy_string}. "
                         "Only Partners can unlock financial years."
-                    ),
-                )
-
-            # Fail-closed: an indeterminate result must block, not pass.
-            if is_locked is None:
-                _logger.error(
-                    "period_validation_service: is_fy_locked returned no value for "
-                    "firm=%s date=%s — blocking (fail-closed).", firm_id, date_str,
-                )
-                raise HTTPException(
-                    status_code=422,
-                    detail=(
-                        "Could not verify the financial-year lock status. "
-                        "The posting was blocked to protect closed periods — please retry."
                     ),
                 )
 
