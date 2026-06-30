@@ -14,6 +14,7 @@ import {
   type ClientFilter, DeleteBlockedError,
 } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
+import { filterClients } from "@/lib/clients/search";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -111,17 +112,11 @@ export default function ClientsPage() {
     return () => subscription.unsubscribe();
   }, [load]);
 
-  // Client-side search filter
+  // Client-side search filter. Null-safe across every searchable field (see
+  // lib/clients/search): pan/gstin/email/etc. are nullable, so the search must
+  // never call a string method on a missing value (BUG 001 — NULL pan crash).
   useEffect(() => {
-    const q = search.toLowerCase();
-    setFiltered(
-      clients.filter(c =>
-        c.client_name.toLowerCase().includes(q) ||
-        c.pan.toLowerCase().includes(q) ||
-        (c.gstin?.toLowerCase().includes(q) ?? false) ||
-        (c.city?.toLowerCase().includes(q) ?? false)
-      )
-    );
+    setFiltered(filterClients(clients, search));
   }, [search, clients]);
 
   // Close action dropdown on outside click
@@ -309,7 +304,7 @@ export default function ClientsPage() {
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name, PAN, GSTIN, city…"
+          placeholder="Search by name, PAN, GSTIN, email, city…"
           className="w-full rounded-lg border border-[#E2E8F0] pl-9 pr-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         />
       </div>

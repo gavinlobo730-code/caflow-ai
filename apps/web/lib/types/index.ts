@@ -18,7 +18,7 @@ export interface Client {
   id: string;
   client_name: string;
   entity_type: EntityType;
-  pan: string;
+  pan?: string;   // nullable since migration 133 — PAN is collected during onboarding, not at creation
   gstin?: string;
   mobile?: string;
   email?: string;
