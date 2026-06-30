@@ -280,4 +280,15 @@ def update_engagement_status(
         .execute()
         .data[0]
     )
+
+    # Year-end integration: completing the engagement (→ locked) also locks the
+    # financial year for posting. This transition is already Partner-gated, so the
+    # system lock bypasses the interactive PIN. Idempotent and audited.
+    if new_status == "locked" and row.get("financial_year"):
+        from services.year_lock_service import set_lock
+        set_lock(
+            db, firm_id, row["financial_year"], lock=True, bypass_pin=True,
+            actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        )
+
     return api_response(True, updated)
