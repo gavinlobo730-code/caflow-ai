@@ -26,7 +26,10 @@ _logger = logging.getLogger("caflow.banking")
 def _sync_opening_balances(db, firm_id: str, client_id: str, actor_id) -> bool:
     """Idempotently regenerate the client's opening-balance journal after a bank
     opening balance changes. Returns True on success, False on failure (caller
-    rolls back). The reporting engine is unchanged — only the trigger moved here."""
+    rolls back). The reporting engine is unchanged — only the trigger moved here.
+
+    actor_id MUST be the internal public.users.id (journal_entries.created_by FKs
+    to users.id), never the Supabase auth id."""
     try:
         from services.opening_balance_service import post_opening_balances
         post_opening_balances(firm_id, client_id, created_by=actor_id)
@@ -91,7 +94,7 @@ def create_bank_account(
     # Auto-sync opening balances to the GL (no manual post). Roll back on failure.
     if int(payload.get("opening_balance_paise") or 0) != 0 and payload.get("client_id"):
         if not _sync_opening_balances(db, current_user["firm_id"], payload["client_id"],
-                                      current_user.get("auth_user_id")):
+                                      current_user.get("id")):
             try:
                 if account.get("id"):
                     db.table("bank_accounts").delete().eq("id", account["id"]).eq("firm_id", current_user["firm_id"]).execute()
@@ -120,7 +123,7 @@ def update_bank_account(
     # Auto-sync opening balances only when the opening balance actually changed.
     if int(account.get("opening_balance_paise") or 0) != int(prior.get("opening_balance_paise") or 0):
         client_id = account.get("client_id") or prior.get("client_id")
-        if client_id and not _sync_opening_balances(db, firm_id, client_id, current_user.get("auth_user_id")):
+        if client_id and not _sync_opening_balances(db, firm_id, client_id, current_user.get("id")):
             try:
                 db.table("bank_accounts").update({k: prior.get(k) for k in update.keys()}).eq("id", account_id).eq("firm_id", firm_id).execute()
             except Exception:

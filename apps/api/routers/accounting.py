@@ -122,7 +122,8 @@ def post_opening_balances_endpoint(
             firm_id=current_user["firm_id"],
             client_id=data.client_id,
             opening_date=data.opening_date,
-            created_by=current_user.get("auth_user_id"),
+            # created_by FKs to public.users.id (internal), not the Supabase auth id.
+            created_by=current_user.get("id"),
         )
         if result.get("posted") and result.get("journal_entry_id"):
             log_event(
