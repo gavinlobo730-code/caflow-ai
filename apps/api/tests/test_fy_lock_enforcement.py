@@ -73,12 +73,12 @@ def test_validator_fails_closed_on_rpc_error(monkeypatch):
     assert e.value.status_code == 422   # blocked, not silently allowed
 
 
-def test_validator_fails_closed_on_indeterminate(monkeypatch):
+def test_validator_allows_on_null_result(monkeypatch):
+    # is_fy_locked returns a definitive boolean (coalesce false); a NULL/None result
+    # means "not locked" → allow. Only a genuine RPC EXCEPTION is fail-closed.
     monkeypatch.setattr(pvs, "_USE_MOCK", False)
     monkeypatch.setattr("core.supabase_client.get_supabase", _fake_get_supabase(lambda: None))
-    with pytest.raises(HTTPException) as e:
-        period_validation_service.validate_posting_date(FIRM, OPEN)
-    assert e.value.status_code == 422
+    period_validation_service.validate_posting_date(FIRM, OPEN)   # no raise
 
 
 # ── B. Enforcement across posting/editing paths ──────────────────────────────
