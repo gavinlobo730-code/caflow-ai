@@ -10,6 +10,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ChevronLeft, Plus, X, Users, IndianRupee } from "lucide-react";
+import { TableSkeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -217,7 +218,7 @@ export default function SuppliersPage() {
           </CardTitle>
         </CardHeader>
         {loading ? (
-          <div className="px-5 py-8 text-sm text-[#94A3B8] text-center animate-pulse">Loading…</div>
+          <TableSkeleton bare rows={5} cols={5} />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

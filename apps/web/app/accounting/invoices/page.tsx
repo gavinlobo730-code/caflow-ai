@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Plus, X, Printer, AlertCircle, FileText, Upload } from "lucide-react";
+import { PageLoader } from "@/components/ui/skeleton";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 
 const INVOICE_IMPORT_COLUMNS = [
@@ -641,7 +642,7 @@ export default function InvoicesPage() {
     return true;
   });
 
-  if (loading) return <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center"><p className="text-[#64748B]">Loading invoices...</p></div>;
+  if (loading) return <div className="min-h-screen bg-[#F8FAFC]"><PageLoader label="Loading invoices…" /></div>;
 
   if (tablesError) {
     return (

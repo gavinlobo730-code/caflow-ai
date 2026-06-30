@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, X, AlertCircle, Trash2 } from "lucide-react";
+import { TableSkeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -309,7 +310,9 @@ export default function FixedAssetsPage() {
 
   if (loading) {
     return (
-      <div className="p-6 text-center text-sm text-[#94A3B8] animate-pulse">Loading…</div>
+      <div className="p-6 max-w-7xl mx-auto">
+        <TableSkeleton rows={6} cols={6} />
+      </div>
     );
   }
 
