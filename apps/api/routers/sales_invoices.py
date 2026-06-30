@@ -733,11 +733,19 @@ def update_invoice(
         db = get_supabase()
 
         # Check current status
-        resp = db.table("client_sales_invoices").select("status").eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
+        resp = db.table("client_sales_invoices").select("status, invoice_date").eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
         if resp.data[0]["status"] != "draft":
             raise HTTPException(status_code=422, detail="Only draft invoices can be updated")
+        # FY-lock: block editing an invoice dated in a locked year, and block moving
+        # it INTO a locked year. (Create already validates; edits were the gap.)
+        firm_id = current_user.get("firm_id") or ""
+        existing_date = resp.data[0].get("invoice_date")
+        if existing_date:
+            period_validation_service.validate_posting_date(firm_id, existing_date)
+        if data.get("invoice_date"):
+            period_validation_service.validate_posting_date(firm_id, data["invoice_date"])
 
         # Recompute due_date from an edited credit period (credit_days set, no
         # explicit due_date). Snapshot stays on the invoice only.
@@ -869,6 +877,10 @@ def issue_invoice(
         inv = resp.data[0]
         if inv.get("status") != "draft":
             raise HTTPException(status_code=422, detail="Only draft invoices can be issued")
+        # FY-lock: issuing posts a dated journal — block if the year was locked after
+        # the draft was created (deferred-posting gap).
+        if inv.get("invoice_date"):
+            period_validation_service.validate_posting_date(current_user.get("firm_id") or "", inv["invoice_date"])
 
         # Auto-create journal entry FIRST — CGST Act §9. If the Chart of Accounts
         # is not set up, this raises ValueError and the invoice stays a draft.

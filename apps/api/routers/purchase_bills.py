@@ -381,11 +381,19 @@ def update_purchase_bill(
         db = get_supabase()
         # Tenant isolation (OOS-5): firm-scope the guard read and the write so a
         # foreign-firm bill id cannot be read or mutated under service-role.
-        resp = db.table("purchase_bills").select("status").eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
+        resp = db.table("purchase_bills").select("status, bill_date").eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
         if resp.data[0]["status"] != "draft":
             raise HTTPException(status_code=422, detail="Only draft bills can be updated")
+        # FY-lock: block editing a bill dated in a locked year, and block moving it
+        # INTO a locked year. (Create already validates; edits were the gap.)
+        firm_id = current_user.get("firm_id") or ""
+        existing_date = resp.data[0].get("bill_date")
+        if existing_date:
+            period_validation_service.validate_posting_date(firm_id, existing_date)
+        if data.get("bill_date"):
+            period_validation_service.validate_posting_date(firm_id, data["bill_date"])
 
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
         upd = db.table("purchase_bills").update(data).eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
@@ -441,6 +449,10 @@ def receive_purchase_bill(
         bill = resp.data[0]
         if bill.get("status") != "draft":
             raise HTTPException(status_code=422, detail="Only draft bills can be received")
+        # FY-lock: receiving posts a dated journal — block if the year was locked
+        # after the draft was created (deferred-posting gap).
+        if bill.get("bill_date"):
+            period_validation_service.validate_posting_date(current_user.get("firm_id") or "", bill["bill_date"])
 
         now_iso = datetime.now(timezone.utc).isoformat()
         upd = db.table("purchase_bills").update({

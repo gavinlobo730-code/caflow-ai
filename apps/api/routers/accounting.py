@@ -15,6 +15,7 @@ from core.exceptions import NotFoundError, ValidationError
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
+from services.period_validation_service import period_validation_service
 
 
 def _reporting_service() -> ReportingService:
@@ -230,6 +231,9 @@ def reverse_journal_entry(
         existing_rev = db.table("journal_entries").select("id").eq("reversal_of", entry_id).execute().data
         if existing_rev:
             raise HTTPException(status_code=409, detail=f"Journal {entry_id} has already been reversed")
+
+        # FY-lock: a reversal is a new posting — block it if its date is in a locked year.
+        period_validation_service.validate_posting_date(current_user["firm_id"], data.reversal_date)
 
         rev_id = str(uuid.uuid4())
         # Create reversal entry (swap debit/credit on each line)
