@@ -57,8 +57,10 @@ class PeriodValidationService:
         Uses the is_fy_locked() Postgres RPC function (migration 020).
         In mock mode: always passes without any DB call.
 
-        Non-blocking on DB errors: logs a warning and allows the operation through
-        to avoid blocking legitimate postings due to transient infrastructure issues.
+        Fail-closed: if the lock status cannot be determined (RPC/DB error), the
+        operation is BLOCKED rather than allowed through. Accounting integrity
+        takes priority over availability — a posting must never slip into a
+        possibly-locked year because a check failed silently.
 
         Args:
             firm_id:  Firm UUID string.
@@ -66,7 +68,8 @@ class PeriodValidationService:
 
         Raises:
             HTTPException(422): If the financial year containing date_str is locked.
-            HTTPException(422): If date_str is not a valid ISO date.
+            HTTPException(422): If the lock status could not be verified.
+            ValueError:         If date_str is not a valid ISO date.
         """
         if _USE_MOCK:
             # In mock mode there is no DB — always allow posting
@@ -103,15 +106,37 @@ class PeriodValidationService:
                     ),
                 )
 
+            # Fail-closed: an indeterminate result must block, not pass.
+            if is_locked is None:
+                _logger.error(
+                    "period_validation_service: is_fy_locked returned no value for "
+                    "firm=%s date=%s — blocking (fail-closed).", firm_id, date_str,
+                )
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "Could not verify the financial-year lock status. "
+                        "The posting was blocked to protect closed periods — please retry."
+                    ),
+                )
+
         except HTTPException:
             # Re-raise validation errors — do not swallow them
             raise
         except Exception as exc:
-            # Non-blocking on DB errors: warn and allow through
-            _logger.warning(
+            # Fail-closed on DB/RPC errors: block rather than silently continue, so a
+            # posting can never slip into a possibly-locked year because a check failed.
+            _logger.error(
                 "period_validation_service: is_fy_locked RPC failed for firm=%s date=%s — "
-                "allowing through (non-blocking). Error: %s",
+                "blocking (fail-closed). Error: %s",
                 firm_id, date_str, exc,
+            )
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Could not verify the financial-year lock status. "
+                    "The posting was blocked to protect closed periods — please retry."
+                ),
             )
 
 

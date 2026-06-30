@@ -375,6 +375,10 @@ def issue_credit_note(
         cn = resp.data[0]
         if cn.get("status") != "draft":
             raise HTTPException(status_code=422, detail="Only draft credit notes can be issued")
+        # FY-lock: issuing posts a dated journal — block if the year was locked after
+        # the draft was created (deferred-posting gap).
+        if cn.get("credit_note_date"):
+            period_validation_service.validate_posting_date(current_user.get("firm_id") or "", cn["credit_note_date"])
 
         now_iso = datetime.now(timezone.utc).isoformat()
         upd = db.table("credit_notes").update({
