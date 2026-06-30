@@ -67,6 +67,7 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     ("3001", "Capital Account",              "Equity", "Capital"),
     ("3002", "Retained Earnings",            "Equity", "Reserves & Surplus"),
     ("3003", "Drawings Account",             "Equity", "Capital"),
+    ("3004", "Opening Balance Equity",       "Equity", "Capital"),  # contra for opening-balance journals
     # ── Revenue ──
     ("4001", "Sales Revenue",                "Revenue", "Revenue"),     # %Sales%
     ("4002", "Professional Fees",            "Revenue", "Professional Fees"),
