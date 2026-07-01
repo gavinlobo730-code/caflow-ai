@@ -73,6 +73,20 @@ test("sort is stable and numeric-aware; asc/desc", () => {
   assert.deepEqual(applySort(ROWS, { key: "date", dir: "asc" }, columns).map((r) => r.no), ["INV-1", "INV-2", "INV-3"]);
 });
 
+test("blanks/nulls always sort last, in both directions", () => {
+  const rows = [
+    { no: "A", customer: "", total_paise: 0, date: "", status: "" },
+    { no: "B", customer: "", total_paise: 0, date: "2025-01-01", status: "" },
+    { no: "C", customer: "", total_paise: 0, date: "2025-06-01", status: "" },
+  ];
+  const asc = applySort(rows, { key: "date", dir: "asc" }, columns).map((r) => r.no);
+  const desc = applySort(rows, { key: "date", dir: "desc" }, columns).map((r) => r.no);
+  assert.equal(asc[asc.length - 1], "A"); // blank date last on asc
+  assert.equal(desc[desc.length - 1], "A"); // blank date STILL last on desc
+  assert.deepEqual(asc, ["B", "C", "A"]);
+  assert.deepEqual(desc, ["C", "B", "A"]);
+});
+
 test("paginate clamps page and slices", () => {
   const p = paginate(ROWS, 2, 2);
   assert.equal(p.pageCount, 2);

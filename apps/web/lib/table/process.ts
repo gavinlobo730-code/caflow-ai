@@ -70,13 +70,10 @@ export function applyFilters<T>(
   return rows.filter((r) => active.every((d) => matchesFilter(r, d, filters[d.key])));
 }
 
+const _nullish = (v: unknown) => v == null || v === "";
+
+/** Compare two NON-null values (numeric-aware, then natural string order). */
 function compare(a: unknown, b: unknown): number {
-  // Nullish sinks to the end regardless of direction caller applies afterwards.
-  const an = a == null || a === "";
-  const bn = b == null || b === "";
-  if (an && bn) return 0;
-  if (an) return 1;
-  if (bn) return -1;
   if (typeof a === "number" && typeof b === "number") return a - b;
   const na = Number(a);
   const nb = Number(b);
@@ -92,7 +89,13 @@ export function applySort<T>(rows: T[], sort: SortState | null, columns: Column<
   const decorated = rows.map((row, i) => ({ row, i }));
   const factor = sort.dir === "asc" ? 1 : -1;
   decorated.sort((x, y) => {
-    const c = compare(col.accessor(x.row), col.accessor(y.row));
+    const av = col.accessor(x.row);
+    const bv = col.accessor(y.row);
+    // Blanks/nulls always sort LAST, regardless of asc/desc (not multiplied by factor).
+    const an = _nullish(av);
+    const bn = _nullish(bv);
+    if (an || bn) return an && bn ? x.i - y.i : an ? 1 : -1;
+    const c = compare(av, bv);
     return c !== 0 ? c * factor : x.i - y.i;
   });
   return decorated.map((d) => d.row);
