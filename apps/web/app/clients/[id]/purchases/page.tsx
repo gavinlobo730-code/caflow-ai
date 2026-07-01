@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Plus, RefreshCw, Upload, AlertCircle, CheckCircle, X } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Plus, Upload, AlertCircle, CheckCircle, X } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise } from "@/lib/services/formatting";
+import { DataTable } from "@/components/ui/data-table";
+import type { Column, FilterDef } from "@/lib/table/types";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS, type NameRef } from "@/lib/imports/mappers";
 
@@ -434,6 +436,45 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
     .reduce((s, b) => s + b.net_payable_paise, 0);
   const totalThisFy = bills.reduce((s, b) => s + b.total_paise, 0);
 
+  // ── DataTable columns (money columns return integer paise, right-aligned) ────
+  const billColumns: Column<PurchaseBillRow>[] = useMemo(() => [
+    { key: "our_reference", header: "Our Ref", accessor: (b) => b.our_reference ?? "", searchable: true,
+      render: (b) => <span className="font-mono text-[10px] text-[#475569]">{b.our_reference ?? "—"}</span> },
+    { key: "bill_no", header: "Vendor Invoice", accessor: (b) => b.bill_no ?? "", searchable: true,
+      render: (b) => (
+        <span className="text-[#475569]">
+          {b.bill_no ?? "—"}
+          {b.is_ai_extracted && <span className="ml-1 text-[9px] bg-amber-100 text-amber-600 px-1 rounded">AI</span>}
+        </span>
+      ) },
+    { key: "vendor", header: "Vendor", accessor: (b) => b.vendors?.name ?? "", searchable: true, sticky: true, hideable: false,
+      render: (b) => <span className="font-medium text-[#1E293B]">{b.vendors?.name ?? "—"}</span> },
+    { key: "bill_date", header: "Date", accessor: (b) => b.bill_date, sortable: true,
+      render: (b) => <span className="text-[#64748B]">{b.bill_date}</span> },
+    { key: "taxable", header: "Taxable", accessor: (b) => b.taxable_amount_paise, align: "right",
+      render: (b) => <span className="font-mono text-[#334155]">{fmt(b.taxable_amount_paise)}</span> },
+    { key: "gst", header: "GST", accessor: (b) => b.total_gst_paise, align: "right",
+      render: (b) => <span className="font-mono text-[#64748B]">{fmt(b.total_gst_paise)}</span> },
+    { key: "tds", header: "TDS", accessor: (b) => b.tds_paise, align: "right",
+      render: (b) => <span className="font-mono text-blue-600">{b.tds_paise > 0 ? fmt(b.tds_paise) : "—"}</span> },
+    { key: "net_payable", header: "Net Payable", accessor: (b) => b.net_payable_paise, sortable: true, align: "right",
+      render: (b) => <span className="font-mono font-semibold text-[#1E293B]">{fmt(b.net_payable_paise)}</span> },
+    { key: "status", header: "Status", accessor: (b) => b.status, sortable: true,
+      render: (b) => (
+        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[b.status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>{b.status}</span>
+      ) },
+  ], []);
+
+  const billFilters: FilterDef<PurchaseBillRow>[] = useMemo(() => [
+    { key: "status", label: "Status", type: "select", accessor: (b) => b.status,
+      options: Object.keys(STATUS_COLORS).map((s) => ({ value: s, label: s })) },
+    { key: "vendor", label: "Vendor", type: "select", accessor: (b) => b.vendors?.name ?? "",
+      options: vendors.map((v) => ({ value: v.name, label: v.name })) },
+    { key: "bill_date", label: "Bill date", type: "dateRange", accessor: (b) => b.bill_date },
+    { key: "net_payable", label: "Net payable", type: "amountRange", accessor: (b) => b.net_payable_paise },
+    { key: "is_ai_extracted", label: "AI-extracted", type: "boolean", accessor: (b) => b.is_ai_extracted },
+  ], [vendors]);
+
   return (
     <div className="space-y-4 max-w-5xl">
       {msg && (
@@ -462,23 +503,6 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
 
       <div className="flex justify-between items-center">
         <p className="text-xs font-semibold text-[#334155]">Purchase Bills — FY {financialYear}</p>
-        <div className="flex gap-2">
-          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC]">
-            <RefreshCw size={13} className={loading ? "animate-spin text-[#94A3B8]" : "text-[#94A3B8]"} />
-          </button>
-          <button
-            onClick={() => setShowImport(true)}
-            className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
-          >
-            <Upload size={12} /> Import
-          </button>
-          <button
-            onClick={() => setShowForm((s) => !s)}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
-          >
-            <Plus size={12} /> New Bill
-          </button>
-        </div>
       </div>
 
       {showImport && (
@@ -644,57 +668,42 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
         </div>
       )}
 
-      {/* Bills table */}
-      {loading ? (
-        <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-[#F8FAFC] animate-pulse" />)}</div>
-      ) : bills.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16">
-          <p className="text-sm text-[#94A3B8]">No purchase bills for FY {financialYear}.</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
-                  <th className="px-4 py-3 text-left font-semibold">Our Ref</th>
-                  <th className="px-3 py-3 text-left font-semibold">Vendor Invoice</th>
-                  <th className="px-3 py-3 text-left font-semibold">Vendor</th>
-                  <th className="px-3 py-3 text-left font-semibold">Date</th>
-                  <th className="px-3 py-3 text-right font-semibold">Taxable</th>
-                  <th className="px-3 py-3 text-right font-semibold">GST</th>
-                  <th className="px-3 py-3 text-right font-semibold">TDS</th>
-                  <th className="px-3 py-3 text-right font-semibold">Net Payable</th>
-                  <th className="px-3 py-3 text-left font-semibold">Status</th>
-                  <th className="px-4 py-3 text-left font-semibold">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                {bills.map((b) => (
-                  <tr key={b.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-4 py-2.5 font-mono text-[#475569] text-[10px]">{b.our_reference ?? "—"}</td>
-                    <td className="px-3 py-2.5 text-[#475569]">{b.bill_no ?? "—"}{b.is_ai_extracted && <span className="ml-1 text-[9px] bg-amber-100 text-amber-600 px-1 rounded">AI</span>}</td>
-                    <td className="px-3 py-2.5 font-medium text-[#1E293B]">{(b.vendors as { name: string } | undefined)?.name ?? "—"}</td>
-                    <td className="px-3 py-2.5 text-[#64748B]">{b.bill_date}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#334155]">{fmt(b.taxable_amount_paise)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#64748B]">{fmt(b.total_gst_paise)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-blue-600">{b.tds_paise > 0 ? fmt(b.tds_paise) : "—"}</td>
-                    <td className="px-3 py-2.5 text-right font-mono font-semibold text-[#1E293B]">{fmt(b.net_payable_paise)}</td>
-                    <td className="px-3 py-2.5">
-                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[b.status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>{b.status}</span>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {b.status === "draft" && (
-                        <button onClick={() => handleReceive(b.id)} className="text-xs text-blue-600 hover:underline">Receive</button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* Bills table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
+      <DataTable
+        data={bills}
+        columns={billColumns}
+        filters={billFilters}
+        getRowId={(b) => b.id}
+        loading={loading}
+        onRefresh={load}
+        searchPlaceholder="Search by our ref, vendor invoice, or vendor…"
+        initialSort={{ key: "bill_date", dir: "desc" }}
+        exportFilename="purchase-bills"
+        persistKey="purchases.bills"
+        emptyTitle="No purchase bills"
+        emptyDescription={`No purchase bills for FY ${financialYear}.`}
+        toolbarExtra={
+          <>
+            <button
+              onClick={() => setShowImport(true)}
+              className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+            >
+              <Upload size={12} /> Import
+            </button>
+            <button
+              onClick={() => setShowForm((s) => !s)}
+              className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+            >
+              <Plus size={12} /> New Bill
+            </button>
+          </>
+        }
+        rowActions={(b) =>
+          b.status === "draft" ? (
+            <button onClick={() => handleReceive(b.id)} className="text-xs text-blue-600 hover:underline">Receive</button>
+          ) : null
+        }
+      />
     </div>
   );
 }
@@ -808,6 +817,30 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
     }
   }
 
+  // ── DataTable columns (opening balance returns integer paise, right-aligned) ─
+  const vendorColumns: Column<VendorRow>[] = useMemo(() => [
+    { key: "name", header: "Name", accessor: (v) => v.name, searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (v) => <span className="font-medium text-[#1E293B]">{v.name}</span> },
+    { key: "gstin", header: "GSTIN", accessor: (v) => v.gstin ?? "", searchable: true,
+      render: (v) => <span className="font-mono text-[10px] text-[#64748B]">{v.gstin ?? "—"}</span> },
+    { key: "tds_applicable", header: "TDS", accessor: (v) => v.tds_applicable, align: "center",
+      render: (v) => v.tds_applicable ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">Yes</span> : <span className="text-[#94A3B8]">—</span> },
+    { key: "tds_section", header: "Section", accessor: (v) => v.tds_section ?? "",
+      render: (v) => <span className="text-[#64748B]">{v.tds_section ?? "—"}</span> },
+    { key: "tds_rate", header: "Rate", accessor: (v) => v.tds_rate_bps, sortable: true, align: "right",
+      render: (v) => <span className="text-[#475569]">{v.tds_rate_bps > 0 ? `${(v.tds_rate_bps / 100).toFixed(1)}%` : "—"}</span> },
+    { key: "opening_balance", header: "Opening Bal", accessor: (v) => v.opening_balance_paise, sortable: true, align: "right",
+      render: (v) => <span className="font-mono text-[#334155]">{v.opening_balance_paise > 0 ? fmt(v.opening_balance_paise) : "—"}</span> },
+    { key: "email", header: "Email", accessor: (v) => v.email ?? "", searchable: true, defaultHidden: true,
+      render: (v) => <span className="text-[#64748B]">{v.email ?? "—"}</span> },
+    { key: "phone", header: "Phone", accessor: (v) => v.phone ?? "", searchable: true, defaultHidden: true,
+      render: (v) => <span className="text-[#64748B]">{v.phone ?? "—"}</span> },
+  ], []);
+
+  const vendorFilters: FilterDef<VendorRow>[] = useMemo(() => [
+    { key: "tds_applicable", label: "TDS", type: "boolean", accessor: (v) => v.tds_applicable, trueLabel: "Applicable", falseLabel: "Not applicable" },
+  ], []);
+
   return (
     <div className="space-y-4 max-w-4xl">
       {msg && (
@@ -820,11 +853,6 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
 
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">{vendors.length} vendor{vendors.length !== 1 ? "s" : ""}</p>
-        <div className="flex gap-2">
-          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC]"><RefreshCw size={13} className={loading ? "animate-spin text-[#94A3B8]" : "text-[#94A3B8]"} /></button>
-          <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"><Upload size={12} /> Import</button>
-          <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"><Plus size={12} /> Add Vendor</button>
-        </div>
       </div>
 
       {showImport && (
@@ -899,29 +927,27 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
         </div>
       )}
 
-      {loading ? (
-        <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-[#F8FAFC] animate-pulse" />)}</div>
-      ) : (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <table className="w-full text-xs">
-            <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className="px-4 py-3 text-left font-semibold">Name</th><th className="px-3 py-3 text-left font-semibold">GSTIN</th><th className="px-3 py-3 text-center font-semibold">TDS</th><th className="px-3 py-3 text-left font-semibold">Section</th><th className="px-3 py-3 text-right font-semibold">Rate</th><th className="px-4 py-3 text-right font-semibold">Opening Bal</th></tr></thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
-              {vendors.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-[#94A3B8]">No vendors added yet.</td></tr>
-              ) : vendors.map((v) => (
-                <tr key={v.id} className="hover:bg-[#F8FAFC]">
-                  <td className="px-4 py-2.5 font-medium text-[#1E293B]">{v.name}</td>
-                  <td className="px-3 py-2.5 font-mono text-[#64748B] text-[10px]">{v.gstin ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-center">{v.tds_applicable ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">Yes</span> : "—"}</td>
-                  <td className="px-3 py-2.5 text-[#64748B]">{v.tds_section ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-right text-[#475569]">{v.tds_rate_bps > 0 ? `${(v.tds_rate_bps / 100).toFixed(1)}%` : "—"}</td>
-                  <td className="px-4 py-2.5 text-right font-mono text-[#334155]">{v.opening_balance_paise > 0 ? fmt(v.opening_balance_paise) : "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* Vendors table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
+      <DataTable
+        data={vendors}
+        columns={vendorColumns}
+        filters={vendorFilters}
+        getRowId={(v) => v.id}
+        loading={loading}
+        onRefresh={load}
+        searchPlaceholder="Search by name, GSTIN, email, or phone…"
+        initialSort={{ key: "name", dir: "asc" }}
+        exportFilename="vendors"
+        persistKey="purchases.vendors"
+        emptyTitle="No vendors"
+        emptyDescription="No vendors added yet."
+        toolbarExtra={
+          <>
+            <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"><Upload size={12} /> Import</button>
+            <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"><Plus size={12} /> Add Vendor</button>
+          </>
+        }
+      />
     </div>
   );
 }
@@ -1028,6 +1054,29 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
 
   const totalPaid = payments.reduce((s, p) => s + p.amount_paise, 0);
 
+  // ── DataTable columns (amount returns integer paise, right-aligned) ──────────
+  const paymentColumns: Column<PaymentRow>[] = useMemo(() => [
+    { key: "payment_no", header: "Payment No", accessor: (p) => p.payment_no, searchable: true, sticky: true, hideable: false,
+      render: (p) => <span className="font-mono text-[10px] text-[#475569]">{p.payment_no}</span> },
+    { key: "payment_date", header: "Date", accessor: (p) => p.payment_date, sortable: true,
+      render: (p) => <span className="text-[#64748B]">{p.payment_date}</span> },
+    { key: "vendor", header: "Vendor", accessor: (p) => p.vendors?.name ?? "", searchable: true,
+      render: (p) => <span className="font-medium text-[#1E293B]">{p.vendors?.name ?? "—"}</span> },
+    { key: "amount", header: "Amount", accessor: (p) => p.amount_paise, sortable: true, align: "right",
+      render: (p) => <span className="font-mono font-semibold text-[#1E293B]">{fmt(p.amount_paise)}</span> },
+    { key: "payment_mode", header: "Mode", accessor: (p) => p.payment_mode, searchable: true,
+      render: (p) => <span className="text-[#64748B] capitalize">{p.payment_mode}</span> },
+    { key: "reference_no", header: "Reference", accessor: (p) => p.reference_no ?? "", searchable: true,
+      render: (p) => <span className="text-[10px] text-[#94A3B8]">{p.reference_no ?? "—"}</span> },
+  ], []);
+
+  const paymentFilters: FilterDef<PaymentRow>[] = useMemo(() => [
+    { key: "vendor", label: "Vendor", type: "select", accessor: (p) => p.vendors?.name ?? "",
+      options: vendors.map((v) => ({ value: v.name, label: v.name })) },
+    { key: "payment_mode", label: "Mode", type: "select", accessor: (p) => p.payment_mode,
+      options: ["bank", "cash", "cheque", "upi", "neft", "rtgs"].map((m) => ({ value: m, label: m })) },
+  ], [vendors]);
+
   return (
     <div className="space-y-4 max-w-4xl">
       {msg && (
@@ -1051,10 +1100,6 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
 
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">Payments — FY {financialYear}</p>
-        <div className="flex gap-2">
-          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC]"><RefreshCw size={13} className={loading ? "animate-spin text-[#94A3B8]" : "text-[#94A3B8]"} /></button>
-          <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"><Plus size={12} /> Record Payment</button>
-        </div>
       </div>
 
       {showForm && (
@@ -1104,29 +1149,24 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
         </div>
       )}
 
-      {loading ? (
-        <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-[#F8FAFC] animate-pulse" />)}</div>
-      ) : (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <table className="w-full text-xs">
-            <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className="px-4 py-3 text-left font-semibold">Payment No</th><th className="px-3 py-3 text-left font-semibold">Date</th><th className="px-3 py-3 text-left font-semibold">Vendor</th><th className="px-3 py-3 text-right font-semibold">Amount</th><th className="px-3 py-3 text-left font-semibold">Mode</th><th className="px-4 py-3 text-left font-semibold">Reference</th></tr></thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
-              {payments.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-[#94A3B8]">No payments for FY {financialYear}.</td></tr>
-              ) : payments.map((p) => (
-                <tr key={p.id} className="hover:bg-[#F8FAFC]">
-                  <td className="px-4 py-2.5 font-mono text-[#475569] text-[10px]">{p.payment_no}</td>
-                  <td className="px-3 py-2.5 text-[#64748B]">{p.payment_date}</td>
-                  <td className="px-3 py-2.5 font-medium text-[#1E293B]">{(p.vendors as { name: string } | undefined)?.name ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-right font-mono font-semibold text-[#1E293B]">{fmt(p.amount_paise)}</td>
-                  <td className="px-3 py-2.5 text-[#64748B] capitalize">{p.payment_mode}</td>
-                  <td className="px-4 py-2.5 text-[#94A3B8] text-[10px]">{p.reference_no ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* Payments table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
+      <DataTable
+        data={payments}
+        columns={paymentColumns}
+        filters={paymentFilters}
+        getRowId={(p) => p.id}
+        loading={loading}
+        onRefresh={load}
+        searchPlaceholder="Search by payment no, vendor, mode, or reference…"
+        initialSort={{ key: "payment_date", dir: "desc" }}
+        exportFilename="purchase-payments"
+        persistKey="purchases.payments"
+        emptyTitle="No payments"
+        emptyDescription={`No payments for FY ${financialYear}.`}
+        toolbarExtra={
+          <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"><Plus size={12} /> Record Payment</button>
+        }
+      />
     </div>
   );
 }
