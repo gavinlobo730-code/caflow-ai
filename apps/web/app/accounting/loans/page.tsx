@@ -27,6 +27,7 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { formatPaise } from "@/lib/services/formatting";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -815,10 +816,15 @@ export default function LoansAndFDPage() {
             </div>
             <div className="px-6 py-5 space-y-4">
               <FormField label="Client" required>
-                <select value={loanForm.client_id} onChange={(e) => setLoanForm({ ...loanForm, client_id: e.target.value })} className={inputCls}>
-                  <option value="">Select client…</option>
-                  {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <div className="w-full">
+                  <ClientLookup
+                    clients={clients}
+                    value={loanForm.client_id}
+                    onChange={(id) => setLoanForm({ ...loanForm, client_id: id })}
+                    ariaLabel="Client"
+                    placeholder="Select client…"
+                  />
+                </div>
               </FormField>
               <FormField label="Loan Type" required>
                 <select value={loanForm.loan_type} onChange={(e) => setLoanForm({ ...loanForm, loan_type: e.target.value as LoanType })} className={inputCls}>
@@ -884,10 +890,15 @@ export default function LoansAndFDPage() {
             </div>
             <div className="px-6 py-5 space-y-4">
               <FormField label="Client" required>
-                <select value={fdForm.client_id} onChange={(e) => setFDForm({ ...fdForm, client_id: e.target.value })} className={inputCls}>
-                  <option value="">Select client…</option>
-                  {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <div className="w-full">
+                  <ClientLookup
+                    clients={clients}
+                    value={fdForm.client_id}
+                    onChange={(id) => setFDForm({ ...fdForm, client_id: id })}
+                    ariaLabel="Client"
+                    placeholder="Select client…"
+                  />
+                </div>
               </FormField>
               <FormField label="Bank Name" required>
                 <input type="text" placeholder="e.g. State Bank of India" value={fdForm.bank_name} onChange={(e) => setFDForm({ ...fdForm, bank_name: e.target.value })} className={inputCls} />

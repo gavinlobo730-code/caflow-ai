@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -334,14 +335,16 @@ export default function ScheduledReportsPage() {
 
               <div>
                 <label className="block text-xs font-medium text-[#334155] mb-1">Client (optional — leave blank for all)</label>
-                <select
-                  value={form.client_id}
-                  onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">All clients</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <div className="w-full">
+                  <ClientLookup
+                    clients={clients}
+                    value={form.client_id}
+                    onChange={(id) => setForm(f => ({ ...f, client_id: id }))}
+                    ariaLabel="Client"
+                    placeholder="All clients"
+                    clearable
+                  />
+                </div>
               </div>
 
               <div>
