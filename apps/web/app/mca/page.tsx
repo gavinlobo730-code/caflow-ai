@@ -11,7 +11,7 @@
  *   Rule 12A (Director KYC Rules): DIR-3 KYC by 30 Sep annually
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Building2, FileText, CheckCircle, AlertTriangle, Clock,
   Plus, X, AlertCircle, Users, Calendar,
@@ -21,6 +21,8 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { useToast } from "@/components/ui/use-toast";
+import { DataTable } from "@/components/ui/data-table";
+import type { Column, FilterDef } from "@/lib/table/types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -310,6 +312,142 @@ export default function MCAPage() {
     return diff >= 0 && diff <= 30;
   }).length;
 
+  // ── Companies tab DataTable — money in integer paise (aligned right) ────────
+  const companyColumns: Column<CompanyClient>[] = useMemo(() => [
+    {
+      key: "client_name", header: "Company Name", accessor: (c) => c.client_name,
+      searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (c) => (
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-md bg-blue-50 flex items-center justify-center shrink-0"><Building2 className="w-3.5 h-3.5 text-blue-600" /></div>
+          <span className="text-sm font-medium text-[#0F172A]">{c.client_name}</span>
+        </div>
+      ),
+    },
+    {
+      key: "cin", header: "CIN", accessor: (c) => c.cin, searchable: true, sortable: true,
+      render: (c) => <span className="font-mono text-xs text-[#475569]">{c.cin}</span>,
+    },
+    {
+      key: "incorp_date", header: "Incorp. Date", accessor: (c) => c.incorp_date, sortable: true,
+      render: (c) => <span className="text-xs text-[#475569]">{c.incorp_date ? fmtDate(c.incorp_date) : "—"}</span>,
+    },
+    {
+      key: "auth_capital_paise", header: "Auth. Capital", accessor: (c) => c.auth_capital_paise,
+      sortable: true, align: "right", exportValue: (c) => c.auth_capital_paise / 100,
+      render: (c) => <span className="text-[#0F172A]">{fmtLakhs(c.auth_capital_paise)}</span>,
+    },
+    {
+      key: "paidup_capital_paise", header: "Paid-up Capital", accessor: (c) => c.paidup_capital_paise,
+      sortable: true, align: "right", exportValue: (c) => c.paidup_capital_paise / 100,
+      render: (c) => <span className="text-[#0F172A]">{fmtLakhs(c.paidup_capital_paise)}</span>,
+    },
+    {
+      key: "regd_office", header: "Regd. Office", accessor: (c) => c.regd_office,
+      render: (c) => <span className="text-xs text-[#475569]">{c.regd_office}</span>,
+    },
+  ], []);
+
+  // ── Filings tab DataTable ──────────────────────────────────────────────────
+  const filingColumns: Column<MCAFiling>[] = useMemo(() => [
+    {
+      key: "client_name", header: "Company Name", accessor: (f) => f.client_name,
+      searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (f) => <span className="font-medium text-[#0F172A]">{f.client_name}</span>,
+    },
+    {
+      key: "company_cin", header: "CIN", accessor: (f) => f.company_cin ?? "", searchable: true,
+      render: (f) => <span className="font-mono text-xs text-[#475569]">{f.company_cin}</span>,
+    },
+    {
+      key: "form_type", header: "Form Type", accessor: (f) => f.form_type, searchable: true, sortable: true,
+      render: (f) => (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+          <FileText className="w-3 h-3" />{f.form_type}
+        </span>
+      ),
+    },
+    {
+      key: "period", header: "Period", accessor: (f) => f.period,
+      render: (f) => <span className="text-xs text-[#475569]">{f.period}</span>,
+    },
+    {
+      key: "due_date", header: "Due Date", accessor: (f) => f.due_date, sortable: true,
+      render: (f) => <span className="text-xs text-[#475569]">{fmtDate(f.due_date)}</span>,
+    },
+    {
+      key: "filed_date", header: "Filed Date", accessor: (f) => f.filed_date ?? "", sortable: true,
+      render: (f) => <span className="text-xs text-[#475569]">{f.filed_date ? fmtDate(f.filed_date) : "—"}</span>,
+    },
+    {
+      key: "srn", header: "SRN", accessor: (f) => f.srn ?? "",
+      render: (f) => <span className="font-mono text-xs text-[#475569]">{f.srn || "—"}</span>,
+    },
+    {
+      key: "status", header: "Status", accessor: (f) => f.status, sortable: true,
+      render: (f) => (
+        <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLE[f.status]}`}>
+          {f.status === "Filed" && <CheckCircle className="w-3 h-3" />}
+          {f.status === "Overdue" && <AlertTriangle className="w-3 h-3" />}
+          {f.status === "Pending" && <Clock className="w-3 h-3" />}
+          {f.status}
+        </span>
+      ),
+    },
+  ], []);
+
+  const filingFilters: FilterDef<MCAFiling>[] = useMemo(() => [
+    {
+      key: "form_type", label: "Form Type", type: "select", accessor: (f) => f.form_type,
+      options: FORM_TYPES.map((f) => ({ value: f.value, label: f.value })),
+    },
+  ], []);
+
+  // ── Directors tab DataTable — KYC-overdue emphasis in the status cell ───────
+  const directorColumns: Column<Director>[] = useMemo(() => [
+    {
+      key: "name", header: "Name", accessor: (d) => d.name,
+      searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (d) => <span className="font-medium text-[#0F172A]">{d.name}</span>,
+    },
+    {
+      key: "din", header: "DIN", accessor: (d) => d.din, searchable: true, sortable: true,
+      render: (d) => <span className="font-mono text-xs text-[#475569]">{d.din}</span>,
+    },
+    {
+      key: "pan", header: "PAN", accessor: (d) => d.pan,
+      render: (d) => <span className="font-mono text-xs text-[#475569]">{d.pan}</span>,
+    },
+    {
+      key: "designation", header: "Designation", accessor: (d) => d.designation,
+      render: (d) => <span className="text-xs text-[#475569]">{d.designation}</span>,
+    },
+    {
+      key: "appointment_date", header: "Appointment Date", accessor: (d) => d.appointment_date, sortable: true,
+      render: (d) => <span className="text-xs text-[#475569]">{d.appointment_date ? fmtDate(d.appointment_date) : "—"}</span>,
+    },
+    {
+      key: "kyc_due_date", header: "KYC Due Date", accessor: (d) => d.kyc_due_date, sortable: true,
+      render: (d) => <span className="text-xs text-[#475569]">{d.kyc_due_date ? fmtDate(d.kyc_due_date) : "—"}</span>,
+    },
+    {
+      key: "kyc_status", header: "KYC Status", accessor: (d) => {
+        // Sort/export by days-to-KYC so overdue (most negative) surfaces first.
+        return Math.ceil((new Date(d.kyc_due_date).getTime() - TODAY.getTime()) / 86400000);
+      }, sortable: true,
+      exportValue: (d) => {
+        const days = Math.ceil((new Date(d.kyc_due_date).getTime() - TODAY.getTime()) / 86400000);
+        return days < 0 ? "Overdue" : days <= 30 ? `Due in ${days}d` : "Valid";
+      },
+      render: (d) => {
+        const daysToKyc = Math.ceil((new Date(d.kyc_due_date).getTime() - TODAY.getTime()) / 86400000);
+        const kycStyle = daysToKyc < 0 ? "bg-red-100 text-red-700" : daysToKyc <= 30 ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700";
+        const kycLabel = daysToKyc < 0 ? "Overdue" : daysToKyc <= 30 ? `Due in ${daysToKyc}d` : "Valid";
+        return <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${kycStyle}`}>{kycLabel}</span>;
+      },
+    },
+  ], []);
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -360,144 +498,81 @@ export default function MCAPage() {
         ))}
       </div>
 
-      {/* Tab: Companies */}
+      {/* Tab: Companies — shared DataTable (search, sort, pagination, export, prefs) */}
       {activeTab === 0 && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50">
+        <div className="space-y-2">
+          <div>
             <h2 className="text-sm font-semibold text-[#0F172A]">Company Clients</h2>
             <p className="text-xs text-[#94A3B8] mt-0.5">Companies Act 2013 — incorporated entities</p>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-50">
-                  {["Company Name", "CIN", "Incorp. Date", "Auth. Capital", "Paid-up Capital", "Regd. Office"].map(h => (
-                    <th key={h} className="text-left text-xs font-medium text-[#94A3B8] px-4 py-3">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                {companies.map(c => (
-                  <tr key={c.id} className="hover:bg-[#F8FAFC]/50">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-md bg-blue-50 flex items-center justify-center shrink-0"><Building2 className="w-3.5 h-3.5 text-blue-600" /></div>
-                        <span className="text-sm font-medium text-[#0F172A]">{c.client_name}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-xs font-mono text-[#475569]">{c.cin}</td>
-                    <td className="px-4 py-3 text-xs text-[#475569]">{fmtDate(c.incorp_date)}</td>
-                    <td className="px-4 py-3 text-sm text-[#0F172A]">{fmtLakhs(c.auth_capital_paise)}</td>
-                    <td className="px-4 py-3 text-sm text-[#0F172A]">{fmtLakhs(c.paidup_capital_paise)}</td>
-                    <td className="px-4 py-3 text-xs text-[#475569]">{c.regd_office}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            data={companies}
+            columns={companyColumns}
+            getRowId={(c) => c.id}
+            loading={loading}
+            searchPlaceholder="Search by company name or CIN…"
+            initialSort={{ key: "client_name", dir: "asc" }}
+            exportFilename="mca-companies"
+            persistKey="mca.companies"
+            emptyTitle="No company clients yet"
+            emptyDescription="Company records appear here once added for your firm."
+          />
         </div>
       )}
 
-      {/* Tab: Filings */}
+      {/* Tab: Filings — shared DataTable (search, filter, sort, pagination, export, prefs) */}
       {activeTab === 1 && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50">
+        <div className="space-y-2">
+          <div>
             <h2 className="text-sm font-semibold text-[#0F172A]">ROC Filing Tracker</h2>
             <p className="text-xs text-[#94A3B8] mt-0.5">Companies Act 2013 — ROC/MCA filing obligations</p>
           </div>
-          {loading ? <div className="px-5 py-10 text-center text-sm text-[#94A3B8]">Loading…</div> : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-50">
-                    {["Company Name", "CIN", "Form Type", "Period", "Due Date", "Filed Date", "SRN", "Status", "Action"].map(h => (
-                      <th key={h} className="text-left text-xs font-medium text-[#94A3B8] px-4 py-3">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
-                  {filings.map(f => (
-                    <tr key={f.id} className="hover:bg-[#F8FAFC]/50">
-                      <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">{f.client_name}</td>
-                      <td className="px-4 py-3 text-xs font-mono text-[#475569]">{f.company_cin}</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
-                          <FileText className="w-3 h-3" />{f.form_type}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-[#475569]">{f.period}</td>
-                      <td className="px-4 py-3 text-xs text-[#475569]">{fmtDate(f.due_date)}</td>
-                      <td className="px-4 py-3 text-xs text-[#475569]">{f.filed_date ? fmtDate(f.filed_date) : "—"}</td>
-                      <td className="px-4 py-3 text-xs font-mono text-[#475569]">{f.srn || "—"}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLE[f.status]}`}>
-                          {f.status === "Filed" && <CheckCircle className="w-3 h-3" />}
-                          {f.status === "Overdue" && <AlertTriangle className="w-3 h-3" />}
-                          {f.status === "Pending" && <Clock className="w-3 h-3" />}
-                          {f.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        {f.status !== "Filed" ? (
-                          <button onClick={() => handleMarkFiled(f.id)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark Filed</button>
-                        ) : (
-                          <span className="text-xs text-[#94A3B8]">Done</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <div className="px-5 py-3 border-t border-gray-50 bg-[#F8FAFC]/30">
-            <p className="text-[10px] text-[#94A3B8]">
-              {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
-              All filings must be submitted manually on MCA21 portal. PracticeSync does not auto-submit.
-            </p>
-          </div>
+          <DataTable
+            data={filings}
+            columns={filingColumns}
+            filters={filingFilters}
+            getRowId={(f) => f.id}
+            loading={loading}
+            searchPlaceholder="Search by company or form type…"
+            initialSort={{ key: "due_date", dir: "asc" }}
+            exportFilename="mca-filings"
+            persistKey="mca.filings"
+            emptyTitle="No ROC filings yet"
+            emptyDescription={'Click "Add Filing" to start tracking ROC/MCA obligations.'}
+            rowActions={(f) =>
+              f.status !== "Filed" ? (
+                <button onClick={() => handleMarkFiled(f.id)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark Filed</button>
+              ) : (
+                <span className="text-xs text-[#94A3B8]">Done</span>
+              )
+            }
+          />
+          <p className="text-[10px] text-[#94A3B8]">
+            {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
+            All filings must be submitted manually on MCA21 portal. PracticeSync does not auto-submit.
+          </p>
         </div>
       )}
 
-      {/* Tab: Directors */}
+      {/* Tab: Directors — shared DataTable (search, sort, pagination, export, prefs) */}
       {activeTab === 2 && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50">
+        <div className="space-y-2">
+          <div>
             <h2 className="text-sm font-semibold text-[#0F172A]">Director Master</h2>
             <p className="text-xs text-[#94A3B8] mt-0.5">Director KYC due date: 30 Sep annually — Rule 12A Companies (Appointment and Qualification of Directors) Rules</p>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-50">
-                  {["Name", "DIN", "PAN", "Designation", "Appointment Date", "KYC Due Date", "KYC Status"].map(h => (
-                    <th key={h} className="text-left text-xs font-medium text-[#94A3B8] px-4 py-3">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                {directors.map(d => {
-                  const kycDate = new Date(d.kyc_due_date);
-                  const daysToKyc = Math.ceil((kycDate.getTime() - TODAY.getTime()) / 86400000);
-                  const kycStyle = daysToKyc < 0 ? "bg-red-100 text-red-700" : daysToKyc <= 30 ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700";
-                  const kycLabel = daysToKyc < 0 ? "Overdue" : daysToKyc <= 30 ? `Due in ${daysToKyc}d` : "Valid";
-                  return (
-                    <tr key={d.id} className="hover:bg-[#F8FAFC]/50">
-                      <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">{d.name}</td>
-                      <td className="px-4 py-3 text-xs font-mono text-[#475569]">{d.din}</td>
-                      <td className="px-4 py-3 text-xs font-mono text-[#475569]">{d.pan}</td>
-                      <td className="px-4 py-3 text-xs text-[#475569]">{d.designation}</td>
-                      <td className="px-4 py-3 text-xs text-[#475569]">{fmtDate(d.appointment_date)}</td>
-                      <td className="px-4 py-3 text-xs text-[#475569]">{fmtDate(d.kyc_due_date)}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${kycStyle}`}>{kycLabel}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            data={directors}
+            columns={directorColumns}
+            getRowId={(d) => d.id}
+            loading={loading}
+            searchPlaceholder="Search by name or DIN…"
+            initialSort={{ key: "kyc_status", dir: "asc" }}
+            exportFilename="mca-directors"
+            persistKey="mca.directors"
+            emptyTitle="No directors yet"
+            emptyDescription="Director records appear here once added for your firm."
+          />
         </div>
       )}
 
