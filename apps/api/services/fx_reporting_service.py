@@ -111,14 +111,26 @@ class FXReportingService:
                         "currency": cur, "foreign_balance_minor": foreign, "base_balance_paise": base})
         return out
 
+    def _entry_dates(self, db, firm_id, client_id) -> dict:
+        """{journal_entry_id: entry_date} for posted entries — so an FX adjustment is
+        reported in its SETTLEMENT/posting period (period-accurate for backdated and
+        multi-year settlements), not by the audit row's insert timestamp."""
+        rows = (db.table("journal_entries").select("id, entry_date")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .eq("is_posted", True).is_("deleted_at", "null").execute().data) or []
+        return {r["id"]: _d(r.get("entry_date")) for r in rows}
+
     # ── 1. Realized FX gain/loss ───────────────────────────────────────────────
     def realized_fx(self, db, firm_id, client_id, start=None, end=None) -> dict:
         q = db.table("fx_adjustments").select("*").eq("firm_id", firm_id).eq("kind", "realized")
         if client_id:
             q = q.eq("client_id", client_id)
-        rows = [r for r in (q.execute().data or []) if _within(r.get("created_at"), start, end)]
+        entry_dates = self._entry_dates(db, firm_id, client_id)
         lines, by_ccy, gain, loss = [], {}, 0, 0
-        for r in rows:
+        for r in (q.execute().data or []):
+            when = entry_dates.get(r.get("journal_entry_id")) or r.get("created_at")
+            if not _within(when, start, end):
+                continue
             delta = int(r.get("base_delta_paise") or 0)
             cur = (r.get("currency") or "").upper()
             gain += delta if delta > 0 else 0
@@ -128,7 +140,7 @@ class FXReportingService:
             slot["loss_paise"] += -delta if delta < 0 else 0
             slot["net_paise"] += delta
             lines.append({
-                "date": _d(r.get("created_at")), "document_type": r.get("document_type"),
+                "date": _d(when), "document_type": r.get("document_type"),
                 "document_id": r.get("document_id"), "currency": cur,
                 "settlement_rate": (str(r["settlement_rate"]) if r.get("settlement_rate") is not None else None),
                 "base_delta_paise": delta, "is_gain": delta > 0,
@@ -228,12 +240,14 @@ class FXReportingService:
         q = db.table("fx_adjustments").select("*").eq("firm_id", firm_id)
         if client_id:
             q = q.eq("client_id", client_id)
+        entry_dates = self._entry_dates(db, firm_id, client_id)
         adjustments = []
         for r in (q.execute().data or []):
-            if not _within(r.get("created_at"), start, end):
+            when = entry_dates.get(r.get("journal_entry_id")) or r.get("created_at")
+            if not _within(when, start, end):
                 continue
             adjustments.append({
-                "date": _d(r.get("created_at")), "kind": r.get("kind"), "currency": (r.get("currency") or "").upper(),
+                "date": _d(when), "kind": r.get("kind"), "currency": (r.get("currency") or "").upper(),
                 "document_type": r.get("document_type"), "document_id": r.get("document_id"),
                 "original_rate": (str(r["original_rate"]) if r.get("original_rate") is not None else None),
                 "settlement_rate": (str(r["settlement_rate"]) if r.get("settlement_rate") is not None else None),
