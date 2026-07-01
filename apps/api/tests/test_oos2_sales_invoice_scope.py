@@ -112,9 +112,22 @@ def test_oos2_delete_foreign_firm_404(monkeypatch):
     assert db.data["client_sales_invoices"][0]["deleted_at"] is None    # not soft-deleted
 
 
+def _stub_cancel_accounting(monkeypatch):
+    """This file asserts tenant SCOPE only. Cancellation's accounting side-effects
+    (FY-lock check + kernel reversal) are exercised in test_invoice_cancellation.py;
+    stub them here so the same-firm path proves scope without the real services."""
+    import services.period_validation_service as pvs
+    import services.phase2_journal_service as pjs
+    monkeypatch.setattr(pvs.period_validation_service, "validate_posting_date", lambda *a, **k: None)
+    monkeypatch.setattr(pjs.phase2_journal_service, "reverse_entry", lambda *a, **k: "REV")
+
+
 def test_oos2_same_firm_cancel_succeeds(monkeypatch):
     si, db = _setup(monkeypatch, invoice_firm="F")
+    # A realistic issued invoice carries its posted journal; cancel reverses it.
     db.data["client_sales_invoices"][0]["status"] = "issued"
+    db.data["client_sales_invoices"][0]["journal_entry_id"] = "J1"
+    _stub_cancel_accounting(monkeypatch)
     monkeypatch.setattr(si, "log_event", lambda *a, **k: None)
     monkeypatch.setattr(si.timeline_service, "log_timeline_event", lambda *a, **k: None)
     si.cancel_invoice("INV", _CALLER)

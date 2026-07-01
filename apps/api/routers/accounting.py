@@ -275,52 +275,18 @@ def reverse_journal_entry(
         db = get_supabase()
         firm_id = current_user["firm_id"]
 
-        # Fetch the original — firm-scoped (tenant isolation under service-role).
-        orig_res = (db.table("journal_entries").select("*")
-                    .eq("id", entry_id).eq("firm_id", firm_id).limit(1).execute())
-        orig = (orig_res.data or [None])[0]
-        if not orig:
-            raise HTTPException(status_code=404, detail="Journal entry not found")
-        if not orig.get("is_posted"):
-            raise HTTPException(status_code=422, detail="Only posted journal entries can be reversed")
-        if orig.get("reversal_of"):
-            raise HTTPException(status_code=409, detail="This entry is itself a reversal — cannot reverse a reversal")
-
-        existing_rev = (db.table("journal_entries").select("id")
-                        .eq("firm_id", firm_id).eq("reversal_of", entry_id).limit(1).execute().data)
-        if existing_rev:
-            raise HTTPException(status_code=409, detail=f"Journal {entry_id} has already been reversed")
-
         # FY-lock: a reversal is a new posting — block it if its date is in a locked year.
         period_validation_service.validate_posting_date(firm_id, data.reversal_date)
 
-        # Fetch the original lines explicitly (robust across PostgREST and the test
-        # double) and build the equal-and-opposite legs (swap debit ↔ credit).
-        orig_lines = (db.table("journal_lines").select("*")
-                      .eq("journal_entry_id", entry_id).execute().data) or []
-        if not orig_lines:
-            raise HTTPException(status_code=422, detail="Cannot reverse a journal entry with no lines")
-        rev_lines = [{
-            "account_id":   l["account_id"],
-            "debit_paise":  int(l.get("credit_paise") or 0),
-            "credit_paise": int(l.get("debit_paise") or 0),
-            "narration":    narration,
-        } for l in orig_lines]
+        # Original (firm-scoped) — only for the timeline reference; reverse_entry
+        # re-validates existence/posted/not-already-reversed itself.
+        orig = (db.table("journal_entries").select("client_id, reference_no")
+                .eq("id", entry_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
 
-        # Single posting kernel — validates double-entry balance and writes the entry.
-        ref = f"REV-{orig.get('reference_no') or entry_id[:8]}"
-        rev_id = phase2_journal_service._create_journal(
-            db=db,
-            firm_id=firm_id,
-            client_id=orig["client_id"],
-            entry_date=data.reversal_date,
-            reference_no=ref,
-            narration=narration,
-            entry_type=orig.get("entry_type") or "Journal",
-            lines=rev_lines,
-            is_posted=True,
-            created_by=current_user.get("id"),   # internal users.id (FK), not the auth id
-            reversal_of=entry_id,
+        # Single reversal path through the kernel (append-only; original untouched).
+        rev_id = phase2_journal_service.reverse_entry(
+            db, firm_id, entry_id, data.reversal_date,
+            narration=narration, created_by=current_user.get("id"),
         )
 
         log_event(
@@ -329,18 +295,15 @@ def reverse_journal_entry(
             actor_email=current_user.get("email"),
             new_data={"reversal_of": entry_id},
         )
-        timeline_service.log(
-            orig["client_id"], "accounting", "Journal Reversed",
-            f"Reversal of {orig.get('reference_no') or entry_id[:8]} posted",
-            "warning", firm_id=firm_id,
-            entity_type="journal_entry", entity_id=rev_id,
-            actor_id=current_user.get("auth_user_id"),
-        )
-        return api_response(True, {
-            "id": rev_id, "reversal_of": entry_id, "reference_no": ref,
-            "client_id": orig["client_id"], "entry_date": data.reversal_date,
-            "is_posted": True, "lines": rev_lines,
-        })
+        if orig:
+            timeline_service.log(
+                orig.get("client_id"), "accounting", "Journal Reversed",
+                f"Reversal of {orig.get('reference_no') or entry_id[:8]} posted",
+                "warning", firm_id=firm_id,
+                entity_type="journal_entry", entity_id=rev_id,
+                actor_id=current_user.get("auth_user_id"),
+            )
+        return api_response(True, {"id": rev_id, "reversal_of": entry_id})
     except HTTPException:
         raise
     except Exception:

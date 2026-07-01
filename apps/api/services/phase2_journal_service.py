@@ -11,6 +11,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from fastapi import HTTPException
+
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.phase2_journal")
 
@@ -875,6 +877,60 @@ class Phase2JournalService:
             "Posted" if is_posted else "Drafted", entry_id, reference_no, total_debit, total_credit,
         )
         return entry_id
+
+    def reverse_entry(
+        self,
+        db,
+        firm_id: str,
+        entry_id: str,
+        reversal_date: str,
+        narration: Optional[str] = None,
+        created_by: Optional[str] = None,
+    ) -> str:
+        """Post an equal-and-opposite reversal of a posted journal entry THROUGH the
+        kernel — the single reversal path used by manual journal reversal AND by
+        document cancellation (sales invoice / purchase bill).
+
+        Append-only: the original entry is never modified or deleted (immutability
+        preserved); a new balanced entry with swapped debit/credit is posted and
+        linked via reversal_of. Firm-scoped. `created_by` MUST be the internal
+        users.id. Returns the reversal entry id.
+
+        Raises HTTPException: 404 (not found in firm), 422 (not posted / no lines),
+        409 (already a reversal / already reversed).
+        """
+        res = (db.table("journal_entries").select("*")
+               .eq("id", entry_id).eq("firm_id", firm_id).limit(1).execute())
+        orig = (res.data or [None])[0]
+        if not orig:
+            raise HTTPException(status_code=404, detail="Journal entry not found")
+        if not orig.get("is_posted"):
+            raise HTTPException(status_code=422, detail="Only posted journal entries can be reversed")
+        if orig.get("reversal_of"):
+            raise HTTPException(status_code=409, detail="This entry is itself a reversal — cannot reverse a reversal")
+        already = (db.table("journal_entries").select("id")
+                   .eq("firm_id", firm_id).eq("reversal_of", entry_id).limit(1).execute().data)
+        if already:
+            raise HTTPException(status_code=409, detail=f"Journal {entry_id} has already been reversed")
+
+        lines = (db.table("journal_lines").select("*")
+                 .eq("journal_entry_id", entry_id).execute().data) or []
+        if not lines:
+            raise HTTPException(status_code=422, detail="Cannot reverse a journal entry with no lines")
+
+        narration = narration or f"Reversal of journal {entry_id}"
+        rev_lines = [{
+            "account_id":   l["account_id"],
+            "debit_paise":  int(l.get("credit_paise") or 0),
+            "credit_paise": int(l.get("debit_paise") or 0),
+            "narration":    narration,
+        } for l in lines]
+        ref = f"REV-{orig.get('reference_no') or entry_id[:8]}"
+        return self._create_journal(
+            db=db, firm_id=firm_id, client_id=orig["client_id"], entry_date=reversal_date,
+            reference_no=ref, narration=narration, entry_type=orig.get("entry_type") or "Journal",
+            lines=rev_lines, is_posted=True, created_by=created_by, reversal_of=entry_id,
+        )
 
 
 # Module-level singleton

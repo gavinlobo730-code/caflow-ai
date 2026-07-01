@@ -466,6 +466,10 @@ def receive_purchase_bill(
             firm_id=current_user.get("firm_id", ""),
             client_id=updated_bill.get("client_id", ""),
         )
+        # Persist the journal link so cancellation can reverse it directly.
+        if journal_id:
+            db.table("purchase_bills").update({"journal_entry_id": journal_id}).eq(
+                "id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
 
         log_event(
             current_user.get("firm_id", ""), "purchase_bill", bill_id,
@@ -517,24 +521,65 @@ def cancel_purchase_bill(
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
 
         from core.supabase_client import get_supabase
+        from services.phase2_journal_service import phase2_journal_service
         db = get_supabase()
+        firm_id = current_user.get("firm_id")
         # Tenant isolation (OOS-5): firm-scope the guard read and the write so a
         # foreign-firm bill id cannot be read or mutated under service-role.
-        resp = db.table("purchase_bills").select("status").eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
+        resp = (db.table("purchase_bills")
+                .select("status, journal_entry_id, bill_no, client_id, paid_paise")
+                .eq("id", bill_id).eq("firm_id", firm_id).limit(1).execute())
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
-        if resp.data[0]["status"] == "cancelled":
+        bill = resp.data[0]
+        status = bill.get("status")
+        if status == "cancelled":
             raise HTTPException(status_code=422, detail="Bill already cancelled")
+        if status == "draft":
+            raise HTTPException(status_code=422, detail="Draft bills are deleted, not cancelled.")
+        # Accounting guard: never cancel a bill that has payments — the payment
+        # journal would be stranded. Reverse the payment(s) first.
+        if int(bill.get("paid_paise") or 0) > 0:
+            raise HTTPException(status_code=409, detail="This bill has payments recorded and cannot be cancelled. Reverse the payment(s) first.")
+        pay = (db.table("purchase_payments").select("id")
+               .eq("firm_id", firm_id).eq("purchase_bill_id", bill_id).limit(1).execute().data)
+        if pay:
+            raise HTTPException(status_code=409, detail="This bill has payments allocated and cannot be cancelled. Reverse the payment(s) first.")
+
+        # A cancellation reversal is a NEW posting dated today — open FY required.
+        reversal_date = datetime.now(timezone.utc).date().isoformat()
+        period_validation_service.validate_posting_date(firm_id or "", reversal_date)
+
+        # Locate the bill's posted receive-journal and reverse it THROUGH the kernel
+        # (append-only; original untouched). Idempotent on retry.
+        jrnl_id = bill.get("journal_entry_id")
+        if not jrnl_id:
+            jr = (db.table("journal_entries").select("id")
+                  .eq("firm_id", firm_id).eq("client_id", bill.get("client_id"))
+                  .eq("reference_no", bill.get("bill_no")).eq("entry_type", "Purchase").eq("is_posted", True)
+                  .limit(1).execute().data)
+            jrnl_id = jr[0]["id"] if jr else None
+        if not jrnl_id:
+            raise HTTPException(status_code=422, detail="No posted journal found for this bill to reverse.")
+        already = (db.table("journal_entries").select("id")
+                   .eq("firm_id", firm_id).eq("reversal_of", jrnl_id).limit(1).execute().data)
+        if not already:
+            phase2_journal_service.reverse_entry(
+                db, firm_id, jrnl_id, reversal_date,
+                narration=f"Cancellation of purchase bill {bill.get('bill_no') or bill_id}",
+                created_by=current_user.get("id"),
+            )
 
         upd = db.table("purchase_bills").update({
             "status":       "cancelled",
             "cancelled_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
+        }).eq("id", bill_id).eq("firm_id", firm_id).execute()
         updated = upd.data[0] if upd.data else {}
         log_event(
-            current_user.get("firm_id", ""), "purchase_bill", bill_id,
-            "status_change", actor_id=current_user.get("auth_user_id"),
-            actor_email=current_user.get("email"), new_data={"status": "cancelled"},
+            firm_id or "", "purchase_bill", bill_id,
+            "cancel", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            new_data={"status": "cancelled", "reversed_journal": jrnl_id},
         )
         return api_response(True, updated)
     except HTTPException:
