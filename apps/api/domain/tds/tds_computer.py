@@ -104,6 +104,39 @@ SECTION_THRESHOLDS: dict[str, tuple[int, float, float]] = {
     "206C":  (0,            0.1,   0.1),  # TCS on goods sale
 }
 
+# Sections whose FY-aggregate threshold differs from the single-payment threshold.
+# IT Act §194C: TDS applies if a SINGLE payment exceeds ₹30,000 OR the FY AGGREGATE
+# to the payee exceeds ₹1,00,000. All other sections use one threshold for both.
+_AGGREGATE_THRESHOLDS: dict[str, int] = {
+    "194C": 1_00_000_00,   # ₹1,00,000 aggregate (single-payment sub-threshold stays ₹30,000)
+}
+
+
+@dataclass(frozen=True)
+class TDSResolution:
+    """Outcome of resolving TDS for a single bill through the central engine."""
+    applies: bool
+    section: str
+    tds_paise: int
+    rate_pct: float
+    rate_bps: int            # persisted on the bill for 26Q reconciliation (IT Act §203)
+    is_company_rate: bool
+    reason: str              # 'applied' | 'below_threshold'
+
+
+def is_company_pan(pan: Optional[str]) -> bool:
+    """Return True when the payee should be taxed at the non-individual rate.
+
+    The 4th character of a PAN encodes the holder type: 'P' = individual,
+    'H' = HUF; everything else (C company, F firm, A AOP, T trust, …) is a
+    non-individual. IT Act §194C charges 1% to individuals/HUF and 2% to others.
+    No PAN → non-individual (conservative higher rate; §206AA higher-rate risk).
+    """
+    if not pan or len(pan) < 4:
+        return True
+    return pan[3].upper() not in ("P", "H")
+
+
 QUARTER_DATES = {
     "Q1": ("2025-04-01", "2025-06-30", "2025-07-31"),
     "Q2": ("2025-07-01", "2025-09-30", "2025-10-31"),
@@ -217,6 +250,48 @@ class TDSComputer:
         rate = co_rate if is_company else ind_rate
         # Integer paise arithmetic — floor to avoid over-deduction
         return int(payment_amount_paise * rate // 100)
+
+    def resolve_tds(
+        self,
+        section: str,
+        taxable_paise: int,
+        fy_prior_taxable_paise: int = 0,
+        is_company: bool = False,
+    ) -> "TDSResolution":
+        """Resolve TDS for a single purchase bill — the single source of TDS rules.
+
+        Encodes the statutory logic the purchase-bill path must NOT re-implement:
+          * unknown section  → ValueError (never silently deduct 0 — audit L6);
+          * threshold + FY aggregation (single-payment OR §194C ₹1L aggregate — H5);
+          * section- and payee-type-specific rate (individual/HUF vs other — H6);
+          * rate-based amount so TDS can never exceed the section rate (audit L1).
+
+        Args:
+          section:                e.g. '194C', '194J'.
+          taxable_paise:          this bill's taxable value (TDS base — excludes GST).
+          fy_prior_taxable_paise: sum of this payee's prior taxable under this section
+                                  in the same FY (for aggregate thresholds).
+          is_company:             non-individual payee → higher rate where applicable.
+        """
+        section = (section or "").upper().strip()
+        if section not in SECTION_THRESHOLDS:
+            raise ValueError(f"Unknown TDS section '{section}'")
+        single_threshold, ind_rate, co_rate = SECTION_THRESHOLDS[section]
+        agg_threshold = _AGGREGATE_THRESHOLDS.get(section)
+        fy_total = fy_prior_taxable_paise + taxable_paise
+
+        applies = taxable_paise > single_threshold or (
+            agg_threshold is not None and fy_total > agg_threshold
+        )
+        rate = co_rate if is_company else ind_rate
+        rate_bps = int(round(rate * 100))
+        if not applies:
+            return TDSResolution(False, section, 0, rate, rate_bps, is_company, "below_threshold")
+
+        # Integer paise, floor — never over-deduct (IT Act §145A). Rate-bounded, so
+        # tds can never reach 100% of the base (audit L1).
+        tds = int(taxable_paise * rate_bps // 10000)
+        return TDSResolution(True, section, tds, rate, rate_bps, is_company, "applied")
 
     def _validate_26q(self, payload: TDS26QPayload) -> list[str]:
         errors: list[str] = []

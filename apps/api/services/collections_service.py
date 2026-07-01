@@ -74,7 +74,12 @@ def assess_invoice(inv: dict, today: Optional[date] = None,
                    credit_days: int = DEFAULT_CREDIT_DAYS) -> dict:
     """Return collections metadata for one invoice (pure; no I/O)."""
     today = today or _today()
-    outstanding = int(inv.get("total_paise", 0)) - int(inv.get("paid_paise", 0))
+    # Net outstanding = total − cash/TDS settled (paid_paise) − credit notes applied
+    # (credited_paise). TDS is correctly part of paid_paise (settlement incl. §194 TDS);
+    # credit notes must also relieve AR so aging ties to the invoice sub-ledger (M13).
+    outstanding = (int(inv.get("total_paise", 0))
+                   - int(inv.get("paid_paise", 0))
+                   - int(inv.get("credited_paise", 0) or 0))
     ref = reference_due_date(inv, credit_days)
     days_overdue = (today - ref).days if ref else 0
     is_open = inv.get("status") in _OPEN_STATUSES and outstanding > 0
@@ -94,7 +99,8 @@ def _open_invoices(firm_id: str, internal_id: Optional[str]) -> list[dict]:
                 if i.get("firm_id") == firm_id
                 and (internal_id is None or i.get("client_id") == internal_id)
                 and i.get("status") in _OPEN_STATUSES
-                and (int(i.get("total_paise", 0)) - int(i.get("paid_paise", 0))) > 0]
+                and (int(i.get("total_paise", 0)) - int(i.get("paid_paise", 0))
+                     - int(i.get("credited_paise", 0) or 0)) > 0]
     q = (_db().table("client_sales_invoices").select("*")
          .eq("firm_id", firm_id).in_("status", list(_OPEN_STATUSES)))
     if internal_id:

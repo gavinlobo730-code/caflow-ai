@@ -42,6 +42,14 @@ def _current_fy_long() -> str:
     start = now.year if now.month >= 4 else now.year - 1
     return f"{start}-{str(start + 1)[2:]}"
 
+
+def _fy_bounds(date_str: str) -> tuple[str, str]:
+    """Return (fy_start_iso, fy_end_iso) for the Indian FY containing date_str.
+    Used to aggregate a vendor's prior taxable for TDS thresholds. Apr 1 – Mar 31."""
+    d = datetime.strptime(str(date_str)[:10], "%Y-%m-%d").date()
+    start = d.year if d.month >= 4 else d.year - 1
+    return f"{start}-04-01", f"{start + 1}-03-31"
+
 router = APIRouter(prefix="/api/purchase-bills", tags=["purchase_bills"])
 
 # ---------------------------------------------------------------------------
@@ -213,22 +221,49 @@ def create_purchase_bill(
 
         total_paise = total_taxable + total_cgst + total_sgst + total_igst
 
-        # TDS computation — integer paise, never float
-        # IT Act §194C: 2% (companies/firms); §194I: 10%; §194J: 10%
+        # ── TDS — routed through the central engine (domain/tds/tds_computer).
+        # No inline rate maths: the engine owns thresholds, FY aggregation, payee-type
+        # rates, unknown-section handling and the rate bound (audit H5/H6/L1/L6).
+        # TDS base is the taxable amount, excluding GST — IT Act §194C/194I/194J.
+        is_reverse_charge = bool(data.get("is_reverse_charge", False))
         tds_paise = 0
+        tds_rate_bps = 0
+        tds_section = (vendor.get("tds_section") or "").upper().strip() or None
         if vendor.get("tds_applicable"):
-            tds_rate_bps = int(vendor.get("tds_rate_bps") or 0)
-            if tds_rate_bps == 0 and vendor.get("tds_section"):
-                # Auto-populate statutory default when vendor master rate not set
-                section = str(vendor["tds_section"]).upper().strip()
-                tds_rate_bps = _TDS_DEFAULT_BPS.get(section, 0)
-            if tds_rate_bps > 0:
-                # TDS is on taxable amount (excluding GST) — IT Act §194C/194I/194J
-                tds_paise = (total_taxable * tds_rate_bps) // 10000
-                if tds_paise > total_taxable:
-                    raise HTTPException(status_code=422, detail="TDS cannot exceed taxable amount")
+            if not tds_section:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Vendor is marked TDS-applicable but has no TDS section set.",
+                )
+            from domain.tds.tds_computer import TDSComputer, is_company_pan
+            # FY-aggregate of this vendor's prior taxable under the same section, so the
+            # §194C ₹1L aggregate threshold is honoured across multiple bills.
+            fy_prior = 0
+            if not _USE_MOCK:
+                fy_start, fy_end = _fy_bounds(data["bill_date"])
+                prior = (db.table("purchase_bills")
+                         .select("taxable_amount_paise")
+                         .eq("firm_id", firm_id).eq("vendor_id", vendor_id)
+                         .eq("tds_section", tds_section).neq("status", "cancelled")
+                         .gte("bill_date", fy_start).lte("bill_date", fy_end)
+                         .execute().data) or []
+                fy_prior = sum(int(b.get("taxable_amount_paise") or 0) for b in prior)
+            try:
+                _tds = TDSComputer().resolve_tds(
+                    section=tds_section,
+                    taxable_paise=total_taxable,
+                    fy_prior_taxable_paise=fy_prior,
+                    is_company=is_company_pan(vendor.get("pan")),
+                )
+            except ValueError as ve:
+                raise HTTPException(status_code=422, detail=str(ve))
+            tds_paise = _tds.tds_paise
+            # Persist the rate ACTUALLY applied — 0 when below threshold (nothing
+            # deducted), the section/payee rate when TDS was deducted (H6, §203 audit).
+            tds_rate_bps = _tds.rate_bps if _tds.applies else 0
 
         net_payable_paise = total_paise - tds_paise
+        total_gst_paise = total_cgst + total_sgst + total_igst   # M1: persist on the bill
 
         # Validate posting date is not in a locked financial year (migration 020)
         period_validation_service.validate_posting_date(firm_id or "", data["bill_date"])
@@ -249,8 +284,11 @@ def create_purchase_bill(
                 "sgst_paise":            total_sgst,
                 "igst_paise":            total_igst,
                 "total_paise":           total_paise,
+                "total_gst_paise":       total_gst_paise,
                 "tds_paise":             tds_paise,
-                "tds_section":           vendor.get("tds_section"),
+                "tds_rate_bps":          tds_rate_bps,
+                "tds_section":           tds_section,
+                "is_reverse_charge":     is_reverse_charge,
                 "net_payable_paise":     net_payable_paise,
                 "status":                "draft",
                 "notes":                 data.get("notes", ""),
@@ -277,8 +315,11 @@ def create_purchase_bill(
             "sgst_paise":            total_sgst,
             "igst_paise":            total_igst,
             "total_paise":           total_paise,
+            "total_gst_paise":       total_gst_paise,
             "tds_paise":             tds_paise,
-            "tds_section":           vendor.get("tds_section"),
+            "tds_rate_bps":          tds_rate_bps,
+            "tds_section":           tds_section,
+            "is_reverse_charge":     is_reverse_charge,
             "net_payable_paise":     net_payable_paise,
             "status":                "draft",
             "notes":                 data.get("notes", ""),
