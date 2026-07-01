@@ -43,6 +43,7 @@ _logger.info("CORS allowed origins: %s", _ALLOWED_ORIGINS)
 
 from routers import clients, compliance, documents, assistant, insights, tasks, workflows, reminders, team
 from routers import accounting, compliance_records
+from routers import currencies  # Multi-Currency Phase 1 (read-only currency master + policy)
 from routers import document_intelligence, risks, ai_insights, automation, notifications, ai_copilot
 from routers import gst, tds, income_tax
 from routers import task_templates, task_extras, task_recurring
@@ -172,6 +173,10 @@ app.include_router(workflows.router, dependencies=_CLIENT_GUARD)
 app.include_router(reminders.router, dependencies=_CLIENT_GUARD)
 app.include_router(team.router)
 app.include_router(accounting.router, dependencies=_CLIENT_GUARD)
+# Multi-Currency Phase 1 — read-only currency master + policy resolution. The
+# guard is a no-op for the global master list (no client_id) and enforces
+# client-assignment scope for the /policy route (which carries client_id).
+app.include_router(currencies.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance_records.router, dependencies=_CLIENT_GUARD)
 app.include_router(document_intelligence.router, dependencies=_CLIENT_GUARD)
 app.include_router(risks.router, dependencies=_CLIENT_GUARD)

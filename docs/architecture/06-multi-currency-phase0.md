@@ -52,7 +52,7 @@ Rate exact `NUMERIC(18,8)` (never float); `base_paise = round(txn_minor × rate)
 
 - **Phase 0 (this):** frozen design. *No code.*
 - **Phase 0.5 — Hardening (done):** single posting kernel — reversal + manual journal through the kernel; dead tables removed (see `02`/`05`).
-- **Phase 1:** currency-aware GL (all INR in practice) — currencies/fx_rates/resolver + GL columns; kernel balances in base; defaults INR/1; reports & tests unchanged.
+- **Phase 1 — Foundation (done):** `currencies` master + `fx_rates` + `resolve_currency_policy()` + `RateProvider`/`ExchangeRateService` + the three gating flags (migration 146). Defaults INR/1; reports & existing tests unchanged; feature off ⇒ byte-for-byte today. *Held for the next Phase-1 slice (no posting/journal changes were made here):* the `journal_lines`/`journal_entries` FX columns and kernel base-balancing. See `06a-multi-currency-phase1-implementation.md`.
 - **Phase 2:** foreign-currency documents; GST/TDS INR-equivalent bridge; dual-currency display.
 - **Phase 3:** realized FX on settlement (receipts/payments/bank).
 - **Phase 4:** unrealized FX at period end (revaluation + auto-reversal); cash-flow FX line; snapshot cache key gains an as-of/rate dimension.
