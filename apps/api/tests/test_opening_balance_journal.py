@@ -81,16 +81,69 @@ def test_repost_reflects_changed_opening_balance(monkeypatch):
     db.seed("customers", {"id": "C1", "firm_id": FIRM, "client_id": "CLI",
                           "is_active": True, "opening_balance_paise": 500_000})
     obs.post_opening_balances(FIRM, "CLI")
+    first = [e for e in db.rows("journal_entries") if e.get("source_type") == obs.OPENING_SOURCE]
+    first_id = first[0]["id"]
+    first_lines_before = [dict(l) for l in db.rows("journal_lines")
+                          if l["journal_entry_id"] == first_id]
 
-    # CA corrects the opening balance; re-post must reflect it exactly.
+    # CA corrects the opening balance; regeneration must reflect it exactly — and,
+    # because the model is append-only, WITHOUT deleting or mutating the original.
     for c in db.rows("customers"):
         if c["id"] == "C1":
             c["opening_balance_paise"] = 700_000
     obs.post_opening_balances(FIRM, "CLI")
 
+    # GL now carries the corrected opening position (500k + 200k delta).
     assert account_balance(db, coa_id(db, FIRM, "ar")) == 700_000
-    opening = [e for e in db.rows("journal_entries") if e.get("entry_type") == obs.OPENING_ENTRY_TYPE]
-    assert len(opening) == 1
+    # Append-only: the original entry still exists and its lines are untouched.
+    still = [e for e in db.rows("journal_entries") if e["id"] == first_id]
+    assert len(still) == 1
+    first_lines_after = [l for l in db.rows("journal_lines") if l["journal_entry_id"] == first_id]
+    assert first_lines_after == first_lines_before        # immutable original
+    # A second (delta) opening entry was appended; the family reconciles.
+    opening = [e for e in db.rows("journal_entries") if e.get("source_type") == obs.OPENING_SOURCE]
+    assert len(opening) == 2
+    assert obs.opening_balance_status(FIRM, "CLI")["needs_posting"] is False
+
+
+def test_regeneration_never_deletes_a_posted_entry(monkeypatch):
+    # The whole point of the append-only model: regeneration must not attempt to
+    # delete/replace the posted opening journal (which the immutability trigger
+    # forbids). Deleting is proven absent by counting entries only grows.
+    db = _setup(monkeypatch)
+    db.seed("customers", {"id": "C1", "firm_id": FIRM, "client_id": "CLI",
+                          "is_active": True, "opening_balance_paise": 500_000})
+    obs.post_opening_balances(FIRM, "CLI")
+    for c in db.rows("customers"):
+        if c["id"] == "C1":
+            c["opening_balance_paise"] = 800_000
+    obs.post_opening_balances(FIRM, "CLI")
+    for c in db.rows("customers"):
+        if c["id"] == "C1":
+            c["opening_balance_paise"] = 300_000
+    obs.post_opening_balances(FIRM, "CLI")
+
+    opening = [e for e in db.rows("journal_entries") if e.get("source_type") == obs.OPENING_SOURCE]
+    assert len(opening) == 3                                  # append-only: 3 posts, 3 entries
+    assert account_balance(db, coa_id(db, FIRM, "ar")) == 300_000   # net reconciles to master
+    tb = trial_balance(db, FIRM, "CLI")
+    assert tb["total_debit_paise"] == tb["total_credit_paise"]
+
+
+def test_zeroing_openings_nets_to_zero_append_only(monkeypatch):
+    db = _setup(monkeypatch)
+    db.seed("customers", {"id": "C1", "firm_id": FIRM, "client_id": "CLI",
+                          "is_active": True, "opening_balance_paise": 500_000})
+    obs.post_opening_balances(FIRM, "CLI")
+    # Opening balance cleared to zero — a delta offsets it; nothing is deleted.
+    for c in db.rows("customers"):
+        if c["id"] == "C1":
+            c["opening_balance_paise"] = 0
+    obs.post_opening_balances(FIRM, "CLI")
+    assert account_balance(db, coa_id(db, FIRM, "ar")) == 0
+    assert obs.opening_balance_status(FIRM, "CLI")["needs_posting"] is False
+    tb = trial_balance(db, FIRM, "CLI")
+    assert tb["total_debit_paise"] == tb["total_credit_paise"]
 
 
 def test_bank_opening_uses_mapped_coa_account(monkeypatch):

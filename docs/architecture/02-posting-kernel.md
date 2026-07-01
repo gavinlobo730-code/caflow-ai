@@ -68,7 +68,7 @@ On `journal_entries`:
 - `trg_journal_immutability_delete` → `prevent_posted_journal_delete` (blocks DELETE of any `is_posted=TRUE` entry — "create a reversal instead").
 - `trg_audit_capture` (audit) and `trg_journal_updated_at` (timestamps).
 
-A consequence to be aware of: any workflow that regenerates a posted entry by delete-and-repost will be blocked — see the known issue in `04-opening-balances.md`.
+A consequence: a posted entry can never be deleted or replaced in place. Workflows that keep derived GL state in sync (e.g. opening balances) therefore use **append-only adjusting entries**, never delete-and-recreate — see `04-opening-balances.md`.
 
 ## Attachments
 
