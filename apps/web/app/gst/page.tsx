@@ -7,9 +7,8 @@
  * CGST Act Section 44: GSTR-9 (Annual Return) — due 31st December
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
-  FileText,
   Users,
   CheckCircle,
   AlertCircle,
@@ -23,6 +22,8 @@ import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
+import { DataTable } from "@/components/ui/data-table";
+import type { Column, FilterDef } from "@/lib/table/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -351,7 +352,6 @@ export default function GSTPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [filterPeriod, setFilterPeriod] = useState("all");
 
   useEffect(() => {
     async function load() {
@@ -445,12 +445,6 @@ export default function GSTPage() {
     }
   }
 
-  // ── Filter by period ───────────────────────────────────────────────────────
-  const filteredFilings =
-    filterPeriod === "all"
-      ? filings
-      : filings.filter((f) => f.period === filterPeriod);
-
   // ── Summary counts (current month) ────────────────────────────────────────
   const currentPeriod = `${MONTH_NAMES[TODAY.getMonth()]} ${TODAY.getFullYear()}`;
 
@@ -467,7 +461,72 @@ export default function GSTPage() {
   const overdueCount = filings.filter((f) => f.status === "Overdue").length;
 
   // ── Unique periods from filings (for filter dropdown) ─────────────────────
-  const uniquePeriods = Array.from(new Set(filings.map((f) => f.period)));
+  const uniquePeriods = useMemo(
+    () => Array.from(new Set(filings.map((f) => f.period))),
+    [filings],
+  );
+
+  // ── DataTable columns (client × period filing tracker) ────────────────────
+  const columns: Column<GSTFiling>[] = useMemo(() => [
+    {
+      key: "client_name", header: "Client", accessor: (f) => f.client_name,
+      searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (f) => <span className="font-medium text-[#0F172A]">{f.client_name}</span>,
+    },
+    {
+      key: "gstin", header: "GSTIN", accessor: (f) => f.gstin ?? "", searchable: true,
+      render: (f) => <span className="font-mono text-xs text-[#64748B]">{f.gstin ?? "—"}</span>,
+    },
+    {
+      key: "return_type", header: "Return Type", accessor: (f) => f.return_type, sortable: true,
+      render: (f) => (
+        <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+          {f.return_type}
+        </span>
+      ),
+    },
+    {
+      key: "period", header: "Period", accessor: (f) => f.period, sortable: true,
+      render: (f) => <span className="text-[#334155]">{f.period}</span>,
+    },
+    {
+      key: "due_date", header: "Due Date", accessor: (f) => f.due_date, sortable: true,
+      render: (f) => (
+        <div className="flex items-center gap-1.5">
+          <Clock className="w-3 h-3 text-[#CBD5E1]" />
+          <span className="text-xs text-[#475569]">{fmtDate(f.due_date)}</span>
+        </div>
+      ),
+    },
+    {
+      key: "filed_date", header: "Filed Date", accessor: (f) => f.filed_date ?? "",
+      sortable: true, defaultHidden: true,
+      render: (f) => <span className="text-xs text-[#475569]">{f.filed_date ? fmtDate(f.filed_date) : "—"}</span>,
+    },
+    {
+      key: "status", header: "Status", accessor: (f) => f.status, sortable: true,
+      render: (f) => (
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLE[f.status]}`}>
+          {f.status}
+        </span>
+      ),
+    },
+  ], []);
+
+  const filters: FilterDef<GSTFiling>[] = useMemo(() => [
+    {
+      key: "status", label: "Status", type: "select", accessor: (f) => f.status,
+      options: (["Pending", "Filed", "Overdue"] as FilingStatus[]).map((s) => ({ value: s, label: s })),
+    },
+    {
+      key: "return_type", label: "Form Type", type: "select", accessor: (f) => f.return_type,
+      options: RETURN_TYPES.map((r) => ({ value: r, label: r })),
+    },
+    {
+      key: "period", label: "Period", type: "select", accessor: (f) => f.period,
+      options: uniquePeriods.map((p) => ({ value: p, label: p })),
+    },
+  ], [uniquePeriods]);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -574,125 +633,60 @@ export default function GSTPage() {
         </div>
       </div>
 
-      {/* Month Filter + Table */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <h2 className="text-sm font-semibold text-[#0F172A]">Filing Status</h2>
-            <p className="text-xs text-[#94A3B8] mt-0.5">
-              Per client · per return type · per period
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-[#64748B]">Period:</label>
-            <select
-              value={filterPeriod}
-              onChange={(e) => setFilterPeriod(e.target.value)}
-              className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Periods</option>
-              {uniquePeriods.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-          </div>
+      {/* Filing Status — shared DataTable (search, filters, sort, pagination, export, prefs) */}
+      <div className="space-y-2">
+        <div>
+          <h2 className="text-sm font-semibold text-[#0F172A]">Filing Status</h2>
+          <p className="text-xs text-[#94A3B8] mt-0.5">
+            Per client · per return type · per period
+          </p>
         </div>
 
-        {loading ? (
-          <div className="px-5 py-10 text-center text-sm text-[#94A3B8]">Loading…</div>
-        ) : filteredFilings.length === 0 ? (
-          <div className="px-5 py-12 text-center space-y-2">
-            <FileText className="w-8 h-8 mx-auto text-gray-200" />
-            <p className="text-sm text-[#64748B] font-medium">No GST filings found</p>
-            <p className="text-xs text-[#94A3B8]">
-              {filings.length === 0
-                ? "Add your first GST filing to start tracking GSTR-1, GSTR-3B and GSTR-9 deadlines."
-                : "No filings match the selected period filter."}
-            </p>
-            {filings.length === 0 && (
+        <DataTable
+          data={filings}
+          columns={columns}
+          filters={filters}
+          getRowId={(f) => f.id}
+          loading={loading}
+          error={error}
+          searchPlaceholder="Search by client or GSTIN…"
+          initialSort={{ key: "due_date", dir: "asc" }}
+          exportFilename="gst-tracker"
+          persistKey="gst.tracker"
+          emptyTitle="No GST filings found"
+          emptyDescription="Add your first GST filing to start tracking GSTR-1, GSTR-3B and GSTR-9 deadlines."
+          emptyAction={
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="mt-2 text-xs text-blue-600 hover:underline inline-flex items-center gap-1"
+            >
+              <Plus className="w-3 h-3" /> Add GST Filing
+            </button>
+          }
+          rowActions={(f) =>
+            f.status !== "Filed" ? (
               <button
-                onClick={() => setShowAddModal(true)}
-                className="mt-2 text-xs text-blue-600 hover:underline inline-flex items-center gap-1"
+                onClick={() => handleMarkFiled(f.id)}
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
               >
-                <Plus className="w-3 h-3" /> Add GST Filing
+                Mark as Filed
               </button>
-            )}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-50">
-                  <th className="text-left text-xs font-medium text-[#94A3B8] px-5 py-3">Client</th>
-                  <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">GSTIN</th>
-                  <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Return Type</th>
-                  <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Period</th>
-                  <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Due Date</th>
-                  <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Status</th>
-                  <th className="text-left text-xs font-medium text-[#94A3B8] px-5 py-3">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                {filteredFilings.map((f) => (
-                  <tr key={f.id} className="hover:bg-[#F8FAFC]/50">
-                    <td className="px-5 py-3">
-                      <p className="text-sm font-medium text-[#0F172A]">{f.client_name}</p>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span className="text-xs font-mono text-[#64748B]">{f.gstin ?? "—"}</span>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
-                        {f.return_type}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 text-sm text-[#334155]">{f.period}</td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="w-3 h-3 text-[#CBD5E1]" />
-                        <span className="text-xs text-[#475569]">{fmtDate(f.due_date)}</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLE[f.status]}`}
-                      >
-                        {f.status}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3">
-                      {f.status !== "Filed" ? (
-                        <button
-                          onClick={() => handleMarkFiled(f.id)}
-                          className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
-                        >
-                          Mark as Filed
-                        </button>
-                      ) : (
-                        <div className="flex items-center gap-1 text-green-600">
-                          <CheckCircle className="w-3.5 h-3.5" />
-                          <span className="text-xs">
-                            {f.filed_date ? fmtDate(f.filed_date) : "Filed"}
-                          </span>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+            ) : (
+              <div className="flex items-center justify-end gap-1 text-green-600">
+                <CheckCircle className="w-3.5 h-3.5" />
+                <span className="text-xs">
+                  {f.filed_date ? fmtDate(f.filed_date) : "Filed"}
+                </span>
+              </div>
+            )
+          }
+        />
 
-        {filteredFilings.length > 0 && (
-          <div className="px-5 py-3 border-t border-gray-50 bg-[#F8FAFC]/30">
-            <p className="text-[10px] text-[#94A3B8]">
-              {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
-              GSTR-1 (Section 37): 11th · GSTR-3B (Section 39): 20th · GSTR-9 (Section 44): 31 Dec ·
-              PracticeSync does not auto-submit to the GST portal — always file manually after CA review.
-            </p>
-          </div>
-        )}
+        <p className="text-[10px] text-[#94A3B8]">
+          {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
+          GSTR-1 (Section 37): 11th · GSTR-3B (Section 39): 20th · GSTR-9 (Section 44): 31 Dec ·
+          PracticeSync does not auto-submit to the GST portal — always file manually after CA review.
+        </p>
       </div>
 
       {/* Add Filing Modal */}
