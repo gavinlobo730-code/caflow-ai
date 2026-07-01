@@ -10,6 +10,8 @@
  */
 
 import { useState, useEffect, useCallback, useRef, ChangeEvent } from "react";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { Combobox } from "@/components/ui/combobox";
 import Link from "next/link";
 import { ChevronLeft, Plus, X, Upload, Download, Trash2, FileText, AlertTriangle, CheckCircle, Clock, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -137,16 +139,28 @@ function AddModal({ clients, onClose, onAdded }: {
           {error && <div className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</div>}
           <div>
             <label className={lbl}>Client *</label>
-            <select value={form.clientId} onChange={e => upd({ clientId: e.target.value })} className={inputCls}>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-            </select>
+            <ClientLookup
+              clients={clients}
+              value={form.clientId}
+              onChange={id => upd({ clientId: id })}
+              placeholder="Select client…"
+              ariaLabel="Client"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Notice Type</label>
-              <select value={form.noticeType} onChange={e => upd({ noticeType: e.target.value })} className={inputCls}>
-                {NOTICE_TYPES.map(t => <option key={t} value={t}>Section {t}</option>)}
-              </select>
+              <Combobox<string>
+                options={[...NOTICE_TYPES]}
+                value={form.noticeType || null}
+                onChange={v => upd({ noticeType: (v as string | null) ?? "" })}
+                getOptionId={t => t}
+                getLabel={t => `Section ${t}`}
+                getSearchFields={t => [t]}
+                placeholder="Select notice type…"
+                searchPlaceholder="Search section…"
+                ariaLabel="Notice type"
+              />
             </div>
             <div>
               <label className={lbl}>Assessment Year</label>

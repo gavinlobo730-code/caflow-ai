@@ -10,3 +10,4 @@ export { ClientLookup } from "./ClientLookup";
 export type { ClientLike } from "./ClientLookup";
 export { HsnLookup } from "./HsnLookup";
 export type { HsnResult, HsnPick } from "./HsnLookup";
+export { StateLookup } from "./StateLookup";

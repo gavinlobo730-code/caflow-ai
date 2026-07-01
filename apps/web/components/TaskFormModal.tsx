@@ -2,6 +2,9 @@
 
 import { useState, useEffect, FormEvent } from "react";
 import { X } from "lucide-react";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { EntityLookup } from "@/components/lookups/EntityLookup";
+import { Combobox } from "@/components/ui/combobox";
 import type { Client, FirmUser } from "@/lib/types";
 import type { CreateTaskInput } from "@/lib/data/tasks";
 
@@ -109,46 +112,49 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
           {/* Client */}
           <div>
             <label className="block text-xs font-medium text-[#334155] mb-1">Client *</label>
-            <select
-              required
+            <ClientLookup
+              clients={clients}
               value={form.client_id}
-              onChange={e => set("client_id", e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-            >
-              <option value="">Select client…</option>
-              {clients.map(c => (
-                <option key={c.id} value={c.id}>{c.client_name}</option>
-              ))}
-            </select>
+              onChange={id => set("client_id", id)}
+              placeholder="Select client…"
+              ariaLabel="Client"
+            />
           </div>
 
           {/* Assignee */}
           {teamMembers.length > 0 && (
             <div>
               <label className="block text-xs font-medium text-[#334155] mb-1">Assign To</label>
-              <select
+              <EntityLookup<FirmUser>
+                items={teamMembers}
                 value={form.assignee_id ?? ""}
-                onChange={e => set("assignee_id", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-              >
-                <option value="">Unassigned</option>
-                {teamMembers.map(m => (
-                  <option key={m.id} value={m.id}>{m.full_name ?? m.email}</option>
-                ))}
-              </select>
+                onChange={id => set("assignee_id", id)}
+                getId={m => m.id}
+                getLabel={m => m.full_name ?? m.email ?? "—"}
+                getSecondary={m => (m.full_name ? m.email : undefined)}
+                getSearchFields={m => [m.full_name ?? "", m.email ?? ""]}
+                clearable
+                placeholder="Unassigned"
+                searchPlaceholder="Search team member…"
+                ariaLabel="Assign to"
+              />
             </div>
           )}
 
           {/* Task type */}
           <div>
             <label className="block text-xs font-medium text-[#334155] mb-1">Task Type *</label>
-            <select
-              onChange={e => handleTemplateChange(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-            >
-              <option value="">Select task type…</option>
-              {TASK_TEMPLATES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+            <Combobox<string>
+              options={TASK_TEMPLATES}
+              value={customTitle ? "Custom" : (TASK_TEMPLATES.includes(form.title) ? form.title : null)}
+              onChange={v => handleTemplateChange((v as string | null) ?? "")}
+              getOptionId={t => t}
+              getLabel={t => t}
+              getSearchFields={t => [t]}
+              placeholder="Select task type…"
+              searchPlaceholder="Search task type…"
+              ariaLabel="Task type"
+            />
           </div>
 
           {/* Custom title */}
