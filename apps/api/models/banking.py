@@ -19,6 +19,10 @@ class BankAccountIn(BaseModel):
     opening_balance_paise: int = 0
     opening_balance_date: Optional[str] = None
     coa_account_id: Optional[str] = None
+    # Multi-Currency Phase 5 — account denomination currency (default INR). A non-INR
+    # currency is accepted only when multi-currency is active for the client (enforced
+    # in the router); INR accounts behave exactly as before.
+    currency: Optional[str] = None
 
     @field_validator("bank_name", "account_no")
     @classmethod
@@ -26,6 +30,16 @@ class BankAccountIn(BaseModel):
         if not v.strip():
             raise ValueError("Field cannot be blank.")
         return v.strip()
+
+    @field_validator("currency")
+    @classmethod
+    def upper_currency(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip().upper()
+        if len(v) != 3 or not v.isalpha():
+            raise ValueError("currency must be a 3-letter ISO 4217 code.")
+        return v
 
     @field_validator("opening_balance_paise")
     @classmethod

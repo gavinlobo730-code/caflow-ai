@@ -77,7 +77,11 @@ def list_vendors(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        q = db.table("vendors").select("*").eq("client_id", client_id)
+        # Tenant isolation: service-role bypasses RLS — firm_id is the only guard
+        # against a cross-tenant read via a guessed client_id (H15). The mock path
+        # above already firm-scopes; the DB path must match it.
+        q = (db.table("vendors").select("*")
+             .eq("firm_id", current_user.get("firm_id")).eq("client_id", client_id))
         if not include_inactive:
             q = q.eq("is_active", True)
         resp = q.execute()
@@ -157,14 +161,15 @@ def create_vendor(
     except Exception as e:
         _logger.error("create_vendor: %s", e, exc_info=True)
         # Surface a meaningful error — never expose raw DB internals to the client
-        msg = str(e)
-        if "duplicate" in msg.lower() or "unique" in msg.lower():
+        # Classify into a user-safe message; never echo raw DB internals (M11).
+        msg = str(e).lower()
+        if "duplicate" in msg or "unique" in msg:
             return api_response(False, None, "A vendor with this GSTIN or PAN already exists for this client.")
-        if "foreign key" in msg.lower() or "violates" in msg.lower():
-            return api_response(False, None, f"Vendor creation failed due to a data constraint: {msg}")
-        if "not-null" in msg.lower() or "null value" in msg.lower():
-            return api_response(False, None, f"Vendor creation failed — a required field is missing: {msg}")
-        return api_response(False, None, f"Vendor creation failed: {msg}")
+        if "foreign key" in msg or "violates" in msg:
+            return api_response(False, None, "Vendor creation failed due to a data constraint.")
+        if "not-null" in msg or "null value" in msg:
+            return api_response(False, None, "Vendor creation failed — a required field is missing.")
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
 @router.get("/{vendor_id}")
@@ -306,36 +311,33 @@ def get_vendor_outstanding(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
+        firm_id = current_user.get("firm_id")
 
-        # Verify vendor exists
-        v_resp = db.table("vendors").select("id").eq("id", vendor_id).limit(1).execute()
+        # Tenant isolation: service-role bypasses RLS, so EVERY read here must be
+        # firm-scoped — otherwise a guessed vendor_id leaks another firm's payables (H15).
+        v_resp = (db.table("vendors").select("id")
+                  .eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute())
         if not v_resp.data:
             raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
 
-        # Sum outstanding purchase bills (net_payable_paise = total - tds, i.e. what we owe)
+        # M5: outstanding = Σ (net_payable − paid) over NON-CANCELLED bills. Computing
+        # per-bill from the bill's own paid_paise avoids the double-subtraction the old
+        # code hit (a fully-paid bill was excluded from the sum yet its payment was still
+        # subtracted). Payments now reconcile to the bill sub-ledger (H11).
         bills_resp = (
             db.table("purchase_bills")
-            .select("id,net_payable_paise,status")
+            .select("id,net_payable_paise,paid_paise,debited_paise,status")
+            .eq("firm_id", firm_id)
             .eq("vendor_id", vendor_id)
-            .not_.in_("status", ["paid", "cancelled"])
+            .neq("status", "cancelled")
             .execute()
         )
-        total_bills_paise = sum(
-            b.get("net_payable_paise", 0) for b in (bills_resp.data or [])
+        # Net payable per bill = net_payable − paid − debited (debit notes relieve it).
+        outstanding_paise = sum(
+            int(b.get("net_payable_paise", 0) or 0) - int(b.get("paid_paise", 0) or 0)
+            - int(b.get("debited_paise", 0) or 0)
+            for b in (bills_resp.data or [])
         )
-
-        # Sum payments already made
-        payments_resp = (
-            db.table("purchase_payments")
-            .select("amount_paise")
-            .eq("vendor_id", vendor_id)
-            .execute()
-        )
-        total_paid_paise = sum(
-            p.get("amount_paise", 0) for p in (payments_resp.data or [])
-        )
-
-        outstanding_paise = total_bills_paise - total_paid_paise
 
         return api_response(True, {
             "vendor_id": vendor_id,
@@ -345,4 +347,49 @@ def get_vendor_outstanding(
         raise
     except Exception as e:
         _logger.error("get_vendor_outstanding: %s", e)
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
+
+
+@router.get("/ap-aging")
+def ap_aging(
+    client_id: str = Query(..., description="CA client ID — required"),
+    as_of: Optional[str] = Query(None, description="Aging as-of date (YYYY-MM-DD)"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Accounts-payable aging for a client — per-bill outstanding bucketed by age.
+    Derived entirely from posted bills, payments and debit notes (firm-scoped)."""
+    try:
+        from core.supabase_client import get_supabase
+        from services.vendor_statement_service import vendor_statement_service
+        db = get_supabase()
+        data = vendor_statement_service.ap_aging(db, current_user.get("firm_id"), client_id, as_of)
+        return api_response(True, data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("ap_aging: %s", e)
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
+
+
+@router.get("/{vendor_id}/statement")
+def vendor_statement(
+    vendor_id: str,
+    client_id: str = Query(..., description="CA client ID — required"),
+    start_date: str = Query(..., description="YYYY-MM-DD"),
+    end_date: str = Query(..., description="YYYY-MM-DD"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Vendor account statement: opening payable, period bills/payments/debit notes
+    with a running balance, and closing payable. Derived from posted data only."""
+    try:
+        from core.supabase_client import get_supabase
+        from services.vendor_statement_service import vendor_statement_service
+        db = get_supabase()
+        data = vendor_statement_service.generate(
+            db, current_user.get("firm_id"), client_id, vendor_id, start_date, end_date)
+        return api_response(True, data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("vendor_statement: %s", e)
         return api_response(False, None, "Unable to complete vendor operation. Please try again.")

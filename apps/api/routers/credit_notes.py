@@ -121,14 +121,17 @@ def list_credit_notes(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        q = db.table("credit_notes").select("*").eq("client_id", client_id)
+        # Tenant isolation: the service-role client bypasses RLS, so the firm filter
+        # is the ONLY thing preventing a cross-tenant read via a guessed client_id (H15/L4).
+        q = (db.table("credit_notes").select("*")
+             .eq("firm_id", current_user.get("firm_id")).eq("client_id", client_id))
         if customer_id:
             q = q.eq("customer_id", customer_id)
         resp = q.order("credit_note_date", desc=True).execute()
         return api_response(True, resp.data or [])
     except Exception as e:
         _logger.error("list_credit_notes: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete credit note operation. Please try again.")
 
 
 @router.post("/")
@@ -191,7 +194,12 @@ def create_credit_note(
         for ln in lines_data:
             qty          = ln.get("quantity", 1)
             rate_paise   = int(ln.get("rate_paise", 0))
-            gst_rate_bps = int(ln.get("gst_rate_bps", 0))
+            # Line rate arrives as gst_rate_percent on the shared InvoiceLineIn model;
+            # fall back to an explicit gst_rate_bps if a caller supplies one. (Reading
+            # only gst_rate_bps previously yielded 0% GST on standalone credit notes.)
+            gst_rate_bps = int(ln.get("gst_rate_bps") or 0)
+            if not gst_rate_bps and ln.get("gst_rate_percent"):
+                gst_rate_bps = int(round(float(ln.get("gst_rate_percent")) * 100))
             taxable      = int(Decimal(str(qty)) * rate_paise)
             cgst, sgst, igst = _compute_line_gst(taxable, gst_rate_bps, is_interstate)
 
@@ -239,6 +247,7 @@ def create_credit_note(
                 "sgst_paise":           total_sgst,
                 "igst_paise":           total_igst,
                 "total_paise":          total_paise,
+                "total_gst_paise":      total_cgst + total_sgst + total_igst,
                 "status":               "draft",
                 "created_at":           datetime.now(timezone.utc).isoformat(),
                 "lines":                computed_lines,
@@ -250,15 +259,11 @@ def create_credit_note(
                 MOCK_CREDIT_NOTE_LINES.append(ln)
             return api_response(True, cn)
 
-        seq   = _next_cn_seq(db, firm_id, client_id, fy)  # type: ignore[possibly-undefined]
-        cn_no = f"CN-{fy}-{seq:04d}"
-
         cn_payload = {
             "firm_id":              firm_id,
             "client_id":            client_id,
             "customer_id":          data["customer_id"],
             "sales_invoice_id":     data.get("sales_invoice_id"),
-            "credit_note_no":       cn_no,
             "credit_note_date":     data["credit_note_date"],
             "reason":               data.get("reason", ""),
             "is_interstate":        is_interstate,
@@ -267,13 +272,17 @@ def create_credit_note(
             "sgst_paise":           total_sgst,
             "igst_paise":           total_igst,
             "total_paise":          total_paise,
+            "total_gst_paise":      total_cgst + total_sgst + total_igst,
             "status":               "draft",
             "created_at":           datetime.now(timezone.utc).isoformat(),
         }
 
-        cn_resp = db.table("credit_notes").insert(cn_payload).execute()  # type: ignore[possibly-undefined]
-        cn      = cn_resp.data[0] if cn_resp.data else cn_payload
-        cn_id   = cn.get("id", str(uuid.uuid4()))
+        from services.numbering import insert_with_number
+        cn = insert_with_number(
+            db, "credit_notes", cn_payload, "credit_note_no",
+            lambda s: f"CN-{fy}-{s:04d}",
+            lambda: _next_cn_seq(db, firm_id, client_id, fy))
+        cn_id = cn.get("id", str(uuid.uuid4()))
 
         line_payloads = [
             {
@@ -304,7 +313,7 @@ def create_credit_note(
         raise
     except Exception as e:
         _logger.error("create_credit_note: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete credit note operation. Please try again.")
 
 
 @router.get("/{cn_id}")
@@ -334,7 +343,7 @@ def get_credit_note(
         raise
     except Exception as e:
         _logger.error("get_credit_note: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete credit note operation. Please try again.")
 
 
 @router.post("/{cn_id}/issue")
@@ -367,9 +376,10 @@ def issue_credit_note(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
+        firm_id = current_user.get("firm_id")
         # Tenant isolation (OOS-5): firm-scope the guard read and the write so a
         # foreign-firm credit-note id cannot be read or mutated under service-role.
-        resp = db.table("credit_notes").select("*").eq("id", cn_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
+        resp = db.table("credit_notes").select("*").eq("id", cn_id).eq("firm_id", firm_id).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Credit note {cn_id} not found")
         cn = resp.data[0]
@@ -378,31 +388,95 @@ def issue_credit_note(
         # FY-lock: issuing posts a dated journal — block if the year was locked after
         # the draft was created (deferred-posting gap).
         if cn.get("credit_note_date"):
-            period_validation_service.validate_posting_date(current_user.get("firm_id") or "", cn["credit_note_date"])
+            period_validation_service.validate_posting_date(firm_id or "", cn["credit_note_date"])
 
+        client_id = cn.get("client_id", "")
+        cn_total  = int(cn.get("total_paise") or 0)
+        inv_id    = cn.get("sales_invoice_id")
+
+        # ── (C1) Apply the credit note to the linked invoice's SUB-LEDGER before
+        # posting to the GL, capturing prior values for rollback. A credit note may
+        # not exceed the invoice's net outstanding (CGST Act §34: it corrects an
+        # existing supply's value/tax and cannot exceed it). This keeps the invoice
+        # sub-ledger, the GL AR control (moved by the journal below) and the customer
+        # statement reconciled: invoice net outstanding = total − paid − credited.
+        prior_inv = None
+        if inv_id and cn_total > 0:
+            inv_resp = (db.table("client_sales_invoices")
+                        .select("total_paise,paid_paise,credited_paise,status")
+                        .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
+            if not inv_resp.data:
+                raise HTTPException(status_code=422, detail="Linked invoice is not part of this client's books.")
+            inv = inv_resp.data[0]
+            if (inv.get("status") or "") in ("draft", "cancelled"):
+                raise HTTPException(status_code=422, detail=f"Cannot credit a {inv.get('status')} invoice.")
+            total    = int(inv.get("total_paise") or 0)
+            paid     = int(inv.get("paid_paise") or 0)
+            credited = int(inv.get("credited_paise") or 0)
+            net_outstanding = total - paid - credited
+            if cn_total > net_outstanding:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(f"Credit note (₹{cn_total / 100:,.2f}) exceeds the invoice's outstanding "
+                            f"(₹{net_outstanding / 100:,.2f})."),
+                )
+            prior_inv = {"credited_paise": credited, "status": inv.get("status")}
+            new_credited = credited + cn_total
+            settled = paid + new_credited
+            new_status = "paid" if settled >= total else ("partially_paid" if settled > 0 else inv.get("status"))
+            db.table("client_sales_invoices").update({
+                "credited_paise": new_credited, "status": new_status,
+            }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+            try:
+                db.table("credit_note_allocations").insert({
+                    "firm_id": firm_id, "credit_note_id": cn_id,
+                    "sales_invoice_id": inv_id, "allocated_paise": cn_total,
+                }).execute()
+            except Exception:
+                db.table("client_sales_invoices").update({
+                    "credited_paise": credited, "status": prior_inv["status"],
+                }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+                raise
+
+        # ── Post the GL journal (Dr Sales Returns + Dr GST reversed / Cr Trade
+        # Receivables). On failure, roll back the sub-ledger application so the books
+        # never go partial; the credit note stays a re-tryable draft.
+        try:
+            journal_id = phase2_journal_service.journal_for_credit_note(
+                cn=cn, firm_id=firm_id or "", client_id=client_id,
+            )
+            if not journal_id:
+                raise RuntimeError("credit-note journal posting returned no id")
+        except Exception as jerr:
+            if prior_inv is not None and inv_id:
+                try:
+                    db.table("credit_note_allocations").delete().eq("credit_note_id", cn_id).eq("sales_invoice_id", inv_id).execute()
+                    db.table("client_sales_invoices").update({
+                        "credited_paise": prior_inv["credited_paise"], "status": prior_inv["status"],
+                    }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+                except Exception:
+                    pass
+            _logger.error("issue_credit_note: journal posting failed; application rolled back: %s", jerr)
+            return api_response(False, None, "Unable to issue credit note. Please try again.")
+
+        # ── Mark the credit note issued and record how much was applied to invoices.
         now_iso = datetime.now(timezone.utc).isoformat()
+        applied = cn_total if (inv_id and cn_total > 0) else 0
         upd = db.table("credit_notes").update({
-            "status":    "issued",
-            "issued_at": now_iso,
-        }).eq("id", cn_id).eq("firm_id", current_user.get("firm_id")).execute()
-        updated_cn = upd.data[0] if upd.data else {**cn, "status": "issued"}
-
-        journal_id = phase2_journal_service.journal_for_credit_note(
-            cn=updated_cn,
-            firm_id=current_user.get("firm_id", ""),
-            client_id=updated_cn.get("client_id", ""),
-        )
+            "status": "issued", "issued_at": now_iso, "applied_paise": applied,
+        }).eq("id", cn_id).eq("firm_id", firm_id).execute()
+        updated_cn = upd.data[0] if upd.data else {**cn, "status": "issued", "applied_paise": applied}
 
         log_event(
-            current_user.get("firm_id", ""), "credit_note", cn_id,
+            firm_id or "", "credit_note", cn_id,
             "status_change", actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"),
-            new_data={"status": "issued", "journal_entry_id": journal_id},
+            new_data={"status": "issued", "journal_entry_id": journal_id, "applied_paise": applied},
         )
         # Record timeline event for issued credit note
         timeline_service.log_timeline_event(
-            client_id=updated_cn.get("client_id", ""),
-            firm_id=current_user.get("firm_id", ""),
+            client_id=client_id,
+            firm_id=firm_id or "",
             financial_year=_current_fy_long(),
             category="accounting",
             event_type="credit_note_issued",
@@ -422,4 +496,4 @@ def issue_credit_note(
         raise
     except Exception as e:
         _logger.error("issue_credit_note: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete credit note operation. Please try again.")

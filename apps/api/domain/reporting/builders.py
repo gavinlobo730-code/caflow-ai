@@ -48,11 +48,12 @@ def ledger(entries_by_id: dict[str, JournalEntry], accounts: dict[str, Account],
     running = opening
     total_debit = total_credit = 0
     rows = []
+    has_foreign = False
     for e, ln in in_range:
         running += ln.debit_paise - ln.credit_paise
         total_debit += ln.debit_paise
         total_credit += ln.credit_paise
-        rows.append({
+        row = {
             "entry_id": e.id,
             "entry_date": e.entry_date,
             "reference_no": e.reference_no,
@@ -61,9 +62,21 @@ def ledger(entries_by_id: dict[str, JournalEntry], accounts: dict[str, Account],
             "credit_paise": ln.credit_paise,
             "running_balance_paise": running,
             "is_debit": running >= 0,
-        })
+        }
+        # Multi-Currency Phase 5 — optional transaction-currency visibility. Emitted
+        # ONLY for genuinely foreign lines, so an INR-only ledger is byte-for-byte
+        # unchanged. The base paise above stay authoritative (they drive the running
+        # balance and every aggregate report); these are display memo only.
+        if getattr(ln, "is_foreign", False):
+            has_foreign = True
+            row["txn_currency"] = (ln.txn_currency or "").upper()
+            row["txn_debit_minor"] = int(ln.txn_debit or 0)
+            row["txn_credit_minor"] = int(ln.txn_credit or 0)
+            if ln.exchange_rate is not None:
+                row["exchange_rate"] = str(ln.exchange_rate)
+        rows.append(row)
 
-    return {
+    out = {
         "account_id": account_id,
         "account_code": acct.code if acct else "",
         "account_name": acct.name if acct else "",
@@ -78,6 +91,11 @@ def ledger(entries_by_id: dict[str, JournalEntry], accounts: dict[str, Account],
         "total_credit_paise": total_credit,
         "lines": rows,
     }
+    # A single presence flag lets the frontend show a currency column only when it
+    # matters; absent (falsy) for INR-only accounts, so nothing changes for them.
+    if has_foreign:
+        out["has_foreign_lines"] = True
+    return out
 
 
 def trial_balance(lines: list[ProjectedLine], accounts: dict[str, Account],

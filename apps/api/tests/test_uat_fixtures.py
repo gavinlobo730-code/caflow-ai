@@ -13,8 +13,9 @@ def test_demo_dataset_builds_with_expected_shape():
     assert len(db.rows("firms")) == 2                       # two firms
     assert len(db.rows("users")) == 5                       # 4 Firm-A staff + Firm-B partner
     assert {c["id"] for c in db.rows("clients")} == {"C1", "C2", "C9"}
-    # COA seeded for both Firm-A clients (12 accounts each).
-    assert len([a for a in db.rows("chart_of_accounts") if a["client_id"] == "C1"]) == 12
+    # COA seeded for both Firm-A clients (14 accounts each — incl. the 2 FX
+    # gain/loss accounts added in Multi-Currency Phase 4).
+    assert len([a for a in db.rows("chart_of_accounts") if a["client_id"] == "C1"]) == 14
     # Assignment scope: Reviewer → C2 only.
     assert {"user_id": "u-reena", "client_id": "C2"} in [
         {"user_id": a["user_id"], "client_id": a["client_id"]} for a in db.rows("user_client_assignments")]

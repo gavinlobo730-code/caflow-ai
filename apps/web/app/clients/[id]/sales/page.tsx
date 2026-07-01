@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
+import { formatPaise, formatDateTime } from "@/lib/services/formatting";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
 import { buildCustomers, CUSTOMER_IMPORT_COLUMNS, buildReceipts, RECEIPT_IMPORT_COLUMNS } from "@/lib/imports/mappers";
@@ -237,16 +239,11 @@ interface InvoiceDelivery {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/** Money formatter — paise → ₹ string (CGST Act §15: all amounts in Indian rupees) */
+/** Money formatter — paise → ₹ string (CGST Act §15: all amounts in Indian rupees).
+ * Delegates to the shared formatter; it preserves the sign, so a negative amount
+ * (e.g. an over-credit) never renders as positive (audit M15). */
 function fmt(paise: number): string {
-  if (paise === 0) return "—";
-  return (
-    "₹" +
-    new Intl.NumberFormat("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(Math.abs(paise) / 100)
-  );
+  return paise === 0 ? "—" : formatPaise(paise);
 }
 
 /** FY range (April 1 to March 31) — Income Tax Act §3 */
@@ -263,12 +260,8 @@ function previousFy(fy: string): string {
   return `${yr}-${String(yr + 1).slice(2)}`;
 }
 
-/** Format an ISO timestamp for display, or "—" when absent. */
-function fmtDateTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? "—" : d.toLocaleString("en-IN");
-}
+/** Format an ISO timestamp for display, or "—" when absent (shared formatter). */
+const fmtDateTime = formatDateTime;
 
 /**
  * Whether to surface the "Remind" affordance for an invoice. The authoritative
@@ -525,17 +518,21 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const token = await getAuthToken();
-    const supabase = getSupabaseClient();
-    const [tplRes, { data: custData }] = await Promise.all([
-      apiGet(`/api/recurring-invoices?client_id=${encodeURIComponent(clientId)}`, token),
-      supabase.from("customers")
-        .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
-        .eq("client_id", clientId).eq("is_active", true).order("name"),
-    ]);
-    setTemplates((tplRes.data as RecurringTemplate[]) ?? []);
-    setCustomers((custData as Customer[]) ?? []);
-    setLoading(false);
+    try {
+      const token = await getAuthToken();
+      const supabase = getSupabaseClient();
+      const [tplRes, { data: custData }] = await Promise.all([
+        apiGet(`/api/recurring-invoices?client_id=${encodeURIComponent(clientId)}`, token),
+        selectAll(() => supabase.from("customers")
+          .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
+          .eq("client_id", clientId).eq("is_active", true).order("name").order("id")),
+      ]);
+      setTemplates((tplRes.data as RecurringTemplate[]) ?? []);
+      setCustomers((custData as Customer[]) ?? []);
+    } finally {
+      // Always clear the skeleton, even if the network call throws (audit M17).
+      setLoading(false);
+    }
   }, [clientId]);
   useEffect(() => { load(); }, [load]);
 
@@ -872,15 +869,19 @@ function RecurringHistoryDrawer({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const token = await getAuthToken();
-      const [h, p] = await Promise.all([
-        apiGet(`/api/recurring-invoices/${template.id}/history`, token),
-        apiGet(`/api/recurring-invoices/${template.id}/preview?count=5`, token),
-      ]);
-      if (cancelled) return;
-      setRuns((h.data as RecurringRun[]) ?? []);
-      setUpcoming(((p.data as { occurrences: string[] } | null)?.occurrences) ?? []);
-      setLoading(false);
+      try {
+        const token = await getAuthToken();
+        const [h, p] = await Promise.all([
+          apiGet(`/api/recurring-invoices/${template.id}/history`, token),
+          apiGet(`/api/recurring-invoices/${template.id}/preview?count=5`, token),
+        ]);
+        if (cancelled) return;
+        setRuns((h.data as RecurringRun[]) ?? []);
+        setUpcoming(((p.data as { occurrences: string[] } | null)?.occurrences) ?? []);
+      } finally {
+        // Clear the skeleton even if a request throws (audit M17).
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => { cancelled = true; };
   }, [template.id]);
@@ -1242,7 +1243,7 @@ function SalesInvoices({
     const supabase = getSupabaseClient();
 
     const [{ data: invData }, { data: custData }, { data: clientData }] = await Promise.all([
-      supabase
+      selectAll(() => supabase
         .from("client_sales_invoices")
         .select(
           "id, invoice_no, invoice_date, due_date, customer_id, taxable_amount_paise, total_gst_paise, total_paise, paid_paise, status, supply_state_code, is_interstate, is_overdue, days_overdue, reminder_count, last_reminded_at, customers(name)"
@@ -1251,13 +1252,15 @@ function SalesInvoices({
         .is("deleted_at", null)
         .gte("invoice_date", range.start)
         .lte("invoice_date", range.end)
-        .order("invoice_date", { ascending: false }),
-      supabase
+        .order("invoice_date", { ascending: false })
+        .order("id")),
+      selectAll(() => supabase
         .from("customers")
         .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
         .eq("client_id", clientId)
         .eq("is_active", true)
-        .order("name"),
+        .order("name")
+        .order("id")),
       supabase
         .from("clients")
         .select("gstin, state_code")
@@ -2657,11 +2660,7 @@ function DeliveryHistoryModal({
                   </span>
                 </div>
                 <div className="flex items-center justify-between mt-1 text-[#94A3B8]">
-                  <span>
-                    {d.sent_at
-                      ? new Date(d.sent_at).toLocaleString("en-IN")
-                      : new Date(d.created_at).toLocaleString("en-IN")}
-                  </span>
+                  <span>{fmtDateTime(d.sent_at ?? d.created_at)}</span>
                   {d.sent_by_email && <span>by {d.sent_by_email}</span>}
                 </div>
                 {d.error_message && (
@@ -2809,15 +2808,19 @@ function InvoiceDetailDrawer({
     let cancelled = false;
     async function load() {
       setLoading(true);
-      const token = await getAuthToken();
-      const [d, del] = await Promise.all([
-        apiGet(`/api/sales-invoices/${invoiceId}`, token),
-        apiGet(`/api/sales-invoices/${invoiceId}/deliveries`, token),
-      ]);
-      if (cancelled) return;
-      if (d.success) setInv(d.data as InvoiceDetail);
-      setDeliveries((del.data as InvoiceDelivery[]) ?? []);
-      setLoading(false);
+      try {
+        const token = await getAuthToken();
+        const [d, del] = await Promise.all([
+          apiGet(`/api/sales-invoices/${invoiceId}`, token),
+          apiGet(`/api/sales-invoices/${invoiceId}/deliveries`, token),
+        ]);
+        if (cancelled) return;
+        if (d.success) setInv(d.data as InvoiceDetail);
+        setDeliveries((del.data as InvoiceDelivery[]) ?? []);
+      } finally {
+        // Clear the skeleton even if a request throws (audit M17).
+        if (!cancelled) setLoading(false);
+      }
     }
     load();
     return () => { cancelled = true; };
@@ -3052,15 +3055,18 @@ function Customers({
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = getSupabaseClient();
-    let q = supabase
-      .from("customers")
-      .select(
-        "id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active"
-      )
-      .eq("client_id", clientId);
-    if (statusFilter === "active") q = q.eq("is_active", true);
-    else if (statusFilter === "inactive") q = q.eq("is_active", false);
-    const { data } = await q.order("name");
+    // Rebuild the query fresh for each page (PostgREST builders are single-use).
+    const { data } = await selectAll(() => {
+      let q = supabase
+        .from("customers")
+        .select(
+          "id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active"
+        )
+        .eq("client_id", clientId);
+      if (statusFilter === "active") q = q.eq("is_active", true);
+      else if (statusFilter === "inactive") q = q.eq("is_active", false);
+      return q.order("name").order("id");
+    });
     setCustomers((data as Customer[]) ?? []);
     setLoading(false);
   }, [clientId, statusFilter]);
@@ -3155,11 +3161,12 @@ function Customers({
 
     // Snapshot the current active customers to match against.
     const supabase = getSupabaseClient();
-    const { data: existingRows } = await supabase
+    const { data: existingRows } = await selectAll(() => supabase
       .from("customers")
       .select("name, gstin, pan")
       .eq("client_id", clientId)
-      .eq("is_active", true);
+      .eq("is_active", true)
+      .order("id"));
 
     const keyOf = (r: { gstin?: string | null; pan?: string | null; name?: string | null }): string | null => {
       if (r.gstin) return "g:" + r.gstin.trim().toUpperCase();
@@ -3805,19 +3812,21 @@ function Receipts({
     const { start, end } = fyRange(financialYear);
 
     const [{ data: recData }, { data: custData }] = await Promise.all([
-      supabase
+      selectAll(() => supabase
         .from("receipts")
         .select("id, receipt_no, receipt_date, customer_id, amount_paise, payment_mode, reference_no, allocated_paise, customers(name)")
         .eq("client_id", clientId)
         .gte("receipt_date", start)
         .lte("receipt_date", end)
-        .order("receipt_date", { ascending: false }),
-      supabase
+        .order("receipt_date", { ascending: false })
+        .order("id")),
+      selectAll(() => supabase
         .from("customers")
         .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
         .eq("client_id", clientId)
         .eq("is_active", true)
-        .order("name"),
+        .order("name")
+        .order("id")),
     ]);
 
     const mapped: Receipt[] = ((recData ?? []) as unknown as Array<
@@ -3979,13 +3988,14 @@ function ReceiptForm({
     if (!customerId) { setOpenInvoices([]); return; }
     async function loadInvoices() {
       const supabase = getSupabaseClient();
-      const { data } = await supabase
+      const { data } = await selectAll(() => supabase
         .from("client_sales_invoices")
         .select("id, invoice_no, invoice_date, total_paise, status")
         .eq("client_id", clientId)
         .eq("customer_id", customerId)
         .in("status", ["issued", "partially_paid"])
-        .order("invoice_date");
+        .order("invoice_date")
+        .order("id"));
       setOpenInvoices((data as SalesInvoice[]) ?? []);
     }
     loadInvoices();
@@ -4170,7 +4180,7 @@ function CreditNotes({
     const { start, end } = fyRange(financialYear);
 
     const [{ data: cnData }, { data: custData }] = await Promise.all([
-      supabase
+      selectAll(() => supabase
         .from("credit_notes")
         .select(
           "id, credit_note_no, credit_note_date, customer_id, sales_invoice_id, reason, taxable_amount_paise, cgst_paise, sgst_paise, igst_paise, total_paise, status, customers(name), client_sales_invoices(invoice_no)"
@@ -4178,13 +4188,15 @@ function CreditNotes({
         .eq("client_id", clientId)
         .gte("credit_note_date", start)
         .lte("credit_note_date", end)
-        .order("credit_note_date", { ascending: false }),
-      supabase
+        .order("credit_note_date", { ascending: false })
+        .order("id")),
+      selectAll(() => supabase
         .from("customers")
         .select("id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active")
         .eq("client_id", clientId)
         .eq("is_active", true)
-        .order("name"),
+        .order("name")
+        .order("id")),
     ]);
 
     const mapped: CreditNote[] = ((cnData ?? []) as unknown as Array<
@@ -4354,12 +4366,13 @@ function CreditNoteForm({
     if (!customerId) { setCustomerInvoices([]); return; }
     async function loadInvoices() {
       const supabase = getSupabaseClient();
-      const { data } = await supabase
+      const { data } = await selectAll(() => supabase
         .from("client_sales_invoices")
         .select("id, invoice_no, invoice_date, total_paise, status")
         .eq("client_id", clientId)
         .eq("customer_id", customerId)
-        .order("invoice_date", { ascending: false });
+        .order("invoice_date", { ascending: false })
+        .order("id"));
       setCustomerInvoices((data as SalesInvoice[]) ?? []);
     }
     loadInvoices();

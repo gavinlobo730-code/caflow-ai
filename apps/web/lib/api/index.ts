@@ -147,15 +147,31 @@ export const api = {
     trialBalance: (params?: Record<string, string>) => request(`/api/accounting/trial-balance${params ? "?" + new URLSearchParams(params) : ""}`),
     profitLoss: (params?: Record<string, string>) => request(`/api/accounting/profit-loss${params ? "?" + new URLSearchParams(params) : ""}`),
     balanceSheet: (params?: Record<string, string>) => request(`/api/accounting/balance-sheet${params ? "?" + new URLSearchParams(params) : ""}`),
+    scheduleIii: (params?: Record<string, string>) => request(`/api/accounting/schedule-iii${params ? "?" + new URLSearchParams(params) : ""}`),
     cashFlow: (params?: Record<string, string>) => request(`/api/accounting/cash-flow${params ? "?" + new URLSearchParams(params) : ""}`),
     // Phase 3.5 — journal approval queue (Draft → Approve → Post)
     journalsQueue: (params?: Record<string, string>) => request(`/api/accounting/journals${params ? "?" + new URLSearchParams(params) : ""}`),
     postDraftJournal: (journalId: string) => request(`/api/accounting/journals/${journalId}/post`, { method: "POST" }),
+    // Multi-Currency Phase 5 — read-only FX reports (empty for INR-only clients).
+    fxReports: {
+      realized: (params: Record<string, string>) => request(`/api/fx-reports/realized?${new URLSearchParams(params)}`),
+      unrealized: (params: Record<string, string>) => request(`/api/fx-reports/unrealized?${new URLSearchParams(params)}`),
+      exposure: (params: Record<string, string>) => request(`/api/fx-reports/exposure?${new URLSearchParams(params)}`),
+      rateAudit: (params: Record<string, string>) => request(`/api/fx-reports/rate-audit?${new URLSearchParams(params)}`),
+      openBalances: (params: Record<string, string>) => request(`/api/fx-reports/open-balances?${new URLSearchParams(params)}`),
+    },
+  },
+  // Multi-Currency (Phase 1/5) — currency master + resolved policy (gates FX UI).
+  currencies: {
+    list: (params?: Record<string, string>) => request(`/api/currencies${params ? "?" + new URLSearchParams(params) : ""}`),
+    policy: (params: Record<string, string>) => request(`/api/currencies/policy?${new URLSearchParams(params)}`),
   },
   // Banking (Phase B.0): all bank mutations go through the backend banking
   // service — the frontend never writes bank rows or journals to Supabase.
   banking: {
     listBankAccounts: (params?: Record<string, string>) => request(`/api/banking/accounts${params ? "?" + new URLSearchParams(params) : ""}`),
+    /** Multi-Currency Phase 5 — derived base (+ foreign for FX accounts) balance. */
+    accountBalance: (accountId: string, params: Record<string, string>) => request(`/api/banking/accounts/${accountId}/balance?${new URLSearchParams(params)}`),
     listStatements: (params?: Record<string, string>) => request(`/api/banking/statements${params ? "?" + new URLSearchParams(params) : ""}`),
     importStatement: (data: unknown) => request("/api/banking/statements/import", { method: "POST", body: JSON.stringify(data) }),
     /** Upload a CSV/XLSX statement — parsed, normalized & deduped SERVER-SIDE (B.1). */

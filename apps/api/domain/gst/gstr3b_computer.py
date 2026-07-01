@@ -49,6 +49,7 @@ class GSTR3BResult:
     """Computed GSTR-3B values — all amounts in paise."""
 
     # Table 3.1: Outward supplies (CGST Act Section 37)
+    outward_taxable_value: int = 0   # taxable VALUE of taxable outward supplies (not the tax)
     outward_taxable_igst: int = 0
     outward_taxable_cgst: int = 0
     outward_taxable_sgst: int = 0
@@ -103,7 +104,7 @@ class GSTR3BResult:
             },
             "sup_details": {
                 "osup_det": {
-                    "txval": self.outward_taxable_igst + self.outward_taxable_cgst + self.outward_taxable_sgst,
+                    "txval": self.outward_taxable_value,
                     "iamt": self.outward_taxable_igst,
                     "camt": self.outward_taxable_cgst,
                     "samt": self.outward_taxable_sgst,
@@ -191,6 +192,7 @@ def compute_gstr3b(
 
     # ── Table 3.1: Outward supplies ──────────────────────────────────────────
     # GSTR-3B instructions: report NET values — credit notes reduce output tax.
+    # txval is the taxable VALUE (H7 fix — previously the payload summed tax heads).
     for s in sales:
         sign = -1 if s.transaction_type == "credit_note" else 1
         if s.supply_type in ("nil_rated", "exempt"):
@@ -199,28 +201,30 @@ def compute_gstr3b(
             result.outward_zero_rated += sign * s.taxable_amount_paise
         elif s.supply_type == "taxable":
             if not s.is_reverse_charge:
+                result.outward_taxable_value += sign * s.taxable_amount_paise
                 result.outward_taxable_igst += sign * s.igst_paise
                 result.outward_taxable_cgst += sign * s.cgst_paise
                 result.outward_taxable_sgst += sign * s.sgst_paise
                 result.outward_taxable_cess += sign * s.cess_paise
 
-    # ── Table 3.2: Reverse charge inward supplies ────────────────────────────
-    for s in sales:
-        if s.is_reverse_charge:
-            result.rcm_igst += s.igst_paise
-            result.rcm_cgst += s.cgst_paise
-            result.rcm_sgst += s.sgst_paise
+    # ── Table 3.2: Reverse charge INWARD supplies ────────────────────────────
+    # C5 fix: RCM liability arises on INWARD supplies (purchases), not on sales.
+    # The recipient self-assesses and pays this tax; the supplier never does.
+    for p in purchases:
+        if p.is_reverse_charge:
+            result.rcm_igst += p.igst_paise
+            result.rcm_cgst += p.cgst_paise
+            result.rcm_sgst += p.sgst_paise
 
     # ── Table 4: ITC available ───────────────────────────────────────────────
+    # C4 fix: each purchase's tax is counted ONCE. RCM ITC is already included in
+    # the sum over all purchases (the recipient books the self-assessed tax as
+    # input tax) — CGST Act Section 9(3)/(4) allows ITC on RCM paid, so it must NOT
+    # be added a second time (the previous code double-counted every RCM purchase).
     book_igst = sum(p.igst_paise for p in purchases)
     book_cgst = sum(p.cgst_paise for p in purchases)
     book_sgst = sum(p.sgst_paise for p in purchases)
     book_cess = sum(p.cess_paise for p in purchases)
-
-    # Add RCM tax paid as ITC — CGST Act Section 9(3) ITC available on RCM
-    book_igst += sum(p.igst_paise for p in purchases if p.is_reverse_charge)
-    book_cgst += sum(p.cgst_paise for p in purchases if p.is_reverse_charge)
-    book_sgst += sum(p.sgst_paise for p in purchases if p.is_reverse_charge)
 
     gstr2a_igst = sum(r.igst_paise for r in gstr2a_records)
     gstr2a_cgst = sum(r.cgst_paise for r in gstr2a_records)

@@ -16,6 +16,7 @@ from datetime import date
 from typing import Optional
 
 from . import builders
+from . import schedule_iii as schedule_iii_builder
 from .model import ProjectedLine
 from .projector import CashBasisProjector
 from .resolver import AccountResolver
@@ -76,6 +77,20 @@ class ReportingService:
         as_of = as_of_date or date.today().isoformat()
         snap = self.source.snapshot(firm_id, client_id, None, as_of)
         return builders.balance_sheet(self._lines(snap, basis), snap.accounts, as_of, basis)
+
+    def schedule_iii(self, firm_id: str, client_id: Optional[str],
+                     fy_start: Optional[str], fy_end: Optional[str]) -> dict:
+        """Companies Act 2013 Schedule III (Division I) presentation of the P&L
+        (for the year) and Balance Sheet (as at year-end). Statutory statements
+        must use accrual (Companies Act §128), so basis is fixed to accrual — the
+        cash-basis management view is intentionally not offered here. The P&L and
+        BS amounts come from the same reporting engine as every other report;
+        schedule_iii only groups them into the statutory captions."""
+        start = fy_start or _fy_start()
+        end = fy_end or date.today().isoformat()
+        pl = self.profit_loss(firm_id, client_id, start, end, basis="accrual")
+        bs = self.balance_sheet(firm_id, client_id, end, basis="accrual")
+        return schedule_iii_builder.build_schedule_iii(pl, bs, start, end)
 
     def cash_flow_statement(self, firm_id: str, client_id: Optional[str],
                             start_date: Optional[str], end_date: Optional[str],

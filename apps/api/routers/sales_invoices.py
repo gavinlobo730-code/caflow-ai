@@ -204,7 +204,7 @@ def get_outstanding(
     try:
         if _USE_MOCK:
             total = sum(
-                (inv.get("total_paise", 0) - inv.get("paid_paise", 0))
+                (inv.get("total_paise", 0) - inv.get("paid_paise", 0) - (inv.get("credited_paise", 0) or 0))
                 for inv in MOCK_SALES_INVOICES
                 if inv["client_id"] == client_id and inv.get("status") not in ("paid", "cancelled")
             )
@@ -214,13 +214,15 @@ def get_outstanding(
         db = get_supabase()
         resp = (
             db.table("client_sales_invoices")
-            .select("total_paise,paid_paise")
+            .select("total_paise,paid_paise,credited_paise")
             .eq("client_id", client_id)
+            .eq("firm_id", current_user.get("firm_id"))
             .not_.in_("status", ["paid", "cancelled"])
             .execute()
         )
+        # Net receivable = total − cash paid − credit notes applied (integer paise).
         outstanding = sum(
-            (r.get("total_paise", 0) - r.get("paid_paise", 0))
+            (r.get("total_paise", 0) - r.get("paid_paise", 0) - (r.get("credited_paise", 0) or 0))
             for r in (resp.data or [])
         )
         return api_response(True, {"client_id": client_id, "outstanding_paise": outstanding})
@@ -331,7 +333,10 @@ def list_invoices(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        q = db.table("client_sales_invoices").select("*").eq("client_id", client_id)
+        # Tenant isolation: service-role bypasses RLS, so firm_id is the only guard
+        # against a cross-tenant read via a guessed client_id (H15).
+        q = (db.table("client_sales_invoices").select("*")
+             .eq("firm_id", current_user.get("firm_id")).eq("client_id", client_id))
         if customer_id:
             q = q.eq("customer_id", customer_id)
         if status:
@@ -347,15 +352,17 @@ def list_invoices(
         resp = q.order("invoice_date", desc=True).range(offset, offset + limit - 1).execute()
         invoices = resp.data or []
 
-        # Attach lines to each invoice
+        # Batch-fetch lines for the whole page in ONE query (was N+1 — audit H19):
+        # 51 queries per 50-row page → 2. Group in Python.
+        inv_ids = [inv["id"] for inv in invoices]
+        lines_by_inv: dict[str, list] = {}
+        if inv_ids:
+            lr = (db.table("client_sales_invoice_lines").select("*")
+                  .in_("sales_invoice_id", inv_ids).execute().data) or []
+            for l in lr:
+                lines_by_inv.setdefault(l.get("sales_invoice_id"), []).append(l)
         for inv in invoices:
-            lines_resp = (
-                db.table("client_sales_invoice_lines")
-                .select("*")
-                .eq("sales_invoice_id", inv["id"])
-                .execute()
-            )
-            inv["lines"] = lines_resp.data or []
+            inv["lines"] = lines_by_inv.get(inv["id"], [])
 
         return api_response(True, invoices)
     except Exception as e:
@@ -455,21 +462,26 @@ def create_invoice(
             from core.supabase_client import get_supabase
             db = get_supabase()
 
-            # Fetch customer state code
+            # Fetch customer state code (firm-scoped — never read another firm's master)
             cust_resp = (
                 db.table("customers")
-                .select("state_code, gstin, credit_days")
+                .select("state_code, gstin, credit_days, is_active")
                 .eq("id", data["customer_id"])
+                .eq("firm_id", firm_id)
                 .limit(1)
                 .execute()
             )
             customer = cust_resp.data[0] if cust_resp.data else {}
+            # Business guard: never raise an invoice against a deactivated customer.
+            if customer and customer.get("is_active") is False:
+                raise HTTPException(status_code=422, detail="This customer is inactive. Reactivate the customer before invoicing.")
 
-            # Fetch client state code from GSTIN
+            # Fetch client state code from GSTIN (firm-scoped)
             client_resp = (
                 db.table("clients")
                 .select("gstin")
                 .eq("id", client_id)
+                .eq("firm_id", firm_id)
                 .limit(1)
                 .execute()
             )
@@ -483,6 +495,22 @@ def create_invoice(
             # CGST Act §8: Intra-state if both in same state; inter-state otherwise
             # (In mock mode is_interstate was already determined above from request flags)
             is_interstate = bool(client_state_code and effective_supply_state and client_state_code != effective_supply_state)
+
+        # ── Multi-Currency (Phase 3): resolve + freeze the document currency ──────
+        # INR / feature-off → identity (behaviour unchanged). For a foreign currency
+        # this validates policy + master + rate and freezes the booking rate; the
+        # line rate_paise below are then that currency's minor units.
+        from domain.currency.document_currency import resolve_document_currency, identity_currency
+        req_ccy = (data.get("currency") or "INR").strip().upper()
+        if _USE_MOCK or req_ccy == "INR":
+            dc = identity_currency(data["invoice_date"])
+        else:
+            _firm_row = (db.table("firms").select("multi_currency_entitled").eq("id", firm_id).limit(1).execute().data or [None])[0]
+            _client_mc = (db.table("clients").select("functional_currency, multi_currency_enabled").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
+            dc = resolve_document_currency(
+                db, _firm_row, _client_mc, currency=req_ccy,
+                exchange_rate=data.get("exchange_rate"), rate_date=data["invoice_date"],
+                rate_selected_by=current_user.get("id"))
 
         # Compute lines — use Decimal for quantity × rate_paise, cast to int immediately
         computed_lines: list[dict] = []
@@ -524,7 +552,40 @@ def create_invoice(
                 "line_total_paise": taxable_paise + cgst_paise + sgst_paise + igst_paise,
             })
 
-        total_paise = total_taxable_paise + total_cgst_paise + total_sgst_paise + total_igst_paise
+        # The line totals above are in the document (txn) currency's minor units.
+        # Convert each component to base (INR) paise at the frozen rate and define the
+        # base TOTAL as their SUM, so the GL balances exactly with no FX-rounding
+        # account. For INR, dc is the identity ⇒ base == txn and nothing changes.
+        txn_taxable   = total_taxable_paise
+        txn_total_gst = total_cgst_paise + total_sgst_paise + total_igst_paise
+        txn_total     = txn_taxable + txn_total_gst
+        base_taxable  = dc.to_base(total_taxable_paise)
+        base_cgst     = dc.to_base(total_cgst_paise)
+        base_sgst     = dc.to_base(total_sgst_paise)
+        base_igst     = dc.to_base(total_igst_paise)
+        base_total_gst = base_cgst + base_sgst + base_igst
+        base_total     = base_taxable + base_total_gst
+        # Base is authoritative for the header/GL/reports; the *_paise names below now
+        # carry base INR. (For INR these equal the txn values — byte-for-byte.)
+        total_taxable_paise = base_taxable
+        total_cgst_paise    = base_cgst
+        total_sgst_paise    = base_sgst
+        total_igst_paise    = base_igst
+        total_paise         = base_total
+
+        # Currency columns written to the invoice (INR identity leaves them inert).
+        _ccy_cols = {
+            "txn_currency":     dc.currency,
+            "exchange_rate":    str(dc.rate),
+            "txn_taxable":      txn_taxable,
+            "txn_total_gst":    txn_total_gst,
+            "txn_total":        txn_total,
+            "rate_source":      dc.rate_source,
+            "rate_type":        dc.rate_type,
+            "rate_date":        dc.rate_date,
+            "rate_selected_by": dc.rate_selected_by,
+            "rate_overridden":  dc.rate_overridden,
+        }
 
         # Snapshot credit terms onto the invoice. The customer's credit_days is the
         # DEFAULT; an explicit due_date or credit_days on the request overrides it.
@@ -559,11 +620,13 @@ def create_invoice(
                 "sgst_paise":            total_sgst_paise,
                 "igst_paise":            total_igst_paise,
                 "total_paise":           total_paise,
+                "total_gst_paise":       total_cgst_paise + total_sgst_paise + total_igst_paise,
                 "paid_paise":            0,
                 "status":                "draft",
                 "notes":                 data.get("notes", ""),
                 "created_by":            current_user.get("auth_user_id"),
                 "created_at":            datetime.now(timezone.utc).isoformat(),
+                **_ccy_cols,
                 "lines":                 computed_lines,
             }
             MOCK_SALES_INVOICES.append(invoice)
@@ -573,16 +636,12 @@ def create_invoice(
                 MOCK_SALES_INVOICE_LINES.append(ln)
             return api_response(True, invoice)
 
-        # Generate invoice number
+        # Invoice number is generated with a graceful retry on numbering races (Phase B).
         fy = _current_fy()
-        seq = _next_invoice_seq(db, firm_id, client_id, fy)  # type: ignore[possibly-undefined]
-        invoice_no = f"SINV-{fy}-{seq:04d}"
-
         invoice_payload = {
             "firm_id":               firm_id,
             "client_id":             client_id,
             "customer_id":           data["customer_id"],
-            "invoice_no":            invoice_no,
             "invoice_date":          data["invoice_date"],
             "due_date":              eff_due_date,
             "credit_days":           eff_credit_days,
@@ -593,15 +652,20 @@ def create_invoice(
             "sgst_paise":            total_sgst_paise,
             "igst_paise":            total_igst_paise,
             "total_paise":           total_paise,
+            "total_gst_paise":       total_cgst_paise + total_sgst_paise + total_igst_paise,
             "paid_paise":            0,
             "status":                "draft",
             "notes":                 data.get("notes", ""),
             "created_by":            current_user.get("auth_user_id"),
             "created_at":            datetime.now(timezone.utc).isoformat(),
+            **_ccy_cols,
         }
 
-        inv_resp = db.table("client_sales_invoices").insert(invoice_payload).execute()  # type: ignore[possibly-undefined]
-        invoice = inv_resp.data[0] if inv_resp.data else invoice_payload
+        from services.numbering import insert_with_number
+        invoice = insert_with_number(
+            db, "client_sales_invoices", invoice_payload, "invoice_no",
+            lambda s: f"SINV-{fy}-{s:04d}",
+            lambda: _next_invoice_seq(db, firm_id, client_id, fy))
         invoice_id = invoice.get("id", str(uuid.uuid4()))
 
         # Insert lines
@@ -956,23 +1020,67 @@ def cancel_invoice(
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
 
         from core.supabase_client import get_supabase
+        from services.phase2_journal_service import phase2_journal_service
         db = get_supabase()
-        resp = db.table("client_sales_invoices").select("status").eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
+        firm_id = current_user.get("firm_id")
+        resp = (db.table("client_sales_invoices")
+                .select("status, journal_entry_id, invoice_no, client_id, paid_paise, credited_paise")
+                .eq("id", invoice_id).eq("firm_id", firm_id).limit(1).execute())
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
-        if resp.data[0]["status"] == "cancelled":
+        inv = resp.data[0]
+        status = inv.get("status")
+        if status == "cancelled":
             raise HTTPException(status_code=422, detail="Invoice already cancelled")
+        if status == "draft":
+            raise HTTPException(status_code=422, detail="Draft invoices are deleted, not cancelled.")
+        # Accounting guard (prevent cancellation where the rules require): never cancel
+        # an invoice that carries settlements — the receipt/credit-note journals would
+        # be stranded. Reverse those or issue a credit note instead (CGST Act §34).
+        if int(inv.get("paid_paise") or 0) > 0 or int(inv.get("credited_paise") or 0) > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=("This invoice has receipts or credit notes applied and cannot be cancelled. "
+                        "Reverse the receipt(s) or issue a credit note instead."),
+            )
+
+        # A cancellation reversal is a NEW posting dated today — it must fall in an
+        # open financial year.
+        reversal_date = datetime.now(timezone.utc).date().isoformat()
+        period_validation_service.validate_posting_date(firm_id or "", reversal_date)
+
+        # Locate the invoice's posted issue-journal and reverse it THROUGH the kernel
+        # (append-only; the original entry is never modified). Idempotent: if a prior
+        # attempt already posted the reversal, skip straight to the status flip.
+        jrnl_id = inv.get("journal_entry_id")
+        if not jrnl_id:
+            jr = (db.table("journal_entries").select("id")
+                  .eq("firm_id", firm_id).eq("client_id", inv.get("client_id"))
+                  .eq("reference_no", inv.get("invoice_no")).eq("is_posted", True)
+                  .limit(1).execute().data)
+            jrnl_id = jr[0]["id"] if jr else None
+        if not jrnl_id:
+            raise HTTPException(status_code=422, detail="No posted journal found for this invoice to reverse.")
+        already = (db.table("journal_entries").select("id")
+                   .eq("firm_id", firm_id).eq("reversal_of", jrnl_id).limit(1).execute().data)
+        if not already:
+            phase2_journal_service.reverse_entry(
+                db, firm_id, jrnl_id, reversal_date,
+                narration=f"Cancellation of invoice {inv.get('invoice_no') or invoice_id}",
+                created_by=current_user.get("id"),
+            )
 
         upd = db.table("client_sales_invoices").update({
             "status":       "cancelled",
             "cancelled_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).execute()
+        }).eq("id", invoice_id).eq("firm_id", firm_id).execute()
 
         updated = upd.data[0] if upd.data else {}
         log_event(
-            current_user.get("firm_id", ""), "sales_invoice", invoice_id,
-            "status_change", actor_id=current_user.get("auth_user_id"),
-            actor_email=current_user.get("email"), new_data={"status": "cancelled"},
+            firm_id or "", "sales_invoice", invoice_id,
+            "cancel", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            new_data={"status": "cancelled", "reversed_journal": jrnl_id},
         )
         return api_response(True, updated)
     except HTTPException:
@@ -1128,6 +1236,11 @@ def repost_journal(
             raise HTTPException(status_code=422, detail="Only issued invoices can be reposted")
         if inv.get("journal_entry_id"):
             return api_response(True, {"invoice_id": invoice_id, "journal_entry_id": inv["journal_entry_id"], "already_posted": True})
+
+        # H3: reposting writes a dated journal — it must respect the FY lock exactly
+        # like issue_invoice does (this path previously skipped the check).
+        if inv.get("invoice_date"):
+            period_validation_service.validate_posting_date(firm_id or "", inv["invoice_date"])
 
         try:
             journal_id = phase2_journal_service.journal_for_sales_invoice(inv, firm_id, inv.get("client_id", ""))
