@@ -9,9 +9,16 @@ IT Act Section 194C/194I/194J: TDS deducted at source on applicable payments.
 import os
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Optional
 
 from fastapi import HTTPException
+
+# Multi-Currency Phase 2 — currency metadata + the authoritative in-kernel gate.
+# Light imports only (policy + rate-type vocabulary); the ExchangeRateService and
+# providers are imported lazily in exchange_rate_service() to keep the hot path light.
+from domain.currency.policy import BASE_CURRENCY, CurrencyPolicy
+from domain.currency.rate_types import DEFAULT_RATE_TYPE, is_valid_rate_type
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.phase2_journal")
@@ -863,6 +870,17 @@ class Phase2JournalService:
             "Please set up Chart of Accounts before posting."
         )
 
+    def exchange_rate_service(self, db):
+        """The ExchangeRateService available to the posting pipeline (Phase 2, Task 3).
+
+        Manual provider by default (no automatic fetching); another provider is used
+        only if explicitly configured. NOT invoked for INR postings — same-currency
+        is the identity (rate 1) handled inline — so the INR path stays zero-overhead.
+        The seam exists so foreign-document phases obtain an immutable RateQuote and
+        freeze it on the posting, with zero change to the kernel or reports."""
+        from domain.currency import ExchangeRateService, ManualRateProvider
+        return ExchangeRateService([ManualRateProvider(db)], default_source="manual")
+
     def _create_journal(
         self,
         db,
@@ -879,6 +897,15 @@ class Phase2JournalService:
         created_by: Optional[str] = None,
         reversal_of: Optional[str] = None,
         attachments: Optional[list] = None,
+        # ── Multi-Currency Phase 2 (all optional; default → INR/rate 1, dormant) ──
+        txn_currency: Optional[str] = None,
+        exchange_rate: Optional[Decimal] = None,
+        rate_source: Optional[str] = None,
+        rate_type: Optional[str] = None,
+        rate_date: Optional[str] = None,
+        rate_selected_by: Optional[str] = None,
+        rate_overridden: bool = False,
+        currency_policy: Optional[CurrencyPolicy] = None,
     ) -> str:
         """
         Insert a balanced double-entry journal entry and its lines.
@@ -901,6 +928,33 @@ class Phase2JournalService:
         # M8: a balanced-but-zero journal is meaningless — never post it.
         if total_debit == 0:
             raise ValueError(f"Refusing to post a zero-value journal entry for ref={reference_no}")
+
+        # ── Multi-Currency Phase 2 (foundation): resolve the currency metadata ────
+        # Base currency is authoritative and always INR (Capability A). Everything
+        # defaults to the INR / rate=1 identity, so INR postings are byte-for-byte
+        # unchanged. A non-INR txn currency or rate≠1 is REFUSED unless an ACTIVE
+        # CurrencyPolicy is supplied — the kernel is the authoritative gate (G2),
+        # fail-safe to INR. No current caller passes foreign values, so the foreign
+        # branch is dormant; base balancing (above) is unaffected either way.
+        base_ccy = BASE_CURRENCY
+        entry_ccy = (txn_currency or base_ccy).strip().upper()
+        rate = exchange_rate if exchange_rate is not None else Decimal(1)
+        eff_rate_type = rate_type or DEFAULT_RATE_TYPE
+        eff_rate_date = rate_date or entry_date
+        eff_rate_source = rate_source or (
+            "identity" if entry_ccy == base_ccy and rate == Decimal(1) else None
+        )
+        is_foreign = entry_ccy != base_ccy or rate != Decimal(1)
+        if is_foreign:
+            if currency_policy is None or not getattr(currency_policy, "active", False):
+                raise ValueError(
+                    "Multi-currency posting requires an active currency policy; only "
+                    "INR postings are permitted while the feature is dormant."
+                )
+            if not is_valid_rate_type(eff_rate_type):
+                raise ValueError(f"unknown rate_type {eff_rate_type!r}")
+            if rate <= 0:
+                raise ValueError("exchange_rate must be positive")
 
         # Idempotency fast path (firm-scoped): same firm+client+reference_no+entry_date
         # is already posted → return it. The UNIQUE index (migration 143) is the
@@ -946,6 +1000,14 @@ class Phase2JournalService:
             entry_payload["reversal_of"] = reversal_of
         if attachments is not None:
             entry_payload["attachments"] = attachments
+        # Rate-selection provenance (G6) — additive; only stamped when a rate was
+        # actually chosen, so INR auto-postings keep a byte-for-byte-unchanged entry
+        # payload (rate_overridden defaults FALSE, rate_selected_at NULL at the DB).
+        if rate_overridden:
+            entry_payload["rate_overridden"] = True
+        if rate_selected_by is not None:
+            entry_payload["rate_selected_by"] = rate_selected_by
+            entry_payload["rate_selected_at"] = now_iso
 
         # H2: the UNIQUE index closes the TOCTOU race — if a concurrent poster won,
         # our insert raises 23505; recover by returning the winner's entry (idempotent).
@@ -973,6 +1035,18 @@ class Phase2JournalService:
                 "debit_paise":      l["debit_paise"],
                 "credit_paise":     l["credit_paise"],
                 "narration":        l.get("narration", ""),
+                # Multi-Currency Phase 2 dual storage (G4): the base (INR) amount stays
+                # authoritative in debit_paise/credit_paise; for INR postings the txn
+                # amount equals the base and the rate is 1. Per-line overrides support
+                # future foreign documents; no current caller supplies them.
+                "txn_currency":  (l.get("txn_currency") or entry_ccy),
+                "base_currency": base_ccy,
+                "exchange_rate": str(l["exchange_rate"] if l.get("exchange_rate") is not None else rate),
+                "txn_debit":     l["txn_debit"] if l.get("txn_debit") is not None else l["debit_paise"],
+                "txn_credit":    l["txn_credit"] if l.get("txn_credit") is not None else l["credit_paise"],
+                "rate_source":   l.get("rate_source", eff_rate_source),
+                "rate_type":     l.get("rate_type", eff_rate_type),
+                "rate_date":     l.get("rate_date", eff_rate_date),
             }
             for l in lines
         ]
