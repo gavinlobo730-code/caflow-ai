@@ -259,15 +259,11 @@ def create_credit_note(
                 MOCK_CREDIT_NOTE_LINES.append(ln)
             return api_response(True, cn)
 
-        seq   = _next_cn_seq(db, firm_id, client_id, fy)  # type: ignore[possibly-undefined]
-        cn_no = f"CN-{fy}-{seq:04d}"
-
         cn_payload = {
             "firm_id":              firm_id,
             "client_id":            client_id,
             "customer_id":          data["customer_id"],
             "sales_invoice_id":     data.get("sales_invoice_id"),
-            "credit_note_no":       cn_no,
             "credit_note_date":     data["credit_note_date"],
             "reason":               data.get("reason", ""),
             "is_interstate":        is_interstate,
@@ -281,9 +277,12 @@ def create_credit_note(
             "created_at":           datetime.now(timezone.utc).isoformat(),
         }
 
-        cn_resp = db.table("credit_notes").insert(cn_payload).execute()  # type: ignore[possibly-undefined]
-        cn      = cn_resp.data[0] if cn_resp.data else cn_payload
-        cn_id   = cn.get("id", str(uuid.uuid4()))
+        from services.numbering import insert_with_number
+        cn = insert_with_number(
+            db, "credit_notes", cn_payload, "credit_note_no",
+            lambda s: f"CN-{fy}-{s:04d}",
+            lambda: _next_cn_seq(db, firm_id, client_id, fy))
+        cn_id = cn.get("id", str(uuid.uuid4()))
 
         line_payloads = [
             {

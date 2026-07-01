@@ -175,6 +175,9 @@ def create_purchase_bill(
             if not v_resp.data:
                 raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
             vendor = v_resp.data[0]
+            # Business guard: never book a bill against a deactivated vendor.
+            if vendor.get("is_active") is False:
+                raise HTTPException(status_code=422, detail="This vendor is inactive. Reactivate the vendor before booking a bill.")
 
             # Determine is_interstate
             vendor_state = vendor.get("state_code") or _get_state_code_from_gstin(vendor.get("gstin")) or ""

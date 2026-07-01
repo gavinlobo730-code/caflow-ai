@@ -119,6 +119,13 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         phase2_journal_service.journal_for_receipt(receipt, firm_id or "", client_id)
         return {**receipt, "allocations": allocations}
 
+    # Business guard: never record a receipt against a deactivated customer.
+    _cust = (db.table("customers").select("is_active")
+             .eq("id", data["customer_id"]).eq("firm_id", firm_id or "").eq("client_id", client_id)
+             .limit(1).execute().data)
+    if _cust and _cust[0].get("is_active") is False:
+        raise HTTPException(status_code=422, detail="This customer is inactive. Reactivate the customer before recording a receipt.")
+
     # F1 fix: allocations must reference THIS client's invoices (firm+client scope),
     # validated BEFORE the receipt is created so a foreign invoice id can never be
     # recorded or have its paid_paise mutated.

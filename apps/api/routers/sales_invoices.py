@@ -465,13 +465,16 @@ def create_invoice(
             # Fetch customer state code (firm-scoped — never read another firm's master)
             cust_resp = (
                 db.table("customers")
-                .select("state_code, gstin, credit_days")
+                .select("state_code, gstin, credit_days, is_active")
                 .eq("id", data["customer_id"])
                 .eq("firm_id", firm_id)
                 .limit(1)
                 .execute()
             )
             customer = cust_resp.data[0] if cust_resp.data else {}
+            # Business guard: never raise an invoice against a deactivated customer.
+            if customer and customer.get("is_active") is False:
+                raise HTTPException(status_code=422, detail="This customer is inactive. Reactivate the customer before invoicing.")
 
             # Fetch client state code from GSTIN (firm-scoped)
             client_resp = (
@@ -583,16 +586,12 @@ def create_invoice(
                 MOCK_SALES_INVOICE_LINES.append(ln)
             return api_response(True, invoice)
 
-        # Generate invoice number
+        # Invoice number is generated with a graceful retry on numbering races (Phase B).
         fy = _current_fy()
-        seq = _next_invoice_seq(db, firm_id, client_id, fy)  # type: ignore[possibly-undefined]
-        invoice_no = f"SINV-{fy}-{seq:04d}"
-
         invoice_payload = {
             "firm_id":               firm_id,
             "client_id":             client_id,
             "customer_id":           data["customer_id"],
-            "invoice_no":            invoice_no,
             "invoice_date":          data["invoice_date"],
             "due_date":              eff_due_date,
             "credit_days":           eff_credit_days,
@@ -611,8 +610,11 @@ def create_invoice(
             "created_at":            datetime.now(timezone.utc).isoformat(),
         }
 
-        inv_resp = db.table("client_sales_invoices").insert(invoice_payload).execute()  # type: ignore[possibly-undefined]
-        invoice = inv_resp.data[0] if inv_resp.data else invoice_payload
+        from services.numbering import insert_with_number
+        invoice = insert_with_number(
+            db, "client_sales_invoices", invoice_payload, "invoice_no",
+            lambda s: f"SINV-{fy}-{s:04d}",
+            lambda: _next_invoice_seq(db, firm_id, client_id, fy))
         invoice_id = invoice.get("id", str(uuid.uuid4()))
 
         # Insert lines
