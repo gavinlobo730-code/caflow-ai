@@ -11,6 +11,8 @@ export interface UseDataTableArgs<T> {
   getRowId: (row: T) => string;
   initialSort?: SortState | null;
   initialPageSize?: number;
+  /** Default filter values applied until the user changes them (then persisted). */
+  initialFilters?: Record<string, FilterValue>;
   /** localStorage key; omit to disable persistence. */
   persistKey?: string;
 }
@@ -27,6 +29,7 @@ export function useDataTable<T>({
   getRowId,
   initialSort = null,
   initialPageSize = 50,
+  initialFilters,
   persistKey,
 }: UseDataTableArgs<T>) {
   const defaultHidden = useMemo(
@@ -37,7 +40,7 @@ export function useDataTable<T>({
   const [prefs, setPrefs] = useTablePreferences(persistKey, {
     search: "",
     sort: initialSort,
-    filters: {},
+    filters: initialFilters ?? {},
     pageSize: initialPageSize,
     hiddenColumns: defaultHidden,
   });
