@@ -3,13 +3,15 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Plus, RefreshCw, X, FileText, CheckCircle, Upload, Send, Clock,
-  Pencil, Trash2, Search, Eye, Download, ArrowUp, ArrowDown, Loader2, AlertTriangle,
+  Pencil, Trash2, Eye, Download, Loader2, AlertTriangle,
   CreditCard, Copy, MoreHorizontal, RotateCcw, Ban, BookOpen,
 } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise, formatDateTime } from "@/lib/services/formatting";
+import { DataTable } from "@/components/ui/data-table";
+import type { Column, FilterDef } from "@/lib/table/types";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
 import { buildCustomers, CUSTOMER_IMPORT_COLUMNS, buildReceipts, RECEIPT_IMPORT_COLUMNS } from "@/lib/imports/mappers";
@@ -193,8 +195,6 @@ interface HsnSuggestion {
   reason: string;
 }
 
-type SortKey = "invoice_no" | "invoice_date" | "due_date" | "total_paise" | "status";
-type SortDir = "asc" | "desc";
 type DateMode = "current" | "previous" | "custom";
 
 interface Receipt {
@@ -1181,53 +1181,39 @@ function SalesInvoices({
   const [detailId, setDetailId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SalesInvoice | null>(null);
 
-  // Search / filter / sort (sort + filters persisted in the URL).
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  // FY / date-window selector that SCOPES THE SERVER QUERY (which rows load).
+  // Client-side search/sort/status/amount/date filtering is owned by DataTable
+  // below (persisted via persistKey). The FY window + customer scope stay here
+  // (the FY selector renders in the table toolbar; the customer scope is also
+  // seeded from ?cust= for cross-tab "View Invoices" navigation).
   const [customerFilter, setCustomerFilter] = useState<string>("all");
   const [dateMode, setDateMode] = useState<DateMode>("current");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("invoice_date");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   // Summary stats
   const [stats, setStats] = useState({ outstanding: 0, issued: 0, paid: 0 });
 
-  // ── URL state: hydrate once on mount, then mirror changes back ────────────
+  // ── URL state: hydrate the FY window + customer scope once on mount, then
+  // mirror them back. (Search/sort/filters now persist via the DataTable.) ───
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
-    if (p.get("sort")) setSortKey(p.get("sort") as SortKey);
-    if (p.get("dir")) setSortDir(p.get("dir") as SortDir);
-    if (p.get("status")) setStatusFilter(p.get("status")!);
     if (p.get("cust")) setCustomerFilter(p.get("cust")!);
     if (p.get("fy")) setDateMode(p.get("fy") as DateMode);
     if (p.get("from")) setCustomFrom(p.get("from")!);
     if (p.get("to")) setCustomTo(p.get("to")!);
-    if (p.get("q")) { setSearch(p.get("q")!); setDebouncedSearch(p.get("q")!); }
   }, []);
 
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const set = (k: string, v: string, def: string) => (v && v !== def ? p.set(k, v) : p.delete(k));
-    set("sort", sortKey, "invoice_date");
-    set("dir", sortDir, "desc");
-    set("status", statusFilter, "all");
     set("cust", customerFilter, "all");
     set("fy", dateMode, "current");
     set("from", dateMode === "custom" ? customFrom : "", "");
     set("to", dateMode === "custom" ? customTo : "", "");
-    set("q", debouncedSearch, "");
     const qs = p.toString();
     window.history.replaceState(null, "", qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
-  }, [sortKey, sortDir, statusFilter, customerFilter, dateMode, customFrom, customTo, debouncedSearch]);
-
-  // Debounce the search box (instant-feel, but not a filter pass per keystroke).
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 250);
-    return () => clearTimeout(t);
-  }, [search]);
+  }, [customerFilter, dateMode, customFrom, customTo]);
 
   // The date window that scopes the server query (FY-aware).
   const range = useMemo(() => {
@@ -1314,40 +1300,12 @@ function SalesInvoices({
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Search + filter + sort, all client-side over the loaded window ────────
-  const visible = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase();
-    let r = invoices.filter((inv) => {
-      if (statusFilter !== "all" && inv.status !== statusFilter) return false;
-      if (customerFilter !== "all" && inv.customer_id !== customerFilter) return false;
-      if (q) {
-        const hay = `${inv.invoice_no} ${inv.customer_name ?? ""}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-    r = [...r].sort((a, b) => {
-      let cmp = 0;
-      switch (sortKey) {
-        case "invoice_no": cmp = a.invoice_no.localeCompare(b.invoice_no); break;
-        case "invoice_date": cmp = a.invoice_date.localeCompare(b.invoice_date); break;
-        case "due_date": cmp = (a.due_date ?? "").localeCompare(b.due_date ?? ""); break;
-        case "total_paise": cmp = a.total_paise - b.total_paise; break;
-        case "status": cmp = a.status.localeCompare(b.status); break;
-      }
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-    return r;
-  }, [invoices, debouncedSearch, statusFilter, customerFilter, sortKey, sortDir]);
-
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir(key === "total_paise" || key.includes("date") ? "desc" : "asc");
-    }
-  }
+  // Customer scope is a toolbar control (also seeded from ?cust= for cross-tab
+  // navigation), so it pre-filters the rows the DataTable then searches/sorts.
+  const scoped = useMemo(
+    () => (customerFilter === "all" ? invoices : invoices.filter((inv) => inv.customer_id === customerFilter)),
+    [invoices, customerFilter],
+  );
 
   async function issueInvoice(id: string) {
     try {
@@ -1461,20 +1419,46 @@ function SalesInvoices({
     return { imported, errors };
   }
 
-  const SortTh = ({ k, label, align = "left" }: { k: SortKey; label: string; align?: "left" | "right" }) => (
-    <th className={`px-3 py-3 font-semibold ${align === "right" ? "text-right" : "text-left"}`}>
-      <button
-        onClick={() => toggleSort(k)}
-        className={`inline-flex items-center gap-1 hover:text-[#475569] ${sortKey === k ? "text-[#334155]" : ""}`}
-      >
-        {label}
-        {sortKey === k && (sortDir === "asc" ? <ArrowUp size={10} /> : <ArrowDown size={10} />)}
-      </button>
-    </th>
-  );
+  // ── DataTable columns / filters (client-side over the loaded FY window) ────
+  const columns: Column<SalesInvoice>[] = useMemo(() => [
+    { key: "invoice_no", header: "Invoice No", accessor: (i) => i.invoice_no, searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (i) => <span className="font-mono font-medium text-[#1E293B]">{i.invoice_no}</span> },
+    { key: "invoice_date", header: "Date", accessor: (i) => i.invoice_date, sortable: true,
+      render: (i) => <span className="text-[#64748B] whitespace-nowrap">{i.invoice_date}</span> },
+    { key: "customer_name", header: "Customer", accessor: (i) => i.customer_name ?? "", searchable: true,
+      render: (i) => <span className="text-[#334155]">{i.customer_name}</span> },
+    { key: "taxable_paise", header: "Taxable", accessor: (i) => i.taxable_paise, align: "right", exportValue: (i) => formatPaise(i.taxable_paise),
+      render: (i) => <span className="font-mono text-[#334155]">{fmt(i.taxable_paise)}</span> },
+    { key: "gst_paise", header: "GST", accessor: (i) => i.gst_paise, align: "right", exportValue: (i) => formatPaise(i.gst_paise),
+      render: (i) => <span className="font-mono text-[#334155]">{fmt(i.gst_paise)}</span> },
+    { key: "total_paise", header: "Total", accessor: (i) => i.total_paise, sortable: true, align: "right", exportValue: (i) => formatPaise(i.total_paise),
+      render: (i) => <span className="font-mono font-semibold text-[#0F172A]">{fmt(i.total_paise)}</span> },
+    { key: "due_date", header: "Due", accessor: (i) => i.due_date ?? "", sortable: true,
+      render: (i) => (
+        <span className={`whitespace-nowrap ${isOverdueForUi(i) ? "text-red-600 font-medium" : "text-[#64748B]"}`}>
+          {i.due_date ?? "—"}
+          {isOverdueForUi(i) && i.days_overdue ? <span className="ml-1 text-[10px]">({i.days_overdue}d)</span> : null}
+        </span>
+      ) },
+    { key: "status", header: "Status", accessor: (i) => i.status, sortable: true,
+      render: (i) => (
+        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[i.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+          {i.status.replace("_", " ")}
+        </span>
+      ) },
+  ], []);
 
-  const anyFilterActive =
-    debouncedSearch.trim() !== "" || statusFilter !== "all" || customerFilter !== "all";
+  const filters: FilterDef<SalesInvoice>[] = useMemo(() => [
+    { key: "status", label: "Status", type: "select", accessor: (i) => i.status, options: [
+      { value: "draft", label: "Draft" },
+      { value: "issued", label: "Issued" },
+      { value: "partially_paid", label: "Partially paid" },
+      { value: "paid", label: "Paid" },
+      { value: "cancelled", label: "Cancelled" },
+    ] },
+    { key: "invoice_date", label: "Invoice date", type: "dateRange", accessor: (i) => i.invoice_date },
+    { key: "total_paise", label: "Total", type: "amountRange", accessor: (i) => i.total_paise },
+  ], []);
 
   return (
     <div className="space-y-4 max-w-screen-2xl">
@@ -1543,15 +1527,9 @@ function SalesInvoices({
       {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">
-          {visible.length} of {invoices.length} invoice{invoices.length !== 1 ? "s" : ""}
+          {invoices.length} invoice{invoices.length !== 1 ? "s" : ""} in this period
         </p>
         <div className="flex gap-2">
-          <button
-            onClick={load}
-            className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"
-          >
-            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-          </button>
           <button
             onClick={() => setShowImport(true)}
             className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
@@ -1565,73 +1543,6 @@ function SalesInvoices({
             <Plus size={12} /> New Invoice
           </button>
         </div>
-      </div>
-
-      {/* Search + Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search invoice no. or customer…"
-            className="w-full pl-8 pr-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
-        >
-          <option value="all">All statuses</option>
-          <option value="draft">Draft</option>
-          <option value="issued">Issued</option>
-          <option value="partially_paid">Partially paid</option>
-          <option value="paid">Paid</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-        <select
-          value={customerFilter}
-          onChange={(e) => setCustomerFilter(e.target.value)}
-          className="px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569] max-w-[160px]"
-        >
-          <option value="all">All customers</option>
-          {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-        <select
-          value={dateMode}
-          onChange={(e) => setDateMode(e.target.value as DateMode)}
-          className="px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
-        >
-          <option value="current">FY {financialYear}</option>
-          <option value="previous">FY {previousFy(financialYear)}</option>
-          <option value="custom">Custom range</option>
-        </select>
-        {dateMode === "custom" && (
-          <>
-            <input
-              type="date"
-              value={customFrom}
-              onChange={(e) => setCustomFrom(e.target.value)}
-              className="px-2 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
-            />
-            <span className="text-xs text-[#94A3B8]">to</span>
-            <input
-              type="date"
-              value={customTo}
-              onChange={(e) => setCustomTo(e.target.value)}
-              className="px-2 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
-            />
-          </>
-        )}
-        {anyFilterActive && (
-          <button
-            onClick={() => { setSearch(""); setDebouncedSearch(""); setStatusFilter("all"); setCustomerFilter("all"); }}
-            className="text-xs text-[#64748B] hover:text-[#334155] underline"
-          >
-            Clear
-          </button>
-        )}
       </div>
 
       {/* Edit / New Invoice Form */}
@@ -1661,141 +1572,135 @@ function SalesInvoices({
         />
       )}
 
-      {/* Table */}
-      {loading ? (
-        <div className="space-y-2">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-10 rounded bg-[#F8FAFC] animate-pulse" />
-          ))}
-        </div>
-      ) : invoices.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16">
-          <FileText size={32} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-sm text-[#64748B]">No invoices in this period</p>
-        </div>
-      ) : visible.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16">
-          <Search size={28} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-sm text-[#64748B]">No invoices match your search / filters</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
-                  <SortTh k="invoice_no" label="Invoice No" />
-                  <SortTh k="invoice_date" label="Date" />
-                  <th className="px-3 py-3 text-left font-semibold">Customer</th>
-                  <th className="px-3 py-3 text-right font-semibold">Taxable</th>
-                  <th className="px-3 py-3 text-right font-semibold">GST</th>
-                  <SortTh k="total_paise" label="Total" align="right" />
-                  <SortTh k="due_date" label="Due" />
-                  <SortTh k="status" label="Status" />
-                  <th className="px-4 py-3 text-right font-semibold">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                {visible.map((inv) => (
-                  <tr
-                    key={inv.id}
-                    onClick={() => setDetailId(inv.id)}
-                    className="hover:bg-[#F8FAFC] cursor-pointer"
-                  >
-                    <td className="px-4 py-2.5 font-mono font-medium text-[#1E293B]">{inv.invoice_no}</td>
-                    <td className="px-3 py-2.5 text-[#64748B] whitespace-nowrap">{inv.invoice_date}</td>
-                    <td className="px-3 py-2.5 text-[#334155]">{inv.customer_name}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#334155]">{fmt(inv.taxable_paise)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#334155]">{fmt(inv.gst_paise)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono font-semibold text-[#0F172A]">{fmt(inv.total_paise)}</td>
-                    <td className={`px-3 py-2.5 whitespace-nowrap ${isOverdueForUi(inv) ? "text-red-600 font-medium" : "text-[#64748B]"}`}>
-                      {inv.due_date ?? "—"}
-                      {isOverdueForUi(inv) && inv.days_overdue ? <span className="ml-1 text-[10px]">({inv.days_overdue}d)</span> : null}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[inv.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
-                        {inv.status.replace("_", " ")}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-2.5">
-                        <button
-                          onClick={() => setDetailId(inv.id)}
-                          className="text-[#94A3B8] hover:text-[#334155]"
-                          title="View details"
-                        >
-                          <Eye size={13} />
-                        </button>
-                        {inv.status === "draft" && (
-                          <>
-                            <button
-                              onClick={() => openEdit(inv)}
-                              className="text-[#94A3B8] hover:text-blue-600"
-                              title="Edit draft"
-                            >
-                              <Pencil size={13} />
-                            </button>
-                            <button
-                              onClick={() => issueInvoice(inv.id)}
-                              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                            >
-                              <CheckCircle size={11} /> Issue
-                            </button>
-                            <button
-                              onClick={() => setDeleteTarget(inv)}
-                              className="text-[#CBD5E1] hover:text-red-600"
-                              title="Delete draft"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </>
-                        )}
-                        {inv.status !== "draft" && inv.status !== "cancelled" && (
-                          <button
-                            onClick={() => openSend(inv)}
-                            className="text-xs text-emerald-600 hover:underline flex items-center gap-1"
-                          >
-                            <Send size={11} /> Send
-                          </button>
-                        )}
-                        {isOverdueForUi(inv) && (
-                          <button
-                            onClick={() => openRemind(inv)}
-                            className="text-xs text-amber-600 hover:underline flex items-center gap-1"
-                            title={inv.last_reminded_at
-                              ? `Last reminded ${fmtDateTime(inv.last_reminded_at)} · ${inv.reminder_count ?? 0} sent`
-                              : "Send an overdue-payment reminder"}
-                          >
-                            <AlertTriangle size={11} /> Remind{inv.reminder_count ? ` (${inv.reminder_count})` : ""}
-                          </button>
-                        )}
-                        {inv.status !== "draft" && inv.status !== "cancelled" && (
-                          <button
-                            onClick={() => loadAndShowDeliveries(inv)}
-                            className="text-[#CBD5E1] hover:text-[#64748B]"
-                            title="Delivery & reminder history"
-                          >
-                            <Clock size={11} />
-                          </button>
-                        )}
-                        {(inv.status === "issued" || inv.status === "partially_paid") && (
-                          <button
-                            onClick={() => setPaymentModal(inv)}
-                            className="text-xs text-indigo-600 hover:underline flex items-center gap-1"
-                            title="Online payment link & history"
-                          >
-                            <CreditCard size={11} /> Pay link
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
+      <DataTable
+        data={scoped}
+        columns={columns}
+        filters={filters}
+        getRowId={(i) => i.id}
+        loading={loading}
+        onRefresh={load}
+        searchPlaceholder="Search invoice no. or customer…"
+        initialSort={{ key: "invoice_date", dir: "desc" }}
+        exportFilename="sales-invoices"
+        persistKey="sales.invoices"
+        emptyTitle="No invoices in this period"
+        onRowClick={(inv) => setDetailId(inv.id)}
+        toolbarExtra={
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={customerFilter}
+              onChange={(e) => setCustomerFilter(e.target.value)}
+              aria-label="Customer"
+              className="px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569] max-w-[160px]"
+            >
+              <option value="all">All customers</option>
+              {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <select
+              value={dateMode}
+              onChange={(e) => setDateMode(e.target.value as DateMode)}
+              aria-label="Financial year"
+              className="px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
+            >
+              <option value="current">FY {financialYear}</option>
+              <option value="previous">FY {previousFy(financialYear)}</option>
+              <option value="custom">Custom range</option>
+            </select>
+            {dateMode === "custom" && (
+              <>
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  aria-label="From date"
+                  className="px-2 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
+                />
+                <span className="text-xs text-[#94A3B8]">to</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  aria-label="To date"
+                  className="px-2 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
+                />
+              </>
+            )}
           </div>
-        </div>
-      )}
+        }
+        rowActions={(inv) => (
+          <div className="flex items-center justify-end gap-2.5">
+            <button
+              onClick={() => setDetailId(inv.id)}
+              className="text-[#94A3B8] hover:text-[#334155]"
+              title="View details"
+            >
+              <Eye size={13} />
+            </button>
+            {inv.status === "draft" && (
+              <>
+                <button
+                  onClick={() => openEdit(inv)}
+                  className="text-[#94A3B8] hover:text-blue-600"
+                  title="Edit draft"
+                >
+                  <Pencil size={13} />
+                </button>
+                <button
+                  onClick={() => issueInvoice(inv.id)}
+                  className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                >
+                  <CheckCircle size={11} /> Issue
+                </button>
+                <button
+                  onClick={() => setDeleteTarget(inv)}
+                  className="text-[#CBD5E1] hover:text-red-600"
+                  title="Delete draft"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </>
+            )}
+            {inv.status !== "draft" && inv.status !== "cancelled" && (
+              <button
+                onClick={() => openSend(inv)}
+                className="text-xs text-emerald-600 hover:underline flex items-center gap-1"
+              >
+                <Send size={11} /> Send
+              </button>
+            )}
+            {isOverdueForUi(inv) && (
+              <button
+                onClick={() => openRemind(inv)}
+                className="text-xs text-amber-600 hover:underline flex items-center gap-1"
+                title={inv.last_reminded_at
+                  ? `Last reminded ${fmtDateTime(inv.last_reminded_at)} · ${inv.reminder_count ?? 0} sent`
+                  : "Send an overdue-payment reminder"}
+              >
+                <AlertTriangle size={11} /> Remind{inv.reminder_count ? ` (${inv.reminder_count})` : ""}
+              </button>
+            )}
+            {inv.status !== "draft" && inv.status !== "cancelled" && (
+              <button
+                onClick={() => loadAndShowDeliveries(inv)}
+                className="text-[#CBD5E1] hover:text-[#64748B]"
+                title="Delivery & reminder history"
+              >
+                <Clock size={11} />
+              </button>
+            )}
+            {(inv.status === "issued" || inv.status === "partially_paid") && (
+              <button
+                onClick={() => setPaymentModal(inv)}
+                className="text-xs text-indigo-600 hover:underline flex items-center gap-1"
+                title="Online payment link & history"
+              >
+                <CreditCard size={11} /> Pay link
+              </button>
+            )}
+          </div>
+        )}
+      />
     </div>
   );
 }
@@ -3020,8 +2925,6 @@ function DeleteInvoiceModal({
 
 // ── Customers Tab ──────────────────────────────────────────────────────────
 
-type CustomerStatusFilter = "active" | "inactive" | "all";
-
 interface CustomerDependencies {
   can_delete: boolean;
   dependencies: Record<string, number>;
@@ -3038,7 +2941,6 @@ function Customers({
 }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<CustomerStatusFilter>("active");
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
@@ -3055,21 +2957,20 @@ function Customers({
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = getSupabaseClient();
-    // Rebuild the query fresh for each page (PostgREST builders are single-use).
-    const { data } = await selectAll(() => {
-      let q = supabase
+    // Load all customers; active/inactive scoping is a client-side DataTable filter.
+    const { data } = await selectAll(() =>
+      supabase
         .from("customers")
         .select(
           "id, name, gstin, state_code, pan, email, phone, city, state, opening_balance_paise, credit_days, is_active"
         )
-        .eq("client_id", clientId);
-      if (statusFilter === "active") q = q.eq("is_active", true);
-      else if (statusFilter === "inactive") q = q.eq("is_active", false);
-      return q.order("name").order("id");
-    });
+        .eq("client_id", clientId)
+        .order("name")
+        .order("id"),
+    );
     setCustomers((data as Customer[]) ?? []);
     setLoading(false);
-  }, [clientId, statusFilter]);
+  }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -3213,35 +3114,51 @@ function Customers({
     return { imported, errors, skipped, skippedDetail };
   }
 
+  // ── DataTable columns / filters ───────────────────────────────────────────
+  const columns: Column<Customer>[] = useMemo(() => [
+    { key: "name", header: "Name", accessor: (c) => c.name, searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (c) => (
+        <div>
+          <span className="font-medium text-[#1E293B]">{c.name}</span>
+          {c.email && <div className="text-[10px] text-[#94A3B8]">{c.email}</div>}
+        </div>
+      ) },
+    { key: "gstin", header: "GSTIN", accessor: (c) => c.gstin ?? "", searchable: true,
+      render: (c) => <span className="font-mono text-[#64748B]">{c.gstin ?? "—"}</span> },
+    // Not shown as a column, but included so search covers phone/email as required.
+    { key: "phone", header: "Phone", accessor: (c) => c.phone ?? "", searchable: true, defaultHidden: true,
+      render: (c) => <span className="text-[#64748B]">{c.phone ?? "—"}</span> },
+    { key: "state", header: "State", accessor: (c) => c.state ?? c.state_code ?? "",
+      render: (c) => <span className="text-[#64748B]">{c.state ?? c.state_code ?? "—"}</span> },
+    { key: "credit_days", header: "Credit Days", accessor: (c) => c.credit_days ?? 0, align: "right",
+      render: (c) => <span className="text-[#334155]">{c.credit_days ?? 0}</span> },
+    { key: "opening_balance_paise", header: "Opening Balance", accessor: (c) => c.opening_balance_paise ?? 0, align: "right",
+      exportValue: (c) => formatPaise(c.opening_balance_paise ?? 0),
+      render: (c) => <span className="font-mono text-[#334155]">{fmt(c.opening_balance_paise ?? 0)}</span> },
+    { key: "is_active", header: "Status", accessor: (c) => (c.is_active ? "active" : "inactive"),
+      render: (c) => c.is_active ? (
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700">Active</span>
+      ) : (
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">Inactive</span>
+      ) },
+  ], []);
+
+  const filters: FilterDef<Customer>[] = useMemo(() => [
+    { key: "is_active", label: "Status", type: "select", accessor: (c) => (c.is_active ? "active" : "inactive"), options: [
+      { value: "active", label: "Active" },
+      { value: "inactive", label: "Inactive" },
+    ] },
+  ], []);
+
   return (
     <div className="space-y-4 max-w-screen-2xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <p className="text-xs font-semibold text-[#334155]">
-            {customers.length} {statusFilter === "all" ? "" : `${statusFilter} `}customer{customers.length !== 1 ? "s" : ""}
-          </p>
-          <div className="flex bg-[#F8FAFC] rounded-lg p-0.5 border border-[#E2E8F0]">
-            {(["active", "inactive", "all"] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`px-2.5 py-1 text-[11px] rounded-md capitalize transition-colors ${
-                  statusFilter === s
-                    ? "bg-white text-[#0F172A] shadow-sm font-medium"
-                    : "text-[#64748B] hover:text-[#334155]"
-                }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
+        <p className="text-xs font-semibold text-[#334155]">
+          {customers.length} customer{customers.length !== 1 ? "s" : ""}
+        </p>
         <div className="flex gap-2">
-          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
-            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-          </button>
           <button
             onClick={() => setShowImport(true)}
             className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
@@ -3456,67 +3373,29 @@ function Customers({
         );
       })()}
 
-      {loading ? (
-        <div className="space-y-2">
-          {[...Array(3)].map((_, i) => <div key={i} className="h-10 rounded bg-[#F8FAFC] animate-pulse" />)}
-        </div>
-      ) : customers.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16">
-          <p className="text-sm text-[#64748B]">
-            {statusFilter === "inactive" ? "No inactive customers" : statusFilter === "all" ? "No customers yet" : "No active customers"}
-          </p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
-                  <th className="px-4 py-3 text-left font-semibold">Name</th>
-                  <th className="px-3 py-3 text-left font-semibold">GSTIN</th>
-                  <th className="px-3 py-3 text-left font-semibold">State</th>
-                  <th className="px-3 py-3 text-right font-semibold">Credit Days</th>
-                  <th className="px-3 py-3 text-right font-semibold">Opening Balance</th>
-                  <th className="px-3 py-3 text-left font-semibold">Status</th>
-                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                {customers.map((c) => (
-                  <tr key={c.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-4 py-2.5 font-medium text-[#1E293B]">
-                      {c.name}
-                      {c.email && <div className="text-[10px] text-[#94A3B8]">{c.email}</div>}
-                    </td>
-                    <td className="px-3 py-2.5 font-mono text-[#64748B]">{c.gstin ?? "—"}</td>
-                    <td className="px-3 py-2.5 text-[#64748B]">{c.state ?? c.state_code ?? "—"}</td>
-                    <td className="px-3 py-2.5 text-right text-[#334155]">{c.credit_days ?? 0}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#334155]">
-                      {fmt(c.opening_balance_paise ?? 0)}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {c.is_active ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700">Active</span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">Inactive</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      <button
-                        onClick={(e) => openMenuFor(e, c)}
-                        aria-label={`Actions for ${c.name}`}
-                        className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
-                      >
-                        <MoreHorizontal size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* Table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
+      <DataTable
+        data={customers}
+        columns={columns}
+        filters={filters}
+        getRowId={(c) => c.id}
+        loading={loading}
+        onRefresh={load}
+        searchPlaceholder="Search by name, GSTIN, email, or phone…"
+        initialSort={{ key: "name", dir: "asc" }}
+        exportFilename="customers"
+        persistKey="sales.customers"
+        emptyTitle="No customers yet"
+        rowActions={(c) => (
+          <button
+            onClick={(e) => openMenuFor(e, c)}
+            aria-label={`Actions for ${c.name}`}
+            className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
+          >
+            <MoreHorizontal size={16} />
+          </button>
+        )}
+      />
     </div>
   );
 }
@@ -3862,6 +3741,34 @@ function Receipts({
     return { imported, errors };
   }
 
+  // ── DataTable columns / filters ───────────────────────────────────────────
+  const columns: Column<Receipt>[] = useMemo(() => [
+    { key: "receipt_no", header: "Receipt No", accessor: (r) => r.receipt_no, searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (r) => <span className="font-mono font-medium text-[#1E293B]">{r.receipt_no}</span> },
+    { key: "receipt_date", header: "Date", accessor: (r) => r.receipt_date, sortable: true,
+      render: (r) => <span className="text-[#64748B] whitespace-nowrap">{r.receipt_date}</span> },
+    { key: "customer_name", header: "Customer", accessor: (r) => r.customer_name ?? "", searchable: true,
+      render: (r) => <span className="text-[#334155]">{r.customer_name}</span> },
+    { key: "amount_paise", header: "Amount", accessor: (r) => r.amount_paise, sortable: true, align: "right", exportValue: (r) => formatPaise(r.amount_paise),
+      render: (r) => <span className="font-mono font-semibold text-[#0F172A]">{fmt(r.amount_paise)}</span> },
+    { key: "payment_mode", header: "Mode", accessor: (r) => r.payment_mode, searchable: true,
+      render: (r) => (
+        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#475569] uppercase">
+          {r.payment_mode}
+        </span>
+      ) },
+    { key: "allocated_paise", header: "Allocated", accessor: (r) => r.allocated_paise ?? 0, align: "right", exportValue: (r) => formatPaise(r.allocated_paise ?? 0),
+      render: (r) => <span className="font-mono text-green-700">{fmt(r.allocated_paise ?? 0)}</span> },
+    { key: "unallocated_paise", header: "Unallocated", accessor: (r) => r.amount_paise - (r.allocated_paise ?? 0), align: "right",
+      exportValue: (r) => formatPaise(r.amount_paise - (r.allocated_paise ?? 0)),
+      render: (r) => <span className="font-mono text-amber-700">{fmt(r.amount_paise - (r.allocated_paise ?? 0))}</span> },
+  ], []);
+
+  const filters: FilterDef<Receipt>[] = useMemo(() => [
+    { key: "unallocated", label: "Unallocated only", type: "boolean", accessor: (r) => r.amount_paise - (r.allocated_paise ?? 0) > 0,
+      trueLabel: "Unallocated", falseLabel: "Fully allocated" },
+  ], []);
+
   return (
     <div className="space-y-4 max-w-screen-2xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
@@ -3871,9 +3778,6 @@ function Receipts({
           {receipts.length} receipt{receipts.length !== 1 ? "s" : ""} in FY {financialYear}
         </p>
         <div className="flex gap-2">
-          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
-            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-          </button>
           <button
             onClick={() => setShowImport(true)}
             className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
@@ -3908,53 +3812,20 @@ function Receipts({
         />
       )}
 
-      {loading ? (
-        <div className="space-y-2">
-          {[...Array(3)].map((_, i) => <div key={i} className="h-10 rounded bg-[#F8FAFC] animate-pulse" />)}
-        </div>
-      ) : receipts.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16">
-          <p className="text-sm text-[#64748B]">No receipts in FY {financialYear}</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
-                  <th className="px-4 py-3 text-left font-semibold">Receipt No</th>
-                  <th className="px-3 py-3 text-left font-semibold">Date</th>
-                  <th className="px-3 py-3 text-left font-semibold">Customer</th>
-                  <th className="px-3 py-3 text-right font-semibold">Amount</th>
-                  <th className="px-3 py-3 text-left font-semibold">Mode</th>
-                  <th className="px-3 py-3 text-right font-semibold">Allocated</th>
-                  <th className="px-4 py-3 text-right font-semibold">Unallocated</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                {receipts.map((r) => {
-                  const unallocated = r.amount_paise - (r.allocated_paise ?? 0);
-                  return (
-                    <tr key={r.id} className="hover:bg-[#F8FAFC]">
-                      <td className="px-4 py-2.5 font-mono font-medium text-[#1E293B]">{r.receipt_no}</td>
-                      <td className="px-3 py-2.5 text-[#64748B] whitespace-nowrap">{r.receipt_date}</td>
-                      <td className="px-3 py-2.5 text-[#334155]">{r.customer_name}</td>
-                      <td className="px-3 py-2.5 text-right font-mono font-semibold text-[#0F172A]">{fmt(r.amount_paise)}</td>
-                      <td className="px-3 py-2.5">
-                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#475569] uppercase">
-                          {r.payment_mode}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-green-700">{fmt(r.allocated_paise ?? 0)}</td>
-                      <td className="px-4 py-2.5 text-right font-mono text-amber-700">{fmt(unallocated)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* Table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
+      <DataTable
+        data={receipts}
+        columns={columns}
+        filters={filters}
+        getRowId={(r) => r.id}
+        loading={loading}
+        onRefresh={load}
+        searchPlaceholder="Search receipt no., customer, or mode…"
+        initialSort={{ key: "receipt_date", dir: "desc" }}
+        exportFilename="receipts"
+        persistKey="sales.receipts"
+        emptyTitle={`No receipts in FY ${financialYear}`}
+      />
     </div>
   );
 }
@@ -4244,6 +4115,36 @@ function CreditNotes({
     }
   }
 
+  // ── DataTable columns / filters ───────────────────────────────────────────
+  const columns: Column<CreditNote>[] = useMemo(() => [
+    { key: "cn_no", header: "CN No", accessor: (cn) => cn.cn_no, searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (cn) => <span className="font-mono font-medium text-[#1E293B]">{cn.cn_no}</span> },
+    { key: "cn_date", header: "Date", accessor: (cn) => cn.cn_date, sortable: true,
+      render: (cn) => <span className="text-[#64748B] whitespace-nowrap">{cn.cn_date}</span> },
+    { key: "customer_name", header: "Customer", accessor: (cn) => cn.customer_name ?? "", searchable: true,
+      render: (cn) => <span className="text-[#334155]">{cn.customer_name}</span> },
+    { key: "original_invoice_no", header: "Orig. Invoice", accessor: (cn) => cn.original_invoice_no ?? "",
+      render: (cn) => <span className="font-mono text-[#64748B]">{cn.original_invoice_no ?? "—"}</span> },
+    { key: "reason", header: "Reason", accessor: (cn) => cn.reason, searchable: true,
+      render: (cn) => <span className="block max-w-[120px] truncate text-[#475569]">{cn.reason}</span> },
+    { key: "total_paise", header: "Total", accessor: (cn) => cn.total_paise, sortable: true, align: "right", exportValue: (cn) => formatPaise(cn.total_paise),
+      render: (cn) => <span className="font-mono font-semibold text-[#0F172A]">{fmt(cn.total_paise)}</span> },
+    { key: "status", header: "Status", accessor: (cn) => cn.status, sortable: true,
+      render: (cn) => (
+        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[cn.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+          {cn.status}
+        </span>
+      ) },
+  ], []);
+
+  const filters: FilterDef<CreditNote>[] = useMemo(() => [
+    { key: "status", label: "Status", type: "select", accessor: (cn) => cn.status, options: [
+      { value: "draft", label: "Draft" },
+      { value: "issued", label: "Issued" },
+      { value: "cancelled", label: "Cancelled" },
+    ] },
+  ], []);
+
   return (
     <div className="space-y-4 max-w-screen-2xl">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
@@ -4253,9 +4154,6 @@ function CreditNotes({
           {creditNotes.length} credit note{creditNotes.length !== 1 ? "s" : ""} in FY {financialYear}
         </p>
         <div className="flex gap-2">
-          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
-            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-          </button>
           <button
             onClick={() => setShowForm(true)}
             className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
@@ -4274,61 +4172,30 @@ function CreditNotes({
         />
       )}
 
-      {loading ? (
-        <div className="space-y-2">
-          {[...Array(3)].map((_, i) => <div key={i} className="h-10 rounded bg-[#F8FAFC] animate-pulse" />)}
-        </div>
-      ) : creditNotes.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16">
-          <p className="text-sm text-[#64748B]">No credit notes in FY {financialYear}</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
-                  <th className="px-4 py-3 text-left font-semibold">CN No</th>
-                  <th className="px-3 py-3 text-left font-semibold">Date</th>
-                  <th className="px-3 py-3 text-left font-semibold">Customer</th>
-                  <th className="px-3 py-3 text-left font-semibold">Orig. Invoice</th>
-                  <th className="px-3 py-3 text-left font-semibold">Reason</th>
-                  <th className="px-3 py-3 text-right font-semibold">Total</th>
-                  <th className="px-3 py-3 text-left font-semibold">Status</th>
-                  <th className="px-4 py-3 text-left font-semibold">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                {creditNotes.map((cn) => (
-                  <tr key={cn.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-4 py-2.5 font-mono font-medium text-[#1E293B]">{cn.cn_no}</td>
-                    <td className="px-3 py-2.5 text-[#64748B] whitespace-nowrap">{cn.cn_date}</td>
-                    <td className="px-3 py-2.5 text-[#334155]">{cn.customer_name}</td>
-                    <td className="px-3 py-2.5 font-mono text-[#64748B]">{cn.original_invoice_no ?? "—"}</td>
-                    <td className="px-3 py-2.5 text-[#475569] max-w-[120px] truncate">{cn.reason}</td>
-                    <td className="px-3 py-2.5 text-right font-mono font-semibold text-[#0F172A]">{fmt(cn.total_paise)}</td>
-                    <td className="px-3 py-2.5">
-                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[cn.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
-                        {cn.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {cn.status === "draft" && (
-                        <button
-                          onClick={() => issueCreditNote(cn.id)}
-                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                        >
-                          <CheckCircle size={11} /> Issue
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* Table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
+      <DataTable
+        data={creditNotes}
+        columns={columns}
+        filters={filters}
+        getRowId={(cn) => cn.id}
+        loading={loading}
+        onRefresh={load}
+        searchPlaceholder="Search CN no., customer, or reason…"
+        initialSort={{ key: "cn_date", dir: "desc" }}
+        exportFilename="credit-notes"
+        persistKey="sales.credit-notes"
+        emptyTitle={`No credit notes in FY ${financialYear}`}
+        rowActions={(cn) =>
+          cn.status === "draft" ? (
+            <button
+              onClick={() => issueCreditNote(cn.id)}
+              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+            >
+              <CheckCircle size={11} /> Issue
+            </button>
+          ) : null
+        }
+      />
     </div>
   );
 }
