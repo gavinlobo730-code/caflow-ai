@@ -167,17 +167,21 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
 
         inv_resp = (
             db.table("client_sales_invoices")
-            .select("total_paise,paid_paise")
+            .select("total_paise,paid_paise,credited_paise")
             .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .limit(1)
             .execute()
         )
         if inv_resp.data:
             inv = inv_resp.data[0]
+            total    = int(inv.get("total_paise", 0))
+            credited = int(inv.get("credited_paise", 0) or 0)   # credit notes already applied
             new_paid = int(inv.get("paid_paise", 0)) + alloc_amt
-            if new_paid > int(inv.get("total_paise", 0)):
-                raise HTTPException(status_code=422, detail=f"Invoice {inv_id}: allocation would exceed invoice total")
-            new_status = "paid" if new_paid >= int(inv.get("total_paise", 0)) else "partially_paid"
+            # An invoice is fully settled when cash paid + credit notes applied reach
+            # its total; the allocation may not push settlement past the total.
+            if new_paid + credited > total:
+                raise HTTPException(status_code=422, detail=f"Invoice {inv_id}: allocation would exceed invoice outstanding")
+            new_status = "paid" if (new_paid + credited) >= total else "partially_paid"
             db.table("client_sales_invoices").update({
                 "paid_paise": new_paid,
                 "status":     new_status,

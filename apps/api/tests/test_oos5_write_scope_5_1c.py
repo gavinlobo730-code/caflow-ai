@@ -176,9 +176,17 @@ def _seed_bill(monkeypatch, firm, status="draft"):
     db = FakeDB(); _wire(monkeypatch, pb, db)
     monkeypatch.setattr(pb.timeline_service, "log_timeline_event", lambda *a, **k: None)
     import services.phase2_journal_service as pjs
+    import services.period_validation_service as pvs
     monkeypatch.setattr(pjs.phase2_journal_service, "journal_for_purchase_bill", lambda **k: "JID")
-    db.seed("purchase_bills", {"id": "BILL", "firm_id": firm, "client_id": "A",
-                               "status": status, "total_paise": 100000})
+    # This file asserts tenant SCOPE only; cancellation's accounting side-effects
+    # (FY-lock check + kernel reversal) are covered in test_purchase_bill_cancellation.py.
+    monkeypatch.setattr(pjs.phase2_journal_service, "reverse_entry", lambda *a, **k: "REV")
+    monkeypatch.setattr(pvs.period_validation_service, "validate_posting_date", lambda *a, **k: None)
+    row = {"id": "BILL", "firm_id": firm, "client_id": "A",
+           "status": status, "total_paise": 100000, "paid_paise": 0}
+    if status != "draft":
+        row["journal_entry_id"] = "J1"      # a received bill carries its posted journal
+    db.seed("purchase_bills", row)
     return pb, db
 
 

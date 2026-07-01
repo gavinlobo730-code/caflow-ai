@@ -274,19 +274,22 @@ def get_outstanding_summary(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        customers = db.table("customers").select("id,name,opening_balance_paise").eq("client_id", client_id).eq("is_active", True).execute()
+        firm_id = current_user.get("firm_id")
+        customers = db.table("customers").select("id,name,opening_balance_paise").eq("client_id", client_id).eq("firm_id", firm_id).eq("is_active", True).execute()
 
         result = []
         for cust in (customers.data or []):
             inv_resp = (
-                db.table("sales_invoices")
-                .select("id,total_paise,paid_paise,status")
+                db.table("client_sales_invoices")
+                .select("id,total_paise,paid_paise,credited_paise,status")
                 .eq("customer_id", cust["id"])
+                .eq("firm_id", firm_id)
                 .not_.in_("status", ["paid", "cancelled"])
                 .execute()
             )
+            # Net receivable = total − cash paid − credit notes applied (integer paise).
             inv_outstanding = sum(
-                (i.get("total_paise", 0) - i.get("paid_paise", 0))
+                (i.get("total_paise", 0) - i.get("paid_paise", 0) - (i.get("credited_paise", 0) or 0))
                 for i in (inv_resp.data or [])
             )
             # Integer arithmetic only; opening balance always >= 0
@@ -533,22 +536,25 @@ def get_customer_outstanding(
         from core.supabase_client import get_supabase
         db = get_supabase()
 
-        # Fetch customer for opening balance
-        cust_resp = db.table("customers").select("opening_balance_paise").eq("id", customer_id).limit(1).execute()
+        # Fetch customer for opening balance (firm-scoped)
+        firm_id = current_user.get("firm_id")
+        cust_resp = db.table("customers").select("opening_balance_paise").eq("id", customer_id).eq("firm_id", firm_id).limit(1).execute()
         if not cust_resp.data:
             raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
         opening_balance = cust_resp.data[0].get("opening_balance_paise") or 0
 
         inv_resp = (
-            db.table("sales_invoices")
-            .select("id,invoice_no,invoice_date,total_paise,paid_paise,status")
+            db.table("client_sales_invoices")
+            .select("id,invoice_no,invoice_date,total_paise,paid_paise,credited_paise,status")
             .eq("customer_id", customer_id)
+            .eq("firm_id", firm_id)
             .not_.in_("status", ["paid", "cancelled"])
             .execute()
         )
         invoices = inv_resp.data or []
+        # Net receivable = total − cash paid − credit notes applied (integer paise).
         inv_outstanding = sum(
-            (i.get("total_paise", 0) - i.get("paid_paise", 0))
+            (i.get("total_paise", 0) - i.get("paid_paise", 0) - (i.get("credited_paise", 0) or 0))
             for i in invoices
         )
         total_outstanding = inv_outstanding + opening_balance  # integer paise

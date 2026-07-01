@@ -204,7 +204,7 @@ def get_outstanding(
     try:
         if _USE_MOCK:
             total = sum(
-                (inv.get("total_paise", 0) - inv.get("paid_paise", 0))
+                (inv.get("total_paise", 0) - inv.get("paid_paise", 0) - (inv.get("credited_paise", 0) or 0))
                 for inv in MOCK_SALES_INVOICES
                 if inv["client_id"] == client_id and inv.get("status") not in ("paid", "cancelled")
             )
@@ -214,13 +214,15 @@ def get_outstanding(
         db = get_supabase()
         resp = (
             db.table("client_sales_invoices")
-            .select("total_paise,paid_paise")
+            .select("total_paise,paid_paise,credited_paise")
             .eq("client_id", client_id)
+            .eq("firm_id", current_user.get("firm_id"))
             .not_.in_("status", ["paid", "cancelled"])
             .execute()
         )
+        # Net receivable = total − cash paid − credit notes applied (integer paise).
         outstanding = sum(
-            (r.get("total_paise", 0) - r.get("paid_paise", 0))
+            (r.get("total_paise", 0) - r.get("paid_paise", 0) - (r.get("credited_paise", 0) or 0))
             for r in (resp.data or [])
         )
         return api_response(True, {"client_id": client_id, "outstanding_paise": outstanding})
@@ -956,23 +958,67 @@ def cancel_invoice(
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
 
         from core.supabase_client import get_supabase
+        from services.phase2_journal_service import phase2_journal_service
         db = get_supabase()
-        resp = db.table("client_sales_invoices").select("status").eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
+        firm_id = current_user.get("firm_id")
+        resp = (db.table("client_sales_invoices")
+                .select("status, journal_entry_id, invoice_no, client_id, paid_paise, credited_paise")
+                .eq("id", invoice_id).eq("firm_id", firm_id).limit(1).execute())
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
-        if resp.data[0]["status"] == "cancelled":
+        inv = resp.data[0]
+        status = inv.get("status")
+        if status == "cancelled":
             raise HTTPException(status_code=422, detail="Invoice already cancelled")
+        if status == "draft":
+            raise HTTPException(status_code=422, detail="Draft invoices are deleted, not cancelled.")
+        # Accounting guard (prevent cancellation where the rules require): never cancel
+        # an invoice that carries settlements — the receipt/credit-note journals would
+        # be stranded. Reverse those or issue a credit note instead (CGST Act §34).
+        if int(inv.get("paid_paise") or 0) > 0 or int(inv.get("credited_paise") or 0) > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=("This invoice has receipts or credit notes applied and cannot be cancelled. "
+                        "Reverse the receipt(s) or issue a credit note instead."),
+            )
+
+        # A cancellation reversal is a NEW posting dated today — it must fall in an
+        # open financial year.
+        reversal_date = datetime.now(timezone.utc).date().isoformat()
+        period_validation_service.validate_posting_date(firm_id or "", reversal_date)
+
+        # Locate the invoice's posted issue-journal and reverse it THROUGH the kernel
+        # (append-only; the original entry is never modified). Idempotent: if a prior
+        # attempt already posted the reversal, skip straight to the status flip.
+        jrnl_id = inv.get("journal_entry_id")
+        if not jrnl_id:
+            jr = (db.table("journal_entries").select("id")
+                  .eq("firm_id", firm_id).eq("client_id", inv.get("client_id"))
+                  .eq("reference_no", inv.get("invoice_no")).eq("is_posted", True)
+                  .limit(1).execute().data)
+            jrnl_id = jr[0]["id"] if jr else None
+        if not jrnl_id:
+            raise HTTPException(status_code=422, detail="No posted journal found for this invoice to reverse.")
+        already = (db.table("journal_entries").select("id")
+                   .eq("firm_id", firm_id).eq("reversal_of", jrnl_id).limit(1).execute().data)
+        if not already:
+            phase2_journal_service.reverse_entry(
+                db, firm_id, jrnl_id, reversal_date,
+                narration=f"Cancellation of invoice {inv.get('invoice_no') or invoice_id}",
+                created_by=current_user.get("id"),
+            )
 
         upd = db.table("client_sales_invoices").update({
             "status":       "cancelled",
             "cancelled_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).execute()
+        }).eq("id", invoice_id).eq("firm_id", firm_id).execute()
 
         updated = upd.data[0] if upd.data else {}
         log_event(
-            current_user.get("firm_id", ""), "sales_invoice", invoice_id,
-            "status_change", actor_id=current_user.get("auth_user_id"),
-            actor_email=current_user.get("email"), new_data={"status": "cancelled"},
+            firm_id or "", "sales_invoice", invoice_id,
+            "cancel", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            new_data={"status": "cancelled", "reversed_journal": jrnl_id},
         )
         return api_response(True, updated)
     except HTTPException:
