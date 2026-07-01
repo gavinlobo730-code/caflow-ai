@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Plus, X, Search } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Plus, X } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { DataTable } from "@/components/ui/data-table";
+import type { Column, FilterDef } from "@/lib/table/types";
+import { formatDate } from "@/lib/services/formatting";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -19,7 +22,6 @@ async function apiFetch(path: string, opts?: RequestInit) {
   });
   return res.json();
 }
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -98,8 +100,6 @@ export default function RelationshipsPage() {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<EntityType | "All">("All");
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -175,38 +175,27 @@ export default function RelationshipsPage() {
     }
   }
 
-  const filtered = entities.filter((e) => {
-    const matchType = typeFilter === "All" || e.entity_type === typeFilter;
-    const q = search.toLowerCase();
-    const matchSearch =
-      !search ||
-      e.full_name.toLowerCase().includes(q) ||
-      (e.pan ?? "").toLowerCase().includes(q) ||
-      (e.email ?? "").toLowerCase().includes(q);
-    return matchType && matchSearch;
-  });
+  const columns: Column<Entity>[] = useMemo(() => [
+    { key: "full_name", header: "Name", accessor: (e) => e.full_name, searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (e) => <span className="font-medium text-[#1E293B]">{e.full_name}</span> },
+    { key: "entity_type", header: "Type", accessor: (e) => e.entity_type, sortable: true,
+      render: (e) => <Badge className={`text-[11px] ${ENTITY_TYPE_COLORS[e.entity_type]}`}>{e.entity_type}</Badge> },
+    { key: "pan", header: "PAN", accessor: (e) => e.pan ?? "", searchable: true,
+      render: (e) => <span className="font-mono text-xs text-[#64748B]">{e.pan || "—"}</span> },
+    { key: "gstin", header: "GSTIN", accessor: (e) => e.gstin ?? "", searchable: true, defaultHidden: true,
+      render: (e) => <span className="font-mono text-xs text-[#64748B]">{e.gstin || "—"}</span> },
+    { key: "email", header: "Email", accessor: (e) => e.email ?? "", searchable: true,
+      render: (e) => <span className="text-xs text-[#64748B]">{e.email || "—"}</span> },
+    { key: "roles_count", header: "Roles", accessor: (e) => e.roles_count, sortable: true, align: "right" },
+    { key: "linked_clients_count", header: "Linked Clients", accessor: (e) => e.linked_clients_count, sortable: true, align: "right" },
+    { key: "created_at", header: "Created", accessor: (e) => e.created_at, sortable: true, defaultHidden: true,
+      render: (e) => <span className="text-xs text-[#64748B]">{formatDate(e.created_at)}</span> },
+  ], []);
 
-  if (loading) {
-    return (
-      <div className="p-6 space-y-4 animate-pulse bg-[#F8FAFC] min-h-full">
-        <div className="h-6 bg-gray-200 rounded w-48" />
-        <div className="h-10 bg-gray-100 rounded" />
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-14 bg-gray-100 rounded-xl" />
-        ))}
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-6 bg-[#F8FAFC] min-h-full">
-        <div className="bg-red-50 text-red-600 rounded-lg px-5 py-4 text-sm border border-red-200">
-          {error}
-        </div>
-      </div>
-    );
-  }
+  const filters: FilterDef<Entity>[] = useMemo(() => [
+    { key: "entity_type", label: "Type", type: "select", accessor: (e) => e.entity_type,
+      options: ENTITY_TYPES.map((t) => ({ value: t, label: t })) },
+  ], []);
 
   return (
     <div className="p-6 space-y-5 bg-[#F8FAFC] min-h-full">
@@ -246,89 +235,28 @@ export default function RelationshipsPage() {
         </div>
       </div>
 
-      {/* Search & Filter */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, PAN, or email…"
-            className="w-full pl-8 pr-4 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
-          />
-        </div>
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value as EntityType | "All")}
-          className="px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
-        >
-          <option value="All">All Types</option>
-          {ENTITY_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Table */}
-      <Card className="bg-white border-gray-200 shadow-sm">
-        <CardContent className="p-0">
-          {filtered.length === 0 ? (
-            <div className="text-center py-16">
-              <p className="text-sm text-gray-500">No entities found</p>
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-gray-500 border-b border-gray-200">
-                  <th className="px-5 py-3 text-left font-medium">Name</th>
-                  <th className="px-3 py-3 text-left font-medium">Type</th>
-                  <th className="px-3 py-3 text-left font-medium">PAN</th>
-                  <th className="px-3 py-3 text-left font-medium">Email</th>
-                  <th className="px-3 py-3 text-left font-medium">Roles</th>
-                  <th className="px-3 py-3 text-left font-medium">Linked Clients</th>
-                  <th className="px-5 py-3 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filtered.map((entity) => (
-                  <tr key={entity.id} className="hover:bg-[#AFD2FA]/10 group">
-                    <td className="px-5 py-3 text-gray-800 font-medium">{entity.full_name}</td>
-                    <td className="px-3 py-3">
-                      <Badge className={`text-[11px] ${ENTITY_TYPE_COLORS[entity.entity_type]}`}>
-                        {entity.entity_type}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-3 font-mono text-xs text-gray-500">
-                      {entity.pan || "—"}
-                    </td>
-                    <td className="px-3 py-3 text-gray-500 text-xs">{entity.email || "—"}</td>
-                    <td className="px-3 py-3 text-center">
-                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                        {entity.roles_count}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 text-center">
-                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                        {entity.linked_clients_count}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      <a
-                        href={`/relationships/${entity.id}`}
-                        className="text-xs text-[#182350] hover:text-[#182350]/70 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        View →
-                      </a>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </CardContent>
-      </Card>
+      {/* Registry table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
+      <DataTable
+        data={entities}
+        columns={columns}
+        filters={filters}
+        getRowId={(e) => e.id}
+        loading={loading}
+        error={error}
+        onRetry={loadEntities}
+        onRefresh={loadEntities}
+        searchPlaceholder="Search by name, PAN, GSTIN, or email…"
+        initialSort={{ key: "full_name", dir: "asc" }}
+        exportFilename="entity-registry"
+        persistKey="relationships.entities"
+        emptyTitle="No entities found"
+        emptyDescription="Add an entity or run match detection to populate the registry."
+        rowActions={(e) => (
+          <a href={`/relationships/${e.id}`} className="text-xs font-medium text-[#182350] hover:underline">
+            View →
+          </a>
+        )}
+      />
 
       {/* Add Entity Modal */}
       {modalOpen && (
