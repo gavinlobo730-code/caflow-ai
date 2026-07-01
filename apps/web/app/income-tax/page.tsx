@@ -11,7 +11,7 @@
  * All filing actions require explicit CA confirmation. Never auto-submit to Income Tax Portal.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
   FileText,
@@ -30,6 +30,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getClients } from "@/lib/data/clients";
 import { formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
+import { DataTable } from "@/components/ui/data-table";
+import type { Column, FilterDef } from "@/lib/table/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -331,6 +333,118 @@ export default function IncomeTaxPage() {
     return `${fyStart}-${String(fyStart + 1).slice(-2)}`;
   }
 
+  // Effective status: an unfiled entry past its due date reads as "overdue".
+  const effectiveStatusOf = useCallback(
+    (entry: ITREntry): string =>
+      entry.filing_status !== "filed" && entry.due_date < today ? "overdue" : entry.filing_status,
+    [today],
+  );
+
+  // ---------------------------------------------------------------------------
+  // ITR Status DataTable — columns, filters
+  // ---------------------------------------------------------------------------
+
+  const itrColumns: Column<ITREntry>[] = useMemo(() => [
+    {
+      key: "client_name", header: "Client Name", sticky: true, hideable: false, sortable: true, searchable: true,
+      accessor: (e) => e.clients?.client_name ?? "",
+      render: (e) => <span className="font-medium text-[#0F172A]">{e.clients?.client_name ?? "—"}</span>,
+    },
+    {
+      key: "pan", header: "PAN", searchable: true, sortable: true,
+      accessor: (e) => e.clients?.pan ?? "",
+      render: (e) => (
+        <span className="font-mono text-xs text-[#475569] bg-[#F8FAFC] px-1.5 py-0.5 rounded">
+          {e.clients?.pan ?? "—"}
+        </span>
+      ),
+    },
+    {
+      key: "entity_type", header: "Entity", sortable: true,
+      accessor: (e) => (e.clients?.entity_type ?? "").replace(/_/g, " "),
+      render: (e) => (
+        <span className="text-[#475569] text-xs capitalize">
+          {(e.clients?.entity_type ?? "—").replace(/_/g, " ")}
+        </span>
+      ),
+    },
+    {
+      key: "itr_form", header: "ITR Form", sortable: true,
+      accessor: (e) => e.compliance_type,
+      render: (e) => (
+        <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+          {e.compliance_type}
+        </span>
+      ),
+    },
+    {
+      key: "ay", header: "AY", sortable: true,
+      accessor: (e) => getAYFromDates(e.period_start),
+      render: (e) => <span className="text-[#475569] text-xs">{getAYFromDates(e.period_start)}</span>,
+    },
+    {
+      key: "due_date", header: "Due Date", sortable: true,
+      accessor: (e) => e.due_date,
+      render: (e) => <span className="text-[#475569] text-xs">{formatDate(e.due_date)}</span>,
+    },
+    {
+      key: "status", header: "Status", sortable: true,
+      accessor: (e) => effectiveStatusOf(e),
+      render: (e) => {
+        const s = effectiveStatusOf(e);
+        return (
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[s] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
+            {STATUS_LABELS[s] ?? s}
+          </span>
+        );
+      },
+    },
+    {
+      key: "arn_number", header: "ARN / Ack No",
+      accessor: (e) => e.arn_number ?? "",
+      render: (e) => (
+        <span className="text-xs font-mono text-[#64748B]">
+          {e.arn_number ?? <span className="text-[#CBD5E1]">—</span>}
+        </span>
+      ),
+    },
+  ], [effectiveStatusOf]);
+
+  const itrFilters: FilterDef<ITREntry>[] = useMemo(() => {
+    const defs: FilterDef<ITREntry>[] = [];
+    // Entity type — only when at least one row carries one.
+    const entityOpts = Array.from(
+      new Set(entries.map((e) => (e.clients?.entity_type ?? "").trim()).filter(Boolean)),
+    ).sort();
+    if (entityOpts.length > 0) {
+      defs.push({
+        key: "entity_type", label: "Entity", type: "select",
+        accessor: (e) => (e.clients?.entity_type ?? "").replace(/_/g, " "),
+        options: entityOpts.map((v) => ({ value: v.replace(/_/g, " "), label: v.replace(/_/g, " ") })),
+      });
+    }
+    defs.push(
+      {
+        key: "ay", label: "AY / FY", type: "select",
+        accessor: (e) => getAYFromDates(e.period_start),
+        options: [...ASSESSMENT_YEARS].map((ay) => ({ value: ay, label: ay })),
+      },
+      {
+        key: "itr_form", label: "ITR Form", type: "select",
+        accessor: (e) => e.compliance_type,
+        options: [...ITR_FORMS].map((f) => ({ value: f, label: f })),
+      },
+      {
+        key: "status", label: "Status", type: "select",
+        accessor: (e) => effectiveStatusOf(e),
+        options: ["pending", "in_progress", "overdue", "filed"].map((s) => ({
+          value: s, label: STATUS_LABELS[s] ?? s,
+        })),
+      },
+    );
+    return defs;
+  }, [entries, effectiveStatusOf]);
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -421,7 +535,7 @@ export default function IncomeTaxPage() {
       {/* ------------------------------------------------------------------ */}
       {activeTab === "ITR Status" && (
         <div className="space-y-4">
-          {/* ITR Status Table */}
+          {/* ITR Status Table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
           <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-[#0F172A]">
@@ -435,127 +549,54 @@ export default function IncomeTaxPage() {
               )}
             </div>
 
-            {loading ? (
-              <div className="px-5 py-12 text-center text-sm text-[#94A3B8]">
-                Loading ITR data…
-              </div>
-            ) : error ? (
-              <div className="px-5 py-12 text-center text-sm text-red-500">
-                {error}
-              </div>
-            ) : entries.length === 0 ? (
-              <div className="px-5 py-14 text-center space-y-3">
-                <FileText className="w-10 h-10 text-gray-200 mx-auto" />
-                <p className="text-sm font-medium text-[#475569]">
-                  No ITR deadlines added yet
-                </p>
-                <p className="text-xs text-[#94A3B8] max-w-sm mx-auto">
-                  Click &ldquo;Add ITR Deadline&rdquo; to manually track ITR filings for
-                  your clients. Each entry records the ITR form, assessment year,
-                  due date, and filing status.
-                </p>
-                <button
-                  onClick={() => setShowAddModal(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors mt-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add first ITR deadline
-                </button>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-[#F8FAFC] text-xs text-[#64748B] font-medium uppercase tracking-wider">
-                      <th className="px-5 py-2.5 text-left">Client Name</th>
-                      <th className="px-4 py-2.5 text-left">PAN</th>
-                      <th className="px-4 py-2.5 text-left">Entity</th>
-                      <th className="px-4 py-2.5 text-left">ITR Form</th>
-                      <th className="px-4 py-2.5 text-left">AY</th>
-                      <th className="px-4 py-2.5 text-left">Due Date</th>
-                      <th className="px-4 py-2.5 text-left">Status</th>
-                      <th className="px-4 py-2.5 text-left">ARN / Ack No</th>
-                      <th className="px-4 py-2.5 text-left">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#F8FAFC]">
-                    {entries.map((entry) => {
-                      const isOverdue =
-                        entry.filing_status !== "filed" && entry.due_date < today;
-                      const effectiveStatus = isOverdue
-                        ? "overdue"
-                        : entry.filing_status;
-
-                      return (
-                        <tr
-                          key={entry.id}
-                          className="hover:bg-[#F8FAFC]/50 transition-colors"
-                        >
-                          <td className="px-5 py-3 font-medium text-[#0F172A]">
-                            {entry.clients?.client_name ?? "—"}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="font-mono text-xs text-[#475569] bg-[#F8FAFC] px-1.5 py-0.5 rounded">
-                              {entry.clients?.pan ?? "—"}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-[#475569] text-xs capitalize">
-                            {(entry.clients?.entity_type ?? "—").replace(/_/g, " ")}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
-                              {entry.compliance_type}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-[#475569] text-xs">
-                            {getAYFromDates(entry.period_start)}
-                          </td>
-                          <td className="px-4 py-3 text-[#475569] text-xs">
-                            {formatDate(entry.due_date)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                STATUS_STYLES[effectiveStatus] ??
-                                "bg-[#F1F5F9] text-[#475569]"
-                              }`}
-                            >
-                              {STATUS_LABELS[effectiveStatus] ?? effectiveStatus}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-xs font-mono text-[#64748B]">
-                            {entry.arn_number ?? (
-                              <span className="text-[#CBD5E1]">—</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            {entry.filing_status !== "filed" ? (
-                              <button
-                                onClick={() => {
-                                  setFiledModal({ entry });
-                                  setFiledForm({
-                                    arn: "",
-                                    filed_date: today,
-                                  });
-                                  setFiledError(null);
-                                }}
-                                className="text-xs px-2.5 py-1 bg-green-50 text-green-700 font-medium rounded hover:bg-green-100 transition-colors"
-                              >
-                                Mark Filed
-                              </button>
-                            ) : (
-                              <span className="text-xs text-[#94A3B8]">
-                                Filed {entry.filed_date ? formatDate(entry.filed_date) : ""}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <div className="p-4">
+              <DataTable
+                data={entries}
+                columns={itrColumns}
+                filters={itrFilters}
+                getRowId={(e) => e.id}
+                loading={loading}
+                error={error}
+                onRetry={loadData}
+                onRefresh={loadData}
+                searchPlaceholder="Search by client name or PAN…"
+                initialSort={{ key: "due_date", dir: "asc" }}
+                exportFilename="itr-status"
+                persistKey="income-tax.itr"
+                emptyTitle="No ITR deadlines added yet"
+                emptyDescription={
+                  "Click “Add ITR Deadline” to manually track ITR filings for your clients. " +
+                  "Each entry records the ITR form, assessment year, due date, and filing status."
+                }
+                emptyAction={
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors mt-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add first ITR deadline
+                  </button>
+                }
+                rowActions={(entry) =>
+                  entry.filing_status !== "filed" ? (
+                    <button
+                      onClick={() => {
+                        setFiledModal({ entry });
+                        setFiledForm({ arn: "", filed_date: today });
+                        setFiledError(null);
+                      }}
+                      className="text-xs px-2.5 py-1 bg-green-50 text-green-700 font-medium rounded hover:bg-green-100 transition-colors"
+                    >
+                      Mark Filed
+                    </button>
+                  ) : (
+                    <span className="text-xs text-[#94A3B8]">
+                      Filed {entry.filed_date ? formatDate(entry.filed_date) : ""}
+                    </span>
+                  )
+                }
+              />
+            </div>
           </div>
 
           {/* ITR Form Guide — collapsible */}

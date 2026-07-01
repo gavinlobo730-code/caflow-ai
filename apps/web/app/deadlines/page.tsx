@@ -1,13 +1,13 @@
 "use client";
 
 import { Suspense } from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Calendar, AlertTriangle, Clock, CheckCircle, FileText,
   ExternalLink, FlaskConical, Users, ArrowRight,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { formatDate } from "@/lib/services/formatting";
@@ -18,6 +18,8 @@ import type { Client } from "@/lib/types";
 import DemoFilingModal from "@/components/DemoFilingModal";
 import { getDemoFilingsByEntry, saveDemoFiling, type DemoFiling } from "@/lib/data/demoFilings";
 import { isSimulatable, DEMO_STATUS_LABEL } from "@/lib/filing/demoFiling";
+import { DataTable } from "@/components/ui/data-table";
+import type { Column, FilterDef } from "@/lib/table/types";
 
 // ─── Type filter mapping ───────────────────────────────────────────────────
 // URL param → compliance_type predicate. TDS and MCA use prefix matching because
@@ -80,9 +82,6 @@ function DeadlinesContent() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [clientFilter, setClientFilter] = useState("");
   const [markFiled, setMarkFiled] = useState<MarkFiledForm | null>(null);
   const [filingLoading, setFilingLoading] = useState(false);
   const [demoFilings, setDemoFilings] = useState<Record<string, DemoFiling>>({});
@@ -106,13 +105,6 @@ function DeadlinesContent() {
       setLoading(false);
     }
   }
-
-  // Clear in-page sub-filters when the URL type changes so prior selections don't bleed over
-  useEffect(() => {
-    setStatusFilter("");
-    setTypeFilter("");
-    setClientFilter("");
-  }, [urlType]);
 
   useEffect(() => { loadData(); }, []);
 
@@ -145,22 +137,24 @@ function DeadlinesContent() {
     }
   }
 
-  if (loading) return <LoadingSpinner />;
-  if (error) {
-    return (
-      <div className="p-6 max-w-7xl mx-auto">
-        <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div>
-      </div>
-    );
-  }
+  // ── Client name / GSTIN lookups (compliance rows carry only client_id) ─────
+  const clientMap = useMemo(
+    () => Object.fromEntries(clients.map(c => [c.id, c.client_name])),
+    [clients],
+  );
+  const clientGstinMap = useMemo(
+    () => Object.fromEntries(clients.map(c => [c.id, c.gstin ?? ""])),
+    [clients],
+  );
 
   const today = new Date().toISOString().split("T")[0];
   const in7Days = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
 
-  // Apply URL type filter first (drives the stats cards too)
-  const typeRecords = urlType
-    ? records.filter(r => matchesUrlType(r.compliance_type, urlType))
-    : records;
+  // Apply URL type filter first (drives the stats cards AND the table dataset)
+  const typeRecords = useMemo(
+    () => (urlType ? records.filter(r => matchesUrlType(r.compliance_type, urlType)) : records),
+    [records, urlType],
+  );
 
   const overdue     = typeRecords.filter(r => r.due_date < today && r.filing_status !== "filed" && r.filing_status !== "na").length;
   const dueThisWeek = typeRecords.filter(r => r.due_date >= today && r.due_date <= in7Days && r.filing_status !== "filed").length;
@@ -180,26 +174,138 @@ function DeadlinesContent() {
     { label: "Demo Filed",    value: demoCount,    icon: FlaskConical,   color: "text-amber-600", bg: "bg-amber-50"  },
   ];
 
-  const clientMap = Object.fromEntries(clients.map(c => [c.id, c.client_name]));
+  // ── DataTable columns ──────────────────────────────────────────────────────
+  const columns: Column<ComplianceEntry>[] = useMemo(() => [
+    {
+      key: "client", header: "Client", sticky: true, hideable: false, sortable: true, searchable: true,
+      accessor: (r) => clientMap[r.client_id] ?? r.client_id.slice(0, 8),
+      render: (r) => (
+        <Link href={`/clients/${r.client_id}`} className="font-medium text-blue-600 hover:underline">
+          {clientMap[r.client_id] ?? r.client_id.slice(0, 8)}
+        </Link>
+      ),
+    },
+    // GSTIN — searchable only (hidden column); lets users find a row by the
+    // client's GSTIN even though it isn't shown by default.
+    {
+      key: "gstin", header: "GSTIN", searchable: true, defaultHidden: true,
+      accessor: (r) => clientGstinMap[r.client_id] ?? "",
+      render: (r) => <span className="font-mono text-xs text-[#64748B]">{clientGstinMap[r.client_id] || "—"}</span>,
+    },
+    {
+      key: "compliance_type", header: "Type", sortable: true,
+      accessor: (r) => r.compliance_type,
+      render: (r) => <span className="text-xs text-[#475569]">{r.compliance_type}</span>,
+    },
+    {
+      key: "period", header: "Period", accessor: (r) => r.period_start,
+      render: (r) => (
+        <span className="text-xs text-[#64748B] whitespace-nowrap">
+          {formatDate(r.period_start)} – {formatDate(r.period_end)}
+        </span>
+      ),
+    },
+    {
+      key: "due_date", header: "Due Date", sortable: true, accessor: (r) => r.due_date,
+      render: (r) => (
+        <span className={`text-xs whitespace-nowrap ${r.due_date < today && r.filing_status !== "filed" ? "text-red-600 font-medium" : "text-[#475569]"}`}>
+          {formatDate(r.due_date)}
+        </span>
+      ),
+    },
+    {
+      key: "filing_status", header: "Status", sortable: true, accessor: (r) => r.filing_status,
+      render: (r) => (
+        <div className="flex flex-col gap-1 items-start">
+          <Badge className={`text-xs ${FILING_STATUS_COLORS[r.filing_status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
+            {r.filing_status}
+          </Badge>
+          {demoFilings[r.id] && (
+            <Badge className="text-[10px] bg-amber-100 text-amber-700 flex items-center gap-1">
+              <FlaskConical size={10} /> {DEMO_STATUS_LABEL}
+            </Badge>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "arn", header: "ARN",
+      accessor: (r) => (demoFilings[r.id] ? demoFilings[r.id].demo_reference : (r.arn_number ?? "")),
+      render: (r) => (
+        <span className="text-xs text-[#64748B] font-mono">
+          {demoFilings[r.id]
+            ? <span className="text-amber-700" title="Demo reference — not filed with any portal">{demoFilings[r.id].demo_reference}</span>
+            : (r.arn_number ?? "—")}
+        </span>
+      ),
+    },
+  ], [clientMap, clientGstinMap, demoFilings, today]);
 
-  // Secondary in-page filters (status, explicit type dropdown, client name search)
-  const filtered = typeRecords.filter(r => {
-    if (statusFilter && r.filing_status !== statusFilter) return false;
-    if (typeFilter && r.compliance_type !== typeFilter) return false;
-    if (clientFilter) {
-      const name = (clientMap[r.client_id] ?? "").toLowerCase();
-      if (!name.includes(clientFilter.toLowerCase())) return false;
+  // ── DataTable filters — status always; type only when URL doesn't set it ────
+  // (Matching the original: the Type dropdown is hidden — and not applied — when
+  // a URL `type` param is active, since the dataset is already scoped to it.)
+  const filters: FilterDef<ComplianceEntry>[] = useMemo(() => {
+    const defs: FilterDef<ComplianceEntry>[] = [
+      { key: "filing_status", label: "Status", type: "select", accessor: (r) => r.filing_status,
+        options: ALL_STATUSES.map(s => ({ value: s, label: s })) },
+      { key: "due_date", label: "Due Date", type: "dateRange", accessor: (r) => r.due_date },
+    ];
+    if (!urlType) {
+      defs.splice(1, 0, {
+        key: "compliance_type", label: "Type", type: "select", accessor: (r) => r.compliance_type,
+        options: ALL_TYPES.map(t => ({ value: t, label: t })),
+      });
     }
-    return true;
-  });
+    return defs;
+  }, [urlType]);
 
   const pageTitle = urlType && TYPE_LABELS[urlType]
     ? `Deadlines — ${TYPE_LABELS[urlType]}`
     : "All Deadlines";
 
-  // Empty state copy — type-specific when URL has a type param
-  const emptyStateCopy: EmptyStateCopy | null =
-    urlType && TYPE_EMPTY_STATES[urlType] ? TYPE_EMPTY_STATES[urlType] : null;
+  // Empty state copy — type-specific when URL has a type param and that type has
+  // no records at all. Falls back to broader "no clients"/"no records" copy.
+  const typeEmpty = urlType && TYPE_EMPTY_STATES[urlType] && typeRecords.length === 0
+    ? TYPE_EMPTY_STATES[urlType] : null;
+
+  const emptyTitle = typeEmpty
+    ? typeEmpty.title
+    : records.length === 0 && clients.length === 0
+    ? "No clients yet"
+    : records.length === 0
+    ? "No compliance records yet"
+    : "No records match your filters";
+  const emptyDescription = typeEmpty
+    ? typeEmpty.desc
+    : records.length === 0 && clients.length === 0
+    ? "Deadlines are tracked per-client. Add your first client to start managing compliance schedules."
+    : records.length === 0
+    ? "Open a client and go to the Compliance tab to seed their filing schedule for this year."
+    : "Adjust or clear the filters above to see more deadlines.";
+  const emptyAction = records.length === 0 && clients.length === 0 ? (
+    <Link
+      href="/clients"
+      className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+    >
+      Add First Client <ArrowRight size={13} />
+    </Link>
+  ) : (
+    <Link
+      href="/clients"
+      className="inline-flex items-center gap-1.5 px-4 py-2 border border-[#E2E8F0] text-[#475569] text-xs font-semibold rounded-lg hover:bg-[#F8FAFC] transition-colors"
+    >
+      View Clients <ArrowRight size={13} />
+    </Link>
+  );
+
+  if (loading) return <LoadingSpinner />;
+  if (error) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -261,193 +367,62 @@ function DeadlinesContent() {
         </Card>
       )}
 
-      {/* Secondary in-page filters — type dropdown hidden when URL already sets type */}
-      <div className="flex flex-wrap gap-3">
-        <div>
-          <label className="text-xs text-[#64748B]">Status</label>
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-            className="block mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="">All statuses</option>
-            {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-        {!urlType && (
-          <div>
-            <label className="text-xs text-[#64748B]">Type</label>
-            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-              className="block mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">All types</option>
-              {ALL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+      {/* Registry table — shared DataTable (search, sort, filters, pagination, export, prefs).
+          `key` includes urlType so switching type views resets the ephemeral table state. */}
+      <DataTable
+        key={urlType ?? "all"}
+        data={typeRecords}
+        columns={columns}
+        filters={filters}
+        getRowId={(r) => r.id}
+        onRefresh={loadData}
+        searchPlaceholder="Search by client name or GSTIN…"
+        initialSort={{ key: "due_date", dir: "asc" }}
+        exportFilename="compliance-deadlines"
+        persistKey="deadlines.list"
+        emptyTitle={emptyTitle}
+        emptyDescription={emptyDescription}
+        emptyAction={emptyAction}
+        rowActions={(r) => (
+          <div className="flex items-center gap-3 flex-wrap justify-end">
+            {r.filing_status !== "filed" && r.filing_status !== "na" && (
+              <button
+                onClick={() => setMarkFiled({ id: r.id, arn: r.arn_number ?? "" })}
+                className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+              >
+                <CheckCircle size={12} /> Mark Filed
+              </button>
+            )}
+            {r.filing_status === "filed" && (
+              <span className="text-xs text-green-600 flex items-center gap-1">
+                <CheckCircle size={12} /> {r.filed_date ? formatDate(r.filed_date) : "Filed"}
+              </span>
+            )}
+            {isSimulatable(r.compliance_type) && (
+              <button
+                onClick={() => setDemoEntry(r)}
+                className="text-xs text-amber-700 hover:underline flex items-center gap-1"
+                title="Run a demo of the filing workflow — submits nothing"
+              >
+                <FlaskConical size={12} /> Simulate Filing
+              </button>
+            )}
+            <Link
+              href={`/clients/${r.client_id}`}
+              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+            >
+              <ExternalLink size={11} /> Open Client
+            </Link>
           </div>
         )}
-        <div>
-          <label className="text-xs text-[#64748B]">Client</label>
-          <input value={clientFilter} onChange={e => setClientFilter(e.target.value)}
-            placeholder="Search client…"
-            className="block mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-48" />
-        </div>
-      </div>
+      />
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">{filtered.length} record{filtered.length !== 1 ? "s" : ""}</CardTitle>
-        </CardHeader>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8]">
-                <th className="px-5 py-3 text-left font-semibold">Client</th>
-                <th className="px-3 py-3 text-left font-semibold">Type</th>
-                <th className="px-3 py-3 text-left font-semibold">Period</th>
-                <th className="px-3 py-3 text-left font-semibold">Due Date</th>
-                <th className="px-3 py-3 text-left font-semibold">Status</th>
-                <th className="px-3 py-3 text-left font-semibold">ARN</th>
-                <th className="px-5 py-3 text-left font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
-              {filtered.map((r) => (
-                <tr key={r.id} className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-3 text-sm font-medium">
-                    <Link href={`/clients/${r.client_id}`} className="text-blue-600 hover:underline">
-                      {clientMap[r.client_id] ?? r.client_id.slice(0, 8)}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-3 text-xs text-[#475569]">{r.compliance_type}</td>
-                  <td className="px-3 py-3 text-xs text-[#64748B] whitespace-nowrap">
-                    {formatDate(r.period_start)} – {formatDate(r.period_end)}
-                  </td>
-                  <td className={`px-3 py-3 text-xs whitespace-nowrap ${r.due_date < today && r.filing_status !== "filed" ? "text-red-600 font-medium" : "text-[#475569]"}`}>
-                    {formatDate(r.due_date)}
-                  </td>
-                  <td className="px-3 py-3">
-                    <div className="flex flex-col gap-1 items-start">
-                      <Badge className={`text-xs ${FILING_STATUS_COLORS[r.filing_status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
-                        {r.filing_status}
-                      </Badge>
-                      {demoFilings[r.id] && (
-                        <Badge className="text-[10px] bg-amber-100 text-amber-700 flex items-center gap-1">
-                          <FlaskConical size={10} /> {DEMO_STATUS_LABEL}
-                        </Badge>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 text-xs text-[#64748B] font-mono">
-                    {demoFilings[r.id]
-                      ? <span className="text-amber-700" title="Demo reference — not filed with any portal">{demoFilings[r.id].demo_reference}</span>
-                      : (r.arn_number ?? "—")}
-                  </td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      {r.filing_status !== "filed" && r.filing_status !== "na" && (
-                        <button
-                          onClick={() => setMarkFiled({ id: r.id, arn: r.arn_number ?? "" })}
-                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                        >
-                          <CheckCircle size={12} /> Mark Filed
-                        </button>
-                      )}
-                      {r.filing_status === "filed" && (
-                        <span className="text-xs text-green-600 flex items-center gap-1">
-                          <CheckCircle size={12} /> {r.filed_date ? formatDate(r.filed_date) : "Filed"}
-                        </span>
-                      )}
-                      {isSimulatable(r.compliance_type) && (
-                        <button
-                          onClick={() => setDemoEntry(r)}
-                          className="text-xs text-amber-700 hover:underline flex items-center gap-1"
-                          title="Run a demo of the filing workflow — submits nothing"
-                        >
-                          <FlaskConical size={12} /> Simulate Filing
-                        </button>
-                      )}
-                      <Link
-                        href={`/clients/${r.client_id}`}
-                        className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                      >
-                        <ExternalLink size={11} /> Open Client
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {filtered.length === 0 && (
-            <div className="py-14 px-8 text-center">
-              {/* Type-specific empty state when panel link is active */}
-              {emptyStateCopy && typeRecords.length === 0 ? (
-                <div className="max-w-xs mx-auto space-y-3">
-                  <div className="w-12 h-12 rounded-xl bg-[#F1F5F9] flex items-center justify-center mx-auto">
-                    <Calendar size={20} className="text-[#94A3B8]" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-[#0F172A]">{emptyStateCopy.title}</p>
-                    <p className="text-xs text-[#64748B] mt-1 leading-relaxed">{emptyStateCopy.desc}</p>
-                  </div>
-                  <Link
-                    href="/clients"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 border border-[#E2E8F0] text-[#475569] text-xs font-semibold rounded-lg hover:bg-[#F8FAFC] transition-colors"
-                  >
-                    View Clients <ArrowRight size={13} />
-                  </Link>
-                </div>
-              ) : records.length === 0 && clients.length === 0 ? (
-                /* No clients at all */
-                <div className="max-w-xs mx-auto space-y-3">
-                  <div className="w-12 h-12 rounded-xl bg-[#F1F5F9] flex items-center justify-center mx-auto">
-                    <Users size={20} className="text-[#94A3B8]" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-[#0F172A]">No clients yet</p>
-                    <p className="text-xs text-[#64748B] mt-1 leading-relaxed">
-                      Deadlines are tracked per-client. Add your first client to start managing compliance schedules.
-                    </p>
-                  </div>
-                  <Link
-                    href="/clients"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Add First Client <ArrowRight size={13} />
-                  </Link>
-                </div>
-              ) : records.length === 0 ? (
-                /* Clients exist but no compliance records seeded yet */
-                <div className="max-w-xs mx-auto space-y-3">
-                  <div className="w-12 h-12 rounded-xl bg-[#F1F5F9] flex items-center justify-center mx-auto">
-                    <Calendar size={20} className="text-[#94A3B8]" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-[#0F172A]">No compliance records yet</p>
-                    <p className="text-xs text-[#64748B] mt-1 leading-relaxed">
-                      Open a client and go to the Compliance tab to seed their filing schedule for this year.
-                    </p>
-                  </div>
-                  <Link
-                    href="/clients"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 border border-[#E2E8F0] text-[#475569] text-xs font-semibold rounded-lg hover:bg-[#F8FAFC] transition-colors"
-                  >
-                    View Clients <ArrowRight size={13} />
-                  </Link>
-                </div>
-              ) : (
-                /* Records exist but secondary filters hide them */
-                <div className="space-y-2">
-                  <p className="text-sm text-[#94A3B8]">No records match your filters.</p>
-                  <button
-                    onClick={() => { setStatusFilter(""); setTypeFilter(""); setClientFilter(""); }}
-                    className="text-xs text-blue-600 hover:underline"
-                  >
-                    Clear filters
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+      {/* No clients at all — extra guidance beyond the table's own empty state */}
+      {records.length === 0 && clients.length === 0 && (
+        <div className="flex items-center gap-2 text-xs text-[#94A3B8]">
+          <Users size={13} /> Deadlines are tracked per-client.
         </div>
-      </Card>
+      )}
 
       {demoEntry && (
         <DemoFilingModal

@@ -6,6 +6,8 @@ import { Plus, RefreshCw, Upload, CheckCircle, X, Printer, FileText, Download, S
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise, formatMoney } from "@/lib/services/formatting";
+import { DataTable } from "@/components/ui/data-table";
+import type { Column, FilterDef } from "@/lib/table/types";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { api } from "@/lib/api";
@@ -474,58 +476,53 @@ function DashCard({ label, value, accent, action }: { label: string; value: stri
 
 function ChartOfAccounts({ accounts, loading, onRefresh }: { accounts: Account[]; loading: boolean; onRefresh: () => void }) {
   const TYPE_ORDER = ["Asset", "Liability", "Equity", "Revenue", "Expense"];
-  const grouped = TYPE_ORDER.reduce<Record<string, Account[]>>((acc, type) => {
-    acc[type] = accounts.filter((a) => a.account_type === type);
-    return acc;
-  }, {});
 
+  // Type-grouping context preserved as a colored badge in the Type column (flat,
+  // sortable table). Type order also drives the default account_type sort tie-break.
   const TYPE_COLORS: Record<string, string> = {
     Asset: "text-blue-600 bg-blue-50", Liability: "text-orange-600 bg-orange-50",
     Equity: "text-purple-600 bg-purple-50", Revenue: "text-green-600 bg-green-50", Expense: "text-red-600 bg-red-50",
   };
 
+  const columns: Column<Account>[] = [
+    { key: "account_code", header: "Code", accessor: (a) => a.account_code, searchable: true, sortable: true, sticky: true, hideable: false, width: "6rem",
+      render: (a) => <span className="font-mono text-[#64748B]">{a.account_code}</span> },
+    { key: "account_name", header: "Account", accessor: (a) => a.account_name, searchable: true, sortable: true,
+      render: (a) => <span className="font-medium text-[#1E293B]">{a.account_name}</span> },
+    { key: "account_type", header: "Type", accessor: (a) => a.account_type, sortable: true,
+      render: (a) => <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${TYPE_COLORS[a.account_type] ?? "text-[#64748B] bg-[#F1F5F9]"}`}>{a.account_type}</span> },
+    { key: "account_subtype", header: "Subtype", accessor: (a) => a.account_subtype ?? "",
+      render: (a) => <span className="text-[#94A3B8]">{a.account_subtype ?? "—"}</span> },
+    { key: "scope", header: "Scope", accessor: (a) => (a.client_id ? "Client" : "Firm"), align: "right",
+      render: (a) => <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#F8FAFC] text-[#94A3B8]">{a.client_id ? "Client" : "Firm"}</span> },
+  ];
+
+  const filters: FilterDef<Account>[] = [
+    { key: "account_type", label: "Type", type: "select", accessor: (a) => a.account_type,
+      options: TYPE_ORDER.map((t) => ({ value: t, label: t })) },
+    { key: "is_active", label: "Status", type: "select", accessor: (a) => (a.is_active ? "active" : "inactive"),
+      options: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] },
+  ];
+
   return (
-    <div className="space-y-4 max-w-3xl">
+    <div className="space-y-4 max-w-4xl">
       <div className="flex items-center justify-between">
         <p className="text-xs text-[#64748B]">{accounts.length} accounts</p>
-        <button onClick={onRefresh} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
-          <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-        </button>
       </div>
 
-      {loading ? (
-        <div className="space-y-3">{[...Array(3)].map((_, i) => <div key={i} className="h-24 rounded-lg bg-[#F8FAFC] animate-pulse" />)}</div>
-      ) : (
-        TYPE_ORDER.map((type) =>
-          grouped[type].length > 0 ? (
-            <div key={type} className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-gray-50 flex items-center gap-2">
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${TYPE_COLORS[type]}`}>{type}</span>
-                <span className="text-xs text-[#94A3B8]">{grouped[type].length} accounts</span>
-              </div>
-              <table className="w-full text-xs">
-                <tbody className="divide-y divide-[#F8FAFC]">
-                  {grouped[type].map((a) => (
-                    <tr key={a.id} className="hover:bg-[#F8FAFC]">
-                      <td className="px-4 py-2 font-mono text-[#64748B] w-20">{a.account_code}</td>
-                      <td className="px-3 py-2 font-medium text-[#1E293B]">{a.account_name}</td>
-                      <td className="px-3 py-2 text-[#94A3B8]">{a.account_subtype ?? ""}</td>
-                      <td className="px-4 py-2 text-right">
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#F8FAFC] text-[#94A3B8]">
-                          {a.client_id ? "Client" : "Firm"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null
-        )
-      )}
-      {!loading && accounts.length === 0 && (
-        <div className="text-center py-12 text-[#94A3B8] text-sm">No accounts found. Accounts are seeded from the firm-level chart of accounts.</div>
-      )}
+      <DataTable
+        data={accounts}
+        columns={columns}
+        filters={filters}
+        getRowId={(a) => a.id}
+        loading={loading}
+        onRefresh={onRefresh}
+        searchPlaceholder="Search by code or name…"
+        initialSort={{ key: "account_code", dir: "asc" }}
+        persistKey="accounting.coa"
+        emptyTitle="No accounts found"
+        emptyDescription="Accounts are seeded from the firm-level chart of accounts."
+      />
     </div>
   );
 }
@@ -550,26 +547,56 @@ function JournalEntryForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [recentEntries, setRecentEntries] = useState<JournalEntry[]>([]);
+  // Full journal list (posted + draft, non-deleted) for this client — rendered via
+  // the shared DataTable below. Fetched with selectAll so large books are never
+  // silently truncated at PostgREST's row cap (mirrors the other accounting tabs).
+  const [entries, setEntries] = useState<JournalEntry[]>([]);
+  const [entriesLoading, setEntriesLoading] = useState(true);
 
   const totalDebit = lines.reduce((s, l) => s + l.debit_paise, 0);
   const totalCredit = lines.reduce((s, l) => s + l.credit_paise, 0);
   const isBalanced = totalDebit > 0 && totalDebit === totalCredit;
 
-  const loadRecent = useCallback(async () => {
+  const loadEntries = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
+    setEntriesLoading(true);
     const supabase = getSupabaseClient();
-    const { data } = await supabase
+    const { data } = await selectAll(() => supabase
       .from("journal_entries")
-      .select("id, entry_date, reference_no, narration, entry_type, is_posted, journal_lines(account_id, debit_paise, credit_paise, narration)")
+      // Alias the embed to `lines` so it matches the JournalEntry type (and the
+      // amount column, which sums debit_paise across the entry's lines).
+      .select("id, entry_date, reference_no, narration, entry_type, is_posted, lines:journal_lines(account_id, debit_paise, credit_paise, narration)")
       .eq("client_id", clientId)
       .is("deleted_at", null)
       .order("entry_date", { ascending: false })
-      .limit(5);
-    setRecentEntries((data as unknown as JournalEntry[]) ?? []);
+      .order("id"));
+    setEntries((data as unknown as JournalEntry[]) ?? []);
+    setEntriesLoading(false);
   }, [clientId]);
 
-  useEffect(() => { loadRecent(); }, [loadRecent, success]);
+  useEffect(() => { loadEntries(); }, [loadEntries, success]);
+
+  const journalColumns: Column<JournalEntry>[] = [
+    { key: "entry_date", header: "Date", accessor: (e) => e.entry_date, sortable: true, sticky: true, hideable: false, width: "7rem",
+      render: (e) => <span className="text-[#64748B] whitespace-nowrap">{e.entry_date}</span> },
+    { key: "reference_no", header: "Ref", accessor: (e) => e.reference_no ?? "", searchable: true,
+      render: (e) => <span className="font-mono text-[#94A3B8]">{e.reference_no || "—"}</span> },
+    { key: "narration", header: "Narration", accessor: (e) => e.narration, searchable: true,
+      render: (e) => <span className="text-[#334155]">{e.narration}</span> },
+    { key: "entry_type", header: "Type", accessor: (e) => e.entry_type, sortable: true,
+      render: (e) => <span className="text-[#94A3B8]">{e.entry_type}</span> },
+    { key: "amount", header: "Amount", accessor: (e) => (e.lines ?? []).reduce((s, l) => s + l.debit_paise, 0), align: "right",
+      exportValue: (e) => (e.lines ?? []).reduce((s, l) => s + l.debit_paise, 0) / 100,
+      render: (e) => <span className="font-mono text-[#334155]">{fmt((e.lines ?? []).reduce((s, l) => s + l.debit_paise, 0))}</span> },
+    { key: "status", header: "Status", accessor: (e) => (e.is_posted ? "Posted" : "Draft"),
+      render: (e) => <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${e.is_posted ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>{e.is_posted ? "Posted" : "Draft"}</span> },
+  ];
+
+  const journalFilters: FilterDef<JournalEntry>[] = [
+    { key: "entry_type", label: "Type", type: "select", accessor: (e) => e.entry_type,
+      options: (ENTRY_TYPES as readonly string[]).map((t) => ({ value: t, label: t })) },
+    { key: "entry_date", label: "Date", type: "dateRange", accessor: (e) => e.entry_date },
+  ];
 
   function setLine(idx: number, patch: Partial<JournalLine>) {
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
@@ -708,28 +735,26 @@ function JournalEntryForm({
         </div>
       </div>
 
-      {recentEntries.length > 0 && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-50"><p className="text-xs font-semibold text-[#334155]">Recent Entries</p></div>
-          <table className="w-full text-xs">
-            <thead><tr className="border-b border-gray-50 text-[#94A3B8]"><th className="px-4 py-2 text-left font-semibold">Date</th><th className="px-3 py-2 text-left font-semibold">Narration</th><th className="px-3 py-2 text-left font-semibold">Type</th><th className="px-3 py-2 text-right font-semibold">Amount</th><th className="px-4 py-2 text-left font-semibold">Status</th></tr></thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
-              {recentEntries.map((e) => {
-                const totalDr = (e.lines ?? []).reduce((s, l) => s + l.debit_paise, 0);
-                return (
-                  <tr key={e.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-4 py-2 text-[#64748B] whitespace-nowrap">{e.entry_date}</td>
-                    <td className="px-3 py-2 text-[#334155] truncate max-w-[200px]">{e.narration}</td>
-                    <td className="px-3 py-2 text-[#94A3B8]">{e.entry_type}</td>
-                    <td className="px-3 py-2 text-right font-mono text-[#334155]">₹{(totalDr/100).toFixed(2)}</td>
-                    <td className="px-4 py-2"><span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${e.is_posted ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>{e.is_posted ? "Posted" : "Draft"}</span></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* Full journal list — shared DataTable (search, type/date filters, sort,
+          pagination, export). Replaces the old "recent 5" preview and is the
+          destination the Dashboard "View all" navigates to. */}
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-[#334155]">All Journal Entries</p>
+        <DataTable
+          data={entries}
+          columns={journalColumns}
+          filters={journalFilters}
+          getRowId={(e) => e.id}
+          loading={entriesLoading}
+          onRefresh={loadEntries}
+          searchPlaceholder="Search by reference or narration…"
+          initialSort={{ key: "entry_date", dir: "desc" }}
+          exportFilename="journal"
+          persistKey="accounting.journal"
+          emptyTitle="No journal entries"
+          emptyDescription="Post an entry above to see it listed here."
+        />
+      </div>
     </div>
   );
 }
@@ -763,6 +788,31 @@ function GeneralLedger({ accounts, clientId, financialYear }: { accounts: Accoun
   );
   const hasActivity = !!ledger && (ledger.lines.length > 0 || ledger.opening_balance_paise !== 0);
 
+  // Ledger line columns. Money is paise → right-aligned via `fmt` (formatPaise).
+  // The running balance is the backend's authoritative per-row figure — sorting
+  // reorders rows but never recomputes it (Phase 3.4: no accounting math in React).
+  const ledgerColumns: Column<LedgerLine>[] = [
+    { key: "entry_date", header: "Date", accessor: (l) => l.entry_date, sortable: true, sticky: true, hideable: false, width: "7rem",
+      render: (l) => <span className="text-[#64748B] whitespace-nowrap">{l.entry_date}</span> },
+    { key: "narration", header: "Particulars", accessor: (l) => l.narration ?? "", searchable: true,
+      render: (l) => <span className="text-[#334155]">{l.narration ?? "—"}</span> },
+    { key: "reference_no", header: "Ref", accessor: (l) => l.reference_no ?? "", searchable: true,
+      render: (l) => <span className="font-mono text-[#94A3B8]">{l.reference_no ?? "—"}</span> },
+    { key: "debit", header: "Debit", accessor: (l) => l.debit_paise, sortable: true, align: "right",
+      exportValue: (l) => l.debit_paise / 100,
+      render: (l) => <span className="font-mono text-[#334155]">{fmt(l.debit_paise)}</span> },
+    { key: "credit", header: "Credit", accessor: (l) => l.credit_paise, sortable: true, align: "right",
+      exportValue: (l) => l.credit_paise / 100,
+      render: (l) => <span className="font-mono text-[#334155]">{fmt(l.credit_paise)}</span> },
+    { key: "running_balance", header: "Balance", accessor: (l) => l.running_balance_paise, sortable: true, align: "right",
+      exportValue: (l) => l.running_balance_paise / 100,
+      render: (l) => <span className={`font-mono font-semibold ${l.is_debit ? "text-blue-700" : "text-orange-700"}`}>{bal(l.running_balance_paise, l.is_debit)}</span> },
+  ];
+
+  const ledgerFilters: FilterDef<LedgerLine>[] = [
+    { key: "entry_date", label: "Date", type: "dateRange", accessor: (l) => l.entry_date },
+  ];
+
   return (
     <div className="space-y-4 max-w-4xl">
       <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
@@ -778,45 +828,46 @@ function GeneralLedger({ accounts, clientId, financialYear }: { accounts: Accoun
       </div>
 
       {selectedAccountId && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-[#334155]">Ledger — FY {financialYear} — {ledger?.account_name ?? accounts.find((a) => a.id === selectedAccountId)?.account_name}</p>
             {loading && <RefreshCw size={13} className="animate-spin text-[#94A3B8]" />}
           </div>
+
           {!loading && ledger && hasActivity ? (
-            <table className="w-full text-xs">
-              <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className="px-4 py-2.5 text-left font-semibold">Date</th><th className="px-3 py-2.5 text-left font-semibold">Particulars</th><th className="px-3 py-2.5 text-left font-semibold">Ref</th><th className="px-3 py-2.5 text-right font-semibold">Debit</th><th className="px-3 py-2.5 text-right font-semibold">Credit</th><th className="px-4 py-2.5 text-right font-semibold">Balance</th></tr></thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                <tr className="bg-[#F8FAFC] text-[#64748B]">
-                  <td className="px-4 py-2 whitespace-nowrap" colSpan={3}>Opening Balance</td>
-                  <td className="px-3 py-2 text-right font-mono">—</td>
-                  <td className="px-3 py-2 text-right font-mono">—</td>
-                  <td className="px-4 py-2 text-right font-mono font-semibold">{bal(ledger.opening_balance_paise, ledger.opening_is_debit)}</td>
-                </tr>
-                {ledger.lines.map((l) => (
-                  <tr key={l.entry_id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-4 py-2 text-[#64748B] whitespace-nowrap">{l.entry_date}</td>
-                    <td className="px-3 py-2 text-[#334155]">{l.narration ?? "—"}</td>
-                    <td className="px-3 py-2 font-mono text-[#94A3B8]">{l.reference_no ?? "—"}</td>
-                    <td className="px-3 py-2 text-right font-mono text-[#334155]">{fmt(l.debit_paise)}</td>
-                    <td className="px-3 py-2 text-right font-mono text-[#334155]">{fmt(l.credit_paise)}</td>
-                    <td className={`px-4 py-2 text-right font-mono font-semibold ${l.is_debit ? "text-blue-700" : "text-orange-700"}`}>
-                      {bal(l.running_balance_paise, l.is_debit)}
-                    </td>
-                  </tr>
-                ))}
-                <tr className="bg-[#F8FAFC] font-semibold text-[#334155] border-t border-[#E2E8F0]">
-                  <td className="px-4 py-2 whitespace-nowrap" colSpan={3}>Closing Balance</td>
-                  <td className="px-3 py-2 text-right font-mono">{fmt(ledger.total_debit_paise)}</td>
-                  <td className="px-3 py-2 text-right font-mono">{fmt(ledger.total_credit_paise)}</td>
-                  <td className={`px-4 py-2 text-right font-mono ${ledger.closing_is_debit ? "text-blue-700" : "text-orange-700"}`}>
-                    {bal(ledger.closing_balance_paise, ledger.closing_is_debit)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <>
+              {/* Opening / Closing are backend-computed context — kept outside the
+                  table so search/sort/pagination never repositions them. */}
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#F1F5F9] bg-[#F8FAFC] px-4 py-2 text-xs text-[#64748B]">
+                <span>Opening Balance</span>
+                <span className="font-mono font-semibold text-[#334155]">{bal(ledger.opening_balance_paise, ledger.opening_is_debit)}</span>
+              </div>
+
+              <DataTable
+                data={ledger.lines}
+                columns={ledgerColumns}
+                filters={ledgerFilters}
+                getRowId={(l) => l.entry_id}
+                searchPlaceholder="Search narration or reference…"
+                initialSort={{ key: "entry_date", dir: "asc" }}
+                initialPageSize={100}
+                exportFilename="ledger"
+                persistKey="accounting.ledger"
+                emptyTitle="No transactions"
+                emptyDescription={`No posted transactions for this account up to FY ${financialYear}.`}
+              />
+
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-2.5 text-xs font-semibold text-[#334155]">
+                <span>Closing Balance</span>
+                <span className="flex items-center gap-4 font-mono">
+                  <span className="text-[#64748B]">Dr {fmt(ledger.total_debit_paise)}</span>
+                  <span className="text-[#64748B]">Cr {fmt(ledger.total_credit_paise)}</span>
+                  <span className={ledger.closing_is_debit ? "text-blue-700" : "text-orange-700"}>{bal(ledger.closing_balance_paise, ledger.closing_is_debit)}</span>
+                </span>
+              </div>
+            </>
           ) : !loading ? (
-            <div className="text-center py-10 text-[#94A3B8] text-sm">No posted transactions for this account up to FY {financialYear}.</div>
+            <div className="rounded-xl border border-[#F1F5F9] bg-white text-center py-10 text-[#94A3B8] text-sm">No posted transactions for this account up to FY {financialYear}.</div>
           ) : null}
         </div>
       )}

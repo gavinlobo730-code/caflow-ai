@@ -15,11 +15,13 @@
  * Section 203: Issuance of TDS certificates
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   IndianRupee, Calendar, AlertCircle, Plus, X, FileText, Award, Upload,
 } from "lucide-react";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import { DataTable } from "@/components/ui/data-table";
+import type { Column, FilterDef } from "@/lib/table/types";
 
 const TDS_IMPORT_COLUMNS = [
   { key: "party_name",      label: "Party Name",       required: true,  hint: "Name of deductee e.g. ABC Consulting" },
@@ -401,6 +403,61 @@ export default function TDSPage() {
   const pendingReturns = returns.filter(r => r.status !== "Filed").length;
   const pendingCerts = certificates.filter(c => c.status === "Pending").length;
 
+  // ── Deductions DataTable columns — money in integer paise, aligned right ────
+  const deductionColumns: Column<TDSDeduction>[] = useMemo(() => [
+    {
+      key: "party_name", header: "Party Name", accessor: (d) => d.party_name,
+      searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (d) => <span className="font-medium text-[#0F172A]">{d.party_name}</span>,
+    },
+    {
+      key: "party_pan", header: "PAN", accessor: (d) => d.party_pan ?? "", searchable: true,
+      render: (d) => <span className="font-mono text-xs text-[#475569]">{d.party_pan || "—"}</span>,
+    },
+    {
+      key: "section", header: "Section", accessor: (d) => d.section, sortable: true,
+      render: (d) => (
+        <>
+          <span className="text-xs font-mono font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{d.section}</span>
+          <p className="text-[10px] text-[#94A3B8] mt-0.5">{TDS_SECTIONS[d.section]?.label}</p>
+        </>
+      ),
+    },
+    {
+      key: "payment_date", header: "Payment Date", accessor: (d) => d.payment_date, sortable: true,
+      render: (d) => <span className="text-xs text-[#475569]">{d.payment_date ? new Date(d.payment_date).toLocaleDateString("en-IN") : "—"}</span>,
+    },
+    {
+      key: "gross_amount_paise", header: "Gross Amount", accessor: (d) => d.gross_amount_paise,
+      sortable: true, align: "right", exportValue: (d) => d.gross_amount_paise / 100,
+      render: (d) => <span className="text-[#0F172A]">{formatPaise(d.gross_amount_paise)}</span>,
+    },
+    {
+      key: "tds_rate", header: "TDS Rate", accessor: (d) => d.tds_rate, sortable: true, align: "right",
+      render: (d) => <span className="text-xs text-[#475569]">{d.tds_rate}%</span>,
+    },
+    {
+      key: "tds_amount_paise", header: "TDS Amount", accessor: (d) => d.tds_amount_paise,
+      sortable: true, align: "right", exportValue: (d) => d.tds_amount_paise / 100,
+      render: (d) => <span className="font-medium text-[#0F172A]">{formatPaise(d.tds_amount_paise)}</span>,
+    },
+    {
+      key: "challan_no", header: "Challan No", accessor: (d) => d.challan_no ?? "",
+      render: (d) => <span className="font-mono text-xs text-[#475569]">{d.challan_no || "—"}</span>,
+    },
+  ], []);
+
+  const deductionFilters: FilterDef<TDSDeduction>[] = useMemo(() => [
+    {
+      key: "section", label: "Section", type: "select", accessor: (d) => d.section,
+      options: Object.entries(TDS_SECTIONS).map(([k, v]) => ({ value: k, label: `${k} — ${v.label}` })),
+    },
+    {
+      key: "quarter", label: "Quarter", type: "select", accessor: (d) => d.quarter,
+      options: QUARTERS.map((q) => ({ value: q, label: q })),
+    },
+  ], []);
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div>
@@ -446,10 +503,10 @@ export default function TDSPage() {
         ))}
       </div>
 
-      {/* Tab: Deductions */}
+      {/* Tab: Deductions — shared DataTable (search, filters, sort, pagination, export, prefs) */}
       {activeTab === 0 && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold text-[#0F172A]">TDS Deductions</h2>
               <p className="text-xs text-[#94A3B8] mt-0.5">IT Act Section 194 — deductions recorded</p>
@@ -465,48 +522,27 @@ export default function TDSPage() {
               </button>
             </div>
           </div>
-          {loading ? <div className="px-5 py-10 text-center text-sm text-[#94A3B8]">Loading…</div>
-            : deductions.length === 0 ? (
-              <div className="px-5 py-10 text-center text-sm text-[#94A3B8]">No deductions recorded yet. Click &ldquo;Add Deduction&rdquo; to start.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-50">
-                      {["Party Name", "PAN", "Section", "Payment Date", "Gross Amount", "TDS Rate", "TDS Amount", "Challan No"].map(h => (
-                        <th key={h} className="text-left text-xs font-medium text-[#94A3B8] px-4 py-3">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#F8FAFC]">
-                    {deductions.map(d => (
-                      <tr key={d.id} className="hover:bg-[#F8FAFC]/50">
-                        <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">{d.party_name}</td>
-                        <td className="px-4 py-3 text-xs font-mono text-[#475569]">{d.party_pan || "—"}</td>
-                        <td className="px-4 py-3">
-                          <span className="text-xs font-mono font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{d.section}</span>
-                          <p className="text-[10px] text-[#94A3B8] mt-0.5">{TDS_SECTIONS[d.section]?.label}</p>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-[#475569]">{new Date(d.payment_date).toLocaleDateString("en-IN")}</td>
-                        <td className="px-4 py-3 text-sm text-right text-[#0F172A]">{formatPaise(d.gross_amount_paise)}</td>
-                        <td className="px-4 py-3 text-xs text-right text-[#475569]">{d.tds_rate}%</td>
-                        <td className="px-4 py-3 text-sm text-right font-medium text-[#0F172A]">{formatPaise(d.tds_amount_paise)}</td>
-                        <td className="px-4 py-3 text-xs font-mono text-[#475569]">{d.challan_no || "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t border-[#F1F5F9] bg-[#F8FAFC]/50">
-                      <td colSpan={4} className="px-4 py-3 text-xs font-medium text-[#64748B]">Total</td>
-                      <td className="px-4 py-3 text-right text-sm font-semibold">{formatPaise(deductions.reduce((s, d) => s + d.gross_amount_paise, 0))}</td>
-                      <td></td>
-                      <td className="px-4 py-3 text-right text-sm font-semibold">{formatPaise(totalTDSPaise)}</td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
+
+          <DataTable
+            data={deductions}
+            columns={deductionColumns}
+            filters={deductionFilters}
+            getRowId={(d) => d.id}
+            loading={loading}
+            searchPlaceholder="Search by party name or PAN…"
+            initialSort={{ key: "payment_date", dir: "desc" }}
+            exportFilename="tds-deductions"
+            persistKey="tds.deductions"
+            emptyTitle="No deductions recorded yet"
+            emptyDescription={'Click "Add Deduction" to start.'}
+          />
+
+          {deductions.length > 0 && (
+            <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 px-1 text-xs text-[#64748B]">
+              <span>Total Gross: <span className="font-semibold text-[#0F172A]">{formatPaise(deductions.reduce((s, d) => s + d.gross_amount_paise, 0))}</span></span>
+              <span>Total TDS: <span className="font-semibold text-[#0F172A]">{formatPaise(totalTDSPaise)}</span></span>
+            </div>
+          )}
         </div>
       )}
 
