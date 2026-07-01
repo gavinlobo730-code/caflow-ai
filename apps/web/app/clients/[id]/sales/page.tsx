@@ -12,6 +12,8 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise, formatDateTime } from "@/lib/services/formatting";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
+import { CustomerLookup } from "@/components/lookups/CustomerLookup";
+import { HsnLookup } from "@/components/lookups/HsnLookup";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
 import { buildCustomers, CUSTOMER_IMPORT_COLUMNS, buildReceipts, RECEIPT_IMPORT_COLUMNS } from "@/lib/imports/mappers";
@@ -184,15 +186,6 @@ interface InvoiceDetail {
   created_by_name: string | null;
   customers?: { id: string; name: string; email: string | null; gstin: string | null; phone: string | null } | null;
   lines: ServerInvoiceLine[];
-}
-
-/** HSN/SAC suggestion (from GET /api/sales-invoices/hsn-suggestions). */
-interface HsnSuggestion {
-  hsn_sac: string;
-  gst_rate_bps: number | null;
-  use_count: number;
-  sample_description: string;
-  reason: string;
 }
 
 type DateMode = "current" | "previous" | "custom";
@@ -756,11 +749,14 @@ function RecurringEditor({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Customer</label>
-              <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} disabled={!!existing}
-                className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-[#F8FAFC]">
-                <option value="">Select customer…</option>
-                {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              <CustomerLookup
+                customers={customers}
+                value={customerId}
+                onChange={setCustomerId}
+                disabled={!!existing}
+                placeholder="Select customer…"
+                ariaLabel="Customer"
+              />
               {existing && <p className="text-[10px] text-[#94A3B8] mt-1">Customer can&apos;t be changed after creation.</p>}
             </div>
             <div>
@@ -968,7 +964,6 @@ function Statements({ clientId, financialYear }: { clientId: string; financialYe
   const def = fyRange(financialYear);
   const [customers, setCustomers] = useState<{ id: string; name: string; email: string | null }[]>([]);
   const [customerId, setCustomerId] = useState("");
-  const [search, setSearch] = useState("");
   const [start, setStart] = useState(def.start);
   const [end, setEnd] = useState(def.end);
   const [stmt, setStmt] = useState<StmtData | null>(null);
@@ -1038,24 +1033,19 @@ function Statements({ clientId, financialYear }: { clientId: string; financialYe
     finally { setEmailing(false); }
   }
 
-  const visibleCustomers = customers.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()));
-
   return (
     <div className="space-y-4 max-w-screen-2xl">
       <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Search customer</label>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Type a name…"
-              className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
+          <div className="sm:col-span-2">
             <label className="block text-xs font-medium text-[#475569] mb-1">Customer</label>
-            <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">— Select customer —</option>
-              {visibleCustomers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <CustomerLookup
+              customers={customers}
+              value={customerId}
+              onChange={setCustomerId}
+              clearable
+              ariaLabel="Customer"
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-[#475569] mb-1">From</label>
@@ -1588,15 +1578,17 @@ function SalesInvoices({
         onRowClick={(inv) => setDetailId(inv.id)}
         toolbarExtra={
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={customerFilter}
-              onChange={(e) => setCustomerFilter(e.target.value)}
-              aria-label="Customer"
-              className="px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569] max-w-[160px]"
-            >
-              <option value="all">All customers</option>
-              {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <div className="w-[180px]">
+              <CustomerLookup
+                customers={customers}
+                value={customerFilter === "all" ? "" : customerFilter}
+                onChange={(id) => setCustomerFilter(id || "all")}
+                clearable
+                size="sm"
+                placeholder="All customers"
+                ariaLabel="Filter by customer"
+              />
+            </div>
             <select
               value={dateMode}
               onChange={(e) => setDateMode(e.target.value as DateMode)}
@@ -2084,16 +2076,12 @@ function InvoiceForm({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="col-span-2">
           <label className="block text-xs font-medium text-[#475569] mb-1">Customer *</label>
-          <select
+          <CustomerLookup
+            customers={customers}
             value={customerId}
-            onChange={(e) => onCustomerChange(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">— Select customer —</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+            onChange={onCustomerChange}
+            ariaLabel="Customer"
+          />
         </div>
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">Invoice Date *</label>
@@ -2202,12 +2190,13 @@ function InvoiceForm({
                     />
                   </td>
                   <td className="py-1.5 pr-2">
-                    <HsnAutocomplete
+                    <HsnLookup
                       clientId={clientId}
-                      description={line.description}
                       value={line.hsn_sac}
                       onChange={(v) => setLine(idx, { hsn_sac: v })}
-                      onPickGst={(pct) => setLine(idx, { gst_rate: pct })}
+                      onPick={(p) => { if (p.gst_rate_bps != null) setLine(idx, { gst_rate: Math.round(p.gst_rate_bps / 100) }); }}
+                      size="sm"
+                      ariaLabel="HSN or SAC code"
                     />
                   </td>
                   <td className="py-1.5 pr-2">
@@ -2590,91 +2579,6 @@ function DeliveryHistoryModal({
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── HSN/SAC Smart Suggestions (autocomplete) ────────────────────────────────
-
-function HsnAutocomplete({
-  clientId,
-  description,
-  value,
-  onChange,
-  onPickGst,
-}: {
-  clientId: string;
-  description: string;
-  value: string;
-  onChange: (hsn: string) => void;
-  onPickGst?: (gstPercent: number) => void;
-}) {
-  const [suggestions, setSuggestions] = useState<HsnSuggestion[]>([]);
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  // Debounced lookup keyed on the line description — the suggestion signal.
-  // All ranking/learning happens server-side (zero business logic in the frontend).
-  useEffect(() => {
-    const q = description.trim();
-    if (q.length < 2) { setSuggestions([]); return; }
-    let cancelled = false;
-    const t = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const token = await getAuthToken();
-        const res = await apiGet(
-          `/api/sales-invoices/hsn-suggestions?client_id=${encodeURIComponent(clientId)}&query=${encodeURIComponent(q)}`,
-          token
-        );
-        if (!cancelled) setSuggestions((res.data as HsnSuggestion[]) ?? []);
-      } catch {
-        if (!cancelled) setSuggestions([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }, 300);
-    return () => { cancelled = true; clearTimeout(t); };
-  }, [description, clientId]);
-
-  const showDropdown = open && (suggestions.length > 0 || loading);
-
-  return (
-    <div className="relative">
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
-        placeholder="998314"
-        className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs font-mono"
-      />
-      {showDropdown && (
-        <div className="absolute z-30 mt-1 w-64 max-h-56 overflow-y-auto bg-white border border-[#E2E8F0] rounded-lg shadow-lg">
-          {loading && suggestions.length === 0 ? (
-            <div className="px-3 py-2 text-[10px] text-[#94A3B8] flex items-center gap-1">
-              <Loader2 size={11} className="animate-spin" /> Finding HSN/SAC…
-            </div>
-          ) : (
-            suggestions.map((s) => (
-              <button
-                key={s.hsn_sac}
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  onChange(s.hsn_sac);
-                  if (onPickGst && s.gst_rate_bps != null) onPickGst(Math.round(s.gst_rate_bps / 100));
-                  setOpen(false);
-                }}
-                className="w-full text-left px-3 py-2 hover:bg-[#F8FAFC] border-b border-[#F8FAFC] last:border-0"
-              >
-                <div className="font-mono text-xs text-[#1E293B]">{s.hsn_sac}</div>
-                <div className="text-[10px] text-[#94A3B8]">{s.reason}</div>
-              </button>
-            ))
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -3930,14 +3834,12 @@ function ReceiptForm({
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="col-span-2 lg:col-span-1">
           <label className="block text-xs font-medium text-[#475569] mb-1">Customer *</label>
-          <select
+          <CustomerLookup
+            customers={customers}
             value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">— Select customer —</option>
-            {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+            onChange={setCustomerId}
+            ariaLabel="Customer"
+          />
         </div>
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">Receipt Date *</label>
@@ -4305,14 +4207,12 @@ function CreditNoteForm({
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">Customer *</label>
-          <select
+          <CustomerLookup
+            customers={customers}
             value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">— Select customer —</option>
-            {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+            onChange={setCustomerId}
+            ariaLabel="Customer"
+          />
         </div>
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">CN Date *</label>
@@ -4390,11 +4290,13 @@ function CreditNoteForm({
                     />
                   </td>
                   <td className="py-1.5 pr-2">
-                    <input
+                    <HsnLookup
+                      clientId={clientId}
                       value={line.hsn_sac}
-                      onChange={(e) => setLine(idx, { hsn_sac: e.target.value })}
-                      placeholder="998314"
-                      className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs font-mono"
+                      onChange={(v) => setLine(idx, { hsn_sac: v })}
+                      onPick={(p) => { if (p.gst_rate_bps != null) setLine(idx, { gst_rate: Math.round(p.gst_rate_bps / 100) }); }}
+                      size="sm"
+                      ariaLabel="HSN or SAC code"
                     />
                   </td>
                   <td className="py-1.5 pr-2">
