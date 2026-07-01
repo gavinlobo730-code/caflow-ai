@@ -380,6 +380,26 @@ def get_balance_sheet(
     return api_response(True, bs)
 
 
+@router.get("/schedule-iii")
+def get_schedule_iii(
+    fy_start: Optional[str] = Query(None),
+    fy_end: Optional[str] = Query(None),
+    client_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """
+    Companies Act 2013 Section 129 read with Schedule III (Division I): financial
+    statements presented in the prescribed form. Amounts are the authoritative
+    accrual P&L / Balance Sheet from the reporting engine; the statutory
+    line-caption grouping is done server-side (never in the UI). client_id=None
+    returns the firm-wide consolidation.
+    """
+    data = _reporting_service().schedule_iii(
+        current_user["firm_id"], client_id, fy_start, fy_end
+    )
+    return api_response(True, data)
+
+
 @router.get("/cash-flow")
 def get_cash_flow(
     start_date: Optional[str] = Query(None),
