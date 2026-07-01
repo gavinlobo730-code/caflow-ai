@@ -12,6 +12,7 @@ import { VendorLookup } from "@/components/lookups/VendorLookup";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { EntityLookup } from "@/components/lookups/EntityLookup";
+import { Combobox } from "@/components/ui/combobox";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS, type NameRef } from "@/lib/imports/mappers";
 
@@ -925,9 +926,17 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <div>
                   <label className="block text-xs font-medium text-[#475569] mb-1">TDS Section</label>
-                  <select value={tdsSection} onChange={(e) => { setTdsSection(e.target.value); setTdsRate(String(TDS_DEFAULT_RATES[e.target.value] / 100)); }} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    {TDS_SECTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                  </select>
+                  <Combobox
+                    options={TDS_SECTIONS}
+                    value={TDS_SECTIONS.find((s) => s.value === tdsSection) ?? null}
+                    onChange={(v) => { const s = v && !Array.isArray(v) ? v : null; if (s) { setTdsSection(s.value); setTdsRate(String(TDS_DEFAULT_RATES[s.value] / 100)); } }}
+                    getOptionId={(s) => s.value}
+                    getLabel={(s) => s.label}
+                    getSearchFields={(s) => [s.value, s.label]}
+                    placeholder="Select section…"
+                    searchPlaceholder="Search TDS section…"
+                    ariaLabel="TDS section"
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-[#475569] mb-1">TDS Rate (%)</label>

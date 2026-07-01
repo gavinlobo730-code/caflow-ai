@@ -14,6 +14,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { Combobox } from "@/components/ui/combobox";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 
@@ -314,9 +315,17 @@ export default function SuppliersPage() {
 
               <div>
                 <label className="text-xs font-medium text-[#334155] block mb-1">TDS Section</label>
-                <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.tds_section} onChange={e => onSectionChange(e.target.value)}>
-                  {TDS_SECTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
+                <Combobox
+                  options={TDS_SECTIONS}
+                  value={TDS_SECTIONS.find(s => s.value === form.tds_section) ?? null}
+                  onChange={(v) => { const s = v && !Array.isArray(v) ? v : null; onSectionChange(s ? s.value : ""); }}
+                  getOptionId={(s) => s.value || "__none__"}
+                  getLabel={(s) => s.label}
+                  getSearchFields={(s) => [s.value, s.label]}
+                  placeholder="Select section…"
+                  searchPlaceholder="Search TDS section…"
+                  ariaLabel="TDS section"
+                />
               </div>
 
               {form.tds_section && (

@@ -14,6 +14,7 @@ import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
+import { StateLookup } from "@/components/lookups/StateLookup";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
 import { buildCustomers, CUSTOMER_IMPORT_COLUMNS, buildReceipts, RECEIPT_IMPORT_COLUMNS } from "@/lib/imports/mappers";
@@ -2129,16 +2130,13 @@ function InvoiceForm({
         </div>
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">Supply State</label>
-          <select
+          <StateLookup
+            states={INDIAN_STATES}
             value={supplyStateCode ?? ""}
-            onChange={(e) => onSupplyStateChange(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">— Select —</option>
-            {INDIAN_STATES.map((s) => (
-              <option key={s.code} value={s.code}>{s.code} — {s.name}</option>
-            ))}
-          </select>
+            onChange={onSupplyStateChange}
+            placeholder="— Select —"
+            ariaLabel="Supply state"
+          />
         </div>
         <div className="flex flex-col justify-end pb-1.5">
           <label className="flex items-center gap-2 text-xs text-[#475569] cursor-pointer">
@@ -3460,16 +3458,13 @@ function CustomerForm({
         </div>
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">State Code</label>
-          <select
+          <StateLookup
+            states={INDIAN_STATES}
             value={stateCode}
-            onChange={(e) => setStateCode(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">— Select —</option>
-            {INDIAN_STATES.map((s) => (
-              <option key={s.code} value={s.code}>{s.code} — {s.name}</option>
-            ))}
-          </select>
+            onChange={setStateCode}
+            placeholder="— Select —"
+            ariaLabel="State code"
+          />
         </div>
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">PAN</label>
