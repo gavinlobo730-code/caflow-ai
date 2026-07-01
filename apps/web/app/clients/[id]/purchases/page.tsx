@@ -8,6 +8,10 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise } from "@/lib/services/formatting";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
+import { VendorLookup } from "@/components/lookups/VendorLookup";
+import { AccountLookup } from "@/components/lookups/AccountLookup";
+import { HsnLookup } from "@/components/lookups/HsnLookup";
+import { EntityLookup } from "@/components/lookups/EntityLookup";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS, type NameRef } from "@/lib/imports/mappers";
 
@@ -551,10 +555,12 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-[#475569] mb-1">Vendor *</label>
-              <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">— Select vendor —</option>
-                {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}{v.tds_applicable ? ` (TDS ${(v.tds_rate_bps / 100).toFixed(0)}%)` : ""}</option>)}
-              </select>
+              <VendorLookup
+                vendors={vendors}
+                value={vendorId}
+                onChange={setVendorId}
+                ariaLabel="Vendor"
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Vendor Invoice No.</label>
@@ -602,13 +608,24 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
                         <input value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
                       </td>
                       <td className="py-1.5 px-1">
-                        <input value={line.hsn_sac} onChange={(e) => setLine(idx, { hsn_sac: e.target.value })} placeholder="HSN/SAC" className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
+                        <HsnLookup
+                          clientId={clientId}
+                          value={line.hsn_sac}
+                          onChange={(v) => setLine(idx, { hsn_sac: v })}
+                          onPick={(p) => { if (p.gst_rate_bps != null) setLine(idx, { gst_rate_bps: p.gst_rate_bps }); }}
+                          size="sm"
+                          ariaLabel="HSN or SAC code"
+                        />
                       </td>
                       <td className="py-1.5 px-1">
-                        <select value={line.expense_account_id} onChange={(e) => setLine(idx, { expense_account_id: e.target.value })} className="w-full px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs">
-                          <option value="">— Account —</option>
-                          {accounts.map((a) => <option key={a.id} value={a.id}>{a.account_code} {a.account_name}</option>)}
-                        </select>
+                        <AccountLookup
+                          accounts={accounts}
+                          value={line.expense_account_id}
+                          onChange={(id) => setLine(idx, { expense_account_id: id })}
+                          size="sm"
+                          placeholder="— Account —"
+                          ariaLabel="Expense account"
+                        />
                       </td>
                       <td className="py-1.5 px-1">
                         <input type="number" min="0.001" step="0.001" value={line.quantity} onChange={(e) => setLine(idx, { quantity: parseFloat(e.target.value) || 1 })} className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs text-right" />
@@ -1111,17 +1128,27 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <div className="col-span-2 lg:col-span-1">
               <label className="block text-xs font-medium text-[#475569] mb-1">Vendor *</label>
-              <select value={vendorId} onChange={(e) => { setVendorId(e.target.value); if (e.target.value) loadOpenBills(e.target.value); }} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">— Select vendor —</option>
-                {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-              </select>
+              <VendorLookup
+                vendors={vendors}
+                value={vendorId}
+                onChange={(id) => { setVendorId(id); if (id) loadOpenBills(id); }}
+                ariaLabel="Vendor"
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Against Bill (optional)</label>
-              <select value={billId} onChange={(e) => setBillId(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">— Advance / Select bill —</option>
-                {openBills.map((b) => <option key={b.id} value={b.id}>{b.our_reference ?? b.bill_no} ({fmt(b.net_payable_paise)})</option>)}
-              </select>
+              <EntityLookup
+                items={openBills}
+                value={billId}
+                onChange={setBillId}
+                getId={(b) => b.id}
+                getLabel={(b) => b.our_reference ?? b.bill_no ?? "—"}
+                getSecondary={(b) => fmt(b.net_payable_paise)}
+                getSearchFields={(b) => [b.our_reference ?? "", b.bill_no ?? ""]}
+                clearable
+                placeholder="— Advance / Select bill —"
+                ariaLabel="Against bill"
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Date *</label>
