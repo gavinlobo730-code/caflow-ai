@@ -3383,6 +3383,7 @@ function Customers({
         onRefresh={load}
         searchPlaceholder="Search by name, GSTIN, email, or phone…"
         initialSort={{ key: "name", dir: "asc" }}
+        initialFilters={{ is_active: "active" }}
         exportFilename="customers"
         persistKey="sales.customers"
         emptyTitle="No customers yet"

@@ -31,6 +31,8 @@ export interface DataTableProps<T> {
   searchPlaceholder?: string;
   initialSort?: SortState | null;
   initialPageSize?: number;
+  /** Default filter values applied until the user changes them (then persisted). */
+  initialFilters?: Record<string, import("@/lib/table/types").FilterValue>;
   pageSizes?: number[];
   bulkActions?: BulkAction<T>[];
   /** Enables "Export CSV" of the current filtered view (all matching rows). */
@@ -72,6 +74,7 @@ export function DataTable<T>({
   searchPlaceholder = "Search…",
   initialSort = null,
   initialPageSize = 50,
+  initialFilters,
   pageSizes = PAGE_SIZES,
   bulkActions,
   exportFilename,
@@ -84,7 +87,7 @@ export function DataTable<T>({
   onRowClick,
   toolbarExtra,
 }: DataTableProps<T>) {
-  const t = useDataTable<T>({ data, columns, filters, getRowId, initialSort, initialPageSize, persistKey });
+  const t = useDataTable<T>({ data, columns, filters, getRowId, initialSort, initialPageSize, initialFilters, persistKey });
   const hasSearch = columns.some((c) => c.searchable);
   const hasBulk = Boolean(bulkActions && bulkActions.length);
 
