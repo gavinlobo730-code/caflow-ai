@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { Client } from "@/lib/types/index";
 
 // ---------------------------------------------------------------------------
@@ -563,18 +564,15 @@ export default function WhatsAppPage() {
               {loadingClients ? (
                 <div className="text-xs text-[#94A3B8] py-2">Loading clients…</div>
               ) : (
-                <select
-                  value={selectedClientId}
-                  onChange={(e) => setSelectedClientId(e.target.value)}
-                  className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                >
-                  <option value="">— Select a client —</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.client_name} {c.mobile ? `(${c.mobile})` : "(no phone)"}
-                    </option>
-                  ))}
-                </select>
+                <div className="w-full">
+                  <ClientLookup
+                    clients={clients}
+                    value={selectedClientId}
+                    onChange={setSelectedClientId}
+                    ariaLabel="Client"
+                    placeholder="— Select a client —"
+                  />
+                </div>
               )}
             </div>
 

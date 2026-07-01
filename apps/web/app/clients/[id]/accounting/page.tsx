@@ -7,6 +7,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise, formatMoney } from "@/lib/services/formatting";
 import { DataTable } from "@/components/ui/data-table";
+import { AccountLookup } from "@/components/lookups/AccountLookup";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
@@ -692,16 +693,14 @@ function JournalEntryForm({
               {lines.map((line, idx) => (
                 <tr key={idx}>
                   <td className="py-1.5 pr-2">
-                    <select value={line.account_id} onChange={(e) => setLine(idx, { account_id: e.target.value })} className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs">
-                      <option value="">— Select account —</option>
-                      {["Asset","Liability","Equity","Revenue","Expense"].map((type) => (
-                        <optgroup key={type} label={type}>
-                          {accounts.filter((a) => a.account_type === type).map((a) => (
-                            <option key={a.id} value={a.id}>{a.account_code} — {a.account_name}</option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
+                    <AccountLookup
+                      accounts={accounts}
+                      value={line.account_id}
+                      onChange={(id) => setLine(idx, { account_id: id })}
+                      size="sm"
+                      placeholder="— Select account —"
+                      ariaLabel="Account"
+                    />
                   </td>
                   <td className="py-1.5 px-2">
                     <input type="number" min="0" step="0.01" value={line.debit_paise === 0 ? "" : (line.debit_paise / 100).toFixed(2)} onChange={(e) => { const v = Math.round(parseFloat(e.target.value || "0") * 100); setLine(idx, { debit_paise: v, credit_paise: v > 0 ? 0 : line.credit_paise }); }} placeholder="0.00" className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
@@ -819,14 +818,15 @@ function GeneralLedger({ accounts, clientId, financialYear }: { accounts: Accoun
     <div className="space-y-4 max-w-4xl">
       <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
         <label className="block text-xs font-medium text-[#475569] mb-1.5">Select Account</label>
-        <select value={selectedAccountId} onChange={(e) => { setSelectedAccountId(e.target.value); loadLedger(e.target.value); }} className="w-full max-w-xs px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">— Choose account —</option>
-          {["Asset","Liability","Equity","Revenue","Expense"].map((type) => (
-            <optgroup key={type} label={type}>
-              {accounts.filter((a) => a.account_type === type).map((a) => <option key={a.id} value={a.id}>{a.account_code} — {a.account_name}</option>)}
-            </optgroup>
-          ))}
-        </select>
+        <div className="max-w-xs">
+          <AccountLookup
+            accounts={accounts}
+            value={selectedAccountId}
+            onChange={(id) => { setSelectedAccountId(id); loadLedger(id); }}
+            placeholder="— Choose account —"
+            ariaLabel="Select account"
+          />
+        </div>
       </div>
 
       {selectedAccountId && (
@@ -2444,11 +2444,16 @@ function PostingReviewDrawer({
             {needsCounter && (
               <label className="block">
                 <span className="text-[11px] font-medium text-[#475569]">Counter account (GL) <span className="text-red-500">*</span></span>
-                <select value={accountId} onChange={(e) => setAccountId(e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
-                  <option value="">— Select account —</option>
-                  {accounts.map((a) => <option key={a.id} value={a.id}>{a.account_code} · {a.account_name}</option>)}
-                </select>
+                <div className="mt-1">
+                  <AccountLookup
+                    accounts={accounts}
+                    value={accountId}
+                    onChange={setAccountId}
+                    size="sm"
+                    placeholder="— Select account —"
+                    ariaLabel="Counter account"
+                  />
+                </div>
                 <span className="text-[10px] text-[#94A3B8]">Required — the ledger account is never guessed.</span>
               </label>
             )}

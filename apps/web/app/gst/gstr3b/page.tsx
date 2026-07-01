@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
   computeGSTR3B,
@@ -180,18 +181,15 @@ export default function GSTR3BPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="sm:col-span-2">
             <label className="block text-sm font-medium text-[#334155] mb-1">Client</label>
-            <select
-              value={clientId}
-              onChange={e => { setClientId(e.target.value); setResult(null); setError(null); }}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">— Select client —</option>
-              {clients.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.name}{c.gstin ? ` (${c.gstin})` : " (no GSTIN)"}
-                </option>
-              ))}
-            </select>
+            <div className="w-full">
+              <ClientLookup
+                clients={clients}
+                value={clientId}
+                onChange={(id) => { setClientId(id); setResult(null); setError(null); }}
+                ariaLabel="Client"
+                placeholder="— Select client —"
+              />
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-[#334155] mb-1">Period</label>

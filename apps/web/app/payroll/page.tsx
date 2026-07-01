@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { DataTable } from "@/components/ui/data-table";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatPaise } from "@/lib/services/formatting";
 
@@ -472,9 +473,15 @@ function AddEmployeeModal({
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
-            <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-            </select>
+            <div className="w-full">
+              <ClientLookup
+                clients={clients}
+                value={form.client_id}
+                onChange={(id) => setForm(f => ({ ...f, client_id: id }))}
+                ariaLabel="Client"
+                placeholder="Select client…"
+              />
+            </div>
           </div>
           <div>
             <label className="block text-xs font-medium text-[#334155] mb-1">Name *</label>
@@ -708,15 +715,13 @@ function StatutoryReturnsTab({
           {clients.length > 1 && (
             <div className="mb-4">
               <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
-              <select
-                className="border rounded-lg px-3 py-2 text-sm"
+              <ClientLookup
+                clients={clients}
                 value={selectedClientId}
-                onChange={e => setSelectedClientId(e.target.value)}
-              >
-                {clients.map(c => (
-                  <option key={c.id} value={c.id}>{c.client_name}</option>
-                ))}
-              </select>
+                onChange={setSelectedClientId}
+                ariaLabel="Client"
+                placeholder="Select client…"
+              />
             </div>
           )}
 
@@ -1097,9 +1102,13 @@ export default function PayrollPage() {
                 <div className="flex flex-wrap gap-4 items-end">
                   <div>
                     <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
-                    <select className="border rounded-lg px-3 py-2 text-sm" value={runClientId} onChange={e => setRunClientId(e.target.value)}>
-                      {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-                    </select>
+                    <ClientLookup
+                      clients={clients}
+                      value={runClientId}
+                      onChange={setRunClientId}
+                      ariaLabel="Client"
+                      placeholder="Select client…"
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-[#334155] mb-1">Month</label>
@@ -1195,9 +1204,13 @@ export default function PayrollPage() {
                 <div className="flex gap-4 items-end">
                   <div>
                     <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
-                    <select className="border rounded-lg px-3 py-2 text-sm" value={statClientId} onChange={e => setStatClientId(e.target.value)}>
-                      {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-                    </select>
+                    <ClientLookup
+                      clients={clients}
+                      value={statClientId}
+                      onChange={setStatClientId}
+                      ariaLabel="Client"
+                      placeholder="Select client…"
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-[#334155] mb-1">Month</label>

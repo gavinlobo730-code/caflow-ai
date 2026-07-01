@@ -7,14 +7,14 @@ import { EntityLookup } from "./EntityLookup";
  * account_name vs name, account_type vs type), so the lookup reads either.
  */
 export interface AccountLike {
-  id?: string;
-  code?: string;
-  account_code?: string;
-  name?: string;
-  account_name?: string;
-  type?: string;
-  account_type?: string;
-  account_subtype?: string;
+  id?: string | null;
+  code?: string | null;
+  account_code?: string | null;
+  name?: string | null;
+  account_name?: string | null;
+  type?: string | null;
+  account_type?: string | null;
+  account_subtype?: string | null;
 }
 
 const codeOf = (a: AccountLike) => a.account_code ?? a.code ?? "";

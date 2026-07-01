@@ -14,6 +14,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getClients } from "@/lib/data/clients";
 import { formatDate } from "@/lib/services/formatting";
 import { DataTable } from "@/components/ui/data-table";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { Column, FilterDef } from "@/lib/table/types";
 import type { Client } from "@/lib/types";
 
@@ -229,19 +230,16 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
             <label className="mb-1 block text-sm font-medium text-[#334155]">
               Client <span className="text-red-500">*</span>
             </label>
-            <select
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-              disabled={uploading}
-            >
-              <option value="">Select client…</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.client_name}
-                </option>
-              ))}
-            </select>
+            <div className="w-full">
+              <ClientLookup
+                clients={clients}
+                value={clientId}
+                onChange={setClientId}
+                ariaLabel="Client"
+                placeholder="Select client…"
+                disabled={uploading}
+              />
+            </div>
           </div>
 
           {/* Document type */}
