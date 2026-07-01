@@ -216,13 +216,11 @@ def create_purchase_payment(
               .eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute().data)
         if _v and _v[0].get("is_active") is False:
             raise HTTPException(status_code=422, detail="This vendor is inactive. Reactivate the vendor before recording a payment.")
-        # ── Multi-Currency (Phase 3): a foreign payment settles a same-currency bill
-        # at the bill's FROZEN rate (no realized FX yet). Convert to base up front so
-        # the outstanding check, journal and status update all run in base. INR ⇒ no-op.
-        _ccy_cols: dict = {}
+        # ── Multi-Currency (Phase 4): a foreign payment runs a dedicated realized-FX
+        # path — the bill is relieved at ITS booked rate, cash at the payment's rate,
+        # and the difference posts to Realized FX Gain/Loss. INR path below unchanged.
         if (data.get("currency") or "INR").strip().upper() != "INR":
-            _ccy_cols = _resolve_foreign_payment(db, firm_id, client_id, data, current_user)
-            amount_paise = int(data["amount_paise"])   # rewritten to base by the resolver
+            return api_response(True, _create_foreign_payment(db, firm_id, client_id, data, current_user))
         # OOS-1 fix: a linked bill must belong to THIS payment's firm+client, validated
         # before any payment/journal is created (mirrors the receipt-allocation guard).
         if purchase_bill_id:
@@ -253,7 +251,6 @@ def create_purchase_payment(
             "payment_no": payment_no,
             "payment_date": payment_date,
             "amount_paise": amount_paise,
-            **_ccy_cols,
         }
         journal_entry_id = phase2_journal_service.journal_for_purchase_payment(
             payment_dict, firm_id, client_id
@@ -273,7 +270,6 @@ def create_purchase_payment(
             "journal_entry_id": journal_entry_id,
             "created_at": _now_iso(),
             "updated_at": _now_iso(),
-            **_ccy_cols,
         }
         resp = db.table("purchase_payments").insert(payload).execute()
         if not resp.data:
@@ -317,21 +313,26 @@ def create_purchase_payment(
         return api_response(False, None, "Unable to complete payment operation. Please try again.")
 
 
-def _resolve_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor: dict) -> dict:
-    """Validate + convert a FOREIGN vendor payment to base (INR) at the bill's frozen
-    rate (Multi-Currency Phase 3). Mutates data['amount_paise'] to base paise and
-    returns the payment's currency columns. Enforces the Phase-3 limits (Task 3/6):
-    active policy, supported+active currency, a linked same-currency bill, the bill's
-    frozen rate (no cross-rate), and FULL settlement (partial arrives with realized FX)."""
+def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor: dict) -> dict:
+    """Foreign vendor payment with realized FX (Multi-Currency Phase 4). Relieves the
+    bill at ITS frozen booking rate (R0); cash at the payment's rate (R1); the
+    difference posts to Realized FX Gain/Loss in ONE balanced journal through the
+    kernel. Foreign settled is tracked on the bill (paid_txn) so partials never
+    drift and the final settlement clears the base exactly. Bill/rate never changed."""
     from decimal import Decimal, InvalidOperation
-    from domain.currency.policy import resolve_currency_policy
-    from domain.currency.conversion import to_txn_minor
-    from domain.currency import currency_service
+    from datetime import date as _date
+    from domain.currency.policy import resolve_currency_policy, CurrencyPolicy
+    from domain.currency.conversion import to_base_minor
+    from domain.currency import currency_service, RateNotFound
+    from services.phase2_journal_service import phase2_journal_service as K
 
     ccy = (data.get("currency") or "").strip().upper()
     bill_id = data.get("purchase_bill_id")
+    vendor_id = data.get("vendor_id")
     if not bill_id:
         raise HTTPException(status_code=422, detail="A foreign payment must be linked to the purchase bill it settles.")
+    payment_date = data.get("payment_date", str(datetime.now(timezone.utc).date()))
+    period_validation_service.validate_posting_date(firm_id, payment_date)
 
     firm = (db.table("firms").select("multi_currency_entitled").eq("id", firm_id).limit(1).execute().data or [None])[0]
     client = (db.table("clients").select("functional_currency, multi_currency_enabled").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
@@ -344,41 +345,103 @@ def _resolve_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor
         raise HTTPException(status_code=422, detail=f"Currency {ccy} is inactive.")
     minor = int(cur.get("minor_unit", 2))
 
-    override = None
-    if data.get("exchange_rate") is not None:
+    overridden = data.get("exchange_rate") is not None
+    if overridden:
         try:
-            override = Decimal(str(data["exchange_rate"]))
+            R1 = Decimal(str(data["exchange_rate"]))
         except (InvalidOperation, ValueError, TypeError):
             raise HTTPException(status_code=422, detail="Invalid exchange rate.")
-        if override <= 0:
-            raise HTTPException(status_code=422, detail="Exchange rate must be positive.")
+        r1_source = "manual-override"
+    else:
+        try:
+            q = K.exchange_rate_service(db).get_quote(ccy, "INR", _date.fromisoformat(str(payment_date)[:10]), "booking")
+        except RateNotFound:
+            raise HTTPException(status_code=422, detail=f"No exchange rate available for {ccy}->INR on {payment_date}.")
+        R1, r1_source = q.rate, q.source
+    if R1 <= 0:
+        raise HTTPException(status_code=422, detail="Exchange rate must be positive.")
 
     bill = (db.table("purchase_bills")
-            .select("txn_currency, exchange_rate, net_payable_paise, paid_paise, debited_paise")
+            .select("id, txn_currency, exchange_rate, net_payable_paise, paid_paise, paid_txn, debited_paise, txn_net_payable, status")
             .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data or [None])[0]
     if not bill:
         raise HTTPException(status_code=422, detail="Purchase bill is not part of this client's books.")
-    bill_ccy = (bill.get("txn_currency") or "INR").upper()
-    if bill_ccy != ccy:
+    if (bill.get("status") or "") == "cancelled":
+        raise HTTPException(status_code=409, detail="This bill is cancelled and cannot be paid.")
+    if (bill.get("txn_currency") or "INR").upper() != ccy:
         raise HTTPException(status_code=422, detail=(
-            f"Currency mismatch: payment is {ccy} but bill is billed in {bill_ccy}."))
-    bill_rate = Decimal(str(bill.get("exchange_rate") or 1))
-    if override is not None and override != bill_rate:
-        raise HTTPException(status_code=422, detail=(
-            "Settling at a rate different from the bill's booked rate would realise an FX "
-            "gain/loss — that arrives in the next phase. Settle at the bill's rate."))
+            f"Currency mismatch: payment is {ccy} but bill is billed in {bill.get('txn_currency')}."))
+    R0 = Decimal(str(bill.get("exchange_rate") or 1))
     base_out = int(bill.get("net_payable_paise") or 0) - int(bill.get("paid_paise") or 0) - int(bill.get("debited_paise") or 0)
-    foreign_out = to_txn_minor(base_out, bill_rate, minor)
-    if int(data.get("amount_paise") or 0) != foreign_out:
-        raise HTTPException(status_code=422, detail=(
-            "Phase 3 settles a foreign bill in full at its booked rate; partial foreign "
-            "settlement arrives with realized FX in the next phase."))
-    data["amount_paise"] = base_out
-    return {
-        "txn_currency": ccy, "exchange_rate": str(bill_rate), "txn_amount": foreign_out,
-        "rate_source": "settlement", "rate_type": "booking", "rate_date": data.get("payment_date"),
-        "rate_selected_by": (actor or {}).get("id"), "rate_overridden": override is not None,
+    foreign_out = int(bill.get("txn_net_payable") or 0) - int(bill.get("paid_txn") or 0)
+    f = int(data["amount_paise"])
+    if f <= 0:
+        raise HTTPException(status_code=422, detail="amount_paise must be positive")
+    if f > foreign_out:
+        raise HTTPException(status_code=422, detail=f"Payment {f} exceeds the bill's outstanding {foreign_out} {ccy}.")
+    ap_relieved = base_out if f == foreign_out else to_base_minor(f, R0, minor)
+    cash_base = to_base_minor(f, R1, minor)
+    fx_diff = ap_relieved - cash_base   # + gain (paid less INR) / − loss (paid more)
+
+    ap_id = K._find_account(db, firm_id, client_id, "%Trade Payable%", system_key="ap")
+    bank_id = K._find_account(db, firm_id, client_id, "%Bank%", system_key="bank")
+    lines = [
+        {"account_id": ap_id, "debit_paise": ap_relieved, "credit_paise": 0,
+         "narration": "Trade payable settled at booked rate", "txn_debit": f, "txn_credit": 0},
+        {"account_id": bank_id, "debit_paise": 0, "credit_paise": cash_base,
+         "narration": "Bank payment (foreign)", "txn_debit": 0, "txn_credit": f},
+    ]
+    if fx_diff != 0:
+        fx_id = K._find_account(db, firm_id, client_id, "%Foreign Exchange%", system_key="fx_realized")
+        if fx_diff > 0:
+            lines.append({"account_id": fx_id, "debit_paise": 0, "credit_paise": fx_diff,
+                          "narration": "Realized FX gain", "txn_debit": 0, "txn_credit": 0})
+        else:
+            lines.append({"account_id": fx_id, "debit_paise": -fx_diff, "credit_paise": 0,
+                          "narration": "Realized FX loss", "txn_debit": 0, "txn_credit": 0})
+
+    fy = _current_fy()
+    seq = _next_payment_seq(db, firm_id, fy)
+    payment_no = f"VPMT-{fy}-{seq:04d}"
+    entry_id = K._create_journal(
+        db=db, firm_id=firm_id, client_id=client_id, entry_date=payment_date,
+        reference_no=payment_no, narration=f"Vendor payment {payment_no} (foreign)",
+        entry_type="Payment", lines=lines, created_by=(actor or {}).get("id"),
+        txn_currency=ccy, exchange_rate=R1, rate_source=r1_source, rate_type="booking",
+        rate_date=str(payment_date)[:10], rate_selected_by=(actor or {}).get("id"),
+        rate_overridden=overridden, currency_policy=CurrencyPolicy(active=True, functional_currency="INR"),
+    )
+
+    payload = {
+        "firm_id": firm_id, "client_id": client_id, "vendor_id": vendor_id,
+        "purchase_bill_id": bill_id, "payment_no": payment_no, "payment_date": payment_date,
+        "amount_paise": cash_base, "payment_mode": data.get("payment_mode", "bank"),
+        "reference_no": data.get("reference_no"), "notes": data.get("notes"),
+        "journal_entry_id": entry_id, "created_at": _now_iso(), "updated_at": _now_iso(),
+        "txn_currency": ccy, "exchange_rate": str(R1), "txn_amount": f,
+        "rate_source": r1_source, "rate_type": "booking", "rate_date": str(payment_date)[:10],
+        "rate_selected_by": (actor or {}).get("id"), "rate_overridden": overridden,
     }
+    payment = (db.table("purchase_payments").insert(payload).execute().data or [payload])[0]
+
+    new_paid = int(bill.get("paid_paise") or 0) + ap_relieved
+    new_paid_txn = int(bill.get("paid_txn") or 0) + f
+    status = "paid" if new_paid_txn >= int(bill.get("txn_net_payable") or 0) else "partially_paid"
+    (db.table("purchase_bills").update({"paid_paise": new_paid, "paid_txn": new_paid_txn, "status": status})
+     .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).execute())
+
+    if fx_diff != 0:
+        db.table("fx_adjustments").insert({
+            "firm_id": firm_id, "client_id": client_id, "kind": "realized",
+            "document_type": "purchase_payment", "document_id": payment.get("id"), "currency": ccy,
+            "settlement_rate": str(R1), "base_delta_paise": fx_diff,
+            "journal_entry_id": entry_id, "rate_source": r1_source, "created_by": (actor or {}).get("id"),
+        }).execute()
+
+    log_event(firm_id, "purchase_payment", payment.get("id"), "create",
+              actor_id=(actor or {}).get("auth_user_id"), actor_email=(actor or {}).get("email"),
+              new_data={"amount_paise": cash_base, "currency": ccy})
+    return {**payment, "journal_entry_id": entry_id, "realized_fx_paise": fx_diff}
 
 
 def _update_bill_payment_status(db, firm_id: str, client_id: str, bill_id: str, paid_paise: int = 0) -> None:

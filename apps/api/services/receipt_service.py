@@ -60,22 +60,28 @@ def _next_receipt_seq(db, firm_id: str, client_id: str, fy: str) -> int:
         return 1
 
 
-def _resolve_foreign_receipt(db, firm_id: str, client_id: str, data: dict, actor: dict) -> dict:
-    """Validate + convert a FOREIGN customer receipt to base (INR) at each invoice's
-    frozen rate (Multi-Currency Phase 3). Mutates `data` in place: amount_paise and
-    each allocation's allocated_paise are rewritten to base paise. Returns the
-    receipt's currency columns. Enforces the Phase-3 limits (Task 3/6): active
-    policy, supported+active currency, currency match with every allocated invoice,
-    the invoice's frozen rate (no cross-rate), and FULL settlement (partial / TDS /
-    unallocated foreign advances are deferred to the realized-FX phase)."""
-    from decimal import Decimal, InvalidOperation
-    from domain.currency.policy import resolve_currency_policy
-    from domain.currency.conversion import to_txn_minor
-    from domain.currency import currency_service
+def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
+    """Foreign customer receipt with realized FX (Multi-Currency Phase 4).
 
+    Each allocated invoice is relieved at ITS frozen booking rate (R0); the cash is
+    taken at the receipt's rate (R1); the difference posts to Realized FX Gain/Loss
+    in ONE balanced journal through the kernel. Foreign settled amounts are tracked
+    on the invoice (paid_txn) so partial settlements never drift and the final
+    settlement clears the base exactly. Original documents/rates are never modified.
+    Supports partial / multiple / over-payment (the unallocated excess is a customer
+    advance carried at R1)."""
+    from decimal import Decimal, InvalidOperation
+    from datetime import date as _date
+    from domain.currency.policy import resolve_currency_policy, CurrencyPolicy
+    from domain.currency.conversion import to_base_minor
+    from domain.currency import currency_service, RateNotFound
+    from services.phase2_journal_service import phase2_journal_service as K
+
+    client_id = data["client_id"]
     ccy = (data.get("currency") or "").strip().upper()
     if int(data.get("tds_paise", 0) or 0) != 0:
-        raise HTTPException(status_code=422, detail="TDS on a foreign receipt is not supported yet (arrives with realized FX).")
+        raise HTTPException(status_code=422, detail="TDS on a foreign receipt is not supported yet.")
+    period_validation_service.validate_posting_date(firm_id or "", data["receipt_date"])
 
     firm = (db.table("firms").select("multi_currency_entitled").eq("id", firm_id).limit(1).execute().data or [None])[0]
     client = (db.table("clients").select("functional_currency, multi_currency_enabled").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
@@ -88,53 +94,130 @@ def _resolve_foreign_receipt(db, firm_id: str, client_id: str, data: dict, actor
         raise HTTPException(status_code=422, detail=f"Currency {ccy} is inactive.")
     minor = int(cur.get("minor_unit", 2))
 
-    override = None
-    if data.get("exchange_rate") is not None:
+    # Cash rate R1: manual override or resolved at the receipt date.
+    overridden = data.get("exchange_rate") is not None
+    if overridden:
         try:
-            override = Decimal(str(data["exchange_rate"]))
+            R1 = Decimal(str(data["exchange_rate"]))
         except (InvalidOperation, ValueError, TypeError):
             raise HTTPException(status_code=422, detail="Invalid exchange rate.")
-        if override <= 0:
-            raise HTTPException(status_code=422, detail="Exchange rate must be positive.")
+        r1_source = "manual-override"
+    else:
+        try:
+            q = K.exchange_rate_service(db).get_quote(ccy, "INR", _date.fromisoformat(str(data["receipt_date"])[:10]), "booking")
+        except RateNotFound:
+            raise HTTPException(status_code=422, detail=f"No exchange rate available for {ccy}->INR on {data['receipt_date']}.")
+        R1, r1_source = q.rate, q.source
+    if R1 <= 0:
+        raise HTTPException(status_code=422, detail="Exchange rate must be positive.")
 
+    total_foreign = int(data["amount_paise"])   # foreign cash received (minor units)
     allocations = [a for a in data.get("allocations", []) if int(a.get("allocated_paise", 0) or 0) > 0]
-    if not allocations:
-        raise HTTPException(status_code=422, detail="A foreign receipt must be fully allocated to a same-currency invoice.")
 
-    total_foreign, total_base, rate_used = 0, 0, None
+    total_ar_relieved = 0
+    total_foreign_settled = 0
+    settle_plan = []
     for a in allocations:
         inv_id = a.get("sales_invoice_id")
         inv = (db.table("client_sales_invoices")
-               .select("txn_currency, exchange_rate, total_paise, paid_paise, credited_paise")
+               .select("id, txn_currency, exchange_rate, total_paise, paid_paise, paid_txn, credited_paise, txn_total")
                .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data or [None])[0]
         if not inv:
             raise HTTPException(status_code=422, detail=f"Invoice {inv_id} is not part of this client's books.")
-        inv_ccy = (inv.get("txn_currency") or "INR").upper()
-        if inv_ccy != ccy:
+        if (inv.get("txn_currency") or "INR").upper() != ccy:
             raise HTTPException(status_code=422, detail=(
-                f"Currency mismatch: receipt is {ccy} but invoice {inv_id} is billed in {inv_ccy}."))
-        inv_rate = Decimal(str(inv.get("exchange_rate") or 1))
-        if override is not None and override != inv_rate:
-            raise HTTPException(status_code=422, detail=(
-                "Settling at a rate different from the invoice's booked rate would realise an FX "
-                "gain/loss — that arrives in the next phase. Settle at the invoice's rate."))
+                f"Currency mismatch: receipt is {ccy} but invoice {inv_id} is billed in {inv.get('txn_currency')}."))
+        R0 = Decimal(str(inv.get("exchange_rate") or 1))
         base_out = int(inv["total_paise"]) - int(inv.get("paid_paise") or 0) - int(inv.get("credited_paise") or 0)
-        foreign_out = to_txn_minor(base_out, inv_rate, minor)
-        if int(a["allocated_paise"]) != foreign_out:
+        foreign_out = int(inv.get("txn_total") or 0) - int(inv.get("paid_txn") or 0)
+        f = int(a["allocated_paise"])
+        if f > foreign_out:
             raise HTTPException(status_code=422, detail=(
-                "Phase 3 settles a foreign invoice in full at its booked rate; partial foreign "
-                "settlement arrives with realized FX in the next phase."))
-        a["allocated_paise"] = base_out       # rewrite to base for the settlement below
-        total_foreign += foreign_out
-        total_base += base_out
-        rate_used = inv_rate
+                f"Allocation {f} exceeds invoice {inv_id} outstanding {foreign_out} {ccy}."))
+        # Snap the base to clear exactly on full settlement — no rounding drift.
+        ar_relieved = base_out if f == foreign_out else to_base_minor(f, R0, minor)
+        new_paid = int(inv.get("paid_paise") or 0) + ar_relieved
+        new_paid_txn = int(inv.get("paid_txn") or 0) + f
+        status = "paid" if new_paid_txn >= int(inv.get("txn_total") or 0) else "partially_paid"
+        settle_plan.append((inv, f, ar_relieved, new_paid, new_paid_txn, status))
+        total_ar_relieved += ar_relieved
+        total_foreign_settled += f
+    if total_foreign_settled > total_foreign:
+        raise HTTPException(status_code=422, detail="Allocated foreign exceeds the receipt amount.")
 
-    data["amount_paise"] = total_base          # receipt cash, now in base paise
-    return {
-        "txn_currency": ccy, "exchange_rate": str(rate_used), "txn_amount": total_foreign,
-        "rate_source": "settlement", "rate_type": "booking", "rate_date": data.get("receipt_date"),
-        "rate_selected_by": (actor or {}).get("id"), "rate_overridden": override is not None,
+    cash_base = to_base_minor(total_foreign, R1, minor)
+    settled_cash_base = to_base_minor(total_foreign_settled, R1, minor)
+    unalloc_base = cash_base - settled_cash_base
+    fx_diff = settled_cash_base - total_ar_relieved   # + gain / − loss (receivable)
+
+    bank_id = K._find_account(db, firm_id, client_id, "%Bank%", system_key="bank")
+    ar_id = K._find_account(db, firm_id, client_id, "%Trade Receivable%", system_key="ar")
+    lines = [
+        {"account_id": bank_id, "debit_paise": cash_base, "credit_paise": 0,
+         "narration": "Cash/bank received (foreign)", "txn_debit": total_foreign, "txn_credit": 0},
+        {"account_id": ar_id, "debit_paise": 0, "credit_paise": total_ar_relieved + unalloc_base,
+         "narration": "Trade receivable settled at booked rate", "txn_debit": 0, "txn_credit": total_foreign},
+    ]
+    if fx_diff != 0:
+        fx_id = K._find_account(db, firm_id, client_id, "%Foreign Exchange%", system_key="fx_realized")
+        if fx_diff > 0:
+            lines.append({"account_id": fx_id, "debit_paise": 0, "credit_paise": fx_diff,
+                          "narration": "Realized FX gain", "txn_debit": 0, "txn_credit": 0})
+        else:
+            lines.append({"account_id": fx_id, "debit_paise": -fx_diff, "credit_paise": 0,
+                          "narration": "Realized FX loss", "txn_debit": 0, "txn_credit": 0})
+
+    fy = _current_fy()
+    seq = _next_receipt_seq(db, firm_id, client_id, fy)
+    receipt_no = f"RCPT-{fy}-{seq:04d}"
+    entry_id = K._create_journal(
+        db=db, firm_id=firm_id, client_id=client_id, entry_date=data["receipt_date"],
+        reference_no=receipt_no, narration=f"Receipt {receipt_no} (foreign) from customer",
+        entry_type="Receipt", lines=lines, created_by=(actor or {}).get("id"),
+        txn_currency=ccy, exchange_rate=R1, rate_source=r1_source, rate_type="booking",
+        rate_date=str(data["receipt_date"])[:10], rate_selected_by=(actor or {}).get("id"),
+        rate_overridden=overridden, currency_policy=CurrencyPolicy(active=True, functional_currency="INR"),
+    )
+
+    receipt_payload = {
+        "firm_id": firm_id, "client_id": client_id, "customer_id": data["customer_id"],
+        "receipt_no": receipt_no, "receipt_date": data["receipt_date"],
+        "amount_paise": cash_base, "tds_paise": 0, "unallocated_paise": unalloc_base,
+        "payment_mode": data.get("payment_mode", ""), "reference_no": data.get("reference_no", ""),
+        "notes": data.get("notes", ""), "journal_entry_id": entry_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "txn_currency": ccy, "exchange_rate": str(R1), "txn_amount": total_foreign,
+        "rate_source": r1_source, "rate_type": "booking", "rate_date": str(data["receipt_date"])[:10],
+        "rate_selected_by": (actor or {}).get("id"), "rate_overridden": overridden,
     }
+    receipt = (db.table("receipts").insert(receipt_payload).execute().data or [receipt_payload])[0]
+    receipt_id = receipt.get("id", str(uuid.uuid4()))
+
+    alloc_rows = []
+    for (inv, f, ar_relieved, new_paid, new_paid_txn, status) in settle_plan:
+        # Optimistic guard (H1): only settle if paid_paise is unchanged since our read.
+        upd = (db.table("client_sales_invoices")
+               .update({"paid_paise": new_paid, "paid_txn": new_paid_txn, "status": status})
+               .eq("id", inv["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
+               .eq("paid_paise", int(inv.get("paid_paise") or 0)).execute())
+        if not upd.data:
+            raise HTTPException(status_code=409, detail="Concurrent settlement detected; please retry.")
+        alloc_rows.append({"receipt_id": receipt_id, "sales_invoice_id": inv["id"], "allocated_paise": ar_relieved})
+    if alloc_rows:
+        db.table("receipt_allocations").insert(alloc_rows).execute()
+
+    if fx_diff != 0:
+        db.table("fx_adjustments").insert({
+            "firm_id": firm_id, "client_id": client_id, "kind": "realized",
+            "document_type": "receipt", "document_id": receipt_id, "currency": ccy,
+            "settlement_rate": str(R1), "base_delta_paise": fx_diff,
+            "journal_entry_id": entry_id, "rate_source": r1_source,
+            "created_by": (actor or {}).get("id"),
+        }).execute()
+
+    log_event(firm_id, "receipt", receipt_id, "create", actor_id=(actor or {}).get("auth_user_id"),
+              actor_email=(actor or {}).get("email"), new_data={"amount_paise": cash_base, "currency": ccy})
+    return {**receipt, "allocations": alloc_rows, "journal_entry_id": entry_id, "realized_fx_paise": fx_diff}
 
 
 def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
@@ -152,13 +235,13 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     and, in real mode, journal_entry_id). Integer paise throughout.
     """
     client_id    = data["client_id"]
-    # ── Multi-Currency (Phase 3): a foreign receipt settles same-currency invoices
-    # at each invoice's FROZEN booking rate (no realized FX yet). We convert the
-    # foreign inputs to base (INR) up front and rewrite `data`, so every settlement
-    # step below runs in base exactly as for an INR receipt. INR ⇒ no-op.
+    # ── Multi-Currency (Phase 4): a foreign receipt runs a dedicated realized-FX
+    # path — each invoice is settled at ITS frozen booking rate, the cash is taken
+    # at the receipt's rate, and the difference posts to Realized FX Gain/Loss. The
+    # INR path below is byte-for-byte unchanged.
     _ccy_cols: dict = {}
     if db is not None and (data.get("currency") or "INR").strip().upper() != "INR":
-        _ccy_cols = _resolve_foreign_receipt(db, firm_id, client_id, data, actor)
+        return create_foreign_receipt(firm_id, data, actor, db)
     amount_paise = data["amount_paise"]
     tds_paise    = int(data.get("tds_paise", 0) or 0)   # TDS deducted by client (§194J)
     settlement   = amount_paise + tds_paise              # value applied against invoices

@@ -245,6 +245,8 @@ STANDARD_COA: list[tuple[str, str]] = [
     ("gst_input",      "GST Input Tax Credit"),
     ("tds_receivable", "TDS Receivable"),
     ("tds_payable",    "TDS Payable"),
+    ("fx_realized",    "Foreign Exchange Gain/Loss (Realized)"),
+    ("fx_unrealized",  "Foreign Exchange Gain/Loss (Unrealized)"),
     (None,             "Purchases"),
     (None,             "Professional Fees Expense"),
 ]

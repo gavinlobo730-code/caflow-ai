@@ -75,10 +75,10 @@ def test_foreign_sales_cycle_gl_balances_in_base(monkeypatch):
     assert all(l["txn_currency"] == "USD" for l in jls)
     assert str(je.get("rate_overridden")) in ("True", "true")  # manual rate → overridden
 
-    # Settle in full in USD at the booked rate → AR cleared, Bank debited (base).
+    # Settle in full in USD at the SAME rate → AR cleared, Bank debited (base), no FX.
     rc.create_receipt(ReceiptIn(
         client_id="CLI", customer_id=cust["id"], receipt_date="2025-07-01",
-        amount_paise=118000, currency="USD",
+        amount_paise=118000, currency="USD", exchange_rate="83.5",
         allocations=[ReceiptAllocationIn(sales_invoice_id=inv["id"], allocated_paise=118000)]), CALLER)
     paid = db.table("client_sales_invoices").select("*").eq("id", inv["id"]).execute().data[0]
     assert paid["status"] == "paid" and paid["paid_paise"] == 9_853_000
@@ -107,7 +107,7 @@ def test_foreign_purchase_cycle_gl_balances_in_base(monkeypatch):
 
     pp.create_purchase_payment(PurchasePaymentIn(
         client_id="CLI", vendor_id=vend["id"], payment_date="2025-07-01",
-        amount_paise=118000, currency="USD", purchase_bill_id=bill["id"]), CALLER)
+        amount_paise=118000, currency="USD", exchange_rate="83.5", purchase_bill_id=bill["id"]), CALLER)
     paid = db.table("purchase_bills").select("*").eq("id", bill["id"]).execute().data[0]
     assert paid["status"] == "paid" and paid["paid_paise"] == 9_853_000
     assert account_balance(db, coa_id(db, FIRM, "ap")) == 0
@@ -160,22 +160,10 @@ def test_receipt_currency_mismatch_rejected(monkeypatch):
     with pytest.raises(HTTPException) as ex:
         rc.create_receipt(ReceiptIn(
             client_id="CLI", customer_id=cust["id"], receipt_date="2025-07-01",
-            amount_paise=1000, currency="USD",
+            amount_paise=1000, currency="USD", exchange_rate="83.0",
             allocations=[ReceiptAllocationIn(sales_invoice_id=inv["id"], allocated_paise=1000)]), CALLER)
     assert ex.value.status_code == 422 and "mismatch" in ex.value.detail.lower()
 
 
-def test_cross_rate_settlement_rejected(monkeypatch):
-    cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)
-    cust = cu.create_customer(CustomerIn(client_id="CLI", name="B", state_code="27"), CALLER)["data"]
-    inv = si.create_invoice(SalesInvoiceIn(
-        client_id="CLI", customer_id=cust["id"], invoice_date="2025-06-01",
-        currency="USD", exchange_rate="83.5",
-        lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)["data"]
-    si.issue_invoice(inv["id"], CALLER)
-    with pytest.raises(HTTPException) as ex:
-        rc.create_receipt(ReceiptIn(
-            client_id="CLI", customer_id=cust["id"], receipt_date="2025-07-01",
-            amount_paise=100000, currency="USD", exchange_rate="84.0",   # different rate
-            allocations=[ReceiptAllocationIn(sales_invoice_id=inv["id"], allocated_paise=100000)]), CALLER)
-    assert ex.value.status_code == 422 and "fx" in ex.value.detail.lower()
+# (Cross-rate settlement is no longer rejected — Phase 4 posts realized FX for it;
+#  see test_multi_currency_phase4.py.)
