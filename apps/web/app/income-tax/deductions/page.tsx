@@ -14,6 +14,7 @@
 
 import { useState, useCallback } from "react";
 import { Save, ChevronDown, ChevronUp } from "lucide-react";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
@@ -336,10 +337,13 @@ export default function DeductionsPage() {
           <p className="text-sm text-[#64748B] mt-0.5">IT Act — Compute deductions and compare tax regimes</p>
         </div>
         <div className="flex items-center gap-2">
-          <select value={clientId} onChange={e => setClientId(e.target.value)}
-            className="border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
-            {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-          </select>
+          <ClientLookup
+            clients={clients}
+            value={clientId}
+            onChange={setClientId}
+            ariaLabel="Client"
+            placeholder="Select client…"
+          />
         </div>
       </div>
 

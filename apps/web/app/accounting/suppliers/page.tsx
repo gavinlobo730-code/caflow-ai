@@ -13,6 +13,7 @@ import { ChevronLeft, Plus, X, Users, IndianRupee } from "lucide-react";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 
@@ -203,9 +204,15 @@ export default function SuppliersPage() {
       <Card>
         <CardContent className="pt-4 pb-4">
           <label className="text-xs font-medium text-[#334155] block mb-1">Select Client</label>
-          <select className="border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm w-full max-w-xs focus:outline-none focus:ring-2 focus:ring-blue-500" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}>
-            {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-          </select>
+          <div className="w-full max-w-xs">
+            <ClientLookup
+              clients={clients}
+              value={selectedClientId}
+              onChange={setSelectedClientId}
+              ariaLabel="Client"
+              placeholder="Select client…"
+            />
+          </div>
         </CardContent>
       </Card>
 

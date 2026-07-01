@@ -27,6 +27,7 @@ import Link from "next/link";
 import * as XLSX from "xlsx";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -644,17 +645,15 @@ export default function GstReconciliationPage() {
             ) : clients.length === 0 ? (
               <p className="text-xs text-[#94A3B8] italic">No clients found</p>
             ) : (
-              <select
-                value={selectedClientId}
-                onChange={(e) => setSelectedClientId(e.target.value)}
-                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.client_name}{c.gstin ? ` · ${c.gstin}` : ""}
-                  </option>
-                ))}
-              </select>
+              <div className="w-full">
+                <ClientLookup
+                  clients={clients}
+                  value={selectedClientId}
+                  onChange={setSelectedClientId}
+                  ariaLabel="Client"
+                  placeholder="Select client…"
+                />
+              </div>
             )}
           </div>
 

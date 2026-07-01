@@ -9,6 +9,7 @@ import { ArrowLeft, Plus, X, AlertCircle, Trash2 } from "lucide-react";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 
@@ -332,16 +333,13 @@ export default function FixedAssetsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            className="text-sm border rounded-md px-3 py-1.5 bg-white"
+          <ClientLookup
+            clients={clients}
             value={selectedClientId}
-            onChange={(e) => setSelectedClientId(e.target.value)}
-          >
-            {clients.length === 0 && <option value="">No clients</option>}
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>{c.client_name}</option>
-            ))}
-          </select>
+            onChange={setSelectedClientId}
+            ariaLabel="Client"
+            placeholder="No clients"
+          />
           <Button variant="outline" size="sm" onClick={openDepModal} disabled={!selectedClientId}>
             Run Depreciation
           </Button>

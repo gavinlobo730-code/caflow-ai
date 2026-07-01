@@ -14,6 +14,7 @@ import Link from "next/link";
 import { ChevronLeft, Save, AlertTriangle, CheckCircle, Clock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -238,10 +239,15 @@ export default function AdvanceTaxPage() {
       <div className="flex flex-wrap gap-3 items-end">
         <div>
           <label className="text-xs text-[#64748B]">Client</label>
-          <select value={clientId} onChange={e => setClientId(e.target.value)}
-            className="block mt-1 border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 min-w-[200px]">
-            {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-          </select>
+          <div className="mt-1 min-w-[200px]">
+            <ClientLookup
+              clients={clients}
+              value={clientId}
+              onChange={setClientId}
+              ariaLabel="Client"
+              placeholder="Select client…"
+            />
+          </div>
         </div>
         <div>
           <label className="text-xs text-[#64748B]">Financial Year</label>

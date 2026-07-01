@@ -15,6 +15,7 @@ import Link from "next/link";
 import { ArrowLeft, Download, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 
@@ -273,13 +274,13 @@ export default function StatutoryPage() {
               <div className="flex flex-wrap gap-4 items-end">
                 <div>
                   <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
-                  <select
-                    className="border rounded-lg px-3 py-2 text-sm"
+                  <ClientLookup
+                    clients={clients}
                     value={selectedClientId}
-                    onChange={e => setSelectedClientId(e.target.value)}
-                  >
-                    {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-                  </select>
+                    onChange={setSelectedClientId}
+                    ariaLabel="Client"
+                    placeholder="Select client…"
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-[#334155] mb-1">Month</label>
