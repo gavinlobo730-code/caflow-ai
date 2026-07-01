@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
@@ -22,6 +22,9 @@ import {
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+import { DataTable } from "@/components/ui/data-table";
+import type { Column, FilterDef } from "@/lib/table/types";
+import { formatPaise as formatPaiseINR } from "@/lib/services/formatting";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -1220,6 +1223,115 @@ function EngagementsPageInner() {
     setDetailLetter(letter);
   }
 
+  // ── Letters DataTable: columns / filters ─────────────────────────────────────
+  // Money is integer paise (CGST Act) — the accessor returns paise for numeric
+  // sorting; the cell renders via the shared formatPaise, exported in rupees.
+  const letterColumns: Column<EngagementLetter>[] = useMemo(() => [
+    {
+      key: "engagement_number", header: "Engagement #", accessor: (l) => l.engagement_number,
+      searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (l) => (
+        <button
+          onClick={() => setDetailLetter(l)}
+          className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline font-medium"
+        >
+          {l.engagement_number}
+        </button>
+      ),
+    },
+    {
+      key: "recipient_name", header: "Client / Lead", accessor: (l) => l.recipient_name ?? "",
+      searchable: true, sortable: true,
+      render: (l) => l.recipient_name ?? <span className="text-[#94A3B8]">—</span>,
+    },
+    {
+      key: "title", header: "Title", accessor: (l) => l.title, searchable: true, sortable: true,
+      render: (l) => (
+        <button
+          onClick={() => setDetailLetter(l)}
+          className="text-[#0F172A] font-medium hover:text-blue-600 text-left max-w-[200px] truncate block"
+        >
+          {l.title}
+        </button>
+      ),
+    },
+    {
+      key: "status", header: "Status", accessor: (l) => l.status, sortable: true,
+      render: (l) => <StatusBadge status={l.status} />,
+    },
+    {
+      key: "fee", header: "Fee", accessor: (l) => l.fee_amount_paise, sortable: true, align: "right",
+      exportValue: (l) => l.fee_amount_paise / 100,
+      render: (l) =>
+        l.fee_amount_paise > 0 ? formatPaiseINR(l.fee_amount_paise) : <span className="text-[#94A3B8]">—</span>,
+    },
+    {
+      key: "created_at", header: "Created", accessor: (l) => l.created_at, sortable: true,
+      render: (l) => <span className="text-[#64748B] text-xs">{formatDate(l.created_at)}</span>,
+    },
+    {
+      key: "expiry_date", header: "Expiry", accessor: (l) => l.expiry_date ?? "", sortable: true, defaultHidden: true,
+      render: (l) => <span className="text-[#64748B] text-xs">{formatDate(l.expiry_date)}</span>,
+    },
+  ], []);
+
+  const letterFilters: FilterDef<EngagementLetter>[] = useMemo(() => [
+    {
+      key: "status", label: "Status", type: "select", accessor: (l) => l.status,
+      options: (["Draft", "Generated", "Sent", "Viewed", "Signed", "Rejected", "Expired"] as EngagementLetter["status"][])
+        .map((s) => ({ value: s, label: s })),
+    },
+  ], []);
+
+  // Per-row quick actions (view / generate / send / sign / reject) — preserved from the original table.
+  const letterRowActions = useCallback((letter: EngagementLetter) => (
+    <div className="flex items-center justify-end gap-1.5">
+      <button
+        onClick={() => setDetailLetter(letter)}
+        className="flex items-center gap-1 rounded-md bg-[#F1F5F9] px-2 py-1 text-xs font-medium text-[#475569] hover:bg-[#E2E8F0] transition-colors"
+      >
+        <Eye size={11} />
+        View
+      </button>
+      {letter.status === "Draft" && (
+        <button
+          onClick={() => handleLetterAction("generate", letter)}
+          className="flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+        >
+          <FileText size={11} />
+          Mark Generated
+        </button>
+      )}
+      {letter.status === "Generated" && (
+        <button
+          onClick={() => handleLetterAction("send", letter)}
+          className="flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+        >
+          <Send size={11} />
+          Send
+        </button>
+      )}
+      {(letter.status === "Sent" || letter.status === "Viewed") && (
+        <>
+          <button
+            onClick={() => setDetailLetter(letter)}
+            className="flex items-center gap-1 rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-100 transition-colors"
+          >
+            <CheckCircle size={11} />
+            Sign
+          </button>
+          <button
+            onClick={() => setDetailLetter(letter)}
+            className="flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors"
+          >
+            <XCircle size={11} />
+            Reject
+          </button>
+        </>
+      )}
+    </div>
+  ), []);
+
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-5">
       {/* Header */}
@@ -1295,8 +1407,8 @@ function EngagementsPageInner() {
         </div>
       </div>
 
-      {/* Loading */}
-      {loading && (
+      {/* Loading (templates tab only — the letters DataTable manages its own loading state) */}
+      {loading && activeTab === "templates" && (
         <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8] gap-2">
           <Loader2 size={16} className="animate-spin" />
           Loading…
@@ -1356,119 +1468,31 @@ function EngagementsPageInner() {
         </div>
       )}
 
-      {/* Letters table */}
-      {!loading && activeTab !== "templates" && (
-        <div>
-          {filteredLetters.length === 0 ? (
-            <div className="text-center py-16 text-[#94A3B8]">
-              <FileText size={32} className="mx-auto mb-3 opacity-30" />
-              <p className="text-sm font-medium">No engagement letters found</p>
-              <p className="text-xs mt-1">
-                {activeTab === "all" ? "Create your first engagement letter to get started" : `No letters in "${activeTab}" status`}
-              </p>
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC]">
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748B] uppercase tracking-wider">Engagement #</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748B] uppercase tracking-wider">Client / Lead</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748B] uppercase tracking-wider">Title</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748B] uppercase tracking-wider">Status</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748B] uppercase tracking-wider">Fee</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748B] uppercase tracking-wider">Created</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748B] uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F1F5F9]">
-                  {filteredLetters.map((letter) => (
-                    <tr
-                      key={letter.id}
-                      className="hover:bg-[#F8FAFC] transition-colors group"
-                    >
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => setDetailLetter(letter)}
-                          className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                        >
-                          {letter.engagement_number}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-[#334155]">
-                        {letter.recipient_name ?? <span className="text-[#94A3B8]">—</span>}
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => setDetailLetter(letter)}
-                          className="text-[#0F172A] font-medium hover:text-blue-600 text-left max-w-[200px] truncate block"
-                        >
-                          {letter.title}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={letter.status} />
-                      </td>
-                      <td className="px-4 py-3 text-[#334155] font-medium">
-                        {letter.fee_amount_paise > 0 ? formatPaise(letter.fee_amount_paise) : <span className="text-[#94A3B8]">—</span>}
-                      </td>
-                      <td className="px-4 py-3 text-[#64748B] text-xs">
-                        {formatDate(letter.created_at)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => setDetailLetter(letter)}
-                            className="flex items-center gap-1 rounded-md bg-[#F1F5F9] px-2 py-1 text-xs font-medium text-[#475569] hover:bg-[#E2E8F0] transition-colors"
-                          >
-                            <Eye size={11} />
-                            View
-                          </button>
-                          {letter.status === "Draft" && (
-                            <button
-                              onClick={() => handleLetterAction("generate", letter)}
-                              className="flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
-                            >
-                              <FileText size={11} />
-                              Mark Generated
-                            </button>
-                          )}
-                          {letter.status === "Generated" && (
-                            <button
-                              onClick={() => handleLetterAction("send", letter)}
-                              className="flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
-                            >
-                              <Send size={11} />
-                              Send
-                            </button>
-                          )}
-                          {(letter.status === "Sent" || letter.status === "Viewed") && (
-                            <>
-                              <button
-                                onClick={() => setDetailLetter(letter)}
-                                className="flex items-center gap-1 rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-100 transition-colors"
-                              >
-                                <CheckCircle size={11} />
-                                Sign
-                              </button>
-                              <button
-                                onClick={() => setDetailLetter(letter)}
-                                className="flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors"
-                              >
-                                <XCircle size={11} />
-                                Reject
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+      {/* Letters table — shared DataTable (search, sort, status filter, pagination, export, prefs).
+          The status tabs above still scope the dataset (via filteredLetters); the Status
+          select filter narrows further within the active tab. */}
+      {activeTab !== "templates" && (
+        <DataTable
+          data={filteredLetters}
+          columns={letterColumns}
+          filters={letterFilters}
+          getRowId={(l) => l.id}
+          loading={loading}
+          error={error}
+          onRetry={loadData}
+          onRefresh={loadData}
+          searchPlaceholder="Search by engagement #, client, or title…"
+          initialSort={{ key: "created_at", dir: "desc" }}
+          exportFilename="engagement-letters"
+          persistKey="engagements.letters"
+          emptyTitle="No engagement letters found"
+          emptyDescription={
+            activeTab === "all"
+              ? "Create your first engagement letter to get started"
+              : `No letters in "${activeTab}" status`
+          }
+          rowActions={letterRowActions}
+        />
       )}
 
       {/* Modals */}

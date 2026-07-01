@@ -1,20 +1,20 @@
 "use client";
 
-import { useState, useEffect, useRef, ChangeEvent } from "react";
+import { useState, useEffect, useRef, useMemo, ChangeEvent } from "react";
 import {
   FileText,
   Upload,
-  Search,
   Download,
   Trash2,
   X,
   AlertCircle,
   Loader2,
 } from "lucide-react";
-import { Card } from "@/components/ui/card";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getClients } from "@/lib/data/clients";
 import { formatDate } from "@/lib/services/formatting";
+import { DataTable } from "@/components/ui/data-table";
+import type { Column, FilterDef } from "@/lib/table/types";
 import type { Client } from "@/lib/types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -361,12 +361,6 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
 
-  // Filters
-  const [search, setSearch] = useState("");
-  const [filterClient, setFilterClient] = useState("ALL");
-  const [filterType, setFilterType] = useState("ALL");
-  const [filterYear, setFilterYear] = useState("ALL");
-
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -426,21 +420,76 @@ export default function DocumentsPage() {
     }
   }
 
-  // Client lookup map
-  const clientMap = Object.fromEntries(clients.map((c) => [c.id, c.client_name]));
+  // Client lookup map — name resolution for the client column + search.
+  const clientMap = useMemo(
+    () => Object.fromEntries(clients.map((c) => [c.id, c.client_name])),
+    [clients],
+  );
 
-  // Filtered documents
-  const filtered = documents.filter((doc) => {
-    const matchSearch =
-      !search ||
-      doc.file_name.toLowerCase().includes(search.toLowerCase()) ||
-      (clientMap[doc.client_id ?? ""] ?? "").toLowerCase().includes(search.toLowerCase());
-    const matchClient = filterClient === "ALL" || doc.client_id === filterClient;
-    const matchType = filterType === "ALL" || doc.document_type === filterType;
-    const matchYear =
-      filterYear === "ALL" || doc.financial_year === filterYear;
-    return matchSearch && matchClient && matchType && matchYear;
-  });
+  const clientName = (doc: Document) =>
+    doc.client_id ? clientMap[doc.client_id] ?? "Unknown" : "";
+
+  const columns: Column<Document>[] = useMemo(() => [
+    {
+      key: "file_name", header: "File Name", accessor: (d) => d.file_name,
+      searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (d) => (
+        <div className="flex items-center gap-2">
+          <FileText size={15} className="shrink-0 text-[#94A3B8]" />
+          <span className="max-w-[220px] truncate font-medium text-[#1E293B]" title={d.file_name}>
+            {d.file_name}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: "client", header: "Client", accessor: (d) => clientName(d),
+      searchable: true, sortable: true,
+      render: (d) => <span className="text-[#475569]">{d.client_id ? (clientMap[d.client_id] ?? "Unknown") : "—"}</span>,
+    },
+    {
+      key: "document_type", header: "Type", accessor: (d) => docTypeLabel(d.document_type),
+      sortable: true,
+      render: (d) => (
+        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${docTypeBadgeColor(d.document_type)}`}>
+          {docTypeLabel(d.document_type)}
+        </span>
+      ),
+    },
+    {
+      key: "financial_year", header: "Financial Year", accessor: (d) => d.financial_year ?? "",
+      sortable: true,
+      render: (d) => <span className="text-[#475569]">{d.financial_year ?? "—"}</span>,
+    },
+    {
+      key: "created_at", header: "Uploaded", accessor: (d) => d.created_at,
+      sortable: true,
+      render: (d) => <span className="text-[#64748B]">{formatDate(d.created_at)}</span>,
+    },
+    {
+      key: "file_size", header: "Size", accessor: (d) => d.file_size ?? 0,
+      sortable: true, align: "right", defaultHidden: true,
+      render: (d) => <span className="text-[#64748B]">{formatBytes(d.file_size)}</span>,
+    },
+  ], [clientMap]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const filters: FilterDef<Document>[] = useMemo(() => [
+    {
+      key: "client", label: "Client", type: "select", accessor: (d) => d.client_id ?? "",
+      options: clients.map((c) => ({ value: c.id, label: c.client_name })),
+    },
+    {
+      key: "document_type", label: "Type", type: "select", accessor: (d) => d.document_type,
+      options: FILTER_TYPES.filter((t) => t.value !== "ALL").map((t) => ({ value: t.value, label: t.label })),
+    },
+    {
+      key: "financial_year", label: "Financial Year", type: "select", accessor: (d) => d.financial_year ?? "",
+      options: FINANCIAL_YEARS.map((fy) => ({ value: fy, label: fy })),
+    },
+    {
+      key: "created_at", label: "Uploaded", type: "dateRange", accessor: (d) => d.created_at,
+    },
+  ], [clients]);
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -463,201 +512,57 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      {/* ── Filter bar ── */}
-      <div className="flex flex-wrap items-center gap-3 mb-5">
-        {/* Search */}
-        <div className="relative flex-1 min-w-[200px] max-w-xs">
-          <Search
-            size={15}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]"
-          />
-          <input
-            type="text"
-            placeholder="Search documents…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500"
-          />
-        </div>
-
-        {/* Client filter */}
-        <select
-          value={filterClient}
-          onChange={(e) => setFilterClient(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-        >
-          <option value="ALL">All Clients</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.client_name}
-            </option>
-          ))}
-        </select>
-
-        {/* Type filter */}
-        <select
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-        >
-          {FILTER_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-
-        {/* Year filter */}
-        <select
-          value={filterYear}
-          onChange={(e) => setFilterYear(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-        >
-          <option value="ALL">All Years</option>
-          {FINANCIAL_YEARS.map((fy) => (
-            <option key={fy} value={fy}>
-              {fy}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* ── Content ── */}
-      {loading ? (
-        <div className="flex items-center justify-center py-24">
-          <Loader2 className="h-7 w-7 animate-spin text-blue-500" />
-        </div>
-      ) : pageError ? (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <AlertCircle className="h-10 w-10 text-red-600 mb-3" />
-          <p className="text-sm font-medium text-red-700">{pageError}</p>
-          <button
-            onClick={loadData}
-            className="mt-3 text-xs text-blue-600 hover:underline"
-          >
-            Retry
-          </button>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#E2E8F0] bg-[#F8FAFC] py-20 text-center">
-          <FileText className="h-12 w-12 text-[#CBD5E1] mb-3" />
-          {documents.length === 0 ? (
-            <>
-              <p className="text-sm font-medium text-[#475569]">No documents yet.</p>
-              <p className="text-xs text-[#94A3B8] mt-1">
-                Upload your first document to get started.
-              </p>
-              <button
-                onClick={() => setShowUploadModal(true)}
-                className="mt-4 flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              >
-                <Upload size={14} />
-                Upload Document
-              </button>
-            </>
-          ) : (
-            <p className="text-sm text-[#64748B]">No documents match the current filters.</p>
-          )}
-        </div>
-      ) : (
-        <Card className="overflow-hidden p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-left">
-                  <th className="px-4 py-3 font-medium text-[#64748B]">File Name</th>
-                  <th className="px-4 py-3 font-medium text-[#64748B]">Client</th>
-                  <th className="px-4 py-3 font-medium text-[#64748B]">Type</th>
-                  <th className="px-4 py-3 font-medium text-[#64748B]">Financial Year</th>
-                  <th className="px-4 py-3 font-medium text-[#64748B]">Uploaded</th>
-                  <th className="px-4 py-3 font-medium text-[#64748B]">Size</th>
-                  <th className="px-4 py-3 font-medium text-[#64748B] text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                {filtered.map((doc) => (
-                  <tr key={doc.id} className="hover:bg-[#F8FAFC] transition-colors">
-                    {/* File name */}
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <FileText size={15} className="shrink-0 text-[#94A3B8]" />
-                        <span
-                          className="max-w-[220px] truncate font-medium text-[#1E293B]"
-                          title={doc.file_name}
-                        >
-                          {doc.file_name}
-                        </span>
-                      </div>
-                    </td>
-
-                    {/* Client */}
-                    <td className="px-4 py-3 text-[#475569]">
-                      {doc.client_id
-                        ? (clientMap[doc.client_id] ?? "Unknown")
-                        : "—"}
-                    </td>
-
-                    {/* Type */}
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${docTypeBadgeColor(doc.document_type)}`}
-                      >
-                        {docTypeLabel(doc.document_type)}
-                      </span>
-                    </td>
-
-                    {/* Financial year */}
-                    <td className="px-4 py-3 text-[#475569]">
-                      {doc.financial_year ?? "—"}
-                    </td>
-
-                    {/* Uploaded date */}
-                    <td className="px-4 py-3 text-[#64748B]">
-                      {formatDate(doc.created_at)}
-                    </td>
-
-                    {/* Size */}
-                    <td className="px-4 py-3 text-[#64748B]">
-                      {formatBytes(doc.file_size)}
-                    </td>
-
-                    {/* Actions */}
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => handleDownload(doc)}
-                          title="Download"
-                          className="rounded p-1.5 text-[#94A3B8] hover:bg-[#F1F5F9] hover:text-blue-600"
-                        >
-                          <Download size={15} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(doc)}
-                          disabled={deleting === doc.id}
-                          title="Delete"
-                          className="rounded p-1.5 text-[#94A3B8] hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
-                        >
-                          {deleting === doc.id ? (
-                            <Loader2 size={15} className="animate-spin" />
-                          ) : (
-                            <Trash2 size={15} />
-                          )}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* ── Documents table — shared DataTable (search, sort, filters, pagination, export, prefs) ── */}
+      <DataTable
+        data={documents}
+        columns={columns}
+        filters={filters}
+        getRowId={(d) => d.id}
+        loading={loading}
+        error={pageError}
+        onRetry={loadData}
+        onRefresh={loadData}
+        searchPlaceholder="Search by file name or client…"
+        initialSort={{ key: "created_at", dir: "desc" }}
+        exportFilename="documents"
+        persistKey="documents.list"
+        emptyTitle={documents.length === 0 ? "No documents yet." : "No documents match the current filters."}
+        emptyDescription={documents.length === 0 ? "Upload your first document to get started." : undefined}
+        emptyAction={
+          documents.length === 0 ? (
+            <button
+              onClick={() => setShowUploadModal(true)}
+              className="mt-4 flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              <Upload size={14} />
+              Upload Document
+            </button>
+          ) : undefined
+        }
+        rowActions={(doc) => (
+          <div className="flex items-center justify-end gap-1">
+            <button
+              onClick={() => handleDownload(doc)}
+              title="Download"
+              className="rounded p-1.5 text-[#94A3B8] hover:bg-[#F1F5F9] hover:text-blue-600"
+            >
+              <Download size={15} />
+            </button>
+            <button
+              onClick={() => handleDelete(doc)}
+              disabled={deleting === doc.id}
+              title="Delete"
+              className="rounded p-1.5 text-[#94A3B8] hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+            >
+              {deleting === doc.id ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Trash2 size={15} />
+              )}
+            </button>
           </div>
-
-          {/* Row count */}
-          <div className="border-t border-[#F1F5F9] px-4 py-2 text-xs text-[#94A3B8]">
-            {filtered.length} document{filtered.length !== 1 ? "s" : ""}
-            {filtered.length !== documents.length && ` (filtered from ${documents.length})`}
-          </div>
-        </Card>
-      )}
+        )}
+      />
 
       {/* ── Upload modal ── */}
       {showUploadModal && (
