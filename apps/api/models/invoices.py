@@ -74,6 +74,7 @@ class PurchaseBillLineIn(BaseModel):
     gst_rate_percent: float = 18.0
     is_service: bool = False
     tds_applicable: bool = False
+    expense_account_id: Optional[str] = None   # per-line expense classification (H10)
 
     @field_validator("rate_paise")
     @classmethod
@@ -182,6 +183,7 @@ class PurchasePaymentIn(BaseModel):
     vendor_id: str
     payment_date: str  # YYYY-MM-DD
     amount_paise: int
+    purchase_bill_id: Optional[str] = None   # link to the bill being paid (AP sub-ledger)
     payment_mode: str = "bank_transfer"
     bank_account_id: Optional[str] = None
     reference_no: Optional[str] = None
