@@ -648,7 +648,6 @@ export default function GSTPage() {
           filters={filters}
           getRowId={(f) => f.id}
           loading={loading}
-          error={error}
           searchPlaceholder="Search by client or GSTIN…"
           initialSort={{ key: "due_date", dir: "asc" }}
           exportFilename="gst-tracker"
