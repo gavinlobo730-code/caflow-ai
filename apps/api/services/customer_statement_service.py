@@ -56,10 +56,15 @@ def build_statement(customer: dict, start: str, end: str,
                        "particulars": f"Credit Note {cn.get('credit_note_no', '')}".strip(),
                        "debit_paise": 0, "credit_paise": int(cn.get("total_paise") or 0)})
     for r in receipts:
+        # A receipt relieves AR by its full SETTLEMENT (cash + TDS deducted at source),
+        # exactly as journal_for_receipt credits Trade Receivables. Counting only the cash
+        # would overstate the closing balance by the TDS and break reconciliation with the
+        # AR sub-ledger / GL control (audit H9).
+        settlement = int(r.get("amount_paise") or 0) + int(r.get("tds_paise") or 0)
         events.append({"date": _d(r.get("receipt_date")), "rank": 2, "type": "receipt",
                        "reference": r.get("receipt_no"),
                        "particulars": f"Receipt {r.get('receipt_no', '')}".strip(),
-                       "debit_paise": 0, "credit_paise": int(r.get("amount_paise") or 0)})
+                       "debit_paise": 0, "credit_paise": settlement})
 
     events.sort(key=lambda e: (e["date"], e["rank"], str(e["reference"] or "")))
 
@@ -128,7 +133,7 @@ class CustomerStatementService:
         invoices = [i for i in inv if (i.get("status") or "") not in _DEAD_INVOICE]
 
         receipts = (db.table("receipts")
-                    .select("receipt_no, receipt_date, amount_paise")
+                    .select("receipt_no, receipt_date, amount_paise, tds_paise")
                     .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id)
                     .execute().data or [])
 

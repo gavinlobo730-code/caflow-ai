@@ -104,6 +104,13 @@ def _posted_bills(db, firm_id, client_id, start, end) -> list[dict]:
             .gte("bill_date", start).lte("bill_date", end).execute().data) or []
 
 
+def _issued_debit_notes(db, firm_id, client_id, start, end) -> list[dict]:
+    return (db.table("debit_notes").select("*")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("status", "issued")
+            .gte("debit_note_date", start).lte("debit_note_date", end).execute().data) or []
+
+
 def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str) -> dict:
     """Compute GSTR-3B from posted books and reconcile to the General Ledger."""
     start, end = _period_bounds(period)
@@ -141,6 +148,18 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
             igst_paise=int(b.get("igst_paise") or 0),
             cess_paise=int(b.get("cess_paise") or 0),
             is_reverse_charge=bool(b.get("is_reverse_charge", False)),
+        ))
+    # Debit notes (purchase returns) REVERSE ITC — they credit gst_input in the GL, so
+    # the return's ITC must net them or it over-claims (mirror of credit notes reducing
+    # output tax). Fed as negative-tax purchases so book ITC nets them.
+    for dn in _issued_debit_notes(db, firm_id, client_id, start, end):
+        purchases.append(PurchaseTransaction(
+            taxable_amount_paise=-int(dn.get("taxable_amount_paise") or 0),
+            cgst_paise=-int(dn.get("cgst_paise") or 0),
+            sgst_paise=-int(dn.get("sgst_paise") or 0),
+            igst_paise=-int(dn.get("igst_paise") or 0),
+            cess_paise=-int(dn.get("cess_paise") or 0),
+            is_reverse_charge=bool(dn.get("is_reverse_charge", False)),
         ))
 
     result = compute_gstr3b(sales, purchases, [])
