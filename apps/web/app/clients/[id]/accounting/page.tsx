@@ -804,7 +804,9 @@ function GeneralLedger({ accounts, clientId, financialYear }: { accounts: Accoun
     { key: "credit", header: "Credit", accessor: (l) => l.credit_paise, sortable: true, align: "right",
       exportValue: (l) => l.credit_paise / 100,
       render: (l) => <span className="font-mono text-[#334155]">{fmt(l.credit_paise)}</span> },
-    { key: "running_balance", header: "Balance", accessor: (l) => l.running_balance_paise, sortable: true, align: "right",
+    // NOT sortable: a running balance is only meaningful in chronological (entry_date)
+    // order — sorting rows by it would display a nonsensical, non-progressive sequence.
+    { key: "running_balance", header: "Balance", accessor: (l) => l.running_balance_paise, sortable: false, align: "right",
       exportValue: (l) => l.running_balance_paise / 100,
       render: (l) => <span className={`font-mono font-semibold ${l.is_debit ? "text-blue-700" : "text-orange-700"}`}>{bal(l.running_balance_paise, l.is_debit)}</span> },
   ];
