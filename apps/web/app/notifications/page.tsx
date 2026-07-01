@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Bell, CheckCheck, Archive, AlertCircle, Loader2,
   Clock, AlertTriangle, Info,
-  ExternalLink, Filter,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { DataTable } from "@/components/ui/data-table";
+import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import type { Notification, InsightSeverity } from "@/lib/types";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -34,16 +36,16 @@ const SEVERITY_ICONS: Record<InsightSeverity, React.ReactNode> = {
   info: <Info size={14} className="text-[#94A3B8]" />,
 };
 
-const SEVERITY_COLORS: Record<InsightSeverity, string> = {
-  critical: "border-l-red-500",
-  high: "border-l-orange-400",
-  medium: "border-l-amber-400",
-  low: "border-l-blue-400",
-  info: "border-l-gray-300",
+// Ordering used for the sortable "Severity" column (critical highest).
+const SEVERITY_RANK: Record<InsightSeverity, number> = {
+  critical: 5,
+  high: 4,
+  medium: 3,
+  low: 2,
+  info: 1,
 };
 
 type FilterTab = "all" | "unread" | "archived";
-type TypeFilter = "all" | string;
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -62,9 +64,10 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<FilterTab>("all");
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [markingAll, setMarkingAll] = useState(false);
 
+  // The all/unread/archived tab is a SERVER-side filter (drives the API query);
+  // the type filter and text search run client-side inside the DataTable.
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -72,7 +75,6 @@ export default function NotificationsPage() {
       const params = new URLSearchParams();
       if (tab === "unread") params.set("unread_only", "true");
       if (tab === "archived") params.set("archived", "true");
-      if (typeFilter !== "all") params.set("type", typeFilter);
       params.set("limit", "100");
       const resp = await apiFetch<{
         notifications: Notification[];
@@ -87,7 +89,7 @@ export default function NotificationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [tab, typeFilter]);
+  }, [tab]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -127,16 +129,138 @@ export default function NotificationsPage() {
     }
   };
 
-  const typeOptions = ["all", ...Array.from(new Set(notifications.map(n => n.type)))];
-
   const tabs: { id: FilterTab; label: string }[] = [
     { id: "all", label: "All" },
     { id: "unread", label: `Unread${unreadCount > 0 ? ` (${unreadCount})` : ""}` },
     { id: "archived", label: "Archived" },
   ];
 
+  const columns: Column<Notification>[] = useMemo(() => [
+    {
+      key: "title",
+      header: "Notification",
+      accessor: (n) => `${n.title} ${n.body}`,
+      searchable: true,
+      sortable: true,
+      sticky: true,
+      hideable: false,
+      render: (n) => (
+        <div className="flex gap-2.5 min-w-0 max-w-xl">
+          <span className="pt-0.5 shrink-0">
+            {SEVERITY_ICONS[(n.severity as InsightSeverity) ?? "info"]}
+          </span>
+          <span
+            className="min-w-0 cursor-pointer"
+            onClick={() => !n.is_read && markRead(n.id)}
+          >
+            <span className="flex items-center gap-1.5">
+              {!n.is_read && <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />}
+              <span className={`text-sm leading-snug ${n.is_read ? "text-[#334155]" : "text-[#0F172A] font-semibold"}`}>
+                {n.title}
+              </span>
+            </span>
+            <span className="block text-[12px] text-[#64748B] mt-0.5 line-clamp-2">{n.body}</span>
+            {n.action_url && (
+              <a
+                href={n.action_url}
+                onClick={e => e.stopPropagation()}
+                className="mt-1 inline-flex items-center gap-0.5 text-[11px] text-blue-600 hover:text-blue-600"
+              >
+                View <ExternalLink size={9} />
+              </a>
+            )}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: "type",
+      header: "Type",
+      accessor: (n) => n.type,
+      sortable: true,
+      render: (n) => (
+        <Badge className="text-[10px] px-1.5 py-0 bg-[#F1F5F9] text-[#64748B]">
+          {n.type.replace(/_/g, " ")}
+        </Badge>
+      ),
+    },
+    {
+      key: "severity",
+      header: "Severity",
+      accessor: (n) => SEVERITY_RANK[(n.severity as InsightSeverity) ?? "info"] ?? 0,
+      sortable: true,
+      align: "center",
+      render: (n) => (
+        <span className="inline-flex items-center gap-1 capitalize text-xs text-[#475569]">
+          {SEVERITY_ICONS[(n.severity as InsightSeverity) ?? "info"]}
+          {n.severity ?? "info"}
+        </span>
+      ),
+    },
+    {
+      key: "is_read",
+      header: "Status",
+      accessor: (n) => (n.is_read ? "Read" : "Unread"),
+      sortable: true,
+      render: (n) =>
+        n.is_read
+          ? <span className="text-xs text-[#94A3B8]">Read</span>
+          : <span className="text-xs font-medium text-blue-600">Unread</span>,
+    },
+    {
+      key: "created_at",
+      header: "When",
+      accessor: (n) => n.created_at,
+      sortable: true,
+      align: "right",
+      render: (n) => (
+        <span className="text-[11px] text-[#94A3B8] whitespace-nowrap" title={n.created_at}>
+          {timeAgo(n.created_at)}
+        </span>
+      ),
+    },
+  ], []);
+
+  // Type options are derived from the currently loaded notifications.
+  const filters: FilterDef<Notification>[] = useMemo(() => {
+    const types = Array.from(new Set(notifications.map(n => n.type)));
+    return [
+      {
+        key: "type",
+        label: "Type",
+        type: "select",
+        accessor: (n) => n.type,
+        options: types.map(t => ({ value: t, label: t.replace(/_/g, " ") })),
+      },
+    ];
+  }, [notifications]);
+
+  const bulkActions: BulkAction<Notification>[] = useMemo(() => [
+    {
+      id: "mark-read",
+      label: "Mark read",
+      icon: <CheckCheck size={13} />,
+      run: async (rows) => {
+        for (const n of rows) {
+          if (!n.is_read) await markRead(n.id);
+        }
+      },
+    },
+    ...(tab !== "archived"
+      ? [{
+          id: "archive",
+          label: "Archive",
+          icon: <Archive size={13} />,
+          confirm: "Archive the selected notifications?",
+          run: async (rows: Notification[]) => {
+            for (const n of rows) await archiveOne(n.id);
+          },
+        } as BulkAction<Notification>]
+      : []),
+  ], [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
-    <div className="p-6 space-y-5 max-w-3xl mx-auto">
+    <div className="p-6 space-y-5 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <Bell size={18} className="text-[#334155]" />
@@ -147,18 +271,6 @@ export default function NotificationsPage() {
             )}
           </div>
         </div>
-        {unreadCount > 0 && tab !== "archived" && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={markAllRead}
-            disabled={markingAll}
-            className="gap-1.5 text-xs"
-          >
-            {markingAll ? <Loader2 className="animate-spin" size={12} /> : <CheckCheck size={13} />}
-            Mark all read
-          </Button>
-        )}
       </div>
 
       {error && (
@@ -167,115 +279,68 @@ export default function NotificationsPage() {
         </div>
       )}
 
-      {/* Tabs + type filter */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex gap-1 border-b flex-1">
-          {tabs.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                tab === t.id
-                  ? "border-blue-500/20 text-blue-600"
-                  : "border-transparent text-[#64748B] hover:text-[#334155]"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Filter size={12} className="text-[#94A3B8]" />
-          <select
-            value={typeFilter}
-            onChange={e => setTypeFilter(e.target.value)}
-            className="text-xs border rounded-lg px-2 py-1.5 text-[#475569] focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+      {/* Tabs (server-side scope: all / unread / archived) */}
+      <div className="flex gap-1 border-b">
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              tab === t.id
+                ? "border-blue-500/20 text-blue-600"
+                : "border-transparent text-[#64748B] hover:text-[#334155]"
+            }`}
           >
-            {typeOptions.map(o => (
-              <option key={o} value={o}>
-                {o === "all" ? "All types" : o.replace(/_/g, " ")}
-              </option>
-            ))}
-          </select>
-        </div>
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-16 text-[#94A3B8]">
-          <Loader2 className="animate-spin mr-2" size={16} /> Loading…
-        </div>
-      ) : notifications.length === 0 ? (
-        <div className="py-16 text-center text-[#94A3B8]">
-          <Bell size={32} className="mx-auto mb-3 opacity-20" />
-          <p className="font-medium text-[#64748B]">
-            {tab === "unread" ? "No unread notifications" :
-             tab === "archived" ? "No archived notifications" :
-             "No notifications"}
-          </p>
-          <p className="text-sm mt-1">
-            {tab === "all" ? "You're all caught up!" : ""}
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-1">
-          {notifications.map((n) => (
-            <div
-              key={n.id}
-              onClick={() => !n.is_read && markRead(n.id)}
-              className={`group flex gap-3 px-4 py-3.5 rounded-xl border-l-[3px] transition-colors cursor-pointer ${
-                SEVERITY_COLORS[n.severity as InsightSeverity ?? "info"]
-              } ${
-                n.is_read
-                  ? "bg-white border border-[#F1F5F9] hover:bg-[#F8FAFC]/60"
-                  : "bg-blue-500/[0.08]/40 border border-blue-500/20 hover:bg-blue-500/[0.08]/60"
-              }`}
+      <DataTable
+        data={notifications}
+        columns={columns}
+        filters={filters}
+        getRowId={(n) => n.id}
+        loading={loading}
+        error={error}
+        onRetry={load}
+        onRefresh={load}
+        searchPlaceholder="Search notifications…"
+        initialSort={{ key: "created_at", dir: "desc" }}
+        persistKey="notifications.list"
+        bulkActions={bulkActions}
+        emptyTitle={
+          tab === "unread" ? "No unread notifications" :
+          tab === "archived" ? "No archived notifications" :
+          "No notifications"
+        }
+        emptyDescription={tab === "all" ? "You're all caught up!" : undefined}
+        toolbarExtra={
+          unreadCount > 0 && tab !== "archived" ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={markAllRead}
+              disabled={markingAll}
+              className="gap-1.5 text-xs"
             >
-              <div className="pt-0.5 shrink-0">
-                {SEVERITY_ICONS[n.severity as InsightSeverity ?? "info"]}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className={`text-sm leading-snug ${n.is_read ? "text-[#334155]" : "text-[#0F172A] font-semibold"}`}>
-                      {n.title}
-                    </p>
-                    <p className="text-[12px] text-[#64748B] mt-0.5 line-clamp-2">{n.body}</p>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {!n.is_read && (
-                      <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-                    )}
-                    <span className="text-[11px] text-[#94A3B8] whitespace-nowrap">{timeAgo(n.created_at)}</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 mt-1.5">
-                  <Badge className="text-[10px] px-1.5 py-0 bg-[#F1F5F9] text-[#64748B]">
-                    {n.type.replace(/_/g, " ")}
-                  </Badge>
-                  {n.action_url && (
-                    <a
-                      href={n.action_url}
-                      onClick={e => e.stopPropagation()}
-                      className="flex items-center gap-0.5 text-[11px] text-blue-600 hover:text-blue-600"
-                    >
-                      View <ExternalLink size={9} />
-                    </a>
-                  )}
-                </div>
-              </div>
-              {tab !== "archived" && (
-                <button
-                  onClick={e => { e.stopPropagation(); archiveOne(n.id); }}
-                  title="Archive"
-                  className="p-1.5 rounded opacity-0 group-hover:opacity-100 text-[#94A3B8] hover:text-[#475569] hover:bg-[#F1F5F9] transition-all shrink-0"
-                >
-                  <Archive size={13} />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+              {markingAll ? <Loader2 className="animate-spin" size={12} /> : <CheckCheck size={13} />}
+              Mark all read
+            </Button>
+          ) : undefined
+        }
+        rowActions={(n) =>
+          tab !== "archived" ? (
+            <button
+              onClick={() => archiveOne(n.id)}
+              title="Archive"
+              className="p-1.5 rounded text-[#94A3B8] hover:text-[#475569] hover:bg-[#F1F5F9] transition-all"
+            >
+              <Archive size={13} />
+            </button>
+          ) : null
+        }
+      />
     </div>
   );
 }

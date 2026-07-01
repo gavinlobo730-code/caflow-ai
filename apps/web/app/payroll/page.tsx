@@ -5,13 +5,16 @@
  * All monetary values stored and computed in integer paise.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
   Users, Play, FileText, Shield, Plus, X, AlertCircle,
   Download, CheckCircle, Clock, AlertTriangle, BarChart2, Upload,
 } from "lucide-react";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import { DataTable } from "@/components/ui/data-table";
+import type { Column, FilterDef } from "@/lib/table/types";
+import { formatPaise } from "@/lib/services/formatting";
 
 const EMPLOYEE_IMPORT_COLUMNS = [
   { key: "name",                    label: "Employee Name",       required: true,  hint: "e.g. Ramesh Kumar" },
@@ -83,6 +86,16 @@ function fmtRs(paise: number): string {
 
 function rsToP(rs: number): number {
   return Math.round(rs * 100);
+}
+
+/** Monthly gross CTC for an employee, in integer paise (basic + HRA + DA + other allowances). */
+function employeeGrossPaise(emp: Employee): number {
+  return (
+    emp.basic_paise +
+    Math.round((emp.basic_paise * emp.hra_percent) / 100) +
+    Math.round((emp.basic_paise * emp.da_percent) / 100) +
+    emp.other_allowances_paise
+  );
 }
 
 /**
@@ -929,6 +942,64 @@ export default function PayrollPage() {
     load();
   }
 
+  // ── Employees table (shared DataTable) ─────────────────────────────────────
+  const employeeColumns: Column<Employee>[] = useMemo(() => [
+    { key: "name", header: "Name", accessor: (e) => e.name, searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (e) => <span className="font-medium text-[#0F172A]">{e.name}</span> },
+    { key: "pan", header: "PAN", accessor: (e) => e.pan ?? "", searchable: true,
+      render: (e) => <span className="font-mono text-xs">{e.pan || "—"}</span> },
+    { key: "designation", header: "Designation", accessor: (e) => e.designation ?? "", searchable: true, sortable: true,
+      render: (e) => <span className="text-[#475569]">{e.designation || "—"}</span> },
+    // Money column — accessor returns integer paise, right-aligned, rendered via formatPaise.
+    { key: "gross", header: "Monthly CTC", accessor: (e) => employeeGrossPaise(e), sortable: true, align: "right",
+      render: (e) => <span className="font-mono">{formatPaise(employeeGrossPaise(e))}</span> },
+    { key: "pf_applicable", header: "PF", accessor: (e) => e.pf_applicable, sortable: true, align: "center",
+      render: (e) => (
+        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${e.pf_applicable ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+          {e.pf_applicable ? "Yes" : "No"}
+        </span>
+      ) },
+    { key: "esi_applicable", header: "ESI", accessor: (e) => e.esi_applicable, sortable: true, align: "center",
+      render: (e) => (
+        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${e.esi_applicable ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+          {e.esi_applicable ? "Yes" : "No"}
+        </span>
+      ) },
+  ], []);
+
+  // The payroll_employees model has no active/inactive status field; PF/ESI
+  // applicability are the meaningful boolean facets, so filter on those.
+  const employeeFilters: FilterDef<Employee>[] = useMemo(() => [
+    { key: "pf_applicable", label: "PF", type: "boolean", accessor: (e) => e.pf_applicable, trueLabel: "Applicable", falseLabel: "Not applicable" },
+    { key: "esi_applicable", label: "ESI", type: "boolean", accessor: (e) => e.esi_applicable, trueLabel: "Applicable", falseLabel: "Not applicable" },
+  ], []);
+
+  // ── Payslips table (shared DataTable) ──────────────────────────────────────
+  const slipDeductions = (s: PayrollSlip) => s.pf_employee_paise + s.esi_employee_paise + s.pt_paise + s.tds_paise;
+
+  const payslipColumns: Column<PayrollSlip>[] = useMemo(() => [
+    { key: "employee", header: "Employee", accessor: (s) => s.employee?.name ?? "", searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (s) => <span className="font-medium text-[#0F172A]">{s.employee?.name ?? "—"}</span> },
+    { key: "month", header: "Month", accessor: (s) => s.run?.month ?? "", searchable: true, sortable: true,
+      render: (s) => <span className="text-[#475569]">{s.run?.month ?? "—"}</span> },
+    { key: "gross", header: "Gross", accessor: (s) => s.gross_paise, sortable: true, align: "right",
+      render: (s) => <span className="font-mono">{formatPaise(s.gross_paise)}</span> },
+    { key: "deductions", header: "Deductions", accessor: (s) => slipDeductions(s), sortable: true, align: "right",
+      render: (s) => <span className="font-mono text-red-600">{formatPaise(slipDeductions(s))}</span> },
+    { key: "net", header: "Net Pay", accessor: (s) => s.net_paise, sortable: true, align: "right",
+      render: (s) => <span className="font-mono font-semibold text-green-700">{formatPaise(s.net_paise)}</span> },
+  ], []);
+
+  const payslipMonthOptions = useMemo(() => {
+    const months = Array.from(new Set(slips.map((s) => s.run?.month).filter(Boolean) as string[]));
+    months.sort((a, b) => b.localeCompare(a));
+    return months.map((m) => ({ value: m, label: m }));
+  }, [slips]);
+
+  const payslipFilters: FilterDef<PayrollSlip>[] = useMemo(() => [
+    { key: "month", label: "Month", type: "select", accessor: (s) => s.run?.month ?? "", options: payslipMonthOptions },
+  ], [payslipMonthOptions]);
+
   if (loading) {
     return <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center"><p className="text-[#64748B]">Loading payroll...</p></div>;
   }
@@ -1001,53 +1072,20 @@ export default function PayrollPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                {employees.length === 0 ? (
-                  <div className="text-center py-12 text-[#94A3B8]">
-                    <Users size={32} className="mx-auto mb-3 opacity-30" />
-                    <p>No employees yet. Click &quot;Add Employee&quot; to get started.</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide">
-                          <th className="text-left py-3 px-4">Name</th>
-                          <th className="text-left py-3 px-4">PAN</th>
-                          <th className="text-left py-3 px-4">Designation</th>
-                          <th className="text-right py-3 px-4">Monthly CTC</th>
-                          <th className="text-center py-3 px-4">PF</th>
-                          <th className="text-center py-3 px-4">ESI</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {employees.map(emp => {
-                          const gross = emp.basic_paise
-                            + Math.round(emp.basic_paise * emp.hra_percent / 100)
-                            + Math.round(emp.basic_paise * emp.da_percent / 100)
-                            + emp.other_allowances_paise;
-                          return (
-                            <tr key={emp.id} className="border-b hover:bg-[#F8FAFC]">
-                              <td className="py-3 px-4 font-medium">{emp.name}</td>
-                              <td className="py-3 px-4 font-mono text-xs">{emp.pan || "—"}</td>
-                              <td className="py-3 px-4 text-[#475569]">{emp.designation || "—"}</td>
-                              <td className="py-3 px-4 text-right font-mono">{fmtRs(gross)}</td>
-                              <td className="py-3 px-4 text-center">
-                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${emp.pf_applicable ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
-                                  {emp.pf_applicable ? "Yes" : "No"}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${emp.esi_applicable ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
-                                  {emp.esi_applicable ? "Yes" : "No"}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                <DataTable
+                  data={employees}
+                  columns={employeeColumns}
+                  filters={employeeFilters}
+                  getRowId={(e) => e.id}
+                  loading={loading}
+                  onRefresh={load}
+                  searchPlaceholder="Search by name, PAN, or designation…"
+                  initialSort={{ key: "name", dir: "asc" }}
+                  exportFilename="employees"
+                  persistKey="payroll.employees"
+                  emptyTitle="No employees yet"
+                  emptyDescription={'Click "Add Employee" or import a CSV to get started.'}
+                />
               </CardContent>
             </Card>
           </TabsContent>
@@ -1129,44 +1167,23 @@ export default function PayrollPage() {
             <Card>
               <CardHeader><CardTitle>Generated Payslips</CardTitle></CardHeader>
               <CardContent>
-                {slips.length === 0 ? (
-                  <div className="text-center py-12 text-[#94A3B8]">
-                    <FileText size={32} className="mx-auto mb-3 opacity-30" />
-                    <p>No payslips generated yet. Run a Monthly Run to generate payslips.</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide">
-                          <th className="text-left py-3 px-4">Employee</th>
-                          <th className="text-left py-3 px-4">Month</th>
-                          <th className="text-right py-3 px-4">Gross</th>
-                          <th className="text-right py-3 px-4">Deductions</th>
-                          <th className="text-right py-3 px-4">Net Pay</th>
-                          <th className="py-3 px-4"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {slips.map(s => {
-                          const deductions = s.pf_employee_paise + s.esi_employee_paise + s.pt_paise + s.tds_paise;
-                          return (
-                            <tr key={s.id} className="border-b hover:bg-[#F8FAFC]">
-                              <td className="py-3 px-4 font-medium">{s.employee?.name ?? "—"}</td>
-                              <td className="py-3 px-4 text-[#475569]">{s.run?.month ?? "—"}</td>
-                              <td className="py-3 px-4 text-right font-mono">{fmtRs(s.gross_paise)}</td>
-                              <td className="py-3 px-4 text-right font-mono text-red-600">{fmtRs(deductions)}</td>
-                              <td className="py-3 px-4 text-right font-mono font-semibold text-green-700">{fmtRs(s.net_paise)}</td>
-                              <td className="py-3 px-4">
-                                <Button size="sm" variant="outline" onClick={() => setViewSlip(s)}>View</Button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                <DataTable
+                  data={slips}
+                  columns={payslipColumns}
+                  filters={payslipFilters}
+                  getRowId={(s) => s.id}
+                  loading={loading}
+                  onRefresh={load}
+                  searchPlaceholder="Search by employee or month…"
+                  initialSort={{ key: "month", dir: "desc" }}
+                  exportFilename="payslips"
+                  persistKey="payroll.payslips"
+                  emptyTitle="No payslips generated yet"
+                  emptyDescription="Run a Monthly Run to generate payslips."
+                  rowActions={(s) => (
+                    <Button size="sm" variant="outline" onClick={() => setViewSlip(s)}>View</Button>
+                  )}
+                />
               </CardContent>
             </Card>
           </TabsContent>
