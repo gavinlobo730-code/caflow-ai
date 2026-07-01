@@ -37,8 +37,26 @@ class Account:
 
 class JournalLine(NamedTuple):
     account_id: str
-    debit_paise: int
-    credit_paise: int
+    debit_paise: int          # BASE (INR) — authoritative for every report
+    credit_paise: int         # BASE (INR) — authoritative for every report
+    # ── Optional foreign (transaction-currency) memo — Multi-Currency Phase 5 ──
+    # Defaults keep this byte-for-byte identical for INR postings and for every
+    # caller that builds a line positionally (aggregate reports read only the base
+    # paise above and never touch these). Populated from journal_lines' Phase-2 FX
+    # columns so the General Ledger can show transaction-currency visibility; the
+    # base amounts remain the single source of truth.
+    txn_currency: Optional[str] = None      # None or "INR" ⇒ no foreign leg
+    txn_debit: Optional[int] = None         # foreign minor units (debit side)
+    txn_credit: Optional[int] = None        # foreign minor units (credit side)
+    exchange_rate: Optional[str] = None     # base per 1 txn unit, exact string
+
+    @property
+    def is_foreign(self) -> bool:
+        """True only for a genuinely foreign posting line (a non-INR currency with a
+        foreign memo amount). INR lines and un-migrated rows report False, so the
+        ledger stays identical for INR-only books."""
+        cur = (self.txn_currency or "").upper()
+        return bool(cur) and cur != "INR" and (self.txn_debit is not None or self.txn_credit is not None)
 
 
 @dataclass(frozen=True)

@@ -311,6 +311,31 @@ def get_outstanding_summary(
         return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
+@router.get("/ar-aging")
+def ar_aging(
+    client_id: str = Query(..., description="CA client ID — required"),
+    as_of: Optional[str] = Query(None, description="Aging as-of date (YYYY-MM-DD)"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Accounts-receivable aging for a client — per-invoice outstanding bucketed by
+    age (the AR mirror of /vendors/ap-aging). Derived entirely from posted invoices,
+    receipts and credit notes (firm-scoped); foreign invoices carry dual-currency
+    detail, INR-only clients see the base aging unchanged."""
+    try:
+        if _USE_MOCK:
+            return api_response(True, {"as_of": None, "buckets": {}, "total_outstanding_paise": 0, "invoices": []})
+        from core.supabase_client import get_supabase
+        from services.customer_statement_service import customer_statement_service
+        db = get_supabase()
+        data = customer_statement_service.ar_aging(db, current_user.get("firm_id"), client_id, as_of)
+        return api_response(True, data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("ar_aging: %s", e)
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
+
+
 @router.get("/{customer_id}")
 def get_customer(
     customer_id: str,

@@ -19,6 +19,8 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from services.statement_currency import attach_currency_outstanding, summarize_by_currency
+
 _logger = logging.getLogger("caflow.vendor_statement")
 
 _DEAD_BILL = {"draft", "cancelled"}
@@ -93,7 +95,7 @@ def build_statement(vendor: dict, start: str, end: str,
             "txn_amount": e["txn_amount"],
         })
 
-    return {
+    result = {
         "vendor": {"id": vendor.get("id"), "name": vendor.get("name"),
                    "gstin": vendor.get("gstin"), "email": vendor.get("email"),
                    "phone": vendor.get("phone")},
@@ -104,6 +106,11 @@ def build_statement(vendor: dict, start: str, end: str,
         "totals": {"billed_paise": billed, "paid_paise": paid, "debited_paise": debited,
                    "transaction_count": len(transactions)},
     }
+    # Multi-Currency Phase 5 — closing payable split by transaction currency (foreign
+    # + base), reconciling to closing_balance_paise. Payable = credit-positive.
+    # Emitted only when the vendor has foreign activity (INR vendors unchanged).
+    attach_currency_outstanding(result, vendor, events, end, credit_positive=True)
+    return result
 
 
 def _aging_bucket(days_overdue: int) -> str:
@@ -159,7 +166,8 @@ class VendorStatementService:
         paid − debited, bucketed by age from due_date (or bill_date). Mirrors AR aging."""
         today = date.fromisoformat(_d(as_of)) if as_of else datetime.now(timezone.utc).date()
         bills = (db.table("purchase_bills")
-                 .select("id, vendor_id, bill_no, bill_date, due_date, net_payable_paise, paid_paise, debited_paise, status")
+                 .select("id, vendor_id, bill_no, bill_date, due_date, net_payable_paise, paid_paise, "
+                         "debited_paise, status, txn_currency, exchange_rate, txn_net_payable, paid_txn")
                  .eq("firm_id", firm_id).eq("client_id", client_id)
                  .neq("status", "cancelled").execute().data or [])
         vnames = {v["id"]: v.get("name") for v in (db.table("vendors").select("id, name")
@@ -167,6 +175,7 @@ class VendorStatementService:
 
         buckets = {"not_due": 0, "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0}
         rows, total = [], 0
+        ccy_entries: list[tuple] = []   # (currency, base_paise, foreign_minor) for the breakdown
         for b in bills:
             outstanding = (int(b.get("net_payable_paise") or 0)
                            - int(b.get("paid_paise") or 0) - int(b.get("debited_paise") or 0))
@@ -180,14 +189,32 @@ class VendorStatementService:
             bucket = _aging_bucket(days)
             buckets[bucket] += outstanding
             total += outstanding
-            rows.append({
+            row = {
                 "bill_id": b.get("id"), "bill_no": b.get("bill_no"),
                 "vendor_id": b.get("vendor_id"), "vendor_name": vnames.get(b.get("vendor_id")),
                 "bill_date": _d(b.get("bill_date")), "outstanding_paise": outstanding,
                 "days_overdue": max(days, 0), "aging_bucket": bucket,
-            })
-        return {"as_of": today.isoformat(), "buckets": buckets,
-                "total_outstanding_paise": total, "bills": rows}
+            }
+            # Multi-Currency Phase 5 — foreign outstanding on FOREIGN bills only, so an
+            # INR-only aging keeps its exact shape. base outstanding stays authoritative.
+            cur = (b.get("txn_currency") or "INR").upper()
+            foreign_out = 0
+            if cur != "INR":
+                foreign_out = int(b.get("txn_net_payable") or 0) - int(b.get("paid_txn") or 0)
+                row["txn_currency"] = cur
+                row["exchange_rate"] = str(b.get("exchange_rate") or 1)
+                row["outstanding_base_paise"] = outstanding
+                row["outstanding_foreign_minor"] = foreign_out
+            ccy_entries.append((cur, outstanding, foreign_out))
+            rows.append(row)
+
+        out = {"as_of": today.isoformat(), "buckets": buckets,
+               "total_outstanding_paise": total, "bills": rows}
+        base_cur, by_ccy = summarize_by_currency(ccy_entries)
+        if by_ccy is not None:
+            out["base_currency"] = base_cur
+            out["by_currency"] = by_ccy
+        return out
 
 
 vendor_statement_service = VendorStatementService()
