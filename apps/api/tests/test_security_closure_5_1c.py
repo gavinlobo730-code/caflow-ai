@@ -6,11 +6,11 @@ and mutated a bill by id with no firm/client scope. These tests prove the writer
 is now scoped to (firm_id, client_id): a foreign firm or client cannot mutate a
 bill's status; the correct firm+client can.
 
-NOTE (reachability): create_purchase_payment cannot currently feed an
-attacker-controlled bill id — PurchasePaymentIn has no purchase_bill_id field, so
-Pydantic drops it and the writer is never invoked via the API. OOS-1 is therefore
-THEORETICAL; this fix hardens the writer + adds a pre-create guard so the path is
-safe if the field is ever wired in. The test exercises the writer directly.
+NOTE (reachability): PurchasePaymentIn now carries purchase_bill_id (Phase 5 H11),
+so the writer IS reachable via the API — the firm/client scope on both the guard
+read and the UPDATE keeps it safe. The writer now recomputes paid_paise + status
+from ALL recorded payments (the payment row is inserted before it runs), so these
+tests seed the payment rows the writer sums.
 """
 
 
@@ -59,6 +59,9 @@ def test_oos1_bill_status_writer_scoped_to_firm_and_client():
     db = FakeDB()
     db.seed("purchase_bills", {"id": "BILL", "firm_id": "F", "client_id": "A",
                                "net_payable_paise": 100000, "status": "issued"})
+    # The payment row is recorded before the writer runs (real create flow).
+    db.seed("purchase_payments", {"id": "P1", "firm_id": "F", "client_id": "A",
+                                  "purchase_bill_id": "BILL", "amount_paise": 100000})
 
     # Foreign firm → no mutation.
     _update_bill_payment_status(db, "OTHER", "A", "BILL", 100000)
@@ -68,9 +71,10 @@ def test_oos1_bill_status_writer_scoped_to_firm_and_client():
     _update_bill_payment_status(db, "F", "B", "BILL", 100000)
     assert db.data["purchase_bills"][0]["status"] == "issued"
 
-    # Correct firm + client → status updates (full payment ⇒ paid).
+    # Correct firm + client → status updates (full payment ⇒ paid) + paid_paise set.
     _update_bill_payment_status(db, "F", "A", "BILL", 100000)
     assert db.data["purchase_bills"][0]["status"] == "paid"
+    assert db.data["purchase_bills"][0]["paid_paise"] == 100000
 
 
 def test_oos1_partial_payment_marks_partially_paid():
@@ -78,5 +82,8 @@ def test_oos1_partial_payment_marks_partially_paid():
     db = FakeDB()
     db.seed("purchase_bills", {"id": "BILL", "firm_id": "F", "client_id": "A",
                                "net_payable_paise": 100000, "status": "issued"})
+    db.seed("purchase_payments", {"id": "P1", "firm_id": "F", "client_id": "A",
+                                  "purchase_bill_id": "BILL", "amount_paise": 40000})
     _update_bill_payment_status(db, "F", "A", "BILL", 40000)
     assert db.data["purchase_bills"][0]["status"] == "partially_paid"
+    assert db.data["purchase_bills"][0]["paid_paise"] == 40000

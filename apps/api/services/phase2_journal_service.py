@@ -280,6 +280,71 @@ class Phase2JournalService:
             _logger.error("journal_for_credit_note error: %s", e)
             return None
 
+    def journal_for_debit_note(
+        self, dn: dict, firm_id: str, client_id: str
+    ) -> Optional[str]:
+        """
+        Vendor-side purchase return (mirror of the credit note on the AP side):
+        Dr Trade Payables      = total_paise         (we owe the vendor less)
+        Cr Purchases/Expense   = taxable_amount_paise (reverse the expense)
+        Cr GST Input Tax Credit (CGST/SGST/IGST)     (reverse the ITC claimed)
+        CGST Act §34: debit notes for reduction in value/tax.
+        """
+        if _USE_MOCK:
+            _logger.info("[MOCK] journal_for_debit_note: %s", dn.get("debit_note_no"))
+            return None
+
+        try:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+
+            payables_id = self._find_account(
+                db, firm_id, client_id, "%Trade Payable%", system_key="ap"
+            )
+            try:
+                purchases_id = self._find_account(db, firm_id, client_id, "%Purchase%")
+            except ValueError:
+                purchases_id = self._find_account(db, firm_id, client_id, "%Expense%")
+            gst_input_id = self._find_account(
+                db, firm_id, client_id, "%GST Input%", system_key="gst_input"
+            )
+
+            lines = [{
+                "account_id": payables_id,
+                "debit_paise": dn["total_paise"],
+                "credit_paise": 0,
+                "narration": "Trade payable reduced by debit note",
+            }, {
+                "account_id": purchases_id,
+                "debit_paise": 0,
+                "credit_paise": dn["taxable_amount_paise"],
+                "narration": "Purchase returns — debit note",
+            }]
+            gst_reversed = int(dn.get("cgst_paise", 0)) + int(dn.get("sgst_paise", 0)) + int(dn.get("igst_paise", 0))
+            if gst_reversed > 0:
+                lines.append({
+                    "account_id": gst_input_id,
+                    "debit_paise": 0,
+                    "credit_paise": gst_reversed,
+                    "narration": "GST input tax credit reversed",
+                })
+
+            return self._create_journal(
+                db=db,
+                firm_id=firm_id,
+                client_id=client_id,
+                entry_date=dn.get("debit_note_date", str(datetime.now(timezone.utc).date())),
+                reference_no=dn["debit_note_no"],
+                narration=f"Debit note {dn['debit_note_no']} — CGST Act §34",
+                entry_type="Journal",
+                lines=lines,
+            )
+        except ValueError:
+            raise
+        except Exception as e:
+            _logger.error("journal_for_debit_note error: %s", e)
+            return None
+
     def journal_for_purchase_bill(
         self, bill: dict, firm_id: str, client_id: str
     ) -> Optional[str]:
@@ -318,13 +383,24 @@ class Phase2JournalService:
                 db, firm_id, client_id, "%TDS Payable%", system_key="tds_payable"
             )
 
+            # H10: classify the expense per LINE — group each line's taxable by its own
+            # expense_account_id so purchases hit the right ledger (schedule-wise P&L,
+            # §40(a)(ia) mapping). Lines with no account fall back to the resolved
+            # Purchases/Expense account. Grouping keeps one debit per distinct account.
+            line_rows = (db.table("purchase_bill_lines")
+                         .select("expense_account_id, taxable_amount_paise")
+                         .eq("bill_id", bill.get("id")).execute().data) or []
+            by_account: dict = {}
+            for lr in line_rows:
+                acc = lr.get("expense_account_id") or purchases_id
+                by_account[acc] = by_account.get(acc, 0) + int(lr.get("taxable_amount_paise") or 0)
+            # Fallback: no line rows available (e.g. header-only) → single purchases debit.
+            if not by_account or sum(by_account.values()) != int(bill.get("taxable_amount_paise") or 0):
+                by_account = {purchases_id: int(bill.get("taxable_amount_paise") or 0)}
             lines = [
-                {
-                    "account_id": purchases_id,
-                    "debit_paise": bill["taxable_amount_paise"],
-                    "credit_paise": 0,
-                    "narration": "Purchase / expense",
-                },
+                {"account_id": acc, "debit_paise": amt, "credit_paise": 0,
+                 "narration": "Purchase / expense"}
+                for acc, amt in by_account.items() if amt
             ]
 
             if bill.get("cgst_paise", 0) > 0:

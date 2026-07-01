@@ -54,7 +54,7 @@ from routers import dsc  # H6: DSC (Digital Signature Certificate) backend
 from routers import assignments
 from routers import approvals
 from routers import identity
-from routers import customers, vendors, sales_invoices, receipts, credit_notes, customer_statements
+from routers import customers, vendors, sales_invoices, receipts, credit_notes, customer_statements, debit_notes
 from routers import recurring_invoices
 from routers import compliance_ops
 from routers import purchase_bills, purchase_payments, document_intelligence_v1
@@ -215,6 +215,7 @@ app.include_router(vendors.router, dependencies=_CLIENT_GUARD)
 app.include_router(sales_invoices.router, dependencies=_CLIENT_GUARD)
 app.include_router(receipts.router, dependencies=_CLIENT_GUARD)
 app.include_router(credit_notes.router, dependencies=_CLIENT_GUARD)
+app.include_router(debit_notes.router, dependencies=_CLIENT_GUARD)
 app.include_router(customer_statements.router, dependencies=_CLIENT_GUARD)
 app.include_router(recurring_invoices.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance_ops.router, dependencies=_CLIENT_GUARD)
