@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   ShieldAlert,
   AlertTriangle,
@@ -18,6 +18,9 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getClients } from "@/lib/data/clients";
+import { DataTable } from "@/components/ui/data-table";
+import type { Column, FilterDef } from "@/lib/table/types";
+import { formatPaise, formatDate } from "@/lib/services/formatting";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,6 +60,12 @@ interface RiskRegisterRow {
   description: string;
   severity: "critical" | "high" | "medium" | "low";
   action: string;
+  // Optional sortable dimensions carried from the per-category source rows so the
+  // unified register can sort by days-overdue / amount / date. Undefined where the
+  // category has no such dimension (nullish sinks to the end when sorting).
+  daysOverdue?: number;
+  amountPaise?: number; // integer paise (CGST Act) — never floating point
+  date?: string; // ISO date (due / expiry / maturity) for the row
 }
 
 interface AdvanceTaxRisk {
@@ -364,14 +373,14 @@ export default function RisksPage() {
   useEffect(() => { loadData(); }, [loadData]);
 
   const riskRegister: RiskRegisterRow[] = [
-    ...overdueRisks.map((r) => ({ clientName: r.clientName, riskType: "Overdue Filing", description: `${r.filingType} overdue by ${r.daysOverdue} days (due ${r.dueDate})`, severity: r.riskLevel as "high" | "medium" | "low", action: "File immediately and pay late fee under CGST Act Section 47" })),
-    ...tdsRisks.map((r) => ({ clientName: r.clientName, riskType: "TDS Default", description: `${r.filingType} overdue by ${r.daysOverdue} days — IT Act Section 200A interest applies`, severity: "high" as const, action: "File TDS return and compute interest u/s 201(1A)" })),
+    ...overdueRisks.map((r) => ({ clientName: r.clientName, riskType: "Overdue Filing", description: `${r.filingType} overdue by ${r.daysOverdue} days (due ${r.dueDate})`, severity: r.riskLevel as "high" | "medium" | "low", action: "File immediately and pay late fee under CGST Act Section 47", daysOverdue: r.daysOverdue, date: r.dueDate })),
+    ...tdsRisks.map((r) => ({ clientName: r.clientName, riskType: "TDS Default", description: `${r.filingType} overdue by ${r.daysOverdue} days — IT Act Section 200A interest applies`, severity: "high" as const, action: "File TDS return and compute interest u/s 201(1A)", daysOverdue: r.daysOverdue, date: r.dueDate })),
     ...gstinRisks.map((r) => ({ clientName: r.clientName, riskType: "GSTIN Mismatch", description: `GSTIN ${r.gstin} is invalid: ${r.reason}`, severity: "medium" as const, action: "Verify GSTIN on GST portal and update client record" })),
     ...inactiveClients.map((c) => ({ clientName: c.clientName, riskType: "Inactive Client", description: "No compliance entries in last 90 days", severity: "low" as const, action: "Confirm client status and add compliance calendar entries if active" })),
-    ...advanceTaxRisks.map((r) => ({ clientName: r.clientName, riskType: "Advance Tax Default", description: `${r.installment} not filed — due ${r.dueDate}, ${r.daysOverdue} days overdue`, severity: "high" as const, action: "Pay advance tax with interest u/s 234B/234C of IT Act" })),
-    ...dscExpiryRisks.map((r) => ({ clientName: r.clientName, riskType: "DSC Expiry", description: `DSC of ${r.dscHolder} expires on ${r.expiryDate} (${r.daysLeft} days left)`, severity: (r.daysLeft <= 15 ? "high" : "medium") as "high" | "medium", action: "Renew DSC before expiry — required for e-filing under IT Act Rule 12" })),
-    ...loanOverdueRisks.map((r) => ({ clientName: r.clientName, riskType: "Loan Overdue", description: `${r.loanType} from ${r.lenderName} is overdue — ₹${(r.outstandingPaise / 100).toLocaleString("en-IN")} outstanding`, severity: "high" as const, action: "Contact lender immediately — overdue may affect credit rating and attract penal interest" })),
-    ...fdMaturityRisks.map((r) => ({ clientName: r.clientName, riskType: "FD Maturing Soon", description: `FD at ${r.bankName} matures on ${r.maturityDate} (${r.daysLeft} days) — ₹${(r.maturityAmountPaise / 100).toLocaleString("en-IN")}`, severity: "low" as const, action: "Advise client on renewal or withdrawal — TDS applicable u/s 194A if interest > ₹40,000" })),
+    ...advanceTaxRisks.map((r) => ({ clientName: r.clientName, riskType: "Advance Tax Default", description: `${r.installment} not filed — due ${r.dueDate}, ${r.daysOverdue} days overdue`, severity: "high" as const, action: "Pay advance tax with interest u/s 234B/234C of IT Act", daysOverdue: r.daysOverdue, date: r.dueDate })),
+    ...dscExpiryRisks.map((r) => ({ clientName: r.clientName, riskType: "DSC Expiry", description: `DSC of ${r.dscHolder} expires on ${r.expiryDate} (${r.daysLeft} days left)`, severity: (r.daysLeft <= 15 ? "high" : "medium") as "high" | "medium", action: "Renew DSC before expiry — required for e-filing under IT Act Rule 12", date: r.expiryDate })),
+    ...loanOverdueRisks.map((r) => ({ clientName: r.clientName, riskType: "Loan Overdue", description: `${r.loanType} from ${r.lenderName} is overdue — ₹${(r.outstandingPaise / 100).toLocaleString("en-IN")} outstanding`, severity: "high" as const, action: "Contact lender immediately — overdue may affect credit rating and attract penal interest", amountPaise: r.outstandingPaise })),
+    ...fdMaturityRisks.map((r) => ({ clientName: r.clientName, riskType: "FD Maturing Soon", description: `FD at ${r.bankName} matures on ${r.maturityDate} (${r.daysLeft} days) — ₹${(r.maturityAmountPaise / 100).toLocaleString("en-IN")}`, severity: "low" as const, action: "Advise client on renewal or withdrawal — TDS applicable u/s 194A if interest > ₹40,000", amountPaise: r.maturityAmountPaise, date: r.maturityDate })),
     ...missingPanRisks.map((r) => ({ clientName: r.clientName, riskType: "Missing PAN", description: "Client has no PAN on record", severity: "medium" as const, action: "Obtain PAN — mandatory for TDS deduction and ITR filing u/s 139A of IT Act" })),
   ];
 
@@ -379,6 +388,74 @@ export default function RisksPage() {
   const highCount = riskRegister.filter((r) => r.severity === "high" || r.severity === "critical").length;
   const mediumCount = riskRegister.filter((r) => r.severity === "medium").length;
   const lowCount = riskRegister.filter((r) => r.severity === "low").length;
+
+  // ── Risk Register DataTable: columns / filters ───────────────────────────────
+  // Amounts are integer paise (CGST Act) — accessor returns paise for numeric
+  // sorting; the cell renders via the shared formatPaise, exported in rupees.
+  const registerColumns: Column<RiskRegisterRow>[] = useMemo(() => [
+    {
+      key: "clientName", header: "Client", accessor: (r) => r.clientName,
+      searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (r) => <span className="font-medium text-[#1E293B]">{r.clientName}</span>,
+    },
+    {
+      key: "riskType", header: "Risk Type", accessor: (r) => r.riskType, sortable: true,
+      render: (r) => <span className="text-[#475569]">{r.riskType}</span>,
+    },
+    {
+      key: "severity", header: "Severity", accessor: (r) => r.severity,
+      render: (r) => (
+        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${riskColor(r.severity)}`}>
+          {r.severity}
+        </span>
+      ),
+    },
+    {
+      key: "daysOverdue", header: "Days Overdue", accessor: (r) => r.daysOverdue ?? null,
+      sortable: true, align: "right",
+      render: (r) =>
+        r.daysOverdue == null ? <span className="text-[#94A3B8]">—</span> : <span className="font-semibold text-[#0F172A]">{r.daysOverdue}</span>,
+    },
+    {
+      key: "amount", header: "Amount", accessor: (r) => r.amountPaise ?? null,
+      sortable: true, align: "right", exportValue: (r) => (r.amountPaise == null ? "" : r.amountPaise / 100),
+      render: (r) =>
+        r.amountPaise == null ? <span className="text-[#94A3B8]">—</span> : <span className="text-[#334155]">{formatPaise(r.amountPaise)}</span>,
+    },
+    {
+      key: "date", header: "Date", accessor: (r) => r.date ?? "", sortable: true,
+      render: (r) => <span className="text-[#475569]">{r.date ? formatDate(r.date) : "—"}</span>,
+    },
+    {
+      key: "description", header: "Description", accessor: (r) => r.description, searchable: true,
+      render: (r) => <span className="text-[#475569] max-w-xs block">{r.description}</span>,
+    },
+    {
+      key: "action", header: "Recommended Action", accessor: (r) => r.action,
+      render: (r) => <span className="text-[#475569] max-w-xs text-xs block">{r.action}</span>,
+    },
+  ], []);
+
+  const registerFilters: FilterDef<RiskRegisterRow>[] = useMemo(() => [
+    {
+      key: "riskType", label: "Category", type: "select", accessor: (r) => r.riskType,
+      options: [
+        "Overdue Filing",
+        "TDS Default",
+        "GSTIN Mismatch",
+        "Inactive Client",
+        "Advance Tax Default",
+        "DSC Expiry",
+        "Loan Overdue",
+        "FD Maturing Soon",
+        "Missing PAN",
+      ].map((t) => ({ value: t, label: t })),
+    },
+    {
+      key: "severity", label: "Severity", type: "select", accessor: (r) => r.severity,
+      options: (["critical", "high", "medium", "low"]).map((s) => ({ value: s, label: s[0].toUpperCase() + s.slice(1) })),
+    },
+  ], []);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -691,24 +768,24 @@ export default function RisksPage() {
                   Risk Register — All Risks
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-left"><th className="px-4 py-3 font-medium text-[#64748B]">Client</th><th className="px-4 py-3 font-medium text-[#64748B]">Risk Type</th><th className="px-4 py-3 font-medium text-[#64748B]">Description</th><th className="px-4 py-3 font-medium text-[#64748B]">Severity</th><th className="px-4 py-3 font-medium text-[#64748B]">Recommended Action</th></tr></thead>
-                    <tbody className="divide-y divide-[#F8FAFC]">
-                      {riskRegister.map((r, i) => (
-                        <tr key={i} className="hover:bg-[#F8FAFC] transition-colors">
-                          <td className="px-4 py-3 font-medium text-[#1E293B]">{r.clientName}</td>
-                          <td className="px-4 py-3 text-[#475569]">{r.riskType}</td>
-                          <td className="px-4 py-3 text-[#475569] max-w-xs">{r.description}</td>
-                          <td className="px-4 py-3"><span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${riskColor(r.severity)}`}>{r.severity}</span></td>
-                          <td className="px-4 py-3 text-[#475569] max-w-xs text-xs">{r.action}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="border-t border-[#F1F5F9] px-4 py-2 text-xs text-[#94A3B8]">{riskRegister.length} risk{riskRegister.length !== 1 ? "s" : ""} in register</div>
+              <CardContent>
+                {/* Consolidated register — shared DataTable (search, category/severity filters,
+                    sort by days-overdue / amount / date, pagination, CSV export, prefs). */}
+                <DataTable
+                  data={riskRegister}
+                  columns={registerColumns}
+                  filters={registerFilters}
+                  getRowId={(r) => `${r.clientName}|${r.riskType}|${r.date ?? ""}|${r.description}`}
+                  loading={loading}
+                  error={pageError}
+                  onRetry={loadData}
+                  onRefresh={loadData}
+                  searchPlaceholder="Search by client or description…"
+                  initialSort={{ key: "daysOverdue", dir: "desc" }}
+                  exportFilename="risk-register"
+                  persistKey="risks.register"
+                  emptyTitle="No risks in register"
+                />
               </CardContent>
             </Card>
           )}
