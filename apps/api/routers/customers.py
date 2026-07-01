@@ -141,7 +141,11 @@ def list_customers(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        q = db.table("customers").select("*").eq("client_id", client_id)
+        # Tenant isolation: service-role bypasses RLS — firm_id is the only guard
+        # against a cross-tenant read via a guessed client_id (H15). The mock path
+        # above already firm-scopes; the DB path must match it.
+        q = (db.table("customers").select("*")
+             .eq("firm_id", current_user.get("firm_id")).eq("client_id", client_id))
         if not include_inactive:
             q = q.eq("is_active", True)
         resp = q.execute()
