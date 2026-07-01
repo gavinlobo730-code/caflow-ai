@@ -2,6 +2,7 @@
 Accounting router — Chart of Accounts, Journal Entries, Ledger, Trial Balance, P&L, Balance Sheet.
 """
 import os
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
@@ -38,6 +39,7 @@ def _current_fy_long() -> str:
     return f"{start}-{str(start + 1)[2:]}"
 
 router = APIRouter(prefix="/api/accounting", tags=["accounting"])
+_logger = logging.getLogger("caflow.accounting")
 
 
 @router.get("/accounts")
@@ -81,14 +83,31 @@ def list_journal_entries(
 
 @router.post("/journal")
 def create_journal_entry(data: JournalEntryIn, current_user: dict = Depends(rbac("accounting", "write"))):
+    """Create a manual journal entry (draft or posted).
+
+    Production posts through the SINGLE posting kernel (manual_journal_service →
+    phase2_journal_service._create_journal) — the same engine every other workflow
+    uses (no alternative posting path). Dev/demo (no SUPABASE_URL) keeps the
+    in-memory engine so existing tests are unaffected.
+    """
     try:
         payload = data.model_dump()
         payload["firm_id"] = current_user["firm_id"]
-        entry = accounting_service.create_journal_entry(payload)
-        log_event(current_user["firm_id"], "journal_entry", entry.get("id",""), "create",
+        db = _prod_db()
+        if db is None:
+            entry = accounting_service.create_journal_entry(payload)  # dev/demo in-memory
+        else:
+            from services.manual_journal_service import manual_journal_service
+            # created_by FKs to public.users.id (internal id), not the Supabase auth id.
+            entry = manual_journal_service.create(
+                db, current_user["firm_id"], payload, actor_id=current_user.get("id")
+            )
+        log_event(current_user["firm_id"], "journal_entry", entry.get("id", ""), "create",
                   actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
                   new_data=entry)
         return api_response(True, entry)
+    except HTTPException:
+        raise
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -247,19 +266,19 @@ def reverse_journal_entry(
     Audit trail: reversal_of field links back to original entry id.
     """
     try:
-        import uuid
-        from datetime import timezone
-
         narration = data.narration or f"Reversal of journal {entry_id}"
 
-        import os
         if not os.environ.get("SUPABASE_URL"):
             return api_response(True, {"id": "mock-reversal", "reversal_of": entry_id})
         from core.supabase_client import get_supabase
+        from services.phase2_journal_service import phase2_journal_service
         db = get_supabase()
+        firm_id = current_user["firm_id"]
 
-        # Fetch original entry
-        orig = db.table("journal_entries").select("*, journal_lines(*)").eq("id", entry_id).single().execute().data
+        # Fetch the original — firm-scoped (tenant isolation under service-role).
+        orig_res = (db.table("journal_entries").select("*")
+                    .eq("id", entry_id).eq("firm_id", firm_id).limit(1).execute())
+        orig = (orig_res.data or [None])[0]
         if not orig:
             raise HTTPException(status_code=404, detail="Journal entry not found")
         if not orig.get("is_posted"):
@@ -267,58 +286,65 @@ def reverse_journal_entry(
         if orig.get("reversal_of"):
             raise HTTPException(status_code=409, detail="This entry is itself a reversal — cannot reverse a reversal")
 
-        # Check not already reversed
-        existing_rev = db.table("journal_entries").select("id").eq("reversal_of", entry_id).execute().data
+        existing_rev = (db.table("journal_entries").select("id")
+                        .eq("firm_id", firm_id).eq("reversal_of", entry_id).limit(1).execute().data)
         if existing_rev:
             raise HTTPException(status_code=409, detail=f"Journal {entry_id} has already been reversed")
 
         # FY-lock: a reversal is a new posting — block it if its date is in a locked year.
-        period_validation_service.validate_posting_date(current_user["firm_id"], data.reversal_date)
+        period_validation_service.validate_posting_date(firm_id, data.reversal_date)
 
-        rev_id = str(uuid.uuid4())
-        # Create reversal entry (swap debit/credit on each line)
-        rev_entry = db.table("journal_entries").insert({
-            "id":            rev_id,
-            "firm_id":       orig["firm_id"],
-            "client_id":     orig["client_id"],
-            "entry_date":    data.reversal_date,
-            "reference_no":  f"REV-{orig.get('reference_no', entry_id[:8])}",
-            "narration":     narration,
-            "is_posted":     True,
-            "reversal_of":   entry_id,
-            "created_at":    datetime.now(timezone.utc).isoformat(),
-        }).execute().data[0]
+        # Fetch the original lines explicitly (robust across PostgREST and the test
+        # double) and build the equal-and-opposite legs (swap debit ↔ credit).
+        orig_lines = (db.table("journal_lines").select("*")
+                      .eq("journal_entry_id", entry_id).execute().data) or []
+        if not orig_lines:
+            raise HTTPException(status_code=422, detail="Cannot reverse a journal entry with no lines")
+        rev_lines = [{
+            "account_id":   l["account_id"],
+            "debit_paise":  int(l.get("credit_paise") or 0),
+            "credit_paise": int(l.get("debit_paise") or 0),
+            "narration":    narration,
+        } for l in orig_lines]
 
-        # Reverse each line (swap debit ↔ credit)
-        rev_lines = []
-        for line in orig.get("journal_lines", []):
-            rev_lines.append({
-                "journal_entry_id": rev_id,
-                "account_id":       line["account_id"],
-                "debit_paise":      line["credit_paise"],
-                "credit_paise":     line["debit_paise"],
-                "narration":        narration,
-            })
-        if rev_lines:
-            db.table("journal_lines").insert(rev_lines).execute()
+        # Single posting kernel — validates double-entry balance and writes the entry.
+        ref = f"REV-{orig.get('reference_no') or entry_id[:8]}"
+        rev_id = phase2_journal_service._create_journal(
+            db=db,
+            firm_id=firm_id,
+            client_id=orig["client_id"],
+            entry_date=data.reversal_date,
+            reference_no=ref,
+            narration=narration,
+            entry_type=orig.get("entry_type") or "Journal",
+            lines=rev_lines,
+            is_posted=True,
+            created_by=current_user.get("id"),   # internal users.id (FK), not the auth id
+            reversal_of=entry_id,
+        )
 
         log_event(
-            current_user["firm_id"], "journal_entry", rev_id,
+            firm_id, "journal_entry", rev_id,
             "reverse", actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"),
             new_data={"reversal_of": entry_id},
         )
         timeline_service.log(
             orig["client_id"], "accounting", "Journal Reversed",
-            f"Reversal of {orig.get('reference_no', entry_id[:8])} posted",
-            "warning", firm_id=current_user.get("firm_id", ""),
+            f"Reversal of {orig.get('reference_no') or entry_id[:8]} posted",
+            "warning", firm_id=firm_id,
             entity_type="journal_entry", entity_id=rev_id,
             actor_id=current_user.get("auth_user_id"),
         )
-        return api_response(True, {**rev_entry, "reversal_of": entry_id, "lines": rev_lines})
+        return api_response(True, {
+            "id": rev_id, "reversal_of": entry_id, "reference_no": ref,
+            "client_id": orig["client_id"], "entry_date": data.reversal_date,
+            "is_posted": True, "lines": rev_lines,
+        })
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        _logger.exception("reverse_journal_entry failed for entry %s", entry_id)
         raise HTTPException(status_code=500, detail="Unable to reverse journal entry. Please try again.")
 
 
