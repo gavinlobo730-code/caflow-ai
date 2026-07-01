@@ -17,10 +17,12 @@ activity, so a statement for any window is correct. Integer paise throughout.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import HTTPException
+
+from services.statement_currency import attach_currency_outstanding, summarize_by_currency
 
 _logger = logging.getLogger("caflow.customer_statement")
 
@@ -35,6 +37,18 @@ def _d(v) -> str:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _aging_bucket(days_overdue: int) -> str:
+    if days_overdue <= 0:
+        return "not_due"
+    if days_overdue <= 30:
+        return "0-30"
+    if days_overdue <= 60:
+        return "31-60"
+    if days_overdue <= 90:
+        return "61-90"
+    return "90+"
 
 
 def _ccy_view(row: dict, base_paise: int, txn_amount) -> dict:
@@ -107,7 +121,7 @@ def build_statement(customer: dict, start: str, end: str,
             "txn_amount": e["txn_amount"],
         })
 
-    return {
+    result = {
         "customer": {
             "id": customer.get("id"), "name": customer.get("name"),
             "email": customer.get("email"), "gstin": customer.get("gstin"),
@@ -124,6 +138,11 @@ def build_statement(customer: dict, start: str, end: str,
             "credited_paise": credited, "transaction_count": len(transactions),
         },
     }
+    # Multi-Currency Phase 5 — closing outstanding split by transaction currency
+    # (foreign + base), reconciling to closing_balance_paise. EMITTED ONLY when the
+    # customer has foreign activity, so an INR-only statement is byte-for-byte today's.
+    attach_currency_outstanding(result, customer, events, end)
+    return result
 
 
 class CustomerStatementService:
@@ -161,6 +180,64 @@ class CustomerStatementService:
         credit_notes = [c for c in cns if (c.get("status") or "") not in _DEAD_CREDIT_NOTE]
 
         return build_statement(customer, start_date, end_date, invoices, receipts, credit_notes)
+
+    def ar_aging(self, db, firm_id: str, client_id: str, as_of: Optional[str] = None) -> dict:
+        """Client-scoped accounts-receivable aging (the AR mirror of ap_aging): per
+        open invoice, outstanding = total − paid − credited, bucketed by age from
+        due_date (or invoice_date). Adds dual-currency detail on FOREIGN invoices only
+        and a per-currency breakdown, so an INR-only client's aging is unchanged.
+        Base amounts stay authoritative and reconcile with the AR sub-ledger / GL."""
+        today = date.fromisoformat(_d(as_of)) if as_of else datetime.now(timezone.utc).date()
+        invs = (db.table("client_sales_invoices")
+                .select("id, customer_id, invoice_no, invoice_date, due_date, total_paise, paid_paise, "
+                        "credited_paise, status, txn_currency, exchange_rate, txn_total, paid_txn")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .is_("deleted_at", "null").execute().data or [])
+        cnames = {c["id"]: c.get("name") for c in (db.table("customers").select("id, name")
+                  .eq("firm_id", firm_id).eq("client_id", client_id).execute().data or [])}
+
+        buckets = {"not_due": 0, "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0}
+        rows, total = [], 0
+        ccy_entries: list[tuple] = []
+        for inv in invs:
+            if (inv.get("status") or "") in _DEAD_INVOICE:
+                continue
+            outstanding = (int(inv.get("total_paise") or 0)
+                           - int(inv.get("paid_paise") or 0) - int(inv.get("credited_paise") or 0))
+            if outstanding <= 0:
+                continue
+            ref = inv.get("due_date") or inv.get("invoice_date")
+            try:
+                days = (today - date.fromisoformat(_d(ref))).days if ref else 0
+            except (ValueError, TypeError):
+                days = 0
+            bucket = _aging_bucket(days)
+            buckets[bucket] += outstanding
+            total += outstanding
+            row = {
+                "invoice_id": inv.get("id"), "invoice_no": inv.get("invoice_no"),
+                "customer_id": inv.get("customer_id"), "customer_name": cnames.get(inv.get("customer_id")),
+                "invoice_date": _d(inv.get("invoice_date")), "outstanding_paise": outstanding,
+                "days_overdue": max(days, 0), "aging_bucket": bucket,
+            }
+            cur = (inv.get("txn_currency") or "INR").upper()
+            foreign_out = 0
+            if cur != "INR":
+                foreign_out = int(inv.get("txn_total") or 0) - int(inv.get("paid_txn") or 0)
+                row["txn_currency"] = cur
+                row["exchange_rate"] = str(inv.get("exchange_rate") or 1)
+                row["outstanding_base_paise"] = outstanding
+                row["outstanding_foreign_minor"] = foreign_out
+            ccy_entries.append((cur, outstanding, foreign_out))
+            rows.append(row)
+
+        out = {"as_of": today.isoformat(), "buckets": buckets,
+               "total_outstanding_paise": total, "invoices": rows}
+        base_cur, by_ccy = summarize_by_currency(ccy_entries)
+        if by_ccy is not None:
+            out["base_currency"] = base_cur
+            out["by_currency"] = by_ccy
+        return out
 
     # ── email delivery tracking (mirrors invoice_deliveries) ───────────────────
     def record_delivery(self, db, firm_id, client_id, customer_id, start, end,

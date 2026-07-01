@@ -103,9 +103,14 @@ class SupabaseLedgerSource(LedgerSource):
     # reversal_of (migration 055) are added later and probed for separately, so
     # reports run whether or not those migrations have been applied.
     _BASE_ACCOUNT_COLS = "id, account_code, account_name, account_type, account_subtype"
-    _BASE_ENTRY_COLS = ("id, entry_date, client_id, firm_id, entry_type, "
-                        "reference_no, narration, created_at, "
-                        "journal_lines(account_id, debit_paise, credit_paise)")
+    _ENTRY_SCALAR_COLS = ("id, entry_date, client_id, firm_id, entry_type, "
+                          "reference_no, narration, created_at")
+    _BASE_LINE_COLS = "account_id, debit_paise, credit_paise"
+    # Multi-Currency Phase 5: optional per-line FX memo (migration 147). Probed for
+    # separately (like system_account_key / reversal_of) so reports run whether or
+    # not the multi-currency migrations have been applied; base amounts above are
+    # always authoritative.
+    _LINE_CURRENCY_COLS = "txn_currency, txn_debit, txn_credit, exchange_rate"
     # Entries are PAGED (audit C6): PostgREST's ~1000-row cap on the top-level
     # journal_entries query silently truncated the ledger for any client with >1000
     # posted entries, corrupting TB/BS/P&L with no error. Lines stay embedded per
@@ -119,6 +124,7 @@ class SupabaseLedgerSource(LedgerSource):
         # order between those migrations and this code no longer matters.
         self._has_system_key: bool | None = None
         self._has_reversal_of: bool | None = None
+        self._has_line_currency: bool | None = None   # journal_lines FX memo (migration 147)
         # Per-request memo of the (date-independent) base fetch, keyed by
         # (firm_id, client_id). A fresh source is created per request, so this only
         # dedupes repeated fetches WITHIN one request (e.g. cash_flow calls
@@ -226,36 +232,64 @@ class SupabaseLedgerSource(LedgerSource):
         return out
 
     def _entries(self, firm_id, client_id) -> dict[str, JournalEntry]:
-        def make_q(with_rev: bool):
-            cols = self._BASE_ENTRY_COLS + (", reversal_of" if with_rev else "")
-            q = (self.db.table("journal_entries").select(cols)
+        def entry_cols(with_rev: bool, with_ccy: bool) -> str:
+            line_cols = self._BASE_LINE_COLS + ((", " + self._LINE_CURRENCY_COLS) if with_ccy else "")
+            cols = self._ENTRY_SCALAR_COLS + f", journal_lines({line_cols})"
+            return cols + (", reversal_of" if with_rev else "")
+
+        def make_q(with_rev: bool, with_ccy: bool):
+            q = (self.db.table("journal_entries").select(entry_cols(with_rev, with_ccy))
                  .eq("firm_id", firm_id).eq("is_posted", True).is_("deleted_at", "null"))
             if client_id:
                 q = q.eq("client_id", client_id)
             return q.order("id")   # stable key → correct offset paging
 
+        # Probe reversal_of (migration 055) and the FX line memo (migration 147)
+        # independently; on a missing column, disable that probe and retry. This
+        # tolerates ANY subset of those additive migrations being applied, so the
+        # ledger runs everywhere and only gains foreign visibility where the columns
+        # exist (base amounts are always read).
+        want_rev = self._has_reversal_of is not False
+        want_ccy = self._has_line_currency is not False
         rows = None
-        # Use reversal_of when present; tolerate its absence (pre-migration 055).
-        if self._has_reversal_of is not False:
+        while rows is None:
             try:
-                rows = self._fetch_all(lambda: make_q(True))
-                self._has_reversal_of = True
-            except Exception as e:  # noqa: BLE001 — re-raised unless it's the missing column
-                if not _is_missing_column_error(e, "reversal_of"):
+                rows = self._fetch_all(lambda: make_q(want_rev, want_ccy))
+                if want_rev:
+                    self._has_reversal_of = True
+                if want_ccy:
+                    self._has_line_currency = True
+            except Exception as e:  # noqa: BLE001 — re-raised unless it's a known missing column
+                if want_ccy and any(_is_missing_column_error(e, c) for c in
+                                    ("txn_currency", "txn_debit", "txn_credit", "exchange_rate")):
+                    self._has_line_currency = False
+                    want_ccy = False
+                    _logger.warning(
+                        "journal_lines FX columns not found — General Ledger shows base "
+                        "(INR) only until multi-currency migration 147 is applied."
+                    )
+                elif want_rev and _is_missing_column_error(e, "reversal_of"):
+                    self._has_reversal_of = False
+                    want_rev = False
+                    _logger.warning(
+                        "journal_entries.reversal_of not found — treating all entries as "
+                        "non-reversals until migration 055 is applied."
+                    )
+                else:
                     raise
-                self._has_reversal_of = False
-                _logger.warning(
-                    "journal_entries.reversal_of not found — treating all entries as "
-                    "non-reversals until migration 055 is applied."
-                )
-        if rows is None:
-            rows = self._fetch_all(lambda: make_q(False))
 
         out: dict[str, JournalEntry] = {}
         for r in rows:
             lines = tuple(
-                JournalLine(l["account_id"], int(l.get("debit_paise", 0) or 0),
-                            int(l.get("credit_paise", 0) or 0))
+                JournalLine(
+                    l["account_id"], int(l.get("debit_paise", 0) or 0),
+                    int(l.get("credit_paise", 0) or 0),
+                    # Optional foreign memo — None for INR / un-migrated rows.
+                    txn_currency=l.get("txn_currency"),
+                    txn_debit=(int(l["txn_debit"]) if l.get("txn_debit") is not None else None),
+                    txn_credit=(int(l["txn_credit"]) if l.get("txn_credit") is not None else None),
+                    exchange_rate=(str(l["exchange_rate"]) if l.get("exchange_rate") is not None else None),
+                )
                 for l in (r.get("journal_lines") or [])
             )
             out[r["id"]] = JournalEntry(
