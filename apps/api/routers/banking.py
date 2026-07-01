@@ -64,6 +64,22 @@ def _db():
     return get_supabase()
 
 
+def _guard_foreign_bank_currency(db, firm_id: str, client_id: Optional[str], currency: str) -> None:
+    """Allow a non-INR bank account ONLY when multi-currency is active for this client
+    (env + firm entitlement + client enablement) and the currency is in the ISO master.
+    Fail-safe: any missing gate ⇒ rejected, so INR stays the only option by default."""
+    from domain.currency import resolve_currency_policy, currency_service
+    firm = (db.table("firms").select("id, multi_currency_entitled")
+            .eq("id", firm_id).limit(1).execute().data or [None])[0]
+    client = (db.table("clients").select("id, functional_currency, multi_currency_enabled")
+              .eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0] if client_id else None
+    if not resolve_currency_policy(firm, client).active:
+        raise HTTPException(status_code=422,
+                            detail="Multi-currency is not enabled for this client — foreign-currency bank accounts are unavailable.")
+    if not currency_service.get_currency(db, currency):
+        raise HTTPException(status_code=422, detail=f"Unsupported currency: {currency}.")
+
+
 # ─── Bank Accounts ────────────────────────────────────────────────────────────
 
 @router.get("/accounts")
@@ -88,7 +104,17 @@ def create_bank_account(
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
-    payload = {"firm_id": current_user["firm_id"], **data.model_dump()}
+    firm_id = current_user["firm_id"]
+    payload = {"firm_id": firm_id, **data.model_dump()}
+    # Multi-Currency Phase 5 — resolve the account currency. None ⇒ let the column
+    # default to INR (byte-for-byte today's). A non-INR currency is allowed ONLY when
+    # multi-currency is active for this client and the code is in the ISO master.
+    cur = payload.pop("currency", None)
+    if cur and cur != "INR":
+        _guard_foreign_bank_currency(db, firm_id, payload.get("client_id"), cur)
+        payload["currency"] = cur
+    elif cur == "INR":
+        payload["currency"] = "INR"
     row = db.table("bank_accounts").insert(payload).execute()
     account = (row.data or [{}])[0]
     # Auto-sync opening balances to the GL (no manual post). Roll back on failure.
@@ -130,6 +156,37 @@ def update_bank_account(
                 pass
             return api_response(False, None, "Unable to save bank account. Please try again.")
     return api_response(True, account)
+
+
+@router.get("/accounts/{account_id}/balance")
+def bank_account_balance(
+    account_id: str,
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Current balance of one bank account (Multi-Currency Phase 5). Always returns the
+    authoritative base (INR) balance; for a foreign-currency account it also returns the
+    foreign balance, both DERIVED from posted journal lines (no stored balance)."""
+    db = _db()
+    if not db:
+        return api_response(True, {"account_id": account_id, "currency": "INR",
+                                   "base_balance_paise": 0, "foreign_balance_minor": None})
+    firm_id = current_user["firm_id"]
+    acct = (db.table("bank_accounts").select("id, currency, coa_account_id, bank_name, account_no")
+            .eq("id", account_id).eq("firm_id", firm_id).eq("client_id", client_id)
+            .limit(1).execute().data or [None])[0]
+    if not acct:
+        raise HTTPException(status_code=404, detail="Bank account not found for this client.")
+    cur = (acct.get("currency") or "INR").upper()
+    base = foreign = 0
+    if acct.get("coa_account_id"):
+        from services.fx_reporting_service import _account_foreign_and_base
+        foreign, base = _account_foreign_and_base(db, firm_id, client_id, acct["coa_account_id"], cur)
+    return api_response(True, {
+        "account_id": account_id, "bank_name": acct.get("bank_name"), "account_no": acct.get("account_no"),
+        "currency": cur, "base_currency": "INR", "base_balance_paise": base,
+        "foreign_balance_minor": (foreign if cur != "INR" else None),
+    })
 
 
 # ─── Statements ───────────────────────────────────────────────────────────────

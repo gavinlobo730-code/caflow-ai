@@ -141,7 +141,11 @@ def list_customers(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        q = db.table("customers").select("*").eq("client_id", client_id)
+        # Tenant isolation: service-role bypasses RLS — firm_id is the only guard
+        # against a cross-tenant read via a guessed client_id (H15). The mock path
+        # above already firm-scopes; the DB path must match it.
+        q = (db.table("customers").select("*")
+             .eq("firm_id", current_user.get("firm_id")).eq("client_id", client_id))
         if not include_inactive:
             q = q.eq("is_active", True)
         resp = q.execute()
@@ -274,19 +278,22 @@ def get_outstanding_summary(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        customers = db.table("customers").select("id,name,opening_balance_paise").eq("client_id", client_id).eq("is_active", True).execute()
+        firm_id = current_user.get("firm_id")
+        customers = db.table("customers").select("id,name,opening_balance_paise").eq("client_id", client_id).eq("firm_id", firm_id).eq("is_active", True).execute()
 
         result = []
         for cust in (customers.data or []):
             inv_resp = (
-                db.table("sales_invoices")
-                .select("id,total_paise,paid_paise,status")
+                db.table("client_sales_invoices")
+                .select("id,total_paise,paid_paise,credited_paise,status")
                 .eq("customer_id", cust["id"])
+                .eq("firm_id", firm_id)
                 .not_.in_("status", ["paid", "cancelled"])
                 .execute()
             )
+            # Net receivable = total − cash paid − credit notes applied (integer paise).
             inv_outstanding = sum(
-                (i.get("total_paise", 0) - i.get("paid_paise", 0))
+                (i.get("total_paise", 0) - i.get("paid_paise", 0) - (i.get("credited_paise", 0) or 0))
                 for i in (inv_resp.data or [])
             )
             # Integer arithmetic only; opening balance always >= 0
@@ -301,6 +308,31 @@ def get_outstanding_summary(
         return api_response(True, {"client_id": client_id, "total_outstanding_paise": total, "customers": result})
     except Exception as e:
         _logger.error("get_outstanding_summary: %s", e)
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
+
+
+@router.get("/ar-aging")
+def ar_aging(
+    client_id: str = Query(..., description="CA client ID — required"),
+    as_of: Optional[str] = Query(None, description="Aging as-of date (YYYY-MM-DD)"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Accounts-receivable aging for a client — per-invoice outstanding bucketed by
+    age (the AR mirror of /vendors/ap-aging). Derived entirely from posted invoices,
+    receipts and credit notes (firm-scoped); foreign invoices carry dual-currency
+    detail, INR-only clients see the base aging unchanged."""
+    try:
+        if _USE_MOCK:
+            return api_response(True, {"as_of": None, "buckets": {}, "total_outstanding_paise": 0, "invoices": []})
+        from core.supabase_client import get_supabase
+        from services.customer_statement_service import customer_statement_service
+        db = get_supabase()
+        data = customer_statement_service.ar_aging(db, current_user.get("firm_id"), client_id, as_of)
+        return api_response(True, data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("ar_aging: %s", e)
         return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
@@ -533,22 +565,25 @@ def get_customer_outstanding(
         from core.supabase_client import get_supabase
         db = get_supabase()
 
-        # Fetch customer for opening balance
-        cust_resp = db.table("customers").select("opening_balance_paise").eq("id", customer_id).limit(1).execute()
+        # Fetch customer for opening balance (firm-scoped)
+        firm_id = current_user.get("firm_id")
+        cust_resp = db.table("customers").select("opening_balance_paise").eq("id", customer_id).eq("firm_id", firm_id).limit(1).execute()
         if not cust_resp.data:
             raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
         opening_balance = cust_resp.data[0].get("opening_balance_paise") or 0
 
         inv_resp = (
-            db.table("sales_invoices")
-            .select("id,invoice_no,invoice_date,total_paise,paid_paise,status")
+            db.table("client_sales_invoices")
+            .select("id,invoice_no,invoice_date,total_paise,paid_paise,credited_paise,status")
             .eq("customer_id", customer_id)
+            .eq("firm_id", firm_id)
             .not_.in_("status", ["paid", "cancelled"])
             .execute()
         )
         invoices = inv_resp.data or []
+        # Net receivable = total − cash paid − credit notes applied (integer paise).
         inv_outstanding = sum(
-            (i.get("total_paise", 0) - i.get("paid_paise", 0))
+            (i.get("total_paise", 0) - i.get("paid_paise", 0) - (i.get("credited_paise", 0) or 0))
             for i in invoices
         )
         total_outstanding = inv_outstanding + opening_balance  # integer paise

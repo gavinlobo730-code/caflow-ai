@@ -9,10 +9,26 @@ IT Act Section 194C/194I/194J: TDS deducted at source on applicable payments.
 import os
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Optional
+
+from fastapi import HTTPException
+
+# Multi-Currency Phase 2 — currency metadata + the authoritative in-kernel gate.
+# Light imports only (policy + rate-type vocabulary); the ExchangeRateService and
+# providers are imported lazily in exchange_rate_service() to keep the hot path light.
+from domain.currency.policy import BASE_CURRENCY, CurrencyPolicy
+from domain.currency.rate_types import DEFAULT_RATE_TYPE, is_valid_rate_type
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.phase2_journal")
+
+
+def _is_unique_violation(err: Exception) -> bool:
+    """True when a Postgres/PostgREST error is a unique-constraint violation (23505).
+    Used so the kernel can treat a concurrent duplicate insert as idempotent."""
+    s = str(err).lower()
+    return "23505" in s or "duplicate key" in s or "already exists" in s
 
 
 class Phase2JournalService:
@@ -96,6 +112,7 @@ class Phase2JournalService:
                     "narration": "IGST output tax payable",
                 })
 
+            _ccy = self._currency_kwargs(db, invoice, firm_id, client_id, lines)
             return self._create_journal(
                 db=db,
                 firm_id=firm_id,
@@ -105,6 +122,7 @@ class Phase2JournalService:
                 narration=f"Sales invoice {invoice['invoice_no']} to customer — CGST Act §9",
                 entry_type="Sales",
                 lines=lines,
+                **_ccy,
             )
         except ValueError:
             # Re-raise account resolution and balance errors so the router returns 422
@@ -166,6 +184,7 @@ class Phase2JournalService:
                 "narration": "Trade receivable cleared (cash + TDS)",
             })
 
+            _ccy = self._currency_kwargs(db, receipt, firm_id, client_id, lines)
             return self._create_journal(
                 db=db,
                 firm_id=firm_id,
@@ -175,6 +194,7 @@ class Phase2JournalService:
                 narration=f"Receipt {receipt['receipt_no']} from customer",
                 entry_type="Receipt",
                 lines=lines,
+                **_ccy,
             )
         except ValueError:
             raise
@@ -271,6 +291,71 @@ class Phase2JournalService:
             _logger.error("journal_for_credit_note error: %s", e)
             return None
 
+    def journal_for_debit_note(
+        self, dn: dict, firm_id: str, client_id: str
+    ) -> Optional[str]:
+        """
+        Vendor-side purchase return (mirror of the credit note on the AP side):
+        Dr Trade Payables      = total_paise         (we owe the vendor less)
+        Cr Purchases/Expense   = taxable_amount_paise (reverse the expense)
+        Cr GST Input Tax Credit (CGST/SGST/IGST)     (reverse the ITC claimed)
+        CGST Act §34: debit notes for reduction in value/tax.
+        """
+        if _USE_MOCK:
+            _logger.info("[MOCK] journal_for_debit_note: %s", dn.get("debit_note_no"))
+            return None
+
+        try:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+
+            payables_id = self._find_account(
+                db, firm_id, client_id, "%Trade Payable%", system_key="ap"
+            )
+            try:
+                purchases_id = self._find_account(db, firm_id, client_id, "%Purchase%")
+            except ValueError:
+                purchases_id = self._find_account(db, firm_id, client_id, "%Expense%")
+            gst_input_id = self._find_account(
+                db, firm_id, client_id, "%GST Input%", system_key="gst_input"
+            )
+
+            lines = [{
+                "account_id": payables_id,
+                "debit_paise": dn["total_paise"],
+                "credit_paise": 0,
+                "narration": "Trade payable reduced by debit note",
+            }, {
+                "account_id": purchases_id,
+                "debit_paise": 0,
+                "credit_paise": dn["taxable_amount_paise"],
+                "narration": "Purchase returns — debit note",
+            }]
+            gst_reversed = int(dn.get("cgst_paise", 0)) + int(dn.get("sgst_paise", 0)) + int(dn.get("igst_paise", 0))
+            if gst_reversed > 0:
+                lines.append({
+                    "account_id": gst_input_id,
+                    "debit_paise": 0,
+                    "credit_paise": gst_reversed,
+                    "narration": "GST input tax credit reversed",
+                })
+
+            return self._create_journal(
+                db=db,
+                firm_id=firm_id,
+                client_id=client_id,
+                entry_date=dn.get("debit_note_date", str(datetime.now(timezone.utc).date())),
+                reference_no=dn["debit_note_no"],
+                narration=f"Debit note {dn['debit_note_no']} — CGST Act §34",
+                entry_type="Journal",
+                lines=lines,
+            )
+        except ValueError:
+            raise
+        except Exception as e:
+            _logger.error("journal_for_debit_note error: %s", e)
+            return None
+
     def journal_for_purchase_bill(
         self, bill: dict, firm_id: str, client_id: str
     ) -> Optional[str]:
@@ -309,13 +394,24 @@ class Phase2JournalService:
                 db, firm_id, client_id, "%TDS Payable%", system_key="tds_payable"
             )
 
+            # H10: classify the expense per LINE — group each line's taxable by its own
+            # expense_account_id so purchases hit the right ledger (schedule-wise P&L,
+            # §40(a)(ia) mapping). Lines with no account fall back to the resolved
+            # Purchases/Expense account. Grouping keeps one debit per distinct account.
+            line_rows = (db.table("purchase_bill_lines")
+                         .select("expense_account_id, taxable_amount_paise")
+                         .eq("bill_id", bill.get("id")).execute().data) or []
+            by_account: dict = {}
+            for lr in line_rows:
+                acc = lr.get("expense_account_id") or purchases_id
+                by_account[acc] = by_account.get(acc, 0) + int(lr.get("taxable_amount_paise") or 0)
+            # Fallback: no line rows available (e.g. header-only) → single purchases debit.
+            if not by_account or sum(by_account.values()) != int(bill.get("taxable_amount_paise") or 0):
+                by_account = {purchases_id: int(bill.get("taxable_amount_paise") or 0)}
             lines = [
-                {
-                    "account_id": purchases_id,
-                    "debit_paise": bill["taxable_amount_paise"],
-                    "credit_paise": 0,
-                    "narration": "Purchase / expense",
-                },
+                {"account_id": acc, "debit_paise": amt, "credit_paise": 0,
+                 "narration": "Purchase / expense"}
+                for acc, amt in by_account.items() if amt
             ]
 
             if bill.get("cgst_paise", 0) > 0:
@@ -364,6 +460,7 @@ class Phase2JournalService:
                 f"IT Act §{section_note}"
             )
 
+            _ccy = self._currency_kwargs(db, bill, firm_id, client_id, lines)
             return self._create_journal(
                 db=db,
                 firm_id=firm_id,
@@ -373,6 +470,7 @@ class Phase2JournalService:
                 narration=narration,
                 entry_type="Purchase",
                 lines=lines,
+                **_ccy,
             )
         except ValueError:
             raise
@@ -417,6 +515,7 @@ class Phase2JournalService:
                 },
             ]
 
+            _ccy = self._currency_kwargs(db, payment, firm_id, client_id, lines)
             return self._create_journal(
                 db=db,
                 firm_id=firm_id,
@@ -426,6 +525,7 @@ class Phase2JournalService:
                 narration=f"Vendor payment {payment['payment_no']}",
                 entry_type="Payment",
                 lines=lines,
+                **_ccy,
             )
         except ValueError:
             raise
@@ -778,6 +878,43 @@ class Phase2JournalService:
             "Please set up Chart of Accounts before posting."
         )
 
+    def exchange_rate_service(self, db):
+        """The ExchangeRateService available to the posting pipeline (Phase 2, Task 3).
+
+        Manual provider by default (no automatic fetching); another provider is used
+        only if explicitly configured. NOT invoked for INR postings — same-currency
+        is the identity (rate 1) handled inline — so the INR path stays zero-overhead.
+        The seam exists so foreign-document phases obtain an immutable RateQuote and
+        freeze it on the posting, with zero change to the kernel or reports."""
+        from domain.currency import ExchangeRateService, ManualRateProvider
+        return ExchangeRateService([ManualRateProvider(db)], default_source="manual")
+
+    def _currency_kwargs(self, db, doc_row: dict, firm_id: str, client_id: str, lines: list[dict]) -> dict:
+        """For a foreign document (Multi-Currency Phase 3): reconstruct the frozen
+        rate from the stored row, stamp each journal line's foreign (memo) amount at
+        that rate (G4 dual storage), and return the currency kwargs for
+        _create_journal — including the re-resolved CurrencyPolicy so the kernel's
+        authoritative gate is satisfied. INR / feature-off ⇒ returns {} and stamps
+        nothing, so INR postings are byte-for-byte unchanged."""
+        from domain.currency.document_currency import document_currency_from_row
+        from domain.currency.policy import resolve_currency_policy
+
+        dc = document_currency_from_row(db, doc_row or {})
+        if not dc.is_foreign:
+            return {}
+        for l in lines:
+            l["txn_currency"] = dc.currency
+            l["exchange_rate"] = dc.rate
+            l["txn_debit"] = dc.to_txn(int(l.get("debit_paise") or 0))
+            l["txn_credit"] = dc.to_txn(int(l.get("credit_paise") or 0))
+        firm = (db.table("firms").select("multi_currency_entitled").eq("id", firm_id).limit(1).execute().data or [None])[0]
+        client = (db.table("clients").select("functional_currency, multi_currency_enabled").eq("id", client_id).limit(1).execute().data or [None])[0]
+        return {
+            "txn_currency": dc.currency, "exchange_rate": dc.rate, "rate_source": dc.rate_source,
+            "rate_type": dc.rate_type, "rate_date": dc.rate_date, "rate_selected_by": dc.rate_selected_by,
+            "rate_overridden": dc.rate_overridden, "currency_policy": resolve_currency_policy(firm, client),
+        }
+
     def _create_journal(
         self,
         db,
@@ -794,6 +931,15 @@ class Phase2JournalService:
         created_by: Optional[str] = None,
         reversal_of: Optional[str] = None,
         attachments: Optional[list] = None,
+        # ── Multi-Currency Phase 2 (all optional; default → INR/rate 1, dormant) ──
+        txn_currency: Optional[str] = None,
+        exchange_rate: Optional[Decimal] = None,
+        rate_source: Optional[str] = None,
+        rate_type: Optional[str] = None,
+        rate_date: Optional[str] = None,
+        rate_selected_by: Optional[str] = None,
+        rate_overridden: bool = False,
+        currency_policy: Optional[CurrencyPolicy] = None,
     ) -> str:
         """
         Insert a balanced double-entry journal entry and its lines.
@@ -813,15 +959,52 @@ class Phase2JournalService:
                 f"Journal imbalance: debit={total_debit} credit={total_credit} "
                 f"for ref={reference_no}"
             )
+        # M8: a balanced-but-zero journal is meaningless — never post it.
+        if total_debit == 0:
+            raise ValueError(f"Refusing to post a zero-value journal entry for ref={reference_no}")
 
-        # Prevent duplicate journal entries: same reference_no + entry_date + client_id
-        if not _USE_MOCK:
+        # ── Multi-Currency Phase 2 (foundation): resolve the currency metadata ────
+        # Base currency is authoritative and always INR (Capability A). Everything
+        # defaults to the INR / rate=1 identity, so INR postings are byte-for-byte
+        # unchanged. A non-INR txn currency or rate≠1 is REFUSED unless an ACTIVE
+        # CurrencyPolicy is supplied — the kernel is the authoritative gate (G2),
+        # fail-safe to INR. No current caller passes foreign values, so the foreign
+        # branch is dormant; base balancing (above) is unaffected either way.
+        base_ccy = BASE_CURRENCY
+        entry_ccy = (txn_currency or base_ccy).strip().upper()
+        rate = exchange_rate if exchange_rate is not None else Decimal(1)
+        eff_rate_type = rate_type or DEFAULT_RATE_TYPE
+        eff_rate_date = rate_date or entry_date
+        eff_rate_source = rate_source or (
+            "identity" if entry_ccy == base_ccy and rate == Decimal(1) else None
+        )
+        is_foreign = entry_ccy != base_ccy or rate != Decimal(1)
+        if is_foreign:
+            if currency_policy is None or not getattr(currency_policy, "active", False):
+                raise ValueError(
+                    "Multi-currency posting requires an active currency policy; only "
+                    "INR postings are permitted while the feature is dormant."
+                )
+            if not is_valid_rate_type(eff_rate_type):
+                raise ValueError(f"unknown rate_type {eff_rate_type!r}")
+            if rate <= 0:
+                raise ValueError("exchange_rate must be positive")
+
+        # Idempotency fast path (firm-scoped): same firm+client+reference_no+entry_date
+        # is already posted → return it. The UNIQUE index (migration 143) is the
+        # authoritative backstop for the concurrent race this SELECT can't close (H2).
+        def _find_existing():
+            return (db.table("journal_entries").select("id")
+                    .eq("firm_id", firm_id).eq("client_id", client_id)
+                    .eq("reference_no", reference_no).eq("entry_date", entry_date)
+                    .limit(1).execute())
+        if not _USE_MOCK and reference_no:
             try:
-                existing = db.table("journal_entries").select("id").eq("client_id", client_id).eq("reference_no", reference_no).eq("entry_date", entry_date).limit(1).execute()
+                existing = _find_existing()
                 if existing.data:
                     _logger.warning(
-                        "Duplicate journal detected for ref=%s date=%s client=%s — skipping",
-                        reference_no, entry_date, client_id,
+                        "Duplicate journal detected for firm=%s ref=%s date=%s client=%s — skipping",
+                        firm_id, reference_no, entry_date, client_id,
                     )
                     return existing.data[0]["id"]
             except Exception:
@@ -851,8 +1034,29 @@ class Phase2JournalService:
             entry_payload["reversal_of"] = reversal_of
         if attachments is not None:
             entry_payload["attachments"] = attachments
+        # Rate-selection provenance (G6) — additive; only stamped when a rate was
+        # actually chosen, so INR auto-postings keep a byte-for-byte-unchanged entry
+        # payload (rate_overridden defaults FALSE, rate_selected_at NULL at the DB).
+        if rate_overridden:
+            entry_payload["rate_overridden"] = True
+        if rate_selected_by is not None:
+            entry_payload["rate_selected_by"] = rate_selected_by
+            entry_payload["rate_selected_at"] = now_iso
 
-        entry_resp = db.table("journal_entries").insert(entry_payload).execute()
+        # H2: the UNIQUE index closes the TOCTOU race — if a concurrent poster won,
+        # our insert raises 23505; recover by returning the winner's entry (idempotent).
+        try:
+            entry_resp = db.table("journal_entries").insert(entry_payload).execute()
+        except Exception as ins_err:
+            if not _USE_MOCK and reference_no and _is_unique_violation(ins_err):
+                dup = _find_existing()
+                if dup.data:
+                    _logger.warning(
+                        "Concurrent duplicate journal for firm=%s ref=%s date=%s — returning existing id",
+                        firm_id, reference_no, entry_date,
+                    )
+                    return dup.data[0]["id"]
+            raise
         if not entry_resp.data:
             raise RuntimeError(f"Failed to insert journal_entry for ref={reference_no}")
 
@@ -865,6 +1069,18 @@ class Phase2JournalService:
                 "debit_paise":      l["debit_paise"],
                 "credit_paise":     l["credit_paise"],
                 "narration":        l.get("narration", ""),
+                # Multi-Currency Phase 2 dual storage (G4): the base (INR) amount stays
+                # authoritative in debit_paise/credit_paise; for INR postings the txn
+                # amount equals the base and the rate is 1. Per-line overrides support
+                # future foreign documents; no current caller supplies them.
+                "txn_currency":  (l.get("txn_currency") or entry_ccy),
+                "base_currency": base_ccy,
+                "exchange_rate": str(l["exchange_rate"] if l.get("exchange_rate") is not None else rate),
+                "txn_debit":     l["txn_debit"] if l.get("txn_debit") is not None else l["debit_paise"],
+                "txn_credit":    l["txn_credit"] if l.get("txn_credit") is not None else l["credit_paise"],
+                "rate_source":   l.get("rate_source", eff_rate_source),
+                "rate_type":     l.get("rate_type", eff_rate_type),
+                "rate_date":     l.get("rate_date", eff_rate_date),
             }
             for l in lines
         ]
@@ -875,6 +1091,60 @@ class Phase2JournalService:
             "Posted" if is_posted else "Drafted", entry_id, reference_no, total_debit, total_credit,
         )
         return entry_id
+
+    def reverse_entry(
+        self,
+        db,
+        firm_id: str,
+        entry_id: str,
+        reversal_date: str,
+        narration: Optional[str] = None,
+        created_by: Optional[str] = None,
+    ) -> str:
+        """Post an equal-and-opposite reversal of a posted journal entry THROUGH the
+        kernel — the single reversal path used by manual journal reversal AND by
+        document cancellation (sales invoice / purchase bill).
+
+        Append-only: the original entry is never modified or deleted (immutability
+        preserved); a new balanced entry with swapped debit/credit is posted and
+        linked via reversal_of. Firm-scoped. `created_by` MUST be the internal
+        users.id. Returns the reversal entry id.
+
+        Raises HTTPException: 404 (not found in firm), 422 (not posted / no lines),
+        409 (already a reversal / already reversed).
+        """
+        res = (db.table("journal_entries").select("*")
+               .eq("id", entry_id).eq("firm_id", firm_id).limit(1).execute())
+        orig = (res.data or [None])[0]
+        if not orig:
+            raise HTTPException(status_code=404, detail="Journal entry not found")
+        if not orig.get("is_posted"):
+            raise HTTPException(status_code=422, detail="Only posted journal entries can be reversed")
+        if orig.get("reversal_of"):
+            raise HTTPException(status_code=409, detail="This entry is itself a reversal — cannot reverse a reversal")
+        already = (db.table("journal_entries").select("id")
+                   .eq("firm_id", firm_id).eq("reversal_of", entry_id).limit(1).execute().data)
+        if already:
+            raise HTTPException(status_code=409, detail=f"Journal {entry_id} has already been reversed")
+
+        lines = (db.table("journal_lines").select("*")
+                 .eq("journal_entry_id", entry_id).execute().data) or []
+        if not lines:
+            raise HTTPException(status_code=422, detail="Cannot reverse a journal entry with no lines")
+
+        narration = narration or f"Reversal of journal {entry_id}"
+        rev_lines = [{
+            "account_id":   l["account_id"],
+            "debit_paise":  int(l.get("credit_paise") or 0),
+            "credit_paise": int(l.get("debit_paise") or 0),
+            "narration":    narration,
+        } for l in lines]
+        ref = f"REV-{orig.get('reference_no') or entry_id[:8]}"
+        return self._create_journal(
+            db=db, firm_id=firm_id, client_id=orig["client_id"], entry_date=reversal_date,
+            reference_no=ref, narration=narration, entry_type=orig.get("entry_type") or "Journal",
+            lines=rev_lines, is_posted=True, created_by=created_by, reversal_of=entry_id,
+        )
 
 
 # Module-level singleton

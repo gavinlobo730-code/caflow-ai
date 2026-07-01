@@ -43,6 +43,7 @@ class _Q:
     def is_(self, k, _v): self.f.append((k, ("__null__",))); return self
     def limit(self, _n): return self
     def order(self, c, desc=False): self.order_, self.desc = c, desc; return self
+    def range(self, *_a, **_k): return self
     def single(self): self.single_ = True; return self
 
     def _match(self):

@@ -43,6 +43,8 @@ _logger.info("CORS allowed origins: %s", _ALLOWED_ORIGINS)
 
 from routers import clients, compliance, documents, assistant, insights, tasks, workflows, reminders, team
 from routers import accounting, compliance_records
+from routers import currencies  # Multi-Currency Phase 1 (read-only currency master + policy)
+from routers import fx_reports  # Multi-Currency Phase 5 (read-only FX reporting)
 from routers import document_intelligence, risks, ai_insights, automation, notifications, ai_copilot
 from routers import gst, tds, income_tax
 from routers import task_templates, task_extras, task_recurring
@@ -54,7 +56,7 @@ from routers import dsc  # H6: DSC (Digital Signature Certificate) backend
 from routers import assignments
 from routers import approvals
 from routers import identity
-from routers import customers, vendors, sales_invoices, receipts, credit_notes, customer_statements
+from routers import customers, vendors, sales_invoices, receipts, credit_notes, customer_statements, debit_notes
 from routers import recurring_invoices
 from routers import compliance_ops
 from routers import purchase_bills, purchase_payments, document_intelligence_v1
@@ -172,6 +174,11 @@ app.include_router(workflows.router, dependencies=_CLIENT_GUARD)
 app.include_router(reminders.router, dependencies=_CLIENT_GUARD)
 app.include_router(team.router)
 app.include_router(accounting.router, dependencies=_CLIENT_GUARD)
+# Multi-Currency Phase 1 — read-only currency master + policy resolution. The
+# guard is a no-op for the global master list (no client_id) and enforces
+# client-assignment scope for the /policy route (which carries client_id).
+app.include_router(currencies.router, dependencies=_CLIENT_GUARD)
+app.include_router(fx_reports.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance_records.router, dependencies=_CLIENT_GUARD)
 app.include_router(document_intelligence.router, dependencies=_CLIENT_GUARD)
 app.include_router(risks.router, dependencies=_CLIENT_GUARD)
@@ -215,6 +222,7 @@ app.include_router(vendors.router, dependencies=_CLIENT_GUARD)
 app.include_router(sales_invoices.router, dependencies=_CLIENT_GUARD)
 app.include_router(receipts.router, dependencies=_CLIENT_GUARD)
 app.include_router(credit_notes.router, dependencies=_CLIENT_GUARD)
+app.include_router(debit_notes.router, dependencies=_CLIENT_GUARD)
 app.include_router(customer_statements.router, dependencies=_CLIENT_GUARD)
 app.include_router(recurring_invoices.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance_ops.router, dependencies=_CLIENT_GUARD)
@@ -288,6 +296,14 @@ app.include_router(knowledge_router, dependencies=_CLIENT_GUARD)
 from routers.branding import router as branding_router
 app.include_router(branding_router)
 
+
+# Beta hardening (Phase F) — validate configuration at boot so missing env vars are
+# visible immediately in the logs rather than surfacing as opaque runtime errors.
+try:
+    from core.config_validation import validate_config
+    validate_config()
+except Exception:
+    _logger.exception("config validation failed")
 
 # Phase 10B — Workflow Scheduler (daily jobs + workflow schedule runner)
 from jobs.scheduler import start_scheduler, run_due_schedules, log_scheduler_startup_health

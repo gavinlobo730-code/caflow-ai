@@ -176,6 +176,9 @@ class BankPostingService:
                                 detail="A journal has already been created for this transaction.")
         client_id = txn["client_id"]
         entry_date = str(txn["transaction_date"])[:10]
+        # M9: block creating a draft destined for a locked financial year — consistent
+        # with the invoice/bill posting paths (this path previously skipped the check).
+        period_validation_service.validate_posting_date(firm_id or "", entry_date)
 
         entry_type, lines, _bank_id = self._plan(
             db, firm_id, txn, bank_account_id, account_id, to_bank_account_id)

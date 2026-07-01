@@ -30,6 +30,7 @@ from domain.gst.gstr1_builder import (
     build_gstr1,
 )
 from domain.gst.validator import GSTValidator, InvoiceToValidate
+from services import gst_return_service
 
 router = APIRouter(prefix="/api/gst", tags=["gst"])
 
@@ -304,6 +305,65 @@ def compute_gstr3b_endpoint(req: GSTR3BRequest, current_user: dict = Depends(rba
         # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
         "ca_review_required": True,
     })
+
+
+class FromBooksRequest(BaseModel):
+    client_id: str
+    period: str  # MMYYYY
+    aggregate_turnover_paise: int = 0
+
+
+def _client_gstin(db, firm_id: str, client_id: str) -> str:
+    """Fetch the client's GSTIN, firm-scoped. Raises 404 if the client isn't ours."""
+    row = (db.table("clients").select("gstin")
+           .eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data)
+    if not row:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return (row[0].get("gstin") or "").strip()
+
+
+@router.post("/gstr3b/from-books")
+def gstr3b_from_books_endpoint(req: FromBooksRequest, current_user: dict = Depends(rbac("gst", "compute"))):
+    """Compute GSTR-3B ENTIRELY from posted accounting data and reconcile it to the
+    General Ledger — the single source of truth (audit H8). Returns a reconciliation
+    block proving the return's output tax and ITC equal the GL GST control accounts.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    firm_id = current_user.get("firm_id")
+    gstin = _client_gstin(db, firm_id, req.client_id)
+    errs = _validator.validate_gstin(gstin) + _validator.validate_period(req.period)
+    if errs:
+        raise HTTPException(status_code=422, detail={"validation_errors": [e.as_dict() for e in errs]})
+    try:
+        data = gst_return_service.gstr3b_from_books(db, firm_id, req.client_id, req.period, gstin)
+    except ValueError as ve:
+        raise HTTPException(status_code=422, detail=str(ve))
+    return api_response(True, data)
+
+
+@router.post("/gstr1/from-books")
+def gstr1_from_books_endpoint(req: FromBooksRequest, current_user: dict = Depends(rbac("gst", "compute"))):
+    """Build GSTR-1 ENTIRELY from posted sales invoices + issued credit notes and
+    reconcile the net output tax to the General Ledger (audit H8).
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    firm_id = current_user.get("firm_id")
+    gstin = _client_gstin(db, firm_id, req.client_id)
+    errs = _validator.validate_gstin(gstin) + _validator.validate_period(req.period)
+    if errs:
+        raise HTTPException(status_code=422, detail={"validation_errors": [e.as_dict() for e in errs]})
+    try:
+        data = gst_return_service.gstr1_from_books(
+            db, firm_id, req.client_id, req.period, gstin, req.aggregate_turnover_paise)
+    except ValueError as ve:
+        raise HTTPException(status_code=422, detail=str(ve))
+    return api_response(True, data)
 
 
 @router.post("/gstr1/build")

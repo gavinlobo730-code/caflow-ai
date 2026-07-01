@@ -28,13 +28,6 @@ interface Client {
   name: string;
 }
 
-interface AccountRow {
-  id: string;
-  account_name: string;
-  account_type: string; // Asset | Liability | Equity | Revenue | Expense
-  account_subtype: string | null;
-}
-
 interface LineItem {
   label: string;
   paise: number;
@@ -46,63 +39,6 @@ interface ScheduleSection {
   lines: LineItem[];
   total_paise: number;
   totalLabel?: string;
-}
-
-// ─── Schedule III mapping helpers ────────────────────────────────────────────
-
-/**
- * Map account_subtype (or fallback to account_type) to Schedule III Balance Sheet bucket.
- * Companies Act 2013, Schedule III, Part I
- */
-function bsBucket(acc: AccountRow): string | null {
-  const sub = (acc.account_subtype ?? "").toLowerCase();
-  const type = acc.account_type.toLowerCase();
-
-  if (type === "equity") {
-    if (sub.includes("share capital") || sub.includes("capital")) return "Share Capital";
-    return "Reserves & Surplus";
-  }
-  if (type === "liability") {
-    if (sub.includes("long term") || sub.includes("term loan") || sub.includes("debenture")) return "Long Term Borrowings";
-    if (sub.includes("deferred tax")) return "Deferred Tax Liability";
-    if (sub.includes("trade payable") || sub.includes("creditor")) return "Trade Payables";
-    if (sub.includes("short term") || sub.includes("overdraft") || sub.includes("cc limit")) return "Short Term Borrowings";
-    return "Other Current Liabilities";
-  }
-  if (type === "asset") {
-    if (sub.includes("fixed asset") || sub.includes("tangible") || sub.includes("plant") || sub.includes("machinery") || sub.includes("furniture") || sub.includes("building") || sub.includes("vehicle")) return "Tangible Fixed Assets";
-    if (sub.includes("intangible") || sub.includes("goodwill") || sub.includes("software")) return "Intangible Fixed Assets";
-    if (sub.includes("long term investment") || sub.includes("investment")) return "Long Term Investments";
-    if (sub.includes("inventor") || sub.includes("stock")) return "Inventories";
-    if (sub.includes("trade receivable") || sub.includes("debtor")) return "Trade Receivables";
-    if (sub.includes("cash") || sub.includes("bank")) return "Cash & Cash Equivalents";
-    if (sub.includes("short term loan") || sub.includes("advance")) return "Short Term Loans & Advances";
-    return "Other Current Assets";
-  }
-  return null;
-}
-
-/**
- * Map account_subtype to Schedule III P&L bucket.
- * Companies Act 2013, Schedule III, Part II
- */
-function plBucket(acc: AccountRow): string | null {
-  const sub = (acc.account_subtype ?? "").toLowerCase();
-  const type = acc.account_type.toLowerCase();
-
-  if (type === "revenue") {
-    if (sub.includes("other income") || sub.includes("interest income") || sub.includes("dividend")) return "Other Income";
-    return "Revenue from Operations";
-  }
-  if (type === "expense") {
-    if (sub.includes("material") || sub.includes("cost of goods") || sub.includes("purchase") || sub.includes("raw material")) return "Cost of Materials";
-    if (sub.includes("employee") || sub.includes("salary") || sub.includes("wages") || sub.includes("staff")) return "Employee Benefit Expense";
-    if (sub.includes("finance") || sub.includes("interest expense") || sub.includes("bank charge")) return "Finance Costs";
-    if (sub.includes("depreciation") || sub.includes("amortisation") || sub.includes("amortization")) return "Depreciation & Amortisation";
-    if (sub.includes("tax") || sub.includes("income tax") || sub.includes("deferred tax")) return "Tax Expense";
-    return "Other Expenses";
-  }
-  return null;
 }
 
 // ─── Data fetching ────────────────────────────────────────────────────────────
@@ -122,6 +58,7 @@ interface ScheduleData {
     assets: ScheduleSection[];
     totalEquityLiab: number;
     totalAssets: number;
+    isBalanced: boolean;
   };
   profitAndLoss: {
     revenue: ScheduleSection[];
@@ -134,204 +71,68 @@ interface ScheduleData {
   };
 }
 
-// Backend reporting-engine response shapes (domain.reporting). Lines are already
-// classified and sign-normalised (assets debit-positive; L/E/revenue credit-
-// positive; expense debit-positive) so the frontend only buckets for display.
-interface PLApiLine { account_name: string; account_type?: string; account_subtype?: string | null; amount_paise: number }
-interface PLApiData {
-  revenue: { lines: PLApiLine[]; total_paise: number };
-  operating_expenses: { lines: PLApiLine[]; total_paise: number };
-  net_profit_paise: number;
+// Backend Schedule III response (domain.reporting.schedule_iii). Amounts are
+// authoritative, accrual, and already grouped into the statutory captions
+// server-side (Companies Act 2013, Schedule III). The UI only renders.
+interface ApiSection { heading: string; lines: LineItem[]; total_paise: number; total_label?: string }
+interface ScheduleApiData {
+  balance_sheet: {
+    equity_and_liabilities: ApiSection[];
+    assets: ApiSection[];
+    total_equity_liabilities_paise: number;
+    total_assets_paise: number;
+    is_balanced: boolean;
+  };
+  profit_and_loss: {
+    revenue: ApiSection[];
+    expenses: ApiSection[];
+    total_revenue_paise: number;
+    total_expenses_paise: number;
+    profit_before_tax_paise: number;
+    tax_expense_paise: number;
+    profit_after_tax_paise: number;
+  };
 }
-interface BSApiLine { account_name: string; account_type?: string; account_subtype?: string | null; balance_paise: number }
-interface BSApiSection { label: string; lines: BSApiLine[]; total_paise: number }
-interface BSApiData {
-  assets: BSApiSection[];
-  liabilities: BSApiSection[];
-  equity: BSApiSection[];
-  total_assets_paise: number;
-  total_liabilities_equity_paise: number;
-}
+
+const toSection = (s: ApiSection): ScheduleSection => ({
+  heading: s.heading,
+  lines: s.lines,
+  total_paise: s.total_paise,
+  totalLabel: s.total_label,
+});
 
 async function fetchScheduleData(
   clientId: string | null,
   fyStart: string,
   fyEnd: string
 ): Promise<ScheduleData> {
-  // P&L and Balance Sheet are computed SERVER-SIDE by the reporting engine
-  // (CLAUDE.md: zero business logic in the frontend). When clientId is null the
-  // backend returns the firm-wide ("All Clients") consolidation. We only group
-  // the returned, authoritative line amounts into Schedule III buckets.
-  const scope: Record<string, string> = { basis: "accrual" };
+  // Schedule III is computed ENTIRELY server-side (CLAUDE.md: zero business
+  // logic in the frontend) — statutory statements are accrual (Companies Act
+  // §128). clientId=null returns the firm-wide ("All Clients") consolidation.
+  const scope: Record<string, string> = { fy_start: fyStart, fy_end: fyEnd };
   if (clientId) scope.client_id = clientId;
-  const [plRes, bsRes] = await Promise.all([
-    api.accounting.profitLoss({ ...scope, start_date: fyStart, end_date: fyEnd }) as Promise<{ success: boolean; data: PLApiData | null; error: string | null }>,
-    api.accounting.balanceSheet({ ...scope, as_of_date: fyEnd }) as Promise<{ success: boolean; data: BSApiData | null; error: string | null }>,
-  ]);
-  if (!plRes.success || !plRes.data) throw new Error(plRes.error ?? "Failed to load Profit & Loss");
-  if (!bsRes.success || !bsRes.data) throw new Error(bsRes.error ?? "Failed to load Balance Sheet");
-
-  const bsBuckets = new Map<string, number>();
-  const addBs = (lines: BSApiLine[]) => {
-    for (const l of lines) {
-      const bucket = bsBucket({ id: "", account_name: l.account_name, account_type: l.account_type ?? "", account_subtype: l.account_subtype ?? null });
-      if (bucket) bsBuckets.set(bucket, (bsBuckets.get(bucket) ?? 0) + l.balance_paise);
-    }
+  const res = (await api.accounting.scheduleIii(scope)) as {
+    success: boolean; data: ScheduleApiData | null; error: string | null;
   };
-  for (const sec of bsRes.data.assets) addBs(sec.lines);
-  for (const sec of bsRes.data.liabilities) addBs(sec.lines);
-  for (const sec of bsRes.data.equity) addBs(sec.lines);
-
-  const plBuckets = new Map<string, number>();
-  const addPl = (lines: PLApiLine[]) => {
-    for (const l of lines) {
-      const bucket = plBucket({ id: "", account_name: l.account_name, account_type: l.account_type ?? "", account_subtype: l.account_subtype ?? null });
-      if (bucket) plBuckets.set(bucket, (plBuckets.get(bucket) ?? 0) + l.amount_paise);
-    }
-  };
-  addPl(plRes.data.revenue.lines);
-  addPl(plRes.data.operating_expenses.lines);
-
-  const get = (map: Map<string, number>, key: string) => map.get(key) ?? 0;
-  const toLine = (map: Map<string, number>, key: string): LineItem => ({
-    label: key,
-    paise: get(map, key),
-    indent: true,
-  });
-
-  // ── Balance Sheet: Equity & Liabilities ────────────────────────────────────
-  const shareCapPaise = get(bsBuckets, "Share Capital");
-  const reservesPaise = get(bsBuckets, "Reserves & Surplus");
-  const shareholdersFunds = shareCapPaise + reservesPaise;
-
-  const ltbPaise = get(bsBuckets, "Long Term Borrowings");
-  const dtlPaise = get(bsBuckets, "Deferred Tax Liability");
-  const nonCurrentLiab = ltbPaise + dtlPaise;
-
-  const stbPaise = get(bsBuckets, "Short Term Borrowings");
-  const tpPaise = get(bsBuckets, "Trade Payables");
-  const oclPaise = get(bsBuckets, "Other Current Liabilities");
-  const currentLiab = stbPaise + tpPaise + oclPaise;
-
-  const totalEquityLiab = shareholdersFunds + nonCurrentLiab + currentLiab;
-
-  const equityAndLiabilities: ScheduleSection[] = [
-    {
-      heading: "I. Shareholders' Funds",
-      lines: [
-        { label: "Share Capital", paise: shareCapPaise, indent: true },
-        { label: "Reserves & Surplus", paise: reservesPaise, indent: true },
-      ],
-      total_paise: shareholdersFunds,
-      totalLabel: "Total Shareholders' Funds",
-    },
-    {
-      heading: "II. Non-Current Liabilities",
-      lines: [
-        toLine(bsBuckets, "Long Term Borrowings"),
-        toLine(bsBuckets, "Deferred Tax Liability"),
-      ],
-      total_paise: nonCurrentLiab,
-      totalLabel: "Total Non-Current Liabilities",
-    },
-    {
-      heading: "III. Current Liabilities",
-      lines: [
-        toLine(bsBuckets, "Short Term Borrowings"),
-        toLine(bsBuckets, "Trade Payables"),
-        toLine(bsBuckets, "Other Current Liabilities"),
-      ],
-      total_paise: currentLiab,
-      totalLabel: "Total Current Liabilities",
-    },
-  ];
-
-  // ── Balance Sheet: Assets ───────────────────────────────────────────────────
-  const tangiblePaise = get(bsBuckets, "Tangible Fixed Assets");
-  const intangiblePaise = get(bsBuckets, "Intangible Fixed Assets");
-  const ltInvPaise = get(bsBuckets, "Long Term Investments");
-  const fixedAssets = tangiblePaise + intangiblePaise;
-  const nonCurrentAssets = fixedAssets + ltInvPaise;
-
-  const invPaise = get(bsBuckets, "Inventories");
-  const trPaise = get(bsBuckets, "Trade Receivables");
-  const cashPaise = get(bsBuckets, "Cash & Cash Equivalents");
-  const stlaPaise = get(bsBuckets, "Short Term Loans & Advances");
-  const ocaPaise = get(bsBuckets, "Other Current Assets");
-  const currentAssets = invPaise + trPaise + cashPaise + stlaPaise + ocaPaise;
-  const totalAssets = nonCurrentAssets + currentAssets;
-
-  const assets: ScheduleSection[] = [
-    {
-      heading: "I. Non-Current Assets",
-      lines: [
-        { label: "Fixed Assets — Tangible", paise: tangiblePaise, indent: true },
-        { label: "Fixed Assets — Intangible", paise: intangiblePaise, indent: true },
-        { label: "Long Term Investments", paise: ltInvPaise, indent: true },
-      ],
-      total_paise: nonCurrentAssets,
-      totalLabel: "Total Non-Current Assets",
-    },
-    {
-      heading: "II. Current Assets",
-      lines: [
-        toLine(bsBuckets, "Inventories"),
-        toLine(bsBuckets, "Trade Receivables"),
-        toLine(bsBuckets, "Cash & Cash Equivalents"),
-        toLine(bsBuckets, "Short Term Loans & Advances"),
-        toLine(bsBuckets, "Other Current Assets"),
-      ],
-      total_paise: currentAssets,
-      totalLabel: "Total Current Assets",
-    },
-  ];
-
-  // ── Profit & Loss Statement ─────────────────────────────────────────────────
-  const revOpsPaise = get(plBuckets, "Revenue from Operations");
-  const otherIncomePaise = get(plBuckets, "Other Income");
-  const totalRevenue = revOpsPaise + otherIncomePaise;
-
-  const materialsPaise = get(plBuckets, "Cost of Materials");
-  const empPaise = get(plBuckets, "Employee Benefit Expense");
-  const finCostPaise = get(plBuckets, "Finance Costs");
-  const deprPaise = get(plBuckets, "Depreciation & Amortisation");
-  const otherExpPaise = get(plBuckets, "Other Expenses");
-  const taxExpPaise = get(plBuckets, "Tax Expense");
-
-  const operatingExpenses = materialsPaise + empPaise + finCostPaise + deprPaise + otherExpPaise;
-  const profitBeforeTax = totalRevenue - operatingExpenses;
-  const profitAfterTax = profitBeforeTax - taxExpPaise;
-
-  const revenue: ScheduleSection[] = [
-    {
-      heading: "I. Revenue",
-      lines: [
-        { label: "Revenue from Operations", paise: revOpsPaise, indent: true },
-        { label: "Other Income", paise: otherIncomePaise, indent: true },
-      ],
-      total_paise: totalRevenue,
-      totalLabel: "Total Revenue (I)",
-    },
-  ];
-
-  const expenses: ScheduleSection[] = [
-    {
-      heading: "II. Expenses",
-      lines: [
-        { label: "Cost of Materials Consumed", paise: materialsPaise, indent: true },
-        { label: "Employee Benefit Expense", paise: empPaise, indent: true },
-        { label: "Finance Costs", paise: finCostPaise, indent: true },
-        { label: "Depreciation & Amortisation Expense", paise: deprPaise, indent: true },
-        { label: "Other Expenses", paise: otherExpPaise, indent: true },
-      ],
-      total_paise: operatingExpenses,
-      totalLabel: "Total Expenses (II)",
-    },
-  ];
-
+  if (!res.success || !res.data) throw new Error(res.error ?? "Failed to load Schedule III");
+  const d = res.data;
   return {
-    balanceSheet: { equityAndLiabilities, assets, totalEquityLiab, totalAssets },
-    profitAndLoss: { revenue, expenses, totalRevenue, totalExpenses: operatingExpenses, profitBeforeTax, taxExpense: taxExpPaise, profitAfterTax },
+    balanceSheet: {
+      equityAndLiabilities: d.balance_sheet.equity_and_liabilities.map(toSection),
+      assets: d.balance_sheet.assets.map(toSection),
+      totalEquityLiab: d.balance_sheet.total_equity_liabilities_paise,
+      totalAssets: d.balance_sheet.total_assets_paise,
+      isBalanced: d.balance_sheet.is_balanced,
+    },
+    profitAndLoss: {
+      revenue: d.profit_and_loss.revenue.map(toSection),
+      expenses: d.profit_and_loss.expenses.map(toSection),
+      totalRevenue: d.profit_and_loss.total_revenue_paise,
+      totalExpenses: d.profit_and_loss.total_expenses_paise,
+      profitBeforeTax: d.profit_and_loss.profit_before_tax_paise,
+      taxExpense: d.profit_and_loss.tax_expense_paise,
+      profitAfterTax: d.profit_and_loss.profit_after_tax_paise,
+    },
   };
 }
 
@@ -417,7 +218,7 @@ export default function ScheduleIIIPage() {
 
   const pl = data?.profitAndLoss;
   const bs = data?.balanceSheet;
-  const isBalanced = bs ? bs.totalAssets === bs.totalEquityLiab : false;
+  const isBalanced = bs?.isBalanced ?? false;
 
   if (loading) return <LoadingSpinner />;
 

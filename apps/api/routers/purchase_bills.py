@@ -42,6 +42,14 @@ def _current_fy_long() -> str:
     start = now.year if now.month >= 4 else now.year - 1
     return f"{start}-{str(start + 1)[2:]}"
 
+
+def _fy_bounds(date_str: str) -> tuple[str, str]:
+    """Return (fy_start_iso, fy_end_iso) for the Indian FY containing date_str.
+    Used to aggregate a vendor's prior taxable for TDS thresholds. Apr 1 – Mar 31."""
+    d = datetime.strptime(str(date_str)[:10], "%Y-%m-%d").date()
+    start = d.year if d.month >= 4 else d.year - 1
+    return f"{start}-04-01", f"{start + 1}-03-31"
+
 router = APIRouter(prefix="/api/purchase-bills", tags=["purchase_bills"])
 
 # ---------------------------------------------------------------------------
@@ -162,15 +170,18 @@ def create_purchase_bill(
             from core.supabase_client import get_supabase
             db = get_supabase()
 
-            # Fetch vendor for TDS info and state code
-            v_resp = db.table("vendors").select("*").eq("id", vendor_id).limit(1).execute()
+            # Fetch vendor for TDS info and state code (firm-scoped — tenant isolation)
+            v_resp = db.table("vendors").select("*").eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute()
             if not v_resp.data:
                 raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
             vendor = v_resp.data[0]
+            # Business guard: never book a bill against a deactivated vendor.
+            if vendor.get("is_active") is False:
+                raise HTTPException(status_code=422, detail="This vendor is inactive. Reactivate the vendor before booking a bill.")
 
             # Determine is_interstate
             vendor_state = vendor.get("state_code") or _get_state_code_from_gstin(vendor.get("gstin")) or ""
-            client_resp  = db.table("clients").select("gstin").eq("id", client_id).limit(1).execute()
+            client_resp  = db.table("clients").select("gstin").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute()
             client_state = ""
             if client_resp.data:
                 client_state = _get_state_code_from_gstin(client_resp.data[0].get("gstin")) or ""
@@ -213,22 +224,91 @@ def create_purchase_bill(
 
         total_paise = total_taxable + total_cgst + total_sgst + total_igst
 
-        # TDS computation — integer paise, never float
-        # IT Act §194C: 2% (companies/firms); §194I: 10%; §194J: 10%
+        # ── Multi-Currency (Phase 3): resolve + freeze the bill currency ──────────
+        # INR / feature-off → identity. For a foreign bill the line totals above are
+        # in the txn currency's minor units; convert each to base (INR) paise (sum =
+        # base total, exact GL balance) BEFORE TDS, because statutory TDS is always
+        # computed on the INR-equivalent taxable.
+        from domain.currency.document_currency import resolve_document_currency, identity_currency
+        req_ccy = (data.get("currency") or "INR").strip().upper()
+        if _USE_MOCK or req_ccy == "INR":
+            dc = identity_currency(data["bill_date"])
+        else:
+            _firm_row = (db.table("firms").select("multi_currency_entitled").eq("id", firm_id).limit(1).execute().data or [None])[0]
+            _client_mc = (db.table("clients").select("functional_currency, multi_currency_enabled").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
+            dc = resolve_document_currency(
+                db, _firm_row, _client_mc, currency=req_ccy,
+                exchange_rate=data.get("exchange_rate"), rate_date=data["bill_date"],
+                rate_selected_by=current_user.get("id"))
+
+        txn_taxable   = total_taxable
+        txn_total_gst = total_cgst + total_sgst + total_igst
+        txn_total     = txn_taxable + txn_total_gst
+        total_taxable = dc.to_base(total_taxable)
+        total_cgst    = dc.to_base(total_cgst)
+        total_sgst    = dc.to_base(total_sgst)
+        total_igst    = dc.to_base(total_igst)
+        total_paise   = total_taxable + total_cgst + total_sgst + total_igst
+
+        # ── TDS — routed through the central engine (domain/tds/tds_computer).
+        # No inline rate maths: the engine owns thresholds, FY aggregation, payee-type
+        # rates, unknown-section handling and the rate bound (audit H5/H6/L1/L6).
+        # TDS base is the taxable amount, excluding GST — IT Act §194C/194I/194J.
+        is_reverse_charge = bool(data.get("is_reverse_charge", False))
         tds_paise = 0
+        tds_rate_bps = 0
+        tds_section = (vendor.get("tds_section") or "").upper().strip() or None
         if vendor.get("tds_applicable"):
-            tds_rate_bps = int(vendor.get("tds_rate_bps") or 0)
-            if tds_rate_bps == 0 and vendor.get("tds_section"):
-                # Auto-populate statutory default when vendor master rate not set
-                section = str(vendor["tds_section"]).upper().strip()
-                tds_rate_bps = _TDS_DEFAULT_BPS.get(section, 0)
-            if tds_rate_bps > 0:
-                # TDS is on taxable amount (excluding GST) — IT Act §194C/194I/194J
-                tds_paise = (total_taxable * tds_rate_bps) // 10000
-                if tds_paise > total_taxable:
-                    raise HTTPException(status_code=422, detail="TDS cannot exceed taxable amount")
+            if not tds_section:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Vendor is marked TDS-applicable but has no TDS section set.",
+                )
+            from domain.tds.tds_computer import TDSComputer, is_company_pan
+            # FY-aggregate of this vendor's prior taxable under the same section, so the
+            # §194C ₹1L aggregate threshold is honoured across multiple bills.
+            fy_prior = 0
+            if not _USE_MOCK:
+                fy_start, fy_end = _fy_bounds(data["bill_date"])
+                prior = (db.table("purchase_bills")
+                         .select("taxable_amount_paise")
+                         .eq("firm_id", firm_id).eq("vendor_id", vendor_id)
+                         .eq("tds_section", tds_section).neq("status", "cancelled")
+                         .gte("bill_date", fy_start).lte("bill_date", fy_end)
+                         .execute().data) or []
+                fy_prior = sum(int(b.get("taxable_amount_paise") or 0) for b in prior)
+            try:
+                _tds = TDSComputer().resolve_tds(
+                    section=tds_section,
+                    taxable_paise=total_taxable,
+                    fy_prior_taxable_paise=fy_prior,
+                    is_company=is_company_pan(vendor.get("pan")),
+                )
+            except ValueError as ve:
+                raise HTTPException(status_code=422, detail=str(ve))
+            tds_paise = _tds.tds_paise
+            # Persist the rate ACTUALLY applied — 0 when below threshold (nothing
+            # deducted), the section/payee rate when TDS was deducted (H6, §203 audit).
+            tds_rate_bps = _tds.rate_bps if _tds.applies else 0
 
         net_payable_paise = total_paise - tds_paise
+        total_gst_paise = total_cgst + total_sgst + total_igst   # M1: persist on the bill
+
+        # Currency columns (INR identity leaves them inert). Foreign net payable is
+        # the foreign total less TDS expressed in the txn currency at the frozen rate.
+        _ccy_cols = {
+            "txn_currency":     dc.currency,
+            "exchange_rate":    str(dc.rate),
+            "txn_taxable":      txn_taxable,
+            "txn_total_gst":    txn_total_gst,
+            "txn_total":        txn_total,
+            "txn_net_payable":  txn_total - dc.to_txn(tds_paise),
+            "rate_source":      dc.rate_source,
+            "rate_type":        dc.rate_type,
+            "rate_date":        dc.rate_date,
+            "rate_selected_by": dc.rate_selected_by,
+            "rate_overridden":  dc.rate_overridden,
+        }
 
         # Validate posting date is not in a locked financial year (migration 020)
         period_validation_service.validate_posting_date(firm_id or "", data["bill_date"])
@@ -249,12 +329,16 @@ def create_purchase_bill(
                 "sgst_paise":            total_sgst,
                 "igst_paise":            total_igst,
                 "total_paise":           total_paise,
+                "total_gst_paise":       total_gst_paise,
                 "tds_paise":             tds_paise,
-                "tds_section":           vendor.get("tds_section"),
+                "tds_rate_bps":          tds_rate_bps,
+                "tds_section":           tds_section,
+                "is_reverse_charge":     is_reverse_charge,
                 "net_payable_paise":     net_payable_paise,
                 "status":                "draft",
                 "notes":                 data.get("notes", ""),
                 "created_at":            datetime.now(timezone.utc).isoformat(),
+                **_ccy_cols,
                 "lines":                 computed_lines,
             }
             MOCK_PURCHASE_BILLS.append(bill)
@@ -277,12 +361,16 @@ def create_purchase_bill(
             "sgst_paise":            total_sgst,
             "igst_paise":            total_igst,
             "total_paise":           total_paise,
+            "total_gst_paise":       total_gst_paise,
             "tds_paise":             tds_paise,
-            "tds_section":           vendor.get("tds_section"),
+            "tds_rate_bps":          tds_rate_bps,
+            "tds_section":           tds_section,
+            "is_reverse_charge":     is_reverse_charge,
             "net_payable_paise":     net_payable_paise,
             "status":                "draft",
             "notes":                 data.get("notes", ""),
             "created_at":            datetime.now(timezone.utc).isoformat(),
+            **_ccy_cols,
         }
 
         bill_resp = db.table("purchase_bills").insert(bill_payload).execute()  # type: ignore[possibly-undefined]
@@ -466,6 +554,10 @@ def receive_purchase_bill(
             firm_id=current_user.get("firm_id", ""),
             client_id=updated_bill.get("client_id", ""),
         )
+        # Persist the journal link so cancellation can reverse it directly.
+        if journal_id:
+            db.table("purchase_bills").update({"journal_entry_id": journal_id}).eq(
+                "id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
 
         log_event(
             current_user.get("firm_id", ""), "purchase_bill", bill_id,
@@ -517,24 +609,65 @@ def cancel_purchase_bill(
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
 
         from core.supabase_client import get_supabase
+        from services.phase2_journal_service import phase2_journal_service
         db = get_supabase()
+        firm_id = current_user.get("firm_id")
         # Tenant isolation (OOS-5): firm-scope the guard read and the write so a
         # foreign-firm bill id cannot be read or mutated under service-role.
-        resp = db.table("purchase_bills").select("status").eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
+        resp = (db.table("purchase_bills")
+                .select("status, journal_entry_id, bill_no, client_id, paid_paise")
+                .eq("id", bill_id).eq("firm_id", firm_id).limit(1).execute())
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
-        if resp.data[0]["status"] == "cancelled":
+        bill = resp.data[0]
+        status = bill.get("status")
+        if status == "cancelled":
             raise HTTPException(status_code=422, detail="Bill already cancelled")
+        if status == "draft":
+            raise HTTPException(status_code=422, detail="Draft bills are deleted, not cancelled.")
+        # Accounting guard: never cancel a bill that has payments — the payment
+        # journal would be stranded. Reverse the payment(s) first.
+        if int(bill.get("paid_paise") or 0) > 0:
+            raise HTTPException(status_code=409, detail="This bill has payments recorded and cannot be cancelled. Reverse the payment(s) first.")
+        pay = (db.table("purchase_payments").select("id")
+               .eq("firm_id", firm_id).eq("purchase_bill_id", bill_id).limit(1).execute().data)
+        if pay:
+            raise HTTPException(status_code=409, detail="This bill has payments allocated and cannot be cancelled. Reverse the payment(s) first.")
+
+        # A cancellation reversal is a NEW posting dated today — open FY required.
+        reversal_date = datetime.now(timezone.utc).date().isoformat()
+        period_validation_service.validate_posting_date(firm_id or "", reversal_date)
+
+        # Locate the bill's posted receive-journal and reverse it THROUGH the kernel
+        # (append-only; original untouched). Idempotent on retry.
+        jrnl_id = bill.get("journal_entry_id")
+        if not jrnl_id:
+            jr = (db.table("journal_entries").select("id")
+                  .eq("firm_id", firm_id).eq("client_id", bill.get("client_id"))
+                  .eq("reference_no", bill.get("bill_no")).eq("entry_type", "Purchase").eq("is_posted", True)
+                  .limit(1).execute().data)
+            jrnl_id = jr[0]["id"] if jr else None
+        if not jrnl_id:
+            raise HTTPException(status_code=422, detail="No posted journal found for this bill to reverse.")
+        already = (db.table("journal_entries").select("id")
+                   .eq("firm_id", firm_id).eq("reversal_of", jrnl_id).limit(1).execute().data)
+        if not already:
+            phase2_journal_service.reverse_entry(
+                db, firm_id, jrnl_id, reversal_date,
+                narration=f"Cancellation of purchase bill {bill.get('bill_no') or bill_id}",
+                created_by=current_user.get("id"),
+            )
 
         upd = db.table("purchase_bills").update({
             "status":       "cancelled",
             "cancelled_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
+        }).eq("id", bill_id).eq("firm_id", firm_id).execute()
         updated = upd.data[0] if upd.data else {}
         log_event(
-            current_user.get("firm_id", ""), "purchase_bill", bill_id,
-            "status_change", actor_id=current_user.get("auth_user_id"),
-            actor_email=current_user.get("email"), new_data={"status": "cancelled"},
+            firm_id or "", "purchase_bill", bill_id,
+            "cancel", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            new_data={"status": "cancelled", "reversed_journal": jrnl_id},
         )
         return api_response(True, updated)
     except HTTPException:
@@ -589,6 +722,7 @@ def create_bill_from_document(
                 v_resp = (
                     db.table("vendors")
                     .select("id")
+                    .eq("firm_id", firm_id)
                     .eq("client_id", client_id)
                     .eq("gstin", vendor_gstin)
                     .limit(1)
@@ -601,6 +735,7 @@ def create_bill_from_document(
                 v_resp = (
                     db.table("vendors")
                     .select("id")
+                    .eq("firm_id", firm_id)
                     .eq("client_id", client_id)
                     .ilike("name", f"%{vendor_name}%")
                     .limit(1)
