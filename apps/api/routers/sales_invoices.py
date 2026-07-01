@@ -349,15 +349,17 @@ def list_invoices(
         resp = q.order("invoice_date", desc=True).range(offset, offset + limit - 1).execute()
         invoices = resp.data or []
 
-        # Attach lines to each invoice
+        # Batch-fetch lines for the whole page in ONE query (was N+1 — audit H19):
+        # 51 queries per 50-row page → 2. Group in Python.
+        inv_ids = [inv["id"] for inv in invoices]
+        lines_by_inv: dict[str, list] = {}
+        if inv_ids:
+            lr = (db.table("client_sales_invoice_lines").select("*")
+                  .in_("sales_invoice_id", inv_ids).execute().data) or []
+            for l in lr:
+                lines_by_inv.setdefault(l.get("sales_invoice_id"), []).append(l)
         for inv in invoices:
-            lines_resp = (
-                db.table("client_sales_invoice_lines")
-                .select("*")
-                .eq("sales_invoice_id", inv["id"])
-                .execute()
-            )
-            inv["lines"] = lines_resp.data or []
+            inv["lines"] = lines_by_inv.get(inv["id"], [])
 
         return api_response(True, invoices)
     except Exception as e:
@@ -1176,6 +1178,11 @@ def repost_journal(
             raise HTTPException(status_code=422, detail="Only issued invoices can be reposted")
         if inv.get("journal_entry_id"):
             return api_response(True, {"invoice_id": invoice_id, "journal_entry_id": inv["journal_entry_id"], "already_posted": True})
+
+        # H3: reposting writes a dated journal — it must respect the FY lock exactly
+        # like issue_invoice does (this path previously skipped the check).
+        if inv.get("invoice_date"):
+            period_validation_service.validate_posting_date(firm_id or "", inv["invoice_date"])
 
         try:
             journal_id = phase2_journal_service.journal_for_sales_invoice(inv, firm_id, inv.get("client_id", ""))

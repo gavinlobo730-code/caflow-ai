@@ -106,6 +106,11 @@ class SupabaseLedgerSource(LedgerSource):
     _BASE_ENTRY_COLS = ("id, entry_date, client_id, firm_id, entry_type, "
                         "reference_no, narration, created_at, "
                         "journal_lines(account_id, debit_paise, credit_paise)")
+    # Entries are PAGED (audit C6): PostgREST's ~1000-row cap on the top-level
+    # journal_entries query silently truncated the ledger for any client with >1000
+    # posted entries, corrupting TB/BS/P&L with no error. Lines stay embedded per
+    # entry (a bounded handful each), so only the top-level fetch needs paging.
+    _PAGE = 1000
 
     def __init__(self, db):
         self.db = db
@@ -206,19 +211,34 @@ class SupabaseLedgerSource(LedgerSource):
             for r in rows
         }
 
+    def _fetch_all(self, make_query) -> list[dict]:
+        """Fetch EVERY matching row via offset paging over a stably-ordered query, so
+        results are never silently capped at PostgREST's ~1000-row limit (audit C6).
+        `make_query` must return a fresh, ordered query builder on each call."""
+        out: list[dict] = []
+        offset = 0
+        while True:
+            page = make_query().range(offset, offset + self._PAGE - 1).execute().data or []
+            out.extend(page)
+            if len(page) < self._PAGE:
+                break
+            offset += self._PAGE
+        return out
+
     def _entries(self, firm_id, client_id) -> dict[str, JournalEntry]:
-        def run(select_cols: str):
-            q = (self.db.table("journal_entries").select(select_cols)
+        def make_q(with_rev: bool):
+            cols = self._BASE_ENTRY_COLS + (", reversal_of" if with_rev else "")
+            q = (self.db.table("journal_entries").select(cols)
                  .eq("firm_id", firm_id).eq("is_posted", True).is_("deleted_at", "null"))
             if client_id:
                 q = q.eq("client_id", client_id)
-            return q.execute().data or []
+            return q.order("id")   # stable key → correct offset paging
 
         rows = None
         # Use reversal_of when present; tolerate its absence (pre-migration 055).
         if self._has_reversal_of is not False:
             try:
-                rows = run(self._BASE_ENTRY_COLS + ", reversal_of")
+                rows = self._fetch_all(lambda: make_q(True))
                 self._has_reversal_of = True
             except Exception as e:  # noqa: BLE001 — re-raised unless it's the missing column
                 if not _is_missing_column_error(e, "reversal_of"):
@@ -229,7 +249,7 @@ class SupabaseLedgerSource(LedgerSource):
                     "non-reversals until migration 055 is applied."
                 )
         if rows is None:
-            rows = run(self._BASE_ENTRY_COLS)
+            rows = self._fetch_all(lambda: make_q(False))
 
         out: dict[str, JournalEntry] = {}
         for r in rows:

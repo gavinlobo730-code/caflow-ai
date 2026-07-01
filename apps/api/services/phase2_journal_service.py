@@ -17,6 +17,13 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.phase2_journal")
 
 
+def _is_unique_violation(err: Exception) -> bool:
+    """True when a Postgres/PostgREST error is a unique-constraint violation (23505).
+    Used so the kernel can treat a concurrent duplicate insert as idempotent."""
+    s = str(err).lower()
+    return "23505" in s or "duplicate key" in s or "already exists" in s
+
+
 class Phase2JournalService:
     """Auto-journal service for Phase 2 transaction types."""
 
@@ -815,15 +822,25 @@ class Phase2JournalService:
                 f"Journal imbalance: debit={total_debit} credit={total_credit} "
                 f"for ref={reference_no}"
             )
+        # M8: a balanced-but-zero journal is meaningless — never post it.
+        if total_debit == 0:
+            raise ValueError(f"Refusing to post a zero-value journal entry for ref={reference_no}")
 
-        # Prevent duplicate journal entries: same reference_no + entry_date + client_id
-        if not _USE_MOCK:
+        # Idempotency fast path (firm-scoped): same firm+client+reference_no+entry_date
+        # is already posted → return it. The UNIQUE index (migration 143) is the
+        # authoritative backstop for the concurrent race this SELECT can't close (H2).
+        def _find_existing():
+            return (db.table("journal_entries").select("id")
+                    .eq("firm_id", firm_id).eq("client_id", client_id)
+                    .eq("reference_no", reference_no).eq("entry_date", entry_date)
+                    .limit(1).execute())
+        if not _USE_MOCK and reference_no:
             try:
-                existing = db.table("journal_entries").select("id").eq("client_id", client_id).eq("reference_no", reference_no).eq("entry_date", entry_date).limit(1).execute()
+                existing = _find_existing()
                 if existing.data:
                     _logger.warning(
-                        "Duplicate journal detected for ref=%s date=%s client=%s — skipping",
-                        reference_no, entry_date, client_id,
+                        "Duplicate journal detected for firm=%s ref=%s date=%s client=%s — skipping",
+                        firm_id, reference_no, entry_date, client_id,
                     )
                     return existing.data[0]["id"]
             except Exception:
@@ -854,7 +871,20 @@ class Phase2JournalService:
         if attachments is not None:
             entry_payload["attachments"] = attachments
 
-        entry_resp = db.table("journal_entries").insert(entry_payload).execute()
+        # H2: the UNIQUE index closes the TOCTOU race — if a concurrent poster won,
+        # our insert raises 23505; recover by returning the winner's entry (idempotent).
+        try:
+            entry_resp = db.table("journal_entries").insert(entry_payload).execute()
+        except Exception as ins_err:
+            if not _USE_MOCK and reference_no and _is_unique_violation(ins_err):
+                dup = _find_existing()
+                if dup.data:
+                    _logger.warning(
+                        "Concurrent duplicate journal for firm=%s ref=%s date=%s — returning existing id",
+                        firm_id, reference_no, entry_date,
+                    )
+                    return dup.data[0]["id"]
+            raise
         if not entry_resp.data:
             raise RuntimeError(f"Failed to insert journal_entry for ref={reference_no}")
 
