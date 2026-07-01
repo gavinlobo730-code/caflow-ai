@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Plus, Clock, AlertTriangle, RefreshCw, Trash2,
-  ChevronRight, X, CheckSquare, Square, Filter, ArrowUpDown,
+  ChevronRight, X, CheckSquare,
 } from "lucide-react";
 import type { Task, TaskStatus, TaskPriority, Client, FirmUser } from "@/lib/types";
 import { TaskFormModal } from "@/components/TaskFormModal";
@@ -12,6 +12,8 @@ import {
 } from "@/lib/data/tasks";
 import { api } from "@/lib/api";
 import { getClients } from "@/lib/data/clients";
+import { DataTable } from "@/components/ui/data-table";
+import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -39,8 +41,6 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 };
 
 const PRIORITY_ORDER: Record<TaskPriority, number> = { critical: 4, high: 3, medium: 2, low: 1 };
-
-type SortField = "due_date" | "priority" | "created_at";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -398,9 +398,6 @@ function Row({ label, value, highlight }: { label: string; value: string; highli
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 
-type StatusFilter = "all" | TaskStatus;
-type PriorityFilter = "all" | TaskPriority;
-
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -408,18 +405,6 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-
-  // Filters
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
-  const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
-  const [clientFilter, setClientFilter] = useState<string>("all");
-
-  // Sort
-  const [sortField, setSortField] = useState<SortField>("due_date");
-
-  // Selection
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Detail panel
   const [detailTask, setDetailTask] = useState<Task | null>(null);
@@ -429,7 +414,10 @@ export default function TasksPage() {
     setError(null);
     try {
       const [taskList, clientList, memberList] = await Promise.all([
-        getTasks({ limit: 200 }),
+        // Raised from 200 → 1000: the DataTable paginates client-side, so the old
+        // 200-row ceiling silently hid tasks. Fetch the full working set and let
+        // the table handle search/sort/filter/pagination in-browser.
+        getTasks({ limit: 1000 }),
         getClients(),
         getTeamMembers().catch(() => [] as FirmUser[]),
       ]);
@@ -466,26 +454,6 @@ export default function TasksPage() {
     };
   }, [tasks]);
 
-  // Filtered + sorted tasks
-  const filtered = useMemo(() => {
-    let list = tasks.slice();
-    if (statusFilter !== "all") list = list.filter(t => t.status === statusFilter);
-    if (priorityFilter !== "all") list = list.filter(t => t.priority === priorityFilter);
-    if (assigneeFilter !== "all") list = list.filter(t => t.assignee_id === assigneeFilter);
-    if (clientFilter !== "all") list = list.filter(t => t.client_id === clientFilter);
-
-    list.sort((a, b) => {
-      if (sortField === "priority") return (PRIORITY_ORDER[b.priority] ?? 0) - (PRIORITY_ORDER[a.priority] ?? 0);
-      if (sortField === "due_date") {
-        if (!a.due_date) return 1;
-        if (!b.due_date) return -1;
-        return a.due_date.localeCompare(b.due_date);
-      }
-      return b.created_at.localeCompare(a.created_at);
-    });
-    return list;
-  }, [tasks, statusFilter, priorityFilter, assigneeFilter, clientFilter, sortField]);
-
   function handleSaved(task: Task) {
     const client = clients.find(c => c.id === task.client_id);
     const member = teamMembers.find(m => m.id === task.assignee_id);
@@ -501,42 +469,147 @@ export default function TasksPage() {
     setDetailTask(updated);
   }
 
-  async function handleDelete(id: string) {
+  const handleDelete = useCallback(async (id: string) => {
     setTasks(prev => prev.filter(t => t.id !== id));
-    setSelectedIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-    if (detailTask?.id === id) setDetailTask(null);
+    setDetailTask(prev => (prev?.id === id ? null : prev));
     try { await deleteTask(id); } catch { load(); }
-  }
+  }, [load]);
 
   async function handleMove(id: string, status: TaskStatus) {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
     try { await updateTaskStatus(id, status); } catch { load(); }
   }
 
-  async function handleBulkComplete() {
-    const ids = Array.from(selectedIds);
+  // Bulk "mark complete" over the DataTable's selected rows (reuses updateTaskStatus).
+  const handleBulkComplete = useCallback(async (rows: Task[]) => {
+    const ids = rows.map(r => r.id);
     setTasks(prev => prev.map(t => ids.includes(t.id) ? { ...t, status: "completed" as TaskStatus } : t));
-    setSelectedIds(new Set());
     await Promise.all(ids.map(id => updateTaskStatus(id, "completed").catch(() => null)));
-  }
+  }, []);
 
-  function toggleSelect(id: string) {
-    setSelectedIds(prev => {
-      const s = new Set(prev);
-      if (s.has(id)) s.delete(id); else s.add(id);
-      return s;
-    });
-  }
+  // Bulk delete over the DataTable's selected rows (reuses deleteTask; confirm handled by DataTable).
+  const handleBulkDelete = useCallback(async (rows: Task[]) => {
+    const ids = rows.map(r => r.id);
+    setTasks(prev => prev.filter(t => !ids.includes(t.id)));
+    setDetailTask(prev => (prev && ids.includes(prev.id) ? null : prev));
+    await Promise.all(ids.map(id => deleteTask(id).catch(() => null)));
+  }, []);
 
-  function toggleSelectAll() {
-    if (selectedIds.size === filtered.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filtered.map(t => t.id)));
+  // ── DataTable columns ──────────────────────────────────────────────────────
+  const columns: Column<Task>[] = useMemo(() => [
+    {
+      key: "title", header: "Task", accessor: (t) => t.title,
+      searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (t) => (
+        <div>
+          <span className="font-medium text-[#0F172A] line-clamp-1">{t.title}</span>
+          {t.description && (
+            <span className="block text-xs text-[#94A3B8] mt-0.5 line-clamp-1">{t.description}</span>
+          )}
+        </div>
+      ),
+    },
+    // Description is searchable + exportable but hidden as its own column by default
+    // (it already appears as a subtitle under the task title).
+    {
+      key: "description", header: "Description", accessor: (t) => t.description ?? "",
+      searchable: true, defaultHidden: true,
+      render: (t) => <span className="text-xs text-[#64748B]">{t.description || "—"}</span>,
+    },
+    {
+      key: "client_name", header: "Client", accessor: (t) => t.client_name ?? "",
+      searchable: true, sortable: true,
+      render: (t) => <span className="whitespace-nowrap text-[#475569]">{t.client_name ?? "—"}</span>,
+    },
+    {
+      key: "assignee", header: "Assignee", accessor: (t) => t.assignee_name ?? "",
+      searchable: true, sortable: true,
+      render: (t) => (
+        <span className="whitespace-nowrap text-[#475569]">
+          {t.assignee_name ?? <span className="text-[#CBD5E1]">Unassigned</span>}
+        </span>
+      ),
+    },
+    {
+      key: "priority", header: "Priority",
+      // Numeric accessor so sorting orders by severity (critical→low), not alphabetically.
+      accessor: (t) => PRIORITY_ORDER[t.priority] ?? 0, sortable: true,
+      exportValue: (t) => t.priority,
+      render: (t) => (
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRIORITY_BADGE[t.priority]}`}>
+          {t.priority.charAt(0).toUpperCase() + t.priority.slice(1)}
+        </span>
+      ),
+    },
+    {
+      key: "status", header: "Status", accessor: (t) => t.status, sortable: true,
+      exportValue: (t) => STATUS_LABEL[t.status],
+      render: (t) => (
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[t.status]}`}>
+          {STATUS_LABEL[t.status]}
+        </span>
+      ),
+    },
+    {
+      key: "due_date", header: "Due Date", accessor: (t) => t.due_date ?? "", sortable: true,
+      exportValue: (t) => t.due_date ?? "",
+      render: (t) => {
+        const overdue = isOverdue(t.due_date, t.status);
+        return t.due_date ? (
+          <span className={`flex items-center gap-1 whitespace-nowrap text-xs ${overdue ? "text-red-600 font-medium" : "text-[#64748B]"}`}>
+            {overdue ? <AlertTriangle size={11} /> : <Clock size={11} />}
+            {fmt(t.due_date)}
+          </span>
+        ) : <span className="text-[#CBD5E1]">—</span>;
+      },
+    },
+    {
+      key: "created_at", header: "Created", accessor: (t) => t.created_at, sortable: true, defaultHidden: true,
+      exportValue: (t) => t.created_at,
+      render: (t) => <span className="whitespace-nowrap text-xs text-[#64748B]">{fmt(t.created_at.split("T")[0])}</span>,
+    },
+  ], []);
+
+  // ── DataTable filters (preserve status / priority / assignee / client) ───────
+  const filters: FilterDef<Task>[] = useMemo(() => {
+    const defs: FilterDef<Task>[] = [
+      {
+        key: "status", label: "Status", type: "select", accessor: (t) => t.status,
+        options: (Object.keys(STATUS_LABEL) as TaskStatus[]).map(s => ({ value: s, label: STATUS_LABEL[s] })),
+      },
+      {
+        key: "priority", label: "Priority", type: "select", accessor: (t) => t.priority,
+        options: (["critical","high","medium","low"] as TaskPriority[]).map(p => ({
+          value: p, label: p.charAt(0).toUpperCase() + p.slice(1),
+        })),
+      },
+    ];
+    // Assignee filter only when the firm has team members (matches prior behaviour).
+    if (teamMembers.length > 0) {
+      defs.push({
+        key: "assignee_id", label: "Assignee", type: "select", accessor: (t) => t.assignee_id ?? "",
+        options: teamMembers.map(m => ({ value: m.id, label: m.full_name ?? m.email ?? m.id })),
+      });
     }
-  }
+    defs.push({
+      key: "client_id", label: "Client", type: "select", accessor: (t) => t.client_id,
+      options: clients.map(c => ({ value: c.id, label: c.client_name })),
+    });
+    return defs;
+  }, [teamMembers, clients]);
 
-  const allSelected = filtered.length > 0 && selectedIds.size === filtered.length;
+  // ── DataTable bulk actions ───────────────────────────────────────────────────
+  const bulkActions: BulkAction<Task>[] = useMemo(() => [
+    {
+      id: "complete", label: "Mark complete", icon: <CheckSquare size={13} />,
+      run: handleBulkComplete,
+    },
+    {
+      id: "delete", label: "Delete", icon: <Trash2 size={13} />, variant: "danger",
+      confirm: "Delete the selected tasks? This cannot be undone.",
+      run: handleBulkDelete,
+    },
+  ], [handleBulkComplete, handleBulkDelete]);
 
   return (
     <div className="p-6 h-full flex flex-col min-h-0">
@@ -545,7 +618,7 @@ export default function TasksPage() {
         <div>
           <h1 className="text-2xl font-bold text-[#0F172A]">Tasks</h1>
           <p className="text-[#64748B] text-sm mt-0.5">
-            {loading ? "Loading…" : `${filtered.length} task${filtered.length !== 1 ? "s" : ""} shown`}
+            {loading ? "Loading…" : `${tasks.length} task${tasks.length !== 1 ? "s" : ""}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -565,12 +638,6 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-          {error} — <button onClick={load} className="underline">retry</button>
-        </div>
-      )}
-
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
         <SummaryCard label="Total" value={stats.total} color="bg-[#F8FAFC] border-[#E2E8F0] text-[#334155]" />
@@ -580,199 +647,47 @@ export default function TasksPage() {
         <SummaryCard label="Overdue" value={stats.overdue} color="bg-red-50 border-red-200 text-red-700" />
       </div>
 
-      {/* Filter + Sort bar */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <Filter size={14} className="text-[#94A3B8] shrink-0" />
-
-        <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value as StatusFilter)}
-          className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-sm text-[#334155] bg-white outline-none focus:border-blue-400"
-        >
-          <option value="all">All Statuses</option>
-          {(Object.keys(STATUS_LABEL) as TaskStatus[]).map(s => (
-            <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-          ))}
-        </select>
-
-        <select
-          value={priorityFilter}
-          onChange={e => setPriorityFilter(e.target.value as PriorityFilter)}
-          className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-sm text-[#334155] bg-white outline-none focus:border-blue-400"
-        >
-          <option value="all">All Priorities</option>
-          {(["critical","high","medium","low"] as TaskPriority[]).map(p => (
-            <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
-          ))}
-        </select>
-
-        {teamMembers.length > 0 && (
-          <select
-            value={assigneeFilter}
-            onChange={e => setAssigneeFilter(e.target.value)}
-            className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-sm text-[#334155] bg-white outline-none focus:border-blue-400"
-          >
-            <option value="all">All Assignees</option>
-            {teamMembers.map(m => (
-              <option key={m.id} value={m.id}>{m.full_name ?? m.email}</option>
-            ))}
-          </select>
+      {/* Task list — shared DataTable (global search, sort, filters, pagination, export, prefs) */}
+      <DataTable
+        data={tasks}
+        columns={columns}
+        filters={filters}
+        getRowId={(t) => t.id}
+        loading={loading}
+        error={error}
+        onRetry={load}
+        onRefresh={load}
+        searchPlaceholder="Search by title, description, client, or assignee…"
+        initialSort={{ key: "due_date", dir: "asc" }}
+        bulkActions={bulkActions}
+        exportFilename="tasks"
+        persistKey="tasks.list"
+        emptyTitle="No tasks found"
+        emptyDescription="Create a task or adjust your filters."
+        onRowClick={(t) => setDetailTask(t)}
+        rowActions={(t) => (
+          <div className="flex items-center justify-end gap-1">
+            <button
+              onClick={() => setDetailTask(t)}
+              className="p-1 rounded text-[#94A3B8] hover:text-blue-500"
+              title="View details"
+            >
+              <ChevronRight size={14} />
+            </button>
+            <button
+              onClick={() => handleDelete(t.id)}
+              className="p-1 rounded text-[#94A3B8] hover:text-red-500"
+              title="Delete"
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
         )}
+      />
 
-        <select
-          value={clientFilter}
-          onChange={e => setClientFilter(e.target.value)}
-          className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-sm text-[#334155] bg-white outline-none focus:border-blue-400"
-        >
-          <option value="all">All Clients</option>
-          {clients.map(c => (
-            <option key={c.id} value={c.id}>{c.client_name}</option>
-          ))}
-        </select>
-
-        <div className="ml-auto flex items-center gap-1 text-sm text-[#64748B]">
-          <ArrowUpDown size={13} />
-          <select
-            value={sortField}
-            onChange={e => setSortField(e.target.value as SortField)}
-            className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-sm text-[#334155] bg-white outline-none focus:border-blue-400"
-          >
-            <option value="due_date">Sort: Due Date</option>
-            <option value="priority">Sort: Priority</option>
-            <option value="created_at">Sort: Created Date</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Bulk action bar */}
-      {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 mb-3 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-xl text-sm">
-          <span className="text-blue-700 font-medium">{selectedIds.size} selected</span>
-          <button
-            onClick={handleBulkComplete}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs hover:bg-green-700"
-          >
-            <CheckSquare size={13} /> Mark Complete
-          </button>
-          <button
-            onClick={() => setSelectedIds(new Set())}
-            className="text-blue-500 hover:text-blue-700 ml-auto"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
-      {/* Table */}
-      <div className="flex-1 overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white min-h-0">
-        <table className="w-full text-sm min-w-[600px]">
-          <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0] sticky top-0">
-            <tr>
-              <th className="w-10 px-3 py-3">
-                <button onClick={toggleSelectAll} className="text-[#94A3B8] hover:text-[#475569]">
-                  {allSelected ? <CheckSquare size={15} className="text-blue-600" /> : <Square size={15} />}
-                </button>
-              </th>
-              <th className="text-left px-3 py-3 font-medium text-[#475569]">Task</th>
-              <th className="text-left px-3 py-3 font-medium text-[#475569]">Client</th>
-              <th className="text-left px-3 py-3 font-medium text-[#475569]">Assignee</th>
-              <th className="text-left px-3 py-3 font-medium text-[#475569]">Priority</th>
-              <th className="text-left px-3 py-3 font-medium text-[#475569]">Status</th>
-              <th className="text-left px-3 py-3 font-medium text-[#475569]">Due Date</th>
-              <th className="w-12 px-3 py-3" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#F1F5F9]">
-            {loading && (
-              [...Array(5)].map((_, i) => (
-                <tr key={i}>
-                  {[...Array(8)].map((__, j) => (
-                    <td key={j} className="px-3 py-3">
-                      <div className="h-4 bg-[#F1F5F9] rounded animate-pulse" />
-                    </td>
-                  ))}
-                </tr>
-              ))
-            )}
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={8} className="text-center py-12 text-[#94A3B8]">
-                  No tasks match your filters
-                </td>
-              </tr>
-            )}
-            {!loading && filtered.map(task => {
-              const overdue = isOverdue(task.due_date, task.status);
-              const checked = selectedIds.has(task.id);
-              return (
-                <tr
-                  key={task.id}
-                  className={`group hover:bg-[#F8FAFC] cursor-pointer transition-colors ${checked ? "bg-blue-50" : ""}`}
-                  onClick={() => setDetailTask(task)}
-                >
-                  <td className="px-3 py-3" onClick={e => { e.stopPropagation(); toggleSelect(task.id); }}>
-                    {checked
-                      ? <CheckSquare size={15} className="text-blue-600" />
-                      : <Square size={15} className="text-[#CBD5E1] group-hover:text-[#94A3B8]" />
-                    }
-                  </td>
-                  <td className="px-3 py-3">
-                    <span className="font-medium text-[#0F172A] line-clamp-1">{task.title}</span>
-                    {task.description && (
-                      <span className="block text-xs text-[#94A3B8] mt-0.5 line-clamp-1">{task.description}</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-3 text-[#475569] whitespace-nowrap">{task.client_name ?? "—"}</td>
-                  <td className="px-3 py-3 text-[#475569] whitespace-nowrap">
-                    {task.assignee_name ?? <span className="text-[#CBD5E1]">Unassigned</span>}
-                  </td>
-                  <td className="px-3 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRIORITY_BADGE[task.priority]}`}>
-                      {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[task.status]}`}>
-                      {STATUS_LABEL[task.status]}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 whitespace-nowrap">
-                    {task.due_date ? (
-                      <span className={`flex items-center gap-1 text-xs ${overdue ? "text-red-600 font-medium" : "text-[#64748B]"}`}>
-                        {overdue && <AlertTriangle size={11} />}
-                        {!overdue && <Clock size={11} />}
-                        {fmt(task.due_date)}
-                      </span>
-                    ) : <span className="text-[#CBD5E1]">—</span>}
-                  </td>
-                  <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => setDetailTask(task)}
-                        className="p-1 rounded text-[#94A3B8] hover:text-blue-500"
-                        title="View details"
-                      >
-                        <ChevronRight size={14} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(task.id)}
-                        className="p-1 rounded text-[#94A3B8] hover:text-red-500"
-                        title="Delete"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Move quick-action row (below table, for selected task) */}
-      {detailTask && !selectedIds.size && (
-        <div className="mt-3 flex items-center gap-2 text-xs text-[#64748B]">
+      {/* Move quick-action row (for the currently-open task) */}
+      {detailTask && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[#64748B]">
           <span>Move {detailTask.title.slice(0, 30)}{detailTask.title.length > 30 ? "…" : ""}:</span>
           {(Object.keys(STATUS_LABEL) as TaskStatus[])
             .filter(s => s !== detailTask.status)

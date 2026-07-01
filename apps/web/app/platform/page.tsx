@@ -7,12 +7,15 @@
  * the firm sidebar. Self-gates: requires a session AND platform-admin status,
  * else redirects away. Visibility + control only (no firm data editing).
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, Users, ShieldCheck, Ban, RotateCcw, Trash2, X, Loader2, AlertCircle, RefreshCw, AlertTriangle, KeyRound } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
+import { DataTable } from "@/components/ui/data-table";
+import type { Column, FilterDef } from "@/lib/table/types";
+import { formatDate } from "@/lib/services/formatting";
 
 interface FirmRow { id: string; name: string; created_at: string; users: number; clients: number; status: string }
 interface Stats { total_firms: number; active_firms: number; suspended_firms: number; total_users: number; total_clients: number }
@@ -48,6 +51,50 @@ export default function PlatformAdminPage() {
 
   const cleanErr = (e: unknown, fallback: string) =>
     e instanceof Error ? e.message.replace(/^API error \d+:\s*/, "") : fallback;
+
+  // Firms table columns/filters for the shared DataTable. Defined at the top so
+  // the hooks run unconditionally (the gate branch below early-returns). Row
+  // actions live inline via the `rowActions` prop, where the handlers are in scope.
+  const columns: Column<FirmRow>[] = useMemo(() => [
+    {
+      key: "name", header: "Firm", accessor: (f) => f.name,
+      searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (f) => <span className="font-medium text-[#1E293B]">{f.name}</span>,
+    },
+    {
+      key: "created_at", header: "Created", accessor: (f) => f.created_at,
+      sortable: true,
+      render: (f) => <span className="text-[#64748B] whitespace-nowrap">{f.created_at ? formatDate(f.created_at) : "—"}</span>,
+    },
+    {
+      key: "users", header: "Users", accessor: (f) => f.users,
+      sortable: true, align: "right",
+    },
+    {
+      key: "clients", header: "Clients", accessor: (f) => f.clients,
+      sortable: true, align: "right",
+    },
+    {
+      key: "status", header: "Status", accessor: (f) => f.status,
+      sortable: true,
+      render: (f) => (
+        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[f.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+          {f.status}
+        </span>
+      ),
+    },
+  ], []);
+
+  const filters: FilterDef<FirmRow>[] = useMemo(() => [
+    {
+      key: "status", label: "Status", type: "select", accessor: (f) => f.status,
+      options: [
+        { value: "active", label: "Active" },
+        { value: "suspended", label: "Suspended" },
+        { value: "deleted", label: "Deleted" },
+      ],
+    },
+  ], []);
 
   const load = useCallback(async () => {
     const [s, f] = await Promise.all([api.platform.stats(), api.platform.firms()]);
@@ -243,15 +290,6 @@ export default function PlatformAdminPage() {
         </div>
       )}
 
-      {dataErr && (
-        <div className="rounded-lg px-4 py-3 text-sm font-medium flex items-center justify-between gap-2 bg-amber-50 text-amber-700 border border-amber-100">
-          <span className="flex items-center gap-2"><AlertCircle size={14} /> {dataErr}</span>
-          <button onClick={() => { setDataErr(""); load().catch((e) => setDataErr(cleanErr(e, "Could not load platform data."))); }} className="inline-flex items-center gap-1 text-amber-800 hover:underline">
-            <RefreshCw size={12} /> Retry
-          </button>
-        </div>
-      )}
-
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {KPIS.map((k) => (
@@ -263,42 +301,32 @@ export default function PlatformAdminPage() {
         ))}
       </div>
 
-      {/* Firms table */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-        <div className="px-5 py-3 border-b border-[#F1F5F9]"><h2 className="text-sm font-semibold text-[#0F172A]">{firms.length} firms</h2></div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8]">
-              <th className="px-5 py-3 text-left font-semibold">Firm</th>
-              <th className="px-3 py-3 text-left font-semibold">Created</th>
-              <th className="px-3 py-3 text-right font-semibold">Users</th>
-              <th className="px-3 py-3 text-right font-semibold">Clients</th>
-              <th className="px-3 py-3 text-left font-semibold">Status</th>
-              <th className="px-5 py-3 text-left font-semibold">Actions</th>
-            </tr></thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
-              {firms.map((f) => (
-                <tr key={f.id} className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-3 font-medium text-[#1E293B]">{f.name}</td>
-                  <td className="px-3 py-3 text-[#64748B] whitespace-nowrap">{f.created_at?.slice(0, 10)}</td>
-                  <td className="px-3 py-3 text-right text-[#334155]">{f.users}</td>
-                  <td className="px-3 py-3 text-right text-[#334155]">{f.clients}</td>
-                  <td className="px-3 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[f.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>{f.status}</span></td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-3 flex-wrap text-xs">
-                      <button onClick={() => view(f)} className="text-blue-600 hover:underline">View</button>
-                      {f.status === "active" && <button onClick={() => suspend(f)} disabled={busy} className="text-amber-700 hover:underline flex items-center gap-1"><Ban size={11} /> Suspend</button>}
-                      {f.status === "suspended" && <button onClick={() => unsuspend(f)} disabled={busy} className="text-green-700 hover:underline flex items-center gap-1"><RotateCcw size={11} /> Unsuspend</button>}
-                      {f.status !== "deleted" && <button onClick={() => softDelete(f)} disabled={busy} className="text-red-600 hover:underline flex items-center gap-1"><Trash2 size={11} /> Delete</button>}
-                      <button onClick={() => openPurge(f)} disabled={busy} className="text-red-700 hover:underline flex items-center gap-1 font-medium"><AlertTriangle size={11} /> Delete permanently</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {firms.length === 0 && <div className="text-center py-8 text-sm text-[#94A3B8]">No firms yet</div>}
-        </div>
+      {/* Firms table — shared DataTable (search, sort, status filter, pagination, export, prefs) */}
+      <div className="space-y-2">
+        <h2 className="text-sm font-semibold text-[#0F172A]">{firms.length} firms</h2>
+        <DataTable
+          data={firms}
+          columns={columns}
+          filters={filters}
+          getRowId={(f) => f.id}
+          error={dataErr || null}
+          onRetry={() => { setDataErr(""); load().catch((e) => setDataErr(cleanErr(e, "Could not load platform data."))); }}
+          onRefresh={() => { setDataErr(""); load().catch((e) => setDataErr(cleanErr(e, "Could not load platform data."))); }}
+          searchPlaceholder="Search firms by name…"
+          initialSort={{ key: "created_at", dir: "desc" }}
+          exportFilename="platform-firms"
+          persistKey="platform.firms"
+          emptyTitle="No firms yet"
+          rowActions={(f) => (
+            <div className="flex items-center justify-end gap-3 flex-wrap text-xs">
+              <button onClick={() => view(f)} className="text-blue-600 hover:underline">View</button>
+              {f.status === "active" && <button onClick={() => suspend(f)} disabled={busy} className="text-amber-700 hover:underline flex items-center gap-1"><Ban size={11} /> Suspend</button>}
+              {f.status === "suspended" && <button onClick={() => unsuspend(f)} disabled={busy} className="text-green-700 hover:underline flex items-center gap-1"><RotateCcw size={11} /> Unsuspend</button>}
+              {f.status !== "deleted" && <button onClick={() => softDelete(f)} disabled={busy} className="text-red-600 hover:underline flex items-center gap-1"><Trash2 size={11} /> Delete</button>}
+              <button onClick={() => openPurge(f)} disabled={busy} className="text-red-700 hover:underline flex items-center gap-1 font-medium"><AlertTriangle size={11} /> Delete permanently</button>
+            </div>
+          )}
+        />
       </div>
 
       {/* Firm detail (read-only) */}

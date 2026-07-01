@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { RefreshCw } from "lucide-react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { DataTable } from "@/components/ui/data-table";
+import type { Column, FilterDef } from "@/lib/table/types";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -81,6 +83,16 @@ interface ApiResponse<T> {
 
 type FilterTab = "All" | "Critical" | "At-Risk" | "Healthy";
 
+const GRADES: Grade[] = ["Healthy", "Good", "Needs Attention", "At Risk", "Critical"];
+// Sort order for the grade column (Healthy best → Critical worst).
+const GRADE_RANK: Record<Grade, number> = {
+  "Healthy": 5,
+  "Good": 4,
+  "Needs Attention": 3,
+  "At Risk": 2,
+  "Critical": 1,
+};
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function scoreColor(score: number): string {
@@ -148,6 +160,7 @@ function DimensionDots({ dimensions }: { dimensions: HealthDimensions }) {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function HealthPage() {
+  const router = useRouter();
   const [clients, setClients] = useState<ClientHealth[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -206,39 +219,95 @@ export default function HealthPage() {
   }
   const maxGradeCount = Math.max(...Object.values(gradeCounts), 1);
 
-  const filtered = clients.filter((c) => {
-    if (filterTab === "Critical") return c.overall_score < 35;
-    if (filterTab === "At-Risk") return c.overall_score >= 35 && c.overall_score < 50;
-    if (filterTab === "Healthy") return c.overall_score >= 80;
-    return true;
-  });
+  // The band tabs (All / Critical / At-Risk / Healthy) pre-scope the rows fed to
+  // the DataTable; the grade/band selects and search then run inside the table.
+  const filtered = useMemo(
+    () =>
+      clients.filter((c) => {
+        if (filterTab === "Critical") return c.overall_score < 35;
+        if (filterTab === "At-Risk") return c.overall_score >= 35 && c.overall_score < 50;
+        if (filterTab === "Healthy") return c.overall_score >= 80;
+        return true;
+      }),
+    [clients, filterTab],
+  );
 
-  if (loading) {
-    return (
-      <div className="p-6 space-y-4 animate-pulse bg-[#F8FAFC] min-h-full">
-        <div className="h-6 bg-gray-200 rounded w-48" />
-        <div className="grid grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-20 bg-gray-100 rounded-xl" />
-          ))}
-        </div>
-        <div className="h-32 bg-gray-100 rounded-xl" />
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-14 bg-gray-100 rounded-xl" />
-        ))}
-      </div>
-    );
-  }
+  const columns: Column<ClientHealth>[] = useMemo(() => [
+    {
+      key: "client_name",
+      header: "Client",
+      accessor: (c) => c.client_name,
+      searchable: true,
+      sortable: true,
+      sticky: true,
+      hideable: false,
+      render: (c) => <span className="font-medium text-gray-800">{c.client_name}</span>,
+    },
+    {
+      key: "overall_score",
+      header: "Score",
+      accessor: (c) => c.overall_score,
+      sortable: true,
+      align: "right",
+      render: (c) => (
+        <span>
+          <span className={`text-lg font-bold ${scoreColor(c.overall_score)}`}>{c.overall_score}</span>
+          <span className="text-xs text-gray-400">/100</span>
+        </span>
+      ),
+    },
+    {
+      key: "grade",
+      header: "Grade",
+      accessor: (c) => GRADE_RANK[c.grade] ?? 0,
+      sortable: true,
+      render: (c) => (
+        <Badge className={`text-xs font-bold ${gradeBadge(c.grade)}`}>{c.grade}</Badge>
+      ),
+    },
+    {
+      key: "dimensions",
+      header: "Dimensions",
+      accessor: () => "",
+      sortable: false,
+      hideable: true,
+      render: (c) => <DimensionDots dimensions={c.dimensions} />,
+    },
+    {
+      key: "last_calculated",
+      header: "Last Calculated",
+      accessor: (c) => c.last_calculated ?? "",
+      sortable: true,
+      align: "right",
+      render: (c) => <span className="text-gray-500 text-xs">{formatDate(c.last_calculated)}</span>,
+    },
+  ], []);
 
-  if (error) {
-    return (
-      <div className="p-6 bg-[#F8FAFC] min-h-full">
-        <div className="bg-red-50 text-red-600 rounded-lg px-5 py-4 text-sm border border-red-200">
-          {error}
-        </div>
-      </div>
-    );
-  }
+  const filters: FilterDef<ClientHealth>[] = useMemo(() => [
+    {
+      key: "grade",
+      label: "Grade",
+      type: "select",
+      accessor: (c) => c.grade,
+      options: GRADES.map((g) => ({ value: g, label: g })),
+    },
+    {
+      key: "band",
+      label: "Band",
+      type: "select",
+      accessor: (c) =>
+        c.overall_score >= 80 ? "Healthy"
+          : c.overall_score >= 50 ? "Good"
+          : c.overall_score >= 35 ? "At Risk"
+          : "Critical",
+      options: [
+        { value: "Healthy", label: "Healthy (80–100)" },
+        { value: "Good", label: "Good (50–79)" },
+        { value: "At Risk", label: "At Risk (35–49)" },
+        { value: "Critical", label: "Critical (0–34)" },
+      ],
+    },
+  ], []);
 
   return (
     <div className="p-6 space-y-5 bg-[#F8FAFC] min-h-full">
@@ -327,7 +396,7 @@ export default function HealthPage() {
         </CardContent>
       </Card>
 
-      {/* Filter tabs */}
+      {/* Filter tabs (band scope) */}
       <div className="flex gap-1 border-b border-gray-200">
         {(["All", "Critical", "At-Risk", "Healthy"] as FilterTab[]).map((tab) => (
           <button
@@ -355,62 +424,33 @@ export default function HealthPage() {
         ))}
       </div>
 
-      {/* Table */}
-      <Card className="bg-white border-gray-200 shadow-sm">
-        <CardContent className="p-0">
-          {filtered.length === 0 ? (
-            <div className="text-center py-16">
-              <p className="text-sm text-gray-500">No clients in this category</p>
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-gray-500 border-b border-gray-200">
-                  <th className="px-5 py-3 text-left font-medium">Client</th>
-                  <th className="px-3 py-3 text-left font-medium">Score</th>
-                  <th className="px-3 py-3 text-left font-medium">Grade</th>
-                  <th className="px-3 py-3 text-left font-medium">Dimensions</th>
-                  <th className="px-3 py-3 text-left font-medium">Last Calculated</th>
-                  <th className="px-5 py-3 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filtered.map((client) => (
-                  <tr key={client.id} className="hover:bg-[#AFD2FA]/10 group">
-                    <td className="px-5 py-3 text-gray-800 font-medium">{client.client_name}</td>
-                    <td className="px-3 py-3">
-                      <span className={`text-lg font-bold ${scoreColor(client.overall_score)}`}>
-                        {client.overall_score}
-                      </span>
-                      <span className="text-xs text-gray-400">/100</span>
-                    </td>
-                    <td className="px-3 py-3">
-                      <Badge className={`text-xs font-bold ${gradeBadge(client.grade)}`}>
-                        {client.grade}
-                      </Badge>
-                    </td>
-
-                    <td className="px-3 py-3">
-                      <DimensionDots dimensions={client.dimensions} />
-                    </td>
-                    <td className="px-3 py-3 text-gray-500 text-xs">
-                      {formatDate(client.last_calculated)}
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      <Link
-                        href={`/health/${client.client_id}`}
-                        className="text-xs text-[#182350] hover:text-[#182350]/70 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        View →
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </CardContent>
-      </Card>
+      {/* Table — shared DataTable (search, sort, grade/band filters, pagination, export, prefs) */}
+      <DataTable
+        data={filtered}
+        columns={columns}
+        filters={filters}
+        getRowId={(c) => c.id}
+        loading={loading}
+        error={error}
+        onRetry={loadHealthData}
+        onRefresh={loadHealthData}
+        searchPlaceholder="Search by client name…"
+        initialSort={{ key: "overall_score", dir: "asc" }}
+        exportFilename="client-health"
+        persistKey="health.clients"
+        emptyTitle="No clients in this category"
+        emptyDescription="Adjust the filters or recalculate scores to populate this list."
+        onRowClick={(c) => router.push(`/health/${c.client_id}`)}
+        rowActions={(c) => (
+          <a
+            href={`/health/${c.client_id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="text-xs text-[#182350] hover:text-[#182350]/70"
+          >
+            View →
+          </a>
+        )}
+      />
     </div>
   );
 }
