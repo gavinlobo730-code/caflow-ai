@@ -467,3 +467,161 @@ def test_foreign_bank_account_guard(monkeypatch):
 
     # Policy ON + supported currency ⇒ allowed (no raise).
     bk._guard_foreign_bank_currency(db, "F", "CLI", "USD")
+
+
+# ══ Task 6: Production validation — end-to-end through the REAL routers ═════════
+# Create documents via the production endpoints against one FakeDB, then run the
+# Phase-5 report services over the SAME posted data. Proves the reports reconcile
+# with the GL for INR-only, mixed, multi-currency, multi-year and cross-tenant
+# scenarios.
+
+from models.parties import CustomerIn
+from models.invoices import SalesInvoiceIn, InvoiceLineIn, ReceiptIn, ReceiptAllocationIn
+
+
+def _e2e(monkeypatch, firm, *, mc=True):
+    from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
+    import routers.customers as cu, routers.sales_invoices as si, routers.receipts as rc
+    import routers.purchase_bills as pb, routers.purchase_payments as pp, routers.vendors as ve
+    import services.receipt_service as rs
+    db = FakeDB()
+    wire_e2e(monkeypatch, db, [cu, si, rc, pb, pp, ve, rs])
+    if mc:
+        monkeypatch.setenv("MULTI_CURRENCY_ENABLED", "true")
+    else:
+        monkeypatch.delenv("MULTI_CURRENCY_ENABLED", raising=False)
+    db.seed("firms", {"id": firm, "multi_currency_entitled": mc})
+    db.seed("clients", {"id": "CLI", "firm_id": firm, "gstin": "27ABCDE1234F1Z5",
+                        "functional_currency": "INR", "multi_currency_enabled": mc})
+    for code, sym, name in (("INR", "₹", "Indian Rupee"), ("USD", "$", "US Dollar"), ("EUR", "€", "Euro")):
+        db.seed("currencies", {"code": code, "symbol": sym, "display_name": name, "minor_unit": 2, "is_active": True})
+    seed_standard_coa(db, firm, "CLI")
+    return cu, si, rc, db
+
+
+def _caller(firm):
+    return {"firm_id": firm, "id": "u1", "auth_user_id": "u1", "email": "ca@f.test", "role": "Partner"}
+
+
+def _invoice(si, caller, cust_id, *, date="2025-06-01", currency=None, rate=None, cents=100000):
+    kw = {}
+    if currency:
+        kw = {"currency": currency, "exchange_rate": str(rate)}
+    inv = si.create_invoice(SalesInvoiceIn(
+        client_id="CLI", customer_id=cust_id, invoice_date=date,
+        lines=[InvoiceLineIn(description="x", hsn_sac="9982", quantity=1, rate_paise=cents, gst_rate_percent=0.0)],
+        **kw), caller)["data"]
+    si.issue_invoice(inv["id"], caller)
+    return inv
+
+
+def test_mixed_inr_and_foreign_client_reconciles(monkeypatch):
+    from services.customer_statement_service import customer_statement_service as CS
+    from services.fx_reporting_service import fx_reporting_service as FXR
+    from tests.e2e_harness import trial_balance
+    FIRM = "FIRM-P5V1"
+    cu, si, rc, db = _e2e(monkeypatch, FIRM)
+    caller = _caller(FIRM)
+    inr_cust = cu.create_customer(CustomerIn(client_id="CLI", name="INR Buyer", state_code="27"), caller)["data"]
+    usd_cust = cu.create_customer(CustomerIn(client_id="CLI", name="US Buyer", state_code="27"), caller)["data"]
+    _invoice(si, caller, inr_cust["id"], cents=100000)                       # ₹1,000 INR
+    _invoice(si, caller, usd_cust["id"], currency="USD", rate="83", cents=100000)   # $1,000 @83 = ₹83,000
+
+    # GL balances entirely in base.
+    tb = trial_balance(db, FIRM, "CLI")
+    assert tb["total_debit_paise"] == tb["total_credit_paise"]
+
+    # AR aging: base total reconciles; the currency split carries both.
+    ag = CS.ar_aging(db, FIRM, "CLI", as_of="2025-07-01")
+    assert ag["total_outstanding_paise"] == 100000 + 8_300_000
+    cur = {r["currency"]: r for r in ag["by_currency"]}
+    assert cur["INR"]["outstanding_base_paise"] == 100000
+    assert cur["USD"]["outstanding_foreign_minor"] == 100000 and cur["USD"]["outstanding_base_paise"] == 8_300_000
+
+    # Exposure shows ONLY the foreign currency; open balances lists the USD invoice.
+    exp = FXR.currency_exposure(db, FIRM, "CLI", as_of="2025-07-01")
+    assert [r["currency"] for r in exp["by_currency"]] == ["USD"]
+    ofb = FXR.open_foreign_balances(db, FIRM, "CLI", as_of="2025-07-01")
+    assert len(ofb["receivables"]) == 1 and ofb["receivables"][0]["foreign_outstanding_minor"] == 100000
+
+
+def test_multiple_currencies_realized_fx(monkeypatch):
+    from services.fx_reporting_service import fx_reporting_service as FXR
+    from tests.e2e_harness import trial_balance
+    FIRM = "FIRM-P5V2"
+    cu, si, rc, db = _e2e(monkeypatch, FIRM)
+    caller = _caller(FIRM)
+    usd_c = cu.create_customer(CustomerIn(client_id="CLI", name="US", state_code="27"), caller)["data"]
+    eur_c = cu.create_customer(CustomerIn(client_id="CLI", name="EU", state_code="27"), caller)["data"]
+    usd_inv = _invoice(si, caller, usd_c["id"], currency="USD", rate="80", cents=100000)   # $1,000 @80
+    eur_inv = _invoice(si, caller, eur_c["id"], currency="EUR", rate="90", cents=100000)   # €1,000 @90
+
+    # Settle in FOREIGN minor units (foreign receipts settle in the txn currency):
+    # USD @83 (gain ₹3,000) and EUR @88 (loss ₹2,000).
+    rc.create_receipt(ReceiptIn(client_id="CLI", customer_id=usd_c["id"], receipt_date="2025-08-01",
+        amount_paise=100000, currency="USD", exchange_rate="83",
+        allocations=[ReceiptAllocationIn(sales_invoice_id=usd_inv["id"], allocated_paise=100000)]), caller)
+    rc.create_receipt(ReceiptIn(client_id="CLI", customer_id=eur_c["id"], receipt_date="2025-08-01",
+        amount_paise=100000, currency="EUR", exchange_rate="88",
+        allocations=[ReceiptAllocationIn(sales_invoice_id=eur_inv["id"], allocated_paise=100000)]), caller)
+
+    tb = trial_balance(db, FIRM, "CLI")
+    assert tb["total_debit_paise"] == tb["total_credit_paise"]
+    rep = FXR.realized_fx(db, FIRM, "CLI", "2025-04-01", "2026-03-31")
+    by = {r["currency"]: r for r in rep["by_currency"]}
+    assert by["USD"]["net_paise"] == 300_000        # $1,000 × (83−80)
+    assert by["EUR"]["net_paise"] == -200_000       # €1,000 × (88−90)
+    assert rep["net_paise"] == 100_000              # +3,000 − 2,000
+
+
+def test_inr_only_client_has_empty_fx_reports(monkeypatch):
+    from services.fx_reporting_service import fx_reporting_service as FXR
+    FIRM = "FIRM-P5V3"
+    cu, si, rc, db = _e2e(monkeypatch, FIRM, mc=False)
+    caller = _caller(FIRM)
+    c = cu.create_customer(CustomerIn(client_id="CLI", name="Acme", state_code="27"), caller)["data"]
+    _invoice(si, caller, c["id"], cents=118000)     # plain INR invoice
+    assert FXR.realized_fx(db, FIRM, "CLI")["lines"] == []
+    assert FXR.unrealized_fx(db, FIRM, "CLI")["lines"] == []
+    assert FXR.currency_exposure(db, FIRM, "CLI")["by_currency"] == []
+    ofb = FXR.open_foreign_balances(db, FIRM, "CLI")
+    assert ofb["receivables"] == [] and ofb["payables"] == []
+    audit = FXR.exchange_rate_audit(db, FIRM, "CLI")
+    assert audit["documents"] == [] and audit["adjustments"] == []
+
+
+def test_multi_year_realized_fx_is_scoped_to_settlement_year(monkeypatch):
+    from services.fx_reporting_service import fx_reporting_service as FXR
+    FIRM = "FIRM-P5V4"
+    cu, si, rc, db = _e2e(monkeypatch, FIRM)
+    caller = _caller(FIRM)
+    c = cu.create_customer(CustomerIn(client_id="CLI", name="US", state_code="27"), caller)["data"]
+    inv = _invoice(si, caller, c["id"], date="2025-06-01", currency="USD", rate="80", cents=100000)
+    # Settled in the NEXT financial year @85 (foreign minor units).
+    rc.create_receipt(ReceiptIn(client_id="CLI", customer_id=c["id"], receipt_date="2026-05-01",
+        amount_paise=100000, currency="USD", exchange_rate="85",
+        allocations=[ReceiptAllocationIn(sales_invoice_id=inv["id"], allocated_paise=100000)]), caller)
+    # FY 2025-26 window: no realized FX yet (still open at 31-Mar-2026).
+    assert FXR.realized_fx(db, FIRM, "CLI", "2025-04-01", "2026-03-31")["net_paise"] == 0
+    # FY 2026-27 window: the ₹5,000 gain is recognised on settlement.
+    assert FXR.realized_fx(db, FIRM, "CLI", "2026-04-01", "2027-03-31")["net_paise"] == 500_000
+
+
+def test_fx_reports_are_tenant_isolated(monkeypatch):
+    """Firm A's FX reports never surface Firm B's foreign activity (same FakeDB)."""
+    from services.fx_reporting_service import fx_reporting_service as FXR
+    FIRM_A = "FIRM-P5A"
+    cu, si, rc, db = _e2e(monkeypatch, FIRM_A)
+    # Firm B shares the DB but is a separate tenant.
+    db.seed("firms", {"id": "FIRM-P5B", "multi_currency_entitled": True})
+    db.seed("clients", {"id": "CLI-B", "firm_id": "FIRM-P5B", "gstin": "27ZZZZZ9999Z1Z5",
+                        "functional_currency": "INR", "multi_currency_enabled": True})
+    from tests.e2e_harness import seed_standard_coa
+    seed_standard_coa(db, "FIRM-P5B", "CLI-B")
+    a = cu.create_customer(CustomerIn(client_id="CLI", name="US", state_code="27"), _caller(FIRM_A))["data"]
+    _invoice(si, _caller(FIRM_A), a["id"], currency="USD", rate="83", cents=100000)
+    # Firm B's exposure/open-balances see nothing from Firm A.
+    assert FXR.currency_exposure(db, "FIRM-P5B", "CLI-B")["by_currency"] == []
+    assert FXR.open_foreign_balances(db, "FIRM-P5B", "CLI-B")["receivables"] == []
+    # Firm A does see its own.
+    assert [r["currency"] for r in FXR.currency_exposure(db, FIRM_A, "CLI")["by_currency"]] == ["USD"]

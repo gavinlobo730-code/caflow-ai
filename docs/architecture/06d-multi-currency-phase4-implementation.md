@@ -39,8 +39,10 @@ difference to **Realized FX Gain/Loss** instead of being rejected:
   kernel's idempotency dedup from collapsing a genuine delta.
 - **Validations:** missing closing rate, unsupported currency, and a locked/closed
   period (period-end and its reversal day) are rejected with clear messages.
-- Foreign **bank-balance** revaluation is structurally supported but has no data
-  source until foreign-currency bank accounts exist (deferred master) — a no-op.
+- Foreign **bank-balance** revaluation was structurally supported here and is
+  **implemented in Phase 5** once `bank_accounts.currency` exists (migration 150):
+  each foreign bank account revalues against its own GL account, keyed by
+  `fx_revaluations.item_ref`. See `06e-multi-currency-phase5-implementation.md`.
 
 ## Database — migration 149 (additive)
 

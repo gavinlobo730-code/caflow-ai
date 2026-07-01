@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { Plus, RefreshCw, Upload, CheckCircle, X, Printer, FileText, Download, Share2 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
-import { formatPaise } from "@/lib/services/formatting";
+import { formatPaise, formatMoney } from "@/lib/services/formatting";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { api } from "@/lib/api";
@@ -36,7 +36,8 @@ type AccountingTab =
   | "post"
   | "approvals"
   | "reconciliation"
-  | "reports";
+  | "reports"
+  | "fx-reports";
 
 const TABS: { id: AccountingTab; label: string }[] = [
   { id: "dashboard",     label: "Dashboard" },
@@ -53,6 +54,7 @@ const TABS: { id: AccountingTab; label: string }[] = [
   { id: "approvals",     label: "Approvals" },
   { id: "reconciliation",label: "Reconciliation" },
   { id: "reports",       label: "Reports" },
+  { id: "fx-reports",    label: "FX Reports" },
 ];
 
 // ── Shared types ───────────────────────────────────────────────────────────
@@ -209,6 +211,9 @@ export default function AccountingPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accsLoading, setAccsLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
+  // Multi-Currency Phase 5 — the FX Reports tab is shown ONLY when multi-currency is
+  // active for this client, so an INR-only client sees no added complexity (CLAUDE.md).
+  const [mcActive, setMcActive] = useState(false);
 
   const loadAccounts = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
@@ -227,12 +232,27 @@ export default function AccountingPage() {
 
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
 
+  // Resolve the multi-currency policy for this client (env + firm + client gates).
+  useEffect(() => {
+    if (!clientId || clientId === "_placeholder") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.currencies.policy({ client_id: clientId }) as { success: boolean; data: { active?: boolean } | null };
+        if (!cancelled) setMcActive(Boolean(res?.success && res.data?.active));
+      } catch { if (!cancelled) setMcActive(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [clientId]);
+
+  const visibleTabs = TABS.filter((t) => t.id !== "fx-reports" || mcActive);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Sub-tab bar */}
       <div className="flex-shrink-0 overflow-x-auto px-6 pt-5 pb-0">
         <div className="flex gap-0.5 bg-[#F8FAFC] rounded-lg p-1 w-fit">
-          {TABS.map((t) => (
+          {visibleTabs.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
@@ -293,6 +313,9 @@ export default function AccountingPage() {
         )}
         {tab === "reports" && (
           <FinancialReports clientId={clientId} financialYear={financialYear} />
+        )}
+        {tab === "fx-reports" && (
+          <FXReports clientId={clientId} financialYear={financialYear} />
         )}
       </div>
     </div>
@@ -902,6 +925,317 @@ function TrialBalance({ clientId, financialYear }: { clientId: string; financial
           </table>
         </div>
       ) : loaded ? <div className="text-center py-12 text-[#94A3B8] text-sm">No posted journal entries for FY {financialYear}.</div> : null}
+    </div>
+  );
+}
+
+// ── FX Reports (Multi-Currency Phase 5) ──────────────────────────────────────
+// Read-only foreign-exchange reporting. EVERY figure is computed server-side
+// (services.fx_reporting_service) from posted accounting data; the component only
+// presents it (CLAUDE.md — zero business logic in the frontend). The base (INR)
+// amounts stay authoritative; foreign figures are display memo. For an INR-only
+// client every report is empty, so this tab simply shows "no FX activity".
+
+type FXView = "exposure" | "realized" | "unrealized" | "open" | "audit";
+const FX_VIEWS: { id: FXView; label: string }[] = [
+  { id: "exposure",   label: "Exposure" },
+  { id: "realized",   label: "Realized" },
+  { id: "unrealized", label: "Unrealized" },
+  { id: "open",       label: "Open Balances" },
+  { id: "audit",      label: "Rate Audit" },
+];
+
+interface FXExposureRow {
+  currency: string;
+  receivable_foreign_minor: number; receivable_base_paise: number;
+  payable_foreign_minor: number; payable_base_paise: number;
+  bank_foreign_minor: number; bank_base_paise: number;
+  net_foreign_minor: number; net_base_paise: number;
+}
+interface FXRealizedData {
+  gain_paise: number; loss_paise: number; net_paise: number;
+  lines: { date: string; document_type: string; currency: string; settlement_rate: string | null; base_delta_paise: number; is_gain: boolean }[];
+  by_currency: { currency: string; gain_paise: number; loss_paise: number; net_paise: number }[];
+}
+interface FXUnrealizedData {
+  net_paise: number;
+  lines: { period_end: string; currency: string; item_type: string; closing_rate: string | null; cumulative_delta_paise: number; runs: number }[];
+  by_currency: { currency: string; net_paise: number }[];
+}
+interface FXOpenDoc { doc_no: string; currency: string; exchange_rate: string; foreign_outstanding_minor: number; base_outstanding_paise: number }
+interface FXOpenData {
+  receivables: FXOpenDoc[]; payables: FXOpenDoc[];
+  bank_accounts: { name: string; currency: string; foreign_balance_minor: number; base_balance_paise: number }[];
+}
+interface FXAuditData {
+  overridden_count: number;
+  documents: { document_no: string; date: string; currency: string; exchange_rate: string; rate_source: string | null; rate_type: string | null; rate_overridden: boolean }[];
+  adjustments: { date: string; kind: string; currency: string; settlement_rate: string | null; closing_rate: string | null; base_delta_paise: number }[];
+}
+
+function CcyBadge({ code }: { code: string }) {
+  return <span className="inline-flex items-center rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[10px] font-semibold text-[#4338CA]">{code}</span>;
+}
+
+/** Signed base amount with gain(green)/loss(red) colour — a realized/unrealized delta. */
+function fxDelta(paise: number) {
+  const cls = paise > 0 ? "text-green-600" : paise < 0 ? "text-red-600" : "text-[#94A3B8]";
+  const sign = paise > 0 ? "+" : "";
+  return <span className={`font-mono ${cls}`}>{paise === 0 ? "—" : `${sign}${formatPaise(paise)}`}</span>;
+}
+
+function FXReports({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+  const [view, setView] = useState<FXView>("exposure");
+  const [ccy, setCcy] = useState<string>("all");
+  const [data, setData] = useState<unknown>(null);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
+    setLoading(true); setLoaded(false);
+    const { start, end } = fyDateRange(financialYear);
+    type FXResp = { success: boolean; data: unknown };
+    try {
+      let res: FXResp;
+      if (view === "exposure") res = await api.accounting.fxReports.exposure({ client_id: clientId, as_of: end }) as FXResp;
+      else if (view === "realized") res = await api.accounting.fxReports.realized({ client_id: clientId, start_date: start, end_date: end }) as FXResp;
+      else if (view === "unrealized") res = await api.accounting.fxReports.unrealized({ client_id: clientId, period_end: end }) as FXResp;
+      else if (view === "open") res = await api.accounting.fxReports.openBalances({ client_id: clientId, as_of: end }) as FXResp;
+      else res = await api.accounting.fxReports.rateAudit({ client_id: clientId, start_date: start, end_date: end }) as FXResp;
+      setData(res && res.success ? res.data : null);
+    } catch {
+      // Degrade to empty, never an infinite skeleton (matches every other report here).
+      setData(null);
+    } finally {
+      setLoading(false); setLoaded(true);
+    }
+  }, [clientId, financialYear, view]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const byC = <T extends { currency: string }>(rows: T[]): T[] => ccy === "all" ? rows : rows.filter((r) => r.currency === ccy);
+  const currencyOptions = fxCurrencyOptions(view, data);
+
+  return (
+    <div className="space-y-4 max-w-4xl">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex rounded border border-[#E2E8F0] overflow-hidden text-xs">
+          {FX_VIEWS.map((v) => (
+            <button key={v.id} onClick={() => setView(v.id)}
+              className={`px-3 py-1 font-medium border-l first:border-l-0 border-[#E2E8F0] transition-colors ${view === v.id ? "bg-[#1E293B] text-white" : "bg-white text-[#64748B] hover:bg-[#F8FAFC]"}`}>
+              {v.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          {currencyOptions.length > 0 && (
+            <select value={ccy} onChange={(e) => setCcy(e.target.value)}
+              className="text-xs rounded border border-[#E2E8F0] px-2 py-1 text-[#475569] bg-white">
+              <option value="all">All currencies</option>
+              {currencyOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
+          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+        </div>
+      </div>
+
+      {loading ? <div className="h-40 rounded-lg bg-[#F8FAFC] animate-pulse" /> : !loaded ? null : (
+        <FXReportBody view={view} data={data} byC={byC} />
+      )}
+    </div>
+  );
+}
+
+/** Distinct currency codes available for the filter, per view. */
+function fxCurrencyOptions(view: FXView, data: unknown): string[] {
+  const set = new Set<string>();
+  const add = (rows?: { currency: string }[]) => (rows ?? []).forEach((r) => r.currency && set.add(r.currency));
+  if (view === "exposure") add((data as { by_currency?: FXExposureRow[] } | null)?.by_currency);
+  else if (view === "realized") add((data as FXRealizedData | null)?.by_currency);
+  else if (view === "unrealized") add((data as FXUnrealizedData | null)?.by_currency);
+  else if (view === "open") { const d = data as FXOpenData | null; add(d?.receivables); add(d?.payables); add(d?.bank_accounts); }
+  else add((data as FXAuditData | null)?.documents);
+  return Array.from(set).sort();
+}
+
+function FXEmpty() {
+  return <div className="text-center py-12 text-[#94A3B8] text-sm">No foreign-currency activity for this period.</div>;
+}
+
+function FXReportBody({ view, data, byC }: {
+  view: FXView; data: unknown; byC: <T extends { currency: string }>(rows: T[]) => T[];
+}) {
+  const wrap = "bg-white rounded-xl border border-[#F1F5F9] overflow-hidden";
+  const th = "px-3 py-3 text-left font-semibold";
+  const thr = "px-3 py-3 text-right font-semibold";
+
+  if (view === "exposure") {
+    const rows = byC((data as { by_currency?: FXExposureRow[] } | null)?.by_currency ?? []);
+    if (rows.length === 0) return <FXEmpty />;
+    return (
+      <div className={wrap}>
+        <table className="w-full text-xs">
+          <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+            <th className={th}>Currency</th><th className={thr}>Receivable</th><th className={thr}>Payable</th>
+            <th className={thr}>Bank</th><th className={thr}>Net (foreign)</th><th className={thr}>Net (₹ base)</th>
+          </tr></thead>
+          <tbody className="divide-y divide-[#F8FAFC]">
+            {rows.map((r) => (
+              <tr key={r.currency} className="hover:bg-[#F8FAFC]">
+                <td className="px-3 py-2"><CcyBadge code={r.currency} /></td>
+                <td className="px-3 py-2 text-right font-mono text-[#334155]">{formatMoney(r.receivable_foreign_minor, r.currency)}</td>
+                <td className="px-3 py-2 text-right font-mono text-[#334155]">{formatMoney(r.payable_foreign_minor, r.currency)}</td>
+                <td className="px-3 py-2 text-right font-mono text-[#334155]">{formatMoney(r.bank_foreign_minor, r.currency)}</td>
+                <td className="px-3 py-2 text-right font-mono font-semibold text-[#1E293B]">{formatMoney(r.net_foreign_minor, r.currency)}</td>
+                <td className="px-3 py-2 text-right font-mono text-[#334155]">{formatPaise(r.net_base_paise)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  if (view === "realized") {
+    const d = data as FXRealizedData | null;
+    const lines = byC(d?.lines ?? []);
+    if (!d || lines.length === 0) return <FXEmpty />;
+    return (
+      <div className="space-y-3">
+        <div className="flex gap-3 text-xs">
+          <div className="flex-1 bg-green-50 border border-green-200 rounded-lg px-3 py-2"><p className="text-[#94A3B8]">Gain</p><p className="font-mono font-semibold text-green-700">{formatPaise(d.gain_paise)}</p></div>
+          <div className="flex-1 bg-red-50 border border-red-200 rounded-lg px-3 py-2"><p className="text-[#94A3B8]">Loss</p><p className="font-mono font-semibold text-red-700">{formatPaise(d.loss_paise)}</p></div>
+          <div className="flex-1 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-3 py-2"><p className="text-[#94A3B8]">Net</p><p className="font-mono font-semibold text-[#1E293B]">{fxDelta(d.net_paise)}</p></div>
+        </div>
+        <div className={wrap}>
+          <table className="w-full text-xs">
+            <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className={th}>Date</th><th className={th}>Document</th><th className={th}>Currency</th><th className={thr}>Settle rate</th><th className={thr}>Gain / (Loss)</th></tr></thead>
+            <tbody className="divide-y divide-[#F8FAFC]">
+              {lines.map((l, i) => (
+                <tr key={i} className="hover:bg-[#F8FAFC]">
+                  <td className="px-3 py-2 text-[#64748B]">{l.date}</td>
+                  <td className="px-3 py-2 text-[#475569]">{(l.document_type ?? "").replace(/_/g, " ")}</td>
+                  <td className="px-3 py-2"><CcyBadge code={l.currency} /></td>
+                  <td className="px-3 py-2 text-right font-mono text-[#64748B]">{l.settlement_rate ?? "—"}</td>
+                  <td className="px-3 py-2 text-right">{fxDelta(l.base_delta_paise)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === "unrealized") {
+    const d = data as FXUnrealizedData | null;
+    const lines = byC(d?.lines ?? []);
+    if (!d || lines.length === 0) return <FXEmpty />;
+    return (
+      <div className={wrap}>
+        <table className="w-full text-xs">
+          <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className={th}>Period end</th><th className={th}>Currency</th><th className={th}>Item</th><th className={thr}>Closing rate</th><th className={thr}>Cumulative</th><th className={thr}>Runs</th></tr></thead>
+          <tbody className="divide-y divide-[#F8FAFC]">
+            {lines.map((l, i) => (
+              <tr key={i} className="hover:bg-[#F8FAFC]">
+                <td className="px-3 py-2 text-[#64748B]">{l.period_end}</td>
+                <td className="px-3 py-2"><CcyBadge code={l.currency} /></td>
+                <td className="px-3 py-2 text-[#475569] capitalize">{l.item_type}</td>
+                <td className="px-3 py-2 text-right font-mono text-[#64748B]">{l.closing_rate ?? "—"}</td>
+                <td className="px-3 py-2 text-right">{fxDelta(l.cumulative_delta_paise)}</td>
+                <td className="px-3 py-2 text-right font-mono text-[#94A3B8]">{l.runs}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  if (view === "open") {
+    const d = data as FXOpenData | null;
+    const recv = byC(d?.receivables ?? []);
+    const pay = byC(d?.payables ?? []);
+    const banks = byC(d?.bank_accounts ?? []);
+    if (!d || (recv.length === 0 && pay.length === 0 && banks.length === 0)) return <FXEmpty />;
+    const docTable = (title: string, rows: FXOpenDoc[]) => rows.length === 0 ? null : (
+      <div className="space-y-1">
+        <p className="text-xs font-semibold text-[#334155]">{title}</p>
+        <div className={wrap}>
+          <table className="w-full text-xs">
+            <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className={th}>Document</th><th className={th}>Currency</th><th className={thr}>Rate</th><th className={thr}>Foreign outstanding</th><th className={thr}>Base (₹)</th></tr></thead>
+            <tbody className="divide-y divide-[#F8FAFC]">
+              {rows.map((r, i) => (
+                <tr key={i} className="hover:bg-[#F8FAFC]">
+                  <td className="px-3 py-2 text-[#475569]">{r.doc_no}</td>
+                  <td className="px-3 py-2"><CcyBadge code={r.currency} /></td>
+                  <td className="px-3 py-2 text-right font-mono text-[#64748B]">{r.exchange_rate}</td>
+                  <td className="px-3 py-2 text-right font-mono text-[#334155]">{formatMoney(r.foreign_outstanding_minor, r.currency)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-[#334155]">{formatPaise(r.base_outstanding_paise)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+    return (
+      <div className="space-y-4">
+        {docTable("Receivables", recv)}
+        {docTable("Payables", pay)}
+        {banks.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-[#334155]">Bank accounts</p>
+            <div className={wrap}>
+              <table className="w-full text-xs">
+                <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className={th}>Account</th><th className={th}>Currency</th><th className={thr}>Foreign balance</th><th className={thr}>Base (₹)</th></tr></thead>
+                <tbody className="divide-y divide-[#F8FAFC]">
+                  {banks.map((b, i) => (
+                    <tr key={i} className="hover:bg-[#F8FAFC]">
+                      <td className="px-3 py-2 text-[#475569]">{b.name}</td>
+                      <td className="px-3 py-2"><CcyBadge code={b.currency} /></td>
+                      <td className="px-3 py-2 text-right font-mono text-[#334155]">{formatMoney(b.foreign_balance_minor, b.currency)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-[#334155]">{formatPaise(b.base_balance_paise)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Rate audit
+  const d = data as FXAuditData | null;
+  const docs = byC(d?.documents ?? []);
+  if (!d || docs.length === 0) return <FXEmpty />;
+  return (
+    <div className="space-y-3">
+      {d.overridden_count > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-700">
+          {d.overridden_count} document rate{d.overridden_count === 1 ? "" : "s"} manually overridden — review provenance below.
+        </div>
+      )}
+      <div className={wrap}>
+        <table className="w-full text-xs">
+          <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className={th}>Date</th><th className={th}>Document</th><th className={th}>Currency</th><th className={thr}>Rate</th><th className={th}>Source</th><th className={th}>Overridden</th></tr></thead>
+          <tbody className="divide-y divide-[#F8FAFC]">
+            {docs.map((r, i) => (
+              <tr key={i} className="hover:bg-[#F8FAFC]">
+                <td className="px-3 py-2 text-[#64748B]">{r.date}</td>
+                <td className="px-3 py-2 text-[#475569]">{r.document_no}</td>
+                <td className="px-3 py-2"><CcyBadge code={r.currency} /></td>
+                <td className="px-3 py-2 text-right font-mono text-[#334155]">{r.exchange_rate}</td>
+                <td className="px-3 py-2 text-[#64748B]">{r.rate_source ?? "—"}</td>
+                <td className="px-3 py-2">{r.rate_overridden ? <span className="text-amber-600 font-medium">Yes</span> : <span className="text-[#94A3B8]">—</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
