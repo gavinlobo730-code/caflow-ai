@@ -93,6 +93,7 @@ class PurchaseBillIn(BaseModel):
     lines: list[PurchaseBillLineIn]
     notes: Optional[str] = None
     is_inter_state: bool = False
+    is_reverse_charge: bool = False   # inward supply liable to RCM (CGST Act §9(3)/(4))
 
     @field_validator("lines")
     @classmethod

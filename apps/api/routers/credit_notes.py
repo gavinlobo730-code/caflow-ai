@@ -244,6 +244,7 @@ def create_credit_note(
                 "sgst_paise":           total_sgst,
                 "igst_paise":           total_igst,
                 "total_paise":          total_paise,
+                "total_gst_paise":      total_cgst + total_sgst + total_igst,
                 "status":               "draft",
                 "created_at":           datetime.now(timezone.utc).isoformat(),
                 "lines":                computed_lines,
@@ -272,6 +273,7 @@ def create_credit_note(
             "sgst_paise":           total_sgst,
             "igst_paise":           total_igst,
             "total_paise":          total_paise,
+            "total_gst_paise":      total_cgst + total_sgst + total_igst,
             "status":               "draft",
             "created_at":           datetime.now(timezone.utc).isoformat(),
         }
