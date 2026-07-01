@@ -14,6 +14,7 @@ import Link from "next/link";
 import { ChevronLeft, Plus, X, CheckCircle, Clock, AlertTriangle, Pencil } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -162,9 +163,14 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
           {error && <div className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</div>}
           <div>
             <label className={lbl}>Client *</label>
-            <select value={form.clientId} onChange={e => upd({ clientId: e.target.value })} className={inputCls} disabled={!!editAudit}>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-            </select>
+            <ClientLookup
+              clients={clients}
+              value={form.clientId}
+              onChange={(id) => upd({ clientId: id })}
+              ariaLabel="Client"
+              placeholder="Select client…"
+              disabled={!!editAudit}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

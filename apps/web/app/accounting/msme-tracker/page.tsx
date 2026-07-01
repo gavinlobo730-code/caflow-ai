@@ -15,6 +15,7 @@ import Link from "next/link";
 import { ChevronLeft, Plus, X, AlertTriangle, CheckCircle, Clock, Download } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -178,9 +179,15 @@ function AddModal({ clients, onClose, onAdded }: {
 
           <div>
             <label className={lbl}>Client *</label>
-            <select value={form.clientId} onChange={e => upd({ clientId: e.target.value })} className={inputCls}>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-            </select>
+            <div className="w-full">
+              <ClientLookup
+                clients={clients}
+                value={form.clientId}
+                onChange={(id) => upd({ clientId: id })}
+                ariaLabel="Client"
+                placeholder="Select client…"
+              />
+            </div>
           </div>
           <div>
             <label className={lbl}>Supplier Name *</label>
@@ -346,11 +353,14 @@ export default function MSMETrackerPage() {
 
       {/* Filters */}
       <div className="flex gap-3">
-        <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
-          className="border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
-          <option value="all">All Clients</option>
-          {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-        </select>
+        <ClientLookup
+          clients={clients}
+          value={clientFilter === "all" ? "" : clientFilter}
+          onChange={(id) => setClientFilter(id || "all")}
+          ariaLabel="Client"
+          placeholder="All Clients"
+          clearable
+        />
       </div>
 
       {error && <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div>}

@@ -7,6 +7,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 
 interface Schedule {
   id: string; client_id: string; arrangement: string; cadence: string;
@@ -81,10 +82,13 @@ function Billing() {
 
       {showForm && (
         <form onSubmit={createSchedule} className="mb-4 bg-white border border-gray-200 rounded-xl p-4 grid grid-cols-2 gap-3 text-sm">
-          <select required value={form.client_id} onChange={(e) => setForm({ ...form, client_id: e.target.value })} className="border rounded-lg px-2 py-1.5">
-            <option value="">Select client…</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-          </select>
+          <ClientLookup
+            clients={clients}
+            value={form.client_id}
+            onChange={(id) => setForm({ ...form, client_id: id })}
+            ariaLabel="Client"
+            placeholder="Select client…"
+          />
           <select value={form.arrangement} onChange={(e) => setForm({ ...form, arrangement: e.target.value })} className="border rounded-lg px-2 py-1.5">
             <option value="retainer">Retainer</option><option value="one_time">One-time</option><option value="package">Package</option>
           </select>
