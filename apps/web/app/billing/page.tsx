@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Plus, RefreshCw, X, MessageCircle, IndianRupee, Download, Clock } from "lucide-react";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { api } from "@/lib/api";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -161,10 +162,15 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
         <div className="space-y-3">
           <div>
             <label className="text-xs font-medium text-[#334155] block mb-1">Client</label>
-            <select value={clientId} onChange={e => setClientId(e.target.value)}
-              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
-              {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-            </select>
+            <div className="w-full">
+              <ClientLookup
+                clients={clients}
+                value={clientId}
+                onChange={setClientId}
+                ariaLabel="Client"
+                placeholder="Select client…"
+              />
+            </div>
           </div>
           <div>
             <label className="text-xs font-medium text-[#334155] block mb-1">Service Type</label>

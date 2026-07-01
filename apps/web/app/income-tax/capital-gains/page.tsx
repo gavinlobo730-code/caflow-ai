@@ -16,6 +16,7 @@ import Link from "next/link";
 import { ChevronLeft, Calculator, Info, BookOpen, Plus, X, Trash2 } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 
@@ -635,9 +636,15 @@ export default function CapitalGainsPage() {
           <div className="flex items-end gap-4 flex-wrap">
             <div>
               <label className="text-xs font-medium text-[#334155] block mb-1">Client</label>
-              <select className="border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-              </select>
+              <div className="min-w-[200px]">
+                <ClientLookup
+                  clients={clients}
+                  value={selectedClientId}
+                  onChange={setSelectedClientId}
+                  ariaLabel="Client"
+                  placeholder="Select client…"
+                />
+              </div>
             </div>
             <Button size="sm" onClick={() => { setRegForm(BLANK_REG); setRegError(null); setShowModal(true); }} className="flex items-center gap-1">
               <Plus className="w-4 h-4" /> Add Transaction

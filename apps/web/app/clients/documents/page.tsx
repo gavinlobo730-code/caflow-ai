@@ -12,6 +12,7 @@ import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { Client } from "@/lib/types";
 
 type DocCategory = "Identity" | "GST" | "Income Tax" | "MCA" | "Financials" | "Other";
@@ -274,10 +275,13 @@ export default function ClientDocumentsPage() {
       </div>
 
       {/* Client selector */}
-      <select value={clientId} onChange={e => setClientId(e.target.value)}
-        className="border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
-        {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-      </select>
+      <ClientLookup
+        clients={clients}
+        value={clientId}
+        onChange={setClientId}
+        ariaLabel="Client"
+        placeholder="Select client…"
+      />
 
       {/* Expiry alert banner */}
       {expiringDocs.length > 0 && (

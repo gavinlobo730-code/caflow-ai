@@ -11,6 +11,7 @@ import Link from "next/link";
 import { ChevronLeft, Printer, AlertTriangle, Download } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
@@ -259,16 +260,16 @@ export default function ScheduleIIIPage() {
         </div>
         <div>
           <label className="block text-xs text-[#64748B] mb-1">Client</label>
-          <select
-            value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Clients</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          <div className="min-w-[200px]">
+            <ClientLookup
+              clients={clients}
+              value={clientId === "all" ? "" : clientId}
+              onChange={(id) => setClientId(id || "all")}
+              clearable
+              placeholder="All Clients"
+              ariaLabel="Client"
+            />
+          </div>
         </div>
         <button
           onClick={() => window.print()}

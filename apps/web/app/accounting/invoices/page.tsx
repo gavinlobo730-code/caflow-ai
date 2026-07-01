@@ -25,6 +25,7 @@ const INVOICE_IMPORT_COLUMNS = [
 ];
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 
@@ -409,10 +410,13 @@ function NewInvoiceForm({
               </div>
               <div>
                 <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
-                <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.client_id} onChange={e => selectClient(e.target.value)}>
-                  <option value="">- Select Client -</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-                </select>
+                <ClientLookup
+                  clients={clients}
+                  value={form.client_id}
+                  onChange={selectClient}
+                  placeholder="- Select Client -"
+                  ariaLabel="Client"
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-[#334155] mb-1">Party Name</label>
@@ -693,10 +697,14 @@ export default function InvoicesPage() {
             <div className="flex flex-wrap gap-3">
               <div>
                 <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
-                <select className="border rounded-lg px-3 py-2 text-sm" value={filterClient} onChange={e => setFilterClient(e.target.value)}>
-                  <option value="">All Clients</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-                </select>
+                <ClientLookup
+                  clients={clients}
+                  value={filterClient}
+                  onChange={setFilterClient}
+                  ariaLabel="Client"
+                  placeholder="All Clients"
+                  clearable
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-[#334155] mb-1">Status</label>

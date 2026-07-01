@@ -19,6 +19,7 @@ import {
   X,
   BarChart3,
 } from "lucide-react";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getClients } from "@/lib/data/clients";
 import { getTransactions } from "@/lib/data/transactions";
 import { getGSTSummary } from "@/lib/data/transactions";
@@ -715,24 +716,16 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
           {(reportId === "gst_summary" || reportId === "pl_statement") && (
             <div className="flex flex-col gap-1">
               <label className="text-xs text-[#64748B] font-medium">Client</label>
-              <select
-                value={selectedClientId}
-                onChange={(e) => setSelectedClientId(e.target.value)}
-                onClick={ensureClients}
-                className="text-sm border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[180px] bg-white"
-              >
-                {reportId === "pl_statement" && (
-                  <option value="all">All Clients</option>
-                )}
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.client_name}
-                  </option>
-                ))}
-                {clients.length === 0 && reportId === "gst_summary" && (
-                  <option value="" disabled>Loading clients…</option>
-                )}
-              </select>
+              <div className="min-w-[180px]">
+                <ClientLookup
+                  clients={clients}
+                  value={selectedClientId === "all" ? "" : selectedClientId}
+                  onChange={(id) => setSelectedClientId(id || "all")}
+                  clearable
+                  ariaLabel="Client"
+                  placeholder="All Clients"
+                />
+              </div>
             </div>
           )}
 

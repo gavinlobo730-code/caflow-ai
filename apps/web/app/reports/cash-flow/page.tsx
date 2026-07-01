@@ -9,6 +9,7 @@
 import { useState, useCallback } from "react";
 import Link from "next/link";
 import { ArrowLeft, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 
@@ -212,14 +213,15 @@ export default function CashFlowForecastPage() {
       <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 flex flex-wrap items-end gap-4">
         <div className="flex-1 min-w-[200px]">
           <label className="block text-xs font-medium text-[#475569] mb-1">Client *</label>
-          <select
-            value={selectedClientId}
-            onChange={e => setSelectedClientId(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select client…</option>
-            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <div className="w-full">
+            <ClientLookup
+              clients={clients}
+              value={selectedClientId}
+              onChange={setSelectedClientId}
+              ariaLabel="Client"
+              placeholder="Select client…"
+            />
+          </div>
         </div>
 
         <div className="w-52">

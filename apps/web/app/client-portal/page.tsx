@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getClients } from "@/lib/data/clients";
 import { getComplianceCalendar } from "@/lib/data/compliance";
 import { getTransactions } from "@/lib/data/transactions";
@@ -406,22 +407,16 @@ export default function ClientPortalPage() {
               <label htmlFor="client-select" className="block text-xs font-medium text-[#64748B] mb-1">
                 Select a client to manage their portal
               </label>
-              <select
-                id="client-select"
-                value={selectedClientId}
-                onChange={(e) => setSelectedClientId(e.target.value)}
-                className="w-full max-w-sm px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                disabled={clientsLoading}
-              >
-                <option value="">
-                  {clientsLoading ? "Loading clients…" : "— Choose a client —"}
-                </option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.client_name}
-                  </option>
-                ))}
-              </select>
+              <div className="w-full max-w-sm">
+                <ClientLookup
+                  clients={clients}
+                  value={selectedClientId}
+                  onChange={setSelectedClientId}
+                  ariaLabel="Client"
+                  placeholder={clientsLoading ? "Loading clients…" : "— Choose a client —"}
+                  disabled={clientsLoading}
+                />
+              </div>
             </div>
           </div>
         </CardContent>
