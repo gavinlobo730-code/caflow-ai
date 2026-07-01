@@ -77,7 +77,11 @@ def list_vendors(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        q = db.table("vendors").select("*").eq("client_id", client_id)
+        # Tenant isolation: service-role bypasses RLS — firm_id is the only guard
+        # against a cross-tenant read via a guessed client_id (H15). The mock path
+        # above already firm-scopes; the DB path must match it.
+        q = (db.table("vendors").select("*")
+             .eq("firm_id", current_user.get("firm_id")).eq("client_id", client_id))
         if not include_inactive:
             q = q.eq("is_active", True)
         resp = q.execute()
@@ -157,14 +161,15 @@ def create_vendor(
     except Exception as e:
         _logger.error("create_vendor: %s", e, exc_info=True)
         # Surface a meaningful error — never expose raw DB internals to the client
-        msg = str(e)
-        if "duplicate" in msg.lower() or "unique" in msg.lower():
+        # Classify into a user-safe message; never echo raw DB internals (M11).
+        msg = str(e).lower()
+        if "duplicate" in msg or "unique" in msg:
             return api_response(False, None, "A vendor with this GSTIN or PAN already exists for this client.")
-        if "foreign key" in msg.lower() or "violates" in msg.lower():
-            return api_response(False, None, f"Vendor creation failed due to a data constraint: {msg}")
-        if "not-null" in msg.lower() or "null value" in msg.lower():
-            return api_response(False, None, f"Vendor creation failed — a required field is missing: {msg}")
-        return api_response(False, None, f"Vendor creation failed: {msg}")
+        if "foreign key" in msg or "violates" in msg:
+            return api_response(False, None, "Vendor creation failed due to a data constraint.")
+        if "not-null" in msg or "null value" in msg:
+            return api_response(False, None, "Vendor creation failed — a required field is missing.")
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
 @router.get("/{vendor_id}")
@@ -306,9 +311,12 @@ def get_vendor_outstanding(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
+        firm_id = current_user.get("firm_id")
 
-        # Verify vendor exists
-        v_resp = db.table("vendors").select("id").eq("id", vendor_id).limit(1).execute()
+        # Tenant isolation: service-role bypasses RLS, so EVERY read here must be
+        # firm-scoped — otherwise a guessed vendor_id leaks another firm's payables (H15).
+        v_resp = (db.table("vendors").select("id")
+                  .eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute())
         if not v_resp.data:
             raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
 
@@ -316,6 +324,7 @@ def get_vendor_outstanding(
         bills_resp = (
             db.table("purchase_bills")
             .select("id,net_payable_paise,status")
+            .eq("firm_id", firm_id)
             .eq("vendor_id", vendor_id)
             .not_.in_("status", ["paid", "cancelled"])
             .execute()
@@ -328,6 +337,7 @@ def get_vendor_outstanding(
         payments_resp = (
             db.table("purchase_payments")
             .select("amount_paise")
+            .eq("firm_id", firm_id)
             .eq("vendor_id", vendor_id)
             .execute()
         )

@@ -170,15 +170,15 @@ def create_purchase_bill(
             from core.supabase_client import get_supabase
             db = get_supabase()
 
-            # Fetch vendor for TDS info and state code
-            v_resp = db.table("vendors").select("*").eq("id", vendor_id).limit(1).execute()
+            # Fetch vendor for TDS info and state code (firm-scoped — tenant isolation)
+            v_resp = db.table("vendors").select("*").eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute()
             if not v_resp.data:
                 raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
             vendor = v_resp.data[0]
 
             # Determine is_interstate
             vendor_state = vendor.get("state_code") or _get_state_code_from_gstin(vendor.get("gstin")) or ""
-            client_resp  = db.table("clients").select("gstin").eq("id", client_id).limit(1).execute()
+            client_resp  = db.table("clients").select("gstin").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute()
             client_state = ""
             if client_resp.data:
                 client_state = _get_state_code_from_gstin(client_resp.data[0].get("gstin")) or ""
@@ -675,6 +675,7 @@ def create_bill_from_document(
                 v_resp = (
                     db.table("vendors")
                     .select("id")
+                    .eq("firm_id", firm_id)
                     .eq("client_id", client_id)
                     .eq("gstin", vendor_gstin)
                     .limit(1)
@@ -687,6 +688,7 @@ def create_bill_from_document(
                 v_resp = (
                     db.table("vendors")
                     .select("id")
+                    .eq("firm_id", firm_id)
                     .eq("client_id", client_id)
                     .ilike("name", f"%{vendor_name}%")
                     .limit(1)

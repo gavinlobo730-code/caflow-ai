@@ -333,7 +333,10 @@ def list_invoices(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        q = db.table("client_sales_invoices").select("*").eq("client_id", client_id)
+        # Tenant isolation: service-role bypasses RLS, so firm_id is the only guard
+        # against a cross-tenant read via a guessed client_id (H15).
+        q = (db.table("client_sales_invoices").select("*")
+             .eq("firm_id", current_user.get("firm_id")).eq("client_id", client_id))
         if customer_id:
             q = q.eq("customer_id", customer_id)
         if status:
@@ -459,21 +462,23 @@ def create_invoice(
             from core.supabase_client import get_supabase
             db = get_supabase()
 
-            # Fetch customer state code
+            # Fetch customer state code (firm-scoped — never read another firm's master)
             cust_resp = (
                 db.table("customers")
                 .select("state_code, gstin, credit_days")
                 .eq("id", data["customer_id"])
+                .eq("firm_id", firm_id)
                 .limit(1)
                 .execute()
             )
             customer = cust_resp.data[0] if cust_resp.data else {}
 
-            # Fetch client state code from GSTIN
+            # Fetch client state code from GSTIN (firm-scoped)
             client_resp = (
                 db.table("clients")
                 .select("gstin")
                 .eq("id", client_id)
+                .eq("firm_id", firm_id)
                 .limit(1)
                 .execute()
             )

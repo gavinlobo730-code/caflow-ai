@@ -121,14 +121,17 @@ def list_credit_notes(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        q = db.table("credit_notes").select("*").eq("client_id", client_id)
+        # Tenant isolation: the service-role client bypasses RLS, so the firm filter
+        # is the ONLY thing preventing a cross-tenant read via a guessed client_id (H15/L4).
+        q = (db.table("credit_notes").select("*")
+             .eq("firm_id", current_user.get("firm_id")).eq("client_id", client_id))
         if customer_id:
             q = q.eq("customer_id", customer_id)
         resp = q.order("credit_note_date", desc=True).execute()
         return api_response(True, resp.data or [])
     except Exception as e:
         _logger.error("list_credit_notes: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete credit note operation. Please try again.")
 
 
 @router.post("/")
@@ -311,7 +314,7 @@ def create_credit_note(
         raise
     except Exception as e:
         _logger.error("create_credit_note: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete credit note operation. Please try again.")
 
 
 @router.get("/{cn_id}")
@@ -341,7 +344,7 @@ def get_credit_note(
         raise
     except Exception as e:
         _logger.error("get_credit_note: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete credit note operation. Please try again.")
 
 
 @router.post("/{cn_id}/issue")
@@ -494,4 +497,4 @@ def issue_credit_note(
         raise
     except Exception as e:
         _logger.error("issue_credit_note: %s", e)
-        return api_response(False, None, str(e))
+        return api_response(False, None, "Unable to complete credit note operation. Please try again.")
