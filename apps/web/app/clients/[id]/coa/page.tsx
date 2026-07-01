@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Search, Building2, ExternalLink, Info } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import type { Account, AccountType } from "@/lib/types";
 
 const TYPE_COLORS: Record<AccountType, string> = {
@@ -42,13 +43,14 @@ export default function ClientCoaPage() {
       const fid = await getFirmId();
       const sb = getSupabaseClient();
       // Firm master COA only — client_id IS NULL per approved architecture
-      const { data, error: err } = await sb
+      const { data, error: err } = await selectAll(() => sb
         .from("chart_of_accounts")
         .select("*")
         .eq("firm_id", fid)
         .is("client_id", null)
         .eq("is_active", true)
-        .order("account_code");
+        .order("account_code")
+        .order("id"));
       if (err) throw new Error(err.message);
       setAccounts((data ?? []) as Account[]);
     } catch (e) {

@@ -16,6 +16,13 @@ export function formatDate(isoString: string): string {
   });
 }
 
+/** Format an ISO timestamp as an Indian-locale date + time, or "—" when absent/invalid. */
+export function formatDateTime(isoString: string | null | undefined): string {
+  if (!isoString) return "—";
+  const d = new Date(isoString);
+  return isNaN(d.getTime()) ? "—" : d.toLocaleString("en-IN");
+}
+
 export function formatRelativeTime(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
   const hours = Math.floor(diff / 3_600_000);

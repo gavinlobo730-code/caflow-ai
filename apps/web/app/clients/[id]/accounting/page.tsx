@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Plus, RefreshCw, Upload, CheckCircle, X, Printer, FileText, Download, Share2 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
+import { formatPaise } from "@/lib/services/formatting";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { api } from "@/lib/api";
@@ -133,10 +135,10 @@ interface AccountBalance {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+// Shared money formatter (paise → ₹). Preserves the sign so a negative amount
+// never renders as positive (audit M15). Ledger Dr/Cr callers pass abs values.
 function fmt(paise: number): string {
-  if (paise === 0) return "—";
-  const rupees = Math.abs(paise) / 100;
-  return "₹" + new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(rupees);
+  return paise === 0 ? "—" : formatPaise(paise);
 }
 
 function fyDateRange(fy: string): { start: string; end: string } {
@@ -212,12 +214,13 @@ export default function AccountingPage() {
     if (!clientId || clientId === "_placeholder") return;
     setAccsLoading(true);
     const supabase = getSupabaseClient();
-    const { data } = await supabase
+    const { data } = await selectAll(() => supabase
       .from("chart_of_accounts")
       .select("id, account_code, account_name, account_type, account_subtype, is_active, client_id")
       .or(`client_id.eq.${clientId},client_id.is.null`)
       .eq("is_active", true)
-      .order("account_code");
+      .order("account_code")
+      .order("id"));
     setAccounts((data as Account[]) ?? []);
     setAccsLoading(false);
   }, [clientId]);
@@ -823,22 +826,29 @@ function TrialBalance({ clientId, financialYear }: { clientId: string; financial
     // Both bases are computed server-side from the same posted ledger, scoped to
     // this client (IT Act §145). The frontend only passes parameters (CLAUDE.md).
     const { end } = fyDateRange(financialYear);
-    const res = (await cachedReport(
-      reportKey([clientId, financialYear, basis, "tb"]),
-      () => api.accounting.trialBalance({ basis, as_of_date: end, client_id: clientId }),
-    )) as { success: boolean; data: TBApiData | null };
-    if (res.success && res.data) {
-      setRows(res.data.lines ?? []);
-      setTotals({
-        debit: res.data.total_debit_paise,
-        credit: res.data.total_credit_paise,
-        balanced: res.data.is_balanced,
-      });
-    } else {
+    try {
+      const res = (await cachedReport(
+        reportKey([clientId, financialYear, basis, "tb"]),
+        () => api.accounting.trialBalance({ basis, as_of_date: end, client_id: clientId }),
+      )) as { success: boolean; data: TBApiData | null };
+      if (res.success && res.data) {
+        setRows(res.data.lines ?? []);
+        setTotals({
+          debit: res.data.total_debit_paise,
+          credit: res.data.total_credit_paise,
+          balanced: res.data.is_balanced,
+        });
+      } else {
+        setRows([]);
+        setTotals({ debit: 0, credit: 0, balanced: true });
+      }
+    } catch {
+      // Backend error/timeout — degrade to empty, never an infinite skeleton (audit M17).
       setRows([]);
       setTotals({ debit: 0, credit: 0, balanced: true });
+    } finally {
+      setLoading(false); setLoaded(true);
     }
-    setLoading(false); setLoaded(true);
   }, [clientId, financialYear, basis]);
 
   useEffect(() => { load(); }, [load]);
@@ -948,36 +958,44 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
     // client (IT Act §44AA). The frontend only passes parameters and groups the
     // returned account lines for display (Schedule III) — no financial math here.
     const { start, end } = fyDateRange(financialYear);
-    const res = (await cachedReport(
-      reportKey([clientId, financialYear, basis, "pl"]),
-      () => api.accounting.profitLoss({ basis, start_date: start, end_date: end, client_id: clientId }),
-    )) as { success: boolean; data: PLApiData | null };
+    try {
+      const res = (await cachedReport(
+        reportKey([clientId, financialYear, basis, "pl"]),
+        () => api.accounting.profitLoss({ basis, start_date: start, end_date: end, client_id: clientId }),
+      )) as { success: boolean; data: PLApiData | null };
 
-    if (basis === "cash") {
-      if (res.success && res.data) setCashPL(res.data as unknown as CashPLData);
-      else setCashPL(null);
-    } else if (res.success && res.data) {
-      const d = res.data;
-      const toBal = (l: PLApiLine, type: string): AccountBalance => ({
-        account_id: l.account_id, account_code: l.account_code ?? "",
-        account_name: l.account_name, account_type: type,
-        account_subtype: l.account_subtype ?? null, net_paise: l.amount_paise,
-      });
-      const rows = [
-        ...(d.revenue?.lines ?? []).map((l) => toBal(l, "Revenue")),
-        ...(d.operating_expenses?.lines ?? []).map((l) => toBal(l, "Expense")),
-      ].filter((b) => b.net_paise !== 0).sort((a, b) => a.account_code.localeCompare(b.account_code));
-      setBalances(rows);
-      setPlTotals({
-        revenue: d.revenue?.total_paise ?? 0,
-        expenses: d.operating_expenses?.total_paise ?? 0,
-        net: d.net_profit_paise ?? 0,
-      });
-    } else {
+      if (basis === "cash") {
+        if (res.success && res.data) setCashPL(res.data as unknown as CashPLData);
+        else setCashPL(null);
+      } else if (res.success && res.data) {
+        const d = res.data;
+        const toBal = (l: PLApiLine, type: string): AccountBalance => ({
+          account_id: l.account_id, account_code: l.account_code ?? "",
+          account_name: l.account_name, account_type: type,
+          account_subtype: l.account_subtype ?? null, net_paise: l.amount_paise,
+        });
+        const rows = [
+          ...(d.revenue?.lines ?? []).map((l) => toBal(l, "Revenue")),
+          ...(d.operating_expenses?.lines ?? []).map((l) => toBal(l, "Expense")),
+        ].filter((b) => b.net_paise !== 0).sort((a, b) => a.account_code.localeCompare(b.account_code));
+        setBalances(rows);
+        setPlTotals({
+          revenue: d.revenue?.total_paise ?? 0,
+          expenses: d.operating_expenses?.total_paise ?? 0,
+          net: d.net_profit_paise ?? 0,
+        });
+      } else {
+        setBalances([]);
+        setPlTotals({ revenue: 0, expenses: 0, net: 0 });
+      }
+    } catch {
+      // Backend error/timeout — degrade to empty, never an infinite skeleton (audit M17).
+      setCashPL(null);
       setBalances([]);
       setPlTotals({ revenue: 0, expenses: 0, net: 0 });
+    } finally {
+      setLoading(false); setLoaded(true);
     }
-    setLoading(false); setLoaded(true);
   }, [clientId, financialYear, basis]);
 
   useEffect(() => { load(); }, [load]);
@@ -1185,39 +1203,47 @@ function BalanceSheet({ clientId, financialYear }: { clientId: string; financial
     // the backend and returned in the equity section. The frontend only groups
     // the returned balances for Schedule III presentation — no financial math.
     const { end } = fyDateRange(financialYear);
-    const res = (await cachedReport(
-      reportKey([clientId, financialYear, basis, "bs"]),
-      () => api.accounting.balanceSheet({ basis, as_of_date: end, client_id: clientId }),
-    )) as { success: boolean; data: BSApiData | null };
+    try {
+      const res = (await cachedReport(
+        reportKey([clientId, financialYear, basis, "bs"]),
+        () => api.accounting.balanceSheet({ basis, as_of_date: end, client_id: clientId }),
+      )) as { success: boolean; data: BSApiData | null };
 
-    if (basis === "cash") {
-      if (res.success && res.data) setCashBS(res.data as unknown as CashBSData);
-      else setCashBS(null);
-    } else if (res.success && res.data) {
-      const d = res.data;
-      const fromSection = (secs: BSApiSection[] | undefined, type: string): AccountBalance[] =>
-        (secs ?? []).flatMap((s) => (s.lines ?? []).map((l) => ({
-          account_id: l.account_id ?? l.account_name, account_code: l.account_code ?? "",
-          account_name: l.account_name, account_type: type,
-          account_subtype: l.account_subtype ?? null, net_paise: l.balance_paise,
-        })));
-      setBalances([
-        ...fromSection(d.assets, "Asset"),
-        ...fromSection(d.liabilities, "Liability"),
-        ...fromSection(d.equity, "Equity"),
-      ].sort((a, b) => a.account_code.localeCompare(b.account_code)));
-      setBsTotals({
-        assets: d.total_assets_paise ?? 0,
-        liab: d.liabilities?.[0]?.total_paise ?? 0,
-        equity: d.equity?.[0]?.total_paise ?? 0,
-        liabEquity: d.total_liabilities_equity_paise ?? 0,
-        balanced: d.is_balanced ?? false,
-      });
-    } else {
+      if (basis === "cash") {
+        if (res.success && res.data) setCashBS(res.data as unknown as CashBSData);
+        else setCashBS(null);
+      } else if (res.success && res.data) {
+        const d = res.data;
+        const fromSection = (secs: BSApiSection[] | undefined, type: string): AccountBalance[] =>
+          (secs ?? []).flatMap((s) => (s.lines ?? []).map((l) => ({
+            account_id: l.account_id ?? l.account_name, account_code: l.account_code ?? "",
+            account_name: l.account_name, account_type: type,
+            account_subtype: l.account_subtype ?? null, net_paise: l.balance_paise,
+          })));
+        setBalances([
+          ...fromSection(d.assets, "Asset"),
+          ...fromSection(d.liabilities, "Liability"),
+          ...fromSection(d.equity, "Equity"),
+        ].sort((a, b) => a.account_code.localeCompare(b.account_code)));
+        setBsTotals({
+          assets: d.total_assets_paise ?? 0,
+          liab: d.liabilities?.[0]?.total_paise ?? 0,
+          equity: d.equity?.[0]?.total_paise ?? 0,
+          liabEquity: d.total_liabilities_equity_paise ?? 0,
+          balanced: d.is_balanced ?? false,
+        });
+      } else {
+        setBalances([]);
+        setBsTotals({ assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true });
+      }
+    } catch {
+      // Backend error/timeout — degrade to empty, never an infinite skeleton (audit M17).
+      setCashBS(null);
       setBalances([]);
       setBsTotals({ assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true });
+    } finally {
+      setLoading(false); setLoaded(true);
     }
-    setLoading(false); setLoaded(true);
   }, [clientId, financialYear, basis]);
 
   useEffect(() => { load(); }, [load]);
@@ -1405,9 +1431,9 @@ interface CFData {
 }
 
 // Sign-preserving money format (cash flow direction matters — inflow vs outflow).
+// The shared formatter already preserves the sign.
 function fmtSigned(paise: number): string {
-  const sign = paise < 0 ? "-" : "";
-  return sign + "₹" + new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(paise) / 100);
+  return formatPaise(paise);
 }
 
 function CFSectionBlock({ title, section }: { title: string; section: CFSection }) {
@@ -1455,12 +1481,18 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
     // request the accrual stream because the operating reconciliation uses the
     // accrual P&L. All figures come from the backend AS-3 engine.
     const { start, end } = fyDateRange(financialYear);
-    const res = (await cachedReport(
-      reportKey([clientId, financialYear, "accrual", "cf"]),
-      () => api.accounting.cashFlow({ basis: "accrual", start_date: start, end_date: end, client_id: clientId }),
-    )) as { success: boolean; data: CFData | null };
-    setCf(res.success && res.data ? res.data : null);
-    setLoading(false); setLoaded(true);
+    try {
+      const res = (await cachedReport(
+        reportKey([clientId, financialYear, "accrual", "cf"]),
+        () => api.accounting.cashFlow({ basis: "accrual", start_date: start, end_date: end, client_id: clientId }),
+      )) as { success: boolean; data: CFData | null };
+      setCf(res.success && res.data ? res.data : null);
+    } catch {
+      // Backend error/timeout — degrade to empty, never an infinite skeleton (audit M17).
+      setCf(null);
+    } finally {
+      setLoading(false); setLoaded(true);
+    }
   }, [clientId, financialYear]);
 
   useEffect(() => { load(); }, [load]);

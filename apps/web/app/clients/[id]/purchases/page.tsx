@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, RefreshCw, Upload, AlertCircle, CheckCircle, X } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
+import { formatPaise } from "@/lib/services/formatting";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS, type NameRef } from "@/lib/imports/mappers";
 
@@ -70,9 +72,10 @@ const TABS: { id: PurchaseTab; label: string }[] = [
   { id: "payments", label: "Payments" },
 ];
 
+// Shared money formatter (paise → ₹). Preserves the sign so a negative amount
+// never renders as positive (audit M15).
 function fmt(paise: number): string {
-  if (paise === 0) return "—";
-  return "₹" + new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(paise) / 100);
+  return paise === 0 ? "—" : formatPaise(paise);
 }
 
 function fyRange(fy: string): { start: string; end: string } {
@@ -248,26 +251,29 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
     const supabase = getSupabaseClient();
     const { start, end } = fyRange(financialYear);
     const [billsRes, vendorsRes, accsRes] = await Promise.all([
-      supabase
+      selectAll(() => supabase
         .from("purchase_bills")
         .select("*, vendors(name)")
         .eq("client_id", clientId)
         .gte("bill_date", start)
         .lte("bill_date", end)
-        .order("bill_date", { ascending: false }),
-      supabase
+        .order("bill_date", { ascending: false })
+        .order("id")),
+      selectAll(() => supabase
         .from("vendors")
         .select("id, name, gstin, tds_applicable, tds_section, tds_rate_bps")
         .eq("client_id", clientId)
         .eq("is_active", true)
-        .order("name"),
-      supabase
+        .order("name")
+        .order("id")),
+      selectAll(() => supabase
         .from("chart_of_accounts")
         .select("id, account_code, account_name")
         .or(`client_id.eq.${clientId},client_id.is.null`)
         .in("account_type", ["Expense", "Asset"])
         .eq("is_active", true)
-        .order("account_code"),
+        .order("account_code")
+        .order("id")),
     ]);
     setBills((billsRes.data as PurchaseBillRow[]) ?? []);
     setVendors((vendorsRes.data as Vendor[]) ?? []);
@@ -733,12 +739,13 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = getSupabaseClient();
-    const { data } = await supabase
+    const { data } = await selectAll(() => supabase
       .from("vendors")
       .select("*")
       .eq("client_id", clientId)
       .eq("is_active", true)
-      .order("name");
+      .order("name")
+      .order("id"));
     setVendors((data as VendorRow[]) ?? []);
     setLoading(false);
   }, [clientId]);
@@ -954,14 +961,15 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
     const supabase = getSupabaseClient();
     const { start, end } = fyRange(financialYear);
     const [pmtRes, vendorRes] = await Promise.all([
-      supabase
+      selectAll(() => supabase
         .from("purchase_payments")
         .select("*, vendors(name)")
         .eq("client_id", clientId)
         .gte("payment_date", start)
         .lte("payment_date", end)
-        .order("payment_date", { ascending: false }),
-      supabase.from("vendors").select("id, name").eq("client_id", clientId).eq("is_active", true).order("name"),
+        .order("payment_date", { ascending: false })
+        .order("id")),
+      selectAll(() => supabase.from("vendors").select("id, name").eq("client_id", clientId).eq("is_active", true).order("name").order("id")),
     ]);
     setPayments((pmtRes.data as PaymentRow[]) ?? []);
     setVendors(vendorRes.data ?? []);
@@ -972,13 +980,14 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
 
   async function loadOpenBills(vId: string) {
     const supabase = getSupabaseClient();
-    const { data } = await supabase
+    const { data } = await selectAll(() => supabase
       .from("purchase_bills")
       .select("id, our_reference, bill_no, net_payable_paise")
       .eq("client_id", clientId)
       .eq("vendor_id", vId)
       .in("status", ["received", "partially_paid"])
-      .order("bill_date", { ascending: false });
+      .order("bill_date", { ascending: false })
+      .order("id"));
     setOpenBills(data ?? []);
     setBillId("");
   }
