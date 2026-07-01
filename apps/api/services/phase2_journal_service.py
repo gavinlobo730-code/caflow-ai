@@ -792,6 +792,8 @@ class Phase2JournalService:
         source_type: Optional[str] = None,
         source_id: Optional[str] = None,
         created_by: Optional[str] = None,
+        reversal_of: Optional[str] = None,
+        attachments: Optional[list] = None,
     ) -> str:
         """
         Insert a balanced double-entry journal entry and its lines.
@@ -841,6 +843,14 @@ class Phase2JournalService:
             "source_type":  source_type,
             "source_id":    source_id,
         }
+        # Additive, optional fields — only written when a caller supplies them, so
+        # every existing posting path (invoices, receipts, opening balances, …) is
+        # byte-for-byte unchanged. reversal_of links a reversal to its original;
+        # attachments carries manual-journal supporting documents.
+        if reversal_of is not None:
+            entry_payload["reversal_of"] = reversal_of
+        if attachments is not None:
+            entry_payload["attachments"] = attachments
 
         entry_resp = db.table("journal_entries").insert(entry_payload).execute()
         if not entry_resp.data:

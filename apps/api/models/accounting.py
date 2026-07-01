@@ -56,12 +56,38 @@ class JournalLineIn(BaseModel):
         return self
 
 
+# Manual journals may only use the entry types the journal_entries CHECK
+# constraint allows (Sales/Purchase/Payment/Receipt/Journal/Contra/Opening).
+ALLOWED_JOURNAL_ENTRY_TYPES = {
+    "Journal", "Contra", "Payment", "Receipt", "Sales", "Purchase", "Opening",
+}
+
+
 class JournalEntryIn(BaseModel):
     client_id: str
     entry_date: str  # YYYY-MM-DD
     reference_no: Optional[str] = None
     narration: Optional[str] = None
+    entry_type: str = "Journal"
+    status: str = "draft"            # "draft" (off-books) | "posted" (to the ledger)
+    attachments: list[dict] = []     # supporting documents: [{"name","url"}, ...]
     lines: list[JournalLineIn]
+
+    @field_validator("entry_type")
+    @classmethod
+    def entry_type_allowed(cls, v: str) -> str:
+        if v not in ALLOWED_JOURNAL_ENTRY_TYPES:
+            raise ValueError(
+                f"Invalid entry_type '{v}'. Allowed: {', '.join(sorted(ALLOWED_JOURNAL_ENTRY_TYPES))}."
+            )
+        return v
+
+    @field_validator("status")
+    @classmethod
+    def status_allowed(cls, v: str) -> str:
+        if v not in ("draft", "posted"):
+            raise ValueError("status must be 'draft' or 'posted'.")
+        return v
 
     @field_validator("lines")
     @classmethod
