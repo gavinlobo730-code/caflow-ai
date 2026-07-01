@@ -29,26 +29,43 @@ def _d(v) -> str:
     return str(v)[:10]
 
 
+def _ccy_view(row: dict, base_paise: int, txn_amount) -> dict:
+    """Dual-currency display for a statement line (Multi-Currency Phase 3): txn
+    currency + frozen rate + foreign amount alongside the authoritative BASE amount.
+    INR rows resolve to the identity (INR / rate 1 / txn == base)."""
+    return {
+        "txn_currency": (row.get("txn_currency") or "INR"),
+        "exchange_rate": str(row.get("exchange_rate") or 1),
+        "txn_amount": int(txn_amount if txn_amount is not None else base_paise),
+    }
+
+
 def build_statement(vendor: dict, start: str, end: str,
                     bills: list[dict], payments: list[dict], debit_notes: list[dict]) -> dict:
     """Pure builder — opening, ordered transactions with running payable, closing."""
     start, end = _d(start), _d(end)
     events: list[dict] = []
     for b in bills:
+        _np = int(b.get("net_payable_paise") or 0)
         events.append({"date": _d(b.get("bill_date")), "rank": 0, "type": "bill",
                        "reference": b.get("bill_no"),
                        "particulars": f"Bill {b.get('bill_no', '')}".strip(),
-                       "credit_paise": int(b.get("net_payable_paise") or 0), "debit_paise": 0})
+                       "credit_paise": _np, "debit_paise": 0,
+                       **_ccy_view(b, _np, b.get("txn_net_payable"))})
     for dn in debit_notes:
+        _dt = int(dn.get("total_paise") or 0)
         events.append({"date": _d(dn.get("debit_note_date")), "rank": 1, "type": "debit_note",
                        "reference": dn.get("debit_note_no"),
                        "particulars": f"Debit Note {dn.get('debit_note_no', '')}".strip(),
-                       "credit_paise": 0, "debit_paise": int(dn.get("total_paise") or 0)})
+                       "credit_paise": 0, "debit_paise": _dt,
+                       **_ccy_view(dn, _dt, dn.get("total_paise"))})
     for p in payments:
+        _amt = int(p.get("amount_paise") or 0)
         events.append({"date": _d(p.get("payment_date")), "rank": 2, "type": "payment",
                        "reference": p.get("payment_no"),
                        "particulars": f"Payment {p.get('payment_no', '')}".strip(),
-                       "credit_paise": 0, "debit_paise": int(p.get("amount_paise") or 0)})
+                       "credit_paise": 0, "debit_paise": _amt,
+                       **_ccy_view(p, _amt, p.get("txn_amount"))})
 
     events.sort(key=lambda e: (e["date"], e["rank"], str(e["reference"] or "")))
 
@@ -71,6 +88,9 @@ def build_statement(vendor: dict, start: str, end: str,
             "date": e["date"], "type": e["type"], "reference": e["reference"],
             "particulars": e["particulars"], "debit_paise": e["debit_paise"],
             "credit_paise": e["credit_paise"], "running_balance_paise": running,
+            # Dual-currency display (base amounts above are authoritative).
+            "txn_currency": e["txn_currency"], "exchange_rate": e["exchange_rate"],
+            "txn_amount": e["txn_amount"],
         })
 
     return {
@@ -116,13 +136,13 @@ class VendorStatementService:
         vendor = self._vendor(db, firm_id, client_id, vendor_id)
 
         b = (db.table("purchase_bills")
-             .select("bill_no, bill_date, net_payable_paise, status")
+             .select("bill_no, bill_date, net_payable_paise, status, txn_currency, exchange_rate, txn_net_payable")
              .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id)
              .execute().data or [])
         bills = [x for x in b if (x.get("status") or "") not in _DEAD_BILL]
 
         payments = (db.table("purchase_payments")
-                    .select("payment_no, payment_date, amount_paise")
+                    .select("payment_no, payment_date, amount_paise, txn_currency, exchange_rate, txn_amount")
                     .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id)
                     .execute().data or [])
 

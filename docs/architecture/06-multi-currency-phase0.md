@@ -54,10 +54,9 @@ Rate exact `NUMERIC(18,8)` (never float); `base_paise = round(txn_minor × rate)
 - **Phase 0.5 — Hardening (done):** single posting kernel — reversal + manual journal through the kernel; dead tables removed (see `02`/`05`).
 - **Phase 1 — Foundation (done):** `currencies` master + `fx_rates` + `resolve_currency_policy()` + `RateProvider`/`ExchangeRateService` + the three gating flags (migration 146). Defaults INR/1; reports & existing tests unchanged; feature off ⇒ byte-for-byte today. See `06a-multi-currency-phase1-implementation.md`.
 - **Phase 2 — Accounting Foundation / currency-aware GL (done):** additive FX columns on `journal_lines` (`txn_currency`, `base_currency`, `exchange_rate`, `txn_debit/credit`, `rate_source/type/date`) and `journal_entries` (`rate_selected_by/overridden/at`) via migration 147; the single posting kernel now stamps immutable per-line currency metadata (INR/rate 1 for all current postings), still balances in base, and is the authoritative gate that refuses a non-INR line / rate≠1 unless the policy is active. `ExchangeRateService` wired into the kernel (not invoked for INR). No foreign documents; reports & existing tests unchanged. See `06b-multi-currency-phase2-implementation.md`.
-- **Phase 3 (was "Phase 2" in this list):** foreign-currency documents; GST/TDS INR-equivalent bridge; dual-currency display.
-- **Phase 3:** realized FX on settlement (receipts/payments/bank).
-- **Phase 4:** unrealized FX at period end (revaluation + auto-reversal); cash-flow FX line; snapshot cache key gains an as-of/rate dimension.
-- **Phase 5:** reporting & imports polish.
+- **Phase 3 — Foreign-currency business documents (done):** foreign sales invoices, purchase bills, receipts and payments (migration 148 — additive document currency columns). Documents store txn currency + frozen rate + foreign amount; the base (INR) amount stays authoritative and posts to the GL, which still balances entirely in base; settlement is at the document's frozen rate only (cross-rate / partial-foreign rejected — realized FX is next phase); dual-currency statements. TDS/statutory stay INR. See `06c-multi-currency-phase3-implementation.md`.
+- **Phase 4:** realized FX on settlement (receipts/payments/bank) — cross-rate + partial foreign settlement, FX gain/loss.
+- **Phase 5:** unrealized FX at period end (revaluation + auto-reversal); FX reporting; cash-flow FX line; snapshot cache key gains an as-of/rate dimension.
 - **Future:** Capability B (presentation translation / consolidation).
 
 ## Guarantees preserved

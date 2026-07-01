@@ -496,6 +496,22 @@ def create_invoice(
             # (In mock mode is_interstate was already determined above from request flags)
             is_interstate = bool(client_state_code and effective_supply_state and client_state_code != effective_supply_state)
 
+        # ── Multi-Currency (Phase 3): resolve + freeze the document currency ──────
+        # INR / feature-off → identity (behaviour unchanged). For a foreign currency
+        # this validates policy + master + rate and freezes the booking rate; the
+        # line rate_paise below are then that currency's minor units.
+        from domain.currency.document_currency import resolve_document_currency, identity_currency
+        req_ccy = (data.get("currency") or "INR").strip().upper()
+        if _USE_MOCK or req_ccy == "INR":
+            dc = identity_currency(data["invoice_date"])
+        else:
+            _firm_row = (db.table("firms").select("multi_currency_entitled").eq("id", firm_id).limit(1).execute().data or [None])[0]
+            _client_mc = (db.table("clients").select("functional_currency, multi_currency_enabled").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
+            dc = resolve_document_currency(
+                db, _firm_row, _client_mc, currency=req_ccy,
+                exchange_rate=data.get("exchange_rate"), rate_date=data["invoice_date"],
+                rate_selected_by=current_user.get("id"))
+
         # Compute lines — use Decimal for quantity × rate_paise, cast to int immediately
         computed_lines: list[dict] = []
         total_taxable_paise = 0
@@ -536,7 +552,40 @@ def create_invoice(
                 "line_total_paise": taxable_paise + cgst_paise + sgst_paise + igst_paise,
             })
 
-        total_paise = total_taxable_paise + total_cgst_paise + total_sgst_paise + total_igst_paise
+        # The line totals above are in the document (txn) currency's minor units.
+        # Convert each component to base (INR) paise at the frozen rate and define the
+        # base TOTAL as their SUM, so the GL balances exactly with no FX-rounding
+        # account. For INR, dc is the identity ⇒ base == txn and nothing changes.
+        txn_taxable   = total_taxable_paise
+        txn_total_gst = total_cgst_paise + total_sgst_paise + total_igst_paise
+        txn_total     = txn_taxable + txn_total_gst
+        base_taxable  = dc.to_base(total_taxable_paise)
+        base_cgst     = dc.to_base(total_cgst_paise)
+        base_sgst     = dc.to_base(total_sgst_paise)
+        base_igst     = dc.to_base(total_igst_paise)
+        base_total_gst = base_cgst + base_sgst + base_igst
+        base_total     = base_taxable + base_total_gst
+        # Base is authoritative for the header/GL/reports; the *_paise names below now
+        # carry base INR. (For INR these equal the txn values — byte-for-byte.)
+        total_taxable_paise = base_taxable
+        total_cgst_paise    = base_cgst
+        total_sgst_paise    = base_sgst
+        total_igst_paise    = base_igst
+        total_paise         = base_total
+
+        # Currency columns written to the invoice (INR identity leaves them inert).
+        _ccy_cols = {
+            "txn_currency":     dc.currency,
+            "exchange_rate":    str(dc.rate),
+            "txn_taxable":      txn_taxable,
+            "txn_total_gst":    txn_total_gst,
+            "txn_total":        txn_total,
+            "rate_source":      dc.rate_source,
+            "rate_type":        dc.rate_type,
+            "rate_date":        dc.rate_date,
+            "rate_selected_by": dc.rate_selected_by,
+            "rate_overridden":  dc.rate_overridden,
+        }
 
         # Snapshot credit terms onto the invoice. The customer's credit_days is the
         # DEFAULT; an explicit due_date or credit_days on the request overrides it.
@@ -577,6 +626,7 @@ def create_invoice(
                 "notes":                 data.get("notes", ""),
                 "created_by":            current_user.get("auth_user_id"),
                 "created_at":            datetime.now(timezone.utc).isoformat(),
+                **_ccy_cols,
                 "lines":                 computed_lines,
             }
             MOCK_SALES_INVOICES.append(invoice)
@@ -608,6 +658,7 @@ def create_invoice(
             "notes":                 data.get("notes", ""),
             "created_by":            current_user.get("auth_user_id"),
             "created_at":            datetime.now(timezone.utc).isoformat(),
+            **_ccy_cols,
         }
 
         from services.numbering import insert_with_number
