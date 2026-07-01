@@ -290,6 +290,14 @@ from routers.branding import router as branding_router
 app.include_router(branding_router)
 
 
+# Beta hardening (Phase F) — validate configuration at boot so missing env vars are
+# visible immediately in the logs rather than surfacing as opaque runtime errors.
+try:
+    from core.config_validation import validate_config
+    validate_config()
+except Exception:
+    _logger.exception("config validation failed")
+
 # Phase 10B — Workflow Scheduler (daily jobs + workflow schedule runner)
 from jobs.scheduler import start_scheduler, run_due_schedules, log_scheduler_startup_health
 start_scheduler()

@@ -211,6 +211,11 @@ def create_purchase_payment(
 
     try:
         db = _get_db()
+        # Business guard: never pay a deactivated vendor.
+        _v = (db.table("vendors").select("is_active")
+              .eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute().data)
+        if _v and _v[0].get("is_active") is False:
+            raise HTTPException(status_code=422, detail="This vendor is inactive. Reactivate the vendor before recording a payment.")
         # OOS-1 fix: a linked bill must belong to THIS payment's firm+client, validated
         # before any payment/journal is created (mirrors the receipt-allocation guard).
         if purchase_bill_id:

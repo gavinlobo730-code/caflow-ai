@@ -240,7 +240,11 @@ interface InvoiceDelivery {
 /** Money formatter — paise → ₹ string (CGST Act §15: all amounts in Indian rupees) */
 function fmt(paise: number): string {
   if (paise === 0) return "—";
+  // Preserve the sign — a negative amount (e.g. an over-credit) must never render as
+  // positive (audit M15).
+  const sign = paise < 0 ? "-" : "";
   return (
+    sign +
     "₹" +
     new Intl.NumberFormat("en-IN", {
       minimumFractionDigits: 2,

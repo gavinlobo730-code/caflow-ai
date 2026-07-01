@@ -162,9 +162,12 @@ def create_debit_note(data: DebitNoteIn, current_user: dict = Depends(rbac("acco
             return api_response(True, {**payload, "lines": computed})
 
         from core.supabase_client import get_supabase
+        from services.numbering import insert_with_number
         db = get_supabase()
-        payload["debit_note_no"] = f"DN-{fy}-{_next_dn_seq(db, firm_id, client_id, fy):04d}"
-        dn = (db.table("debit_notes").insert(payload).execute().data or [payload])[0]
+        dn = insert_with_number(
+            db, "debit_notes", payload, "debit_note_no",
+            lambda s: f"DN-{fy}-{s:04d}",
+            lambda: _next_dn_seq(db, firm_id, client_id, fy))
         dn_id = dn.get("id")
         if computed:
             db.table("debit_note_lines").insert(
