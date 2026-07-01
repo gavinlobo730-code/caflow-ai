@@ -165,27 +165,42 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
             "allocated_paise":  alloc_amt,
         })
 
-        inv_resp = (
-            db.table("client_sales_invoices")
-            .select("total_paise,paid_paise,credited_paise")
-            .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
-            .limit(1)
-            .execute()
-        )
-        if inv_resp.data:
+        # H1 — lost-update prevention: read-modify-write on paid_paise is guarded by an
+        # optimistic compare-and-set (UPDATE ... WHERE paid_paise = <value we read>). If
+        # a concurrent receipt changed paid_paise between our read and write, the CAS
+        # matches 0 rows and we re-read and retry, so concurrent settlements can never
+        # lose an update or overshoot the invoice total.
+        for _attempt in range(6):
+            inv_resp = (
+                db.table("client_sales_invoices")
+                .select("total_paise,paid_paise,credited_paise")
+                .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                .limit(1)
+                .execute()
+            )
+            if not inv_resp.data:
+                break
             inv = inv_resp.data[0]
             total    = int(inv.get("total_paise", 0))
             credited = int(inv.get("credited_paise", 0) or 0)   # credit notes already applied
-            new_paid = int(inv.get("paid_paise", 0)) + alloc_amt
-            # An invoice is fully settled when cash paid + credit notes applied reach
-            # its total; the allocation may not push settlement past the total.
+            old_paid = int(inv.get("paid_paise", 0) or 0)
+            new_paid = old_paid + alloc_amt
+            # Fully settled when cash paid + credit notes reach the total; the allocation
+            # may not push settlement past the total.
             if new_paid + credited > total:
                 raise HTTPException(status_code=422, detail=f"Invoice {inv_id}: allocation would exceed invoice outstanding")
             new_status = "paid" if (new_paid + credited) >= total else "partially_paid"
-            db.table("client_sales_invoices").update({
+            upd = (db.table("client_sales_invoices").update({
                 "paid_paise": new_paid,
                 "status":     new_status,
-            }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+            }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
+              .eq("paid_paise", old_paid)   # compare-and-set guard
+              .execute())
+            if upd.data:
+                break                        # CAS won
+        else:
+            raise HTTPException(status_code=409,
+                detail=f"Invoice {inv_id} is being updated concurrently — please retry.")
 
     if alloc_payloads:
         db.table("receipt_allocations").insert(alloc_payloads).execute()
