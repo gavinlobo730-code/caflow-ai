@@ -1,0 +1,181 @@
+"""
+Multi-Currency Phase 3 — foreign-currency business documents (end-to-end).
+
+Drives the REAL document endpoints against one FakeDB with the feature fully
+enabled, and asserts: the GL balances entirely in base (INR); the document stores
+both foreign and base amounts + a frozen rate; settlement clears AR/AP at the
+booked rate; and every Task-6 validation fires on the backend. INR behaviour is
+covered by the full existing suite (unchanged).
+"""
+import pytest
+from fastapi import HTTPException
+
+from models.parties import CustomerIn, VendorIn
+from models.invoices import (
+    SalesInvoiceIn, InvoiceLineIn, ReceiptIn, ReceiptAllocationIn,
+    PurchaseBillIn, PurchaseBillLineIn, PurchasePaymentIn,
+)
+from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, trial_balance, account_balance, coa_id
+
+FIRM = "FIRM-MC3"
+CALLER = {"firm_id": FIRM, "id": "u1", "auth_user_id": "u1", "email": "ca@f.test", "role": "Partner"}
+
+
+def _setup(monkeypatch, *, entitled=True, client_enabled=True, platform=True):
+    import routers.customers as cu
+    import routers.sales_invoices as si
+    import routers.receipts as rc
+    import routers.purchase_bills as pb
+    import routers.purchase_payments as pp
+    import routers.vendors as ve
+    import services.receipt_service as rs
+    db = FakeDB()
+    wire_e2e(monkeypatch, db, [cu, si, rc, pb, pp, ve, rs])
+    if platform:
+        monkeypatch.setenv("MULTI_CURRENCY_ENABLED", "true")
+    else:
+        monkeypatch.delenv("MULTI_CURRENCY_ENABLED", raising=False)
+    db.seed("firms", {"id": FIRM, "multi_currency_entitled": entitled})
+    db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27ABCDE1234F1Z5",
+                        "functional_currency": "INR", "multi_currency_enabled": client_enabled})
+    db.seed("currencies", {"code": "USD", "symbol": "$", "display_name": "US Dollar", "minor_unit": 2, "is_active": True})
+    db.seed("currencies", {"code": "INR", "symbol": "₹", "display_name": "Indian Rupee", "minor_unit": 2, "is_active": True})
+    seed_standard_coa(db, FIRM, "CLI")
+    return cu, si, rc, pb, pp, ve, db
+
+
+# ── Foreign sales invoice → issue → receipt (settle at booked rate) ───────────
+def test_foreign_sales_cycle_gl_balances_in_base(monkeypatch):
+    cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)
+    cust = cu.create_customer(CustomerIn(client_id="CLI", name="US Buyer", state_code="27"), CALLER)["data"]
+
+    # USD 1000.00 taxable @ 18% intra-state, rate 83.5 (INR per USD).
+    inv = si.create_invoice(SalesInvoiceIn(
+        client_id="CLI", customer_id=cust["id"], invoice_date="2025-06-01",
+        currency="USD", exchange_rate="83.5",
+        lines=[InvoiceLineIn(description="Export consulting", hsn_sac="9982",
+                             quantity=1, rate_paise=100000, gst_rate_percent=18.0)]), CALLER)["data"]
+
+    # Foreign + base both stored; base is authoritative.
+    assert inv["txn_currency"] == "USD"
+    assert str(inv["exchange_rate"]) in ("83.5", "83.50000000")
+    assert inv["txn_taxable"] == 100000 and inv["txn_total"] == 118000
+    assert inv["taxable_amount_paise"] == 8_350_000            # 100000 * 83.5
+    assert inv["total_paise"] == 9_853_000                     # (100000+9000+9000)*83.5, summed components
+
+    si.issue_invoice(inv["id"], CALLER)
+    # GL balances entirely in base INR.
+    assert account_balance(db, coa_id(db, FIRM, "ar")) == 9_853_000
+    tb = trial_balance(db, FIRM, "CLI")
+    assert tb["total_debit_paise"] == tb["total_credit_paise"] == 9_853_000
+
+    # Journal lines carry the frozen foreign metadata (G4).
+    je = db.table("journal_entries").select("*").eq("reference_no", inv["invoice_no"]).execute().data[0]
+    jls = db.table("journal_lines").select("*").eq("journal_entry_id", je["id"]).execute().data
+    assert all(l["txn_currency"] == "USD" for l in jls)
+    assert str(je.get("rate_overridden")) in ("True", "true")  # manual rate → overridden
+
+    # Settle in full in USD at the booked rate → AR cleared, Bank debited (base).
+    rc.create_receipt(ReceiptIn(
+        client_id="CLI", customer_id=cust["id"], receipt_date="2025-07-01",
+        amount_paise=118000, currency="USD",
+        allocations=[ReceiptAllocationIn(sales_invoice_id=inv["id"], allocated_paise=118000)]), CALLER)
+    paid = db.table("client_sales_invoices").select("*").eq("id", inv["id"]).execute().data[0]
+    assert paid["status"] == "paid" and paid["paid_paise"] == 9_853_000
+    assert account_balance(db, coa_id(db, FIRM, "ar")) == 0
+    assert account_balance(db, coa_id(db, FIRM, "bank")) == 9_853_000
+    tb = trial_balance(db, FIRM, "CLI")
+    assert tb["total_debit_paise"] == tb["total_credit_paise"]
+
+
+# ── Foreign purchase bill → payment (settle at booked rate) ───────────────────
+def test_foreign_purchase_cycle_gl_balances_in_base(monkeypatch):
+    cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)
+    vend = ve.create_vendor(VendorIn(client_id="CLI", name="US Vendor", state_code="27"), CALLER)["data"]
+
+    bill = pb.create_purchase_bill(PurchaseBillIn(
+        client_id="CLI", vendor_id=vend["id"], bill_date="2025-06-01", bill_no="USB-1",
+        currency="USD", exchange_rate="83.5",
+        lines=[PurchaseBillLineIn(description="Imported service", rate_paise=100000,
+                                  quantity=1, gst_rate_percent=18.0)]), CALLER)["data"]
+    assert bill["txn_currency"] == "USD" and bill["txn_total"] == 118000
+    assert bill["net_payable_paise"] == 9_853_000             # no TDS → base total
+    pb.receive_purchase_bill(bill["id"], CALLER)              # posts the base journal
+    assert account_balance(db, coa_id(db, FIRM, "ap")) == -9_853_000   # AP credited (liability)
+    tb = trial_balance(db, FIRM, "CLI")
+    assert tb["total_debit_paise"] == tb["total_credit_paise"] == 9_853_000
+
+    pp.create_purchase_payment(PurchasePaymentIn(
+        client_id="CLI", vendor_id=vend["id"], payment_date="2025-07-01",
+        amount_paise=118000, currency="USD", purchase_bill_id=bill["id"]), CALLER)
+    paid = db.table("purchase_bills").select("*").eq("id", bill["id"]).execute().data[0]
+    assert paid["status"] == "paid" and paid["paid_paise"] == 9_853_000
+    assert account_balance(db, coa_id(db, FIRM, "ap")) == 0
+    tb = trial_balance(db, FIRM, "CLI")
+    assert tb["total_debit_paise"] == tb["total_credit_paise"]
+
+
+# ── Task 6 validations (all backend) ──────────────────────────────────────────
+def test_foreign_invoice_rejected_when_policy_off(monkeypatch):
+    cu, si, rc, pb, pp, ve, db = _setup(monkeypatch, platform=False)  # L1 kill switch off
+    cust = cu.create_customer(CustomerIn(client_id="CLI", name="B", state_code="27"), CALLER)["data"]
+    with pytest.raises(HTTPException) as ex:
+        si.create_invoice(SalesInvoiceIn(
+            client_id="CLI", customer_id=cust["id"], invoice_date="2025-06-01",
+            currency="USD", exchange_rate="83.5",
+            lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)
+    assert ex.value.status_code == 422 and "multi-currency" in ex.value.detail.lower()
+
+
+def test_unsupported_currency_rejected(monkeypatch):
+    cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)
+    cust = cu.create_customer(CustomerIn(client_id="CLI", name="B", state_code="27"), CALLER)["data"]
+    with pytest.raises(HTTPException) as ex:
+        si.create_invoice(SalesInvoiceIn(
+            client_id="CLI", customer_id=cust["id"], invoice_date="2025-06-01",
+            currency="ZZZ", exchange_rate="1.0",
+            lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)
+    assert ex.value.status_code == 422 and "unsupported currency" in ex.value.detail.lower()
+
+
+def test_zero_rate_rejected(monkeypatch):
+    cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)
+    cust = cu.create_customer(CustomerIn(client_id="CLI", name="B", state_code="27"), CALLER)["data"]
+    with pytest.raises(HTTPException) as ex:
+        si.create_invoice(SalesInvoiceIn(
+            client_id="CLI", customer_id=cust["id"], invoice_date="2025-06-01",
+            currency="USD", exchange_rate="0",
+            lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)
+    assert ex.value.status_code == 422
+
+
+def test_receipt_currency_mismatch_rejected(monkeypatch):
+    cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)
+    cust = cu.create_customer(CustomerIn(client_id="CLI", name="B", state_code="27"), CALLER)["data"]
+    # An INR invoice cannot be settled by a USD receipt.
+    inv = si.create_invoice(SalesInvoiceIn(
+        client_id="CLI", customer_id=cust["id"], invoice_date="2025-06-01",
+        lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)["data"]
+    si.issue_invoice(inv["id"], CALLER)
+    with pytest.raises(HTTPException) as ex:
+        rc.create_receipt(ReceiptIn(
+            client_id="CLI", customer_id=cust["id"], receipt_date="2025-07-01",
+            amount_paise=1000, currency="USD",
+            allocations=[ReceiptAllocationIn(sales_invoice_id=inv["id"], allocated_paise=1000)]), CALLER)
+    assert ex.value.status_code == 422 and "mismatch" in ex.value.detail.lower()
+
+
+def test_cross_rate_settlement_rejected(monkeypatch):
+    cu, si, rc, pb, pp, ve, db = _setup(monkeypatch)
+    cust = cu.create_customer(CustomerIn(client_id="CLI", name="B", state_code="27"), CALLER)["data"]
+    inv = si.create_invoice(SalesInvoiceIn(
+        client_id="CLI", customer_id=cust["id"], invoice_date="2025-06-01",
+        currency="USD", exchange_rate="83.5",
+        lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)["data"]
+    si.issue_invoice(inv["id"], CALLER)
+    with pytest.raises(HTTPException) as ex:
+        rc.create_receipt(ReceiptIn(
+            client_id="CLI", customer_id=cust["id"], receipt_date="2025-07-01",
+            amount_paise=100000, currency="USD", exchange_rate="84.0",   # different rate
+            allocations=[ReceiptAllocationIn(sales_invoice_id=inv["id"], allocated_paise=100000)]), CALLER)
+    assert ex.value.status_code == 422 and "fx" in ex.value.detail.lower()

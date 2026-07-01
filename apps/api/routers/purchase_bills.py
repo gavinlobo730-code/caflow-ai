@@ -224,6 +224,32 @@ def create_purchase_bill(
 
         total_paise = total_taxable + total_cgst + total_sgst + total_igst
 
+        # ── Multi-Currency (Phase 3): resolve + freeze the bill currency ──────────
+        # INR / feature-off → identity. For a foreign bill the line totals above are
+        # in the txn currency's minor units; convert each to base (INR) paise (sum =
+        # base total, exact GL balance) BEFORE TDS, because statutory TDS is always
+        # computed on the INR-equivalent taxable.
+        from domain.currency.document_currency import resolve_document_currency, identity_currency
+        req_ccy = (data.get("currency") or "INR").strip().upper()
+        if _USE_MOCK or req_ccy == "INR":
+            dc = identity_currency(data["bill_date"])
+        else:
+            _firm_row = (db.table("firms").select("multi_currency_entitled").eq("id", firm_id).limit(1).execute().data or [None])[0]
+            _client_mc = (db.table("clients").select("functional_currency, multi_currency_enabled").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
+            dc = resolve_document_currency(
+                db, _firm_row, _client_mc, currency=req_ccy,
+                exchange_rate=data.get("exchange_rate"), rate_date=data["bill_date"],
+                rate_selected_by=current_user.get("id"))
+
+        txn_taxable   = total_taxable
+        txn_total_gst = total_cgst + total_sgst + total_igst
+        txn_total     = txn_taxable + txn_total_gst
+        total_taxable = dc.to_base(total_taxable)
+        total_cgst    = dc.to_base(total_cgst)
+        total_sgst    = dc.to_base(total_sgst)
+        total_igst    = dc.to_base(total_igst)
+        total_paise   = total_taxable + total_cgst + total_sgst + total_igst
+
         # ── TDS — routed through the central engine (domain/tds/tds_computer).
         # No inline rate maths: the engine owns thresholds, FY aggregation, payee-type
         # rates, unknown-section handling and the rate bound (audit H5/H6/L1/L6).
@@ -268,6 +294,22 @@ def create_purchase_bill(
         net_payable_paise = total_paise - tds_paise
         total_gst_paise = total_cgst + total_sgst + total_igst   # M1: persist on the bill
 
+        # Currency columns (INR identity leaves them inert). Foreign net payable is
+        # the foreign total less TDS expressed in the txn currency at the frozen rate.
+        _ccy_cols = {
+            "txn_currency":     dc.currency,
+            "exchange_rate":    str(dc.rate),
+            "txn_taxable":      txn_taxable,
+            "txn_total_gst":    txn_total_gst,
+            "txn_total":        txn_total,
+            "txn_net_payable":  txn_total - dc.to_txn(tds_paise),
+            "rate_source":      dc.rate_source,
+            "rate_type":        dc.rate_type,
+            "rate_date":        dc.rate_date,
+            "rate_selected_by": dc.rate_selected_by,
+            "rate_overridden":  dc.rate_overridden,
+        }
+
         # Validate posting date is not in a locked financial year (migration 020)
         period_validation_service.validate_posting_date(firm_id or "", data["bill_date"])
 
@@ -296,6 +338,7 @@ def create_purchase_bill(
                 "status":                "draft",
                 "notes":                 data.get("notes", ""),
                 "created_at":            datetime.now(timezone.utc).isoformat(),
+                **_ccy_cols,
                 "lines":                 computed_lines,
             }
             MOCK_PURCHASE_BILLS.append(bill)
@@ -327,6 +370,7 @@ def create_purchase_bill(
             "status":                "draft",
             "notes":                 data.get("notes", ""),
             "created_at":            datetime.now(timezone.utc).isoformat(),
+            **_ccy_cols,
         }
 
         bill_resp = db.table("purchase_bills").insert(bill_payload).execute()  # type: ignore[possibly-undefined]

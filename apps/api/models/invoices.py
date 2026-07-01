@@ -6,6 +6,7 @@ All monetary values in integer paise.
 """
 from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional, Any
+from decimal import Decimal
 
 
 class InvoiceLineIn(BaseModel):
@@ -44,6 +45,11 @@ class SalesInvoiceIn(BaseModel):
     customer_gstin: Optional[str] = None
     place_of_supply: Optional[str] = None  # 2-digit state code
     supply_state_code: Optional[str] = None
+    # Multi-Currency (Phase 3) — omit / 'INR' for a normal INR invoice. When a
+    # foreign currency is given, line rate_paise are that currency's minor units;
+    # exchange_rate is an optional manual override (else resolved via the service).
+    currency: Optional[str] = None
+    exchange_rate: Optional[Decimal] = None
 
     @field_validator("lines")
     @classmethod
@@ -95,6 +101,10 @@ class PurchaseBillIn(BaseModel):
     notes: Optional[str] = None
     is_inter_state: bool = False
     is_reverse_charge: bool = False   # inward supply liable to RCM (CGST Act §9(3)/(4))
+    # Multi-Currency (Phase 3) — omit / 'INR' for a normal INR bill. When a foreign
+    # currency is given, line rate_paise are that currency's minor units.
+    currency: Optional[str] = None
+    exchange_rate: Optional[Decimal] = None
 
     @field_validator("lines")
     @classmethod
@@ -145,6 +155,10 @@ class ReceiptIn(BaseModel):
     reference_no: Optional[str] = None
     notes: Optional[str] = None
     allocations: list[ReceiptAllocationIn] = []
+    # Multi-Currency (Phase 3) — must match the settled invoice's currency; amounts
+    # are in that currency's minor units. Settlement uses the invoice's frozen rate.
+    currency: Optional[str] = None
+    exchange_rate: Optional[Decimal] = None
 
     @field_validator("amount_paise")
     @classmethod
@@ -188,6 +202,10 @@ class PurchasePaymentIn(BaseModel):
     bank_account_id: Optional[str] = None
     reference_no: Optional[str] = None
     notes: Optional[str] = None
+    # Multi-Currency (Phase 3) — must match the settled bill's currency; amount is in
+    # that currency's minor units. Settlement uses the bill's frozen rate.
+    currency: Optional[str] = None
+    exchange_rate: Optional[Decimal] = None
 
     @field_validator("amount_paise")
     @classmethod

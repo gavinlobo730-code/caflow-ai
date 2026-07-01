@@ -112,6 +112,7 @@ class Phase2JournalService:
                     "narration": "IGST output tax payable",
                 })
 
+            _ccy = self._currency_kwargs(db, invoice, firm_id, client_id, lines)
             return self._create_journal(
                 db=db,
                 firm_id=firm_id,
@@ -121,6 +122,7 @@ class Phase2JournalService:
                 narration=f"Sales invoice {invoice['invoice_no']} to customer — CGST Act §9",
                 entry_type="Sales",
                 lines=lines,
+                **_ccy,
             )
         except ValueError:
             # Re-raise account resolution and balance errors so the router returns 422
@@ -182,6 +184,7 @@ class Phase2JournalService:
                 "narration": "Trade receivable cleared (cash + TDS)",
             })
 
+            _ccy = self._currency_kwargs(db, receipt, firm_id, client_id, lines)
             return self._create_journal(
                 db=db,
                 firm_id=firm_id,
@@ -191,6 +194,7 @@ class Phase2JournalService:
                 narration=f"Receipt {receipt['receipt_no']} from customer",
                 entry_type="Receipt",
                 lines=lines,
+                **_ccy,
             )
         except ValueError:
             raise
@@ -456,6 +460,7 @@ class Phase2JournalService:
                 f"IT Act §{section_note}"
             )
 
+            _ccy = self._currency_kwargs(db, bill, firm_id, client_id, lines)
             return self._create_journal(
                 db=db,
                 firm_id=firm_id,
@@ -465,6 +470,7 @@ class Phase2JournalService:
                 narration=narration,
                 entry_type="Purchase",
                 lines=lines,
+                **_ccy,
             )
         except ValueError:
             raise
@@ -509,6 +515,7 @@ class Phase2JournalService:
                 },
             ]
 
+            _ccy = self._currency_kwargs(db, payment, firm_id, client_id, lines)
             return self._create_journal(
                 db=db,
                 firm_id=firm_id,
@@ -518,6 +525,7 @@ class Phase2JournalService:
                 narration=f"Vendor payment {payment['payment_no']}",
                 entry_type="Payment",
                 lines=lines,
+                **_ccy,
             )
         except ValueError:
             raise
@@ -880,6 +888,32 @@ class Phase2JournalService:
         freeze it on the posting, with zero change to the kernel or reports."""
         from domain.currency import ExchangeRateService, ManualRateProvider
         return ExchangeRateService([ManualRateProvider(db)], default_source="manual")
+
+    def _currency_kwargs(self, db, doc_row: dict, firm_id: str, client_id: str, lines: list[dict]) -> dict:
+        """For a foreign document (Multi-Currency Phase 3): reconstruct the frozen
+        rate from the stored row, stamp each journal line's foreign (memo) amount at
+        that rate (G4 dual storage), and return the currency kwargs for
+        _create_journal — including the re-resolved CurrencyPolicy so the kernel's
+        authoritative gate is satisfied. INR / feature-off ⇒ returns {} and stamps
+        nothing, so INR postings are byte-for-byte unchanged."""
+        from domain.currency.document_currency import document_currency_from_row
+        from domain.currency.policy import resolve_currency_policy
+
+        dc = document_currency_from_row(db, doc_row or {})
+        if not dc.is_foreign:
+            return {}
+        for l in lines:
+            l["txn_currency"] = dc.currency
+            l["exchange_rate"] = dc.rate
+            l["txn_debit"] = dc.to_txn(int(l.get("debit_paise") or 0))
+            l["txn_credit"] = dc.to_txn(int(l.get("credit_paise") or 0))
+        firm = (db.table("firms").select("multi_currency_entitled").eq("id", firm_id).limit(1).execute().data or [None])[0]
+        client = (db.table("clients").select("functional_currency, multi_currency_enabled").eq("id", client_id).limit(1).execute().data or [None])[0]
+        return {
+            "txn_currency": dc.currency, "exchange_rate": dc.rate, "rate_source": dc.rate_source,
+            "rate_type": dc.rate_type, "rate_date": dc.rate_date, "rate_selected_by": dc.rate_selected_by,
+            "rate_overridden": dc.rate_overridden, "currency_policy": resolve_currency_policy(firm, client),
+        }
 
     def _create_journal(
         self,

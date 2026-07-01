@@ -37,6 +37,17 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _ccy_view(row: dict, base_paise: int, txn_amount) -> dict:
+    """Dual-currency display for a statement line (Multi-Currency Phase 3): the txn
+    currency + frozen rate + foreign amount alongside the authoritative BASE amount.
+    INR rows resolve to the identity (INR / rate 1 / txn == base)."""
+    return {
+        "txn_currency": (row.get("txn_currency") or "INR"),
+        "exchange_rate": str(row.get("exchange_rate") or 1),
+        "txn_amount": int(txn_amount if txn_amount is not None else base_paise),
+    }
+
+
 def build_statement(customer: dict, start: str, end: str,
                     invoices: list[dict], receipts: list[dict],
                     credit_notes: list[dict]) -> dict:
@@ -49,12 +60,14 @@ def build_statement(customer: dict, start: str, end: str,
         events.append({"date": _d(inv.get("invoice_date")), "rank": 0, "type": "invoice",
                        "reference": inv.get("invoice_no"),
                        "particulars": f"Invoice {inv.get('invoice_no', '')}".strip(),
-                       "debit_paise": int(inv.get("total_paise") or 0), "credit_paise": 0})
+                       "debit_paise": int(inv.get("total_paise") or 0), "credit_paise": 0,
+                       **_ccy_view(inv, int(inv.get("total_paise") or 0), inv.get("txn_total"))})
     for cn in credit_notes:
         events.append({"date": _d(cn.get("credit_note_date")), "rank": 1, "type": "credit_note",
                        "reference": cn.get("credit_note_no"),
                        "particulars": f"Credit Note {cn.get('credit_note_no', '')}".strip(),
-                       "debit_paise": 0, "credit_paise": int(cn.get("total_paise") or 0)})
+                       "debit_paise": 0, "credit_paise": int(cn.get("total_paise") or 0),
+                       **_ccy_view(cn, int(cn.get("total_paise") or 0), cn.get("total_paise"))})
     for r in receipts:
         # A receipt relieves AR by its full SETTLEMENT (cash + TDS deducted at source),
         # exactly as journal_for_receipt credits Trade Receivables. Counting only the cash
@@ -64,7 +77,8 @@ def build_statement(customer: dict, start: str, end: str,
         events.append({"date": _d(r.get("receipt_date")), "rank": 2, "type": "receipt",
                        "reference": r.get("receipt_no"),
                        "particulars": f"Receipt {r.get('receipt_no', '')}".strip(),
-                       "debit_paise": 0, "credit_paise": settlement})
+                       "debit_paise": 0, "credit_paise": settlement,
+                       **_ccy_view(r, settlement, r.get("txn_amount"))})
 
     events.sort(key=lambda e: (e["date"], e["rank"], str(e["reference"] or "")))
 
@@ -88,6 +102,9 @@ def build_statement(customer: dict, start: str, end: str,
             "date": e["date"], "type": e["type"], "reference": e["reference"],
             "particulars": e["particulars"], "debit_paise": e["debit_paise"],
             "credit_paise": e["credit_paise"], "running_balance_paise": running,
+            # Dual-currency display (base amounts above are authoritative).
+            "txn_currency": e["txn_currency"], "exchange_rate": e["exchange_rate"],
+            "txn_amount": e["txn_amount"],
         })
 
     return {
@@ -127,13 +144,13 @@ class CustomerStatementService:
         customer = self._customer(db, firm_id, client_id, customer_id)
 
         inv = (db.table("client_sales_invoices")
-               .select("invoice_no, invoice_date, total_paise, status")
+               .select("invoice_no, invoice_date, total_paise, status, txn_currency, exchange_rate, txn_total")
                .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id)
                .is_("deleted_at", "null").execute().data or [])
         invoices = [i for i in inv if (i.get("status") or "") not in _DEAD_INVOICE]
 
         receipts = (db.table("receipts")
-                    .select("receipt_no, receipt_date, amount_paise, tds_paise")
+                    .select("receipt_no, receipt_date, amount_paise, tds_paise, txn_currency, exchange_rate, txn_amount")
                     .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id)
                     .execute().data or [])
 

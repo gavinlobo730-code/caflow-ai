@@ -60,6 +60,83 @@ def _next_receipt_seq(db, firm_id: str, client_id: str, fy: str) -> int:
         return 1
 
 
+def _resolve_foreign_receipt(db, firm_id: str, client_id: str, data: dict, actor: dict) -> dict:
+    """Validate + convert a FOREIGN customer receipt to base (INR) at each invoice's
+    frozen rate (Multi-Currency Phase 3). Mutates `data` in place: amount_paise and
+    each allocation's allocated_paise are rewritten to base paise. Returns the
+    receipt's currency columns. Enforces the Phase-3 limits (Task 3/6): active
+    policy, supported+active currency, currency match with every allocated invoice,
+    the invoice's frozen rate (no cross-rate), and FULL settlement (partial / TDS /
+    unallocated foreign advances are deferred to the realized-FX phase)."""
+    from decimal import Decimal, InvalidOperation
+    from domain.currency.policy import resolve_currency_policy
+    from domain.currency.conversion import to_txn_minor
+    from domain.currency import currency_service
+
+    ccy = (data.get("currency") or "").strip().upper()
+    if int(data.get("tds_paise", 0) or 0) != 0:
+        raise HTTPException(status_code=422, detail="TDS on a foreign receipt is not supported yet (arrives with realized FX).")
+
+    firm = (db.table("firms").select("multi_currency_entitled").eq("id", firm_id).limit(1).execute().data or [None])[0]
+    client = (db.table("clients").select("functional_currency, multi_currency_enabled").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
+    if not resolve_currency_policy(firm, client).active:
+        raise HTTPException(status_code=422, detail="Multi-currency is not enabled for this client.")
+    cur = currency_service.get_currency(db, ccy)
+    if not cur:
+        raise HTTPException(status_code=422, detail=f"Unsupported currency: {ccy}.")
+    if not cur.get("is_active", True):
+        raise HTTPException(status_code=422, detail=f"Currency {ccy} is inactive.")
+    minor = int(cur.get("minor_unit", 2))
+
+    override = None
+    if data.get("exchange_rate") is not None:
+        try:
+            override = Decimal(str(data["exchange_rate"]))
+        except (InvalidOperation, ValueError, TypeError):
+            raise HTTPException(status_code=422, detail="Invalid exchange rate.")
+        if override <= 0:
+            raise HTTPException(status_code=422, detail="Exchange rate must be positive.")
+
+    allocations = [a for a in data.get("allocations", []) if int(a.get("allocated_paise", 0) or 0) > 0]
+    if not allocations:
+        raise HTTPException(status_code=422, detail="A foreign receipt must be fully allocated to a same-currency invoice.")
+
+    total_foreign, total_base, rate_used = 0, 0, None
+    for a in allocations:
+        inv_id = a.get("sales_invoice_id")
+        inv = (db.table("client_sales_invoices")
+               .select("txn_currency, exchange_rate, total_paise, paid_paise, credited_paise")
+               .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data or [None])[0]
+        if not inv:
+            raise HTTPException(status_code=422, detail=f"Invoice {inv_id} is not part of this client's books.")
+        inv_ccy = (inv.get("txn_currency") or "INR").upper()
+        if inv_ccy != ccy:
+            raise HTTPException(status_code=422, detail=(
+                f"Currency mismatch: receipt is {ccy} but invoice {inv_id} is billed in {inv_ccy}."))
+        inv_rate = Decimal(str(inv.get("exchange_rate") or 1))
+        if override is not None and override != inv_rate:
+            raise HTTPException(status_code=422, detail=(
+                "Settling at a rate different from the invoice's booked rate would realise an FX "
+                "gain/loss — that arrives in the next phase. Settle at the invoice's rate."))
+        base_out = int(inv["total_paise"]) - int(inv.get("paid_paise") or 0) - int(inv.get("credited_paise") or 0)
+        foreign_out = to_txn_minor(base_out, inv_rate, minor)
+        if int(a["allocated_paise"]) != foreign_out:
+            raise HTTPException(status_code=422, detail=(
+                "Phase 3 settles a foreign invoice in full at its booked rate; partial foreign "
+                "settlement arrives with realized FX in the next phase."))
+        a["allocated_paise"] = base_out       # rewrite to base for the settlement below
+        total_foreign += foreign_out
+        total_base += base_out
+        rate_used = inv_rate
+
+    data["amount_paise"] = total_base          # receipt cash, now in base paise
+    return {
+        "txn_currency": ccy, "exchange_rate": str(rate_used), "txn_amount": total_foreign,
+        "rate_source": "settlement", "rate_type": "booking", "rate_date": data.get("receipt_date"),
+        "rate_selected_by": (actor or {}).get("id"), "rate_overridden": override is not None,
+    }
+
+
 def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     """Create a customer receipt with optional invoice allocations — the single
     source of truth for receipt creation.
@@ -75,6 +152,13 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     and, in real mode, journal_entry_id). Integer paise throughout.
     """
     client_id    = data["client_id"]
+    # ── Multi-Currency (Phase 3): a foreign receipt settles same-currency invoices
+    # at each invoice's FROZEN booking rate (no realized FX yet). We convert the
+    # foreign inputs to base (INR) up front and rewrite `data`, so every settlement
+    # step below runs in base exactly as for an INR receipt. INR ⇒ no-op.
+    _ccy_cols: dict = {}
+    if db is not None and (data.get("currency") or "INR").strip().upper() != "INR":
+        _ccy_cols = _resolve_foreign_receipt(db, firm_id, client_id, data, actor)
     amount_paise = data["amount_paise"]
     tds_paise    = int(data.get("tds_paise", 0) or 0)   # TDS deducted by client (§194J)
     settlement   = amount_paise + tds_paise              # value applied against invoices
@@ -153,6 +237,7 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         "reference_no":      data.get("reference_no", ""),
         "notes":             data.get("notes", ""),
         "created_at":        datetime.now(timezone.utc).isoformat(),
+        **_ccy_cols,
     }
 
     rcpt_resp  = db.table("receipts").insert(receipt_payload).execute()
