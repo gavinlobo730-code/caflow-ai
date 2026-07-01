@@ -622,6 +622,16 @@ export const api = {
       request(`/api/sales-invoices/${id}/resend`, { method: "POST", body: JSON.stringify({ to_email: toEmail ?? null }) }),
     deliveries: (id: string) => request(`/api/sales-invoices/${id}/deliveries`),
   },
+  hsn: {
+    // Smart HSN/SAC lookup — master + firm history. See routers/hsn.py.
+    search: (q: string, opts?: { client_id?: string; type?: string; limit?: number }) => {
+      const params = new URLSearchParams({ q });
+      if (opts?.client_id) params.set("client_id", opts.client_id);
+      if (opts?.type) params.set("type", opts.type);
+      if (opts?.limit) params.set("limit", String(opts.limit));
+      return request(`/api/hsn/search?${params.toString()}`);
+    },
+  },
   receipts: {
     create: (body: unknown) =>
       request("/api/receipts/", { method: "POST", body: JSON.stringify(body) }),
