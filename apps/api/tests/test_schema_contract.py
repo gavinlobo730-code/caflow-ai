@@ -29,6 +29,13 @@ How it works
 4. Same for `.rpc("...")` vs CREATE FUNCTION.
 
 Postgres/Supabase built-in tables (auth.*, storage.*, pg_*) are ignored.
+
+Known limitation: only literal `.table("name")` references are analysed. A
+handful of call sites (~8) pass a variable, e.g. `.table(table)` in a generic
+helper — those names are supplied by callers and are not resolved here. In every
+current case the underlying table is also referenced by a literal elsewhere, so
+coverage of the phantom-table bug class (F5 — all literal strings) holds; this
+test is a static guard, not a proof of total coverage.
 """
 from __future__ import annotations
 

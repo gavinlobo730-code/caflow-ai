@@ -11,7 +11,7 @@
 -- the full DDL (tables, columns, constraints, triggers, RLS policies) can be
 -- created and asserted against. It is NOT applied to production (Supabase
 -- already provides all of this) — the migration runner injects it only when
--- --with-supabase-compat is passed.
+-- --with-compat is passed.
 
 -- Extensions used by the schema (gen_random_uuid, pgcrypto).
 CREATE EXTENSION IF NOT EXISTS pgcrypto;

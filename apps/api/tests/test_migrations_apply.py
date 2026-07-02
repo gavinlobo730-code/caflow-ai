@@ -48,7 +48,14 @@ EXPECTED_MIGRATION_FAILURES: set[str] = {
     "008_linter_fixes.sql",              # references relation "transactions" before it exists
     "045_assignment_rules.sql",          # FK -> task_recurring_configs (created later, in 063); dup 045 number
     "053_hardening.sql",                 # re-creates policy firm_client_isolation that already exists
-    "054_v13_payroll_assets_banking.sql",# ALTER references chart_of_accounts.is_system before it is added
+    # 054 has TWO independent apply-blockers (R2.6 must fix both, and the seed's
+    # NULLS-DISTINCT ON CONFLICT is an ineffective de-dup that will double-insert
+    # the 17 template accounts once the blockers are cleared):
+    #   (a) INSERT lists chart_of_accounts.is_system, a column no migration adds
+    #       (092 adds system_account_key, a different column);
+    #   (b) row '6001' uses account_type='Income', which violates the 003 CHECK
+    #       (only Asset/Liability/Equity/Revenue/Expense allowed).
+    "054_v13_payroll_assets_banking.sql",
     "055_v131_hardening.sql",            # references bank_account_id before it is added
     "068_workflow_engine.sql",           # workflow_steps CREATE IF NOT EXISTS no-ops (002 pre-created it) -> template_id missing
     "070_ai_memory.sql",                 # client_profiles CREATE IF NOT EXISTS no-ops (059) -> is_current missing
