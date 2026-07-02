@@ -533,6 +533,54 @@ class Phase2JournalService:
             _logger.error("journal_for_purchase_payment error: %s", e)
             return None
 
+    @staticmethod
+    def _build_payroll_lines(account_ids: dict, run: dict) -> list[dict]:
+        """Build a BALANCED payroll-accrual journal (fixes F13).
+
+        The employer's total cost of employment = gross wages + employer PF/ESI.
+        By the payroll identity (net = gross − employee PF − employee ESI − PT −
+        TDS, and total_pf/total_esi carry employee+employer), that total equals
+        (net + PF + ESI + PT + TDS) — i.e. the sum of every payable credit. Booking
+        the Salaries Expense debit as that sum makes the entry balance by
+        construction, whatever the mix of contributions. The prior code debited
+        only `gross`, leaving it short by the employer PF/ESI, so _create_journal's
+        balance check raised and finalization 500'd on essentially every run.
+
+        Employer PF/ESI is folded into Salaries Expense here (matching the module's
+        single-expense-account design). A future enhancement could split it into a
+        dedicated "Contribution to PF & Other Funds" account for the Schedule III
+        employee-benefit sub-classification — see roadmap.
+        """
+        net = run["total_net_paise"]
+        pf = run["total_pf_paise"]
+        esi = run["total_esi_paise"]
+        pt = run["total_pt_paise"]
+        tds = run["total_tds_paise"]
+        month = run.get("month", "")
+
+        # Payable credits — only include a line when the amount is non-zero.
+        credits: list[tuple[str, int, str]] = [
+            (account_ids["net"], net, "Net salary payable to employees"),
+        ]
+        if pf > 0:
+            credits.append((account_ids["pf"], pf, "PF payable (employee + employer) — EPF Act"))
+        if esi > 0:
+            credits.append((account_ids["esi"], esi, "ESI payable (employee + employer) — ESI Act"))
+        if pt > 0:
+            credits.append((account_ids["pt"], pt, "Professional Tax payable — IT Act §16(iii)"))
+        if tds > 0:
+            credits.append((account_ids["tds"], tds, "TDS on salary payable 24Q — IT Act §192"))
+
+        total_cost = sum(amount for _, amount, _ in credits)  # = gross + employer PF/ESI
+        lines: list[dict] = [{
+            "account_id": account_ids["salary_exp"], "debit_paise": total_cost, "credit_paise": 0,
+            "narration": f"Salaries + employer statutory contributions for {month} — IT Act §192",
+        }]
+        for account_id, amount, narration in credits:
+            lines.append({"account_id": account_id, "debit_paise": 0, "credit_paise": amount,
+                          "narration": narration})
+        return lines
+
     def journal_for_payroll(
         self, run: dict, firm_id: str, client_id: str
     ) -> Optional[str]:
@@ -542,12 +590,17 @@ class Phase2JournalService:
         EPF Act: PF Payable (employer + employee combined).
         ESI Act: ESI Payable. PT: state-wise Professional Tax Payable.
 
-        Dr  Salaries Expense        (total gross)
+        Dr  Salaries Expense        (gross wages + employer PF/ESI = total cost)
           Cr  Net Salary Payable    (net pay)
           Cr  PF Payable            (employee + employer PF)
           Cr  ESI Payable           (employee + employer ESI)
           Cr  PT Payable
           Cr  TDS Payable - Salary
+
+        The debit is the employer's TOTAL cost of employment, so the entry
+        balances (see _build_payroll_lines). A prior version debited only `gross`,
+        which is short by the employer PF/ESI, so every finalization with the
+        default contributions failed the posting-kernel balance check (F13).
         """
         if _USE_MOCK:
             _logger.info("[MOCK] journal_for_payroll: %s", run.get("month"))
@@ -565,37 +618,13 @@ class Phase2JournalService:
             pt_id          = self._find_account(db, firm_id, client_id, "%PT Payable%")
             tds_sal_id     = self._find_account(db, firm_id, client_id, "%TDS Payable - Salary%")
 
-            gross    = run["total_gross_paise"]
-            net      = run["total_net_paise"]
-            pf       = run["total_pf_paise"]
-            esi      = run["total_esi_paise"]
-            pt       = run["total_pt_paise"]
-            tds      = run["total_tds_paise"]
-
-            # Net salary = gross - employee deductions; gross includes employer cost
-            # Rebalance: Dr Salaries Expense = net + employee_pf + employee_esi + pt + tds
-            # Employer PF/ESI are additional Dr (PF Expense / ESI Expense) — simplified here
-            # as single Salaries Expense debit for MVP
-
-            lines = [
-                {"account_id": salary_exp_id, "debit_paise": gross, "credit_paise": 0,
-                 "narration": f"Salary expense for {run['month']} — IT Act §192"},
-                {"account_id": net_sal_id,    "debit_paise": 0, "credit_paise": net,
-                 "narration": "Net salary payable to employees"},
-            ]
-
-            if pf > 0:
-                lines.append({"account_id": pf_id, "debit_paise": 0, "credit_paise": pf,
-                               "narration": "PF payable (employee + employer) — EPF Act"})
-            if esi > 0:
-                lines.append({"account_id": esi_id, "debit_paise": 0, "credit_paise": esi,
-                               "narration": "ESI payable (employee + employer) — ESI Act"})
-            if pt > 0:
-                lines.append({"account_id": pt_id, "debit_paise": 0, "credit_paise": pt,
-                               "narration": "Professional Tax payable — IT Act §16(iii)"})
-            if tds > 0:
-                lines.append({"account_id": tds_sal_id, "debit_paise": 0, "credit_paise": tds,
-                               "narration": "TDS on salary payable 24Q — IT Act §192"})
+            lines = self._build_payroll_lines(
+                {
+                    "salary_exp": salary_exp_id, "net": net_sal_id, "pf": pf_id,
+                    "esi": esi_id, "pt": pt_id, "tds": tds_sal_id,
+                },
+                run,
+            )
 
             return self._create_journal(
                 db=db,

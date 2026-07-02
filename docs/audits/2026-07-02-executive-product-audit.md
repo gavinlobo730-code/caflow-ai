@@ -402,3 +402,39 @@ recurring invoices were verified fine.
 
 **Next:** Milestone R1.2 (balance the payroll finalization journal, F13).
 
+## Milestone R1.2 — Balance the payroll finalization journal, F13 (DELIVERED)
+
+**Goal:** let payroll finalization post; today it 500s on essentially every run.
+
+**Revalidation:** confirmed. `journal_for_payroll`
+(`services/phase2_journal_service.py`) debited only `gross` but credited
+`net + PF + ESI + PT + TDS`. Since `net = gross − employee PF − employee ESI −
+PT − TDS` and the run's `total_pf`/`total_esi` carry *both* employee and employer
+shares (`routers/payroll.py:302-303`), the credits exceed the debit by exactly
+the **employer PF + employer ESI** — so `_create_journal`'s balance check
+(`:986`) raised and finalization 500'd whenever PF/ESI applied (the defaults). The
+code comment even admitted it "simplified" the employer cost away.
+
+**Fix:** the employer's *total* cost of employment (gross wages + employer PF/ESI)
+equals, by that same identity, the sum of every payable credit. So the Salaries
+Expense debit is now booked as that sum — the entry balances by construction for
+any mix of contributions, using only the already-seeded accounts (no new CoA
+dependency, no schema change). Line-building was refactored into a pure,
+unit-testable helper `_build_payroll_lines`.
+
+**Verified** (`tests/test_payroll_journal_balance.py`, runs everywhere): debits ==
+credits across contribution mixes (PF/ESI/PT/TDS, no PF/ESI, TDS present); the
+Salaries Expense debit equals gross + employer PF/ESI (and is no longer the bare
+gross that was the bug); every line is debit-XOR-credit (satisfies the DB CHECK).
+The zero-value-journal guard still refuses degenerate empty runs. Full suite 2160
+passed / 49 skipped, no regressions; no existing test encoded the old behavior.
+
+**Noted for the roadmap (not done here):** employer PF/ESI is folded into Salaries
+Expense. A cleaner presentation would split it into a dedicated "Contribution to
+PF & Other Funds" account for the Schedule III employee-benefit sub-classification
+(requires seeding that account + storing the employer/employee split as run
+totals). Small enhancement, tracked; does not affect P&L totals or ledger balance.
+
+**Next:** Milestone R1.3 (move payroll/GST business logic off the browser; fix the
+frontend TDS scale bug, F15/F14 payroll slice).
+
