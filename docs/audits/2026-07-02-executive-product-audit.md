@@ -273,3 +273,77 @@ The good news: **the defects are concentrated and mostly small, localized fixes*
 Close Tier 0–1 and re-audit against a real database, and PracticeSync moves from "impressive demo" to "a CA can trust it with one client." Close Tier 2 and add batch compliance (R3.2), and it becomes the supervised compliance cockpit the incumbents don't offer.
 
 *Prepared as a review only. Awaiting approval to begin implementation in the order above.*
+
+---
+
+# Implementation Log
+
+Implementation was approved on 2026-07-02 with the directive: revalidate each
+finding before implementing, work one milestone at a time in priority order, and
+run a regression review after each. This log records what actually shipped and
+any changes to the roadmap that the work surfaced.
+
+## Milestone R0.1 — Make correctness provable (DELIVERED)
+
+**Goal:** a migration runner + a real-Postgres schema harness + CI, so the
+schema-drift class of bug (F5, F9) can no longer ship invisibly.
+
+**Revalidation:** confirmed the finding still holds — the mock-mode suite (2150
+tests) passes but CI never touches a database; all real-DB tests skip.
+
+**What shipped**
+- `apps/api/scripts/db/apply_migrations.py` — the repo's first ordered,
+  idempotent migration **runner** with a `schema_migrations` tracking table
+  (addresses the "no runner / hand-applied" root cause behind the drift). Detects
+  duplicate migration numbers; classifies pure data-seeds; supports a
+  Supabase-compat mode for plain Postgres.
+- `apps/api/migrations/_supabase_compat_bootstrap.sql` — a bootstrap that stands
+  up the Supabase surface the migrations depend on (auth/storage schemas,
+  anon/authenticated/service_role roles, `auth.uid()/auth.jwt()`,
+  `storage.foldername()`) so the full DDL can be applied and asserted on a plain
+  PostgreSQL. **Not** applied to production.
+- `apps/api/tests/test_schema_contract.py` — **database-free** gate: every
+  `.table()/.rpc()` the backend references must be created by some migration.
+  Runs in the normal CI job.
+- `apps/api/tests/test_migrations_apply.py` — **real-Postgres** ratchet: applies
+  the whole set to a throwaway DB and asserts the failing-migration set equals a
+  documented baseline (blocks new invalid SQL / drift; forces burn-down).
+- `.github/workflows/backend-ci.yml` — added a `migrations` job running the
+  ratchet against a Postgres 16 service; the existing job now also runs the
+  DB-free contract test.
+
+**Verified locally** against PostgreSQL 16: full suite **2153 passed, 45 skipped**
+(no regressions); the 5 new R0.1 tests pass; runner is deterministic and
+idempotent (re-run skips 143 already-applied migrations).
+
+**New findings surfaced by the harness (fed into the roadmap):**
+1. **Invalid SQL in three migrations that cannot apply to *any* Postgres
+   (incl. Supabase) — FIXED as part of enabling the runner:**
+   `049`/`050` used `TEXT(n)` (invalid type modifier → `TEXT`); `054` used
+   `ON CONFLICT … DO NOTHING WHERE …` (invalid → `DO NOTHING`). That these files
+   could never have applied as written is direct evidence the live schema was
+   built by out-of-repo DDL — **confirmed repo-vs-live drift**.
+2. **F5 is larger than first reported.** The static contract test found **14
+   additional phantom tables** the code references but no migration creates,
+   beyond the original ~13 — including `year_end_checklist_items`,
+   `year_end_notes`, `year_end_review_events` (independently **corroborating F9**),
+   `tally_migration_jobs`/`_items` (the broken Tally migration),
+   `onboarding_checklists`/`_steps`, `pending_invites`, `gst_returns`, `notices`,
+   `work_items`, `entity_to_entity_relationships`, `properties`,
+   `client_portal_sessions`. All are pinned in a documented baseline.
+   → **R2.2 scope expands** to create/gate these tables.
+3. **11 migrations do not cleanly re-apply to a fresh DB** (ordering/collision
+   drift). The harness **independently reproduced the audit's workflow_steps
+   collision**: migration `002` pre-creates a legacy `workflow_steps`, so `068`'s
+   `CREATE TABLE IF NOT EXISTS` no-ops and its `template_id` column/index never
+   materialize; `059`/`070` show the same collision on `client_profiles`.
+   → **R2.6 now has a concrete, test-enforced 11-migration burn-down list.**
+
+**Roadmap adjustments:** none reversed. R2.2 and R2.6 gained precise scope
+(above). No product/runtime code was changed in this milestone — only three
+one-line migration SQL fixes plus tooling/tests/CI.
+
+**Next:** Milestone R1.1 (invoice/credit-note numbering for multi-client firms,
+finding F6) — the highest-severity launch blocker — after this milestone's
+regression review.
+
