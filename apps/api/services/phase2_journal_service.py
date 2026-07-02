@@ -572,6 +572,21 @@ class Phase2JournalService:
             credits.append((account_ids["tds"], tds, "TDS on salary payable 24Q — IT Act §192"))
 
         total_cost = sum(amount for _, amount, _ in credits)  # = gross + employer PF/ESI
+
+        # Defensive invariant (fail loud instead of posting a wrong-but-balanced
+        # journal): because the debit is DEFINED as sum(credits), the kernel's
+        # balance check can no longer catch a mis-computed run. total_cost must equal
+        # gross + employer PF/ESI, hence lie in [gross, gross + PF + ESI]. A value
+        # below gross means `net` was reduced by a deduction with no matching credit
+        # leg here (e.g. a future loan/advance recovery) — which would silently
+        # understate salary expense. Guarded so that regression surfaces immediately.
+        gross = int(run.get("total_gross_paise") or 0)
+        if gross and not (gross <= total_cost <= gross + pf + esi):
+            raise ValueError(
+                f"Payroll journal identity violated: total_cost={total_cost} outside "
+                f"[{gross}, {gross + pf + esi}] — a deduction is missing a credit leg."
+            )
+
         lines: list[dict] = [{
             "account_id": account_ids["salary_exp"], "debit_paise": total_cost, "credit_paise": 0,
             "narration": f"Salaries + employer statutory contributions for {month} — IT Act §192",
