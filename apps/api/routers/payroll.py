@@ -404,14 +404,16 @@ def finalize_run(
     Finalize payroll run — Partner only. Immutable after this point.
     Creates journal entry per Product Bible immutability rules:
 
-    Dr  Salaries Expense        (total gross)
+    Dr  Salaries Expense        (gross wages + employer PF/ESI = total cost)
       Cr  Net Salary Payable    (total net pay)
       Cr  PF Payable            (employee + employer PF)
       Cr  ESI Payable           (employee + employer ESI)
       Cr  PT Payable
       Cr  TDS Payable - Salary  (feeds 24Q)
 
-    IT Act §192 TDS recorded for 24Q return.
+    IT Act §192 TDS recorded for 24Q return. The run is marked finalized ONLY if
+    the journal actually posts, so a posting failure leaves the run re-runnable
+    rather than immutably finalized with no GL entry.
     """
     db = _db()
     if not db:
@@ -429,10 +431,22 @@ def finalize_run(
     client_id = run["client_id"]
     firm_id   = run["firm_id"]
 
-    # Create payroll journal
+    # Nothing to post (no active employees / all-zero run) — refuse gracefully
+    # instead of building an empty journal that the kernel rejects (would 500).
+    if int(run.get("total_gross_paise") or 0) <= 0:
+        raise HTTPException(status_code=400, detail="Cannot finalize an empty payroll run (no computed salary).")
+
+    # Post the payroll journal FIRST; only mark the run finalized if it posted.
     from services.phase2_journal_service import Phase2JournalService
     svc = Phase2JournalService()
     journal_id = svc.journal_for_payroll(run, firm_id, client_id)
+    if not journal_id:
+        # In DB mode journal_for_payroll returns None only on a swallowed posting
+        # failure (logged there). Do NOT mark the run finalized — leaving it
+        # re-runnable so the Partner can retry once the cause is cleared (a retry is
+        # safe: the kernel dedupes on reference_no=PAY-{month}). Prevents an
+        # immutable "finalized" run with no GL entry reported as success.
+        return api_response(False, None, "Payroll journal could not be posted. The run was not finalized; please retry.")
 
     db.table("payroll_runs").update({
         "status":          "finalized",

@@ -435,6 +435,23 @@ PF & Other Funds" account for the Schedule III employee-benefit sub-classificati
 (requires seeding that account + storing the employer/employee split as run
 totals). Small enhancement, tracked; does not affect P&L totals or ledger balance.
 
+**Regression review (3 lenses, adversarially verified):** the F13 balance fix
+confirmed **accounting-correct** — the Salaries Expense debit equals the true
+total cost of employment and the entry balances by construction (verified
+numerically; exact integer-paise identity, no double-count). It surfaced one
+**high** issue in the same finalize path, now **fixed as part of this milestone**:
+`finalize_run` marked a run `finalized` (immutable) and reported success even when
+`journal_for_payroll` silently returned `None` on a swallowed posting failure —
+leaving an immutable run with no GL entry. Now the run is finalized **only if the
+journal posts**; on failure it stays re-runnable (a retry is safe — the kernel
+dedupes on `reference_no=PAY-{month}`). Also applied: an empty/zero-gross run is
+refused with a clean 400 instead of a 500; a defensive identity invariant in
+`_build_payroll_lines` fails loud if a future deduction is ever added to `net`
+without a matching credit leg (since the balance check can no longer catch it);
+and the stale `finalize_run` docstring was corrected. Schedule III
+sub-classification of employer PF/ESI remains the tracked enhancement (low, P&L
+total unaffected). Full suite 2161 passed / 49 skipped.
+
 **Next:** Milestone R1.3 (move payroll/GST business logic off the browser; fix the
 frontend TDS scale bug, F15/F14 payroll slice).
 

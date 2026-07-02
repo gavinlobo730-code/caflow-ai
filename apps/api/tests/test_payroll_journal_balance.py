@@ -12,6 +12,8 @@ Runs everywhere — exercises the pure line-builder, no database needed.
 """
 from __future__ import annotations
 
+import pytest
+
 from services.phase2_journal_service import Phase2JournalService
 
 ACCOUNT_IDS = {
@@ -91,6 +93,21 @@ def test_balances_with_tds_present():
     assert debit == credit
     # employer PF is 60000 -> total cost = 1,000,000 + 60,000 = 1,060,000
     assert debit == 1060000
+
+
+def test_identity_violation_fails_loud():
+    """Defensive guard: if `net` is ever reduced by a deduction with no matching
+    credit leg (e.g. a future loan/advance recovery), total_cost drops below gross
+    and the journal must raise rather than post a wrong-but-balanced entry."""
+    run = {
+        "month": "2026-06",
+        "total_gross_paise": 100000,
+        "total_net_paise": 40000,   # artificially low vs gross with no offsetting credit
+        "total_pf_paise": 0, "total_esi_paise": 0,
+        "total_pt_paise": 0, "total_tds_paise": 0,
+    }
+    with pytest.raises(ValueError, match="identity violated"):
+        _build(run)
 
 
 def test_every_line_is_pure_debit_or_credit():
