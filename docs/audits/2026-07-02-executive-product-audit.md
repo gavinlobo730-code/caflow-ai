@@ -232,6 +232,8 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 
 **R2.8 — Make AI extraction real (F19).** Pin `groq` in `requirements.txt`; create the missing `increment_message_count` RPC; stop persisting mock-derived notices/tasks; surface extraction failures instead of fabricating. *Effort:* M. *Benefit:* the AI value prop stops silently faking data.
 
+**R2.10 — Route payroll compute through the backend** *(the F14 payroll slice, deferred from R1.3).* The web payroll page computes and persists runs/slips client-side (statutory logic in the browser, against CLAUDE.md); it also stores no run totals, so backend finalize can't process frontend-generated runs. Replace the client-side compute + direct `payroll_runs`/`payroll_slips` inserts with a call to `POST /api/payroll/runs` (server-side `_compute_slip` + totals), reconciling the status/`generated_at` column differences and fetching slips via the backend to avoid RLS re-read gaps. *Effort:* M. *Deps:* frontend CI test runner (currently absent — the 12 web test files are dead code). *Risk:* unverifiable without frontend test infra; must not regress the working generate/display flow. *Benefit:* single correct payroll engine; removes the browser tax logic and the missing-totals defect.
+
 **R2.9 — Document-number uniqueness for the remaining statutory docs** *(surfaced by the R1.1 regression review).* `debit_notes.debit_note_no` (medium), `receipts.receipt_no` and `purchase_payments.payment_no` (low) generate numbers but have **no** uniqueness constraint, so the numbering retry is dead code and concurrent duplicates are possible (CGST §34 / Rule 53 require serial uniqueness for debit notes). Add per-client (debit notes/receipts) / per-firm (payments, matching their generator) UNIQUE keys, **preceded by a de-dup migration** for any existing duplicates. *Effort:* M. *Deps:* R0.1. *Risk:* must de-dup live data before adding the constraint. *Benefit:* closes the numbering-integrity gap R1.1 deliberately scoped out.
 
 ### Tier 3 — Medium (productivity, consolidation, scale)
@@ -454,4 +456,44 @@ total unaffected). Full suite 2161 passed / 49 skipped.
 
 **Next:** Milestone R1.3 (move payroll/GST business logic off the browser; fix the
 frontend TDS scale bug, F15/F14 payroll slice).
+
+## Milestone R1.3 — Frontend payroll TDS scale bug, F15 (DELIVERED, scope adjusted)
+
+**Goal:** stop the browser payroll computation from massively over-deducting TDS.
+
+**Revalidation:** confirmed. `apps/web/app/payroll/page.tsx:computeSlip` computes
+`gross` in paise (verified: ESI check `gross <= 2100000` = ₹21,000, PT
+`gross > 1000000` = ₹10,000) but the TDS slab thresholds were rupee-scale
+(`annualGross > 1500000` meaning ₹15,000, not ₹15,00,000) while the base amounts
+were paise (`12500 * 100`) — and the slab *structure* itself was wrong. The
+computed slips persist to `payroll_slips` (`:945`).
+
+**Fix:** replaced the broken block with `monthlyTdsPaiseNewRegime()` — a correct
+new-regime FY 2024-25 computation in integer paise (₹75,000 standard deduction,
+slabs 0–3L/3–7L/7–10L/10–12L/12–15L/>15L, §87A rebate up to ₹7,00,000 taxable
+with marginal relief, 4% cess, ÷12). Only the TDS block was scale-wrong; PF/ESI/PT
+were already paise-correct and were left unchanged.
+
+**Verified:** the exact function run in node against seven salary levels, and
+type-checked under `tsc --strict`. Impact of the bug it removes: the old code
+deducted **₹6,666–18,666/month from employees earning ₹2.4L–7.2L/year who owe
+zero tax**, and ~5× over-deducted at higher incomes (e.g. ₹1L/month: ₹30,666 →
+correct ₹5,958).
+
+**Scope adjustment (roadmap updated, not abandoned):** R1.3 originally also
+folded in "move payroll compute server-side" (the F14 architectural slice). That
+part is **deferred to a dedicated milestone (R2.10)** rather than done blind,
+because: (a) the web app is a static export with **no CI test runner** for the
+frontend (audit tests/quality finding), so a large refactor of the 1,300-line
+payroll page can't be verified here; (b) the run/slip UI keys on frontend-only
+columns (`generated_at`, status `"generated"`) that the backend
+`POST /api/payroll/runs` doesn't populate (it uses `"draft"`), and slips created
+by the service-role backend would need an RLS-safe re-read; (c) a discovered
+related defect — **frontend-generated runs store no run totals**, so backend
+finalize (which reads `total_gross_paise`) can't process them. R2.10 routes the
+frontend through the backend compute (fixing F15 at the source *and* the missing
+totals) once frontend test infrastructure exists. The in-place F15 fix removes
+the launch blocker now.
+
+**Next:** Milestone R1.4 (convert the GSTR-3B GSTN payload to rupees, F16).
 

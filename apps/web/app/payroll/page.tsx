@@ -100,6 +100,39 @@ function employeeGrossPaise(emp: Employee): number {
 }
 
 /**
+ * Monthly salary TDS under the new regime (IT Act §192), in integer paise.
+ *
+ * FY 2024-25 (AY 2025-26): standard deduction ₹75,000; slabs 0–3L nil, 3–7L 5%,
+ * 7–10L 10%, 10–12L 15%, 12–15L 20%, >15L 30%; §87A rebate makes tax nil up to
+ * ₹7,00,000 taxable (with marginal relief just above the ceiling); 4% cess.
+ *
+ * Input and output are PAISE. The previous version compared a paise-scale annual
+ * gross against rupee-scale thresholds (e.g. `annualGross > 1500000` meaning
+ * ₹15,000 instead of ₹15,00,000) while the base amounts were paise, so it
+ * massively over-deducted (finding F15). NOTE: this statutory logic belongs
+ * server-side — the payroll compute should route through the backend
+ * (POST /api/payroll/runs). Kept here, corrected, until that migration lands.
+ */
+function monthlyTdsPaiseNewRegime(annualGrossPaise: number): number {
+  const STD_DEDUCTION = 7_500_000;   // ₹75,000 in paise (new regime)
+  const REBATE_CEIL = 70_000_000;    // ₹7,00,000 taxable in paise (§87A)
+  const taxable = Math.max(0, annualGrossPaise - STD_DEDUCTION);
+  if (taxable <= REBATE_CEIL) return 0;
+
+  // Cumulative base tax (paise) at each slab floor + marginal rate above it.
+  let tax: number;
+  if (taxable > 150_000_000)      tax = 14_000_000 + Math.floor((taxable - 150_000_000) * 30 / 100);
+  else if (taxable > 120_000_000) tax =  8_000_000 + Math.floor((taxable - 120_000_000) * 20 / 100);
+  else if (taxable > 100_000_000) tax =  5_000_000 + Math.floor((taxable - 100_000_000) * 15 / 100);
+  else                            tax =  2_000_000 + Math.floor((taxable -  70_000_000) * 10 / 100);
+
+  // §87A marginal relief: tax cannot exceed the income above the ₹7,00,000 ceiling.
+  tax = Math.min(tax, taxable - REBATE_CEIL);
+  tax = tax + Math.floor(tax * 4 / 100);   // 4% health & education cess
+  return Math.floor(tax / 12);
+}
+
+/**
  * Compute payroll for one employee — all integer paise arithmetic.
  * IT Act Section 192: TDS on salary via new-regime basic slab rates.
  * ESI Act: employee 0.75%, employer 3.25% of gross (gross <= Rs 21,000/month).
@@ -137,21 +170,9 @@ function computeSlip(emp: Employee, ptState: string): {
     pt = 20800;
   }
 
-  // TDS estimate — IT Act Section 192, new regime slabs (FY 2024-25)
-  const annualGross = gross * 12;
-  let annualTax = 0;
-  if (annualGross > 1500000) {
-    annualTax = Math.round((annualGross - 1500000) * 30 / 100) + 12500 * 100;
-  } else if (annualGross > 1250000) {
-    annualTax = Math.round((annualGross - 1250000) * 25 / 100) + 7500 * 100;
-  } else if (annualGross > 1000000) {
-    annualTax = Math.round((annualGross - 1000000) * 20 / 100) + 5000 * 100;
-  } else if (annualGross > 750000) {
-    annualTax = Math.round((annualGross - 750000) * 15 / 100) + 2500 * 100;
-  } else if (annualGross > 500000) {
-    annualTax = Math.round((annualGross - 500000) * 10 / 100);
-  }
-  const tds = annualGross <= 700000 ? 0 : Math.round(annualTax / 12);
+  // TDS estimate — IT Act §192, new regime (FY 2024-25). Integer paise; see
+  // monthlyTdsPaiseNewRegime for the slab/rebate/cess logic and the F15 fix note.
+  const tds = monthlyTdsPaiseNewRegime(gross * 12);
 
   const net = gross - pf - esi - pt - tds;
   return { gross, pf, esi, pt, tds, net };
