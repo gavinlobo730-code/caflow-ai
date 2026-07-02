@@ -347,3 +347,42 @@ one-line migration SQL fixes plus tooling/tests/CI.
 finding F6) — the highest-severity launch blocker — after this milestone's
 regression review.
 
+## Milestone R1.1 — Multi-client invoice/credit-note numbering, F6 (DELIVERED)
+
+**Goal:** let every bookkeeping client of a firm issue invoices; today only the
+first client can.
+
+**Revalidation:** F6 confirmed still live. The number is `SINV-{fy}-{seq}` with a
+**per-(firm, client, FY)** sequence (`routers/sales_invoices.py:64`
+`_next_invoice_seq`) but a **per-(firm, invoice_no)** UNIQUE constraint
+(`050:36`). Client B's first invoice computes `SINV-{fy}-0001` (its own count is
+0), collides with client A's, and `services/numbering.py`'s retry recomputes the
+same client-scoped number and collides every time → 500. Credit notes share the
+identical pattern (`_next_cn_seq` vs `050:176`).
+
+**Root cause & fix:** the numbering-per-client is *correct* — each client is a
+distinct supplier and must keep its own continuous series (CGST Rule 46). The
+UNIQUE key was simply too narrow. Migration **`151_per_client_document_numbering.sql`**
+widens it to `(firm_id, client_id, invoice_no)` and
+`(firm_id, client_id, credit_note_no)` via idempotent DO-blocks that drop the old
+constraint by column-set and add the new one. No application code changed — the
+sequence logic was already per-client, and no code looks up invoices/credit-notes
+by number alone (verified), so widening the key breaks no read path. Widening a
+unique key only relaxes it, and the bug itself prevented any colliding data, so
+the migration is data-safe.
+
+**Verified against real PostgreSQL 16** (`tests/test_per_client_numbering.py`,
+runs in the `migrations` CI job): two clients of one firm can each hold
+`SINV-2526-0001` / `CN-2526-0001`, while a same-client duplicate is rejected by
+the new constraint (statutory per-supplier uniqueness preserved). Migration 151
+applies cleanly (drift baseline unchanged at 11); full suite 2153 passed / 49
+skipped, no regressions.
+
+**Related, out of scope for R1.1 (tracked):** receipts, purchase payments and
+debit notes have *no* number-uniqueness constraint at all (a different defect —
+duplicate numbers possible, not a collision-blocks-second-client bug). Left for a
+dedicated hardening item since adding those constraints requires de-duping any
+existing data.
+
+**Next:** Milestone R1.2 (balance the payroll finalization journal, F13).
+
