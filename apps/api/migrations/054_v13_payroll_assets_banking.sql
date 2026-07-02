@@ -32,8 +32,7 @@ VALUES
   (NULL, NULL, '6001', 'Profit on Asset Disposal',     'Income',    'Other Income', true),
   (NULL, NULL, '7001', 'Loss on Asset Disposal',       'Expense',   'Other Expense', true)
 ON CONFLICT (account_code, firm_id, client_id)
-  DO NOTHING
-  WHERE firm_id IS NULL AND client_id IS NULL;
+  DO NOTHING;
 
 -- ─── 2. PAYROLL EMPLOYEES — add missing columns ───────────────────────────────
 ALTER TABLE public.payroll_employees

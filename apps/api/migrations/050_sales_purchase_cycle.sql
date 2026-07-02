@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS client_sales_invoices (
   invoice_date             DATE NOT NULL,
   due_date                 DATE,
   -- Place of supply state code per CGST Act Section 12/13 for IGST determination
-  supply_state_code        TEXT(2),
+  supply_state_code        TEXT,  -- 2-char place-of-supply state code
   -- IGST applies for interstate; CGST+SGST for intrastate (CGST Act, Section 9 & IGST Act, Section 5)
   is_interstate            BOOLEAN NOT NULL DEFAULT FALSE,
   notes                    TEXT,
