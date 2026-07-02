@@ -232,6 +232,8 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 
 **R2.8 — Make AI extraction real (F19).** Pin `groq` in `requirements.txt`; create the missing `increment_message_count` RPC; stop persisting mock-derived notices/tasks; surface extraction failures instead of fabricating. *Effort:* M. *Benefit:* the AI value prop stops silently faking data.
 
+**R2.9 — Document-number uniqueness for the remaining statutory docs** *(surfaced by the R1.1 regression review).* `debit_notes.debit_note_no` (medium), `receipts.receipt_no` and `purchase_payments.payment_no` (low) generate numbers but have **no** uniqueness constraint, so the numbering retry is dead code and concurrent duplicates are possible (CGST §34 / Rule 53 require serial uniqueness for debit notes). Add per-client (debit notes/receipts) / per-firm (payments, matching their generator) UNIQUE keys, **preceded by a de-dup migration** for any existing duplicates. *Effort:* M. *Deps:* R0.1. *Risk:* must de-dup live data before adding the constraint. *Benefit:* closes the numbering-integrity gap R1.1 deliberately scoped out.
+
 ### Tier 3 — Medium (productivity, consolidation, scale)
 
 - **R3.1 — Statutory rules-as-data registry (FY-versioned).** Single source of truth for slabs/thresholds/due-dates; eliminates the class of bugs behind F15/F17/F18. *Effort:* L. *Benefit:* tax law becomes maintainable data.
@@ -378,11 +380,25 @@ the new constraint (statutory per-supplier uniqueness preserved). Migration 151
 applies cleanly (drift baseline unchanged at 11); full suite 2153 passed / 49
 skipped, no regressions.
 
-**Related, out of scope for R1.1 (tracked):** receipts, purchase payments and
-debit notes have *no* number-uniqueness constraint at all (a different defect —
-duplicate numbers possible, not a collision-blocks-second-client bug). Left for a
-dedicated hardening item since adding those constraints requires de-duping any
-existing data.
+**Regression review (3 lenses, adversarially verified):** core F6 fix confirmed
+**correct and complete** — "no app-code change needed" verified (the retry in
+`numbering.py` still works under the wider key; mock/prod parity holds on the F6
+dimension; no read path assumes firm-global number uniqueness; the journal
+idempotency dedup keys on `(firm, client, reference_no, entry_date)` so two
+clients sharing `SINV-2526-0001` produce distinct journals; recurring invoices
+reuse the fixed path). Migration 151 judged safe (nits only). Follow-up applied:
+added `tests/test_document_numbering_unit.py` exercising the application
+sequence generators (per-client + per-FY scoping), complementing the DB-level
+constraint proof.
+
+**Sibling gaps the review confirmed — promoted to a tracked roadmap item (R2.9),
+deliberately NOT folded into R1.1** (they are a *different* defect — missing
+uniqueness, not a collision — and adding constraints needs a data de-dup step):
+`debit_notes.debit_note_no` (medium — per-client numbering but no unique
+constraint anywhere, so the retry is dead code and concurrent duplicates are
+possible; CGST §34/Rule 53 needs serial uniqueness), `receipts.receipt_no` and
+`purchase_payments.payment_no` (low). `fee_invoices`, `purchase_bills` and
+recurring invoices were verified fine.
 
 **Next:** Milestone R1.2 (balance the payroll finalization journal, F13).
 
