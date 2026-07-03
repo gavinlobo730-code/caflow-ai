@@ -169,7 +169,10 @@ def cancel_instance(
         raise HTTPException(404, "Workflow instance not found")
     if instance["status"] in ("completed", "failed", "cancelled"):
         raise HTTPException(400, f"Cannot cancel instance in status: {instance['status']}")
-    updated = _repo().update_instance_status(instance_id, "cancelled")
+    # F11/F12 hardening: this call passed (instance_id, "cancelled") into a
+    # (firm_id, instance_id, status, ...) signature — a TypeError on every
+    # cancel; the builder's write paths had never been exercised end to end.
+    updated = _repo().update_instance_status(firm_id, instance_id, "cancelled")
     _repo().log_execution(instance_id, firm_id, "cancelled", {"by": current_user.get("auth_user_id")})
     return api_response(True, updated)
 
@@ -203,7 +206,11 @@ def respond_to_approval(
 ):
     firm_id = current_user["firm_id"]
     user_id = current_user.get("auth_user_id", "unknown")
-    approval = _repo().respond_approval(firm_id, approval_id, payload.decision, user_id, payload.response_notes)
+    # Signature is (firm_id, approval_id, decision, response_notes,
+    # responder_id) — the old call swapped the last two, persisting the
+    # responder's id as the notes and the notes as the responder.
+    approval = _repo().respond_approval(
+        firm_id, approval_id, payload.decision, payload.response_notes or "", user_id)
     if not approval:
         raise HTTPException(404, "Approval not found or already responded")
     # Resume/cancel workflow
@@ -242,7 +249,16 @@ def create_schedule(
     template = _repo().get_template(firm_id, payload.template_id)
     if not template:
         raise HTTPException(404, "Workflow template not found")
-    schedule = _repo().create_schedule(firm_id, payload.model_dump(), user_id)
+    # Explicit kwargs — the old call passed the whole payload dict as the
+    # template_id positional (TypeError on every schedule creation).
+    schedule = _repo().create_schedule(
+        firm_id,
+        template_id=payload.template_id,
+        name=payload.name,
+        cron_expression=payload.cron_expression,
+        timezone=payload.timezone,
+        user_id=user_id,
+    )
     return api_response(True, schedule)
 
 
@@ -257,7 +273,9 @@ def toggle_schedule(
     schedule = next((s for s in schedules if s["id"] == schedule_id), None)
     if not schedule:
         raise HTTPException(404, "Schedule not found")
-    updated = _repo().toggle_schedule(firm_id, schedule_id, not schedule["is_active"])
+    # toggle_schedule(firm_id, schedule_id) flips is_active itself — the old
+    # call passed a third bool that the 2-arg signature rejects (TypeError).
+    updated = _repo().toggle_schedule(firm_id, schedule_id)
     return api_response(True, updated)
 
 

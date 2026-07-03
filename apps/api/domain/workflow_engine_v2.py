@@ -47,11 +47,23 @@ class WorkflowEngineV2:
         trigger_type: str,
         trigger_data: dict,
         client_id: Optional[str] = None,
+        template_id: Optional[str] = None,
     ) -> list[dict]:
         """Evaluate all active templates for this trigger; start instances for matches.
 
         An idempotency key (SHA-256 of firm+trigger+client+data) prevents
         duplicate instances when the same event fires more than once.
+
+        template_id: when given, fire this EXACT template only — used by the
+        workflow-schedule tick (run_due_schedules), where a workflow_schedule
+        row targets one specific template_id and "due" means "run THIS
+        template now," not "broadcast to every active template whose
+        trigger_type happens to be 'scheduled'" (R2.7 adversarial-review
+        finding: the firm-wide broadcast fired unrelated templates and fired
+        nothing at all — while still recording success — for a schedule
+        whose target template declared any other trigger_type). Direct
+        targeting skips the trigger_type/trigger_config match but still
+        respects is_active and the template's own conditions.
         """
         # Generate idempotency key from trigger inputs
         key_data = f"{firm_id}:{trigger_type}:{client_id}:{json.dumps(trigger_data, sort_keys=True)}"
@@ -61,13 +73,17 @@ class WorkflowEngineV2:
         if not self._evaluate_trigger(trigger_type, trigger_data):
             return []
 
-        templates = self._repo.list_templates(firm_id=firm_id, is_active=True)
+        if template_id is not None:
+            target = self._repo.get_template(firm_id, template_id)
+            templates = [target] if target and target.get("is_active") else []
+        else:
+            templates = self._repo.list_templates(firm_id=firm_id, is_active=True)
         started: list[dict] = []
 
         for template in templates:
-            if template["trigger_type"] != trigger_type:
+            if template_id is None and template["trigger_type"] != trigger_type:
                 continue
-            if not self._matches_trigger_config(template.get("trigger_config", {}), trigger_data):
+            if template_id is None and not self._matches_trigger_config(template.get("trigger_config", {}), trigger_data):
                 continue
             if template.get("conditions") and not self._evaluate_conditions(template["conditions"], trigger_data):
                 continue
@@ -268,7 +284,7 @@ class WorkflowEngineV2:
                 completed_at=datetime.utcnow().isoformat(),
             )
             self._repo.log_execution(instance["id"], firm_id, "completed", {"steps_executed": 0})
-            return {"status": "completed", "steps_executed": 0}
+            return {"status": "completed", "instance_id": instance["id"], "steps_executed": 0}
 
         # Build step map for O(1) lookup by id
         step_map: dict[str, dict] = {s["id"]: s for s in steps}
@@ -298,7 +314,7 @@ class WorkflowEngineV2:
                     failed_at=datetime.utcnow().isoformat(),
                 )
                 self._repo.log_execution(instance["id"], firm_id, "failed", {"error": "cycle_detected"})
-                return {"status": "failed", "error": "cycle_detected"}
+                return {"status": "failed", "instance_id": instance["id"], "error": "cycle_detected"}
 
             visited.add(step_id)
             steps_executed += 1
@@ -319,8 +335,14 @@ class WorkflowEngineV2:
             try:
                 result, next_step_id = self._execute_step_with_retry(current_step, instance, context, firm_id)
 
-                # Update action log to success
-                self._repo.update_action_log(log["id"], "success", result_data=result)
+                # Honest statuses (F12): not-implemented actions carry the
+                # _action_status sentinel and are logged as 'skipped', never
+                # 'success' — analytics and the failures view stay truthful.
+                log_status = "success"
+                if isinstance(result, dict) and result.get("_action_status") == "skipped":
+                    log_status = "skipped"
+                    result = {k: v for k, v in result.items() if k != "_action_status"}
+                self._repo.update_action_log(log["id"], log_status, result_data=result)
 
                 context.update(result or {})
                 self._repo.log_execution(
@@ -343,7 +365,7 @@ class WorkflowEngineV2:
                     {"approval_id": pause.approval_id},
                 )
                 # Execution deliberately halted — will resume via resume_after_approval
-                return {"status": "waiting_approval", "approval_id": pause.approval_id, "steps_executed": steps_executed}
+                return {"status": "waiting_approval", "instance_id": instance["id"], "approval_id": pause.approval_id, "steps_executed": steps_executed}
 
             except Exception as exc:
                 _logger.exception("Workflow step permanently failed after retries: %s", exc)
@@ -357,7 +379,7 @@ class WorkflowEngineV2:
                     instance["id"], firm_id, "failed",
                     {"step": current_step["name"], "error": str(exc)},
                 )
-                return {"status": "failed", "error": str(exc), "steps_executed": steps_executed}
+                return {"status": "failed", "instance_id": instance["id"], "error": str(exc), "steps_executed": steps_executed}
 
         if steps_executed >= MAX_STEPS:
             self._repo.log_failure(
@@ -371,7 +393,7 @@ class WorkflowEngineV2:
                 failed_at=datetime.utcnow().isoformat(),
             )
             self._repo.log_execution(instance["id"], firm_id, "failed", {"error": "max_steps_exceeded"})
-            return {"status": "failed", "error": "max_steps_exceeded"}
+            return {"status": "failed", "instance_id": instance["id"], "error": "max_steps_exceeded"}
 
         self._repo.update_instance_status(
             firm_id, instance["id"], "completed",
@@ -379,7 +401,7 @@ class WorkflowEngineV2:
             context_data=context,
         )
         self._repo.log_execution(instance["id"], firm_id, "completed", {"steps_executed": steps_executed})
-        return {"status": "completed", "steps_executed": steps_executed}
+        return {"status": "completed", "instance_id": instance["id"], "steps_executed": steps_executed}
 
     def _execute_step_with_retry(
         self,
@@ -390,10 +412,11 @@ class WorkflowEngineV2:
     ) -> tuple[dict, Optional[str]]:
         """Execute a step with up to MAX_RETRIES attempts on failure.
 
-        Approval pauses (_ApprovalPause) are never retried — they bubble up
-        immediately. Each failed attempt logs a workflow_failure row with the
-        attempt number. After all attempts are exhausted the last exception
-        is re-raised to the caller.
+        Approval pauses (_ApprovalPause) and deterministic validation
+        failures (WorkflowStepValidationError) are never retried — they
+        bubble up immediately. Everything else logs a workflow_failure row
+        per attempt and backs off exponentially. After all attempts are
+        exhausted the last exception is re-raised to the caller.
         """
         last_error: Exception = RuntimeError("No attempt made")
         for attempt in range(MAX_RETRIES):
@@ -408,6 +431,13 @@ class WorkflowEngineV2:
                 return result, next_step_id
             except _ApprovalPause:
                 raise  # never retry approval pauses
+            except WorkflowStepValidationError as exc:
+                self._repo.log_failure(
+                    instance.get("firm_id", firm_id), instance["id"], step["id"],
+                    type(exc).__name__, str(exc), {"retryable": False},
+                    retry_count=1,
+                )
+                raise  # deterministic — retrying can't change the outcome
             except Exception as exc:
                 last_error = exc
                 retry_delay = RETRY_DELAYS[attempt] if attempt < len(RETRY_DELAYS) else 8
@@ -499,49 +529,109 @@ class WorkflowEngineV2:
 
         return {}, step.get("next_step_id")
 
+    # Task priority CHECK vocabulary (migration 002) — clamp workflow params
+    # so a template typo can't fail an otherwise-valid task insert.
+    _TASK_PRIORITIES = {"low", "medium", "high", "critical"}
+    _NOTIF_SEVERITIES = {"critical", "high", "medium", "low", "info"}
+
     def _execute_action(self, config: dict, instance: dict, context: dict, firm_id: str) -> dict:
-        """Execute an action step. Returns result_data dict."""
+        """Execute an action step. Returns result_data dict.
+
+        F12 fix: create_task and send_notification now create REAL rows via
+        the same repositories the task/notification routers use (previously
+        every action fabricated an id, wrote nothing, and was logged —
+        and counted in analytics — as a success). Action types with no real
+        implementation yet return an explicit not_implemented result carrying
+        the _action_status sentinel, which the step runner records as a
+        'skipped' action log, never 'success'.
+        """
         action_type = config.get("action_type", "")
         params = config.get("params", {})
 
         if action_type == "create_task":
-            task_id = f"task-wf-{str(uuid.uuid4())[:8]}"
-            _logger.info("WF: create_task '%s' for firm %s", params.get("title"), firm_id)
-            return {"task_id": task_id, "title": params.get("title", "Workflow Task")}
-
-        elif action_type == "assign_task":
-            return {"assigned_to": params.get("user_id"), "task_id": params.get("task_id")}
+            # tasks.client_id is NOT NULL (migration 002) — the instance must
+            # target a client. Failing loudly beats fabricating success.
+            client_id = (
+                instance.get("client_id")
+                or context.get("client_id")
+                or (instance.get("trigger_data") or {}).get("client_id")
+            )
+            if not client_id:
+                raise WorkflowStepValidationError(
+                    "create_task requires a client: the workflow instance has "
+                    "no client_id in its instance/trigger context"
+                )
+            # Tenancy guard (R2.7 adversarial-review finding): manual triggers
+            # accept a caller-supplied, unvalidated trigger_data/client_id
+            # (routers/workflow_builder.py's POST .../trigger). routers/tasks.py
+            # validates every client_id against the caller's firm before
+            # inserting a task — this write path must too, or a task-write
+            # user could bind a task to another firm's client id by simply
+            # passing it in the trigger payload.
+            from repositories.client_repository import client_repo
+            if not client_repo.find_by_id(client_id, firm_id):
+                raise WorkflowStepValidationError(
+                    f"create_task: client {client_id} does not belong to firm {firm_id}"
+                )
+            from repositories.task_repository import task_repo
+            priority = params.get("priority", "medium")
+            if priority not in self._TASK_PRIORITIES:
+                priority = "medium"
+            task = task_repo.create({
+                "firm_id": firm_id,
+                "client_id": client_id,
+                "title": params.get("title", "Workflow Task"),
+                "description": params.get("description")
+                    or f"Created by workflow instance {instance['id']}",
+                "status": "todo",
+                "priority": priority,
+                "due_date": params.get("due_date"),
+                "completed_at": None,
+            })
+            _logger.info("WF: created task %s ('%s') for firm %s",
+                         task["id"], task["title"], firm_id)
+            return {"task_id": task["id"], "title": task["title"]}
 
         elif action_type == "send_notification":
-            notif_id = f"notif-wf-{str(uuid.uuid4())[:8]}"
-            _logger.info("WF: send_notification '%s' for firm %s", params.get("title"), firm_id)
-            return {"notification_id": notif_id}
+            from repositories.notifications_repository import notifications_repo
+            severity = params.get("severity", "info")
+            if severity not in self._NOTIF_SEVERITIES:
+                severity = "info"
+            # Same tenancy guard as create_task: a caller-controlled user_id
+            # must belong to this firm, or a notification could be addressed
+            # to another firm's user.
+            user_id = params.get("user_id")
+            if user_id:
+                from repositories.user_repository import user_repo
+                target_user = user_repo.find_by_id(user_id)
+                if not target_user or target_user.get("firm_id") != firm_id:
+                    raise WorkflowStepValidationError(
+                        f"send_notification: user {user_id} not found in firm {firm_id}"
+                    )
+            notif = notifications_repo.create({
+                "firm_id": firm_id,
+                "client_id": instance.get("client_id"),
+                "user_id": user_id,
+                # 'workflow' added to notifications.type CHECK by migration 157
+                "type": "workflow",
+                "title": params.get("title", "Workflow notification"),
+                "body": params.get("message") or params.get("body") or "",
+                "severity": severity,
+                "action_url": params.get("action_url"),
+            })
+            _logger.info("WF: created notification %s for firm %s", notif["id"], firm_id)
+            return {"notification_id": notif["id"]}
 
-        elif action_type == "send_email":
-            return {"email_sent": True, "to": params.get("to")}
-
-        elif action_type == "update_status":
-            return {"updated_entity": params.get("entity_type"), "new_status": params.get("status")}
-
-        elif action_type == "change_owner":
-            return {"owner_changed_to": params.get("user_id")}
-
-        elif action_type == "archive_client":
-            return {"client_archived": True, "client_id": context.get("client_id")}
-
-        elif action_type == "create_proposal":
-            return {"proposal_id": f"prop-wf-{str(uuid.uuid4())[:8]}"}
-
-        elif action_type == "create_alert":
-            return {"alert_id": f"alert-wf-{str(uuid.uuid4())[:8]}"}
-
-        elif action_type == "trigger_ai_review":
-            return {"ai_review_requested": True}
-
-        elif action_type == "request_ai_summary":
-            return {"ai_summary_requested": True, "entity_id": params.get("entity_id")}
-
-        return {"action_executed": action_type}
+        # Everything below has NO real implementation yet. Return an explicit
+        # skip (logged as status='skipped') instead of a fabricated success —
+        # a CA must be able to trust that a green workflow actually did what
+        # its steps claim.
+        _logger.info("WF: action '%s' not implemented — step recorded as skipped", action_type)
+        return {
+            "_action_status": "skipped",
+            "skipped": "not_implemented",
+            "action_type": action_type,
+        }
 
     # ── Resume after approval ─────────────────────────────────────────────────
 
@@ -640,6 +730,16 @@ class _ApprovalPause(Exception):
     def __init__(self, approval_id: str) -> None:
         self.approval_id = approval_id
         super().__init__(f"Waiting for approval: {approval_id}")
+
+
+class WorkflowStepValidationError(Exception):
+    """Deterministic, input-validation-style step failure (e.g. a required
+    client_id is missing, or a caller-supplied id doesn't belong to this
+    firm). Retrying can never fix this — the same input produces the same
+    error every time — so _execute_step_with_retry re-raises it immediately
+    instead of burning RETRY_DELAYS (2s/4s/8s) and writing MAX_RETRIES
+    duplicate workflow_failures rows for one failure (R2.7 adversarial-review
+    finding)."""
 
 
 workflow_engine = WorkflowEngineV2()

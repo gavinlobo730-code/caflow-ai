@@ -129,12 +129,6 @@ export const api = {
     update: (id: string, body: unknown) => request(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     dashboardSummary: () => request("/api/tasks/summary/dashboard"),
   },
-  workflows: {
-    list: () => request("/api/workflows"),
-    get: (id: string) => request(`/api/workflows/${id}`),
-    instantiate: (id: string, body: unknown) =>
-      request(`/api/workflows/${id}/instantiate`, { method: "POST", body: JSON.stringify(body) }),
-  },
   team: {
     list: () => request("/api/team"),
   },

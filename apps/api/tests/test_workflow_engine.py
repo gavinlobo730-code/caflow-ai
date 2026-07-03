@@ -183,16 +183,73 @@ class TestWorkflowRepository:
 # ── Action execution (unit) ───────────────────────────────────────────────────
 
 class TestActionExecution:
-    def test_create_task_action(self, engine):
+    def test_create_task_action(self, engine, monkeypatch):
+        """F12: create_task now writes a REAL row via task_repo — the mock-mode
+        task store must contain it, keyed to the instance's client. The
+        tenancy guard (R2.7 adversarial-review finding) is stubbed here the
+        same way other route tests stub client_repo — the demo MOCK_CLIENTS
+        dataset doesn't model firm_id per client, so this isolates the
+        action-execution behaviour from that pre-existing demo-data gap."""
+        from repositories import client_repository
+        monkeypatch.setattr(
+            client_repository.client_repo, "find_by_id",
+            lambda cid, fid=None: {"id": cid, "firm_id": "firm-001"},
+        )
         step = {"step_type": "action", "id": "s-1", "name": "Create Task", "config": {
             "action_type": "create_task",
             "params": {"title": "File GSTR-3B", "priority": "high"},
         }, "next_step_id": None}
-        instance = {"id": "i-1", "trigger_data": {}, "template_id": "t-1"}
+        instance = {"id": "i-1", "trigger_data": {}, "template_id": "t-1",
+                    "client_id": "c-001"}
         result, next_id = engine._execute_step(step, instance, {}, "firm-001")
         assert "task_id" in result
         assert result["title"] == "File GSTR-3B"
         assert next_id is None
+        from repositories.task_repository import TASK_INDEX
+        created = TASK_INDEX.get(result["task_id"])
+        assert created is not None, "task must actually exist in the task store"
+        assert created["client_id"] == "c-001"
+        assert created["firm_id"] == "firm-001"
+        assert created["priority"] == "high"
+
+    def test_create_task_rejects_client_from_another_firm(self, engine, monkeypatch):
+        """R2.7 adversarial-review finding: a caller-supplied client_id that
+        doesn't belong to this firm must be rejected, not silently accepted —
+        otherwise a task-write user can bind a task to another firm's client
+        by passing its id through an unvalidated trigger payload."""
+        from repositories import client_repository
+        from domain.workflow_engine_v2 import WorkflowStepValidationError
+        monkeypatch.setattr(client_repository.client_repo, "find_by_id", lambda cid, fid=None: None)
+        step = {"step_type": "action", "id": "s-1d", "name": "Create Task", "config": {
+            "action_type": "create_task", "params": {"title": "Cross-tenant"},
+        }, "next_step_id": None}
+        instance = {"id": "i-1d", "trigger_data": {}, "template_id": "t-1",
+                    "client_id": "other-firms-client"}
+        with pytest.raises(WorkflowStepValidationError, match="does not belong to firm"):
+            engine._execute_step(step, instance, {}, "firm-001")
+
+    def test_create_task_requires_client(self, engine):
+        """tasks.client_id is NOT NULL — a client-less instance must fail the
+        step loudly, never fabricate a success."""
+        step = {"step_type": "action", "id": "s-1b", "name": "Create Task", "config": {
+            "action_type": "create_task", "params": {"title": "Orphan"},
+        }, "next_step_id": None}
+        instance = {"id": "i-1b", "trigger_data": {}, "template_id": "t-1"}
+        from domain.workflow_engine_v2 import WorkflowStepValidationError
+        with pytest.raises(WorkflowStepValidationError, match="requires a client"):
+            engine._execute_step(step, instance, {}, "firm-001")
+
+    def test_unimplemented_action_reports_skipped_not_success(self, engine):
+        """F12: fabricated ids are gone — actions without a real
+        implementation carry the skipped sentinel for the step runner."""
+        step = {"step_type": "action", "id": "s-1c", "name": "Email", "config": {
+            "action_type": "send_email", "params": {"to": "x@y.example"},
+        }, "next_step_id": None}
+        instance = {"id": "i-1c", "trigger_data": {}, "template_id": "t-1"}
+        result, _ = engine._execute_step(step, instance, {}, "firm-001")
+        assert result["_action_status"] == "skipped"
+        assert result["skipped"] == "not_implemented"
+        assert "email_sent" not in result
 
     def test_send_notification_action(self, engine):
         step = {"step_type": "action", "id": "s-2", "name": "Notify", "config": {
