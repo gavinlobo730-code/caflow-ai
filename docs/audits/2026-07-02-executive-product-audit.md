@@ -218,28 +218,30 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 
 **R2.1 — Repair the year-end workflow schema (F9, F10). DELIVERED.** Revalidation found F9's real scope was every one of migration 067's 8 tables, not just the 3 originally-cited wrong table names — fixed via a corrective migration (155) plus code fixes, proven with live-Postgres inserts matching every router's exact payload. F10 fixed by fetching two date windows (FY-only for P&L, cumulative-to-date for Balance Sheet) rather than one uniform window. Also fixed two tenancy gaps (same class as F1/F4) found while re-reading the routers. *Effort:* L (as estimated). *Benefit:* year-end close now actually works against a real database, and multi-year Balance Sheets stop silently dropping prior-year balances.
 
-**R2.2 — Create the ~13 missing tables or gate the features (F5).** Add migrations for e-invoice/e-way/XBRL/ITR-filing/26AS-record tables (and the missing RPC/columns), or feature-flag those modules off until backed. *Effort:* L. *Benefit:* removes 500s; makes the tax-record features real.
+**R2.2 — Create the ~13 missing tables or gate the features (F5). DELIVERED.** Re-verification found the true scope was 24 phantom table names + 2 missing RPCs (not ~13), plus a blocking interaction: 15 of those tables sat behind an import of `core.supabase_client.get_supabase_client` — a function that doesn't exist anywhere in the codebase — so those modules died with `ImportError` before any SQL could even run. Migration 156 creates 21 tables, proven on real Postgres with every referencing router's exact insert payload (fresh-DB and re-apply paths both green); the phantom-import fix corrects all 10 affected files to import the canonical `get_supabase`, un-dead-ending ITR workspace, e-invoice, e-way bill, XBRL, 26AS, GST portal sync and Tally migration in production (this also closes the finding noted under R2.4 below). Two RPCs added. `test_schema_contract.py`'s missing-table/RPC ratchets are now empty sets — any future phantom reference fails CI immediately. *Effort:* L (scope grew from ~13 to 26 items). *Benefit:* removes 500s and ImportErrors; seven previously non-functional feature areas now work outside mock/demo mode.
 
-**R2.3 — Correct TDS & ITR statutory logic (F17, F18).** Rebuild thresholds as FY-versioned data (see R3.1); apply annual-aggregate correctly; ₹50k old-regime SD; §87A marginal relief; surcharge marginal relief + 15% CG cap; delete the frontend slab re-implementation. **Also (from the R1.2/R1.3 reviews): update to the CURRENT financial year with authoritative sourcing — Budget 2025 revised the new regime, and the backend `_compute_tds_192`/payroll `_compute_slip` still use FY 2024-25 with a stale ₹50,000 standard deduction (new regime is ₹75,000); add surcharge above ₹50L. Elevate F18 (income-tax deductions page `L = 100*100` → tax-slab boundaries 10× off, re-confirmed effectively a blocker for that page) to the front of this item.** *Effort:* L. *Benefit:* correct tax numbers, in step across backend and frontend.
+**R2.3 — Correct TDS & ITR statutory logic (F17, F18). DELIVERED.** Rebuilt both domains as FY-versioned data (`domain/income_tax/statutory_rates.py`, `domain/tds/section_rates.py`), one source of truth each, per an explicit governing product decision: FY 2025-26 is the verified baseline, FY 2026-27 is carried forward with a `rates_verified=False` flag surfaced through the API rather than invented. Fixed: the old-regime ₹50k standard deduction (was wrongly using the new regime's ₹75k); §87A marginal relief (new regime only — an adversarial review caught and fixed an initial overgeneralization to the old regime, which has a hard cliff instead); surcharge marginal relief with the new-regime 25% cap and the 15% cap on all capital-gains tax; F18's 10× paise-scaling bug on the deductions page, fixed by deleting its whole duplicate tax engine in favor of calling the backend. Vendor-payment TDS (F17) moved off float arithmetic to Finance Act 2025/2024 thresholds and rates. *Effort:* L (as estimated). *Benefit:* correct tax numbers, one source of truth across backend and frontend, and a clear, low-cost path to updating FY 2026-27 once verified (a data change, not a code change). **Deferred, tracked in Tier 3 below:** Section 80CCD(2) (employer NPS deduction) is unimplemented; Section 206AB's continued applicability for FY 2025-26 needs statutory verification.
 
 **R2.4 — Add a database tenancy backstop (F1, F4). DELIVERED (scope adjusted).** Investigated both proposed fix directions and found neither was the highest-leverage move available: the `USE_USER_JWT` cutover is a multi-week, zero-test-coverage architectural change (deferred, not attempted); a repository-layer mandate would cover only 28/94 routers. Instead fixed `core/authz.py::can_access_client`'s actual structural flaw (firm-wide roles bypassed firm-membership checking entirely, not just assignment scoping) — hardening the ~35 routers that already depend on it in one change — plus the three real cross-tenant IDORs a systematic sweep found (payroll finalize/status, GSTR-9 as originally cited, ITR version history). *Effort:* M (delivered scope). *Benefit:* the central authz gate can no longer be bypassed by supplying another firm's client_id; three live IDORs closed with regression tests proving both directions.
-- **New finding (Tier 2/3 candidate, not yet scheduled):** `core.supabase_client.get_supabase_client` — imported by 9 files (ITR workflow, e-invoice, e-way bill, XBRL, 26AS, GST portal sync, Tally migration) — does not exist anywhere in the codebase. Every call is gated behind `_USE_MOCK` checks, which is why no test has ever caught it. These entire feature areas are non-functional in any real deployment (`ImportError` on first non-mock call). *Effort:* M (define the intended function, fix 9 call sites, add a CI guard against phantom imports hiding behind mock-mode branches). *Benefit:* makes seven advertised feature areas actually work outside of mock/demo mode.
+- ~~**New finding (Tier 2/3 candidate, not yet scheduled):** `core.supabase_client.get_supabase_client` ... does not exist anywhere in the codebase.~~ **RESOLVED by R2.2** (see above) — fixed in the same Tier 2 pass, not left open.
 
 **R2.5 — Close the `/join` privilege escalation and portal-invite gaps (F21, F22). DELIVERED.** Moved `/join` account-linking to a backend endpoint validating a signed single-use invite token; added tokenized, expiring portal invites — and, discovered during implementation, rewired the actual live "Invite to Portal" UI (which bypassed the tokenized service entirely via a raw browser `signInWithOtp` + direct table write) onto the same audited path. See Implementation Log for the full account, including a self-caught UPDATE-based escalation bug and a self-caught regression in the `users`-table RLS hardening. *Effort:* M (actual, incl. the unplanned live-flow rewire). *Benefit:* removes the most exploitable security holes AND makes the client-portal invite feature actually work end-to-end for the first time.
 
-**R2.6 — Fix RLS predicates and migration hygiene (F20 + drift). DELIVERED (partially).** Corrected all 43 remaining policies keyed on the never-issued `firm_id` JWT claim (migration 154); added a database-free ratchet test against duplicate migration numbers growing further. **Not done — needs a human with production access:** actually reconciling repo-vs-live drift requires running the migration runner against the real production Supabase, which this session has no credentials for and would not run autonomously regardless (high-blast-radius, hard-to-reverse). See Implementation Log for the exact command to run. *Effort:* M (delivered portion). *Benefit:* makes the eventual RLS/`USE_USER_JWT` cutover (R2.4) safe on 51 previously deny-all tables.
+**R2.6 — Fix RLS predicates and migration hygiene (F20 + drift). DELIVERED (partially).** Corrected all 43 remaining policies keyed on the never-issued `firm_id` JWT claim (migration 154); added a database-free ratchet test against duplicate migration numbers growing further. **Not done — needs a human with production access:** actually reconciling repo-vs-live drift requires running the migration runner against the real production Supabase, which this session has no credentials for and would not run autonomously regardless (high-blast-radius, hard-to-reverse). **This remains the single most important pre-launch action item in this entire document as of the Tier 2 regression review** — every fix delivered across R2.1–R2.12 has been proven against a fresh, disposable Postgres 16 instance with every migration applied from scratch; none of it has been verified against the actual production Supabase project, which may carry historical drift, partially-applied migrations, or manual hotfixes invisible to this session. See Implementation Log for the exact command to run. *Effort:* M (delivered portion). *Benefit:* makes the eventual RLS/`USE_USER_JWT` cutover (R2.4) safe on 51 previously deny-all tables.
 
-**R2.7 — Wire the workflow engine or hide it (F11, F12).** Register `workflow_builder_router` before the legacy catch-all (or constrain the `/{id}` route); implement real actions, or feature-flag the module off until done. *Effort:* M. *Benefit:* automation is honest.
+**R2.7 — Wire the workflow engine or hide it (F11, F12). DELIVERED.** Root cause went deeper than either finding stated: migration 068 (the engine's own schema) never fully applied on a fresh database at all, so 6 of its 7 tables never existed. Fixed via a corrective migration (157); deleted `routers/workflows.py` (fake, never-persisted data whose catch-all route shadowed the real router's own endpoints, causing F11's 404s); fixed four router→repository signature mismatches that had never been exercised end to end; made two action types (`create_task`, `send_notification`) write real rows instead of fabricating success, with every other action type now explicitly logging `skipped` rather than pretending to have run; registered the due-schedule scheduler tick, which had never been wired to APScheduler so cron-based workflows could never fire. Adversarial review caught and fixed a critical regression risk (a notification-CHECK widen that would have silently reverted an earlier production fix for five notification types) plus three more real bugs (cron scheduling silently never worked at all — `next_run_at` was never set and the cron library wasn't even installed; the new real-write actions bypassed the tenancy guard every other write path enforces; non-retryable validation errors went through the generic 3-attempt retry path). *Effort:* M (as estimated). *Benefit:* automation is now honest — every claimed action either really happened or is explicitly marked as not yet implemented.
 
-**R2.8 — Make AI extraction real (F19).** Pin `groq` in `requirements.txt`; create the missing `increment_message_count` RPC; stop persisting mock-derived notices/tasks; surface extraction failures instead of fabricating. *Effort:* M. *Benefit:* the AI value prop stops silently faking data.
+**R2.8 — Make AI extraction real (F19). DELIVERED.** Re-verification found the blast radius was larger than F19 stated: four overlapping extraction code paths existed, not one — two of which didn't just fabricate but *persisted* fake data (a government-notice extraction router that inserted a real row, created a task, and notified the partner using hardcoded fields whenever Groq was unavailable or failed), plus a fourth, entirely undisclosed extraction generation found only when a reviewer was explicitly asked to check for code paths the initial pass hadn't touched. All four now return honest 501/502/503 instead of fabricating a success; persistence only happens after a genuine successful extraction. Also fixed two unrelated cross-firm data leaks into the AI copilot's own prompt context, found while tracing extraction's callers — firm-wide task/compliance/risk summaries were being folded into every firm's chat context instead of being scoped to the caller's own firm. *Effort:* M (as estimated). *Benefit:* the AI value prop stops silently faking data; the copilot no longer leaks cross-firm operational data into its own prompts.
 
-**R2.12 — Full receipt→AR→journal atomicity** *(follow-up from R1.6/F7).* R1.6 made the receipt path journal-first + idempotent (dedup on `receipt_no`), which converges on retry and eliminated the "settled AR with no GL" harm. The stronger guarantee is a single multi-table RPC that writes the receipt, its allocations, the invoice `paid_paise`/status CAS, and the journal in ONE transaction — closing the residual "journal posted, then AR settle fails" window and the manual-path retry double-settle the audit flagged. Extend the `post_journal_atomic` pattern to a `settle_receipt_atomic` function. *Effort:* M. *Deps:* R0.1, R1.6. *Benefit:* receipts can never leave sub-ledger and GL out of step.
+**R2.9 — Document-number uniqueness for the remaining statutory docs. DELIVERED.** *(surfaced by the R1.1 regression review)*. `debit_notes.debit_note_no`, `receipts.receipt_no` and `purchase_payments.payment_no` all generated numbers with **no** uniqueness constraint at all — a genuine concurrent race could commit two identical numbers, a live CGST §34/Rule 53 compliance gap for debit notes. Migration 159 de-dups any pre-existing duplicates (suffixing them, never altering the underlying financial row) then adds UNIQUE constraints matching each generator's real scope (per-client for debit notes/receipts, per-firm for payments). Since receipts/payments post their GL journal before the number-bearing insert, a collision now has to reverse that journal — adversarial review found and fixed a critical bug in the reversal logic itself: the journal-posting idempotency fast-path could hand a losing request the *winning* request's already-committed journal id, so the naive compensation path would have reversed the winner's valid journal instead of the loser's failed attempt. Fixed with an ownership check before any reversal. *Effort:* M (as estimated). *Benefit:* closes the numbering-integrity gap R1.1 deliberately scoped out, with the new failure mode it introduces (journal-then-number-collision) itself proven safe.
 
-**R2.11 — Bank statement parser hardening** *(pre-existing, surfaced by the R1.5 regression review).* `domain/banking/normalizer._to_paise` uses `rstrip("DrCr")`, which is case/char-set sensitive and zeroes balances suffixed `CR`/`DR`/lowercase; single signed-Amount + Dr/Cr-indicator statement layouts are unsupported and misparse every row as a debit; `Dr` (overdraft) balances lose their sign (stored same as `Cr`); and statement opening/closing balances are taken by file position, which inverts on newest-first exports (also noted in §6). Fix the Dr/Cr suffix parsing (regex, case-insensitive), add adapters (or an Amount+indicator mode) for single-amount layouts, preserve overdraft sign, and derive opening/closing by date order. Also add a one-off re-import path for statements imported before R1.5 (their rows keep the old corrupted values and won't re-dedupe). *Effort:* M. *Benefit:* correct bank feeds across more banks and export styles.
+**R2.10 — Route payroll compute through the backend** *(the F14 payroll slice, deferred from R1.3).* **DELIVERED.** Replaced the web payroll page's client-side compute + direct `payroll_runs`/`payroll_slips`/`payroll_employees` writes with calls to the existing `POST /api/payroll/runs` (server-side `_compute_slip` + totals) and the rest of the backend payroll API. Found and fixed a real backend bug while scoping this: `GET /runs/{id}/slips` filtered on a `payroll_slips.firm_id` column that has never existed, so the endpoint could never return data against real Postgres. Found and fixed a genuine tax-correctness gap: `_compute_pt` accepted a `state` parameter but silently ignored it, always applying Karnataka's slab — undiscovered until this migration because the frontend's own (correct, per-state) logic masked it; would have been a silent regression for every non-Karnataka client had this migration shipped without the fix. Also fixed the missing bearer token in `clients/[id]/payroll/page.tsx`'s `apiFetch` (every call there would 401 against a real backend) and wired the 12 dormant frontend `node:test` files into CI (Node bumped 20→22 for `--experimental-strip-types`). *Effort:* M (as estimated). *Benefit:* one correct payroll engine, real per-state Professional Tax, and CI now actually runs the frontend's existing test suite. **Deferred, tracked in Tier 3 below:** Maharashtra/West Bengal/Tamil Nadu Professional Tax slab values are ported from the pre-existing frontend logic (the only source in this repo) and flagged pending statutory verification, same treatment as FY 2026-27's income-tax figures.
 
-**R2.10 — Route payroll compute through the backend** *(the F14 payroll slice, deferred from R1.3).* **DELIVERED.** Replaced the web payroll page's client-side compute + direct `payroll_runs`/`payroll_slips`/`payroll_employees` writes with calls to the existing `POST /api/payroll/runs` (server-side `_compute_slip` + totals) and the rest of the backend payroll API. Found and fixed a real backend bug while scoping this: `GET /runs/{id}/slips` filtered on a `payroll_slips.firm_id` column that has never existed, so the endpoint could never return data against real Postgres. Found and fixed a genuine tax-correctness gap: `_compute_pt` accepted a `state` parameter but silently ignored it, always applying Karnataka's slab — undiscovered until this migration because the frontend's own (correct, per-state) logic masked it; would have been a silent regression for every non-Karnataka client had this migration shipped without the fix. Also fixed the missing bearer token in `clients/[id]/payroll/page.tsx`'s `apiFetch` (every call there would 401 against a real backend) and wired the 12 dormant frontend `node:test` files into CI (Node bumped 20→22 for `--experimental-strip-types`). *Effort:* M (as estimated). *Benefit:* one correct payroll engine, real per-state Professional Tax, and CI now actually runs the frontend's existing test suite.
+**R2.11 — Bank statement parser hardening. DELIVERED.** *(pre-existing, surfaced by the R1.5 regression review)*. Fixed all five defects the audit's evidence pointed at: the Dr/Cr suffix parser was case/char-set sensitive and could double-negate or mishandle a suffix-plus-parens combination; single signed-Amount + Dr/Cr-indicator statement layouts misparsed every row as a debit; a layout-detection false positive; punctuation-intolerant indicator matching (`"Dr."` not recognised); and opening/closing balances taken by file position, which inverted on newest-first exports — now derived by true date order with a majority-vote direction check across adjacent rows instead of a bare two-endpoint comparison. *Effort:* M (as estimated). *Benefit:* correct bank feeds across more banks and export styles. **Deferred, tracked as R2.11.1 below:** a one-off re-import path for statements imported before this fix (their rows keep the old corrupted values and won't re-dedupe) — not yet scoped, needs a product decision on how aggressive the re-import matching should be.
 
-**R2.9 — Document-number uniqueness for the remaining statutory docs** *(surfaced by the R1.1 regression review).* `debit_notes.debit_note_no` (medium), `receipts.receipt_no` and `purchase_payments.payment_no` (low) generate numbers but have **no** uniqueness constraint, so the numbering retry is dead code and concurrent duplicates are possible (CGST §34 / Rule 53 require serial uniqueness for debit notes). Add per-client (debit notes/receipts) / per-firm (payments, matching their generator) UNIQUE keys, **preceded by a de-dup migration** for any existing duplicates. *Effort:* M. *Deps:* R0.1. *Risk:* must de-dup live data before adding the constraint. *Benefit:* closes the numbering-integrity gap R1.1 deliberately scoped out.
+**R2.12 — Full receipt→AR→journal atomicity. DELIVERED.** *(follow-up from R1.6/F7)*. Extended the `post_journal_atomic` pattern (migration 152) to a much larger transaction: `settle_receipt_atomic` (migration 160) writes the journal header, its lines, the receipt row, and every allocation's row-locked invoice update in ONE plpgsql function body, so no partial state can ever be observed and no app-level compensation is needed for this path. The highest financial-correctness-stakes change of the whole Tier 2 sequence — two independent adversarial-review lenses found 9 confirmed issues (1 refuted), several reproduced directly against real Postgres: a `payment_mode` value real production callers actually send violated the CHECK constraint (fixed by migration 161); the new RPC had no equivalent of the existing balance/zero-value guards (an imbalanced or empty journal both posted successfully and, per the immutability trigger, were permanently unfixable — fixed by migration 162); a second valid allocation row for the same invoice always rolled back the whole settlement; an RPC-error classifier collided with the function's own legitimate error messages; the multi-currency path's CAS had no retry at all (weaker than the path it was meant to match). *Effort:* M (as estimated, scope of the adversarial findings was larger). *Benefit:* receipts can never leave sub-ledger and GL out of step.
+
+### Tier 2 status: **CLOSED.** All 12 items (R2.1–R2.12) delivered as of the Tier 2 regression review (see Implementation Log). Every fix is proven against mock-mode tests and a disposable, freshly-migrated Postgres 16 instance; **none has been verified against the actual production Supabase project** (R2.6's undone sub-item) — see that item above for the exact reconciliation command. New issues surfaced during Tier 2 and not yet scheduled are tracked in Tier 3 below (R3.0, R3.7, R3.8, R2.11.1, and the newly-added R3.9–R3.11).
 
 ### Tier 3 — Medium (productivity, consolidation, scale)
 
@@ -252,6 +254,11 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 - **R3.6 — UX consistency:** one skeleton/empty/error system, real dialog semantics, dashboard load-error states, shared client context. *Effort:* M. *Benefit:* daily usability.
 - **R3.7 — Year-end close: post an explicit closing journal entry** *(surfaced by the R2.1/F10 fix)*. There is no mechanism today that transfers a completed year's P&L into `reserves_and_surplus` via an actual posted journal entry — the "add current-year PAT to reserves" step is a live, presentational preview computed fresh on every request, not an accounting fact. A second prior year's retained profit, if that year was also never explicitly closed, would still be invisible in a third year's cumulative reserves. Needs a business/accounting decision first (should this post automatically when a Partner locks the engagement? does it need its own CA-review gate, matching the CLAUDE.md "never auto-submit" spirit even though this is internal not government-facing? which specific reserves sub-account?) — do not implement unilaterally. *Effort:* M. *Benefit:* true multi-year retained-earnings continuity, not just single-year carry-forward.
 - **R3.8 — Consolidate the two competing year-end status-transition implementations** *(surfaced by the R2.1 investigation)*. `routers/year_end.py`'s generic `PATCH /engagements/{id}/status` and `routers/year_end_reviews.py`'s four specific `POST /reviews/*` endpoints both drive the same draft→in_review→approved→locked transition on `year_end_engagements`, writing overlapping-but-different column sets (`reviewed_by`/`approved_by` vs. `submitted_by`/`revision_requested_by`/`final_approved_by`). Both work today (migration 155 added columns for both) but the duplication is a maintainability risk — a future change to one easily misses the other. *Effort:* M. *Benefit:* one source of truth for the year-end review workflow.
+- **R2.11.1 — Bank-statement re-import path for pre-R2.11 statements** *(surfaced by the R2.11 fix phase, promoted here at Tier 2 close — not yet scoped)*. Statements imported before R2.11's parser fixes keep their old, incorrectly-signed/scaled rows on disk — nothing re-derives them from the fix, and the existing dedupe logic won't treat a corrected re-upload as new rows (by design, to prevent double-counting). Needs a product/design decision before implementation: how aggressive should re-import matching be (exact hash match vs. fuzzy date+amount match), does it replace rows in place or supersede them with an audit trail, and does it need its own CA-confirmation step given it can change historical reconciled balances. *Effort:* M. *Benefit:* firms that imported bank data before R2.11 get correct historical balances without a manual re-entry.
+- **R3.9 — Audit the ~57 migration-created tables with no backend reader** *(surfaced by the R2.2 regression review)*. Some may be reached directly from the frontend via PostgREST rather than through a backend router — the same F14 concern (business logic / unmediated table access from the browser) flagged elsewhere in this audit. Needs a systematic per-table check (grep `apps/web` for direct `.from("<table>")` reads/writes against each name) before deciding whether each is dead schema (safe to leave or formally deprecate) or an undocumented frontend-direct access path (a CLAUDE.md violation — "zero business logic in the frontend" — needing the same treatment as R2.10's payroll migration). *Effort:* M. *Benefit:* closes the door on any remaining unmediated-table-access surface; removes schema clutter.
+- **R3.10 — Implement Section 80CCD(2) and verify Section 206AB's FY 2025-26 status** *(surfaced by the R2.3 regression review)*. Section 80CCD(2) (employer NPS contribution) is deductible under the new regime — unlike the rest of Chapter VI-A — but is entirely unimplemented in `domain/income_tax`. Separately, `tds_validator.py`'s Section 206AB non-filer doubled-rate check may have been altered or removed by Finance Act 2025; this needs verification against the Act's actual text before either changing a compliance-conservative behaviour or leaving a since-repealed check silently in place. *Effort:* S–M. *Benefit:* closes a real deduction gap and confirms/corrects a compliance-sensitive check.
+- **R3.11 — Compensate `debit_notes.create_debit_note`'s header/lines insert** *(surfaced by the R2.9 regression review, low priority)*. The header is inserted via `insert_with_number` (now durably unique per R2.9) and `debit_note_lines` afterward with no compensation — a lines-insert failure leaves an orphaned draft header with zero lines. Not a money- or statutory-correctness issue (a draft, not a posted document) but worth closing for consistency with every other multi-step insert this Tier 2 pass hardened. *Effort:* S. *Benefit:* no orphaned draft rows from a partial write.
+- **R3.12 — Verify Maharashtra/West Bengal/Tamil Nadu Professional Tax slabs against current state notifications** *(surfaced by the R2.10 regression review)*. `routers/payroll.py::_PT_SLABS_BY_STATE`'s Karnataka entry is this codebase's original, unit-tested baseline; the other three states were ported verbatim from the frontend's pre-existing (pre-R2.10) client-side logic — the only source for those states anywhere in this repo — and have not been independently re-confirmed against each state's current Profession Tax Act/notification. Same "pending statutory verification" treatment as FY 2026-27's income-tax figures; updating a verified value is a one-line data change in `_PT_SLABS_BY_STATE`, not a code change. *Effort:* S (verification only, assuming the existing slab shape is correct). *Benefit:* removes the one remaining unverified-statutory-value flag from the payroll module.
 
 ### Tier 4 — Long-term (differentiation)
 Government-data ingestion via GSP/ASP-pull + Account Aggregator (submit stays CA-confirmed); reliable two-way Tally/Busy/Zoho import; unified deterministic-then-narrate AI layer; RAG tax-law copilot with citations; DPDP consent vault; mobile/PWA companion. These are where PracticeSync becomes a *better* product, not a cheaper clone.
@@ -2136,4 +2143,158 @@ claimed.
 
 **Next:** R2.11.1 (bank-statement re-import path), then the Tier 2
 regression review, then Tier 3.
+
+## Tier 2 Regression Review (R2.1–R2.12 — CLOSED)
+
+All 12 Tier 2 items are delivered. This review reads back across every
+milestone's own Implementation Log entry, re-runs the full test suite in
+one combined pass, and reconciles the roadmap (Section 10) against what
+actually shipped — several of its Tier 2 bullets had never been updated
+past their original "problem statement" wording despite the underlying work
+being long done; that inconsistency is fixed as part of this review.
+
+### Every issue fixed, by milestone
+
+- **R2.1 — Year-end schema (F9/F10).** F9's real scope was all 8 of
+  migration 067's tables (not the 3 originally cited), fixed via migration
+  155 plus code fixes proven with live-Postgres inserts; F10's Balance Sheet
+  fixed to fetch a cumulative-to-date window for BS accounts instead of
+  reusing the FY-only window correct only for P&L. Two tenancy IDORs found
+  and fixed alongside (year-end checklist, year-end mappings).
+- **R2.2 — Missing tables (F5).** Scope grew from ~13 to 24 phantom tables +
+  2 RPCs; migration 156 creates 21 tables, proven on real Postgres; the
+  `get_supabase_client` phantom-import bug (see R2.4) fixed for all 10
+  affected files, un-dead-ending 7 feature areas. Two more real bugs found
+  and fixed (customer/vendor import client_id, a message-count RPC that
+  reset counts to zero on every write).
+- **R2.3 — TDS & ITR statutory logic (F17/F18).** Rebuilt as FY-versioned
+  data with FY 2025-26 as the verified baseline (explicit product decision)
+  and FY 2026-27 flagged unverified rather than invented. F18's 10×
+  paise-scaling bug fixed by deleting its duplicate tax engine; §87A/
+  surcharge marginal relief corrected (adversarial review caught and fixed
+  an old-regime overgeneralization); payroll §192 moved off float math.
+- **R2.4 — Tenancy backstop (F1/F4).** Fixed `can_access_client`'s actual
+  structural flaw (firm-wide roles bypassed firm-membership checking) plus
+  3 real cross-tenant IDORs found by a systematic sweep (payroll, GSTR-9,
+  ITR version history).
+- **R2.5 — `/join` escalation + portal invites (F21/F22).** Moved account
+  linking to a token-validated backend endpoint; added tokenized, expiring
+  portal invites; found and fixed that the actual live "Invite to Portal"
+  button bypassed the audited service entirely; self-caught an
+  UPDATE-based escalation bug and a regression in the fix itself before
+  either shipped.
+- **R2.6 — RLS predicates + migration hygiene (F20).** Fixed 43 tables'
+  deny-all RLS policies keyed on a JWT claim this system never issues;
+  added a migration-numbering ratchet. Production-drift reconciliation
+  explicitly NOT done — no credentials, and it's the wrong kind of action
+  to take autonomously regardless.
+- **R2.7 — Workflow engine (F11/F12).** Migration 068 never fully applied
+  on a fresh database; fixed via migration 157. Deleted a dead router
+  whose catch-all shadowed the real one (F11); made 2 action types write
+  real rows, with every other type honestly marked `skipped` (F12).
+  Adversarial review found and fixed a critical regression risk plus 3
+  more real bugs (cron scheduling never actually worked at all).
+- **R2.8 — AI extraction (F19).** Found four overlapping fabrication code
+  paths (not one), two of which persisted fake data; a fourth, undisclosed
+  generation found only by adversarial review. All four now fail honestly
+  instead of fabricating. Two unrelated cross-firm prompt-context leaks in
+  the AI copilot fixed alongside.
+- **R2.9 — Document-number uniqueness.** Added UNIQUE constraints (with a
+  de-dup migration first) for debit notes, receipts, and purchase payments.
+  Adversarial review found and fixed a critical bug in the new
+  collision-compensation logic itself (it could reverse a different
+  request's already-committed journal).
+- **R2.10 — Payroll frontend→backend (F14 slice).** Routed the payroll
+  page through the existing, correct `POST /api/payroll/runs` instead of
+  client-side compute + raw Supabase writes. Found and fixed a real
+  backend bug (`get_run_slips` filtered on a nonexistent column) and a
+  genuine tax-correctness gap (`_compute_pt` silently ignored its own
+  `state` parameter). Wired the frontend's 12 dormant test files into CI.
+- **R2.11 — Bank statement parser hardening.** Fixed 5 defects: Dr/Cr
+  suffix parsing (case sensitivity, double-negation, parens interaction),
+  unsupported single-Amount+indicator layouts, punctuation-intolerant
+  indicator matching, and opening/closing balances taken by file position
+  instead of true date order.
+- **R2.12 — Receipt→AR→journal atomicity.** Extended the atomic-journal
+  pattern to a single transaction covering the journal, receipt, and every
+  allocation's row-locked invoice update. Two adversarial-review lenses
+  found 9 confirmed issues (1 refuted) — a `payment_mode` CHECK violation
+  real production code actually triggers, a missing balance/zero guard, a
+  duplicate-allocation bug, an RPC-error misclassification, and a
+  multi-currency CAS with no retry at all.
+
+### Full-suite regression evidence (this review, combined)
+
+Ran the complete backend suite with the real-Postgres harness enabled
+(`HARNESS_PG` set), which runs every mock-mode test plus every
+`HARNESS_PG`-gated real-Postgres proof across all 12 milestones in one
+pass: **2,396 passed, 23 failed, 36 skipped.** The 23 failures are the
+same pre-existing, unrelated `test_hardening.py`/`test_phase3_gst.py`/
+`test_phase3_mca.py`/`test_phase3_tds.py` failures documented as present
+since R2.5 (a test-isolation issue, not a Tier 2 regression) —
+reconfirmed unrelated by their unchanged identity and count across every
+single milestone in this sequence. `test_migrations_apply.py`,
+`test_schema_contract.py` and `test_migration_numbering.py` (the
+migration-drift/phantom-table/duplicate-number ratchets spanning the
+whole Tier 2 sequence) all pass cleanly — no migration regression, no new
+phantom table/RPC reference, no new duplicate migration number introduced
+across 12 milestones and the 10 migrations Tier 2 added (153 through 162).
+
+### Every newly discovered or deferred issue (consolidated)
+
+Everything below is now tracked in the roadmap (Section 10) rather than
+living only in a milestone's own notes:
+
+1. **Highest priority — R2.6's production-drift reconciliation.** Not yet
+   run against the real Supabase project; every Tier 2 fix is proven only
+   against a disposable, freshly-migrated Postgres 16 instance. This is a
+   human-with-production-credentials action, not something this session
+   can or should do autonomously.
+2. **R3.0** — `client_portal_users` RLS allows any firm staff member to
+   directly write a row, bypassing the tokenized invite service (R2.5).
+3. **R3.7** — no explicit year-end closing journal exists; a second
+   never-closed prior year's retained profit would stay invisible (R2.1) —
+   needs a business/accounting decision, not a unilateral fix.
+4. **R3.8** — two competing year-end status-transition implementations
+   write overlapping column sets to the same table (R2.1).
+5. **R3.9** *(new)* — ~57 migration-created tables have no backend reader;
+   some may be reached directly from the frontend via PostgREST, the same
+   F14-class concern R2.10 just fixed for payroll (R2.2).
+6. **R3.10** *(new)* — Section 80CCD(2) (employer NPS) is unimplemented;
+   Section 206AB's FY 2025-26 applicability needs verification (R2.3).
+7. **R2.11.1** — a one-off re-import path for bank statements imported
+   before R2.11's fixes; needs a product decision on re-import matching
+   aggressiveness before implementation (R2.11).
+8. **R3.11** *(new)* — `debit_notes.create_debit_note`'s header/lines
+   insert has no compensation; a lines-insert failure orphans a
+   zero-line draft header. Low priority — not a money or statutory issue
+   (R2.9).
+9. **R3.12** *(new)* — Maharashtra/West Bengal/Tamil Nadu Professional Tax
+   slabs are ported from the pre-existing frontend and flagged pending
+   statutory verification, same treatment as FY 2026-27's tax figures
+   (R2.10).
+10. **Roadmap bookkeeping corrected by this review** — R2.2, R2.3, R2.7,
+    R2.8, R2.9, R2.11 and R2.12's Section 10 bullets had never been
+    updated from their original pre-delivery wording despite being fully
+    shipped and documented here; all seven rewritten to reflect what
+    actually happened. R2.4's `get_supabase_client` finding was marked
+    "not yet scheduled" in the roadmap even though R2.2 had already fixed
+    it — corrected to point at R2.2 instead of appearing as a second,
+    still-open item.
+
+None of the above are launch-blocking in the sense R2.1–R2.12 themselves
+were (wrong numbers, cross-tenant reads, or endpoints that could never
+work) — they are either genuine business decisions this session
+correctly declined to make unilaterally, narrow low-severity gaps, or
+verification/consolidation work. The one exception is item 1, which is
+not a code defect but a process gap: **nothing in this entire Tier 2 body
+of work has been proven against the real production database**, and that
+should happen before any of it is considered load-bearing in production.
+
+**Next:** Tier 3, starting with whichever item the user prioritizes —
+R3.1 (statutory rules-as-data registry) and R3.2 (cross-client batch
+compliance cockpit) are flagged in Section 9 as the highest-leverage
+scale unlocks; R2.6's production-drift reconciliation should happen
+first regardless of which Tier 3 item comes next, since it requires
+credentials this session doesn't have and blocks nothing else.
 
