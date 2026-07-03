@@ -211,6 +211,44 @@ class TestSurcharge:
         extra_surcharge = with_cg.surcharge_paise - without_cg.surcharge_paise
         assert extra_surcharge == ltcg_other_tax * 15 // 100
 
+    def test_capital_gains_rates_are_read_from_the_fy_registry_not_hardcoded(self, monkeypatch):
+        """R3.1: 111A/112A/112 rates used to be inline constants in this
+        engine; they now live in statutory_rates.py's FYTaxRates. Prove the
+        engine actually reads them from there (not a value that happens to
+        still match) by swapping in a FYTaxRates with different capital-gains
+        rates and confirming the computed tax changes accordingly."""
+        import domain.income_tax.itr_engine as itr_engine_module
+        import dataclasses
+        base = RATES_BY_FY["2025-26"]
+        custom = dataclasses.replace(
+            base,
+            stcg_111a_rate_bps=1000,          # 10% instead of 20%
+            ltcg_112a_rate_bps=500,           # 5% instead of 12.5%
+            ltcg_112a_exemption_paise=0,      # no exemption instead of ₹1.25L
+            ltcg_112_other_rate_bps=2500,     # 25% instead of 12.5%
+        )
+        monkeypatch.setattr(itr_engine_module, "rates_for", lambda fy=None: custom)
+
+        # Salary chosen well above the ₹12L new-regime rebate threshold (with
+        # OR without the extra capital-gains income folded into total taxable
+        # income) and well below the first ₹50L surcharge threshold, so the
+        # only effect of adding capital gains is the flat-rate CG tax itself
+        # -- isolating it from rebate/surcharge threshold-crossing effects.
+        salary = 20 * L
+        r = engine.compute(req(
+            gross_salary_paise=salary,
+            capital_gains_stcg_paise=1 * L,
+            capital_gains_ltcg_paise=2 * L,
+            capital_gains_ltcg_other_paise=1 * L,
+            use_new_regime=True,
+        ))
+        expected_stcg = (1 * L) * 1000 // 10000
+        expected_ltcg = (2 * L - 0) * 500 // 10000
+        expected_ltcg_other = (1 * L) * 2500 // 10000
+        without_cg = engine.compute(req(gross_salary_paise=salary, use_new_regime=True))
+        cg_tax_component = r.tax_before_cess_paise - without_cg.tax_before_cess_paise
+        assert cg_tax_component == expected_stcg + expected_ltcg + expected_ltcg_other
+
 
 # ── Section 80C ───────────────────────────────────────────────────────────────
 

@@ -53,6 +53,26 @@ def test_fy_2025_26_is_verified():
     assert RATES_BY_FY["2025-26"].verified is True
 
 
+# ── Capital gains rates (R3.1 — migrated out of itr_engine.py's inline
+# constants into this registry) ──────────────────────────────────────────────
+
+def test_capital_gains_rates_match_the_pre_migration_constants():
+    """Sections 111A/112A/112 — the exact values itr_engine.py used to
+    hardcode inline before R3.1. Rates are in basis points (1250 = 12.5%)."""
+    assert FY.stcg_111a_rate_bps == 2000          # 20%
+    assert FY.ltcg_112a_rate_bps == 1250          # 12.5%
+    assert FY.ltcg_112a_exemption_paise == 125_000_00  # ₹1,25,000
+    assert FY.ltcg_112_other_rate_bps == 1250     # 12.5%
+
+
+def test_capital_gains_rates_carried_forward_to_fy_2026_27():
+    fy2627 = RATES_BY_FY["2026-27"]
+    assert fy2627.stcg_111a_rate_bps == FY.stcg_111a_rate_bps
+    assert fy2627.ltcg_112a_rate_bps == FY.ltcg_112a_rate_bps
+    assert fy2627.ltcg_112a_exemption_paise == FY.ltcg_112a_exemption_paise
+    assert fy2627.ltcg_112_other_rate_bps == FY.ltcg_112_other_rate_bps
+
+
 # ── slab_tax_paise — new regime ──────────────────────────────────────────────
 
 def test_new_regime_zero_below_4l():

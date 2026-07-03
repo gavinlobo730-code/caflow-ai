@@ -114,8 +114,8 @@ def _roc_obligations(financial_year: str, agm_date: Optional[str] = None) -> lis
     agm = ce_date(agm_date) if agm_date else date(fye, 9, 30)
     ps, pe = date(fye - 1, 4, 1), date(fye, 3, 31)
     return [
-        _spec("MCA_AOC4", "MCA", f"AOC-4 FY {financial_year}", ps, pe, agm + timedelta(days=30)),
-        _spec("MCA_MGT7", "MCA", f"MGT-7 FY {financial_year}", ps, pe, agm + timedelta(days=60)),
+        _spec("MCA_AOC4", "MCA", f"AOC-4 FY {financial_year}", ps, pe, ce.mca_due_date(agm, "AOC-4")),
+        _spec("MCA_MGT7", "MCA", f"MGT-7 FY {financial_year}", ps, pe, ce.mca_due_date(agm, "MGT-7")),
     ]
 
 
