@@ -171,6 +171,18 @@ def save_itr_version(
         return ver
 
     sb = _supabase()
+    # F4 fix: verify the filing itself belongs to this firm before touching its
+    # version history at all -- without this, a firm that merely knew/guessed
+    # another firm's filing_id could both read that firm's version count and
+    # insert a version row against its filing_id (matches the ownership check
+    # transition_itr_status already does above; a version has no owner of its
+    # own, so a firm_id-only filter on itr_filing_versions isn't enough).
+    filing = sb.table("itr_filings").select("id").eq("id", filing_id).eq(
+        "firm_id", firm_id
+    ).maybe_single().execute()
+    if not filing.data:
+        raise ValueError("Filing not found")
+
     existing = sb.table("itr_filing_versions").select("version").eq(
         "itr_filing_id", filing_id
     ).execute()

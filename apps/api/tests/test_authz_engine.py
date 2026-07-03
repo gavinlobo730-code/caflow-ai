@@ -20,12 +20,20 @@ CLIENT = {"id": "u-c", "firm_id": "F1", "role": "Client"}
 @pytest.fixture
 def enforced(monkeypatch):
     """Force the real (non-mock) enforcement path with a fixed assignment set.
-    Executive u-e is assigned to {C1}; everyone else has no assignments."""
+    Executive u-e is assigned to {C1}; everyone else has no assignments.
+    C1/C2/C9 all belong to firm F1 (every fixture user's firm); C-OTHER
+    belongs to a different firm, F2, for cross-firm regression tests."""
     monkeypatch.setattr(authz, "_USE_MOCK", False)
 
     def fake_assigned(user):
         return {"C1"} if user.get("id") == "u-e" else set()
     monkeypatch.setattr(authz, "assigned_client_ids", fake_assigned)
+
+    def fake_client_belongs_to_firm(client_id, firm_id):
+        if client_id == "C-OTHER":
+            return firm_id == "F2"
+        return firm_id == "F1"
+    monkeypatch.setattr(authz, "_client_belongs_to_firm", fake_client_belongs_to_firm)
 
 
 # ── Role tier ────────────────────────────────────────────────────────────────
@@ -76,6 +84,24 @@ def test_reviewer_and_client_denied_unassigned(enforced):
 def test_no_client_scope_is_allowed(enforced):
     # Firm-level resource (no client_id) is not gated by assignment.
     assert authz.can_access_client(EXECUTIVE, None) is True
+
+
+# ── F1 fix regression lock: firm-wide roles are still firm-BOUND ─────────────
+
+def test_partner_cannot_access_another_firms_client(enforced):
+    # is_firmwide() alone used to be sufficient -- a Partner in F1 must NOT
+    # pass for a client that belongs to a different firm (F2).
+    assert authz.can_access_client(PARTNER, "C-OTHER") is False
+
+
+def test_manager_cannot_access_another_firms_client(enforced):
+    assert authz.can_access_client(MANAGER, "C-OTHER") is False
+
+
+def test_assert_client_access_raises_404_for_partner_cross_firm(enforced):
+    with pytest.raises(HTTPException) as ei:
+        authz.assert_client_access(PARTNER, "C-OTHER")
+    assert ei.value.status_code == 404
 
 
 def test_assert_client_access_raises_404(enforced):

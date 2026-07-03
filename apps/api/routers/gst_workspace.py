@@ -534,8 +534,13 @@ def save_gstr9(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        # CGST Act §44: GSTR-9 unique per client per FY
-        existing = db.table("gstr1_returns").select("id").eq("client_id", client_id).eq("financial_year", fy).eq("return_type", "gstr9").limit(1).execute()
+        # CGST Act §44: GSTR-9 unique per client per FY. F4 fix: also scope by
+        # firm_id -- without it, a firm that merely knew/guessed another
+        # firm's client_id could overwrite that firm's existing annual return
+        # draft via this same "update if exists" path.
+        existing = (db.table("gstr1_returns").select("id").eq("client_id", client_id)
+                    .eq("financial_year", fy).eq("return_type", "gstr9")
+                    .eq("firm_id", firm_id).limit(1).execute())
         if existing.data:
             # Update existing draft
             upd = db.table("gstr1_returns").update(payload).eq("id", existing.data[0]["id"]).execute()
@@ -587,12 +592,15 @@ def get_gstr9(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
+        # F4 fix: scope by firm_id too -- otherwise any firm that knew/guessed
+        # another firm's client_id could read that firm's annual return draft.
         res = (
             db.table("gstr1_returns")
             .select("*")
             .eq("client_id", client_id)
             .eq("financial_year", financial_year)
             .eq("return_type", "gstr9")
+            .eq("firm_id", current_user.get("firm_id"))
             .limit(1)
             .execute()
         )
