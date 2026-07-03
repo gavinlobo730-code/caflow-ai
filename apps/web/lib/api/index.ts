@@ -287,6 +287,23 @@ export const api = {
       request(`/api/ai-copilot/client/${clientId}/chat`, { method: "POST", body: JSON.stringify(body) }),
   },
   payroll: {
+    // client_id omitted -> every client in the firm (firm-wide dashboard);
+    // client_id given -> scoped to one client (per-client workspace).
+    listEmployees: (clientId?: string) =>
+      request(`/api/payroll/employees${clientId ? `?client_id=${clientId}` : ""}`),
+    createEmployee: (body: unknown) =>
+      request("/api/payroll/employees", { method: "POST", body: JSON.stringify(body) }),
+    updateEmployee: (id: string, body: unknown) =>
+      request(`/api/payroll/employees/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    listRuns: (clientId?: string) =>
+      request(`/api/payroll/runs${clientId ? `?client_id=${clientId}` : ""}`),
+    createRun: (body: { client_id: string; month: string }) =>
+      request("/api/payroll/runs", { method: "POST", body: JSON.stringify(body) }),
+    getRunSlips: (runId: string) => request(`/api/payroll/runs/${runId}/slips`),
+    updateRunStatus: (runId: string, status: string) =>
+      request(`/api/payroll/runs/${runId}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
+    finalizeRun: (runId: string) =>
+      request(`/api/payroll/runs/${runId}/finalize`, { method: "POST" }),
     downloadPayslip: (slipId: string, fallbackFilename = `payslip-${slipId}.pdf`) =>
       downloadFile(`/api/payroll/salary-slips/${slipId}/pdf`, fallbackFilename),
   },

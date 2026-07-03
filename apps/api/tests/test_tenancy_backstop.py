@@ -120,6 +120,44 @@ def test_get_run_slips_missing_run_is_404(payroll_app):
     assert r.status_code == 404
 
 
+# ── payroll.py: list_employees / list_runs (R2.10 — client_id made optional ──
+# so the firm-wide /payroll dashboard can list across every client in one
+# call; a per-client page still passes client_id to scope the result). Both
+# forms must stay firm-scoped regardless.
+
+def test_list_employees_without_client_id_returns_whole_firm_not_other_firms(payroll_app):
+    app, db = payroll_app
+    db.seed("payroll_employees", {"firm_id": "F1", "client_id": "C1", "name": "Alice", "status": "active"})
+    db.seed("payroll_employees", {"firm_id": "F1", "client_id": "C2", "name": "Bob", "status": "active"})
+    db.seed("payroll_employees", {"firm_id": "F2", "client_id": "C3", "name": "Eve", "status": "active"})
+    r = _client_for(app, PARTNER_F1).get("/api/payroll/employees")
+    assert r.status_code == 200
+    names = {e["name"] for e in r.json()["data"]}
+    assert names == {"Alice", "Bob"}
+
+
+def test_list_employees_with_client_id_still_scopes_to_one_client(payroll_app):
+    app, db = payroll_app
+    db.seed("payroll_employees", {"firm_id": "F1", "client_id": "C1", "name": "Alice", "status": "active"})
+    db.seed("payroll_employees", {"firm_id": "F1", "client_id": "C2", "name": "Bob", "status": "active"})
+    r = _client_for(app, PARTNER_F1).get("/api/payroll/employees", params={"client_id": "C1"})
+    assert r.status_code == 200
+    names = {e["name"] for e in r.json()["data"]}
+    assert names == {"Alice"}
+
+
+def test_list_runs_without_client_id_returns_whole_firm_not_other_firms(payroll_app):
+    app, db = payroll_app
+    db.seed("payroll_runs", {"firm_id": "F1", "client_id": "C1", "month": "2026-05", "status": "draft"})
+    db.seed("payroll_runs", {"firm_id": "F1", "client_id": "C2", "month": "2026-06", "status": "draft"})
+    db.seed("payroll_runs", {"firm_id": "F2", "client_id": "C3", "month": "2026-06", "status": "draft"})
+    r = _client_for(app, PARTNER_F1).get("/api/payroll/runs")
+    assert r.status_code == 200
+    months = {row["month"] for row in r.json()["data"]}
+    assert months == {"2026-05", "2026-06"}
+    assert all(row["firm_id"] == "F1" for row in r.json()["data"])
+
+
 # ── gst_workspace.py: save_gstr9 / get_gstr9 ──────────────────────────────────
 
 @pytest.fixture

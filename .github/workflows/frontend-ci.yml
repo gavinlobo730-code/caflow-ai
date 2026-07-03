@@ -14,7 +14,7 @@ on:
 
 jobs:
   ci:
-    name: lint · typecheck · build (Node 20)
+    name: lint · typecheck · test · build (Node 22)
     runs-on: ubuntu-latest
 
     steps:
@@ -24,9 +24,11 @@ jobs:
         with:
           version: "10"
 
+      # Node >=22.6 required for --experimental-strip-types (the zero-dependency
+      # *.test.ts suite runs directly on node:test with no transpile step).
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "pnpm"
           cache-dependency-path: apps/web/pnpm-lock.yaml
 
@@ -41,6 +43,10 @@ jobs:
       - name: Type check
         working-directory: apps/web
         run: pnpm exec tsc --noEmit
+
+      - name: Test
+        working-directory: apps/web
+        run: pnpm test
 
       - name: Build
         working-directory: apps/web

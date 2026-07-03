@@ -16,7 +16,6 @@ import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatPaise } from "@/lib/services/formatting";
-import { monthlyTdsPaiseNewRegime } from "@/lib/services/payrollTdsEstimate";
 
 const EMPLOYEE_IMPORT_COLUMNS = [
   { key: "name",                    label: "Employee Name",       required: true,  hint: "e.g. Ramesh Kumar" },
@@ -29,12 +28,12 @@ const EMPLOYEE_IMPORT_COLUMNS = [
   { key: "other_allowances_rs",     label: "Other Allow. (₹/mo)",required: false, hint: "e.g. 5000" },
   { key: "pf_applicable",           label: "PF Applicable",       required: false, hint: "true | false" },
   { key: "esi_applicable",          label: "ESI Applicable",      required: false, hint: "true | false" },
+  { key: "pt_state",                label: "PT State",            required: false, hint: "MH | KA | WB | TN | blank" },
 ];
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { getFirmId } from "@/lib/data/getFirmId";
+import { api, type ApiResp } from "@/lib/api";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -53,6 +52,8 @@ type Employee = {
   other_allowances_paise: number;
   pf_applicable: boolean;
   esi_applicable: boolean;
+  pt_applicable?: boolean;
+  pt_state?: string | null;
 };
 
 type PayrollRun = {
@@ -100,97 +101,16 @@ function employeeGrossPaise(emp: Employee): number {
   );
 }
 
-/**
- * Compute payroll for one employee — all integer paise arithmetic.
- * IT Act Section 192: TDS on salary via new-regime basic slab rates.
- * ESI Act: employee 0.75%, employer 3.25% of gross (gross <= Rs 21,000/month).
- * EPF Act: PF employee 12% of basic, capped Rs 1,800/month.
- */
-function computeSlip(emp: Employee, ptState: string): {
-  gross: number; pf: number; esi: number; pt: number; tds: number; net: number;
-} {
-  const basic = emp.basic_paise;
-  const hra = Math.round(basic * emp.hra_percent / 100);
-  const da = Math.round(basic * emp.da_percent / 100);
-  const gross = basic + hra + da + emp.other_allowances_paise;
-
-  // PF: 12% of basic, max Rs 1,800/month (EPF Act)
-  let pf = 0;
-  if (emp.pf_applicable) {
-    pf = Math.min(Math.round(basic * 12 / 100), 180000);
-  }
-
-  // ESI: 0.75% of gross if gross <= Rs 21,000/month (ESI Act)
-  let esi = 0;
-  if (emp.esi_applicable && gross <= 2100000) {
-    esi = Math.round(gross * 75 / 10000); // 0.75%
-  }
-
-  // Professional Tax by state
-  let pt = 0;
-  if (ptState === "MH" && gross > 1000000) {
-    pt = 20000; // Rs 200 in paise
-  } else if (ptState === "KA" && gross > 1500000) {
-    pt = 20000;
-  } else if (ptState === "WB" && gross > 1000000) {
-    pt = 20000;
-  } else if (ptState === "TN" && gross > 2100000) {
-    pt = 20800;
-  }
-
-  // TDS estimate — IT Act §192, new regime (FY 2025-26). Integer paise; see
-  // monthlyTdsPaiseNewRegime for the slab/rebate/surcharge/cess logic and the
-  // F15/F17 fix notes.
-  const tds = monthlyTdsPaiseNewRegime(gross * 12);
-
-  const net = gross - pf - esi - pt - tds;
-  return { gross, pf, esi, pt, tds, net };
-}
-
+// Professional Tax states this build knows a slab for — must stay in sync
+// with routers/payroll.py's _PT_SLABS_BY_STATE (the sole source of truth for
+// PT computation; the frontend no longer computes PT itself — see R2.10).
 const PT_STATES = [
+  { code: "NONE", label: "No Professional Tax" },
   { code: "MH", label: "Maharashtra — Rs 200/month if > Rs 10,000" },
-  { code: "KA", label: "Karnataka — Rs 200/month if > Rs 15,000" },
+  { code: "KA", label: "Karnataka — Rs 150–200/month if > Rs 15,000 (slab)" },
   { code: "WB", label: "West Bengal — Rs 200/month if > Rs 10,000" },
   { code: "TN", label: "Tamil Nadu — Rs 208/month if > Rs 21,000" },
-  { code: "NONE", label: "No Professional Tax" },
 ];
-
-const INSTALL_SQL = `-- Run in Supabase SQL editor:
-CREATE TABLE IF NOT EXISTS payroll_employees (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  firm_id UUID NOT NULL,
-  client_id UUID NOT NULL,
-  name TEXT NOT NULL,
-  pan TEXT,
-  designation TEXT,
-  basic_paise BIGINT NOT NULL DEFAULT 0,
-  hra_percent NUMERIC(5,2) NOT NULL DEFAULT 0,
-  da_percent NUMERIC(5,2) NOT NULL DEFAULT 0,
-  other_allowances_paise BIGINT NOT NULL DEFAULT 0,
-  pf_applicable BOOLEAN NOT NULL DEFAULT false,
-  esi_applicable BOOLEAN NOT NULL DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-CREATE TABLE IF NOT EXISTS payroll_runs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  firm_id UUID NOT NULL,
-  client_id UUID NOT NULL,
-  month TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'draft',
-  generated_at TIMESTAMPTZ DEFAULT now()
-);
-CREATE TABLE IF NOT EXISTS payroll_slips (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  run_id UUID NOT NULL REFERENCES payroll_runs(id),
-  employee_id UUID NOT NULL REFERENCES payroll_employees(id),
-  gross_paise BIGINT NOT NULL,
-  pf_employee_paise BIGINT NOT NULL DEFAULT 0,
-  esi_employee_paise BIGINT NOT NULL DEFAULT 0,
-  pt_paise BIGINT NOT NULL DEFAULT 0,
-  tds_paise BIGINT NOT NULL DEFAULT 0,
-  net_paise BIGINT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
-);`;
 
 // ── Statutory Returns helpers ─────────────────────────────────────────────
 
@@ -406,12 +326,10 @@ function getTdsQuarterLabel(month: string): string {
 
 function AddEmployeeModal({
   clients,
-  firmId,
   onClose,
   onSaved,
 }: {
   clients: Client[];
-  firmId: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -426,6 +344,7 @@ function AddEmployeeModal({
     other_rs: "0",
     pf_applicable: false,
     esi_applicable: false,
+    pt_state: "NONE",
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -433,23 +352,28 @@ function AddEmployeeModal({
   async function save() {
     if (!form.name || !form.basic_rs) { setErr("Name and Basic Salary are required."); return; }
     setSaving(true);
-    const sb = getSupabaseClient();
-    const { error } = await sb.from("payroll_employees").insert({
-      firm_id: firmId,
-      client_id: form.client_id,
-      name: form.name,
-      pan: form.pan.toUpperCase(),
-      designation: form.designation,
-      basic_paise: rsToP(parseFloat(form.basic_rs) || 0),
-      hra_percent: parseFloat(form.hra_percent) || 0,
-      da_percent: parseFloat(form.da_percent) || 0,
-      other_allowances_paise: rsToP(parseFloat(form.other_rs) || 0),
-      pf_applicable: form.pf_applicable,
-      esi_applicable: form.esi_applicable,
-    });
+    setErr("");
+    try {
+      await api.payroll.createEmployee({
+        client_id: form.client_id,
+        name: form.name,
+        pan: form.pan.toUpperCase() || null,
+        designation: form.designation || null,
+        basic_paise: rsToP(parseFloat(form.basic_rs) || 0),
+        hra_percent: parseFloat(form.hra_percent) || 0,
+        da_percent: parseFloat(form.da_percent) || 0,
+        other_allowances_paise: rsToP(parseFloat(form.other_rs) || 0),
+        pf_applicable: form.pf_applicable,
+        esi_applicable: form.esi_applicable,
+        // Professional Tax — state-specific slab, computed server-side (R2.10).
+        pt_applicable: form.pt_state !== "NONE",
+        pt_state: form.pt_state === "NONE" ? null : form.pt_state,
+      });
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to add employee.");
+    }
     setSaving(false);
-    if (error) { setErr(error.message); return; }
-    onSaved();
   }
 
   return (
@@ -508,6 +432,12 @@ function AddEmployeeModal({
           <div className="flex items-center gap-2">
             <input type="checkbox" id="esi" checked={form.esi_applicable} onChange={e => setForm(f => ({ ...f, esi_applicable: e.target.checked }))} />
             <label htmlFor="esi" className="text-sm text-[#334155]">ESI Applicable (if &le; Rs 21,000)</label>
+          </div>
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-[#334155] mb-1">Professional Tax (state)</label>
+            <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.pt_state} onChange={e => setForm(f => ({ ...f, pt_state: e.target.value }))}>
+              {PT_STATES.map(s => <option key={s.code} value={s.code}>{s.label}</option>)}
+            </select>
           </div>
         </div>
         <div className="flex gap-2 justify-end mt-5">
@@ -827,8 +757,7 @@ function StatutoryReturnsTab({
 // ── Main Page ─────────────────────────────────────────────────────────────
 
 export default function PayrollPage() {
-  const [firmId, setFirmId] = useState<string | null>(null);
-  const [tablesError, setTablesError] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [runs, setRuns] = useState<PayrollRun[]>([]);
@@ -837,9 +766,9 @@ export default function PayrollPage() {
 
   const [runClientId, setRunClientId] = useState("");
   const [runMonth, setRunMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const [ptState, setPtState] = useState("MH");
   const [runEmployees, setRunEmployees] = useState<Employee[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   const [statMonth, setStatMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [statClientId, setStatClientId] = useState("");
@@ -851,36 +780,37 @@ export default function PayrollPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const fid = await getFirmId();
-      setFirmId(fid);
-      const sb = getSupabaseClient();
       const [clientsRes, empRes, runsRes] = await Promise.all([
-        sb.from("clients").select("id, client_name").eq("firm_id", fid),
-        sb.from("payroll_employees").select("*").eq("firm_id", fid),
-        sb.from("payroll_runs").select("*").eq("firm_id", fid).order("generated_at", { ascending: false }),
+        api.clients.list() as Promise<ApiResp<{ clients: Client[] }>>,
+        api.payroll.listEmployees() as Promise<ApiResp<Employee[]>>,
+        api.payroll.listRuns() as Promise<ApiResp<PayrollRun[]>>,
       ]);
-      if (empRes.error?.message?.includes("does not exist")) {
-        setTablesError(true);
-        setLoading(false);
-        return;
-      }
-      setClients(clientsRes.data ?? []);
-      setEmployees(empRes.data ?? []);
-      setRuns(runsRes.data ?? []);
+      const clientList = clientsRes.data?.clients ?? [];
+      const empList = empRes.data ?? [];
+      const runList = runsRes.data ?? [];
+      setClients(clientList);
+      setEmployees(empList);
+      setRuns(runList);
 
-      if (runsRes.data && runsRes.data.length > 0) {
-        const runIds = runsRes.data.map(r => r.id);
-        const slipsRes = await sb.from("payroll_slips").select("*").in("run_id", runIds);
-        const rawSlips: PayrollSlip[] = slipsRes.data ?? [];
+      if (runList.length > 0) {
+        const slipLists = await Promise.all(
+          runList.map(r => api.payroll.getRunSlips(r.id) as Promise<ApiResp<PayrollSlip[]>>)
+        );
+        const rawSlips = slipLists.flatMap(res => res.data ?? []);
         const enriched = rawSlips.map(s => ({
           ...s,
-          employee: (empRes.data ?? []).find((e: Employee) => e.id === s.employee_id),
-          run: runsRes.data!.find(r => r.id === s.run_id),
+          employee: empList.find(e => e.id === s.employee_id),
+          run: runList.find(r => r.id === s.run_id),
         }));
         setSlips(enriched);
+      } else {
+        setSlips([]);
       }
-    } catch { /* not authenticated */ }
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Failed to load payroll data.");
+    }
     setLoading(false);
   }, []);
 
@@ -908,33 +838,18 @@ export default function PayrollPage() {
   }, [statClientId, statMonth, runs, slips]);
 
   async function generatePayslips() {
-    if (!firmId || !runClientId || runEmployees.length === 0) return;
+    if (!runClientId || runEmployees.length === 0) return;
     setGenerating(true);
-    const sb = getSupabaseClient();
-    const { data: run, error: runErr } = await sb.from("payroll_runs").insert({
-      firm_id: firmId,
-      client_id: runClientId,
-      month: runMonth,
-      status: "generated",
-    }).select().single();
-    if (runErr || !run) { setGenerating(false); return; }
-
-    const slipRows = runEmployees.map(emp => {
-      const calc = computeSlip(emp, ptState);
-      return {
-        run_id: run.id,
-        employee_id: emp.id,
-        gross_paise: calc.gross,
-        pf_employee_paise: calc.pf,
-        esi_employee_paise: calc.esi,
-        pt_paise: calc.pt,
-        tds_paise: calc.tds,
-        net_paise: calc.net,
-      };
-    });
-    await sb.from("payroll_slips").insert(slipRows);
+    setGenerateError(null);
+    try {
+      // Server-side computation (routers/payroll.py::create_run) — the ONLY
+      // place gross/PF/ESI/PT/TDS are computed; see R2.10.
+      await api.payroll.createRun({ client_id: runClientId, month: runMonth });
+      await load();
+    } catch (e) {
+      setGenerateError(e instanceof Error ? e.message : "Failed to generate payslips.");
+    }
     setGenerating(false);
-    load();
   }
 
   // ── Employees table (shared DataTable) ─────────────────────────────────────
@@ -999,19 +914,19 @@ export default function PayrollPage() {
     return <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center"><p className="text-[#64748B]">Loading payroll...</p></div>;
   }
 
-  if (tablesError) {
+  if (loadError) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] p-8">
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <AlertCircle size={18} className="text-amber-500" />
-              Install Payroll Tables
+              <AlertCircle size={18} className="text-red-500" />
+              Couldn&apos;t load payroll
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-[#475569] mb-4">The payroll tables do not exist yet. Run this SQL in your Supabase dashboard:</p>
-            <pre className="bg-gray-900 text-green-400 p-4 rounded-lg text-xs overflow-auto whitespace-pre-wrap">{INSTALL_SQL}</pre>
+            <p className="text-sm text-[#475569] mb-4">{loadError}</p>
+            <Button onClick={load}>Retry</Button>
           </CardContent>
         </Card>
       </div>
@@ -1020,10 +935,9 @@ export default function PayrollPage() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] p-8">
-      {showAdd && firmId && (
+      {showAdd && (
         <AddEmployeeModal
           clients={clients}
-          firmId={firmId}
           onClose={() => setShowAdd(false)}
           onSaved={() => { setShowAdd(false); load(); }}
         />
@@ -1104,12 +1018,6 @@ export default function PayrollPage() {
                     <label className="block text-xs font-medium text-[#334155] mb-1">Month</label>
                     <input type="month" className="border rounded-lg px-3 py-2 text-sm" value={runMonth} onChange={e => setRunMonth(e.target.value)} />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-[#334155] mb-1">PT State</label>
-                    <select className="border rounded-lg px-3 py-2 text-sm" value={ptState} onChange={e => setPtState(e.target.value)}>
-                      {PT_STATES.map(s => <option key={s.code} value={s.code}>{s.label}</option>)}
-                    </select>
-                  </div>
                   <Button
                     onClick={generatePayslips}
                     disabled={generating || runEmployees.length === 0}
@@ -1118,41 +1026,45 @@ export default function PayrollPage() {
                     <Play size={14} />{generating ? "Generating..." : "Generate Payslips"}
                   </Button>
                 </div>
+                {generateError && <p className="text-sm text-red-600 mt-3">{generateError}</p>}
               </CardContent>
             </Card>
             {runEmployees.length === 0 ? (
               <Card><CardContent className="py-12 text-center text-[#94A3B8]">No employees for this client.</CardContent></Card>
             ) : (
               <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Employees in this run ({runEmployees.length})</CardTitle>
+                  <p className="text-xs text-[#64748B] mt-0.5">
+                    Gross pay, PF, ESI, Professional Tax and TDS are computed by the
+                    server when you click &quot;Generate Payslips&quot; — open the
+                    Payslips tab afterwards to see the results.
+                  </p>
+                </CardHeader>
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide">
                           <th className="text-left py-3 px-4">Employee</th>
-                          <th className="text-right py-3 px-4">Gross</th>
-                          <th className="text-right py-3 px-4">PF Emp</th>
-                          <th className="text-right py-3 px-4">ESI Emp</th>
-                          <th className="text-right py-3 px-4">PT</th>
-                          <th className="text-right py-3 px-4">TDS (Sec 192)</th>
-                          <th className="text-right py-3 px-4">Net Pay</th>
+                          <th className="text-left py-3 px-4">Designation</th>
+                          <th className="text-right py-3 px-4">Monthly CTC</th>
+                          <th className="text-center py-3 px-4">PF</th>
+                          <th className="text-center py-3 px-4">ESI</th>
+                          <th className="text-center py-3 px-4">PT</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {runEmployees.map(emp => {
-                          const c = computeSlip(emp, ptState);
-                          return (
-                            <tr key={emp.id} className="border-b hover:bg-[#F8FAFC]">
-                              <td className="py-3 px-4 font-medium">{emp.name}</td>
-                              <td className="py-3 px-4 text-right font-mono">{fmtRs(c.gross)}</td>
-                              <td className="py-3 px-4 text-right font-mono text-red-600">{fmtRs(c.pf)}</td>
-                              <td className="py-3 px-4 text-right font-mono text-red-600">{fmtRs(c.esi)}</td>
-                              <td className="py-3 px-4 text-right font-mono text-red-600">{fmtRs(c.pt)}</td>
-                              <td className="py-3 px-4 text-right font-mono text-red-600">{fmtRs(c.tds)}</td>
-                              <td className="py-3 px-4 text-right font-mono font-semibold text-green-700">{fmtRs(c.net)}</td>
-                            </tr>
-                          );
-                        })}
+                        {runEmployees.map(emp => (
+                          <tr key={emp.id} className="border-b hover:bg-[#F8FAFC]">
+                            <td className="py-3 px-4 font-medium">{emp.name}</td>
+                            <td className="py-3 px-4 text-[#475569]">{emp.designation || "—"}</td>
+                            <td className="py-3 px-4 text-right font-mono">{fmtRs(employeeGrossPaise(emp))}</td>
+                            <td className="py-3 px-4 text-center">{emp.pf_applicable ? "Yes" : "No"}</td>
+                            <td className="py-3 px-4 text-center">{emp.esi_applicable ? "Yes" : "No"}</td>
+                            <td className="py-3 px-4 text-center">{emp.pt_applicable ? (emp.pt_state ?? "Yes") : "No"}</td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
@@ -1259,34 +1171,38 @@ export default function PayrollPage() {
         </Tabs>
       </div>
 
-      {showImportEmp && firmId && (
+      {showImportEmp && (
         <CsvImportModal
           title="Import Employees from CSV"
           columns={EMPLOYEE_IMPORT_COLUMNS}
           templateFilename="practicesync-employees-template.xlsx"
           onClose={() => setShowImportEmp(false)}
           onImport={async (rows: ImportRow[]) => {
-            const sb = getSupabaseClient();
             let imported = 0;
             const errors: string[] = [];
             for (const row of rows) {
               const client = clients.find(c => c.client_name.toLowerCase() === row.client_name?.toLowerCase());
               if (!client) { errors.push(`Employee "${row.name}": client "${row.client_name}" not found`); continue; }
-              const { error } = await sb.from("payroll_employees").insert({
-                firm_id: firmId,
-                client_id: client.id,
-                name: row.name,
-                pan: row.pan.toUpperCase(),
-                designation: row.designation || "",
-                basic_paise: Math.round(parseFloat(row.basic_rs ?? "0") * 100),
-                hra_percent: parseFloat(row.hra_percent ?? "40"),
-                da_percent: parseFloat(row.da_percent ?? "0"),
-                other_allowances_paise: Math.round(parseFloat(row.other_allowances_rs ?? "0") * 100),
-                pf_applicable: row.pf_applicable?.toLowerCase() !== "false",
-                esi_applicable: row.esi_applicable?.toLowerCase() === "true",
-              });
-              if (error) errors.push(`${row.name}: ${error.message}`);
-              else imported++;
+              const ptState = (row.pt_state ?? "").trim().toUpperCase();
+              try {
+                await api.payroll.createEmployee({
+                  client_id: client.id,
+                  name: row.name,
+                  pan: row.pan?.toUpperCase() || null,
+                  designation: row.designation || "",
+                  basic_paise: Math.round(parseFloat(row.basic_rs ?? "0") * 100),
+                  hra_percent: parseFloat(row.hra_percent ?? "40"),
+                  da_percent: parseFloat(row.da_percent ?? "0"),
+                  other_allowances_paise: Math.round(parseFloat(row.other_allowances_rs ?? "0") * 100),
+                  pf_applicable: row.pf_applicable?.toLowerCase() !== "false",
+                  esi_applicable: row.esi_applicable?.toLowerCase() === "true",
+                  pt_applicable: ptState !== "",
+                  pt_state: ptState || null,
+                });
+                imported++;
+              } catch (e) {
+                errors.push(`${row.name}: ${e instanceof Error ? e.message : "failed"}`);
+              }
             }
             if (imported > 0) load();
             return { imported, errors };
