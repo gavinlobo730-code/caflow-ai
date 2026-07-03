@@ -71,8 +71,8 @@ def parse_upload(
         if use_mock:
             upload = _MOCK_UPLOADS.get(upload_id)
         else:
-            from core.supabase_client import get_supabase_client
-            sb = get_supabase_client()
+            from core.supabase_client import get_supabase
+            sb = get_supabase()
             res = sb.table("form_26as_uploads").select("*").eq("id", upload_id).eq(
                 "firm_id", current_user["firm_id"]
             ).single().execute()
@@ -186,8 +186,8 @@ def mark_26as_uploaded(
         )
         return api_response(True, upload)
 
-    from core.supabase_client import get_supabase_client
-    sb = get_supabase_client()
+    from core.supabase_client import get_supabase
+    sb = get_supabase()
     res = sb.table("form_26as_uploads").select("*").eq("id", upload_id).eq(
         "firm_id", current_user["firm_id"]
     ).single().execute()

@@ -212,18 +212,13 @@ class AICopilotRepository(BaseRepository):
 
         result = _get_db().table("ai_messages").insert(msg).execute()
         saved = result.data[0]
-        # Update conversation stats
-        _get_db().table("ai_conversations").update(
-            {
-                "message_count": _get_db()
-                .rpc("increment_message_count", {"conv_id": conversation_id})
-                .execute()
-                .data
-                or 0,
-                "last_message_at": now,
-                "updated_at": now,
-            }
-        ).eq("id", conversation_id).execute()
+        # Conversation stats: the RPC atomically increments message_count and
+        # stamps last_message_at/updated_at (migration 156). The previous code
+        # wrapped this call in a second .update() that wrote the RPC's return
+        # value back into message_count — the function returned void, so
+        # `.data or 0` permanently reset the count to 0 on every message
+        # (caught by the R2.2 adversarial review).
+        _get_db().rpc("increment_message_count", {"conv_id": conversation_id}).execute()
         return saved
 
     def rate_message(

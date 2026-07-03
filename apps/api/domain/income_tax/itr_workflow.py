@@ -30,8 +30,8 @@ _TRANSITIONS: dict[str, list[str]] = {
 
 
 def _supabase():
-    from core.supabase_client import get_supabase_client
-    return get_supabase_client()
+    from core.supabase_client import get_supabase
+    return get_supabase()
 
 
 def create_itr_filing(
