@@ -220,7 +220,7 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 
 **R2.2 — Create the ~13 missing tables or gate the features (F5).** Add migrations for e-invoice/e-way/XBRL/ITR-filing/26AS-record tables (and the missing RPC/columns), or feature-flag those modules off until backed. *Effort:* L. *Benefit:* removes 500s; makes the tax-record features real.
 
-**R2.3 — Correct TDS & ITR statutory logic (F17, F18).** Rebuild thresholds as FY-versioned data (see R3.1); apply annual-aggregate correctly; ₹50k old-regime SD; §87A marginal relief; surcharge marginal relief + 15% CG cap; delete the frontend slab re-implementation. *Effort:* L. *Benefit:* correct tax numbers.
+**R2.3 — Correct TDS & ITR statutory logic (F17, F18).** Rebuild thresholds as FY-versioned data (see R3.1); apply annual-aggregate correctly; ₹50k old-regime SD; §87A marginal relief; surcharge marginal relief + 15% CG cap; delete the frontend slab re-implementation. **Also (from the R1.2/R1.3 reviews): update to the CURRENT financial year with authoritative sourcing — Budget 2025 revised the new regime, and the backend `_compute_tds_192`/payroll `_compute_slip` still use FY 2024-25 with a stale ₹50,000 standard deduction (new regime is ₹75,000); add surcharge above ₹50L. Elevate F18 (income-tax deductions page `L = 100*100` → tax-slab boundaries 10× off, re-confirmed effectively a blocker for that page) to the front of this item.** *Effort:* L. *Benefit:* correct tax numbers, in step across backend and frontend.
 
 **R2.4 — Add a database tenancy backstop (F1, F4).** Either execute the staged `USE_USER_JWT` cutover (after R2.6 fixes the RLS predicate) or make `firm_id` mandatory at the repository layer so a missing filter fails closed; add the missing `firm_id` filters (GSTR-9 et al.). *Effort:* L. *Benefit:* one mistake no longer equals a silent cross-firm leak.
 
@@ -494,6 +494,33 @@ finalize (which reads `total_gross_paise`) can't process them. R2.10 routes the
 frontend through the backend compute (fixing F15 at the source *and* the missing
 totals) once frontend test infrastructure exists. The in-place F15 fix removes
 the launch blocker now.
+
+**Regression review (3 lenses, adversarially verified):** the corrected TDS
+computation was verified **statutorily correct on every element** — ₹75,000
+standard deduction, slab floors and cumulative bases, §87A rebate on
+post-standard-deduction income, marginal relief at the ₹7L boundary, and cess-then-÷12
+ordering (all hand-checked); and the fix is **complete** — a single TDS source
+used by both the persist and preview paths, with PF/ESI/PT confirmed already
+paise-correct (no sibling scale bug). Findings, all routed to the roadmap (no
+further R1.3 code change — the scale fix is correct for its scope):
+- **Forward-only (medium):** slips generated before this fix keep the wrong
+  `tds_paise`/`net_paise` in `payroll_slips`. Not auto-remediated here — some runs
+  are finalized with posted journals, so recompute must be state-aware (regenerate
+  un-finalized runs; reverse+repost finalized ones). Tracked as a data-remediation
+  task under **R2.10** (payroll convergence).
+- **FY-currency (medium):** parameters are FY 2024-25 while the system date is FY
+  2026-27; Budget 2025 revised the new regime. This is system-wide (the backend
+  `_compute_tds_192`/`_compute_slip` are also FY 2024-25, and the backend standard
+  deduction is a stale ₹50,000) — folded into **R2.3 / R3.1** (correct, FY-versioned
+  statutory rules across both engines, with authoritative sourcing). A code comment
+  now flags it.
+- **Surcharge / §80CCD(2) omitted (low):** acceptable for a labelled monthly
+  estimate; add when the compute moves server-side (R2.3/R2.10).
+- **F18 re-confirmed (separate, pre-existing):** the sweep independently confirmed
+  the income-tax deductions page slab bug (`L = 100*100` → tax boundaries 10× off)
+  is real and unfixed — verified as **not an R1.3 regression** (a distinct audit
+  item). Its severity is effectively blocker for that page; elevated for early
+  attention within R2.3.
 
 **Next:** Milestone R1.4 (convert the GSTR-3B GSTN payload to rupees, F16).
 
