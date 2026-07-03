@@ -72,11 +72,6 @@ KNOWN_MISSING_TABLES: set[str] = {
     "gst_portal_snapshots",
     "form_26as_records",
     "form_26as_reconciliations",
-    # F9 — year-end routers target tables the migration (067) never creates; it
-    # created year_end_checklists / notes_to_accounts instead. R2.1 reconciles.
-    "year_end_checklist_items",
-    "year_end_notes",
-    "year_end_review_events",
     # Tally migration (audit: broken in prod) — jobs/items tables never created.
     "tally_migration_jobs",
     "tally_migration_items",

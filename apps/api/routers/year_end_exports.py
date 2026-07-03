@@ -117,7 +117,7 @@ def _get_notes_data(db, engagement_id: str, firm_id: str) -> list:
     if db is None:
         return []
     rows = (
-        db.table("year_end_notes")
+        db.table("notes_to_accounts")
         .select("*")
         .eq("engagement_id", engagement_id)
         .eq("firm_id", firm_id)

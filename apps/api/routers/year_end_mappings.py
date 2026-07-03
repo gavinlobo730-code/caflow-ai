@@ -11,16 +11,37 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
+from services.year_end_financial_service import BS_EQUITY_LIABILITY_LINES, BS_ASSET_LINES
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 router = APIRouter(prefix="/year-end", tags=["year-end-mappings"])
+
+_BS_LINES = set(BS_EQUITY_LIABILITY_LINES) | set(BS_ASSET_LINES)
+
+
+def _statement_type_for(schedule_line: str) -> str:
+    """Balance Sheet vs P&L, per the SAME classification
+    services.year_end_financial_service uses to build the statements
+    themselves — single source of truth for the Schedule III line taxonomy."""
+    return "balance_sheet" if schedule_line in _BS_LINES else "profit_loss"
+
+
+def _account_name(db, account_id: str) -> Optional[str]:
+    """account_group_mappings.account_name is NOT NULL but the mapping request
+    body only ever carries account_id -- look the display name up from the
+    chart of accounts rather than leaving it unpopulated."""
+    row = (
+        db.table("accounts").select("account_name")
+        .eq("id", account_id).maybe_single().execute().data
+    )
+    return (row or {}).get("account_name")
 
 # ── Default mapping rules ─────────────────────────────────────────────────────
 # account_type → schedule_line
@@ -97,14 +118,20 @@ class BulkMappingIn(BaseModel):
 
 @router.get("/mappings")
 def get_mappings(
-    firm_id: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("year_end", "read")),
 ):
-    """Get all account group mappings for a firm (defaults to current user's firm)."""
-    resolved_firm_id = firm_id or current_user["firm_id"]
+    """Get all account group mappings for the caller's own firm.
+
+    F1/F4 fix: this previously accepted a client-supplied ?firm_id= query
+    param and used it verbatim -- any authenticated user could read another
+    firm's Schedule III account mappings by supplying its firm_id. There is
+    no legitimate reason for a normal (non-platform-admin) user to view
+    another firm's mappings, so the override is removed rather than gated.
+    """
+    firm_id = current_user["firm_id"]
 
     if _USE_MOCK:
-        existing = _MOCK_MAPPINGS.get(resolved_firm_id, [])
+        existing = _MOCK_MAPPINGS.get(firm_id, [])
         return api_response(True, existing)
 
     from core.supabase_client import get_supabase
@@ -112,7 +139,7 @@ def get_mappings(
     rows = (
         db.table("account_group_mappings")
         .select("*")
-        .eq("firm_id", resolved_firm_id)
+        .eq("firm_id", firm_id)
         .order("account_id")
         .execute()
         .data
@@ -130,6 +157,7 @@ def create_or_update_mapping(
     now     = datetime.now(timezone.utc).isoformat()
 
     normal_balance = _LINE_NORMAL_BALANCE.get(data.schedule_line, "debit")
+    statement_type = _statement_type_for(data.schedule_line)
 
     record = {
         "firm_id":        firm_id,
@@ -137,6 +165,7 @@ def create_or_update_mapping(
         "schedule_line":  data.schedule_line,
         "account_type":   data.account_type,
         "normal_balance": normal_balance,
+        "statement_type": statement_type,
         "updated_at":     now,
     }
 
@@ -147,12 +176,14 @@ def create_or_update_mapping(
             old.update(record)
             old["updated_at"] = now
             return api_response(True, old)
-        new_record = {"id": str(uuid.uuid4()), "created_at": now, **record}
+        new_record = {"id": str(uuid.uuid4()), "created_at": now,
+                      "account_name": data.account_id, **record}
         existing.append(new_record)
         return api_response(True, new_record)
 
     from core.supabase_client import get_supabase
     db = get_supabase()
+    record["account_name"] = _account_name(db, data.account_id)
 
     # Check if mapping already exists for this firm+account_id
     existing = (
@@ -208,6 +239,7 @@ def bulk_update_mappings(
             "schedule_line":  m.schedule_line,
             "account_type":   m.account_type,
             "normal_balance": _LINE_NORMAL_BALANCE.get(m.schedule_line, "debit"),
+            "statement_type": _statement_type_for(m.schedule_line),
             "created_at":     now,
             "updated_at":     now,
         })
@@ -216,6 +248,7 @@ def bulk_update_mappings(
         existing = _MOCK_MAPPINGS.setdefault(firm_id, [])
         existing_map = {m["account_id"]: m for m in existing}
         for r in records:
+            r.setdefault("account_name", r["account_id"])
             if r["account_id"] in existing_map:
                 existing_map[r["account_id"]].update(r)
             else:
@@ -225,6 +258,8 @@ def bulk_update_mappings(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
+    for record in records:
+        record["account_name"] = _account_name(db, record["account_id"])
 
     # Upsert all mappings
     for record in records:
@@ -241,6 +276,8 @@ def bulk_update_mappings(
                 "schedule_line":  record["schedule_line"],
                 "account_type":   record["account_type"],
                 "normal_balance": record["normal_balance"],
+                "statement_type": record["statement_type"],
+                "account_name":   record["account_name"],
                 "updated_at":     now,
             }).eq("firm_id", firm_id).eq("account_id", record["account_id"]).execute()
         else:
@@ -320,9 +357,11 @@ def get_default_mappings(
                 "id":             str(uuid.uuid4()),
                 "firm_id":        firm_id,
                 "account_id":     acct["id"],
+                "account_name":   acct.get("account_name"),
                 "schedule_line":  schedule_line,
                 "account_type":   acct_type,
                 "normal_balance": _LINE_NORMAL_BALANCE.get(schedule_line, "debit"),
+                "statement_type": _statement_type_for(schedule_line),
                 "created_at":     now,
                 "updated_at":     now,
             })

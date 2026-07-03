@@ -161,7 +161,7 @@ def create_snapshot(
         "version_number":    version_number,
         "version_label":     data.version_label or f"v{version_number}",
         "notes":             data.notes,
-        "statements_data":   statements,
+        "statement_data":    statements,
         "trial_balance_hash":statements.get("trial_balance_hash"),
         "created_by":        current_user.get("auth_user_id"),
         "created_at":        now,
