@@ -9,41 +9,38 @@
  * Section 54: Exemptions
  * Budget 2024 amendments: LTCG rates revised to 12.5%, STCG equity to 20%, holding periods unchanged
  * Finance Act 2023: Debt MF taxed as per slab (removed indexation benefit)
+ *
+ * R3.1b: all classification/indexation/tax-rate computation now happens on
+ * the backend (domain/income_tax/capital_gains_engine.py) — this page only
+ * collects input and displays results. See that module's docstring for the
+ * verification status of the CII table and the asset-type tax treatment.
  */
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, Calculator, Info, BookOpen, Plus, X, Trash2 } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { getFirmId } from "@/lib/data/getFirmId";
-
-// ─── Cost Inflation Index (CII) — IT Act Section 48, Proviso ────────────────
-// Base year: FY 2001-02 = 100
-const CII: Record<string, number> = {
-  "2001-02": 100, "2002-03": 105, "2003-04": 109, "2004-05": 113, "2005-06": 117,
-  "2006-07": 122, "2007-08": 129, "2008-09": 137, "2009-10": 148, "2010-11": 167,
-  "2011-12": 184, "2012-13": 200, "2013-14": 220, "2014-15": 240, "2015-16": 254,
-  "2016-17": 264, "2017-18": 272, "2018-19": 280, "2019-20": 289, "2020-21": 301,
-  "2021-22": 317, "2022-23": 331, "2023-24": 348, "2024-25": 363, "2025-26": 380,
-};
-
-const CII_YEARS = Object.keys(CII).sort();
+import { api, type ApiResp } from "@/lib/api";
+import {
+  computeCapitalGains, listCapitalGains, createCapitalGain, deleteCapitalGain, getCiiTable,
+  type CapitalGainsAssetType, type CapitalGainsRegisterAssetType,
+  type CapitalGainsComputeResult, type CapitalGainsRecord,
+} from "@/lib/data/income-tax";
 
 // Asset types with their holding period thresholds and tax treatment
-const ASSET_TYPES_CALC = [
+const ASSET_TYPES_CALC: { value: CapitalGainsAssetType; label: string }[] = [
   { value: "equity",     label: "Listed Equity / Equity MF" },
-  { value: "debt_mf",   label: "Debt MF / Bonds (post Apr 2023)" },
-  { value: "property",  label: "Immovable Property" },
-  { value: "unlisted",  label: "Unlisted Shares" },
-  { value: "vda",       label: "Cryptocurrency / VDA" },
-  { value: "gold",      label: "Gold / Jewellery" },
+  { value: "debt_mf",    label: "Debt MF / Bonds (post Apr 2023)" },
+  { value: "property",   label: "Immovable Property" },
+  { value: "unlisted",   label: "Unlisted Shares" },
+  { value: "vda",        label: "Cryptocurrency / VDA" },
+  { value: "gold",       label: "Gold / Jewellery" },
 ];
 
 // Asset types for register (matches DB constraint)
-const ASSET_TYPES_REG = [
+const ASSET_TYPES_REG: { value: CapitalGainsRegisterAssetType; label: string }[] = [
   { value: "equity_shares", label: "Equity Shares" },
   { value: "mutual_funds",  label: "Mutual Funds" },
   { value: "property",      label: "Immovable Property" },
@@ -51,199 +48,19 @@ const ASSET_TYPES_REG = [
   { value: "other",         label: "Other" },
 ];
 
-function getHoldingMonths(purchaseDate: string, saleDate: string): number {
-  const purchase = new Date(purchaseDate);
-  const sale = new Date(saleDate);
-  return (sale.getFullYear() - purchase.getFullYear()) * 12 + (sale.getMonth() - purchase.getMonth());
-}
-
-function getFYFromDate(date: string): string {
-  const d = new Date(date);
+function getFYFromDate(dateStr: string): string {
+  const d = new Date(dateStr);
   const y = d.getFullYear();
   const m = d.getMonth(); // 0=Jan
   if (m >= 3) return `${y}-${String(y + 1).slice(2)}`;
   return `${y - 1}-${String(y).slice(2)}`;
 }
 
-function getFYFull(date: string): string {
-  // returns e.g. "2023-24"
-  const d = new Date(date);
-  const y = d.getFullYear();
-  const m = d.getMonth();
-  if (m >= 3) return `${y}-${String(y + 1).slice(-2)}`;
-  return `${y - 1}-${String(y).slice(-2)}`;
-}
-
-interface CalcResult {
-  holdingMonths: number;
-  isLongTerm: boolean;
-  termLabel: string;
-  gainPaise: number;
-  indexedCostPaise: number;
-  gainWithIndexation: number;
-  taxRatePercent: number;
-  taxRateWithIndexation: number;
-  taxLiabilityPaise: number;
-  taxWithIndexationPaise: number;
-  finalTaxPaise: number;
-  taxNote: string;
-  sectionRef: string;
-}
-
-function computeGains(
-  assetType: string,
-  purchasePaise: number,
-  salePaise: number,
-  purchaseDate: string,
-  saleDate: string,
-  improvementPaise: number,
-  purchaseFY: string,
-  saleFY: string,
-): CalcResult | null {
-  if (!purchaseDate || !saleDate || salePaise <= 0 || purchasePaise <= 0) return null;
-
-  const holdingMonths = getHoldingMonths(purchaseDate, saleDate);
-
-  // Determine long-term threshold by asset type — IT Act Section 2(42A)
-  let ltThreshold = 12; // months
-  if (assetType === "property" || assetType === "unlisted" || assetType === "gold") ltThreshold = 24;
-
-  const isLongTerm = holdingMonths >= ltThreshold;
-  const termLabel = isLongTerm ? "Long Term" : "Short Term";
-
-  // Gain = Sale Price - Cost of Acquisition - Improvement Costs (Section 48)
-  const costPaise = purchasePaise + improvementPaise;
-  const gainPaise = salePaise - costPaise;
-
-  // Indexed cost of acquisition — Section 48 proviso (only for property, indexed benefit)
-  const ciiPurchase = CII[purchaseFY] ?? 100;
-  const ciiSale = CII[saleFY] ?? 363;
-  const indexedCostPaise = Math.round((purchasePaise * ciiSale) / ciiPurchase) + improvementPaise;
-  const gainWithIndexation = salePaise - indexedCostPaise;
-
-  let taxRatePercent = 0;
-  let taxRateWithIndexation = 0;
-  let taxNote = "";
-  let sectionRef = "";
-
-  switch (assetType) {
-    case "equity":
-      if (!isLongTerm) {
-        // STCG on listed equity: 20% — Budget 2024 (effective 23 Jul 2024), IT Act Section 111A
-        taxRatePercent = 20;
-        taxNote = "STCG on listed equity/equity MF: 20% (Budget 2024 — Section 111A)";
-        sectionRef = "Section 111A";
-      } else {
-        // LTCG on listed equity: 12.5% on gains > ₹1,25,000 — Budget 2024, IT Act Section 112A
-        // Exemption: first ₹1,25,000 of LTCG is tax-free
-        const exemptionPaise = 125000 * 100; // ₹1,25,000 in paise
-        const taxableGainPaise = Math.max(0, gainPaise - exemptionPaise);
-        taxRatePercent = 12.5;
-        const taxLiability = Math.round((taxableGainPaise * 125) / 1000); // 12.5% integer
-        taxNote = `LTCG on listed equity: 12.5% on gains exceeding ₹1,25,000 (Budget 2024 — Section 112A). Exempt: ₹1,25,000.`;
-        sectionRef = "Section 112A";
-        return {
-          holdingMonths, isLongTerm, termLabel, gainPaise, indexedCostPaise, gainWithIndexation,
-          taxRatePercent, taxRateWithIndexation, taxLiabilityPaise: taxLiability,
-          taxWithIndexationPaise: taxLiability, finalTaxPaise: taxLiability, taxNote, sectionRef,
-        };
-      }
-      break;
-
-    case "debt_mf":
-      // Finance Act 2023: Debt MF purchased after 1 Apr 2023 — no indexation, taxed at slab rate
-      taxRatePercent = 30; // Approximate highest slab — actual rate depends on taxpayer's slab
-      taxNote = "Debt MF (purchased after 1 Apr 2023): Taxed as per income slab — Finance Act 2023 amendment. Rate shown at 30% (highest slab). Adjust for your actual slab.";
-      sectionRef = "Section 50AA (Finance Act 2023)";
-      break;
-
-    case "property":
-      if (!isLongTerm) {
-        // STCG on property: slab rate — Section 48
-        taxRatePercent = 30;
-        taxNote = "STCG on immovable property (< 24 months): Taxed at slab rate (shown at 30%). Adjust for your slab.";
-        sectionRef = "Section 48";
-      } else {
-        // LTCG on property: Budget 2024 — 12.5% without indexation OR 20% with indexation (taxpayer's choice)
-        // Whichever results in lower tax
-        taxRatePercent = 12.5;
-        taxRateWithIndexation = 20;
-        taxNote = "LTCG on property: Budget 2024 — 12.5% without indexation OR 20% with indexation. Whichever is lower (Section 112).";
-        sectionRef = "Section 112 (Budget 2024 amendment)";
-      }
-      break;
-
-    case "unlisted":
-      if (!isLongTerm) {
-        taxRatePercent = 30;
-        taxNote = "STCG on unlisted shares (< 24 months): Taxed at slab rate (shown at 30%).";
-        sectionRef = "Section 48";
-      } else {
-        taxRatePercent = 12.5;
-        taxNote = "LTCG on unlisted shares (≥ 24 months): 12.5% without indexation — Budget 2024 (Section 112).";
-        sectionRef = "Section 112 (Budget 2024)";
-      }
-      break;
-
-    case "vda":
-      // Cryptocurrency/VDA: Always 30% flat + 1% TDS Section 194S — IT Act Section 115BBH
-      taxRatePercent = 30;
-      taxNote = "VDA/Cryptocurrency: 30% flat tax regardless of holding period (Section 115BBH). Additionally, 1% TDS under Section 194S applies on every transaction.";
-      sectionRef = "Section 115BBH + Section 194S";
-      break;
-
-    case "gold":
-      if (!isLongTerm) {
-        taxRatePercent = 30;
-        taxNote = "STCG on gold (< 24 months): Taxed at slab rate (shown at 30%).";
-        sectionRef = "Section 48";
-      } else {
-        taxRatePercent = 12.5;
-        taxNote = "LTCG on gold (≥ 24 months): 12.5% without indexation — Budget 2024 (Section 112).";
-        sectionRef = "Section 112 (Budget 2024)";
-      }
-      break;
-  }
-
-  // Tax calculations — integer paise arithmetic
-  const taxableGain = Math.max(0, gainPaise);
-  const taxLiabilityPaise = Math.round((taxableGain * taxRatePercent * 100) / 10000);
-  const taxWithIndexationPaise = taxRateWithIndexation > 0
-    ? Math.round((Math.max(0, gainWithIndexation) * taxRateWithIndexation * 100) / 10000)
-    : taxLiabilityPaise;
-
-  const finalTaxPaise = Math.min(taxLiabilityPaise, taxWithIndexationPaise);
-
-  return {
-    holdingMonths, isLongTerm, termLabel, gainPaise, indexedCostPaise, gainWithIndexation,
-    taxRatePercent, taxRateWithIndexation, taxLiabilityPaise, taxWithIndexationPaise,
-    finalTaxPaise, taxNote, sectionRef,
-  };
-}
-
-// ─── Register Types ───────────────────────────────────────────────────────────
-
 interface Client { id: string; client_name: string; }
-
-interface CGRecord {
-  id: string;
-  client_id: string;
-  asset_description: string;
-  asset_type: string;
-  purchase_date: string;
-  sale_date: string;
-  purchase_cost_paise: number;
-  improvement_cost_paise: number;
-  sale_value_paise: number;
-  indexed_cost_paise: number | null;
-  gain_type: string | null;
-  tax_rate_percent: number | null;
-  created_at: string;
-}
 
 const BLANK_REG = {
   asset_description: "",
-  asset_type: "equity_shares",
+  asset_type: "equity_shares" as CapitalGainsRegisterAssetType,
   purchase_date: "",
   sale_date: "",
   purchase_cost_rs: "",
@@ -259,62 +76,69 @@ function fmtRs(paise: number): string {
   return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
 }
 
-/**
- * Determine STCG/LTCG for register asset types
- * IT Act Section 2(42A) — holding period thresholds
- */
-function getRegGainType(assetType: string, purchaseDate: string, saleDate: string): "STCG" | "LTCG" {
-  const months = getHoldingMonths(purchaseDate, saleDate);
-  if (assetType === "equity_shares" || assetType === "mutual_funds") {
-    return months >= 12 ? "LTCG" : "STCG";
-  }
-  // property, bonds, other — 24 months
-  return months >= 24 ? "LTCG" : "STCG";
-}
-
-/**
- * Compute tax rate for register asset types
- * IT Act Section 111A (STCG equity), Section 112A (LTCG equity), Section 112 (others)
- */
-function getRegTaxRate(assetType: string, gainType: "STCG" | "LTCG"): number {
-  if (assetType === "equity_shares" || assetType === "mutual_funds") {
-    return gainType === "STCG" ? 20 : 12.5; // Budget 2024
-  }
-  return gainType === "STCG" ? 30 : 20; // slab / 20% with indexation
-}
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function CapitalGainsPage() {
   const [activeTab, setActiveTab] = useState<"calculator" | "register">("calculator");
 
+  // ── CII reference table (fetched once, display + FY dropdown only —
+  // never used to compute anything client-side) ──
+  const [ciiByFy, setCiiByFy] = useState<Record<string, number>>({});
+  useEffect(() => {
+    getCiiTable().then(({ ciiByFy }) => setCiiByFy(ciiByFy)).catch(() => {});
+  }, []);
+  const ciiYears = Object.keys(ciiByFy).sort();
+
   // ── Calculator state ──
-  const [assetType, setAssetType] = useState("equity");
+  const [assetType, setAssetType] = useState<CapitalGainsAssetType>("equity");
   const [purchaseDate, setPurchaseDate] = useState("");
   const [purchaseRupees, setPurchaseRupees] = useState("");
   const [saleDate, setSaleDate] = useState("");
   const [saleRupees, setSaleRupees] = useState("");
   const [improvementRupees, setImprovementRupees] = useState("");
-  const [purchaseFY, setPurchaseFY] = useState("2020-21");
 
   const purchasePaise = Math.round(parseFloat(purchaseRupees || "0") * 100);
   const salePaise = Math.round(parseFloat(saleRupees || "0") * 100);
   const improvementPaise = Math.round(parseFloat(improvementRupees || "0") * 100);
-  const saleFY = saleDate ? getFYFromDate(saleDate) : "2024-25";
+  const purchaseFY = purchaseDate ? getFYFromDate(purchaseDate) : "";
+  const saleFY = saleDate ? getFYFromDate(saleDate) : "";
 
-  const result = useMemo(() => {
-    if (!purchaseDate || !saleDate) return null;
-    return computeGains(assetType, purchasePaise, salePaise, purchaseDate, saleDate, improvementPaise, purchaseFY, saleFY);
-  }, [assetType, purchasePaise, salePaise, purchaseDate, saleDate, improvementPaise, purchaseFY, saleFY]);
+  const [result, setResult] = useState<CapitalGainsComputeResult | null>(null);
+  const [computeError, setComputeError] = useState<string | null>(null);
+  const [computing, setComputing] = useState(false);
 
-  const showIndexation = assetType === "property" && result?.isLongTerm;
+  // Server-side compute, debounced 400ms (matches the deductions page's
+  // pattern) so every keystroke doesn't fire a request.
+  useEffect(() => {
+    if (!purchaseDate || !saleDate || purchasePaise <= 0 || salePaise <= 0) {
+      setResult(null);
+      setComputeError(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setComputing(true);
+      computeCapitalGains({
+        asset_type: assetType,
+        purchase_date: purchaseDate,
+        sale_date: saleDate,
+        purchase_cost_paise: purchasePaise,
+        sale_value_paise: salePaise,
+        improvement_cost_paise: improvementPaise,
+      })
+        .then(r => { setResult(r); setComputeError(null); })
+        .catch(e => { setResult(null); setComputeError(e instanceof Error ? e.message : "Failed to compute"); })
+        .finally(() => setComputing(false));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [assetType, purchaseDate, saleDate, purchasePaise, salePaise, improvementPaise]);
+
+  const showIndexation = assetType === "property" && result?.is_long_term && result?.tax_with_indexation_percent != null;
   const showCII = assetType === "property";
 
   // ── Register state ──
-  const [firmId, setFirmId] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string>("");
-  const [records, setRecords] = useState<CGRecord[]>([]);
+  const [records, setRecords] = useState<CapitalGainsRecord[]>([]);
   const [regLoading, setRegLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [regForm, setRegForm] = useState(BLANK_REG);
@@ -322,83 +146,86 @@ export default function CapitalGainsPage() {
   const [regError, setRegError] = useState<string | null>(null);
 
   useEffect(() => {
-    const sb = getSupabaseClient();
-    getFirmId().then(async (fid) => {
-      setFirmId(fid);
-      const { data } = await sb.from("clients").select("id, client_name").eq("firm_id", fid).eq("is_active", true).order("client_name");
-      const cl = (data ?? []) as Client[];
+    (api.clients.list() as Promise<ApiResp<{ clients: Client[] }>>).then(res => {
+      const cl = res.data?.clients ?? [];
       setClients(cl);
       if (cl.length > 0) setSelectedClientId(cl[0].id);
     }).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (activeTab === "register" && selectedClientId && firmId) loadRecords();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, selectedClientId, firmId]);
-
-  async function loadRecords() {
-    if (!firmId || !selectedClientId) return;
+  const loadRecords = useCallback(async () => {
+    if (!selectedClientId) return;
     setRegLoading(true);
-    const sb = getSupabaseClient();
-    const { data } = await sb.from("capital_gains").select("*").eq("firm_id", firmId).eq("client_id", selectedClientId).order("sale_date", { ascending: false });
-    setRecords((data ?? []) as CGRecord[]);
+    try {
+      const data = await listCapitalGains(selectedClientId);
+      setRecords(data);
+    } catch {
+      setRecords([]);
+    }
     setRegLoading(false);
-  }
+  }, [selectedClientId]);
+
+  useEffect(() => {
+    if (activeTab === "register" && selectedClientId) loadRecords();
+  }, [activeTab, selectedClientId, loadRecords]);
+
+  // Live preview for the "Add Transaction" modal — same debounced
+  // server-side compute as the calculator tab, not a client-side re-implementation.
+  const [regPreview, setRegPreview] = useState<CapitalGainsComputeResult | null>(null);
+  useEffect(() => {
+    if (!showModal || !regForm.purchase_date || !regForm.sale_date || !regForm.purchase_cost_rs || !regForm.sale_value_rs) {
+      setRegPreview(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      computeCapitalGains({
+        asset_type: regForm.asset_type,
+        purchase_date: regForm.purchase_date,
+        sale_date: regForm.sale_date,
+        purchase_cost_paise: rsToP(regForm.purchase_cost_rs),
+        sale_value_paise: rsToP(regForm.sale_value_rs),
+        improvement_cost_paise: rsToP(regForm.improvement_cost_rs),
+      }).then(setRegPreview).catch(() => setRegPreview(null));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [showModal, regForm.asset_type, regForm.purchase_date, regForm.sale_date,
+      regForm.purchase_cost_rs, regForm.sale_value_rs, regForm.improvement_cost_rs]);
 
   async function handleSaveRecord() {
-    if (!firmId || !selectedClientId) return;
+    if (!selectedClientId) return;
     if (!regForm.asset_description.trim() || !regForm.purchase_date || !regForm.sale_date) {
       setRegError("Asset description, purchase date, and sale date are required");
       return;
     }
     setSaving(true);
     setRegError(null);
-
-    const purchaseCostPaise = rsToP(regForm.purchase_cost_rs);
-    const improvementCostPaise = rsToP(regForm.improvement_cost_rs);
-    const saleValuePaise = rsToP(regForm.sale_value_rs);
-
-    // Cost Inflation Index per IT Act Section 48, IT Rule 54HA
-    // Base year 2001-02 = 100
-    // Apply CII: Indexed Cost = (Cost × CII of sale year) / CII of purchase year
-    const purchFY = getFYFull(regForm.purchase_date);
-    const salFY = getFYFull(regForm.sale_date);
-    const ciiP = CII[purchFY] ?? 100;
-    const ciiS = CII[salFY] ?? 363;
-    const indexedCostPaise = Math.round((purchaseCostPaise * ciiS) / ciiP) + improvementCostPaise;
-
-    const gainType = getRegGainType(regForm.asset_type, regForm.purchase_date, regForm.sale_date);
-    const taxRate = getRegTaxRate(regForm.asset_type, gainType);
-
-    const sb = getSupabaseClient();
-    const { error } = await sb.from("capital_gains").insert({
-      firm_id: firmId,
-      client_id: selectedClientId,
-      asset_description: regForm.asset_description.trim(),
-      asset_type: regForm.asset_type,
-      purchase_date: regForm.purchase_date,
-      sale_date: regForm.sale_date,
-      purchase_cost_paise: purchaseCostPaise,
-      improvement_cost_paise: improvementCostPaise,
-      sale_value_paise: saleValuePaise,
-      indexed_cost_paise: indexedCostPaise,
-      gain_type: gainType,
-      tax_rate_percent: taxRate,
-    });
-
-    setSaving(false);
-    if (error) { setRegError(error.message); return; }
-    setShowModal(false);
-    setRegForm(BLANK_REG);
-    await loadRecords();
+    try {
+      await createCapitalGain({
+        client_id: selectedClientId,
+        asset_description: regForm.asset_description.trim(),
+        asset_type: regForm.asset_type,
+        purchase_date: regForm.purchase_date,
+        sale_date: regForm.sale_date,
+        purchase_cost_paise: rsToP(regForm.purchase_cost_rs),
+        improvement_cost_paise: rsToP(regForm.improvement_cost_rs),
+        sale_value_paise: rsToP(regForm.sale_value_rs),
+      });
+      setShowModal(false);
+      setRegForm(BLANK_REG);
+      await loadRecords();
+    } catch (e) {
+      setRegError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  async function deleteRecord(id: string) {
+  async function handleDeleteRecord(id: string) {
     if (!confirm("Delete this record?")) return;
-    const sb = getSupabaseClient();
-    await sb.from("capital_gains").delete().eq("id", id);
-    await loadRecords();
+    try {
+      await deleteCapitalGain(id);
+      await loadRecords();
+    } catch { /* leave the row in place on failure */ }
   }
 
   return (
@@ -443,7 +270,7 @@ export default function CapitalGainsPage() {
 
               <div>
                 <label className="text-xs font-medium text-[#334155] block mb-1">Asset Type</label>
-                <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={assetType} onChange={e => setAssetType(e.target.value)}>
+                <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={assetType} onChange={e => setAssetType(e.target.value as CapitalGainsAssetType)}>
                   {ASSET_TYPES_CALC.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                 </select>
               </div>
@@ -477,24 +304,27 @@ export default function CapitalGainsPage() {
                 </div>
               )}
 
-              {showCII && (
-                <div>
-                  <label className="text-xs font-medium text-[#334155] block mb-1">Purchase FY (for CII indexation)</label>
-                  <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseFY} onChange={e => setPurchaseFY(e.target.value)}>
-                    {CII_YEARS.map(y => <option key={y} value={y}>FY {y} (CII: {CII[y]})</option>)}
-                  </select>
-                  <p className="text-[10px] text-[#94A3B8] mt-1">Sale FY: {saleFY} (CII: {CII[saleFY] ?? "—"})</p>
+              {showCII && purchaseFY && saleFY && (
+                <div className="bg-[#F8FAFC] rounded-lg px-3 py-2">
+                  <p className="text-[10px] text-[#94A3B8]">
+                    Purchase FY: {purchaseFY} (CII: {ciiByFy[purchaseFY] ?? "—"}) · Sale FY: {saleFY} (CII: {ciiByFy[saleFY] ?? "—"})
+                  </p>
                 </div>
               )}
             </div>
 
             {/* Result Panel */}
             <div className="space-y-4">
+              {computeError && (
+                <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{computeError}</div>
+              )}
               {!result ? (
                 <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 flex items-center justify-center h-full min-h-[200px]">
                   <div className="text-center">
                     <Calculator className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                    <p className="text-sm text-[#94A3B8]">Enter asset details to compute capital gains</p>
+                    <p className="text-sm text-[#94A3B8]">
+                      {computing ? "Computing…" : "Enter asset details to compute capital gains"}
+                    </p>
                   </div>
                 </div>
               ) : (
@@ -504,23 +334,23 @@ export default function CapitalGainsPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <p className="text-xs text-[#94A3B8]">Holding Period</p>
-                        <p className="text-sm font-semibold text-[#0F172A]">{result.holdingMonths} months</p>
+                        <p className="text-sm font-semibold text-[#0F172A]">{result.holding_months} months</p>
                       </div>
                       <div>
                         <p className="text-xs text-[#94A3B8]">Classification</p>
-                        <span className={`inline-flex text-xs font-semibold px-2 py-0.5 rounded-full ${result.isLongTerm ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
-                          {result.termLabel} Capital Gain
+                        <span className={`inline-flex text-xs font-semibold px-2 py-0.5 rounded-full ${result.is_long_term ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                          {result.is_long_term ? "Long Term" : "Short Term"} Capital Gain
                         </span>
                       </div>
                       <div>
                         <p className="text-xs text-[#94A3B8]">Capital Gain</p>
-                        <p className={`text-sm font-semibold ${result.gainPaise >= 0 ? "text-green-700" : "text-red-700"}`}>
-                          {result.gainPaise >= 0 ? "+" : ""}₹{(result.gainPaise / 100).toLocaleString("en-IN")}
+                        <p className={`text-sm font-semibold ${result.gain_paise >= 0 ? "text-green-700" : "text-red-700"}`}>
+                          {result.gain_paise >= 0 ? "+" : ""}₹{(result.gain_paise / 100).toLocaleString("en-IN")}
                         </p>
                       </div>
                       <div>
                         <p className="text-xs text-[#94A3B8]">Applicable Rate</p>
-                        <p className="text-sm font-semibold text-[#0F172A]">{result.taxRatePercent}%</p>
+                        <p className="text-sm font-semibold text-[#0F172A]">{result.tax_rate_percent}%</p>
                       </div>
                     </div>
                   </div>
@@ -544,22 +374,22 @@ export default function CapitalGainsPage() {
                       )}
                       <div className="border-t border-[#F1F5F9] pt-2 flex justify-between text-sm font-semibold">
                         <span className="text-[#1E293B]">Capital Gain</span>
-                        <span className={result.gainPaise >= 0 ? "text-green-700" : "text-red-700"}>
-                          ₹{(result.gainPaise / 100).toLocaleString("en-IN")}
+                        <span className={result.gain_paise >= 0 ? "text-green-700" : "text-red-700"}>
+                          ₹{(result.gain_paise / 100).toLocaleString("en-IN")}
                         </span>
                       </div>
 
                       {showIndexation && (
                         <div className="mt-3 border-t border-dashed border-[#F1F5F9] pt-3">
-                          <p className="text-xs font-medium text-[#64748B] mb-2">With Indexation (20%)</p>
+                          <p className="text-xs font-medium text-[#64748B] mb-2">With Indexation ({result.tax_with_indexation_percent}%)</p>
                           <div className="flex justify-between text-sm">
-                            <span className="text-[#475569]">Indexed Cost (CII {CII[purchaseFY]} → {CII[saleFY] ?? "—"})</span>
-                            <span>₹{(result.indexedCostPaise / 100).toLocaleString("en-IN")}</span>
+                            <span className="text-[#475569]">Indexed Cost (CII {ciiByFy[purchaseFY] ?? "—"} → {ciiByFy[saleFY] ?? "—"})</span>
+                            <span>₹{(result.indexed_cost_paise / 100).toLocaleString("en-IN")}</span>
                           </div>
                           <div className="flex justify-between text-sm font-semibold mt-1">
                             <span className="text-[#1E293B]">Gain (indexed)</span>
-                            <span className={result.gainWithIndexation >= 0 ? "text-green-700" : "text-red-700"}>
-                              ₹{(result.gainWithIndexation / 100).toLocaleString("en-IN")}
+                            <span className={result.gain_with_indexation_paise >= 0 ? "text-green-700" : "text-red-700"}>
+                              ₹{(result.gain_with_indexation_paise / 100).toLocaleString("en-IN")}
                             </span>
                           </div>
                         </div>
@@ -572,22 +402,22 @@ export default function CapitalGainsPage() {
                     {showIndexation ? (
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span className="text-[#475569]">Tax without indexation (12.5%)</span>
-                          <span className="font-medium">₹{(result.taxLiabilityPaise / 100).toLocaleString("en-IN")}</span>
+                          <span className="text-[#475569]">Tax without indexation ({result.tax_rate_percent}%)</span>
+                          <span className="font-medium">{fmtRs(result.tax_without_indexation_paise)}</span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span className="text-[#475569]">Tax with indexation (20%)</span>
-                          <span className="font-medium">₹{(result.taxWithIndexationPaise / 100).toLocaleString("en-IN")}</span>
+                          <span className="text-[#475569]">Tax with indexation ({result.tax_with_indexation_percent}%)</span>
+                          <span className="font-medium">{fmtRs(result.tax_with_indexation_paise ?? 0)}</span>
                         </div>
                         <div className="border-t border-blue-200 pt-2 flex justify-between">
                           <span className="text-sm font-semibold text-[#1E293B]">Recommended (lower)</span>
-                          <span className="text-lg font-bold text-blue-700">₹{(result.finalTaxPaise / 100).toLocaleString("en-IN")}</span>
+                          <span className="text-lg font-bold text-blue-700">{fmtRs(result.tax_liability_paise)}</span>
                         </div>
                       </div>
                     ) : (
                       <div className="flex justify-between items-center">
-                        <span className="text-sm text-[#475569]">Tax @ {result.taxRatePercent}%</span>
-                        <span className="text-2xl font-bold text-blue-700">₹{(result.finalTaxPaise / 100).toLocaleString("en-IN")}</span>
+                        <span className="text-sm text-[#475569]">Tax @ {result.tax_rate_percent}%</span>
+                        <span className="text-2xl font-bold text-blue-700">{fmtRs(result.tax_liability_paise)}</span>
                       </div>
                     )}
                   </div>
@@ -595,9 +425,14 @@ export default function CapitalGainsPage() {
                   <div className="bg-amber-50 rounded-lg p-3 flex gap-2">
                     <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-xs text-amber-800 font-medium">{result.sectionRef}</p>
-                      <p className="text-xs text-amber-700 mt-0.5">{result.taxNote}</p>
-                      <p className="text-[10px] text-amber-600 mt-1">This is an estimate. Add to ITR filing and consult CA for final computation. Surcharge and cess apply.</p>
+                      <p className="text-xs text-amber-800 font-medium">{result.section_ref}</p>
+                      <p className="text-xs text-amber-700 mt-0.5">{result.note}</p>
+                      <p className="text-[10px] text-amber-600 mt-1">
+                        {result.is_slab_rate_estimate
+                          ? "This rate is an ESTIMATE at the highest slab — your actual liability depends on your own income slab. "
+                          : ""}
+                        This is an estimate. Add to ITR filing and consult CA for final computation. Surcharge and cess apply.
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -615,10 +450,10 @@ export default function CapitalGainsPage() {
               <table className="w-full text-sm">
                 <tbody>
                   <tr>
-                    {CII_YEARS.map(y => (
+                    {ciiYears.map(y => (
                       <td key={y} className={`px-3 py-2 text-center border-r border-gray-50 ${purchaseFY === y || saleFY === y ? "bg-blue-50" : ""}`}>
                         <p className="text-[10px] text-[#94A3B8]">FY {y}</p>
-                        <p className="text-xs font-semibold text-[#0F172A]">{CII[y]}</p>
+                        <p className="text-xs font-semibold text-[#0F172A]">{ciiByFy[y]}</p>
                       </td>
                     ))}
                   </tr>
@@ -699,7 +534,7 @@ export default function CapitalGainsPage() {
                           <td className="px-4 py-3 text-right">
                             <div className="flex flex-col items-end gap-1">
                               <span className={`text-xs font-semibold ${gain >= 0 ? "text-green-700" : "text-red-700"}`}>{gain >= 0 ? "+" : ""}{fmtRs(gain)}</span>
-                              <button onClick={() => deleteRecord(r.id)} className="text-[#CBD5E1] hover:text-red-500 transition-colors">
+                              <button onClick={() => handleDeleteRecord(r.id)} className="text-[#CBD5E1] hover:text-red-500 transition-colors">
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             </div>
@@ -734,7 +569,7 @@ export default function CapitalGainsPage() {
 
                   <div>
                     <label className="text-xs font-medium text-[#334155] block mb-1">Asset Type *</label>
-                    <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.asset_type} onChange={e => setRegForm(f => ({ ...f, asset_type: e.target.value }))}>
+                    <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.asset_type} onChange={e => setRegForm(f => ({ ...f, asset_type: e.target.value as CapitalGainsRegisterAssetType }))}>
                       {ASSET_TYPES_REG.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                     </select>
                   </div>
@@ -766,45 +601,27 @@ export default function CapitalGainsPage() {
                     <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.improvement_cost_rs} onChange={e => setRegForm(f => ({ ...f, improvement_cost_rs: e.target.value }))} placeholder="0" />
                   </div>
 
-                  {/* Preview STCG/LTCG */}
-                  {regForm.purchase_date && regForm.sale_date && (
+                  {/* Server-computed preview (STCG/LTCG, rate, indexed cost) */}
+                  {regPreview && (
                     <div className="bg-blue-50 rounded-lg px-4 py-3 space-y-1">
-                      {(() => {
-                        const gt = getRegGainType(regForm.asset_type, regForm.purchase_date, regForm.sale_date);
-                        const months = getHoldingMonths(regForm.purchase_date, regForm.sale_date);
-                        const tr = getRegTaxRate(regForm.asset_type, gt);
-                        const pFY = getFYFull(regForm.purchase_date);
-                        const sFY = getFYFull(regForm.sale_date);
-                        const ciiP = CII[pFY] ?? 100;
-                        const ciiS = CII[sFY] ?? 363;
-                        const purchCostP = rsToP(regForm.purchase_cost_rs);
-                        // Cost Inflation Index per IT Act Section 48, IT Rule 54HA
-                        // Base year 2001-02 = 100
-                        // Apply CII: Indexed Cost = (Cost × CII of sale year) / CII of purchase year
-                        const indexedP = Math.round((purchCostP * ciiS) / ciiP) + rsToP(regForm.improvement_cost_rs);
-                        return (
-                          <>
-                            <div className="flex justify-between text-xs">
-                              <span className="text-[#475569]">Holding Period</span>
-                              <span className="font-medium text-[#0F172A]">{months} months</span>
-                            </div>
-                            <div className="flex justify-between text-xs">
-                              <span className="text-[#475569]">Classification</span>
-                              <span className={`font-semibold ${gt === "LTCG" ? "text-green-700" : "text-amber-700"}`}>{gt}</span>
-                            </div>
-                            <div className="flex justify-between text-xs">
-                              <span className="text-[#475569]">Tax Rate</span>
-                              <span className="font-medium text-[#0F172A]">{tr}%</span>
-                            </div>
-                            {regForm.asset_type === "property" && (
-                              <div className="flex justify-between text-xs">
-                                <span className="text-[#475569]">Indexed Cost (CII {ciiP}→{ciiS})</span>
-                                <span className="font-medium text-[#0F172A]">{fmtRs(indexedP)}</span>
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
+                      <div className="flex justify-between text-xs">
+                        <span className="text-[#475569]">Holding Period</span>
+                        <span className="font-medium text-[#0F172A]">{regPreview.holding_months} months</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-[#475569]">Classification</span>
+                        <span className={`font-semibold ${regPreview.gain_type === "LTCG" ? "text-green-700" : "text-amber-700"}`}>{regPreview.gain_type}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-[#475569]">Tax Rate</span>
+                        <span className="font-medium text-[#0F172A]">{regPreview.tax_rate_percent}%</span>
+                      </div>
+                      {regForm.asset_type === "property" && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-[#475569]">Indexed Cost</span>
+                          <span className="font-medium text-[#0F172A]">{fmtRs(regPreview.indexed_cost_paise)}</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

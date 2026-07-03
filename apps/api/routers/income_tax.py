@@ -5,13 +5,17 @@ IT Act 1961 — Section 80C, 80D, 80G, 87A, 111A, 112A, 234B/C etc.
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
 """
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from datetime import date
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
 from domain.income_tax.itr_engine import (
     ITREngine, ITRComputeRequest, Deductions80C, Deductions80D, Donation80G, HRADetails, itr_engine,
+)
+from domain.income_tax.capital_gains_engine import (
+    compute_capital_gains, ASSET_TYPES, REGISTER_ASSET_TYPES, CII_BY_FY, LATEST_CII_FY,
 )
 
 router = APIRouter(prefix="/api/income-tax", tags=["income-tax"])
@@ -210,3 +214,165 @@ def compute_hra(
         "taxable_hra_paise": max(0, hra_received_paise - exemption),
         "section": "IT Act Section 10(13A)",
     })
+
+
+# ── Capital Gains (R3.1b) ──────────────────────────────────────────────────────
+# Section 45/48/2(42A)/111A/112A/112/115BBH/50AA — see
+# domain/income_tax/capital_gains_engine.py for the full computation and its
+# verification-status note. Replaces apps/web/app/income-tax/capital-gains/
+# page.tsx's client-side compute-and-persist implementation.
+
+def _db():
+    import os
+    if not os.environ.get("SUPABASE_URL"):
+        return None
+    from core.supabase_client import get_supabase
+    return get_supabase()
+
+
+@router.get("/capital-gains/cii-table")
+def get_cii_table(current_user: dict = Depends(rbac("income_tax", "read"))):
+    """Cost Inflation Index table, Section 48 2nd proviso — the single
+    source of truth the frontend's reference display reads, instead of
+    keeping its own hardcoded copy (which would silently drift from the one
+    domain/income_tax/capital_gains_engine.py actually computes with)."""
+    return api_response(True, {"cii_by_fy": CII_BY_FY, "latest_verified_fy": LATEST_CII_FY})
+
+
+_ALL_ASSET_TYPES = set(ASSET_TYPES) | set(REGISTER_ASSET_TYPES)
+
+
+class ComputeCapitalGainsRequest(BaseModel):
+    asset_type: str
+    purchase_date: date
+    sale_date: date
+    purchase_cost_paise: int = Field(ge=0)
+    sale_value_paise: int = Field(ge=0)
+    improvement_cost_paise: int = Field(default=0, ge=0)
+
+    @field_validator("asset_type")
+    @classmethod
+    def valid_asset_type(cls, v: str) -> str:
+        if v not in _ALL_ASSET_TYPES:
+            raise ValueError(f"asset_type must be one of {sorted(_ALL_ASSET_TYPES)}")
+        return v
+
+    @field_validator("sale_date")
+    @classmethod
+    def sale_not_before_purchase(cls, v: date, info) -> date:
+        purchase = info.data.get("purchase_date")
+        if purchase and v < purchase:
+            raise ValueError("sale_date cannot be before purchase_date")
+        return v
+
+
+def _cg_response(r) -> dict:
+    return {
+        "holding_months": r.holding_months,
+        "is_long_term": r.is_long_term,
+        "gain_type": "LTCG" if r.is_long_term else "STCG",
+        "gain_paise": r.gain_paise,
+        "indexed_cost_paise": r.indexed_cost_paise,
+        "gain_with_indexation_paise": r.gain_with_indexation_paise,
+        "tax_rate_percent": r.tax_rate_percent,
+        "tax_with_indexation_percent": r.tax_with_indexation_percent,
+        "tax_without_indexation_paise": r.tax_without_indexation_paise,
+        "tax_with_indexation_paise": r.tax_with_indexation_paise,
+        "tax_liability_paise": r.tax_liability_paise,
+        "section_ref": r.section_ref,
+        "note": r.note,
+        "is_slab_rate_estimate": r.is_slab_rate_estimate,
+    }
+
+
+@router.post("/capital-gains/compute")
+def compute_capital_gains_endpoint(
+    req: ComputeCapitalGainsRequest,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Stateless capital-gains estimator — does not persist anything.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
+    result = compute_capital_gains(
+        req.asset_type, req.purchase_date, req.sale_date,
+        req.purchase_cost_paise, req.sale_value_paise, req.improvement_cost_paise,
+    )
+    return api_response(True, _cg_response(result))
+
+
+@router.get("/capital-gains")
+def list_capital_gains(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    db = _db()
+    if not db:
+        return api_response(True, [])
+    res = (db.table("capital_gains").select("*")
+           .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+           .order("sale_date", desc=True).execute())
+    return api_response(True, res.data or [])
+
+
+class CreateCapitalGainsRequest(ComputeCapitalGainsRequest):
+    client_id: str
+    asset_description: str = Field(min_length=1)
+
+    @field_validator("asset_type")
+    @classmethod
+    def register_asset_type(cls, v: str) -> str:
+        # The persisted table's CHECK constraint only accepts the register's
+        # (coarser) vocabulary, not the calculator's finer "equity"/"unlisted"/
+        # "vda"/"gold"/"debt_mf" -- validate against that narrower set here.
+        if v not in REGISTER_ASSET_TYPES:
+            raise ValueError(f"asset_type must be one of {sorted(REGISTER_ASSET_TYPES)} for a register entry")
+        return v
+
+
+@router.post("/capital-gains")
+def create_capital_gains(
+    req: CreateCapitalGainsRequest,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Computes AND persists a capital-gains register entry — the gain
+    classification, indexed cost, and applicable tax rate are computed here,
+    server-side, not trusted from the client.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
+    db = _db()
+    result = compute_capital_gains(
+        req.asset_type, req.purchase_date, req.sale_date,
+        req.purchase_cost_paise, req.sale_value_paise, req.improvement_cost_paise,
+    )
+    payload = {
+        "firm_id": current_user["firm_id"],
+        "client_id": req.client_id,
+        "asset_description": req.asset_description,
+        "asset_type": req.asset_type,
+        "purchase_date": req.purchase_date.isoformat(),
+        "sale_date": req.sale_date.isoformat(),
+        "purchase_cost_paise": req.purchase_cost_paise,
+        "improvement_cost_paise": req.improvement_cost_paise,
+        "sale_value_paise": req.sale_value_paise,
+        "indexed_cost_paise": result.indexed_cost_paise,
+        "gain_type": "LTCG" if result.is_long_term else "STCG",
+        "tax_rate_percent": result.tax_rate_percent,
+    }
+    if not db:
+        return api_response(True, {"id": "mock-id", **payload})
+    row = db.table("capital_gains").insert(payload).execute()
+    record = (row.data or [{}])[0]
+    return api_response(True, {**record, **_cg_response(result)})
+
+
+@router.delete("/capital-gains/{record_id}")
+def delete_capital_gains(
+    record_id: str,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    db = _db()
+    if not db:
+        return api_response(True, {"id": record_id})
+    row = (db.table("capital_gains").delete().eq("id", record_id)
+           .eq("firm_id", current_user["firm_id"]).execute())
+    if not row.data:
+        raise HTTPException(status_code=404, detail="Capital gains record not found")
+    return api_response(True, {"id": record_id})
