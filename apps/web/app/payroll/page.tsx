@@ -112,6 +112,13 @@ function employeeGrossPaise(emp: Employee): number {
  * massively over-deducted (finding F15). NOTE: this statutory logic belongs
  * server-side — the payroll compute should route through the backend
  * (POST /api/payroll/runs). Kept here, corrected, until that migration lands.
+ *
+ * PENDING (roadmap R2.3/R3.1 — FY-versioned rules): parameters here are FY
+ * 2024-25 and must be updated to the current financial year (Budget 2025 revised
+ * the new-regime slabs, standard deduction and §87A ceiling from FY 2025-26) —
+ * across the backend engines too, so both stay in step. It also omits surcharge
+ * (>₹50L taxable) and §80CCD(2)/§192(2B) declarations; this is a labelled monthly
+ * ESTIMATE, trued up in the return.
  */
 function monthlyTdsPaiseNewRegime(annualGrossPaise: number): number {
   const STD_DEDUCTION = 7_500_000;   // ₹75,000 in paise (new regime)
