@@ -31,6 +31,14 @@ MOCK_RECEIPTS: list[dict] = []
 MOCK_RECEIPT_ALLOCATIONS: list[dict] = []
 
 
+def _is_unique_violation(err: Exception) -> bool:
+    """True when a Postgres/PostgREST error is a unique-constraint violation
+    (23505) — used to recognise a receipt_no collision against migration 159's
+    UNIQUE (firm_id, client_id, receipt_no) constraint."""
+    s = str(err).lower()
+    return "23505" in s or "duplicate key" in s or "already exists" in s
+
+
 def _current_fy() -> str:
     now = datetime.now(timezone.utc)
     if now.month >= 4:
@@ -179,7 +187,9 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
         rate_overridden=overridden, currency_policy=CurrencyPolicy(active=True, functional_currency="INR"),
     )
 
+    receipt_id = str(uuid.uuid4())
     receipt_payload = {
+        "id": receipt_id,
         "firm_id": firm_id, "client_id": client_id, "customer_id": data["customer_id"],
         "receipt_no": receipt_no, "receipt_date": data["receipt_date"],
         "amount_paise": cash_base, "tds_paise": 0, "unallocated_paise": unalloc_base,
@@ -190,17 +200,21 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
         "rate_source": r1_source, "rate_type": "booking", "rate_date": str(data["receipt_date"])[:10],
         "rate_selected_by": (actor or {}).get("id"), "rate_overridden": overridden,
     }
-    receipt = (db.table("receipts").insert(receipt_payload).execute().data or [receipt_payload])[0]
-    receipt_id = receipt.get("id", str(uuid.uuid4()))
 
-    # F7 hardening: the journal and receipt are already committed above (this path
-    # always posted the journal first). A settlement failure from here on is
-    # compensated (journal reversed, receipt deleted) rather than left as a
-    # phantom entry. Amounts here were already validated against each invoice's
+    # F7/R2.9 hardening: the journal above is already committed (this path always
+    # posts the journal first), so from HERE ON (starting with the receipt insert
+    # itself) a failure must be compensated (journal reversed, receipt deleted)
+    # rather than left as a phantom GL entry. This now also covers a receipt_no
+    # unique-constraint collision (migration 159, R2.9) — previously impossible
+    # to hit since no constraint existed, so the insert itself was never in this
+    # try block. Settlement amounts were already validated against each invoice's
     # live outstanding when settle_plan was built (before the journal posted), so
-    # this loop's 409 is now only reachable via a genuine concurrent race.
+    # the loop's 409 is now only reachable via a genuine concurrent race.
     alloc_rows = []
     try:
+        receipt = (db.table("receipts").insert(receipt_payload).execute().data or [receipt_payload])[0]
+        receipt_id = receipt.get("id", receipt_id)
+
         for (inv, f, ar_relieved, new_paid, new_paid_txn, status) in settle_plan:
             # Optimistic guard (H1): only settle if paid_paise is unchanged since our read.
             upd = (db.table("client_sales_invoices")
@@ -226,6 +240,17 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
             db, firm_id, client_id, receipt_id, entry_id, actor,
             [inv["id"] for (inv, *_ ) in settle_plan],
         )
+        raise
+    except Exception as e:
+        _compensate_failed_settlement(
+            db, firm_id, client_id, receipt_id, entry_id, actor,
+            [inv["id"] for (inv, *_ ) in settle_plan],
+        )
+        if _is_unique_violation(e):
+            raise HTTPException(
+                status_code=409,
+                detail="A receipt numbering collision was detected; please retry.",
+            ) from e
         raise
 
     log_event(firm_id, "receipt", receipt_id, "create", actor_id=(actor or {}).get("auth_user_id"),
@@ -424,20 +449,23 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     if journal_id:
         receipt_payload["journal_entry_id"] = journal_id
 
-    rcpt_resp  = db.table("receipts").insert(receipt_payload).execute()
-    receipt    = rcpt_resp.data[0] if rcpt_resp.data else receipt_payload
-    receipt_id = receipt.get("id", receipt_id)
-
-    # Insert allocations and update invoice statuses. The journal and receipt row
-    # are already committed at this point (above), so from here on a failure is
-    # compensated (journal reversed, receipt deleted) rather than left as a
-    # phantom entry — see F7 hardening. With allocations pre-validated above, this
-    # loop's own 422 is no longer reachable on a single request; it now only fires
-    # under a genuine concurrent settlement race (CAS exhaustion, 409), which the
+    # F7/R2.9 hardening: the journal above is already committed, so from HERE ON
+    # (starting with the receipt insert itself) a failure must be compensated
+    # (journal reversed, receipt deleted) rather than left as a phantom GL
+    # entry. This now also covers a receipt_no unique-constraint collision
+    # (migration 159, R2.9) — previously impossible to hit since no constraint
+    # existed, so the insert itself was never in this try block. With
+    # allocations pre-validated above, the loop's own 422 is no longer
+    # reachable on a single request; it now only fires under a genuine
+    # concurrent settlement race (CAS exhaustion, 409), which the same
     # compensation below also covers.
     alloc_payloads = []
     _attempted_invoice_ids = [a.get("sales_invoice_id") for a in allocations if a.get("sales_invoice_id")]
     try:
+        rcpt_resp  = db.table("receipts").insert(receipt_payload).execute()
+        receipt    = rcpt_resp.data[0] if rcpt_resp.data else receipt_payload
+        receipt_id = receipt.get("id", receipt_id)
+
         for alloc in allocations:
             inv_id    = alloc.get("sales_invoice_id")
             alloc_amt = int(alloc.get("allocated_paise", 0))
@@ -493,6 +521,16 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         _compensate_failed_settlement(
             db, firm_id, client_id, receipt_id, journal_id, actor, _attempted_invoice_ids,
         )
+        raise
+    except Exception as e:
+        _compensate_failed_settlement(
+            db, firm_id, client_id, receipt_id, journal_id, actor, _attempted_invoice_ids,
+        )
+        if _is_unique_violation(e):
+            raise HTTPException(
+                status_code=409,
+                detail="A receipt numbering collision was detected; please retry.",
+            ) from e
         raise
 
     # (The GL journal was already posted above, BEFORE settling AR — see F7.)
