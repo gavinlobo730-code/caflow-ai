@@ -285,15 +285,15 @@ class ITREngine:
 
         # Special rate capital gains (add on top of slab tax; never eligible
         # for Chapter VI-A deductions or §87A rebate/marginal relief below —
-        # see the F17 fix note ahead of the rebate step).
-        # IT Act Section 111A: STCG on equity @ 20% (Budget 2024)
-        stcg_tax = req.capital_gains_stcg_paise * 20 // 100
-        # IT Act Section 112A: LTCG on equity @ 12.5% (Budget 2024), exemption ₹1.25L
-        ltcg_exempt = 125_000 * 100
-        ltcg_taxable = max(0, req.capital_gains_ltcg_paise - ltcg_exempt)
-        ltcg_tax = ltcg_taxable * 1250 // 10000
-        # IT Act Section 112: LTCG other @ 12.5% (post-Budget 2024)
-        ltcg_other_tax = req.capital_gains_ltcg_other_paise * 1250 // 10000
+        # see the F17 fix note ahead of the rebate step). Rates are FY-versioned
+        # in statutory_rates.py (R3.1) rather than inline here.
+        # IT Act Section 111A: STCG on equity
+        stcg_tax = req.capital_gains_stcg_paise * rates.stcg_111a_rate_bps // 10000
+        # IT Act Section 112A: LTCG on equity, less the exemption
+        ltcg_taxable = max(0, req.capital_gains_ltcg_paise - rates.ltcg_112a_exemption_paise)
+        ltcg_tax = ltcg_taxable * rates.ltcg_112a_rate_bps // 10000
+        # IT Act Section 112: LTCG on any other asset
+        ltcg_other_tax = req.capital_gains_ltcg_other_paise * rates.ltcg_112_other_rate_bps // 10000
 
         # 6. Rebate u/s 87A — reduces slab tax only, never special-rate CG tax.
         # Pre-existing, deliberately conservative position: the CBDT's own ITR

@@ -3,8 +3,8 @@ FY-versioned individual income-tax statutory rates — single source of truth.
 
 IT Act 1961: Section 115BAC (new regime slabs), Section 16(ia) (standard
 deduction), Section 87A (rebate), Section 2(29C) read with the Finance Act's
-Part I First Schedule (surcharge), Section 111A/112A (equity capital gains
-surcharge cap).
+Part I First Schedule (surcharge), Section 111A/112A/112 (capital gains
+rates, exemption, and surcharge cap).
 
 Before this module, the same slab/rebate/surcharge numbers were hand-copied
 into five independent places (domain/income_tax/itr_engine.py,
@@ -92,6 +92,15 @@ class FYTaxRates:
     # assessee's overall income surcharge bracket is higher.
     capital_gains_surcharge_cap_percent: int
 
+    # Capital gains tax rates (rates in basis points — 1250 = 12.50% — since
+    # 112A/112 are not whole-percent rates). R3.1: migrated out of
+    # itr_engine.py, where they lived as inline constants outside this
+    # registry.
+    stcg_111a_rate_bps: int          # Section 111A: STCG, listed equity (Budget 2024: 20%)
+    ltcg_112a_rate_bps: int          # Section 112A: LTCG, listed equity (Budget 2024: 12.5%)
+    ltcg_112a_exemption_paise: int   # Section 112A exemption threshold (₹1,25,000)
+    ltcg_112_other_rate_bps: int     # Section 112: LTCG, any other asset (post-Budget 2024: 12.5%)
+
     cess_percent: int  # Health and Education Cess, on (tax + surcharge)
 
 
@@ -142,6 +151,10 @@ _FY_2025_26 = FYTaxRates(
     ),
     new_regime_surcharge_cap_percent=25,
     capital_gains_surcharge_cap_percent=15,
+    stcg_111a_rate_bps=2000,
+    ltcg_112a_rate_bps=1250,
+    ltcg_112a_exemption_paise=125_000_00,
+    ltcg_112_other_rate_bps=1250,
     cess_percent=4,
 )
 
@@ -164,6 +177,10 @@ _FY_2026_27 = FYTaxRates(
     surcharge_brackets=_FY_2025_26.surcharge_brackets,
     new_regime_surcharge_cap_percent=_FY_2025_26.new_regime_surcharge_cap_percent,
     capital_gains_surcharge_cap_percent=_FY_2025_26.capital_gains_surcharge_cap_percent,
+    stcg_111a_rate_bps=_FY_2025_26.stcg_111a_rate_bps,
+    ltcg_112a_rate_bps=_FY_2025_26.ltcg_112a_rate_bps,
+    ltcg_112a_exemption_paise=_FY_2025_26.ltcg_112a_exemption_paise,
+    ltcg_112_other_rate_bps=_FY_2025_26.ltcg_112_other_rate_bps,
     cess_percent=_FY_2025_26.cess_percent,
 )
 

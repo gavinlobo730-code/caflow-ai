@@ -246,7 +246,7 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 ### Tier 3 — Medium (productivity, consolidation, scale)
 
 - **R3.0 — Harden `client_portal_users` RLS/grants. DELIVERED.** *(surfaced by the R2.5 regression review)*. Migration 109's `client_portal_users_own_firm` policy was `FOR ALL USING/WITH CHECK (firm_id = get_my_firm_id())` — any authenticated firm staff member could directly INSERT/UPDATE/DELETE a `client_portal_users` row from the browser, bypassing `invite_contact`'s token/TTL/audit trail entirely. Fixed via migration 163, mirroring the R2.5 `users`-table pattern exactly: `REVOKE INSERT, UPDATE, DELETE ... FROM authenticated`, then the old policy replaced with a SELECT-only "own firm" policy. Unlike `users`, no column-level UPDATE grant was needed — confirmed via a repo-wide check that `apps/web` has zero direct writes to this table (every frontend interaction already goes through the backend REST API), so there was no legitimate self-service feature to carve out. Proven on real Postgres 16: an authenticated firm-staff session can still `SELECT` its own firm's contacts (and a different firm's contact is invisible), but `INSERT`/`UPDATE`/`DELETE` all fail with `permission denied`; the `service_role`-backed backend path (the only real mutation path) is completely unaffected. *Effort:* S (as estimated). *Benefit:* closes the last raw-table write path in the portal invite flow.
-- **R3.1 — Statutory rules-as-data registry (FY-versioned).** Single source of truth for slabs/thresholds/due-dates; eliminates the class of bugs behind F15/F17/F18. *Effort:* L. *Benefit:* tax law becomes maintainable data.
+- **R3.1 — Statutory rules-as-data registry (FY-versioned). RE-SCOPED, PARTIALLY DELIVERED (R3.1a).** R2.3 already delivered the core of this for income tax/vendor TDS. A full re-audit (see Implementation Log) found the remaining scope splits into: quick consolidation wins — capital-gains rates, GST/MCA due-date duplication, a genuine data-corrupting frozen-date bug in `mca/page.tsx` — all DELIVERED as R3.1a; and a much larger item, **R3.1b: build a real capital-gains engine** (Cost Inflation Index, holding-period classification — currently absent from the backend entirely) and migrate `apps/web/app/income-tax/capital-gains/page.tsx` off its own duplicate frontend engine, tracked separately below given its size. Also surfaced: Sections 206AA/206AB (hardcoded, unverified, needs Finance Act 2025 confirmation), an orphaned TCS/206C registry entry with no engine behind it, and at least 3 more frontend pages that compute-and-persist statutory calculations independently of any backend (`lib/data/compliance.ts` writes a compliance calendar straight to Supabase; `advance-tax/page.tsx` has a frontend-only §234C interest calculator). *Effort:* R3.1a delivered at S; R3.1b estimated M-L. *Benefit:* tax law becomes maintainable data; closes the most serious remaining "business logic in the frontend" violation found this session.
 - **R3.2 — Cross-client batch compliance cockpit** (generate/validate/mark-filed + ARN capture across clients). *Effort:* XL. *Benefit:* the #1 CA scale unlock.
 - **R3.3 — De-orphan or delete the ~40 unlinked routes and consolidate duplicate invoicing/fixed-asset/payroll stacks.** *Effort:* L. *Benefit:* coherence + lower maintenance.
 - **R3.4 — Automate document collection & reminders** (WhatsApp Business API + cadence). *Effort:* L. *Benefit:* removes the biggest daily admin sink.
@@ -256,9 +256,10 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 - **R3.8 — Consolidate the two competing year-end status-transition implementations** *(surfaced by the R2.1 investigation)*. `routers/year_end.py`'s generic `PATCH /engagements/{id}/status` and `routers/year_end_reviews.py`'s four specific `POST /reviews/*` endpoints both drive the same draft→in_review→approved→locked transition on `year_end_engagements`, writing overlapping-but-different column sets (`reviewed_by`/`approved_by` vs. `submitted_by`/`revision_requested_by`/`final_approved_by`). Both work today (migration 155 added columns for both) but the duplication is a maintainability risk — a future change to one easily misses the other. *Effort:* M. *Benefit:* one source of truth for the year-end review workflow.
 - **R2.11.1 — Bank-statement re-import path for pre-R2.11 statements** *(surfaced by the R2.11 fix phase, promoted here at Tier 2 close — not yet scoped)*. Statements imported before R2.11's parser fixes keep their old, incorrectly-signed/scaled rows on disk — nothing re-derives them from the fix, and the existing dedupe logic won't treat a corrected re-upload as new rows (by design, to prevent double-counting). Needs a product/design decision before implementation: how aggressive should re-import matching be (exact hash match vs. fuzzy date+amount match), does it replace rows in place or supersede them with an audit trail, and does it need its own CA-confirmation step given it can change historical reconciled balances. *Effort:* M. *Benefit:* firms that imported bank data before R2.11 get correct historical balances without a manual re-entry.
 - **R3.9 — Audit the ~57 migration-created tables with no backend reader** *(surfaced by the R2.2 regression review)*. Some may be reached directly from the frontend via PostgREST rather than through a backend router — the same F14 concern (business logic / unmediated table access from the browser) flagged elsewhere in this audit. Needs a systematic per-table check (grep `apps/web` for direct `.from("<table>")` reads/writes against each name) before deciding whether each is dead schema (safe to leave or formally deprecate) or an undocumented frontend-direct access path (a CLAUDE.md violation — "zero business logic in the frontend" — needing the same treatment as R2.10's payroll migration). *Effort:* M. *Benefit:* closes the door on any remaining unmediated-table-access surface; removes schema clutter.
-- **R3.10 — Implement Section 80CCD(2) and verify Section 206AB's FY 2025-26 status** *(surfaced by the R2.3 regression review)*. Section 80CCD(2) (employer NPS contribution) is deductible under the new regime — unlike the rest of Chapter VI-A — but is entirely unimplemented in `domain/income_tax`. Separately, `tds_validator.py`'s Section 206AB non-filer doubled-rate check may have been altered or removed by Finance Act 2025; this needs verification against the Act's actual text before either changing a compliance-conservative behaviour or leaving a since-repealed check silently in place. *Effort:* S–M. *Benefit:* closes a real deduction gap and confirms/corrects a compliance-sensitive check.
+- **R3.10 — Implement Section 80CCD(2) and verify Sections 206AA/206AB's status** *(surfaced by the R2.3 regression review; 206AA scope widened by the R3.1 re-audit)*. Section 80CCD(2) (employer NPS contribution) is deductible under the new regime — unlike the rest of Chapter VI-A — but is entirely unimplemented in `domain/income_tax`. Separately, `tds_validator.py` hardcodes BOTH Section 206AA (missing-PAN, 20% floor — duplicated in `tds_computer.py` too) and Section 206AB (non-filer doubled rate) with no FY registry and no `verified` flag; 206AB in particular may have been altered by Finance Act 2025 and needs verification against the Act's actual text before either changing a compliance-conservative behaviour or leaving a since-repealed check silently in place. *Effort:* S–M. *Benefit:* closes a real deduction gap and confirms/corrects two compliance-sensitive checks.
 - **R3.11 — Compensate `debit_notes.create_debit_note`'s header/lines insert** *(surfaced by the R2.9 regression review, low priority)*. The header is inserted via `insert_with_number` (now durably unique per R2.9) and `debit_note_lines` afterward with no compensation — a lines-insert failure leaves an orphaned draft header with zero lines. Not a money- or statutory-correctness issue (a draft, not a posted document) but worth closing for consistency with every other multi-step insert this Tier 2 pass hardened. *Effort:* S. *Benefit:* no orphaned draft rows from a partial write.
 - **R3.12 — Verify Maharashtra/West Bengal/Tamil Nadu Professional Tax slabs against current state notifications** *(surfaced by the R2.10 regression review)*. `routers/payroll.py::_PT_SLABS_BY_STATE`'s Karnataka entry is this codebase's original, unit-tested baseline; the other three states were ported verbatim from the frontend's pre-existing (pre-R2.10) client-side logic — the only source for those states anywhere in this repo — and have not been independently re-confirmed against each state's current Profession Tax Act/notification. Same "pending statutory verification" treatment as FY 2026-27's income-tax figures; updating a verified value is a one-line data change in `_PT_SLABS_BY_STATE`, not a code change. *Effort:* S (verification only, assuming the existing slab shape is correct). *Benefit:* removes the one remaining unverified-statutory-value flag from the payroll module.
+- **R3.13 — Migrate remaining frontend pages that compute-and-persist statutory calculations independently of the backend** *(surfaced by the R3.1 re-audit; R3.1b covers the capital-gains instance separately given its size)*. `apps/web/lib/data/compliance.ts`'s `seedComplianceCalendar()` computes GSTR-1/3B/9 due dates client-side AND writes them directly to a `compliance_calendar` Supabase table from the browser — the same "zero business logic in the frontend" violation R2.3/R2.10 already fixed elsewhere, but for compliance due dates instead of tax slabs. `apps/web/app/income-tax/advance-tax/page.tsx` has a frontend-only Section 234C interest calculator (`compute234CInterest`) with no backend equivalent, persisting computed interest to `advance_tax_payments`. `apps/web/app/payroll/page.tsx`'s `generatePfEcr`/`generateEsiStatement` CSV exporters independently re-hardcode PF/ESI rates a third time (after the backend and `payrollTdsEstimate.ts`) purely for export formatting — lower risk since it's export-only, not persisted, but still a third copy to keep in sync. *Effort:* M. *Benefit:* the last un-migrated "business logic in the frontend" instances close; one fewer place for compliance/advance-tax numbers to silently drift.
 
 ### Tier 4 — Long-term (differentiation)
 Government-data ingestion via GSP/ASP-pull + Account Aggregator (submit stays CA-confirmed); reliable two-way Tally/Busy/Zoho import; unified deterministic-then-narrate AI layer; RAG tax-law copilot with citations; DPDP consent vault; mobile/PWA companion. These are where PracticeSync becomes a *better* product, not a cheaper clone.
@@ -2355,4 +2356,113 @@ database-layer change) all pass clean.
 batch compliance cockpit), per the user's priority; R2.6's production-drift
 reconciliation remains the standing highest-priority action for whoever has
 production credentials.
+
+## Milestone R3.1 — Statutory rules-as-data registry, re-scoped (IN PROGRESS)
+
+**Goal:** the original roadmap text ("single source of truth for slabs/
+thresholds/due-dates; eliminates the class of bugs behind F15/F17/F18")
+undersold the item — R2.3 already delivered the core of it for income tax
+and vendor TDS. Before building more, audited the ENTIRE backend (and,
+where relevant, the frontend) for statutory numbers still living outside
+those registries. The audit found the scope is both narrower (some of what
+R3.1 implied is already done) and wider (several categories R2.3 never
+touched at all) than the roadmap suggested.
+
+**Audit findings, in full:**
+1. **Confirmed by R2.3's own notes:** `itr_engine.py` had 4 inline
+   capital-gains constants (§111A 20% STCG-equity, §112A 12.5% LTCG-equity +
+   ₹1.25L exemption, §112 12.5% LTCG-other) never migrated into
+   `statutory_rates.py`.
+2. **New, most serious finding:** `apps/web/app/income-tax/capital-gains/page.tsx`
+   is a complete SECOND capital-gains tax engine in TypeScript — its own
+   hardcoded Cost Inflation Index (CII) table (which doesn't exist in the
+   backend AT ALL — a missing capability, not just a duplicate), its own
+   holding-period classification (12/24 months, Section 2(42A)), the same
+   111A/112A/112/115BBH rates computed three separate ways within one file,
+   and results persisted directly to a `capital_gains` Supabase table with
+   zero backend validation. A genuine "business logic in the frontend"
+   violation with real financial consequences. Properly fixing this means
+   building real CII/holding-period support in the backend first — tracked
+   separately as **R3.1b** (not a quick win; see below).
+3. **Compliance due dates:** a good backend source of truth exists
+   (`services/compliance_engine.py`) but was bypassed by
+   `routers/gst_workspace.py`'s own duplicate GSTR-1/GSTR-3B due-date
+   arithmetic, and MCA due-date offsets (AOC-4/MGT-7/ADT-1) were hardcoded
+   independently in TWO backend files with no shared constant at all. The
+   frontend independently re-implements the entire due-date domain in at
+   least 4 places, three of which (`lib/data/compliance.ts`,
+   `app/payroll/page.tsx`, `app/income-tax/advance-tax/page.tsx`) compute
+   and PERSIST data rather than merely displaying it — `lib/data/compliance.ts`
+   writes straight to a `compliance_calendar` table from the browser, and
+   `advance-tax/page.tsx` has a frontend-only Section 234C interest
+   calculator with no backend equivalent.
+4. **A genuine, separate bug (not just duplication):**
+   `apps/web/app/mca/page.tsx` hardcoded `const TODAY = new Date("2026-06-02")`
+   — a FROZEN fake "current date" used throughout the page, not just for a
+   display list. This corrupted real data: marking an MCA filing "Filed"
+   wrote this frozen date as `filed_date` regardless of when the filing
+   actually happened, and every "Overdue" status calculation compared
+   against June 2026 forever. `KEY_DEADLINES` was also hardcoded to a single
+   non-recurring year and would have shown stale dates from 2027 onward.
+5. Sections 206AA (missing-PAN 20% rate) and 206AB (non-filer doubled rate)
+   are hardcoded in two places each, with no `verified` flag and no FY
+   registry — 206AB in particular needs re-verification against Finance Act
+   2025, which cannot be confirmed from the repository alone.
+6. TCS (Section 206C) has a rate entry in `section_rates.py` but zero
+   runtime readers anywhere — effectively unimplemented as a feature despite
+   looking, from the registry alone, like a supported section.
+7. Confirmed operationally relevant: both FY-versioned registries currently
+   resolve to their `verified=False` FY 2026-27 entry by default (today's
+   date falls in that FY) — the carried-forward-pending-verification state
+   is not hypothetical, it is what every unpinned computation uses right now.
+
+**Scope decision (with the user):** tackle the quick, safe consolidation
+wins first (R3.1a, below), then take on the capital-gains backend build
+(R3.1b) as a distinct follow-up — not because it's lower priority (it's
+arguably the single most serious frontend violation found this session),
+but because it requires new backend capability, not just moving constants
+around, and deserves to be scoped and verified on its own.
+
+### R3.1a — Quick consolidation wins (DELIVERED)
+
+- **Capital-gains rates migrated:** `FYTaxRates` (statutory_rates.py) gained
+  `stcg_111a_rate_bps`, `ltcg_112a_rate_bps`, `ltcg_112a_exemption_paise`,
+  `ltcg_112_other_rate_bps` (basis points, matching the registry's existing
+  convention for non-whole-percent rates); `itr_engine.py`'s 4 inline
+  constants replaced with reads from `rates`. Proven with a test that swaps
+  in a `FYTaxRates` with different capital-gains rates via `dataclasses.replace`
+  and confirms the engine's computed tax changes accordingly — not just that
+  the old hardcoded values still happen to match.
+- **`gst_workspace.py`'s duplicate GSTR-1/GSTR-3B due-date arithmetic**
+  replaced with calls to `services/compliance_engine.py`'s canonical
+  `gstr1_due_date`/`gstr3b_due_date` (the same functions every other GST/TDS/
+  ITR due date in the codebase already used) — thin string-in/string-out
+  adapters over the canonical `date`-returning functions.
+- **MCA due-date offsets consolidated:** new `compliance_engine.MCA_AGM_OFFSET_DAYS`
+  (`{"ADT-1": 15, "AOC-4": 30, "MGT-7": 60}`) and `mca_due_date(agm_date, form_type)`
+  — both `compliance_obligation_service.py::_roc_obligations` and
+  `routers/mca_workspace.py`'s `/calendar` endpoint now read the same table
+  instead of two independently hardcoded copies (the latter previously also
+  covered ADT-1, which the former still doesn't generate as a tracked
+  obligation — a deliberate, out-of-scope-for-this-pass observation, not a
+  fix, since adding a new tracked obligation type is a feature decision).
+- **`apps/web/app/mca/page.tsx`'s frozen fake "today" bug fixed:**
+  `TODAY` is now `new Date()`, not a hardcoded string — closing the
+  `filed_date`-corruption bug described in finding 4 above. `KEY_DEADLINES`
+  rewritten to compute the next occurrence of each deadline relative to the
+  real current date (same 30-Sep statutory-AGM-fallback convention the
+  backend uses) instead of a single hardcoded year.
+- **TCS (206C) entry:** left in place (the rate itself — 0.1% — appears
+  correct for Section 206C(1H)) but both the entry and the module docstring
+  now explicitly flag that no computation anywhere reads it, so it can't be
+  mistaken for a supported feature. Building real TCS/27EQ support is a
+  distinct feature decision, not part of this consolidation.
+
+**Verified:** 11 new backend tests (`test_statutory_rates.py`,
+`test_itr_engine.py`, `test_r3_1_statutory_registry_consolidation.py`); full
+mock-mode suite 2,373 passed, same 23 pre-existing unrelated failures.
+Frontend: `tsc --noEmit` clean, `eslint` clean, full `next build` clean.
+
+**Next:** R3.1b (capital-gains backend engine + frontend migration) — a
+distinct, larger piece of work, not a quick win.
 

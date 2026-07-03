@@ -2,9 +2,11 @@
 FY-versioned TDS-on-payments section rates — single source of truth.
 
 IT Act 1961, Chapter XVII-B: Sections 193/194/194A/194B/194C/194D/194G/194H/
-194I/194J/194K/194LA/194Q (TDS on non-salary payments) and 206C (TCS).
-Salary TDS (Section 192) is slab-based and lives in
-domain/income_tax/statutory_rates.py — the "192" entry here is a sentinel only.
+194I/194J/194K/194LA/194Q (TDS on non-salary payments). Salary TDS (Section
+192) is slab-based and lives in domain/income_tax/statutory_rates.py — the
+"192" entry here is a sentinel only. Section 206C (TCS) has a rate entry
+below for reference, but no computation anywhere in this codebase actually
+reads it — see that entry's own comment before assuming TCS is supported.
 
 Before this module, domain/tds/tds_computer.py hardcoded one flat, unversioned
 SECTION_THRESHOLDS table (audit finding F17): several thresholds pre-dated the
@@ -102,7 +104,13 @@ _SECTIONS_2025_26: dict[str, TDSSectionRule] = {
     "194LA": TDSSectionRule(5_00_000_00, 1000, 1000),
     # Purchase of goods — unchanged ₹50L, 0.1%.
     "194Q":  TDSSectionRule(50_00_000_00, 10, 10),
-    # TCS on sale of goods — unchanged.
+    # TCS on sale of goods, Section 206C(1H) — unchanged, 0.1%.
+    # R3.1: NOT wired to any computation anywhere in this codebase — confirmed
+    # zero readers (tds_computer.py has no 27EQ/TCS path at all, only 24Q/26Q
+    # TDS). This entry is reference data only; do not assume TCS is an
+    # implemented feature because a rate exists here. Building real TCS
+    # support (a 27EQ return, collection tracking) is a distinct, unscoped
+    # feature build, not a data-registry gap — see roadmap.
     "206C":  TDSSectionRule(0, 10, 10),
 }
 

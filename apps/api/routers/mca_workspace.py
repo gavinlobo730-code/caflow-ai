@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 import uuid
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -24,6 +24,7 @@ from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
+from services.compliance_engine import mca_due_date
 
 router = APIRouter(prefix="/api/mca-workspace", tags=["mca_workspace"])
 _logger = logging.getLogger("caflow.mca_workspace")
@@ -473,24 +474,27 @@ def mca_calendar(
 
         today = date.today()
 
-        # Companies Act §92/137/139 — deadline computation from AGM date
+        # Companies Act §92/137/139 — deadline computation from AGM date.
+        # R3.1: offsets sourced from compliance_engine.MCA_AGM_OFFSET_DAYS,
+        # the same constants services/compliance_obligation_service.py's
+        # _roc_obligations uses — previously hardcoded independently here.
         annual_forms = [
             {
                 "form_type": "ADT-1",
                 "description": "Auditor Appointment — Companies Act 2013 §139",
-                "due_date": (agm_dt + timedelta(days=15)).isoformat(),
+                "due_date": mca_due_date(agm_dt, "ADT-1").isoformat(),
                 "days_from_agm": 15,
             },
             {
                 "form_type": "AOC-4",
                 "description": "Financial Statements — Companies Act 2013 §137",
-                "due_date": (agm_dt + timedelta(days=30)).isoformat(),
+                "due_date": mca_due_date(agm_dt, "AOC-4").isoformat(),
                 "days_from_agm": 30,
             },
             {
                 "form_type": "MGT-7",
                 "description": "Annual Return — Companies Act 2013 §92",
-                "due_date": (agm_dt + timedelta(days=60)).isoformat(),
+                "due_date": mca_due_date(agm_dt, "MGT-7").isoformat(),
                 "days_from_agm": 60,
             },
         ]

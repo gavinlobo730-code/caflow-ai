@@ -78,6 +78,22 @@ ADVANCE_TAX_SCHEDULE = [
     (3, 15, 100),  # 100% by 15 Mar
 ]
 
+# Companies Act 2013 — annual ROC filing offsets from the AGM date. R3.1:
+# these three offsets used to be hardcoded independently in both
+# services/compliance_obligation_service.py::_roc_obligations (AOC-4/MGT-7
+# only) and routers/mca_workspace.py's /calendar endpoint (all three) — now
+# a single source both call.
+MCA_AGM_OFFSET_DAYS = {
+    "ADT-1": 15,   # §139 — Auditor Appointment
+    "AOC-4": 30,   # §137 — Financial Statements
+    "MGT-7": 60,   # §92  — Annual Return
+}
+
+
+def mca_due_date(agm_date: date, form_type: str) -> date:
+    return agm_date + timedelta(days=MCA_AGM_OFFSET_DAYS[form_type])
+
+
 def advance_tax_due_dates(financial_year_end: int) -> list[dict]:
     fy_start = financial_year_end - 1
     results = []

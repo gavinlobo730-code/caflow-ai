@@ -22,6 +22,7 @@ from core.permissions import rbac
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
+from services.compliance_engine import gstr1_due_date, gstr3b_due_date
 
 router = APIRouter(prefix="/api/gst-workspace", tags=["gst_workspace"])
 _logger = logging.getLogger("caflow.gst_workspace")
@@ -35,23 +36,20 @@ _MOCK_GSTR2B: dict[str, dict] = {}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+# R3.1: these used to hand-roll the same CGST §37/§39 due-date arithmetic
+# services/compliance_engine.py already computes canonically (and every other
+# caller of due dates already uses) — now thin string<->date adapters over it.
 
 def _gstr1_due_date(period: str) -> str:
     """CGST Act §37 — GSTR-1 due 11th of month following the return period."""
-    mm = int(period[:2])
-    yyyy = int(period[2:])
-    next_month = mm % 12 + 1
-    next_year = yyyy + (1 if mm == 12 else 0)
-    return f"{next_year}-{next_month:02d}-11"
+    mm, yyyy = int(period[:2]), int(period[2:])
+    return gstr1_due_date(yyyy, mm).isoformat()
 
 
 def _gstr3b_due_date(period: str) -> str:
     """CGST Act §39 — GSTR-3B due 20th of month following the return period."""
-    mm = int(period[:2])
-    yyyy = int(period[2:])
-    next_month = mm % 12 + 1
-    next_year = yyyy + (1 if mm == 12 else 0)
-    return f"{next_year}-{next_month:02d}-20"
+    mm, yyyy = int(period[:2]), int(period[2:])
+    return gstr3b_due_date(yyyy, mm).isoformat()
 
 
 # ── Request Models ─────────────────────────────────────────────────────────────
