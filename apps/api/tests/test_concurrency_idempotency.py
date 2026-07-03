@@ -116,6 +116,17 @@ def test_cas_guard_retries_on_stale_paid(monkeypatch):
     # engine issues is intercepted to also bump paid_paise underneath it, so the
     # compare-and-set (WHERE paid_paise = <stale>) matches 0 rows and the engine
     # must re-read and retry — ending at the correct accumulated total.
+    #
+    # R2.12: create_receipt_core now prefers db.rpc when available — the atomic
+    # settle_receipt_atomic path, whose concurrency safety comes from a real
+    # Postgres row lock (SELECT ... FOR UPDATE) rather than an app-level
+    # optimistic CAS retry, and isn't meaningfully simulable by a
+    # single-threaded fake reacting to its own synchronous .update() call (see
+    # test_r2_12_atomic_receipt_settlement_pg.py for the real-Postgres proof
+    # of concurrent-settlement safety). This test targets the legacy
+    # CAS-retry loop specifically, which the code still preserves as a
+    # fallback for test doubles without rpc support — so the receipt call
+    # here goes through a db stand-in that hides .rpc.
     db = _setup(monkeypatch)
     inv_id = _issue_invoice(db, total=100000)
 
@@ -139,9 +150,13 @@ def test_cas_guard_retries_on_stale_paid(monkeypatch):
         q = real_table(name)
         return _Wrap(q) if name == "client_sales_invoices" else q
 
-    monkeypatch.setattr(db, "table", wrapped_table)
-    _receipt(db, inv_id, 40000)
-    monkeypatch.setattr(db, "table", real_table)
+    class _NoRpcDB:
+        """Exposes only .table (delegated), deliberately no .rpc attribute, to
+        force create_receipt_core down its legacy CAS-retry fallback path."""
+        def __init__(self, table_fn): self._table_fn = table_fn
+        def table(self, name): return self._table_fn(name)
+
+    _receipt(_NoRpcDB(wrapped_table), inv_id, 40000)
 
     inv = next(i for i in db.rows("client_sales_invoices") if i["id"] == inv_id)
     # The concurrent ₹50 + this ₹400 both land — nothing lost.
