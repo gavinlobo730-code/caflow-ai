@@ -245,7 +245,7 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 
 ### Tier 3 — Medium (productivity, consolidation, scale)
 
-- **R3.0 — Harden `client_portal_users` RLS/grants** *(surfaced by the R2.5 regression review)*. Migration 109's `client_portal_users_own_firm` policy is `FOR ALL USING/WITH CHECK (firm_id = get_my_firm_id())` — any authenticated firm staff member can directly INSERT/UPDATE a `client_portal_users` row from the browser (e.g. self-activating an arbitrary contact for any client in their own firm), bypassing `invite_contact`'s token/TTL/audit trail. Not a cross-tenant leak (staff already have equivalent CA-side access to the same client), but a real audit-integrity gap. Mirror the R2.5 `users`-table fix: SELECT-only for `authenticated`, all mutation via service-role (`portal_access_service.py` already covers every legitimate mutation path). *Effort:* S. *Benefit:* closes the last raw-table write path in the portal invite flow.
+- **R3.0 — Harden `client_portal_users` RLS/grants. DELIVERED.** *(surfaced by the R2.5 regression review)*. Migration 109's `client_portal_users_own_firm` policy was `FOR ALL USING/WITH CHECK (firm_id = get_my_firm_id())` — any authenticated firm staff member could directly INSERT/UPDATE/DELETE a `client_portal_users` row from the browser, bypassing `invite_contact`'s token/TTL/audit trail entirely. Fixed via migration 163, mirroring the R2.5 `users`-table pattern exactly: `REVOKE INSERT, UPDATE, DELETE ... FROM authenticated`, then the old policy replaced with a SELECT-only "own firm" policy. Unlike `users`, no column-level UPDATE grant was needed — confirmed via a repo-wide check that `apps/web` has zero direct writes to this table (every frontend interaction already goes through the backend REST API), so there was no legitimate self-service feature to carve out. Proven on real Postgres 16: an authenticated firm-staff session can still `SELECT` its own firm's contacts (and a different firm's contact is invisible), but `INSERT`/`UPDATE`/`DELETE` all fail with `permission denied`; the `service_role`-backed backend path (the only real mutation path) is completely unaffected. *Effort:* S (as estimated). *Benefit:* closes the last raw-table write path in the portal invite flow.
 - **R3.1 — Statutory rules-as-data registry (FY-versioned).** Single source of truth for slabs/thresholds/due-dates; eliminates the class of bugs behind F15/F17/F18. *Effort:* L. *Benefit:* tax law becomes maintainable data.
 - **R3.2 — Cross-client batch compliance cockpit** (generate/validate/mark-filed + ARN capture across clients). *Effort:* XL. *Benefit:* the #1 CA scale unlock.
 - **R3.3 — De-orphan or delete the ~40 unlinked routes and consolidate duplicate invoicing/fixed-asset/payroll stacks.** *Effort:* L. *Benefit:* coherence + lower maintenance.
@@ -2297,4 +2297,62 @@ compliance cockpit) are flagged in Section 9 as the highest-leverage
 scale unlocks; R2.6's production-drift reconciliation should happen
 first regardless of which Tier 3 item comes next, since it requires
 credentials this session doesn't have and blocks nothing else.
+
+## Milestone R3.0 — Harden `client_portal_users` RLS/grants (DELIVERED)
+
+**Goal:** close the audit-integrity gap this review's own consolidated list
+flagged: migration 109's `client_portal_users_own_firm` policy was `FOR ALL`,
+scoped only by `firm_id` — any authenticated firm staff member (any role)
+could directly INSERT/UPDATE/DELETE a `client_portal_users` row from the
+browser, bypassing `services/portal_access_service.py`'s `invite_contact()`
+(its token/TTL/audit trail) entirely. Not a cross-tenant confidentiality leak
+(staff already have equivalent CA-side access to the same client's data) but
+a real audit-integrity gap — a staff member could self-activate an arbitrary
+contact, or read another contact's plaintext `invite_token` (a bearer secret)
+via the same broad grant.
+
+**Investigation before implementing:** confirmed `portal_access_service.py`'s
+`invite_contact`/`resend_invite`/`deactivate_contact`/`accept_portal_invite`
+(all running through `get_service_supabase()`, the service-role client which
+bypasses RLS regardless) collectively write every column this table has
+other than `id`/`created_at` — so a SELECT-only RLS/grant change cannot break
+any backend functionality. A repo-wide check confirmed `apps/web` has zero
+direct `.from("client_portal_users")` calls of any kind (read or write) —
+every frontend interaction already goes through the backend REST API
+(`api.portal.*`). This is the key difference from the R2.5 `users`-table
+fix, which needed a column-level `GRANT UPDATE (full_name)` to preserve a
+real "rename yourself" frontend feature: `client_portal_users` has no
+analogous frontend-initiated write dependency at all, so a clean
+`REVOKE INSERT, UPDATE, DELETE` with no replacement grant is the correct,
+simpler fix here.
+
+**What shipped:** migration 163 — `REVOKE INSERT, UPDATE, DELETE ON
+public.client_portal_users FROM authenticated`, then
+`client_portal_users_own_firm` (previously `FOR ALL`) dropped and recreated
+as `FOR SELECT` only, same name, same `firm_id = get_my_firm_id()` predicate.
+The sibling `client_portal_users_self` policy (already SELECT-only, relied on
+by OR-combined policies on `client_documents`/`document_requests`/
+`portal_messages`/`shared_reports`) is untouched.
+
+**Verified:** 6 new real-Postgres tests
+(`test_r3_0_client_portal_users_rls_pg.py`), simulating an authenticated
+PostgREST session via `SET request.jwt.claims` + `SET ROLE authenticated`
+(matching `_supabase_compat_bootstrap.sql`'s `auth.uid()`/`auth.jwt()`
+shims) against a freshly-migrated Postgres 16 database: an authenticated
+firm-staff session can still `SELECT` its own firm's contact (and a
+different firm's contact is invisible — the pre-existing scoping, unchanged);
+`INSERT`/`UPDATE`/`DELETE` from that same session all fail with
+`permission denied for table client_portal_users`; and the
+`service_role`-backed path (the actual backend mutation path) still
+completes an insert/update/delete cycle without issue. Full mock-mode suite:
+2,363 passed, same 23 pre-existing unrelated failures. Migration/schema
+ratchets (`test_migrations_apply.py`, `test_schema_contract.py`,
+`test_migration_numbering.py`) and the full `test_portal_foundation.py`
+suite (27 tests, FakeDB-based service-logic proofs, unaffected by this
+database-layer change) all pass clean.
+
+**Next:** R3.1 (statutory rules-as-data registry) or R3.2 (cross-client
+batch compliance cockpit), per the user's priority; R2.6's production-drift
+reconciliation remains the standing highest-priority action for whoever has
+production credentials.
 
