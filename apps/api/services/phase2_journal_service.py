@@ -131,17 +131,66 @@ class Phase2JournalService:
             _logger.error("journal_for_sales_invoice error: %s", e)
             return None
 
-    def journal_for_receipt(
-        self, receipt: dict, firm_id: str, client_id: str
-    ) -> Optional[str]:
-        """
+    def receipt_journal_lines(self, db, receipt: dict, firm_id: str, client_id: str) -> list[dict]:
+        """Build (but do not post) the double-entry lines for a receipt:
         Dr Bank Account      = amount_paise (cash received)
         Dr TDS Receivable    = tds_paise    (if the client deducted TDS — IT Act §194J)
         Cr Trade Receivables = amount_paise + tds_paise (total settlement)
         The invoice can be fully settled even when cash < invoice value because the
         TDS portion is recorded as a receivable (claimable against the firm's IT,
         reconcilable to 26AS/AIS).
+
+        R2.12: extracted out of journal_for_receipt so services/receipt_service.py's
+        settle_receipt_atomic path (which posts the journal, the receipt row, and
+        every allocation in ONE database transaction) can resolve the same GL
+        accounts and build the same lines without going through the separate
+        post_journal_atomic RPC journal_for_receipt itself still uses for the
+        (unmodified) multi-currency receipt path.
         """
+        cash_paise = int(receipt["amount_paise"])
+        tds_paise  = int(receipt.get("tds_paise", 0) or 0)
+        settlement = cash_paise + tds_paise
+
+        bank_id        = self._find_account(db, firm_id, client_id, "%Bank%", system_key="bank")
+        receivables_id = self._find_account(
+            db, firm_id, client_id, "%Trade Receivable%", system_key="ar"
+        )
+
+        lines = [
+            {
+                "account_id": bank_id,
+                "debit_paise": cash_paise,
+                "credit_paise": 0,
+                "narration": "Cash/bank received from customer",
+            },
+        ]
+        if tds_paise > 0:
+            tds_recv_id = self._find_account(
+                db, firm_id, client_id, "%TDS Receivable%", system_key="tds_receivable"
+            )
+            lines.append({
+                "account_id": tds_recv_id,
+                "debit_paise": tds_paise,
+                "credit_paise": 0,
+                "narration": "TDS deducted by client — receivable (IT Act §194J)",
+            })
+        lines.append({
+            "account_id": receivables_id,
+            "debit_paise": 0,
+            "credit_paise": settlement,
+            "narration": "Trade receivable cleared (cash + TDS)",
+        })
+        return lines
+
+    def journal_for_receipt(
+        self, receipt: dict, firm_id: str, client_id: str
+    ) -> Optional[str]:
+        """Build the receipt's journal lines and post them via post_journal_atomic
+        (the single-document atomic path — see receipt_journal_lines' docstring for
+        why the line-building is factored out). Used by the multi-currency receipt
+        path (create_foreign_receipt); the plain-INR path posts through
+        settle_receipt_atomic instead (services/receipt_service.py), which folds
+        this same journal into the receipt+allocations transaction."""
         if _USE_MOCK:
             _logger.info("[MOCK] journal_for_receipt: %s", receipt.get("receipt_no"))
             return None
@@ -149,41 +198,7 @@ class Phase2JournalService:
         try:
             from core.supabase_client import get_supabase
             db = get_supabase()
-
-            cash_paise = int(receipt["amount_paise"])
-            tds_paise  = int(receipt.get("tds_paise", 0) or 0)
-            settlement = cash_paise + tds_paise
-
-            bank_id        = self._find_account(db, firm_id, client_id, "%Bank%", system_key="bank")
-            receivables_id = self._find_account(
-                db, firm_id, client_id, "%Trade Receivable%", system_key="ar"
-            )
-
-            lines = [
-                {
-                    "account_id": bank_id,
-                    "debit_paise": cash_paise,
-                    "credit_paise": 0,
-                    "narration": "Cash/bank received from customer",
-                },
-            ]
-            if tds_paise > 0:
-                tds_recv_id = self._find_account(
-                    db, firm_id, client_id, "%TDS Receivable%", system_key="tds_receivable"
-                )
-                lines.append({
-                    "account_id": tds_recv_id,
-                    "debit_paise": tds_paise,
-                    "credit_paise": 0,
-                    "narration": "TDS deducted by client — receivable (IT Act §194J)",
-                })
-            lines.append({
-                "account_id": receivables_id,
-                "debit_paise": 0,
-                "credit_paise": settlement,
-                "narration": "Trade receivable cleared (cash + TDS)",
-            })
-
+            lines = self.receipt_journal_lines(db, receipt, firm_id, client_id)
             _ccy = self._currency_kwargs(db, receipt, firm_id, client_id, lines)
             return self._create_journal(
                 db=db,

@@ -330,6 +330,106 @@ def _compensate_failed_settlement(
         )
 
 
+def _settle_receipt_via_atomic_rpc(
+    db, firm_id: str, client_id: str, receipt_payload: dict, allocations: list, actor: dict,
+) -> dict:
+    """R2.12: post the journal, the receipt row, and every allocation's invoice
+    row-locked update in ONE database transaction via settle_receipt_atomic
+    (migration 160) — see that migration's docstring for why this supersedes
+    the journal-first + compensate pattern for the plain-INR receipt path. Any
+    failure (bad account, receipt_no collision, over-allocation) rolls back
+    the WHOLE transaction; nothing partial is ever left to compensate.
+    """
+    from services.phase2_journal_service import phase2_journal_service
+
+    lines = phase2_journal_service.receipt_journal_lines(db, receipt_payload, firm_id, client_id)
+    entry_date = receipt_payload["receipt_date"]
+    actor_id = (actor or {}).get("id")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    entry_payload = {
+        "firm_id": firm_id, "client_id": client_id, "entry_date": entry_date,
+        "reference_no": receipt_payload["receipt_no"],
+        "narration": f"Receipt {receipt_payload['receipt_no']} from customer",
+        "entry_type": "Receipt", "is_posted": True, "status": "posted",
+        "posted_at": now_iso, "posted_by": actor_id, "created_by": actor_id,
+    }
+    line_payloads = [
+        {
+            "account_id": l["account_id"], "debit_paise": l["debit_paise"],
+            "credit_paise": l["credit_paise"], "narration": l.get("narration", ""),
+            "txn_currency": "INR", "base_currency": "INR", "exchange_rate": "1",
+            "txn_debit": l["debit_paise"], "txn_credit": l["credit_paise"],
+            "rate_source": "identity", "rate_type": "booking", "rate_date": entry_date,
+        }
+        for l in lines
+    ]
+    alloc_payloads = [
+        {"sales_invoice_id": a.get("sales_invoice_id"), "allocated_paise": int(a.get("allocated_paise", 0) or 0)}
+        for a in allocations
+        if a.get("sales_invoice_id") and int(a.get("allocated_paise", 0) or 0) > 0
+    ]
+
+    try:
+        result = db.rpc("settle_receipt_atomic", {
+            "p_receipt": receipt_payload,
+            "p_journal_entry": entry_payload,
+            "p_journal_lines": line_payloads,
+            "p_allocations": alloc_payloads,
+        }).execute()
+    except Exception as e:
+        msg = str(e).lower()
+        if "settle_receipt_atomic" in msg or ("function" in msg and ("not exist" in msg or "not found" in msg or "pgrst202" in msg)):
+            raise RuntimeError(
+                "settle_receipt_atomic RPC not found — migration 160 "
+                "(apps/api/migrations/160_atomic_receipt_settlement.sql) must be "
+                "applied to this database before the API is deployed."
+            ) from e
+        if _is_unique_violation(e):
+            raise HTTPException(
+                status_code=409,
+                detail="A receipt numbering collision was detected; please retry.",
+            ) from e
+        raise
+
+    out = result.data or {}
+    receipt_id = out.get("receipt_id") or receipt_payload["id"]
+    journal_id = out.get("journal_entry_id")
+    alloc_results = out.get("allocations") or []
+
+    receipt = {**receipt_payload, "id": receipt_id, "journal_entry_id": journal_id}
+
+    log_event(
+        firm_id or "", "receipt", receipt_id,
+        "create", actor_id=actor.get("auth_user_id"),
+        actor_email=actor.get("email"), new_data=receipt,
+    )
+    timeline_service.log_timeline_event(
+        client_id=client_id,
+        firm_id=firm_id or "",
+        financial_year=_current_fy_long(),
+        category="accounting",
+        event_type="receipt_recorded",
+        title=f"Receipt {receipt_payload.get('receipt_no', '')} recorded",
+        description=f"Payment of ₹{receipt_payload['amount_paise'] // 100:,} received from customer.",
+        severity="success",
+        entity_type="receipt",
+        entity_id=receipt_id,
+        amount_paise=receipt_payload["amount_paise"],
+        actor_id=actor.get("auth_user_id"),
+        actor_name=actor.get("email"),
+    )
+
+    receipt["allocations"] = [
+        {
+            "receipt_id": receipt_id,
+            "sales_invoice_id": r.get("sales_invoice_id"),
+            "allocated_paise": r.get("allocated_paise"),
+        }
+        for r in alloc_results
+    ]
+    return receipt
+
+
 def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     """Create a customer receipt with optional invoice allocations — the single
     source of truth for receipt creation.
@@ -460,6 +560,18 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         "created_at":        datetime.now(timezone.utc).isoformat(),
         **_ccy_cols,
     }
+
+    # R2.12: the real Supabase client always exposes .rpc, so production always
+    # takes this atomic path — settle_receipt_atomic (migration 160) posts the
+    # journal, the receipt row, and every allocation's invoice update in ONE
+    # database transaction, so no partial state can ever be observed and no
+    # app-level compensation is needed (there is nothing to compensate). Test
+    # doubles without .rpc fall through to the pre-atomicity journal-first +
+    # insert + CAS-retry path below, preserved byte-for-byte — the same
+    # established fallback pattern as phase2_journal_service._create_journal's
+    # own hasattr(db, "rpc") branch.
+    if hasattr(db, "rpc"):
+        return _settle_receipt_via_atomic_rpc(db, firm_id, client_id, receipt_payload, allocations, actor)
 
     # F7: post the GL journal FIRST — resolve the CoA accounts and post before any
     # AR mutation, so a missing-account / posting failure aborts here (the journal

@@ -106,11 +106,17 @@ def test_f7_journal_failure_does_not_settle_ar(monkeypatch):
     assert db.table("client_sales_invoices").select("*").eq("id", inv_id).execute().data[0]["paid_paise"] == 0
 
     # Simulate a GL posting failure (e.g. a missing Chart-of-Accounts account).
+    # R2.12: create_receipt_core's atomic path (services.receipt_service.
+    # _settle_receipt_via_atomic_rpc) resolves accounts via
+    # phase2_journal_service.receipt_journal_lines -> _find_account directly,
+    # not via journal_for_receipt (which the pre-atomicity fallback path still
+    # uses) — mocking _find_account itself simulates the failure identically
+    # for either code path.
     import services.phase2_journal_service as pjs
 
-    def _boom(**_k):
+    def _boom(*_a, **_k):
         raise ValueError("Required account not found: Bank")
-    monkeypatch.setattr(pjs.phase2_journal_service, "journal_for_receipt", _boom)
+    monkeypatch.setattr(pjs.phase2_journal_service, "_find_account", _boom)
 
     try:
         resp = rc.create_receipt(ReceiptIn(

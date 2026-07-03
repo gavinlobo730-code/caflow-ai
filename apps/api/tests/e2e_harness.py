@@ -273,6 +273,76 @@ class _Rpc:
             line_store.append(lr)
         return entry["id"]
 
+    def _fn_settle_receipt_atomic(self):
+        """Mirror migrations/160 settle_receipt_atomic: insert the journal
+        header+lines, the receipt row, and every allocation's invoice update
+        (trivially atomic in-memory — a real exception here would need to undo
+        prior appends to be a faithful mirror, but no test exercises a
+        mid-function failure path against this fake; that's proven for real
+        against Postgres in test_r2_12_atomic_receipt_settlement_pg.py).
+        Unlike post_journal_atomic, this does NOT dedupe/return-existing on a
+        matching reference — the real function doesn't either (R2.12: a
+        genuine collision must roll back and surface as an error, not silently
+        attribute the request to someone else's committed row)."""
+        receipt = dict(self.params["p_receipt"])
+        entry = dict(self.params["p_journal_entry"])
+        lines = self.params["p_journal_lines"]
+        allocations = self.params["p_allocations"]
+
+        entry.setdefault("id", str(uuid.uuid4()))
+        self.db._tables.setdefault("journal_entries", []).append(entry)
+        line_store = self.db._tables.setdefault("journal_lines", [])
+        for l in lines:
+            lr = dict(l)
+            lr["journal_entry_id"] = entry["id"]
+            lr.setdefault("id", str(uuid.uuid4()))
+            line_store.append(lr)
+
+        receipt["journal_entry_id"] = entry["id"]
+        receipt.setdefault("id", str(uuid.uuid4()))
+        self.db._tables.setdefault("receipts", []).append(receipt)
+
+        invoices = self.db._tables.setdefault("client_sales_invoices", [])
+        alloc_store = self.db._tables.setdefault("receipt_allocations", [])
+        alloc_results = []
+        for a in allocations:
+            allocated_paise = int(a.get("allocated_paise") or 0)
+            if allocated_paise <= 0:
+                continue
+            inv_id = a.get("sales_invoice_id")
+            inv = next(
+                (r for r in invoices
+                 if r.get("id") == inv_id
+                 and r.get("firm_id") == receipt.get("firm_id")
+                 and r.get("client_id") == receipt.get("client_id")),
+                None,
+            )
+            if inv is None:
+                raise Exception(f"settle_receipt_atomic: invoice {inv_id} is not part of this client's books")
+            total = int(inv.get("total_paise", 0))
+            credited = int(inv.get("credited_paise", 0) or 0)
+            new_paid = int(inv.get("paid_paise", 0) or 0) + allocated_paise
+            if new_paid + credited > total:
+                raise Exception(f"settle_receipt_atomic: allocation to invoice {inv_id} exceeds its outstanding")
+            new_status = "paid" if new_paid + credited >= total else "partially_paid"
+            inv["paid_paise"] = new_paid
+            inv["status"] = new_status
+            alloc_row = {
+                "id": str(uuid.uuid4()), "receipt_id": receipt["id"],
+                "sales_invoice_id": inv_id, "allocated_paise": allocated_paise,
+            }
+            alloc_store.append(alloc_row)
+            alloc_results.append({
+                "sales_invoice_id": inv_id, "allocated_paise": allocated_paise,
+                "new_paid_paise": new_paid, "new_status": new_status,
+            })
+
+        return {
+            "receipt_id": receipt["id"],
+            "journal_entry_id": entry["id"],
+            "allocations": alloc_results,
+        }
+
 
 # --------------------------------------------------------------------------- #
 #  Standard chart of accounts (system keys the journal service resolves)
