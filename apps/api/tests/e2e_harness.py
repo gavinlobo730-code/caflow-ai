@@ -274,7 +274,7 @@ class _Rpc:
         return entry["id"]
 
     def _fn_settle_receipt_atomic(self):
-        """Mirror migrations/160 settle_receipt_atomic: insert the journal
+        """Mirror migrations/160+162 settle_receipt_atomic: insert the journal
         header+lines, the receipt row, and every allocation's invoice update
         (trivially atomic in-memory — a real exception here would need to undo
         prior appends to be a faithful mirror, but no test exercises a
@@ -283,11 +283,19 @@ class _Rpc:
         Unlike post_journal_atomic, this does NOT dedupe/return-existing on a
         matching reference — the real function doesn't either (R2.12: a
         genuine collision must roll back and surface as an error, not silently
-        attribute the request to someone else's committed row)."""
+        attribute the request to someone else's committed row). Mirrors 162's
+        balance/zero guard and per-invoice allocation aggregation too."""
         receipt = dict(self.params["p_receipt"])
         entry = dict(self.params["p_journal_entry"])
         lines = self.params["p_journal_lines"]
         allocations = self.params["p_allocations"]
+
+        total_debit = sum(int(l.get("debit_paise") or 0) for l in lines)
+        total_credit = sum(int(l.get("credit_paise") or 0) for l in lines)
+        if total_debit != total_credit:
+            raise Exception(f"settle_receipt_atomic: journal imbalance debit={total_debit} credit={total_credit}")
+        if total_debit == 0:
+            raise Exception("settle_receipt_atomic: refusing to post a zero-value journal entry")
 
         entry.setdefault("id", str(uuid.uuid4()))
         self.db._tables.setdefault("journal_entries", []).append(entry)
@@ -305,11 +313,15 @@ class _Rpc:
         invoices = self.db._tables.setdefault("client_sales_invoices", [])
         alloc_store = self.db._tables.setdefault("receipt_allocations", [])
         alloc_results = []
+        by_invoice: dict = {}
         for a in allocations:
             allocated_paise = int(a.get("allocated_paise") or 0)
             if allocated_paise <= 0:
                 continue
             inv_id = a.get("sales_invoice_id")
+            by_invoice[inv_id] = by_invoice.get(inv_id, 0) + allocated_paise
+
+        for inv_id, allocated_paise in by_invoice.items():
             inv = next(
                 (r for r in invoices
                  if r.get("id") == inv_id
@@ -340,6 +352,7 @@ class _Rpc:
         return {
             "receipt_id": receipt["id"],
             "journal_entry_id": entry["id"],
+            "receipt": dict(receipt),
             "allocations": alloc_results,
         }
 

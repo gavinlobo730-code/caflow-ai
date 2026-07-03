@@ -39,6 +39,20 @@ def _is_unique_violation(err: Exception) -> bool:
     return "23505" in s or "duplicate key" in s or "already exists" in s
 
 
+def _is_missing_rpc_function(err: Exception) -> bool:
+    """True only for PostgREST/Postgres's OWN 'no such function' signature —
+    deliberately does NOT match on the function's own name (adversarial-review
+    fix, R2.12): settle_receipt_atomic's legitimate business-rule
+    RAISE EXCEPTIONs (invoice-not-found, exceeds-outstanding) are themselves
+    prefixed with 'settle_receipt_atomic: ...', so a bare substring check on
+    that name previously misclassified those as 'migration not applied' —
+    masking the real error with a false diagnosis, including for a genuine
+    concurrent-race exceeds-outstanding case this milestone was built to
+    handle correctly."""
+    s = str(err).lower()
+    return "pgrst202" in s or ("function" in s and ("does not exist" in s or "could not find the function" in s))
+
+
 def _current_fy() -> str:
     now = datetime.now(timezone.utc)
     if now.month >= 4:
@@ -215,15 +229,41 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
         receipt = (db.table("receipts").insert(receipt_payload).execute().data or [receipt_payload])[0]
         receipt_id = receipt.get("id", receipt_id)
 
-        for (inv, f, ar_relieved, new_paid, new_paid_txn, status) in settle_plan:
-            # Optimistic guard (H1): only settle if paid_paise is unchanged since our read.
-            upd = (db.table("client_sales_invoices")
-                   .update({"paid_paise": new_paid, "paid_txn": new_paid_txn, "status": status})
-                   .eq("id", inv["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
-                   .eq("paid_paise", int(inv.get("paid_paise") or 0)).execute())
-            if not upd.data:
-                raise HTTPException(status_code=409, detail="Concurrent settlement detected; please retry.")
-            alloc_rows.append({"receipt_id": receipt_id, "sales_invoice_id": inv["id"], "allocated_paise": ar_relieved})
+        for (inv, f, ar_relieved, _new_paid, _new_paid_txn, _status) in settle_plan:
+            # R2.12 adversarial-review fix: settle_plan's new_paid/new_paid_txn/
+            # status were computed from a read taken BEFORE the journal posted
+            # (a wide staleness window), and the original CAS below had NO
+            # retry at all — a single collision failed immediately, a weaker
+            # guarantee than the plain-INR path's 6-attempt retry loop this
+            # milestone's atomic rewrite replaced (finding: leaving this path
+            # unfixed was a HIGHER concurrency risk than the framing implied,
+            # not a lower one). Re-read fresh on every attempt instead of
+            # trusting settle_plan's stale snapshot.
+            inv_id = inv["id"]
+            for _attempt in range(6):
+                cur = (db.table("client_sales_invoices")
+                       .select("paid_paise,paid_txn,txn_total")
+                       .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                       .limit(1).execute().data or [None])[0]
+                if not cur:
+                    break
+                old_paid = int(cur.get("paid_paise") or 0)
+                old_paid_txn = int(cur.get("paid_txn") or 0)
+                fresh_new_paid = old_paid + ar_relieved
+                fresh_new_paid_txn = old_paid_txn + f
+                txn_total = int(cur.get("txn_total") or 0)
+                if fresh_new_paid_txn > txn_total:
+                    raise HTTPException(status_code=422, detail=f"Invoice {inv_id}: allocation would exceed invoice outstanding")
+                fresh_status = "paid" if fresh_new_paid_txn >= txn_total else "partially_paid"
+                upd = (db.table("client_sales_invoices")
+                       .update({"paid_paise": fresh_new_paid, "paid_txn": fresh_new_paid_txn, "status": fresh_status})
+                       .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                       .eq("paid_paise", old_paid).execute())
+                if upd.data:
+                    break                        # CAS won
+            else:
+                raise HTTPException(status_code=409, detail=f"Invoice {inv_id} is being updated concurrently — please retry.")
+            alloc_rows.append({"receipt_id": receipt_id, "sales_invoice_id": inv_id, "allocated_paise": ar_relieved})
         if alloc_rows:
             db.table("receipt_allocations").insert(alloc_rows).execute()
 
@@ -377,12 +417,12 @@ def _settle_receipt_via_atomic_rpc(
             "p_allocations": alloc_payloads,
         }).execute()
     except Exception as e:
-        msg = str(e).lower()
-        if "settle_receipt_atomic" in msg or ("function" in msg and ("not exist" in msg or "not found" in msg or "pgrst202" in msg)):
+        if _is_missing_rpc_function(e):
             raise RuntimeError(
-                "settle_receipt_atomic RPC not found — migration 160 "
-                "(apps/api/migrations/160_atomic_receipt_settlement.sql) must be "
-                "applied to this database before the API is deployed."
+                "settle_receipt_atomic RPC not found — migrations 160/162 "
+                "(apps/api/migrations/160_atomic_receipt_settlement.sql, "
+                "162_atomic_receipt_settlement_hardening.sql) must be applied to "
+                "this database before the API is deployed."
             ) from e
         if _is_unique_violation(e):
             raise HTTPException(
@@ -395,8 +435,13 @@ def _settle_receipt_via_atomic_rpc(
     receipt_id = out.get("receipt_id") or receipt_payload["id"]
     journal_id = out.get("journal_entry_id")
     alloc_results = out.get("allocations") or []
+    # R2.12 fix phase: log the ACTUAL DB row (migration 162 returns it) rather
+    # than reconstructing one from the Python-side payload, which silently
+    # omitted DB-default columns (allocated_paise, updated_at) the
+    # pre-atomicity path's equivalent audit entries always included.
+    db_receipt_row = out.get("receipt")
 
-    receipt = {**receipt_payload, "id": receipt_id, "journal_entry_id": journal_id}
+    receipt = {**receipt_payload, **(db_receipt_row or {}), "id": receipt_id, "journal_entry_id": journal_id}
 
     log_event(
         firm_id or "", "receipt", receipt_id,

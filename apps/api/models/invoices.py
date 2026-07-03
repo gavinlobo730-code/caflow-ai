@@ -150,7 +150,11 @@ class ReceiptIn(BaseModel):
     receipt_date: str  # YYYY-MM-DD
     amount_paise: int
     tds_paise: int = 0          # TDS deducted by the client on the firm fee (IT Act §194J)
-    payment_mode: str = "bank_transfer"
+    # "bank_transfer" was never a valid value against the receipts.payment_mode
+    # CHECK constraint (migration 050: bank/cash/cheque/upi/neft/rtgs/online,
+    # widened by migration 161) — any caller relying on this default violated
+    # it against a real database (R2.12 adversarial review). "bank" is correct.
+    payment_mode: str = "bank"
     bank_account_id: Optional[str] = None
     reference_no: Optional[str] = None
     notes: Optional[str] = None
@@ -198,7 +202,10 @@ class PurchasePaymentIn(BaseModel):
     payment_date: str  # YYYY-MM-DD
     amount_paise: int
     purchase_bill_id: Optional[str] = None   # link to the bill being paid (AP sub-ledger)
-    payment_mode: str = "bank_transfer"
+    # "bank_transfer" was never a valid value against the purchase_payments.
+    # payment_mode CHECK constraint (migration 050, widened by 161) — see the
+    # identical fix on ReceiptIn.payment_mode above.
+    payment_mode: str = "bank"
     bank_account_id: Optional[str] = None
     reference_no: Optional[str] = None
     notes: Optional[str] = None

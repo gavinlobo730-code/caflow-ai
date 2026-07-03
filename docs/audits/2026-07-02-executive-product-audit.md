@@ -1900,3 +1900,122 @@ statements — promoted by this milestone's own adversarial review), R2.12
 (receipt→AR→journal atomicity), R2.10 (payroll frontend→backend migration),
 then the Tier 2 regression review and Tier 3.
 
+## Milestone R2.12 — Full receipt→AR→journal atomicity (DELIVERED)
+
+**Goal:** R1.6 made receipt creation journal-first (post the GL journal, then
+insert the receipt, then settle each allocated invoice via an app-level
+optimistic CAS retry loop), compensating on failure rather than leaving a
+phantom entry. Two residual gaps remained: an earlier invoice's CAS in a
+multi-invoice settlement isn't rolled back if a later one fails, and R2.9
+found the journal-posting idempotency fast-path can hand a losing request
+another request's already-committed journal on a numbering collision,
+requiring an ownership check before the compensation path could safely
+reverse anything. This is the highest financial-correctness-stakes change of
+the entire Tier 2 sequence — a new atomic multi-table money-movement
+transaction — and was treated with correspondingly higher rigor: two
+independent adversarial-review lenses, several findings reproduced directly
+against real Postgres rather than argued from reading code alone.
+
+**What shipped:** migration 160 adds `settle_receipt_atomic`, extending the
+`post_journal_atomic` pattern (migration 152) to a much larger transaction —
+the journal header, its lines, the receipt row, and every allocation's
+row-locked (`SELECT ... FOR UPDATE`) invoice update all happen in ONE plpgsql
+function body. Any failure rolls back the ENTIRE transaction; no partial
+state can ever be observed, so no app-level compensation is needed for this
+path. `services/receipt_service.py`'s `create_receipt_core` now prefers this
+RPC whenever `db.rpc` is available (always true in production), building
+journal lines via a new `phase2_journal_service.receipt_journal_lines`
+helper (extracted from `journal_for_receipt`). Scoped to the plain-INR path
+only; `create_foreign_receipt` (multi-currency) initially stayed on the
+existing compensation pattern.
+
+**Adversarial review (2 lenses — SQL/transaction-correctness and
+Python-integration/scope, several findings reproduced directly against real
+Postgres) — 10 findings, 9 CONFIRMED, 1 REFUTED (itself just a
+mis-attributed restatement of a confirmed finding):**
+1. **Critical, fixed (migration 161):** the two real production callers of
+   this path supply `payment_mode` values (`"online"` hardcoded in
+   `payment_service.py`'s webhook settlement; `"bank_transfer"`, the
+   `ReceiptIn`/`PurchasePaymentIn` Pydantic default) that violate the
+   `receipts`/`purchase_payments` `payment_mode` CHECK constraint — reproduced
+   directly: `settle_receipt_atomic` correctly rolled back everything, but
+   the online-payments feature could not successfully create a **single**
+   receipt against a real (non-mock) Postgres database. Pre-existing (the
+   CHECK dates to migration 050; the Pydantic defaults predate this
+   session) but only surfaced by this milestone's own real-Postgres testing.
+   Fixed by widening both CHECK constraints to accept `"online"` and
+   correcting both Pydantic defaults from the never-valid `"bank_transfer"`
+   to `"bank"`.
+2. **Medium, fixed (migration 162):** `settle_receipt_atomic` had no
+   equivalent of `phase2_journal_service._create_journal`'s debit==credit
+   and non-zero guards — reproduced directly: an imbalanced 2-line journal
+   (Dr 100000/Cr 1) and an empty-lines zero-value journal both posted
+   successfully, and (per the journal-immutability trigger) were permanently
+   unfixable afterward. Not reachable via today's only caller
+   (`receipt_journal_lines` always builds balanced lines), but the ONLY
+   enforcement of this invariant anywhere in the codebase was silently
+   bypassed by this new path. Fixed by adding the same two checks before any
+   insert.
+3. **Low, fixed (migration 162):** a second, arithmetically-valid allocation
+   row for the same invoice in one call always rolled back the whole
+   settlement (the arithmetic was summed correctly across both rows, but the
+   second `receipt_allocations` insert violated its own
+   `UNIQUE(receipt_id, sales_invoice_id)` constraint) — contradicting
+   `create_receipt_core`'s own pre-validation comment, which states such
+   requests are meant to be supported. Fails safe (full rollback, confirmed),
+   but a real availability gap. Fixed by pre-aggregating allocations by
+   `sales_invoice_id` before the per-invoice loop.
+4. **High, fixed:** the RPC-failure classifier in
+   `_settle_receipt_via_atomic_rpc` did a bare substring check for the
+   function's own name to detect "RPC not found" — but the function's own
+   legitimate business-rule errors (invoice-not-found, exceeds-outstanding)
+   are themselves prefixed with that same name, so a genuine concurrent-race
+   rejection was misdiagnosed as "migration 160 not applied," masking the
+   real error and losing the specific 409/422 detail every other caller of
+   this exact condition gets. The SAME bug class was found (by inspection,
+   once the pattern was known) in the pre-existing, unrelated
+   `post_journal_atomic` classifier in `_create_journal` — fixed identically
+   in both: require the actual missing-function signature (`PGRST202`, or a
+   raw "function ... does not exist"), never the function's own name.
+5. **High, fixed:** `create_foreign_receipt`'s per-invoice settlement CAS
+   made a SINGLE attempt with no retry (immediate 409 on any concurrent
+   write) and read its `paid_paise` baseline before posting the journal — a
+   materially weaker, wider-window guarantee than the plain-INR path's
+   6-attempt retry loop this milestone replaced, undercutting the framing
+   that this excluded path was "adequately protected" by the existing
+   pattern. If anything, it was MORE exposed than the path that got fixed.
+   Fixed by adding a 6-attempt retry loop that re-reads the invoice fresh on
+   every attempt, matching the legacy INR path's robustness (not the new
+   atomic transaction's guarantee, but no longer strictly weaker than what
+   existed before this milestone).
+6. **Low, fixed:** `journal_for_receipt`'s and `receipt_journal_lines`'
+   docstrings (written earlier in this same milestone) incorrectly claimed
+   `create_foreign_receipt` uses `journal_for_receipt` — it doesn't; it
+   builds its own FX-aware lines inline. Corrected.
+7. **Low, fixed (migration 162):** the RPC's returned jsonb omitted the full
+   receipt row, so the atomic path's audit `log_event` had to reconstruct
+   `new_data` from the Python-side payload, silently missing DB-default
+   columns (`allocated_paise`, `updated_at`) the pre-atomicity path's
+   equivalent entries always included. Fixed by returning the full inserted
+   row (`RETURNING * INTO`) alongside the existing keys.
+8. **Low, pre-existing, documented not fixed:** `PurchasePaymentIn`'s
+   identical `"bank_transfer"` default (same root cause as finding 1) — fixed
+   incidentally as part of finding 1's fix, since both models share the same
+   correction.
+9. **Nits (2), confirmatory:** the receipt-audit and confirmed-safe-rollback
+   observations needed no further action beyond findings 1–7 above.
+
+**Verified:** 16 real-Postgres tests in `test_r2_12_atomic_receipt_settlement_pg.py`
+(6 proving the core atomicity guarantee — successful settlement, sequential
+partial settlements, over-allocation/unknown-invoice/receipt_no-collision all
+rolling back EVERYTHING with zero orphan rows, a balanced 3-line TDS journal —
+plus 10 fix-phase proofs for every numbered finding above that touched SQL);
+9 new mock-mode unit tests (`test_r2_12_python_integration.py`) proving the
+RPC-error classifier's precision and the foreign-receipt retry loop actually
+retries-then-succeeds and eventually gives up after 6 attempts. Full suite:
+2,346 passed, same 23 pre-existing DB-dependent failures as every prior
+milestone. Migration-apply baseline and schema contract tests rerun clean.
+
+**Next:** R2.11.1 (bank-statement re-import path), R2.10 (payroll
+frontend→backend migration), then the Tier 2 regression review and Tier 3.
+

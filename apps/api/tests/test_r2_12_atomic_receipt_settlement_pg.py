@@ -78,6 +78,7 @@ def _seed_sql(invoice_id: str, total_paise: int = 100000) -> str:
 def _settle_sql(
     receipt_id: str, journal_id: str, receipt_no: str, invoice_id: str,
     amount_paise: int, allocated_paise: int, entry_date: str = "2026-04-05",
+    payment_mode: str = "bank", allocations: list | None = None,
 ) -> str:
     """Build the exact settle_receipt_atomic(...) call the Python layer issues,
     matching services/receipt_service.py::_settle_receipt_via_atomic_rpc."""
@@ -85,7 +86,7 @@ def _settle_sql(
         "id": receipt_id, "firm_id": FIRM, "client_id": CLIENT, "customer_id": CUSTOMER,
         "receipt_no": receipt_no, "receipt_date": entry_date, "amount_paise": amount_paise,
         "tds_paise": 0, "unallocated_paise": amount_paise - allocated_paise,
-        "payment_mode": "bank", "reference_no": "", "notes": "",
+        "payment_mode": payment_mode, "reference_no": "", "notes": "",
     })
     p_journal_entry = json.dumps({
         "firm_id": FIRM, "client_id": CLIENT, "entry_date": entry_date,
@@ -98,7 +99,9 @@ def _settle_sql(
         {"account_id": AR_ACC, "debit_paise": 0, "credit_paise": amount_paise,
          "narration": "Trade receivable cleared (cash + TDS)", "rate_type": "booking", "rate_date": entry_date},
     ])
-    p_allocations = json.dumps([{"sales_invoice_id": invoice_id, "allocated_paise": allocated_paise}])
+    if allocations is None:
+        allocations = [{"sales_invoice_id": invoice_id, "allocated_paise": allocated_paise}]
+    p_allocations = json.dumps(allocations)
     return (
         f"SELECT settle_receipt_atomic('{p_receipt}'::jsonb, '{p_journal_entry}'::jsonb, "
         f"'{p_journal_lines}'::jsonb, '{p_allocations}'::jsonb);"
@@ -122,6 +125,8 @@ def migrated_db():
         report = json.loads(proc.stdout)
         failed = {f["file"] for f in report["failed"]}
         assert "160_atomic_receipt_settlement.sql" not in failed
+        assert "161_widen_payment_mode_check.sql" not in failed
+        assert "162_atomic_receipt_settlement_hardening.sql" not in failed
         yield dsn
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{dbname}" WITH (FORCE);')
@@ -307,3 +312,157 @@ def test_tds_line_included_and_balances(migrated_db):
     paid, status = inv.stdout.strip().split("|")
     assert int(paid) == 118000
     assert status == "paid"
+
+
+# ─── Fix-phase proofs (adversarial review, migrations 161/162) ──────────────
+
+def test_online_payment_mode_now_accepted(migrated_db):
+    """CONFIRMED critical finding: services/payment_service.py hardcodes
+    payment_mode='online' for every online-payment settlement, which violated
+    the pre-161 CHECK constraint — the online-payments feature could not
+    create a single receipt against a real database. Migration 161 widens
+    the constraint to accept it."""
+    dsn = migrated_db
+    invoice_id = str(uuid.uuid4())
+    seed = _psql(dsn, _seed_sql(invoice_id, total_paise=100000))
+    assert seed.returncode == 0, seed.stderr
+
+    r = _psql(dsn, _settle_sql(str(uuid.uuid4()), str(uuid.uuid4()), "RCPT-2526-0001", invoice_id,
+                                100000, 100000, payment_mode="online"))
+    assert r.returncode == 0, r.stderr
+
+    mode = _psql_json(dsn, f"SELECT payment_mode FROM receipts WHERE firm_id='{FIRM}';")
+    assert mode.stdout.strip() == "online"
+
+
+def test_imbalanced_journal_lines_rejected_and_rolls_back_everything(migrated_db):
+    """CONFIRMED medium finding: the function had no equivalent of
+    phase2_journal_service._create_journal's debit==credit guard, so an
+    imbalanced (or zero-value) journal could be posted and — because of the
+    journal-immutability trigger — never fixed. Migration 162 adds the guard."""
+    dsn = migrated_db
+    invoice_id = str(uuid.uuid4())
+    seed = _psql(dsn, _seed_sql(invoice_id, total_paise=100000))
+    assert seed.returncode == 0, seed.stderr
+
+    receipt_id = str(uuid.uuid4())
+    p_receipt = json.dumps({
+        "id": receipt_id, "firm_id": FIRM, "client_id": CLIENT, "customer_id": CUSTOMER,
+        "receipt_no": "RCPT-2526-0001", "receipt_date": "2026-04-05", "amount_paise": 100000,
+        "tds_paise": 0, "unallocated_paise": 0, "payment_mode": "bank", "reference_no": "", "notes": "",
+    })
+    p_journal_entry = json.dumps({
+        "firm_id": FIRM, "client_id": CLIENT, "entry_date": "2026-04-05",
+        "reference_no": "RCPT-2526-0001", "narration": "Receipt RCPT-2526-0001 from customer",
+        "entry_type": "Receipt", "is_posted": True, "status": "posted",
+    })
+    # Deliberately unbalanced: Dr 100000 / Cr 1.
+    p_journal_lines = json.dumps([
+        {"account_id": BANK_ACC, "debit_paise": 100000, "credit_paise": 0, "narration": "x"},
+        {"account_id": AR_ACC, "debit_paise": 0, "credit_paise": 1, "narration": "y"},
+    ])
+    p_allocations = json.dumps([{"sales_invoice_id": invoice_id, "allocated_paise": 100000}])
+    r = _psql(dsn, (
+        f"SELECT settle_receipt_atomic('{p_receipt}'::jsonb, '{p_journal_entry}'::jsonb, "
+        f"'{p_journal_lines}'::jsonb, '{p_allocations}'::jsonb);"
+    ))
+    assert r.returncode != 0, "an imbalanced journal must be rejected, not silently posted"
+    assert "imbalance" in r.stderr.lower()
+
+    assert _psql_json(dsn, "SELECT count(*) FROM journal_entries WHERE firm_id='%s';" % FIRM).stdout.strip() == "0"
+    assert _psql_json(dsn, "SELECT count(*) FROM journal_lines;").stdout.strip() == "0"
+    assert _psql_json(dsn, "SELECT count(*) FROM receipts WHERE firm_id='%s';" % FIRM).stdout.strip() == "0"
+
+
+def test_zero_value_journal_rejected(migrated_db):
+    dsn = migrated_db
+    invoice_id = str(uuid.uuid4())
+    seed = _psql(dsn, _seed_sql(invoice_id, total_paise=100000))
+    assert seed.returncode == 0, seed.stderr
+
+    receipt_id = str(uuid.uuid4())
+    p_receipt = json.dumps({
+        "id": receipt_id, "firm_id": FIRM, "client_id": CLIENT, "customer_id": CUSTOMER,
+        "receipt_no": "RCPT-2526-0001", "receipt_date": "2026-04-05", "amount_paise": 0,
+        "tds_paise": 0, "unallocated_paise": 0, "payment_mode": "bank", "reference_no": "", "notes": "",
+    })
+    p_journal_entry = json.dumps({
+        "firm_id": FIRM, "client_id": CLIENT, "entry_date": "2026-04-05",
+        "reference_no": "RCPT-2526-0001", "narration": "Receipt RCPT-2526-0001 from customer",
+        "entry_type": "Receipt", "is_posted": True, "status": "posted",
+    })
+    p_journal_lines = json.dumps([
+        {"account_id": BANK_ACC, "debit_paise": 0, "credit_paise": 0, "narration": "x"},
+        {"account_id": AR_ACC, "debit_paise": 0, "credit_paise": 0, "narration": "y"},
+    ])
+    r = _psql(dsn, (
+        f"SELECT settle_receipt_atomic('{p_receipt}'::jsonb, '{p_journal_entry}'::jsonb, "
+        f"'{p_journal_lines}'::jsonb, '[]'::jsonb);"
+    ))
+    assert r.returncode != 0, "a zero-value journal must be rejected, not silently posted"
+    assert "zero-value" in r.stderr.lower()
+    assert _psql_json(dsn, "SELECT count(*) FROM journal_entries WHERE firm_id='%s';" % FIRM).stdout.strip() == "0"
+
+
+def test_duplicate_allocation_rows_for_same_invoice_are_summed(migrated_db):
+    """CONFIRMED low finding: two valid allocation rows for the SAME invoice
+    in one call used to always roll back (receipt_allocations' UNIQUE
+    constraint fired on the second insert) even though the arithmetic was
+    computed correctly — contradicting create_receipt_core's own claim that
+    multiple rows per invoice are summed and supported. Migration 162
+    pre-aggregates by sales_invoice_id before the per-invoice loop."""
+    dsn = migrated_db
+    invoice_id = str(uuid.uuid4())
+    seed = _psql(dsn, _seed_sql(invoice_id, total_paise=100000))
+    assert seed.returncode == 0, seed.stderr
+
+    r = _psql(dsn, _settle_sql(
+        str(uuid.uuid4()), str(uuid.uuid4()), "RCPT-2526-0001", invoice_id, 90000, 90000,
+        allocations=[
+            {"sales_invoice_id": invoice_id, "allocated_paise": 60000},
+            {"sales_invoice_id": invoice_id, "allocated_paise": 30000},
+        ],
+    ))
+    assert r.returncode == 0, r.stderr
+
+    inv = _psql_json(dsn, f"SELECT paid_paise, status FROM client_sales_invoices WHERE id='{invoice_id}';")
+    paid, status = inv.stdout.strip().split("|")
+    assert int(paid) == 90000
+    assert status == "partially_paid"
+
+    allocs = _psql_json(dsn, "SELECT count(*), sum(allocated_paise) FROM receipt_allocations;")
+    n, total = allocs.stdout.strip().split("|")
+    assert n == "1"        # summed into a single allocation row
+    assert int(total) == 90000
+
+
+def test_returns_full_receipt_row_for_audit_logging(migrated_db):
+    """CONFIRMED low finding: the returned jsonb previously omitted the full
+    receipt row, so services/receipt_service.py's audit log had to
+    reconstruct one from the Python-side payload, silently missing DB-default
+    columns (allocated_paise, updated_at). Migration 162 returns it.
+
+    Note: the receipts INSERT never references p_receipt->>'id' (the column
+    isn't in its column list — id is DB-generated via gen_random_uuid()), so
+    the pre-generated id the Python layer sends is never actually the row's
+    real id for this path; services/receipt_service.py already treats the
+    RPC's returned receipt_id as authoritative rather than assuming otherwise
+    — this test checks the SAME returned id is embedded in 'receipt', not
+    that it matches whatever id the caller happened to send."""
+    dsn = migrated_db
+    invoice_id = str(uuid.uuid4())
+    seed = _psql(dsn, _seed_sql(invoice_id, total_paise=100000))
+    assert seed.returncode == 0, seed.stderr
+
+    r = subprocess.run(
+        ["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-tA", "-c",
+         _settle_sql(str(uuid.uuid4()), str(uuid.uuid4()), "RCPT-2526-0001", invoice_id, 100000, 100000)],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout.strip())
+    assert "receipt" in out and out["receipt"] is not None
+    assert out["receipt"]["id"] == out["receipt_id"]
+    assert out["receipt"]["receipt_no"] == "RCPT-2526-0001"
+    assert "updated_at" in out["receipt"]
+    assert "allocated_paise" in out["receipt"]
