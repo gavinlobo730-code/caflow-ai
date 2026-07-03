@@ -11,6 +11,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Sequence
 
+# Canonical GST paise->rupees conversion (single source of truth, shared with the
+# GSTR-1 builder) — GSTN JSON is in rupees while internal computation is paise.
+from domain.gst.gstr1_builder import _paise_to_rupees
+
 
 @dataclass(frozen=True)
 class SalesTransaction:
@@ -86,9 +90,13 @@ class GSTR3BResult:
     def as_gstn_payload(self, gstin: str, period: str) -> dict:
         """Return GSTN-compatible GSTR-3B JSON.
 
-        Format follows GSTN API specification v1.3.
+        Format follows GSTN API specification v1.3. Every monetary field is in
+        RUPEES (2 decimals) — internal computation is integer paise, but the GSTN
+        portal requires rupees (finding F16: the earlier version emitted raw paise,
+        making every amount 100x too large). Conversion mirrors the GSTR-1 builder.
         # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
         """
+        r = _paise_to_rupees
         return {
             "gstin": gstin,
             "ret_period": period,
@@ -96,32 +104,32 @@ class GSTR3BResult:
                 "isup_details": [
                     {
                         "ty": "RCM",
-                        "inter": self.rcm_igst,
-                        "intra_cgst": self.rcm_cgst,
-                        "intra_sgst": self.rcm_sgst,
+                        "inter": r(self.rcm_igst),
+                        "intra_cgst": r(self.rcm_cgst),
+                        "intra_sgst": r(self.rcm_sgst),
                     }
                 ]
             },
             "sup_details": {
                 "osup_det": {
-                    "txval": self.outward_taxable_value,
-                    "iamt": self.outward_taxable_igst,
-                    "camt": self.outward_taxable_cgst,
-                    "samt": self.outward_taxable_sgst,
-                    "csamt": self.outward_taxable_cess,
+                    "txval": r(self.outward_taxable_value),
+                    "iamt": r(self.outward_taxable_igst),
+                    "camt": r(self.outward_taxable_cgst),
+                    "samt": r(self.outward_taxable_sgst),
+                    "csamt": r(self.outward_taxable_cess),
                 },
                 "osup_zero": {
-                    "txval": self.outward_zero_rated,
+                    "txval": r(self.outward_zero_rated),
                     "iamt": 0, "camt": 0, "samt": 0, "csamt": 0,
                 },
                 "osup_nil_exmp": {
-                    "txval": self.outward_nil_exempt,
+                    "txval": r(self.outward_nil_exempt),
                 },
                 "isup_rev": {
                     "txval": 0,
-                    "iamt": self.rcm_igst,
-                    "camt": self.rcm_cgst,
-                    "samt": self.rcm_sgst,
+                    "iamt": r(self.rcm_igst),
+                    "camt": r(self.rcm_cgst),
+                    "samt": r(self.rcm_sgst),
                     "csamt": 0,
                 },
                 "osup_nongst": {"txval": 0},
@@ -130,18 +138,18 @@ class GSTR3BResult:
                 "itc_avl": [
                     {
                         "ty": "ISRC",       # inputs, inputs services, capital goods combined
-                        "iamt": self.itc_igst,
-                        "camt": self.itc_cgst,
-                        "samt": self.itc_sgst,
-                        "csamt": self.itc_cess,
+                        "iamt": r(self.itc_igst),
+                        "camt": r(self.itc_cgst),
+                        "samt": r(self.itc_sgst),
+                        "csamt": r(self.itc_cess),
                     }
                 ],
                 "itc_rev": [],
                 "itc_net": {
-                    "iamt": self.itc_igst,
-                    "camt": self.itc_cgst,
-                    "samt": self.itc_sgst,
-                    "csamt": self.itc_cess,
+                    "iamt": r(self.itc_igst),
+                    "camt": r(self.itc_cgst),
+                    "samt": r(self.itc_sgst),
+                    "csamt": r(self.itc_cess),
                 },
                 "itc_inelg": [],
             },

@@ -49,11 +49,53 @@ def test_h7_gstn_txval_is_taxable_value_not_tax():
     # Intra-state taxable sale ₹1,00,000 @18% (CGST 9k + SGST 9k).
     cgst = sgst = 9_000_00
     r = compute_gstr3b([_sale(L, cgst=cgst, sgst=sgst)], [], [])
-    assert r.outward_taxable_value == L
+    assert r.outward_taxable_value == L       # internal computation stays in paise
     payload = r.as_gstn_payload("27AAAAA0000A1Z5", "062025")
     osup = payload["sup_details"]["osup_det"]
-    assert osup["txval"] == L                 # taxable VALUE, not the tax
-    assert osup["camt"] == cgst and osup["samt"] == sgst and osup["iamt"] == 0
+    # GSTN JSON is in RUPEES (F16): the payload converts paise -> rupees, so txval
+    # is the taxable VALUE (not the tax) expressed in rupees, i.e. L / 100.
+    assert osup["txval"] == L / 100           # ₹1,00,000.00, not 1_00_000_00 paise
+    assert osup["camt"] == cgst / 100 and osup["samt"] == sgst / 100 and osup["iamt"] == 0
+
+
+def test_f16_gstn_payload_amounts_are_rupees_not_paise():
+    """F16 regression: every monetary field in the GSTN GSTR-3B payload must be in
+    RUPEES (paise / 100), across all sections — not raw paise (which was 100x too
+    large and would have filed grossly inflated figures)."""
+    from domain.gst.gstr3b_computer import GSTR3BResult
+
+    r = GSTR3BResult(
+        outward_taxable_value=10_00_000_00,   # ₹10,00,000
+        outward_taxable_igst=1_80_000_00,     # ₹1,80,000
+        outward_taxable_cgst=45_000_00,
+        outward_taxable_sgst=45_000_00,
+        outward_taxable_cess=5_000_00,
+        outward_zero_rated=2_00_000_00,
+        outward_nil_exempt=50_000_00,
+        rcm_igst=10_000_00, rcm_cgst=5_000_00, rcm_sgst=5_000_00,
+        itc_igst=90_000_00, itc_cgst=20_000_00, itc_sgst=20_000_00, itc_cess=1_000_00,
+    )
+    p = r.as_gstn_payload("27AAAAA0000A1Z5", "062026")
+
+    osup = p["sup_details"]["osup_det"]
+    assert osup["txval"] == 10_00_000.00 and osup["txval"] != r.outward_taxable_value
+    assert osup["iamt"] == 1_80_000.00
+    assert osup["camt"] == 45_000.00 and osup["samt"] == 45_000.00
+    assert osup["csamt"] == 5_000.00
+
+    assert p["sup_details"]["osup_zero"]["txval"] == 2_00_000.00
+    assert p["sup_details"]["osup_nil_exmp"]["txval"] == 50_000.00
+
+    isup_rev = p["sup_details"]["isup_rev"]
+    assert isup_rev["iamt"] == 10_000.00 and isup_rev["camt"] == 5_000.00 and isup_rev["samt"] == 5_000.00
+
+    rcm = p["inward_sup"]["isup_details"][0]
+    assert rcm["inter"] == 10_000.00 and rcm["intra_cgst"] == 5_000.00 and rcm["intra_sgst"] == 5_000.00
+
+    itc = p["itc_elg"]["itc_net"]
+    assert itc["iamt"] == 90_000.00 and itc["camt"] == 20_000.00 and itc["samt"] == 20_000.00 and itc["csamt"] == 1_000.00
+    avl = p["itc_elg"]["itc_avl"][0]
+    assert avl["iamt"] == 90_000.00 and avl["csamt"] == 1_000.00
 
 
 def test_mixed_gst_net_of_credit_note():
