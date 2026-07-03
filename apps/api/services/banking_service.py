@@ -45,6 +45,28 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _opening_closing_balance(rows: list[dict]) -> tuple[int, int]:
+    """Return (opening_balance_paise, closing_balance_paise) derived from the
+    rows' transaction_date order, not raw file position.
+
+    R2.11: some bank exports list the most recent transaction FIRST
+    (newest-first/descending), which previously inverted opening/closing —
+    row[0]'s balance (actually the closing balance) was stored as "opening"
+    and vice versa. Rows are ISO date strings, so a plain string comparison of
+    the first vs last row's date tells us the file's overall direction; if
+    descending, the whole (already deduped, but not reordered) row list is
+    reversed before taking the endpoints, which also preserves same-date rows'
+    relative order exactly as the file itself ordered them, whichever
+    direction that file uses. A same-single-day statement (first == last
+    date) is left as-is — there's no cross-date signal to detect direction
+    from within one day, a residual limitation of date-only granularity.
+    """
+    if not rows:
+        return 0, 0
+    ordered = rows if rows[0]["transaction_date"] <= rows[-1]["transaction_date"] else list(reversed(rows))
+    return ordered[0]["balance_paise"], ordered[-1]["balance_paise"]
+
+
 class BankingService:
     """All bank-transaction mutations. db is the Supabase client (caller-supplied)."""
 
@@ -123,12 +145,13 @@ class BankingService:
 
         # 3) statement header (summary over the rows actually stored).
         dates = sorted(r["transaction_date"] for r in new_rows)
+        opening_paise, closing_paise = _opening_closing_balance(new_rows)
         stmt_payload = {
             "firm_id": firm_id, "client_id": client_id, "bank_name": bank_name,
             "account_number": account_number,
             "statement_from": dates[0], "statement_to": dates[-1],
-            "opening_balance_paise": new_rows[0]["balance_paise"],
-            "closing_balance_paise": new_rows[-1]["balance_paise"],
+            "opening_balance_paise": opening_paise,
+            "closing_balance_paise": closing_paise,
             "total_debits_paise": sum(r["debit_paise"] for r in new_rows),
             "total_credits_paise": sum(r["credit_paise"] for r in new_rows),
             "row_count": len(new_rows), "import_status": "pending",
