@@ -199,8 +199,11 @@ class Phase2JournalService:
         except ValueError:
             raise
         except Exception as e:
+            # F7: do NOT swallow. A receipt settles AR, so a silently-dropped
+            # journal would leave settled AR with no GL entry. Re-raise so the
+            # caller aborts before (or rolls back) the AR mutation.
             _logger.error("journal_for_receipt error: %s", e)
-            return None
+            raise
 
     def journal_for_credit_note(
         self, cn: dict, firm_id: str, client_id: str

@@ -307,7 +307,9 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     seq = _next_receipt_seq(db, firm_id, client_id, fy)
     receipt_no = f"RCPT-{fy}-{seq:04d}"
 
+    receipt_id = str(uuid.uuid4())
     receipt_payload = {
+        "id":                receipt_id,   # pre-generated so the GL journal, the receipt row and its allocations share one id
         "firm_id":           firm_id,
         "client_id":         client_id,
         "customer_id":       data["customer_id"],
@@ -323,9 +325,23 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         **_ccy_cols,
     }
 
+    # F7: post the GL journal FIRST — resolve the CoA accounts and post before any
+    # AR mutation, so a missing-account / posting failure aborts here (the journal
+    # helper now re-raises instead of swallowing) rather than leaving settled AR
+    # with no GL entry. In mock mode the helper returns None (no GL) which is fine;
+    # in real mode a failure propagates and nothing below runs.
+    from services.phase2_journal_service import phase2_journal_service
+    journal_id = phase2_journal_service.journal_for_receipt(
+        receipt=receipt_payload,
+        firm_id=firm_id or "",
+        client_id=client_id,
+    )
+    if journal_id:
+        receipt_payload["journal_entry_id"] = journal_id
+
     rcpt_resp  = db.table("receipts").insert(receipt_payload).execute()
     receipt    = rcpt_resp.data[0] if rcpt_resp.data else receipt_payload
-    receipt_id = receipt.get("id", str(uuid.uuid4()))
+    receipt_id = receipt.get("id", receipt_id)
 
     # Insert allocations and update invoice statuses.
     alloc_payloads = []
@@ -380,13 +396,7 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     if alloc_payloads:
         db.table("receipt_allocations").insert(alloc_payloads).execute()
 
-    # Auto-create journal entry (Dr Bank / Cr Trade Receivables).
-    from services.phase2_journal_service import phase2_journal_service
-    journal_id = phase2_journal_service.journal_for_receipt(
-        receipt=receipt,
-        firm_id=firm_id or "",
-        client_id=client_id,
-    )
+    # (The GL journal was already posted above, BEFORE settling AR — see F7.)
 
     log_event(
         firm_id or "", "receipt", receipt_id,
