@@ -246,14 +246,13 @@ export const api = {
       request(`/api/compliance/obligations/${id}/transition`, { method: "POST", body: JSON.stringify({ status }) }),
     runEscalations: () => request("/api/compliance/run-escalations", { method: "POST" }),
   },
-  documentIntelligence: {
-    list: (client_id?: string) => request(`/api/document-intelligence/documents${client_id ? `?client_id=${client_id}` : ""}`),
-    stats: () => request("/api/document-intelligence/stats"),
-    getExtraction: (docId: string) => request(`/api/document-intelligence/${docId}/extraction`),
-    triggerExtraction: (docId: string) => request(`/api/document-intelligence/${docId}/extract`, { method: "POST" }),
-    getRisks: (docId: string) => request(`/api/document-intelligence/${docId}/risks`),
-    resolveRisk: (docId: string, riskId: string) => request(`/api/document-intelligence/${docId}/risks/${riskId}/resolve`, { method: "POST" }),
-  },
+  // Note: the unversioned `documentIntelligence` wrapper (client-side, unused
+  // by any page) that pointed at /api/document-intelligence/* was removed in
+  // the R2.8 fix phase — that backend router was a retired, undisclosed 4th
+  // extraction generation serving hardcoded fabricated data. Real document
+  // extraction lives at /api/document-intelligence-v1 and
+  // /api/document-intelligence-v2 (called directly via fetch() from the
+  // pages that use them, e.g. app/clients/[id]/purchases/page.tsx).
   risks: {
     list: (params?: Record<string, string>) => request(`/api/risks${params ? "?" + new URLSearchParams(params) : ""}`),
     stats: () => request("/api/risks/stats"),

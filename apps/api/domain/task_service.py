@@ -47,10 +47,19 @@ class TaskDomainService:
             if hs["health_score"] < 50:
                 high_risk_clients += 1
 
+        # task_repo.find_overdue() has no firm_id parameter (it scans every
+        # firm's tasks) — filter the result in Python to the caller's firm,
+        # the same post-hoc scoping pattern used for this exact repo method
+        # in domain/ai_copilot_service.py's _build_context. Tenancy fix, R2.8/F19.
+        overdue_tasks = [
+            t for t in task_repo.find_overdue()
+            if not firm_id or t.get("firm_id") == firm_id
+        ]
+
         return {
             "active_clients": len(active_clients),
             "tasks_due_today": len([t for t in open_tasks if t.get("due_date") == today_str]),
-            "overdue_tasks": len(task_repo.find_overdue()),
+            "overdue_tasks": len(overdue_tasks),
             "waiting_client": len([t for t in open_tasks if t.get("status") == "waiting_client"]),
             "review_required": len([t for t in open_tasks if t.get("status") == "review_required"]),
             "total_open_tasks": len(open_tasks),

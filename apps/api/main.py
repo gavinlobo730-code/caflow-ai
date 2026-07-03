@@ -45,7 +45,7 @@ from routers import clients, compliance, documents, assistant, insights, tasks, 
 from routers import accounting, compliance_records
 from routers import currencies  # Multi-Currency Phase 1 (read-only currency master + policy)
 from routers import fx_reports  # Multi-Currency Phase 5 (read-only FX reporting)
-from routers import document_intelligence, risks, ai_insights, automation, notifications, ai_copilot
+from routers import risks, ai_insights, automation, notifications, ai_copilot
 from routers import gst, tds, income_tax
 from routers import task_templates, task_extras, task_recurring
 from routers import time_tracking, workload, analytics, engagements, invoices
@@ -186,7 +186,16 @@ app.include_router(accounting.router, dependencies=_CLIENT_GUARD)
 app.include_router(currencies.router, dependencies=_CLIENT_GUARD)
 app.include_router(fx_reports.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance_records.router, dependencies=_CLIENT_GUARD)
-app.include_router(document_intelligence.router, dependencies=_CLIENT_GUARD)
+# routers/document_intelligence.py (unversioned /api/document-intelligence) is
+# RETIRED as of the R2.8 fix phase (audit F19): it's a 4th, undisclosed
+# extraction generation serving hardcoded fabricated data (fake confidence
+# scores, fake GSTINs/TDS figures) verbatim via GET /{doc_id}/extraction —
+# exactly the class of fabrication R2.8 eliminated in v1/v2. It had zero
+# frontend callers and its demo doc-NNN IDs never collide with real
+# (UUID-keyed) documents, so unmounting it is a no-op for real traffic.
+# document-intelligence-v1 / document-intelligence-v2 are the real,
+# audited replacements — see routers/document_intelligence_v1.py and
+# routers/document_intelligence_v2.py.
 app.include_router(risks.router, dependencies=_CLIENT_GUARD)
 app.include_router(ai_insights.router, dependencies=_CLIENT_GUARD)
 app.include_router(automation.router)

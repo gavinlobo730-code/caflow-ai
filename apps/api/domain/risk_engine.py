@@ -263,7 +263,12 @@ def get_all_risks(
 def get_risk_dashboard_stats(firm_id: Optional[str] = None) -> dict:
     """Return counts by severity."""
     all_risks = get_all_risks(firm_id=firm_id, status="open")
-    resolved = len([r for r in MOCK_RISKS if r["resolution_status"] == "resolved"])
+    # R2.8/F19: this previously scanned the raw global MOCK_RISKS list with no
+    # firm_id filter at all — in production (SUPABASE_URL set) it always
+    # returned demo-data counts instead of the real firm's document_risks.
+    # get_all_risks() already supports status="resolved" with the same
+    # firm-scoped real-DB path used for "open" above.
+    resolved = len(get_all_risks(firm_id=firm_id, status="resolved"))
     return {
         "critical": len([r for r in all_risks if r["severity"] == "critical"]),
         "high": len([r for r in all_risks if r["severity"] == "high"]),
