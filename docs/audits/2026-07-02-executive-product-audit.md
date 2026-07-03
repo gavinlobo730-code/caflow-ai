@@ -524,3 +524,33 @@ further R1.3 code change — the scale fix is correct for its scope):
 
 **Next:** Milestone R1.4 (convert the GSTR-3B GSTN payload to rupees, F16).
 
+## Milestone R1.4 — GSTR-3B GSTN payload in rupees, F16 (DELIVERED)
+
+**Goal:** stop the GSTR-3B upload payload from carrying amounts 100× too large.
+
+**Revalidation:** confirmed. `domain/gst/gstr3b_computer.py:GSTR3BResult.as_gstn_payload`
+emitted every monetary field (`txval`, `iamt`, `camt`, `samt`, `csamt`, the RCM
+`inter/intra_*`, and all ITC amounts) as raw integer **paise**, while the GSTN
+portal — and the sibling GSTR-1 builder — use **rupees**. The endpoint labels the
+result "ready for GSTN portal upload" (`routers/gst.py:274`).
+
+**Fix:** every amount in the payload is now converted with `_paise_to_rupees`
+(imported from the GSTR-1 builder — a single canonical GST conversion, no
+duplicated/driftable copy). Only `as_gstn_payload` changed; the internal
+computation stays in integer paise.
+
+**Verified:** ran the payload (₹10,00,000 taxable, ₹1,80,000 IGST, etc.) — every
+field now emits rupees (`txval` 10_00_000.00, not 10_00_000_00 paise). Updated the
+one existing test that had encoded the bug (`test_h7_...` asserted the payload
+equalled the paise value) and added `test_f16_gstn_payload_amounts_are_rupees_not_paise`
+covering every section (osup_det, osup_zero/nil, isup_rev, inward RCM, itc_avl,
+itc_net). No circular import (gstr1_builder does not import gstr3b_computer). Full
+suite 2162 passed / 49 skipped; the standalone e2e GST script only checks key
+presence, so it is unaffected.
+
+**Note:** amounts are 2-decimal rupees (mirroring GSTR-1). If the GSTN GSTR-3B API
+requires whole-rupee integers, that rounding is a small follow-up; 2-decimal is
+correct-scale and consistent, and removes the launch blocker.
+
+**Next:** Milestone R1.5 (fix Axis/SBI bank-format detection, F8).
+
