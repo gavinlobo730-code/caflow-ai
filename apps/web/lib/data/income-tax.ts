@@ -203,37 +203,121 @@ export async function saveTaxPlanningRecord(record: TaxPlanningRecord): Promise<
   return data.id as string;
 }
 
-export async function getCapitalGains(
-  clientId: string,
-  financialYear?: string,
-): Promise<Record<string, unknown>[]> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-  let q = sb
-    .from("capital_gains")
-    .select("*")
-    .eq("firm_id", firmId)
-    .eq("client_id", clientId);
-  if (financialYear) {
-    // Filter by FY using sale_date (April 1 to March 31)
-    const year = parseInt(financialYear.split("-")[0]);
-    q = q.gte("sale_date", `${year}-04-01`).lte("sale_date", `${year + 1}-03-31`);
-  }
-  const { data, error } = await q.order("sale_date", { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as Record<string, unknown>[];
+// ── Capital gains (R3.1b) ──────────────────────────────────────────────────
+// Section 45/48/2(42A)/111A/112A/112/115BBH/50AA — all computed server-side
+// by domain/income_tax/capital_gains_engine.py. Previously this file (and,
+// separately and more consequentially, apps/web/app/income-tax/capital-gains/
+// page.tsx's own inline logic) read/wrote the capital_gains table directly
+// from the browser, computing gain_type/tax_rate_percent/indexed_cost_paise
+// client-side with no server-side validation.
+
+export type CapitalGainsAssetType = "equity" | "debt_mf" | "property" | "unlisted" | "vda" | "gold";
+export type CapitalGainsRegisterAssetType = "equity_shares" | "mutual_funds" | "property" | "bonds" | "other";
+
+export interface ComputeCapitalGainsRequest {
+  asset_type: CapitalGainsAssetType | CapitalGainsRegisterAssetType;
+  purchase_date: string;   // YYYY-MM-DD
+  sale_date: string;       // YYYY-MM-DD
+  purchase_cost_paise: number;
+  sale_value_paise: number;
+  improvement_cost_paise?: number;
 }
 
-export async function saveCapitalGain(gain: Record<string, unknown>): Promise<string> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-  const { data, error } = await sb
-    .from("capital_gains")
-    .insert({ firm_id: firmId, ...gain, created_at: new Date().toISOString() })
-    .select("id")
-    .single();
-  if (error || !data) throw new Error(error?.message ?? "Failed to save capital gain");
-  return data.id as string;
+export interface CapitalGainsComputeResult {
+  holding_months: number;
+  is_long_term: boolean;
+  gain_type: "STCG" | "LTCG";
+  gain_paise: number;
+  indexed_cost_paise: number;
+  gain_with_indexation_paise: number;
+  tax_rate_percent: number;
+  tax_with_indexation_percent: number | null;
+  /** Both amounts pre-computed server-side — never re-derive tax_rate_percent
+   * * gain_paise client-side (the backend rounds with integer round-half-up,
+   * not float Math.round, so a client-side re-derivation could disagree by
+   * a paise in edge cases). */
+  tax_without_indexation_paise: number;
+  tax_with_indexation_paise: number | null;
+  tax_liability_paise: number;
+  section_ref: string;
+  note: string;
+  is_slab_rate_estimate: boolean;
+}
+
+export interface CapitalGainsRecord {
+  id: string;
+  client_id: string;
+  asset_description: string;
+  asset_type: CapitalGainsRegisterAssetType;
+  purchase_date: string;
+  sale_date: string;
+  purchase_cost_paise: number;
+  improvement_cost_paise: number;
+  sale_value_paise: number;
+  indexed_cost_paise: number | null;
+  gain_type: "STCG" | "LTCG" | null;
+  tax_rate_percent: number | null;
+  created_at: string;
+}
+
+async function _authHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await getSupabaseClient().auth.getSession();
+  const token = session?.access_token;
+  return { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+}
+
+/** Stateless capital-gains estimator — computes only, never persists. */
+export async function computeCapitalGains(req: ComputeCapitalGainsRequest): Promise<CapitalGainsComputeResult> {
+  const res = await fetch(`${API_BASE}/api/income-tax/capital-gains/compute`, {
+    method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
+  });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error ?? `Capital gains compute failed: ${res.statusText}`);
+  return json.data as CapitalGainsComputeResult;
+}
+
+export async function listCapitalGains(clientId: string): Promise<CapitalGainsRecord[]> {
+  const res = await fetch(`${API_BASE}/api/income-tax/capital-gains?client_id=${encodeURIComponent(clientId)}`, {
+    headers: await _authHeaders(),
+  });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to load capital gains: ${res.statusText}`);
+  return (json.data ?? []) as CapitalGainsRecord[];
+}
+
+export interface CreateCapitalGainRequest extends ComputeCapitalGainsRequest {
+  client_id: string;
+  asset_description: string;
+  asset_type: CapitalGainsRegisterAssetType;
+}
+
+/** Computes AND persists a register entry — gain_type/tax_rate_percent/
+ * indexed_cost_paise are computed server-side, never sent by the caller. */
+export async function createCapitalGain(req: CreateCapitalGainRequest): Promise<CapitalGainsRecord> {
+  const res = await fetch(`${API_BASE}/api/income-tax/capital-gains`, {
+    method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
+  });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to save capital gain: ${res.statusText}`);
+  return json.data as CapitalGainsRecord;
+}
+
+export async function deleteCapitalGain(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/income-tax/capital-gains/${encodeURIComponent(id)}`, {
+    method: "DELETE", headers: await _authHeaders(),
+  });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to delete capital gain: ${res.statusText}`);
+}
+
+/** Cost Inflation Index table (Section 48, 2nd proviso) — fetched from the
+ * backend so the reference display can never drift from the table the
+ * engine actually computes with (see capital_gains_engine.py). */
+export async function getCiiTable(): Promise<{ ciiByFy: Record<string, number>; latestVerifiedFy: string }> {
+  const res = await fetch(`${API_BASE}/api/income-tax/capital-gains/cii-table`, { headers: await _authHeaders() });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to load CII table: ${res.statusText}`);
+  return { ciiByFy: json.data.cii_by_fy, latestVerifiedFy: json.data.latest_verified_fy };
 }
 
 export async function getAdvanceTaxPayments(

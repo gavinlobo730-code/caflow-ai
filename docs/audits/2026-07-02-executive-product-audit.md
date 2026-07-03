@@ -246,7 +246,7 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 ### Tier 3 — Medium (productivity, consolidation, scale)
 
 - **R3.0 — Harden `client_portal_users` RLS/grants. DELIVERED.** *(surfaced by the R2.5 regression review)*. Migration 109's `client_portal_users_own_firm` policy was `FOR ALL USING/WITH CHECK (firm_id = get_my_firm_id())` — any authenticated firm staff member could directly INSERT/UPDATE/DELETE a `client_portal_users` row from the browser, bypassing `invite_contact`'s token/TTL/audit trail entirely. Fixed via migration 163, mirroring the R2.5 `users`-table pattern exactly: `REVOKE INSERT, UPDATE, DELETE ... FROM authenticated`, then the old policy replaced with a SELECT-only "own firm" policy. Unlike `users`, no column-level UPDATE grant was needed — confirmed via a repo-wide check that `apps/web` has zero direct writes to this table (every frontend interaction already goes through the backend REST API), so there was no legitimate self-service feature to carve out. Proven on real Postgres 16: an authenticated firm-staff session can still `SELECT` its own firm's contacts (and a different firm's contact is invisible), but `INSERT`/`UPDATE`/`DELETE` all fail with `permission denied`; the `service_role`-backed backend path (the only real mutation path) is completely unaffected. *Effort:* S (as estimated). *Benefit:* closes the last raw-table write path in the portal invite flow.
-- **R3.1 — Statutory rules-as-data registry (FY-versioned). RE-SCOPED, PARTIALLY DELIVERED (R3.1a).** R2.3 already delivered the core of this for income tax/vendor TDS. A full re-audit (see Implementation Log) found the remaining scope splits into: quick consolidation wins — capital-gains rates, GST/MCA due-date duplication, a genuine data-corrupting frozen-date bug in `mca/page.tsx` — all DELIVERED as R3.1a; and a much larger item, **R3.1b: build a real capital-gains engine** (Cost Inflation Index, holding-period classification — currently absent from the backend entirely) and migrate `apps/web/app/income-tax/capital-gains/page.tsx` off its own duplicate frontend engine, tracked separately below given its size. Also surfaced: Sections 206AA/206AB (hardcoded, unverified, needs Finance Act 2025 confirmation), an orphaned TCS/206C registry entry with no engine behind it, and at least 3 more frontend pages that compute-and-persist statutory calculations independently of any backend (`lib/data/compliance.ts` writes a compliance calendar straight to Supabase; `advance-tax/page.tsx` has a frontend-only §234C interest calculator). *Effort:* R3.1a delivered at S; R3.1b estimated M-L. *Benefit:* tax law becomes maintainable data; closes the most serious remaining "business logic in the frontend" violation found this session.
+- **R3.1 — Statutory rules-as-data registry (FY-versioned). RE-SCOPED, DELIVERED (R3.1a + R3.1b).** R2.3 already delivered the core of this for income tax/vendor TDS. A full re-audit (see Implementation Log) found the remaining scope split into quick consolidation wins (R3.1a: capital-gains rate constants, GST/MCA due-date duplication, a genuine data-corrupting frozen-date bug in `mca/page.tsx`) and a much larger item, **R3.1b: a real capital-gains engine** — Cost Inflation Index table, Section 2(42A) holding-period classification, and the Section 111A/112A/112/115BBH/50AA tax-rate logic, none of which existed in the backend at all before this. Both delivered: `domain/income_tax/capital_gains_engine.py` is the new single source of truth; `routers/income_tax.py` gained `/capital-gains/compute` (stateless estimator) and full register CRUD (`GET`/`POST`/`DELETE /capital-gains`), all server-computed — `apps/web/app/income-tax/capital-gains/page.tsx`'s own duplicate engine (which computed AND persisted gain_type/tax_rate_percent/indexed_cost_paise client-side, with no server-side validation) is gone; migration 164 hardens the `capital_gains` table's RLS the same way R3.0 did for `client_portal_users`. A genuine inconsistency between the page's two independent implementations was found and fixed while unifying them: the calculator computed the real "12.5% without indexation OR 20% with indexation, whichever is lower" choice for property LTCG, but the register always hardcoded 20% and never computed the 12.5% alternative at all — the register now gets the calculator's more complete logic. Also surfaced, tracked below: Sections 206AA/206AB (hardcoded, unverified, needs Finance Act 2025 confirmation), an orphaned TCS/206C registry entry with no engine behind it, and at least 3 more frontend pages that compute-and-persist statutory calculations independently of any backend (R3.13). *Effort:* R3.1a at S; R3.1b at M (as estimated). *Benefit:* tax law becomes maintainable data; closes the most serious "business logic in the frontend" violation found this session, with a real financial-computation feature (CII indexation) added to the backend for the first time.
 - **R3.2 — Cross-client batch compliance cockpit** (generate/validate/mark-filed + ARN capture across clients). *Effort:* XL. *Benefit:* the #1 CA scale unlock.
 - **R3.3 — De-orphan or delete the ~40 unlinked routes and consolidate duplicate invoicing/fixed-asset/payroll stacks.** *Effort:* L. *Benefit:* coherence + lower maintenance.
 - **R3.4 — Automate document collection & reminders** (WhatsApp Business API + cadence). *Effort:* L. *Benefit:* removes the biggest daily admin sink.
@@ -2465,4 +2465,106 @@ Frontend: `tsc --noEmit` clean, `eslint` clean, full `next build` clean.
 
 **Next:** R3.1b (capital-gains backend engine + frontend migration) — a
 distinct, larger piece of work, not a quick win.
+
+## Milestone R3.1b — Build a real capital-gains engine (DELIVERED)
+
+**Goal:** `apps/web/app/income-tax/capital-gains/page.tsx` was a complete
+capital-gains tax engine written in TypeScript — a hardcoded Cost Inflation
+Index (CII) table, Section 2(42A) holding-period classification, and the
+full Section 111A/112A/112/115BBH/50AA tax-rate logic, all computed AND
+persisted to a real `capital_gains` Supabase table entirely client-side,
+with zero server-side validation. The backend had no equivalent capability
+at all — `domain/income_tax/itr_engine.py` only accepts already-classified,
+already-computed STCG/LTCG paise amounts as input. Properly fixing the
+"business logic in the frontend" violation this represents required
+building the missing capability first, not just moving constants around
+(unlike R3.1a's quick wins).
+
+**What shipped:**
+- **New `domain/income_tax/capital_gains_engine.py`** — the CII table
+  (ported verbatim from the frontend, the only source for these figures
+  anywhere in this repo), Section 2(42A) holding-period classification
+  (12 months for listed equity/equity MF, 24 months for everything else —
+  Budget 2024's simplified two-tier system), and the full tax-rate logic
+  for all six asset types (equity, debt MF, property, unlisted shares, VDA,
+  gold), each faithfully porting the frontend's existing section references
+  and Budget 2024 dates. Integer round-half-up arithmetic throughout (no
+  float intermediate steps, unlike the frontend's `Math.round`).
+- **A genuine inconsistency found and fixed while unifying two
+  independent frontend implementations into one:** the page's interactive
+  calculator computed the REAL "12.5% without indexation OR 20% with
+  indexation, whichever is lower" choice for property LTCG (the actual
+  Budget 2024 grandfather-clause mechanism for resident individuals/HUFs on
+  immovable property acquired before 23 Jul 2024) — but the SAME page's
+  register (a persisted transaction log, not just a calculator) always
+  hardcoded a flat 20% for every non-equity LTCG asset type and never even
+  computed the 12.5% alternative. Every register entry saved under the old
+  code for property/unlisted/gold LTCG could have recorded a higher tax
+  rate than the law actually allows. The unified engine now gives the
+  register the calculator's more complete logic.
+- **New backend endpoints** (`routers/income_tax.py`): `POST
+  /capital-gains/compute` (stateless estimator, no persistence), `GET
+  /capital-gains` (firm+client-scoped list), `POST /capital-gains` (computes
+  AND persists — the request model has no `gain_type`/`tax_rate_percent`/
+  `indexed_cost_paise` field at all, so there is no way for a caller to
+  supply and have stored a value the engine itself didn't compute), `DELETE
+  /capital-gains/{id}` (firm-scoped), and `GET /capital-gains/cii-table` (so
+  the frontend's reference table display reads from the same source the
+  engine computes with, instead of keeping a second hardcoded copy that
+  could silently drift from it).
+- **`capital_gains` table RLS hardened** (migration 164) — the same
+  `FOR ALL` / firm-id-only gap R3.0 fixed for `client_portal_users`: any
+  authenticated firm staff member could directly INSERT/UPDATE/DELETE a
+  capital-gains row with self-reported values. Migration 030 (`capital_gains`)
+  predates migration 084 (assignment-scoped RLS), so — unlike
+  `client_portal_users` — this table also carries an automatically-applied
+  `AS RESTRICTIVE` policy requiring `can_access_client()`; this was
+  discovered while debugging why a first draft of the real-Postgres RLS
+  proof failed for a non-Partner role, not a new bug this migration
+  introduces.
+- **Frontend rewrite:** `capital-gains/page.tsx`'s hardcoded CII table,
+  `computeGains`/`getRegGainType`/`getRegTaxRate` all removed. The
+  calculator now calls the compute endpoint with a 400ms debounce (matching
+  the deductions-page pattern); the register's add-transaction modal's live
+  preview does the same instead of re-implementing the classification
+  inline; `loadRecords`/`handleSaveRecord`/`deleteRecord` call the new
+  backend endpoints instead of raw Supabase reads/writes. The "tax without
+  indexation" / "tax with indexation" comparison display was changed to
+  render two explicit paise amounts the backend now returns, rather than
+  the frontend re-deriving `rate * gain` itself — a JS float `Math.round`
+  re-derivation of a value the backend already computed via integer
+  round-half-up could, in principle, disagree by a paise at the boundary.
+  Also found and fixed: two unused, dead functions in
+  `lib/data/income-tax.ts` (`getCapitalGains`/`saveCapitalGain`, zero
+  callers anywhere) that did the identical raw-Supabase-write violation —
+  replaced with the new backend-calling equivalents so the file's public
+  API doesn't quietly re-offer a broken pattern to some future caller.
+
+**Verified:** 29 new backend tests (18 in `test_capital_gains_engine.py`
+cross-checking exact worked examples — including a clean 3.8× CII-ratio
+case chosen so the indexed-cost arithmetic could be hand-verified
+precisely, and both directions of the "which is lower" property-LTCG
+comparison; 9 in `test_r3_1b_capital_gains_endpoints.py` proving the create
+endpoint's request model cannot accept a caller-supplied gain_type/tax_rate,
+and firm-scoping on list/delete; 5 in `test_r3_1b_capital_gains_rls_pg.py`
+against real Postgres 16, plus the 2-fold "not property, but still gets the
+correct new registry fields" cross-check added to
+`test_capital_gains_engine.py`). Full mock-mode suite: 2,402 passed, same 23
+pre-existing unrelated failures; combined with `HARNESS_PG` enabled (every
+real-Postgres proof across all of Tier 2 + R3.0 + R3.1a + R3.1b in one
+pass): 2,444 passed, same 23 failures, zero new. Frontend: `tsc --noEmit`
+clean, `eslint` clean, full `next build` clean (`/income-tax/capital-gains`
+compiles at 8.95 kB, down from the old bundle that shipped the whole
+compute engine to the browser). Manual dev-server verification via
+Playwright (same synthetic-session technique as R2.10, since this sandbox
+has no live Supabase project): the rewritten page mounts cleanly, the
+calculator's debounced compute call fires against the real backend
+(observed failing with a real `503 SUPABASE_URL not set` in this sandbox,
+surfaced through the new error banner rather than crashing), and zero
+uncaught client-side exceptions occur throughout.
+
+**Next:** R3.1 is now fully closed. Remaining Tier 3 items per the user's
+priority — R3.2 (cross-client compliance cockpit), R3.13 (the remaining
+frontend pages that compute-and-persist independently of the backend), or
+R2.6's standing production-drift reconciliation.
 
