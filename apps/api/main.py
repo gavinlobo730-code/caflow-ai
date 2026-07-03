@@ -41,7 +41,7 @@ _ALLOWED_ORIGINS = _parse_origins(
 )
 _logger.info("CORS allowed origins: %s", _ALLOWED_ORIGINS)
 
-from routers import clients, compliance, documents, assistant, insights, tasks, workflows, reminders, team
+from routers import clients, compliance, documents, assistant, insights, tasks, reminders, team
 from routers import accounting, compliance_records
 from routers import currencies  # Multi-Currency Phase 1 (read-only currency master + policy)
 from routers import fx_reports  # Multi-Currency Phase 5 (read-only FX reporting)
@@ -171,7 +171,12 @@ app.include_router(documents.router, dependencies=_CLIENT_GUARD)
 app.include_router(assistant.router)
 app.include_router(insights.router, dependencies=_CLIENT_GUARD)
 app.include_router(tasks.router, dependencies=_CLIENT_GUARD)
-app.include_router(workflows.router, dependencies=_CLIENT_GUARD)
+# The legacy Phase-2 workflows router was DELETED in R2.7 (audit F11): its
+# GET /{workflow_id} catch-all shadowed every single-segment GET on the
+# /api/workflows prefix (/templates, /instances, /approvals, /schedules,
+# /analytics, /failures, /executions all 404'd), and all three of its
+# endpoints returned hardcoded, never-persisted data with zero frontend
+# callers. The real engine is workflow_builder_router (registered below).
 app.include_router(reminders.router, dependencies=_CLIENT_GUARD)
 app.include_router(team.router)
 app.include_router(accounting.router, dependencies=_CLIENT_GUARD)

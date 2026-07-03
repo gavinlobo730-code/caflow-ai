@@ -1473,3 +1473,128 @@ flagged for the Tier 2 regression review, not dropped).
 remaining scope), R2.9 (document numbering), R2.11 (bank parser), R2.12
 (receipt atomicity), then the Tier 2 regression review.
 
+## Milestone R2.7 — Make the workflow engine actually execute, F11/F12 (DELIVERED)
+
+**Goal:** the audit's F11 (list endpoints 404) and F12 (engine actions are
+stubs) both still held on re-verification, and the investigation traced the
+real breakage further than either finding stated: migration 068 (the Phase-10
+engine's own schema) never fully applies on a fresh database — its
+`workflow_steps` CREATE silently no-ops against 002's legacy same-named
+table, then its index on the never-added `template_id` column errors and
+aborts the file, so `workflow_instances`/`action_logs`/`executions`/
+`failures`/`approvals`/`schedules` never exist and 071's RLS pass fails in
+cascade. Only `workflow_templates` (created before the abort) survived, with
+no RLS ever enabled on it.
+
+**Schema repair — migration 157** (R2.1/155-pattern: additive, never edits
+068/071, which stay in the documented `EXPECTED_MIGRATION_FAILURES`
+baseline): reconciles 002's `workflow_steps` to 068's engine shape via
+`ADD COLUMN IF NOT EXISTS` (template_id/step_type/name/description/config/
+next_step_id/true_branch_step_id/false_branch_step_id) and existence-guarded
+`DROP NOT NULL` on the legacy workflow_id/step_name columns (068's dead
+`workflow_triggers`/`workflow_conditions` deliberately NOT created — the
+engine reads trigger_type/conditions straight off the template's JSONB;
+zero code ever referenced those two tables); creates the six tables 068
+never managed to (workflow_instances — plus `idempotency_key`, which 068
+never had but the repository requires — action_logs, executions, failures,
+approvals, schedules); adds RLS + grants across every workflow table
+(steps/action_logs scoped via `EXISTS` to their owning template/instance,
+since neither carries its own firm_id).
+
+**F11 — routing.** Deleted `routers/workflows.py`: three endpoints of
+hardcoded, never-persisted fake data (`GET /{id}`, `POST /{id}/instantiate`)
+whose catch-all shadowed every single-segment GET on the shared
+`/api/workflows` prefix — `/templates`, `/instances`, `/approvals`,
+`/schedules`, `/analytics`, `/failures`, `/executions` all 404'd regardless
+of the real `workflow_builder_router`'s own registration. Zero frontend
+callers (confirmed by grep); the dead `lib/api/index.ts` client stub
+pointing at the deleted endpoints removed too.
+
+**F11 — four router→repository signature mismatches**, proving the
+builder's write paths had never been exercised end to end: `cancel_instance`
+called `update_instance_status` without `firm_id`; `respond_to_approval`
+passed `response_notes`/`responder_id` in swapped positions (the responder's
+UUID was landing in the notes column and vice versa); `create_schedule`
+passed the whole request payload as the `template_id` positional; `toggle_schedule`
+passed a phantom third boolean argument. All four were TypeErrors/silent
+corruption, not merely untested — fixed with explicit keyword arguments at
+every call site.
+
+**F12 — real actions.** `_execute_action`'s `create_task` and
+`send_notification` now write actual rows via `task_repo`/
+`notifications_repo` (previously every action type, including these two,
+fabricated an id like `task-wf-{uuid}` and wrote nothing — a workflow could
+"complete successfully" having done none of what its steps claimed). Every
+other action type (`send_email`, `archive_client`, `create_proposal`, the AI
+actions, …) has no real implementation yet and now says so explicitly — an
+`_action_status: skipped` sentinel the step runner logs as
+`workflow_action_logs.status = 'skipped'`, never `'success'`, so analytics
+stays honest about what actually ran. `create_task` requires a client
+(`tasks.client_id` is NOT NULL) and fails loudly rather than silently
+succeeding when the instance has none.
+
+**Scheduler linkage.** `run_due_schedules` existed and was fully wired to
+`workflow_schedules`/the engine, but was never registered with APScheduler —
+cron-based workflow schedules could not fire under any circumstance. Now
+ticks every minute via `jobs/scheduler.py::start_scheduler`.
+
+**Adversarial review (fresh-context reviewer instructed to refute) — four
+real findings, all fixed:**
+1. *Critical:* migration 157's notification-CHECK widen (for the new
+   `send_notification` action's `type='workflow'`) rebuilt the constraint
+   from migration 004's original 6-type list — silently REVERTING migration
+   122's later widen (`task_reassigned`/`due_soon`/`overdue`/
+   `task_overdue`/`recurring_generated`, added after those exact types were
+   found to cause 100%-silent notification-write failures in production).
+   Fixed: 157's list is now a strict superset of 122's, proven by inserting
+   one row of every one of 122's five added types plus `'workflow'` after
+   157 applies.
+2. *High:* registering the tick didn't make schedules actually fire —
+   `create_schedule` left `next_run_at` NULL forever (nothing else ever set
+   it, and `list_schedules_due` only matches non-NULL), `run_due_schedules`
+   fired every active `'scheduled'`-type template in the firm by
+   `trigger_type` instead of the one template each schedule's
+   `template_id` actually points to (both over-firing unrelated templates
+   and under-firing — recording a false "success" — for any schedule whose
+   target declared a different trigger_type), and `_compute_next_run` used
+   `croniter`/`pytz`, neither ever added to requirements.txt, so every call
+   silently hit the except branch and fell back to "now + 1 day" — no cron
+   expression was ever actually honored. Fixed: `create_schedule`/
+   `toggle_schedule` (on activation) seed `next_run_at` from the cron
+   expression; `fire_trigger` gained a `template_id` parameter that
+   `run_due_schedules` uses to target the schedule's own template
+   exclusively; `_compute_next_run` rebuilt on APScheduler's own
+   `CronTrigger.from_crontab` + stdlib `zoneinfo` — zero new dependencies,
+   real cron parsing. A second, same-class pytz fallback in
+   `_past_scheduled_hour` (scheduler health reporting) fixed identically.
+3. *Medium (security):* the new real-write actions bypass the tenancy
+   guard every other write path enforces — `create_task`'s `client_id` and
+   `send_notification`'s `user_id` came from the manually-triggerable
+   endpoint's unvalidated request payload, so a task-write user could bind
+   a task/notification to another firm's client/user by simply naming its
+   id in the trigger call. Fixed: both actions now verify the id belongs to
+   the executing firm (matching `routers/tasks.py`'s existing guard) before
+   writing, raising a validation error otherwise.
+4. *Medium:* a deterministic validation failure (missing client, cross-tenant
+   id) was going through the generic retry path — 3 attempts, exponential
+   backoff, ~6 seconds blocked, three duplicate `workflow_failures` rows for
+   one non-retryable error, repeatable every minute once a schedule targets
+   such a template. Fixed: a new `WorkflowStepValidationError` bypasses
+   retry entirely (same treatment as `_ApprovalPause`), logging exactly one
+   failure and failing the instance immediately.
+
+**Verified:** 2,277 backend tests pass (66 in the workflow suites, 13 of
+them new route-level tests hitting the REAL `main.app` — proving the F11
+routing fix end to end, not just via a per-router test app — plus new
+scheduler-targeting, retry-classification, and tenancy-guard tests; same 23
+pre-existing DB-dependent failures, reconfirmed unrelated). Real-Postgres
+proof of every new/repaired table's exact code payloads, on both a fresh
+database (150 migrations applied; the same pre-documented drift failures,
+nothing new) and the upgrade/re-apply path (migration 157 applied twice
+cleanly, including over a database that had an earlier draft of itself).
+`tsc --noEmit` clean after the frontend client-stub removal.
+
+**Next:** R2.8 (AI extraction + F19's remaining scope), R2.9 (document
+numbering), R2.11 (bank parser), R2.12 (receipt atomicity), then the Tier 2
+regression review and Tier 3.
+
