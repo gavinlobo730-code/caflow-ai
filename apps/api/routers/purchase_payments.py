@@ -49,6 +49,49 @@ def _get_db():
     return get_supabase()
 
 
+def _is_unique_violation(err: Exception) -> bool:
+    """True when a Postgres/PostgREST error is a unique-constraint violation
+    (23505) — used to recognise a payment_no collision against migration 159's
+    UNIQUE (firm_id, payment_no) constraint."""
+    s = str(err).lower()
+    return "23505" in s or "duplicate key" in s or "already exists" in s
+
+
+def _insert_payment_or_compensate(db, firm_id: str, payload: dict, journal_entry_id, created_by: Optional[str]) -> dict:
+    """Insert the purchase_payments row; both call sites post the vendor-payment
+    journal FIRST (Dr Trade Payables / Cr Bank), then insert this row. R2.9/
+    migration 159 added a UNIQUE (firm_id, payment_no) constraint that previously
+    didn't exist, so this insert can now fail on a genuine numbering collision —
+    a failure here must reverse the already-committed journal rather than leave
+    a phantom GL entry with no payment row (same class of gap F7/R1.6 fixed for
+    receipts, mirrored here via services/receipt_service.py's compensation
+    pattern)."""
+    try:
+        resp = db.table("purchase_payments").insert(payload).execute()
+        return (resp.data or [payload])[0]
+    except Exception as e:
+        if journal_entry_id:
+            from services.phase2_journal_service import phase2_journal_service
+            try:
+                phase2_journal_service.reverse_entry(
+                    db, firm_id, journal_entry_id, str(datetime.now(timezone.utc).date()),
+                    narration=f"Compensating reversal — payment {payload.get('payment_no')} insert failed",
+                    created_by=created_by,
+                )
+            except Exception:
+                _logger.error(
+                    "R2.9 compensation FAILED for journal=%s (firm=%s) after a purchase "
+                    "payment insert failure — manual reconciliation required, a phantom "
+                    "GL entry may remain.", journal_entry_id, firm_id, exc_info=True,
+                )
+        if _is_unique_violation(e):
+            raise HTTPException(
+                status_code=409,
+                detail="A payment numbering collision was detected; please retry.",
+            ) from e
+        raise
+
+
 def _next_payment_seq(db, firm_id: str, fy: str) -> int:
     try:
         resp = (
@@ -271,10 +314,9 @@ def create_purchase_payment(
             "created_at": _now_iso(),
             "updated_at": _now_iso(),
         }
-        resp = db.table("purchase_payments").insert(payload).execute()
-        if not resp.data:
-            raise RuntimeError("Insert returned no data")
-        payment = resp.data[0]
+        payment = _insert_payment_or_compensate(
+            db, firm_id, payload, journal_entry_id, current_user.get("id"),
+        )
 
         # Update purchase bill status if linked
         if purchase_bill_id:
@@ -422,7 +464,9 @@ def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor:
         "rate_source": r1_source, "rate_type": "booking", "rate_date": str(payment_date)[:10],
         "rate_selected_by": (actor or {}).get("id"), "rate_overridden": overridden,
     }
-    payment = (db.table("purchase_payments").insert(payload).execute().data or [payload])[0]
+    payment = _insert_payment_or_compensate(
+        db, firm_id, payload, entry_id, (actor or {}).get("id"),
+    )
 
     new_paid = int(bill.get("paid_paise") or 0) + ap_relieved
     new_paid_txn = int(bill.get("paid_txn") or 0) + f
