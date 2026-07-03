@@ -226,7 +226,7 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 
 **R2.5 — Close the `/join` privilege escalation and portal-invite gaps (F21, F22). DELIVERED.** Moved `/join` account-linking to a backend endpoint validating a signed single-use invite token; added tokenized, expiring portal invites — and, discovered during implementation, rewired the actual live "Invite to Portal" UI (which bypassed the tokenized service entirely via a raw browser `signInWithOtp` + direct table write) onto the same audited path. See Implementation Log for the full account, including a self-caught UPDATE-based escalation bug and a self-caught regression in the `users`-table RLS hardening. *Effort:* M (actual, incl. the unplanned live-flow rewire). *Benefit:* removes the most exploitable security holes AND makes the client-portal invite feature actually work end-to-end for the first time.
 
-**R2.6 — Fix RLS predicates and migration hygiene (F20 + drift).** Correct policies that key on the never-issued `firm_id` claim; add a migration runner + tracking table; reconcile repo-vs-live drift; resolve duplicate migration numbers. *Effort:* M–L. *Benefit:* makes the eventual RLS cutover safe and schema state knowable.
+**R2.6 — Fix RLS predicates and migration hygiene (F20 + drift). DELIVERED (partially).** Corrected all 43 remaining policies keyed on the never-issued `firm_id` JWT claim (migration 154); added a database-free ratchet test against duplicate migration numbers growing further. **Not done — needs a human with production access:** actually reconciling repo-vs-live drift requires running the migration runner against the real production Supabase, which this session has no credentials for and would not run autonomously regardless (high-blast-radius, hard-to-reverse). See Implementation Log for the exact command to run. *Effort:* M (delivered portion). *Benefit:* makes the eventual RLS/`USE_USER_JWT` cutover (R2.4) safe on 51 previously deny-all tables.
 
 **R2.7 — Wire the workflow engine or hide it (F11, F12).** Register `workflow_builder_router` before the legacy catch-all (or constrain the `/{id}` route); implement real actions, or feature-flag the module off until done. *Effort:* M. *Benefit:* automation is honest.
 
@@ -874,4 +874,90 @@ regression from this milestone).
 
 **Next:** R2.6 (RLS predicate + migration-hygiene backlog), R2.4 (tenancy DB
 backstop, F1/F4), R2.1 (year-end schema repair, F9/F10).
+
+## Milestone R2.6 — Fix RLS predicates + migration hygiene backlog, F20 (DELIVERED)
+
+**Goal:** close the last `auth.jwt()->>'firm_id'` deny-all RLS holes (F20) and
+add a regression guard against the migration-numbering drift the audit flagged.
+
+**F20 — RLS policies keyed on a JWT claim this system never issues.**
+Migrations 059 (phase 7/8/9 intelligence layer), 067 (year-end) and 071
+(workflow engine / AI copilot / AI memory) created 51 RLS policies of the
+shape `USING (firm_id::text = auth.jwt()->>'firm_id')`. This project never
+issues a `firm_id` JWT claim — every other firm-scoped table resolves it via
+`get_my_firm_id()` (`SELECT firm_id FROM users WHERE auth_user_id = auth.uid()`,
+migration 005/019). So the predicate is always NULL, always false: deny-all,
+in every direction (no `WITH CHECK` existed, so `USING` governed inserts too).
+Migration 127 had already fixed 8 of these (the lead/prospect pipeline) and
+explicitly documented that the remaining 43 tables carried the identical
+defect. **Fix:** migration **154** finishes that job — drops every old broken
+policy (by every name it was ever created under, including the two tables,
+`client_profiles`/`firm_profiles`, that had gained a *second*, differently-named
+broken policy from 071 on top of 059's) and creates one canonical
+`<table>_firm_isolation` policy per table using `get_my_firm_id()`, the same
+proven pattern used on dozens of other tables. Existence-guarded via
+`information_schema.tables` before every ALTER/DROP/CREATE (idempotent, and
+safe against the documented 068/070 cascading apply failures some of these
+tables' creating migrations carry).
+
+**Reachability:** confirmed via a repo-wide grep that none of these 51 tables
+are queried directly from `apps/web` — they are backend-only, and the backend
+connects via the service-role client (bypasses RLS) whenever `USE_USER_JWT` is
+off, which it is everywhere today (absent from `render.yaml`). So this was a
+real but currently-unreachable defect; it matters the day `USE_USER_JWT` cuts
+over (R2.4) and for any direct anon/authenticated-key access. Downgraded
+accordingly, matching the audit's own "Partially confirmed (downgraded)"
+status for F20.
+
+**Verified on Postgres 16:** `test_migrations_apply.py`/`test_schema_contract.py`
+pass, drift baseline unchanged at 11. A live functional proof on
+`health_scores` (one of the 43 fixed tables, unaffected by any cascading
+apply failure): before the fix, a query as an authenticated Partner returned
+zero rows regardless of firm (deny-all); after, the same query returns
+exactly the caller's own firm's row and correctly hides another firm's row —
+firm isolation now actually works where it previously silently failed closed.
+Also verified the `client_profiles`/`firm_profiles` policy consolidation left
+exactly one canonical policy per table, not two. Cross-checked the fix's
+table list against a fresh, independent regex scan of 059/067/071 for exact
+1:1 coverage (43 tables needed, 43 covered, zero missing, zero extraneous).
+
+**Migration hygiene — duplicate migration numbers.** Six pairs of migration
+files share a number (045, 046, 94, 95, 96, 97 — discovered via the R0.1
+runner's `duplicate_numbers` diagnostic). Investigated whether renumbering was
+warranted: in every pair, neither file references a table/column the other
+creates (no hidden ordering dependency), and the runner's alphabetical tiebreak
+already applies them deterministically — the collision is a naming accident,
+not a live correctness bug. Renumbering existing, already-merged migration
+files is only fully safe once nothing has tracked them by filename in a live
+`schema_migrations` table — and per this investigation, **this project's
+production Supabase has never had the migration runner applied to it at all**.
+Rather than renumber blind mid-audit, added `tests/test_migration_numbering.py`
+— a database-free ratchet (same pattern as `EXPECTED_MIGRATION_FAILURES`) that
+fails the moment a *new* migration reuses an existing number, so the known set
+of 6 can't silently grow, and flags itself for update the day the known 6 are
+finally renumbered (recommended as a one-time cleanup once production tracking
+begins — see below).
+
+**Repo-vs-live drift — NOT executed, needs a human with production access.**
+The audit's "reconcile repo-vs-live drift" sub-item requires actually running
+`apply_migrations.py` (or an equivalent schema diff) against the real
+production Supabase project. This session has no production credentials, and
+even with them, applying schema/RLS changes to a live production database
+autonomously is exactly the kind of high-blast-radius, hard-to-reverse action
+that requires a human decision, not an autonomous one. **Explicitly deferred,
+not silently skipped:** someone with production DB access should run
+`python scripts/db/apply_migrations.py --dsn <prod-dsn> --continue-on-error
+--json`, compare its `failed`/`ok` output against the documented
+`EXPECTED_MIGRATION_FAILURES` baseline, and apply migration 154 (this
+milestone) plus any other still-missing migrations. Once that first live run
+has happened, the six duplicate-number pairs above become safe to renumber
+opportunistically.
+
+**Verified:** full backend suite 2166 passed / 52 skipped (the same 23
+pre-existing, unrelated `test_hardening.py`/`test_phase3_*.py` failures noted
+in R2.5 remain, confirmed unaffected by this milestone — no Python code
+changed, only a new migration and a new static test).
+
+**Next:** R2.4 (tenancy DB backstop, F1/F4), R2.1 (year-end schema repair,
+F9/F10), R2.3 (tax statutory logic, F17/F18).
 
