@@ -90,6 +90,36 @@ def test_finalize_run_own_firm_succeeds(payroll_app, monkeypatch):
     assert r.json()["data"]["status"] == "finalized"
 
 
+# ── payroll.py: get_run_slips (R2.10 fix — see routers/payroll.py for the ──
+# payroll_slips-has-no-firm_id-column bug this replaces) ─────────────────────
+
+def test_get_run_slips_cross_firm_is_404(payroll_app):
+    app, db = payroll_app
+    run = db.seed("payroll_runs", {"firm_id": "F1", "client_id": "C1", "status": "draft"})
+    db.seed("payroll_slips", {"run_id": run["id"], "employee_id": "e1", "gross_paise": 5000000, "net_paise": 4500000})
+    r = _client_for(app, PARTNER_F2).get(f"/api/payroll/runs/{run['id']}/slips")
+    assert r.status_code == 404
+
+
+def test_get_run_slips_own_firm_returns_slips(payroll_app):
+    app, db = payroll_app
+    run = db.seed("payroll_runs", {"firm_id": "F1", "client_id": "C1", "status": "draft"})
+    db.seed("payroll_slips", {"run_id": run["id"], "employee_id": "e1", "gross_paise": 5000000, "net_paise": 4500000})
+    other_run = db.seed("payroll_runs", {"firm_id": "F1", "client_id": "C2", "status": "draft"})
+    db.seed("payroll_slips", {"run_id": other_run["id"], "employee_id": "e2", "gross_paise": 1, "net_paise": 1})
+    r = _client_for(app, PARTNER_F1).get(f"/api/payroll/runs/{run['id']}/slips")
+    assert r.status_code == 200
+    slips = r.json()["data"]
+    assert len(slips) == 1
+    assert slips[0]["gross_paise"] == 5000000
+
+
+def test_get_run_slips_missing_run_is_404(payroll_app):
+    app, _db = payroll_app
+    r = _client_for(app, PARTNER_F1).get("/api/payroll/runs/does-not-exist/slips")
+    assert r.status_code == 404
+
+
 # ── gst_workspace.py: save_gstr9 / get_gstr9 ──────────────────────────────────
 
 @pytest.fixture

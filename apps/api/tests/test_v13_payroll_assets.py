@@ -69,22 +69,55 @@ class TestESI:
         assert result["employer"] == 0
 
 
-# ─── PT Tests (Karnataka slab) ────────────────────────────────────────────────
+# ─── PT Tests (state-specific slabs — R2.10) ──────────────────────────────────
+# _compute_pt used to ignore its `state` argument entirely and always applied
+# the Karnataka slab. These tests now pass state explicitly since an unset/
+# unrecognised state correctly returns 0 (see _compute_pt's docstring).
 
 class TestPT:
     def test_pt_below_threshold(self):
-        """Gross < ₹15,000 → no PT."""
-        assert _compute_pt(1400000) == 0
+        """Karnataka: gross < ₹15,000 → no PT."""
+        assert _compute_pt(1400000, "KA") == 0
 
     def test_pt_slab_1(self):
-        """₹15,000 to ₹29,999 → ₹150/month."""
-        assert _compute_pt(1500000) == 15000  # ₹150
-        assert _compute_pt(2500000) == 15000
+        """Karnataka: ₹15,000 to ₹29,999 → ₹150/month."""
+        assert _compute_pt(1500000, "KA") == 15000  # ₹150
+        assert _compute_pt(2500000, "KA") == 15000
 
     def test_pt_slab_2(self):
-        """₹30,000+ → ₹200/month."""
-        assert _compute_pt(3000000) == 20000  # ₹200
-        assert _compute_pt(10000000) == 20000
+        """Karnataka: ₹30,000+ → ₹200/month."""
+        assert _compute_pt(3000000, "KA") == 20000  # ₹200
+        assert _compute_pt(10000000, "KA") == 20000
+
+    def test_pt_maharashtra(self):
+        """Maharashtra: > ₹10,000/month → ₹200; at/below → nil."""
+        assert _compute_pt(1000000, "MH") == 0
+        assert _compute_pt(1000001, "MH") == 20000
+        assert _compute_pt(5000000, "MH") == 20000
+
+    def test_pt_west_bengal(self):
+        """West Bengal: > ₹10,000/month → ₹200; at/below → nil."""
+        assert _compute_pt(1000000, "WB") == 0
+        assert _compute_pt(1000001, "WB") == 20000
+
+    def test_pt_tamil_nadu(self):
+        """Tamil Nadu: > ₹21,000/month → ₹208; at/below → nil."""
+        assert _compute_pt(2100000, "TN") == 0
+        assert _compute_pt(2100001, "TN") == 20800
+
+    def test_pt_unrecognised_state_is_zero_not_karnataka(self):
+        """An unknown state code must not silently fall back to Karnataka's
+        rate — the historical bug this replaces."""
+        assert _compute_pt(10000000, "XX") == 0
+
+    def test_pt_unset_state_is_zero(self):
+        """No state set at all → 0, not a silent Karnataka default."""
+        assert _compute_pt(10000000) == 0
+        assert _compute_pt(10000000, None) == 0
+
+    def test_pt_state_is_case_and_whitespace_insensitive(self):
+        assert _compute_pt(10000000, " ka ") == 20000
+        assert _compute_pt(10000000, "ka") == 20000
 
 
 # ─── TDS §192 Tests ───────────────────────────────────────────────────────────

@@ -37,16 +37,57 @@ def _db():
     return get_supabase()
 
 
-# ─── PT Slabs (Karnataka as default; extend per state) ────────────────────────
+# ─── PT Slabs by state ─────────────────────────────────────────────────────────
+# Profession Tax is levied under each STATE's own Profession Tax Act, not a
+# central statute, so the slab depends on the employee's pt_state — there is
+# no single national default.
+#
+# Karnataka: Karnataka Tax on Professions, Trades, Callings and Employments
+# Act, 1976. This 3-tier slab is this codebase's original, unit-tested
+# baseline (test_v13_payroll_assets.py::TestPT) and is kept as-is.
 _PT_SLABS_KA = [
     (0,        14999_00,  0),
     (15000_00, 29999_00, 150_00),
     (30000_00, None,     200_00),
 ]
 
+# Maharashtra / West Bengal / Tamil Nadu: carried over verbatim from this
+# project's pre-existing frontend implementation (apps/web/app/payroll/page.tsx
+# computeSlip/PT_STATES), which is the only source for these three states
+# anywhere in this repo. PENDING STATUTORY VERIFICATION — not independently
+# re-confirmed against each state's current Profession Tax notification during
+# this migration (same "verified baseline vs. pending verification" split
+# used for FY2026-27 income-tax figures in domain/income_tax/statutory_rates.py).
+_PT_SLABS_MH = [
+    (0,       1000000, 0),
+    (1000001, None,    20000),   # > Rs 10,000/month -> Rs 200
+]
+_PT_SLABS_WB = [
+    (0,       1000000, 0),
+    (1000001, None,    20000),   # > Rs 10,000/month -> Rs 200
+]
+_PT_SLABS_TN = [
+    (0,       2100000, 0),
+    (2100001, None,    20800),   # > Rs 21,000/month -> Rs 208
+]
+
+_PT_SLABS_BY_STATE = {
+    "KA": _PT_SLABS_KA,
+    "MH": _PT_SLABS_MH,
+    "WB": _PT_SLABS_WB,
+    "TN": _PT_SLABS_TN,
+}
+
+
 def _compute_pt(gross_paise: int, state: Optional[str] = None) -> int:
-    """Professional Tax per month in paise. IT Act §16(iii) — deductible from salary."""
-    for low, high, tax in _PT_SLABS_KA:
+    """Professional Tax per month in paise. IT Act §16(iii) — PT actually paid
+    is deductible from salary income; the PT liability itself is fixed by the
+    employee's state (see _PT_SLABS_BY_STATE above). An unset or unrecognised
+    state has no known slab in this build and returns 0 rather than silently
+    falling back to any one state's rate — the CA must set pt_state explicitly
+    on the employee for PT to be withheld."""
+    slabs = _PT_SLABS_BY_STATE.get((state or "").strip().upper(), ())
+    for low, high, tax in slabs:
         if gross_paise >= low and (high is None or gross_paise <= high):
             return tax
     return 0
@@ -350,10 +391,21 @@ def get_run_slips(
     run_id: str,
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
+    """R2.10 fix: payroll_slips has no firm_id column (migrations 014/093 —
+    it's tenant-scoped transitively via run_id -> payroll_runs.firm_id, same
+    as the RLS policy). The previous .eq("firm_id", ...) filter directly on
+    payroll_slips referenced a column that doesn't exist, which PostgREST
+    rejects outright against a real (non-mock) database — this endpoint
+    could never return data in production. Fixed to verify the run belongs
+    to the caller's firm first (like salary_register below), then query
+    slips by run_id alone."""
     db = _db()
     if not db:
         return api_response(True, [])
-    slips = db.table("payroll_slips").select("*, payroll_employees(name, pan, designation, department)").eq("run_id", run_id).eq("firm_id", current_user["firm_id"]).execute()
+    run = db.table("payroll_runs").select("id").eq("id", run_id).eq("firm_id", current_user["firm_id"]).execute()
+    if not run.data:
+        raise HTTPException(status_code=404, detail=f"Payroll run {run_id} not found")
+    slips = db.table("payroll_slips").select("*, payroll_employees(name, pan, designation, department)").eq("run_id", run_id).execute()
     return api_response(True, slips.data or [])
 
 
