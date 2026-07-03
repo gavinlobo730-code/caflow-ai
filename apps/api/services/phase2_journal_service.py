@@ -533,8 +533,15 @@ class Phase2JournalService:
         except ValueError:
             raise
         except Exception as e:
+            # R2.9 adversarial review finding (CONFIRMED): unlike journal_for_receipt
+            # (hardened under F7/R1.6 to re-raise), this used to swallow the error and
+            # return None. A vendor payment relieves the AP sub-ledger the same way a
+            # receipt relieves AR, so a silently-dropped journal here leaves a payment
+            # marked paid with NO corresponding GL entry — the exact phantom-subledger
+            # bug F7 closed for receipts. Re-raise so the caller aborts before the
+            # payment row (and the bill's paid_paise/status) is ever written.
             _logger.error("journal_for_purchase_payment error: %s", e)
-            return None
+            raise
 
     @staticmethod
     def _build_payroll_lines(account_ids: dict, run: dict) -> list[dict]:
