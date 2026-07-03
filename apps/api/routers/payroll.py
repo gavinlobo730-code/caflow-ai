@@ -389,7 +389,8 @@ def update_run_status(
         if run_id in _MOCK_FINALIZED_RUNS:
             raise HTTPException(status_code=409, detail="Run already finalized — cannot change status")
         return api_response(True, {"id": run_id, "status": new_status})
-    row = db.table("payroll_runs").update({"status": new_status}).eq("id", run_id).neq("status", "finalized").execute()
+    row = (db.table("payroll_runs").update({"status": new_status}).eq("id", run_id)
+           .eq("firm_id", current_user["firm_id"]).neq("status", "finalized").execute())
     if not row.data:
         raise HTTPException(status_code=404, detail="Run not found or already finalized")
     return api_response(True, row.data[0])
@@ -422,7 +423,13 @@ def finalize_run(
         _MOCK_FINALIZED_RUNS.add(run_id)
         return api_response(True, {"id": run_id, "status": "finalized"})
 
-    run = db.table("payroll_runs").select("*").eq("id", run_id).single().execute().data
+    # F1/F4 fix: scope by firm_id -- an unscoped lookup let any Partner finalize
+    # (and post a real, immutable GL journal for) another firm's payroll run by
+    # guessing its run_id. maybe_single() (not single()) so a run belonging to
+    # a different firm is indistinguishable from a nonexistent one -- both
+    # cleanly 404 instead of the query raising.
+    run = (db.table("payroll_runs").select("*").eq("id", run_id)
+           .eq("firm_id", current_user["firm_id"]).maybe_single().execute().data)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if run["status"] == "finalized":

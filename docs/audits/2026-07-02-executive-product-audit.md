@@ -222,7 +222,8 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 
 **R2.3 — Correct TDS & ITR statutory logic (F17, F18).** Rebuild thresholds as FY-versioned data (see R3.1); apply annual-aggregate correctly; ₹50k old-regime SD; §87A marginal relief; surcharge marginal relief + 15% CG cap; delete the frontend slab re-implementation. **Also (from the R1.2/R1.3 reviews): update to the CURRENT financial year with authoritative sourcing — Budget 2025 revised the new regime, and the backend `_compute_tds_192`/payroll `_compute_slip` still use FY 2024-25 with a stale ₹50,000 standard deduction (new regime is ₹75,000); add surcharge above ₹50L. Elevate F18 (income-tax deductions page `L = 100*100` → tax-slab boundaries 10× off, re-confirmed effectively a blocker for that page) to the front of this item.** *Effort:* L. *Benefit:* correct tax numbers, in step across backend and frontend.
 
-**R2.4 — Add a database tenancy backstop (F1, F4).** Either execute the staged `USE_USER_JWT` cutover (after R2.6 fixes the RLS predicate) or make `firm_id` mandatory at the repository layer so a missing filter fails closed; add the missing `firm_id` filters (GSTR-9 et al.). *Effort:* L. *Benefit:* one mistake no longer equals a silent cross-firm leak.
+**R2.4 — Add a database tenancy backstop (F1, F4). DELIVERED (scope adjusted).** Investigated both proposed fix directions and found neither was the highest-leverage move available: the `USE_USER_JWT` cutover is a multi-week, zero-test-coverage architectural change (deferred, not attempted); a repository-layer mandate would cover only 28/94 routers. Instead fixed `core/authz.py::can_access_client`'s actual structural flaw (firm-wide roles bypassed firm-membership checking entirely, not just assignment scoping) — hardening the ~35 routers that already depend on it in one change — plus the three real cross-tenant IDORs a systematic sweep found (payroll finalize/status, GSTR-9 as originally cited, ITR version history). *Effort:* M (delivered scope). *Benefit:* the central authz gate can no longer be bypassed by supplying another firm's client_id; three live IDORs closed with regression tests proving both directions.
+- **New finding (Tier 2/3 candidate, not yet scheduled):** `core.supabase_client.get_supabase_client` — imported by 9 files (ITR workflow, e-invoice, e-way bill, XBRL, 26AS, GST portal sync, Tally migration) — does not exist anywhere in the codebase. Every call is gated behind `_USE_MOCK` checks, which is why no test has ever caught it. These entire feature areas are non-functional in any real deployment (`ImportError` on first non-mock call). *Effort:* M (define the intended function, fix 9 call sites, add a CI guard against phantom imports hiding behind mock-mode branches). *Benefit:* makes seven advertised feature areas actually work outside of mock/demo mode.
 
 **R2.5 — Close the `/join` privilege escalation and portal-invite gaps (F21, F22). DELIVERED.** Moved `/join` account-linking to a backend endpoint validating a signed single-use invite token; added tokenized, expiring portal invites — and, discovered during implementation, rewired the actual live "Invite to Portal" UI (which bypassed the tokenized service entirely via a raw browser `signInWithOtp` + direct table write) onto the same audited path. See Implementation Log for the full account, including a self-caught UPDATE-based escalation bug and a self-caught regression in the `users`-table RLS hardening. *Effort:* M (actual, incl. the unplanned live-flow rewire). *Benefit:* removes the most exploitable security holes AND makes the client-portal invite feature actually work end-to-end for the first time.
 
@@ -960,4 +961,110 @@ changed, only a new migration and a new static test).
 
 **Next:** R2.4 (tenancy DB backstop, F1/F4), R2.1 (year-end schema repair,
 F9/F10), R2.3 (tax statutory logic, F17/F18).
+
+## Milestone R2.4 — Database tenancy backstop, F1/F4 (DELIVERED, scope adjusted)
+
+**Goal:** close F4's confirmed cross-tenant GSTR-9 IDOR and harden F1's
+structural weakness (tenant isolation is app-layer discipline only).
+
+**Scope decision, revalidated before implementing.** R2.4's roadmap text
+offered two fix directions: execute the `USE_USER_JWT` cutover, or make
+`firm_id` mandatory at the repository layer. Investigated both before writing
+any code:
+- **`USE_USER_JWT` cutover:** not attempted. It would flip the ENTIRE backend
+  from service-role (bypasses RLS) to per-user-JWT (RLS-enforced) in one step
+  — the single biggest architectural change this codebase could make. The
+  investigation found several tables the backend touches have no `CREATE
+  TABLE` in any tracked migration at all (`itr_filings`, `gst_returns`,
+  `eway_bill_records`, `einvoice_records`, `xbrl_packages` — real schema drift,
+  unverified against production), and there is zero automated RLS test
+  coverage (every one of ~172 test files runs against a FakeDB double, never a
+  real Postgres+RLS harness in CI). Flipping this in production without that
+  coverage is a multi-week initiative, not a same-session fix, and is exactly
+  the kind of high-blast-radius architectural decision this mandate's pause
+  criteria describes — deferred, not attempted.
+- **Mandatory `firm_id` at the repository layer:** investigated and found it
+  would cover only a minority of the actual attack surface. `repositories/
+  base.py` is a thin, largely-unenforced stub; only 28 of 94 routers even use
+  the repository layer at all — the rest (including every endpoint this
+  milestone actually fixes) call `get_supabase()`/`get_service_supabase()`
+  directly (901 raw `.table()` calls across routers/services/domain vs. 30
+  repository files). A repo-layer mandate would not have touched any of the
+  three bugs below.
+- **What was actually higher-leverage, and what got fixed:** `core/authz.py`'s
+  central `can_access_client()` — the single authorization gate `require_
+  client_access` already attaches to ~35 routers — had exactly F1's structural
+  flaw baked in: `is_firmwide(user)` (Partner) returned `True` unconditionally,
+  with **no check at all that the client actually belongs to the caller's own
+  firm**. So the central guard that's supposed to prevent cross-tenant access
+  was a no-op for any Partner who supplied a client_id from a different firm.
+  Fixed by adding `_client_belongs_to_firm()` (reuses the existing, already-
+  tested `client_repo.find_by_id(client_id, firm_id=...)`) as a prerequisite
+  check before the firm-wide short-circuit. One function, ~35 routers
+  immediately hardened.
+
+**F4 and its two sibling IDORs — the systematic sweep this milestone was
+actually scoped to.** Rather than fix only the audit's one cited GSTR-9
+instance, searched every GST/TDS/income-tax/MCA/payroll/banking router for the
+same shape of bug (a query keyed on a client-suppliable id, with no firm_id
+filter and no ownership check anywhere in the function). Found three real
+instances, all fixed:
+
+- **`routers/payroll.py` `finalize_run`/`update_run_status`** — the more
+  severe of the three: `payroll_runs` was looked up by `run_id` alone, then
+  `finalize_run` posted a REAL, immutable general-ledger journal entry using
+  the row's own `firm_id`/`client_id`. A Partner (payroll:finalize is
+  Partner-only) from Firm B who knew/guessed Firm A's `run_id` could trigger
+  Firm A's accounting postings. Fixed by scoping both queries with `.eq(
+  "firm_id", current_user["firm_id"])`, and switching `finalize_run`'s lookup
+  from `.single()` (raises/500s on zero rows) to `.maybe_single()` (cleanly
+  404s) — which also fixes a latent robustness bug where a genuinely
+  nonexistent run_id crashed instead of 404ing.
+- **`routers/gst_workspace.py` `save_gstr9`/`get_gstr9`** (F4 as originally
+  cited) — annual-return draft lookup/update scoped only by `client_id` +
+  `financial_year` + `return_type`, no `firm_id`. Fixed by adding the missing
+  `.eq("firm_id", ...)` to both.
+- **`domain/income_tax/itr_workflow.py` `save_itr_version`** — the version-
+  numbering lookup was scoped only by `itr_filing_id`, unlike its sibling
+  `transition_itr_status` in the same file (which already correctly checks
+  `.eq("id", filing_id).eq("firm_id", firm_id)`). Lower severity than the
+  other two (no read of existing confidential content, no overwrite — a cross-
+  firm caller could only pollute another firm's filing with a stray version
+  row and observe its version count), but the same root cause. Fixed by adding
+  an upfront `itr_filings` ownership check before touching version history at
+  all, raising `ValueError("Filing not found")` (now mapped to HTTP 404 in
+  `routers/itr_workspace.py`, which previously only had a blanket 500 handler).
+
+**New finding, out of scope for this milestone, flagged for the roadmap:**
+while fixing `itr_workflow.py`, found that its `_supabase()` helper imports
+`core.supabase_client.get_supabase_client` — **a function that does not exist
+anywhere in this codebase.** The same non-existent import is used by 8 other
+files (`routers/form_26as.py`, `domain/gst/portal_service.py`, `domain/
+income_tax/{einvoice,eway,xbrl,form26as}_service.py`, `domain/income_tax/
+computation_workspace.py`, `domain/tally/migration_service.py`). Every one of
+these calls is gated behind `if _USE_MOCK:` branches, which is exactly why 172
+test files never caught it: nothing in CI ever runs these modules against a
+real (non-mock) Postgres connection. **This means ITR workflow, e-invoice,
+e-way bill, XBRL, 26AS reconciliation, GST portal sync, and Tally migration
+are all completely non-functional in any real (`SUPABASE_URL` set) deployment
+today** — an `ImportError` on the very first non-mock call. This is a distinct,
+severe, already-confirmed production-breakage finding (not a security/tenancy
+issue) that deserves its own dedicated milestone to fix properly (define what
+`get_supabase_client` should actually do — a plain alias for `get_supabase()`,
+or the per-user-JWT-aware variant — then fix all 9 call sites and add a CI
+guard so a phantom import like this can never hide behind mock mode again).
+Tracked as a new Tier 2/3 candidate; see roadmap.
+
+**Verified:** `test_authz_engine.py` (16 tests, 3 new regression locks proving
+a Partner/Manager cannot pass `can_access_client` for another firm's client)
+and `test_multiuser_authz_validation.py` (21 tests, updated to stub the new
+`_client_belongs_to_firm` check) both pass. New `test_tenancy_backstop.py` (9
+tests) proves both directions for all three fixed endpoints: the legitimate
+same-firm case still succeeds, and the cross-firm case is cleanly denied (404,
+or — for the GSTR-9 read — a `null` payload) with no partial writes. Full
+backend suite: 2178 passed / 52 skipped (the same 23 pre-existing, unrelated
+failures noted since R2.5 remain, reconfirmed unaffected).
+
+**Next:** R2.1 (year-end schema repair, F9/F10), R2.3 (tax statutory logic,
+F17/F18), the newly-found `get_supabase_client` production breakage.
 

@@ -110,13 +110,27 @@ def effective_client_ids(user: dict) -> Optional[set[str]]:
     return assigned_client_ids(user)
 
 
+def _client_belongs_to_firm(client_id: str, firm_id: Optional[str]) -> bool:
+    """Real-DB check (F1 fix): does this client exist and belong to this firm?
+    Only reached on the enforced (non-mock) path — see can_access_client."""
+    from repositories.client_repository import client_repo
+    return client_repo.find_by_id(client_id, firm_id=firm_id) is not None
+
+
 def can_access_client(user: dict, client_id: Optional[str]) -> bool:
     """Whether the user may access a specific client's data."""
     if not client_id:
         return True  # firm-level resource, no client scope to check
-    if is_firmwide(user):
-        return True
     if _USE_MOCK:
+        return True
+    # F1 fix: is_firmwide() says a role sees every client IN ITS OWN FIRM — it
+    # says nothing about which firm client_id actually belongs to. Without this
+    # check, a Partner in Firm B who supplies (or guesses) Firm A's client_id
+    # passed this gate unconditionally, because the old ordering returned True
+    # for any firm-wide role before ever looking at the client at all.
+    if not _client_belongs_to_firm(client_id, user.get("firm_id")):
+        return False
+    if is_firmwide(user):
         return True
     return str(client_id) in assigned_client_ids(user)
 

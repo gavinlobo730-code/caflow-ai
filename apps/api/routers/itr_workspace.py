@@ -264,6 +264,8 @@ def save_version(
             created_by=current_user["id"],
         )
         return api_response(True, ver)
+    except ValueError as e:
+        raise HTTPException(404, detail=str(e))
     except Exception as e:
         raise HTTPException(500, detail=str(e))
 
