@@ -52,10 +52,10 @@ def test_h7_gstn_txval_is_taxable_value_not_tax():
     assert r.outward_taxable_value == L       # internal computation stays in paise
     payload = r.as_gstn_payload("27AAAAA0000A1Z5", "062025")
     osup = payload["sup_details"]["osup_det"]
-    # GSTN JSON is in RUPEES (F16): the payload converts paise -> rupees, so txval
-    # is the taxable VALUE (not the tax) expressed in rupees, i.e. L / 100.
-    assert osup["txval"] == L / 100           # ₹1,00,000.00, not 1_00_000_00 paise
-    assert osup["camt"] == cgst / 100 and osup["samt"] == sgst / 100 and osup["iamt"] == 0
+    # GSTN GSTR-3B JSON is in WHOLE RUPEES (F16 + CGST Act §170): the payload
+    # converts paise -> whole rupees, so txval is the taxable VALUE (not the tax).
+    assert osup["txval"] == L // 100          # ₹1,00,000, not 1_00_000_00 paise
+    assert osup["camt"] == cgst // 100 and osup["samt"] == sgst // 100 and osup["iamt"] == 0
 
 
 def test_f16_gstn_payload_amounts_are_rupees_not_paise():
@@ -96,6 +96,26 @@ def test_f16_gstn_payload_amounts_are_rupees_not_paise():
     assert itc["iamt"] == 90_000.00 and itc["camt"] == 20_000.00 and itc["samt"] == 20_000.00 and itc["csamt"] == 1_000.00
     avl = p["itc_elg"]["itc_avl"][0]
     assert avl["iamt"] == 90_000.00 and avl["csamt"] == 1_000.00
+
+
+def test_f16_gstr3b_rounds_to_whole_rupees_section_170():
+    """GSTR-3B is filed/paid in WHOLE rupees (CGST Act §170, half rounds up). With
+    sub-rupee paise, the payload must round to the nearest rupee — not carry 2
+    decimals (GSTR-1's rule) and not carry paise."""
+    from domain.gst.gstr3b_computer import GSTR3BResult
+
+    r = GSTR3BResult(
+        outward_taxable_value=1_23_456_78,   # ₹1,23,456.78 -> rounds UP to 1,23,457
+        outward_taxable_cgst=45_000_49,      # ₹45,000.49  -> rounds DOWN to 45,000
+        outward_taxable_sgst=45_000_50,      # ₹45,000.50  -> half rounds UP to 45,001
+    )
+    osup = r.as_gstn_payload("27AAAAA0000A1Z5", "062026")["sup_details"]["osup_det"]
+    assert osup["txval"] == 123457            # whole rupee, half-up
+    assert osup["txval"] != 123456.78         # not 2-decimal (GSTR-1 style)
+    assert osup["txval"] != 1_23_456_78       # not paise (the F16 bug)
+    assert isinstance(osup["txval"], int)     # whole-rupee integer
+    assert osup["camt"] == 45000              # .49 rounds down
+    assert osup["samt"] == 45001              # .50 rounds up (§170)
 
 
 def test_mixed_gst_net_of_credit_note():
