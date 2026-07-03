@@ -666,16 +666,13 @@ export default function TeamPage() {
       const fId = currentUserRow.firm_id as string;
       setFirmId(fId);
 
-      // Load all team members for this firm
-      const { data: teamRows, error: teamErr } = await supabase
-        .from("users")
-        .select("id, full_name, email, role, is_active, created_at, auth_user_id, firm_id")
-        .eq("firm_id", fId)
-        .order("created_at", { ascending: true });
+      // Load all team members for this firm via the audited backend (team:read,
+      // Manager+). A direct `.from("users")` select here would be RLS-starved —
+      // migration 153 makes `users` SELECT-only for the caller's OWN row.
+      const res = await api.identity.listUsers();
+      if (!res.success) throw new Error(res.error ?? "Failed to load team");
 
-      if (teamErr) throw new Error(teamErr.message);
-
-      setMembers((teamRows ?? []).map(r => ({
+      setMembers(res.data.users.map(r => ({
         id: r.id,
         full_name: r.full_name ?? r.email ?? "—",
         email: r.email ?? "",
@@ -699,13 +696,13 @@ export default function TeamPage() {
   // M6: identity mutations now go through the audited, Partner-only backend
   // (api.identity) instead of direct Supabase writes from the browser. The user
   // row is created server-side; the magic link is still sent for self-onboarding.
+  // F21 fix: the join link now carries the server-issued, single-use invite
+  // token (never firm_id/role) — /join exchanges it via POST accept-invite.
   async function handleInvite(name: string, email: string, role: Role) {
-    await api.identity.createUser(name, email, role);
+    const created = await api.identity.createUser(name, email, role);
     const joinUrl =
       (typeof window !== "undefined" ? window.location.origin : "") +
-      "/join?firm=" + encodeURIComponent(firmId ?? "") +
-      "&role=" + encodeURIComponent(role) +
-      "&name=" + encodeURIComponent(name);
+      "/join?token=" + encodeURIComponent(created.data.invite_token);
     const supabase = getSupabaseClient();
     await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: joinUrl } }).catch(() => {});
     await loadTeam();

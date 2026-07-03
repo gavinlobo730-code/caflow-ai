@@ -4,21 +4,25 @@ import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { LogoIcon } from "@/components/LogoIcon";
+import { api } from "@/lib/api";
 
 export default function JoinPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const firmId = searchParams.get("firm") ?? "";
-  const role = searchParams.get("role") ?? "Executive";
-  const name = searchParams.get("name") ?? "";
-  const jobTitle = searchParams.get("jobTitle") ?? "";
+  const token = searchParams.get("token") ?? "";
 
   const [status, setStatus] = useState<"checking" | "linking" | "done" | "error">("checking");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [result, setResult] = useState<{ role?: string; full_name?: string } | null>(null);
 
   useEffect(() => {
     async function link() {
+      if (!token) {
+        setErrorMsg("This invite link is missing its token.");
+        setStatus("error");
+        return;
+      }
       const supabase = getSupabaseClient();
       const { data: sessionData } = await supabase.auth.getSession();
       const session = sessionData?.session;
@@ -29,37 +33,13 @@ export default function JoinPage() {
       }
       setStatus("linking");
       try {
-        const email = session.user.email ?? "";
-        const authUserId = session.user.id;
-
-        // Try to update the pre-created invited row
-        const { data: existingRow } = await supabase
-          .from("users")
-          .select("id, auth_user_id")
-          .eq("email", email)
-          .eq("firm_id", firmId)
-          .maybeSingle();
-
-        if (existingRow) {
-          if (!existingRow.auth_user_id) {
-            await supabase
-              .from("users")
-              .update({ auth_user_id: authUserId, status: "active", is_active: true })
-              .eq("id", existingRow.id);
-          }
-        } else {
-          // No pre-created row — insert one
-          await supabase.from("users").insert({
-            auth_user_id: authUserId,
-            firm_id: firmId,
-            full_name: name || email,
-            email,
-            role,
-            job_title: jobTitle || null,
-            is_active: true,
-            status: "active",
-          });
-        }
+        // F21 fix: the ONLY way an auth identity can be linked to a firm's
+        // users row — server verifies the token, its expiry, and that the
+        // caller's verified JWT email matches the invited email. firm_id and
+        // role always come from the server-created invite row, never the URL.
+        const res = await api.identity.acceptInvite(token);
+        if (!res.success) throw new Error(res.error ?? "This invite is invalid or has expired.");
+        setResult({ role: res.data.role, full_name: res.data.full_name });
         setStatus("done");
       } catch (err) {
         setErrorMsg(err instanceof Error ? err.message : "Failed to link account");
@@ -100,12 +80,11 @@ export default function JoinPage() {
                 </svg>
               </div>
               <h2 className="text-lg font-semibold text-[#0F172A]">
-                Welcome to the team{name ? `, ${name}` : ""}!
+                Welcome to the team{result?.full_name ? `, ${result.full_name}` : ""}!
               </h2>
-              {role && (
+              {result?.role && (
                 <p className="text-sm text-[#64748B]">
-                  You&apos;ve been added as <strong>{role}</strong>
-                  {jobTitle ? ` — ${jobTitle}` : ""}.
+                  You&apos;ve been added as <strong>{result.role}</strong>.
                 </p>
               )}
               <button

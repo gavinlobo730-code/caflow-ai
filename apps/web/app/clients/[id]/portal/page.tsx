@@ -7,17 +7,13 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getClient } from "@/lib/data/clients";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { writeTimelineEvent } from "@/lib/services/timeline";
+import { api, type PortalContact } from "@/lib/api";
 import type { Client } from "@/lib/types";
-
-interface PortalState {
-  enabled: boolean;
-  invitedAt: string | null;
-}
 
 export default function PortalPage() {
   const { clientId, financialYear } = useClientNav();
   const [client, setClient] = useState<Client | null>(null);
-  const [portal, setPortal] = useState<PortalState | null>(null);
+  const [contacts, setContacts] = useState<PortalContact[]>([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteSent, setInviteSent] = useState(false);
@@ -27,16 +23,12 @@ export default function PortalPage() {
   useEffect(() => {
     if (!clientId || clientId === "_placeholder") return;
     async function load() {
-      const [c] = await Promise.all([getClient(clientId).catch(() => null)]);
+      const [c, contactsRes] = await Promise.all([
+        getClient(clientId).catch(() => null),
+        api.portal.listContacts(clientId).catch(() => null),
+      ]);
       if (c) setClient(c);
-
-      const supabase = getSupabaseClient();
-      const { data } = await supabase
-        .from("clients")
-        .select("portal_enabled, portal_invited_at")
-        .eq("id", clientId)
-        .maybeSingle();
-      if (data) setPortal({ enabled: !!data.portal_enabled, invitedAt: data.portal_invited_at ?? null });
+      if (contactsRes?.success) setContacts(contactsRes.data.contacts);
     }
     load();
   }, [clientId]);
@@ -48,29 +40,36 @@ export default function PortalPage() {
     setShowInviteModal(true);
   }
 
+  // F22 fix: invitations are now created server-side (audited, single-use,
+  // expiring token — services/portal_access_service.py:invite_contact) instead
+  // of a raw browser-side signInWithOtp + direct `clients` table write. The
+  // Supabase magic link still performs the actual authentication; the token it
+  // carries is what the client must separately, explicitly redeem (POST
+  // /api/portal/accept-invite) to bind that identity to THIS ONE client — no
+  // more auto-binding by email match.
   async function handleSendInvite() {
     if (!clientId || !inviteEmail.trim()) return;
     setLoading(true);
     setInviteError(null);
     try {
+      const email = inviteEmail.trim();
+      const res = await api.portal.inviteContact(clientId, { email });
+      if (!res.success) throw new Error(res.error ?? "Failed to create the invite");
+      const token = res.data.contact.invite_token;
+
       const supabase = getSupabaseClient();
       const portalUrl =
         (typeof window !== "undefined" ? window.location.origin : "") +
-        "/portal?client=" +
-        encodeURIComponent(clientId);
+        "/portal/dashboard?invite=" + encodeURIComponent(token ?? "");
       const { error: otpErr } = await supabase.auth.signInWithOtp({
-        email: inviteEmail.trim(),
-        options: { emailRedirectTo: portalUrl },
+        email, options: { emailRedirectTo: portalUrl },
       });
       if (otpErr) throw new Error(otpErr.message);
-      await supabase
-        .from("clients")
-        .update({ portal_enabled: true, portal_invited_at: new Date().toISOString() })
-        .eq("id", clientId);
-      setPortal({ enabled: true, invitedAt: new Date().toISOString() });
+
+      const refreshed = await api.portal.listContacts(clientId).catch(() => null);
+      if (refreshed?.success) setContacts(refreshed.data.contacts);
       setInviteSent(true);
 
-      // Emit timeline event
       try {
         const firmId = await getFirmId();
         await writeTimelineEvent({
@@ -81,7 +80,7 @@ export default function PortalPage() {
           event_type: "portal_invite_sent",
           severity: "info",
           title: "Portal invite sent",
-          description: `Magic link sent to ${inviteEmail.trim()}`,
+          description: `Magic link sent to ${email}`,
           actor_type: "user",
         });
       } catch { /* timeline is non-blocking */ }
@@ -93,7 +92,14 @@ export default function PortalPage() {
   }
 
   const portalUrl =
-    typeof window !== "undefined" ? `${window.location.origin}/portal` : "/portal";
+    typeof window !== "undefined" ? `${window.location.origin}/portal/dashboard` : "/portal/dashboard";
+
+  const active = contacts.filter((c) => c.status === "active");
+  const invited = contacts.filter((c) => c.status === "invited");
+  const enabled = active.length > 0 || invited.length > 0;
+  const mostRecentInvite = [...contacts].sort(
+    (a, b) => new Date(b.invited_at ?? 0).getTime() - new Date(a.invited_at ?? 0).getTime()
+  )[0];
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
@@ -103,28 +109,50 @@ export default function PortalPage() {
           <div className="flex-1">
             <h2 className="text-sm font-semibold text-[#0F172A]">Client Portal</h2>
             <p className="text-xs text-[#64748B] mt-0.5">
-              {portal?.enabled
-                ? `Active · Invited ${portal.invitedAt ? new Date(portal.invitedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : ""}`
+              {enabled
+                ? `${active.length} active, ${invited.length} pending · Last invited ${mostRecentInvite?.invited_at ? new Date(mostRecentInvite.invited_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : ""}`
                 : "Not enabled — client cannot log in yet"}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span
               className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                portal?.enabled ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"
+                enabled ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"
               }`}
             >
-              {portal?.enabled ? "Active" : "Not enabled"}
+              {enabled ? "Active" : "Not enabled"}
             </span>
             <button
               onClick={handleOpenInvite}
               disabled={loading}
               className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
-              {portal?.enabled ? "Resend Invite" : "Invite to Portal"}
+              {enabled ? "Invite Another Contact" : "Invite to Portal"}
             </button>
           </div>
         </div>
+
+        {contacts.length > 0 && (
+          <div className="mt-4 divide-y divide-[#F1F5F9] border border-[#F1F5F9] rounded-lg overflow-hidden">
+            {contacts.map((c) => (
+              <div key={c.id} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-[#0F172A] truncate">{c.name || c.email}</p>
+                  {c.name && <p className="text-[11px] text-[#94A3B8] truncate">{c.email}</p>}
+                </div>
+                <span
+                  className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-medium ${
+                    c.status === "active" ? "bg-green-100 text-green-700"
+                      : c.status === "invited" ? "bg-amber-100 text-amber-700"
+                      : "bg-[#F1F5F9] text-[#64748B]"
+                  }`}
+                >
+                  {c.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="mt-4 bg-[#F8FAFC] rounded-lg px-4 py-3 flex items-center gap-3">
           <code className="text-xs text-[#475569] flex-1 break-all">{portalUrl}</code>

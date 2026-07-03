@@ -9,11 +9,13 @@
 // All amounts are integer paise from the server; the frontend only formats them.
 
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   FileText, FolderOpen, MessageSquare, Receipt, ScrollText, BellRing, ShieldCheck,
   Download, AlertCircle, CreditCard, type LucideIcon,
 } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
+import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
 
 interface Section { key: string; label: string; available: boolean }
@@ -64,6 +66,9 @@ function StatusBadge({ status, danger }: { status: string | null; danger?: boole
 }
 
 export default function PortalDashboardPage() {
+  const searchParams = useSearchParams();
+  const inviteToken = searchParams.get("invite");
+
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [activeClient, setActiveClient] = useState<string | null>(null);
   const [dash, setDash] = useState<Dashboard | null>(null);
@@ -81,10 +86,29 @@ export default function PortalDashboardPage() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // 1. Resolve the identity's client memberships (one identity → many clients).
+  // 1. Accept a pending invite (F22 fix — a single-use token, not an auto-bind
+  // on email/URL match), then resolve the identity's client memberships (one
+  // identity → many clients). The magic-link session may still be hydrating
+  // when this page first mounts, so wait for it rather than firing a doomed,
+  // unauthenticated request.
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      const supabase = getSupabaseClient();
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      if (cancelled) return;
       try {
+        if (inviteToken) {
+          // Best-effort: an already-accepted/expired token here just means the
+          // invitee reloaded this page after accepting once — memberships load
+          // below already reflects that; only a genuinely failed acceptance
+          // needs surfacing, and even then we still try to show what's active.
+          await api.portalSelf.acceptInvite(inviteToken).catch(() => null);
+        }
         const res = await api.portalSelf.memberships() as ApiResp<{ memberships: Membership[] }>;
         const ms = res.data?.memberships ?? [];
         setMemberships(ms);
@@ -92,9 +116,11 @@ export default function PortalDashboardPage() {
       } catch (e) {
         setError(e instanceof Error ? e.message : "Unable to load your portal");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 2. Load the dashboard shell + the dues summary for the selected client.
