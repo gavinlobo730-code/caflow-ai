@@ -1373,3 +1373,103 @@ engine (13 income levels). Frontend: `tsc --noEmit` clean, ESLint clean,
 the remaining Tier 2 sequence; 80CCD(2), 206AB verification and the CG-rate
 registry move queue behind R3.1/R2.10 as noted.
 
+## Milestone R2.2 — Create the missing tables + close the F5 backlog (DELIVERED)
+
+**Goal:** every table/RPC the backend references that no migration ever
+created. The audit said "~13"; re-verification against the current tree found
+the true scope is **24 phantom table names + 2 missing RPCs** (exactly the
+baseline R0.1's `test_schema_contract.py` had pinned), plus a blocking
+interaction: 15 of those tables sit behind an import of
+`core.supabase_client.get_supabase_client` — an accessor that **does not
+exist** (R2.4's flagged production breakage), so those modules died with
+ImportError before any SQL could even fail.
+
+**What shipped:**
+- **Migration 156** creates 21 tables: the 13 income-tax/GST-workspace tables
+  (itr_filings, itr_filing_versions, tax_computation_snapshots,
+  tax_disallowances, tax_deduction_claims, brought_forward_losses,
+  einvoice_records, eway_bill_records, xbrl_packages, gst_sync_jobs,
+  gst_portal_snapshots, form_26as_records, form_26as_reconciliations), 2
+  Tally tables (tally_migration_jobs incl. a nullable target `client_id`,
+  tally_migration_items), and 6 others (onboarding_checklists,
+  onboarding_checklist_steps, pending_invites,
+  entity_to_entity_relationships, properties, client_portal_sessions) — each
+  with gen_random_uuid PK, `firm_id NOT NULL` FK→firms, the standard
+  `firm_id = get_my_firm_id()` RLS policy (DROP-first, idempotent), grants,
+  and hot-path indexes; all money BIGINT integer paise. Column sets were
+  derived from the exact payloads the referencing code builds and **proven on
+  real Postgres 16** by inserting those payloads (fresh-database AND
+  re-application/upgrade paths both green; the re-apply proof caught a
+  CREATE-TABLE-IF-NOT-EXISTS no-op hiding a new column — fixed with a
+  155-style ADD COLUMN IF NOT EXISTS self-heal).
+- **Three phantom names got code fixes, not tables** — the audit's
+  gst_returns/notices/work_items never deserved to exist: real data lives in
+  gstr3b_returns, government_notices and tasks. routers/health.py now reads
+  those with their true columns and status vocabularies ('open'/
+  'in_progress' not "Open"; response_due_date/issue_date;
+  tasks.status='in_progress'), and derives GSTR-3B overdue-ness from the
+  MMYYYY period + the statutory due date (20th of the following month) since
+  gstr3b_returns has no due-date column. Every one of these health queries
+  was try/except-swallowed — they never 500'd, they silently mis-scored
+  client health for years of operation.
+- **client_portal_sessions got a writer, not just a table** — nothing ever
+  inserted rows (the health "responsiveness" signal would have stayed
+  permanently empty). core/portal_auth.py's get_current_portal_client (the
+  choke point every portal request passes) now records a best-effort,
+  6-hour-debounced session touch that can never fail the request.
+- **The accessor fix**: all 10 files importing the nonexistent
+  get_supabase_client now import the canonical get_supabase — un-dead-ending
+  the ITR workspace, e-invoice, e-way, XBRL, GST portal sync, 26AS and Tally
+  routers in production.
+- **Two RPCs**: get_cash_payments_above_threshold (Section 40A(3) cash-scan
+  over POSTED journal lines joined to cash-named chart_of_accounts; SECURITY
+  DEFINER with parameter-bound firm/client predicates) and
+  increment_message_count (F19; parameter named conv_id to match the
+  PostgREST caller).
+- **Caller-controlled column spread closed**: tax_computation_snapshots'
+  insert used to spread the request's raw `income` dict as columns (any
+  unknown key = broken insert). Now whitelisted through `_INCOME_COLUMNS`
+  (10 keys, matching the DDL and the actual frontend payload field-for-field).
+- **Tally migration made real**: created_record_type is now persisted
+  (rollback was a silent no-op — it deleted by a column nothing ever wrote);
+  rollback/execute are firm-scoped with an ownership check first
+  (cross-firm job ids now 404; previously, once tables existed, any
+  authenticated user could roll back another firm's import), and rollback
+  deletes only from a {customers, vendors} allowlist.
+
+**Adversarial review (fresh-context) — two real findings, both fixed:**
+1. Customer/vendor imports would fail at runtime: customers/vendors.client_id
+   is NOT NULL (migration 049) but the importer supplied none and the job
+   had no client concept at all. Fixed end-to-end: jobs accept an optional
+   firm-validated target client_id, the importer threads it through, and
+   client-less jobs refuse customer/vendor items with an actionable error
+   instead of an opaque constraint violation.
+2. increment_message_count returned void while its caller wrote
+   `.data or 0` back into message_count — every message would have reset
+   the conversation's count to zero. Fixed both ends: the RPC returns the
+   new count (single atomic statement) and the caller no longer wraps the
+   RPC in a second, destructive update.
+
+**Ratchet closed:** test_schema_contract.py's KNOWN_MISSING_TABLES and
+KNOWN_MISSING_RPCS are now **empty sets** — any future phantom reference
+fails CI immediately instead of joining a backlog.
+
+**Verified:** 2,255 backend tests pass (same 23 pre-existing DB-dependent
+failures, reconfirmed unrelated); real-Postgres proof of every new table's
+exact code payloads on both a fresh database (149 migrations applied; the
+same 11 pre-documented R2.6 drift failures, nothing new) and the
+upgrade/re-apply path; migration-apply harness tests pass; all changed
+modules import clean.
+
+**Documented, not fixed here:** pending_invites' token remains write-only
+(tracked with the R2.5 follow-ups); onboarding_checklists' RLS uses the
+firm-id predicate while a couple of step reads filter by workflow_id only
+after a firm-checked parent fetch (acceptable — same pattern as sibling
+child tables, RLS backstops it); ~57 migration-created tables have no
+backend reader (some may be frontend-PostgREST-reached — F14's concern —
+flagged for the Tier 2 regression review, not dropped).
+
+**Next:** R2.7 (workflow engine, F11/F12), R2.8 (AI extraction + F19's
+remaining scope), R2.9 (document numbering), R2.11 (bank parser), R2.12
+(receipt atomicity), then the Tier 2 regression review.
+

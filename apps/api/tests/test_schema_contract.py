@@ -51,52 +51,15 @@ MIGRATIONS = API_ROOT / "migrations"
 CODE_DIRS = ["routers", "services", "repositories", "domain", "jobs", "core"]
 
 # ── Known gaps (documented drift backlog) ────────────────────────────────────
-# Tables/RPCs the code references that NO migration creates. Each is a real
-# defect (audit F5 / F19) scheduled under roadmap R2.2 (create the missing
-# tables) / R2.8 (create the missing RPC). This test PINS the current set so it
-# stays green while blocking any NEW phantom reference; shrink these lists as
-# the backing migrations land. DO NOT add to these lists to make a new failure
-# pass — add the migration instead.
-KNOWN_MISSING_TABLES: set[str] = {
-    # F5 — tax/compliance record tables with no CREATE TABLE anywhere.
-    "itr_filings",
-    "itr_filing_versions",
-    "tax_computation_snapshots",
-    "tax_disallowances",
-    "tax_deduction_claims",
-    "brought_forward_losses",
-    "einvoice_records",
-    "eway_bill_records",
-    "xbrl_packages",
-    "gst_sync_jobs",
-    "gst_portal_snapshots",
-    "form_26as_records",
-    "form_26as_reconciliations",
-    # Tally migration (audit: broken in prod) — jobs/items tables never created.
-    "tally_migration_jobs",
-    "tally_migration_items",
-    # Onboarding checklist + invite tables referenced by routers, never created.
-    "onboarding_checklists",
-    "onboarding_checklist_steps",
-    "pending_invites",
-    # Health-dashboard aggregation reads over tables that don't exist under
-    # these names (gst_returns vs gstr1_returns/gstr3b_returns; notices vs
-    # government_notices; work_items). These health endpoints 500 in prod.
-    "gst_returns",
-    "notices",
-    "work_items",
-    # Relationship-intelligence reads over non-existent tables.
-    "entity_to_entity_relationships",
-    "properties",
-    # Portal session tracking table referenced by health router, never created.
-    "client_portal_sessions",
-}
-KNOWN_MISSING_RPCS: set[str] = {
-    # F19 — copilot message-count increment RPC referenced but never defined.
-    "increment_message_count",
-    # F5 — cash-payment threshold RPC referenced by the ITR computation workspace.
-    "get_cash_payments_above_threshold",
-}
+# Tables/RPCs the code references that NO migration creates. R2.2 (migration
+# 156) closed the entire F5/F19 backlog: 20 phantom tables + 2 RPCs created,
+# and the three references to WRONGLY-NAMED tables (gst_returns, notices,
+# work_items — real data lives in gstr1_returns/gstr3b_returns,
+# government_notices, tasks) re-pointed in routers/health.py instead of
+# creating duplicate relations. These sets are now EMPTY and must stay empty:
+# a new entry here means a new phantom reference — add the migration instead.
+KNOWN_MISSING_TABLES: set[str] = set()
+KNOWN_MISSING_RPCS: set[str] = set()
 
 # Supabase/Postgres-managed schemas and internal relations code may touch.
 _IGNORE_TABLE_PREFIXES = ("auth.", "storage.", "pg_", "information_schema.", "realtime.")

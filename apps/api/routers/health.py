@@ -143,9 +143,12 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
     """
     today = date.today()
 
-    # 1. Government notice with response deadline missed
+    # 1. Government notice with response deadline missed. F5 fix: this read a
+    # nonexistent "notices" table with invented column/status names — the real
+    # table is government_notices (migration 052: status open/in_progress/
+    # responded/closed, deadline column response_due_date).
     try:
-        missed = db.table("notices").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Open").lt("response_deadline", today.isoformat()).limit(1).execute().data or []
+        missed = db.table("government_notices").select("id").eq("firm_id", firm_id).eq("client_id", client_id).in_("status", ["open", "in_progress"]).lt("response_due_date", today.isoformat()).limit(1).execute().data or []
         if missed:
             return "notice_deadline_missed"
     except Exception:
@@ -164,12 +167,23 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
     except Exception:
         pass
 
-    # 3. GSTR-3B overdue > 2 months (CGST Act s.39)
+    # 3. GSTR-3B overdue > 2 months (CGST Act s.39). F5 fix: this read a
+    # nonexistent "gst_returns" table. The real gstr3b_returns (migration 036)
+    # has no due-date column — periods are "MMYYYY" and the return is due the
+    # 20th of the following month (CLAUDE.md), so overdue-ness is derived
+    # here: any non-submitted row whose statutory due date is 61+ days past.
     try:
-        two_months_ago = (today - timedelta(days=61)).isoformat()
-        gstr3b = db.table("gst_returns").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("return_type", "GSTR-3B").eq("status", "Pending").lt("due_date", two_months_ago).limit(1).execute().data or []
-        if gstr3b:
-            return "gstr3b_overdue_2months"
+        rows = db.table("gstr3b_returns").select("period, status").eq("firm_id", firm_id).eq("client_id", client_id).neq("status", "submitted").execute().data or []
+        for r in rows:
+            period = str(r.get("period") or "")
+            if len(period) != 6 or not period.isdigit():
+                continue
+            m, y = int(period[:2]), int(period[2:])
+            if not 1 <= m <= 12:
+                continue
+            due_m, due_y = (m + 1, y) if m < 12 else (1, y + 1)
+            if (today - date(due_y, due_m, 20)).days > 61:
+                return "gstr3b_overdue_2months"
     except Exception:
         pass
 
@@ -228,7 +242,7 @@ def _dim_compliance_health_db(db, client_id: str, firm_id: str) -> int:
         pass
 
     try:
-        pending_notices = db.table("notices").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Open").execute().data or []
+        pending_notices = db.table("government_notices").select("id").eq("firm_id", firm_id).eq("client_id", client_id).in_("status", ["open", "in_progress"]).execute().data or []
         score -= len(pending_notices) * 20
     except Exception:
         pass
@@ -272,14 +286,16 @@ def _dim_work_progress_db(db, client_id: str, firm_id: str) -> int:
     today = date.today()
     at_risk_cutoff = (today + timedelta(days=3)).isoformat()
 
+    # F5 fix: "work_items" never existed — work lives in tasks (migration 002;
+    # status vocabulary is lowercase: todo/in_progress/waiting_client/…).
     try:
-        overdue = db.table("work_items").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "In Progress").lt("due_date", today.isoformat()).execute().data or []
+        overdue = db.table("tasks").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "in_progress").lt("due_date", today.isoformat()).execute().data or []
         score -= len(overdue) * 15
     except Exception:
         pass
 
     try:
-        at_risk = db.table("work_items").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "In Progress").gte("due_date", today.isoformat()).lte("due_date", at_risk_cutoff).execute().data or []
+        at_risk = db.table("tasks").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "in_progress").gte("due_date", today.isoformat()).lte("due_date", at_risk_cutoff).execute().data or []
         score -= len(at_risk) * 10
     except Exception:
         pass
@@ -337,9 +353,9 @@ def _dim_open_notices_db(db, client_id: str, firm_id: str) -> int:
     today = date.today()
 
     try:
-        notices = db.table("notices").select("id, response_deadline").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Open").execute().data or []
+        notices = db.table("government_notices").select("id, response_due_date").eq("firm_id", firm_id).eq("client_id", client_id).in_("status", ["open", "in_progress"]).execute().data or []
         for notice in notices:
-            deadline_str = notice.get("response_deadline")
+            deadline_str = notice.get("response_due_date")
             if deadline_str:
                 try:
                     deadline = date.fromisoformat(deadline_str[:10])
@@ -550,7 +566,7 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
             pass
 
         try:
-            notices = db.table("notices").select("id, notice_type, issued_date").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Open").execute().data or []
+            notices = db.table("government_notices").select("id, notice_type, issue_date").eq("firm_id", firm_id).eq("client_id", client_id).in_("status", ["open", "in_progress"]).execute().data or []
             for n in notices[:5]:
                 factors.append({
                     "label": f"Pending notice: {n.get('notice_type', 'Government Notice')}",
@@ -577,7 +593,7 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
 
     elif dimension == "work_progress":
         try:
-            overdue = db.table("work_items").select("id, title, due_date").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "In Progress").lt("due_date", today.isoformat()).execute().data or []
+            overdue = db.table("tasks").select("id, title, due_date").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "in_progress").lt("due_date", today.isoformat()).execute().data or []
             for w in overdue[:5]:
                 factors.append({
                     "label": f"{w.get('title', 'Work item')} overdue since {w.get('due_date', '')}",
@@ -628,9 +644,9 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
 
     elif dimension == "open_notices":
         try:
-            notices = db.table("notices").select("id, notice_type, response_deadline").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Open").execute().data or []
+            notices = db.table("government_notices").select("id, notice_type, response_due_date").eq("firm_id", firm_id).eq("client_id", client_id).in_("status", ["open", "in_progress"]).execute().data or []
             for n in notices[:5]:
-                deadline_str = n.get("response_deadline")
+                deadline_str = n.get("response_due_date")
                 if deadline_str:
                     try:
                         deadline = date.fromisoformat(deadline_str[:10])

@@ -148,14 +148,12 @@ def test_save_gstr9_cannot_overwrite_another_firms_draft(gst_app, monkeypatch):
 
 # ── domain/income_tax/itr_workflow.py: save_itr_version ───────────────────────
 # Tested at the domain-function level (not via routers/itr_workspace.py's
-# TestClient) because itr_workflow._supabase() calls a function
-# (core.supabase_client.get_supabase_client) that does not exist anywhere in
-# this codebase -- a separate, pre-existing production-breaking bug affecting
-# 9 files (see docs/audits/2026-07-02-executive-product-audit.md, noted as a
-# new finding during this milestone, out of R2.4's scope to fix). Every real
-# (non-mock) call into this module is unreachable in production today, so
-# monkeypatching _supabase directly is what actually isolates and proves this
-# fix's logic.
+# TestClient): monkeypatching _supabase directly isolates and proves this
+# fix's logic without a live database. (Historical note: until R2.2,
+# _supabase() imported a nonexistent get_supabase_client — the accessor was
+# fixed to the canonical get_supabase and the module's tables now exist via
+# migration 156, so the real path works; this test's isolation approach
+# remains the right one regardless.)
 
 def test_save_itr_version_rejects_another_firms_filing_id(monkeypatch):
     db = FakeDB()

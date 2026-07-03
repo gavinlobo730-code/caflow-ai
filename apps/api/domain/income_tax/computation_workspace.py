@@ -22,8 +22,32 @@ _MOCK_LOSSES: dict[str, dict] = {}
 
 
 def _supabase():
-    from core.supabase_client import get_supabase_client
-    return get_supabase_client()
+    from core.supabase_client import get_supabase
+    return get_supabase()
+
+
+# Income figures persisted as first-class snapshot columns. The insert used to
+# spread the caller's raw `income` dict as top-level columns — any unknown key
+# (a typo, a new frontend field) made the whole insert fail with an unknown-
+# column error. Only these keys become columns (migration 156 defines them);
+# everything else remains available inside computation_json, which stores the
+# full computation result anyway.
+_INCOME_COLUMNS = frozenset({
+    "gross_salary_paise",
+    "business_income_paise",
+    "other_income_paise",
+    "total_disallowances_paise",
+    "advance_tax_paid_paise",
+    "tds_deducted_paise",
+    "taxable_income_paise",
+    "tax_liability_paise",
+    "net_payable_paise",
+    "is_refund",
+})
+
+
+def _income_columns(income: dict) -> dict:
+    return {k: v for k, v in (income or {}).items() if k in _INCOME_COLUMNS}
 
 
 # ── Snapshots ─────────────────────────────────────────────────────────────────
@@ -82,7 +106,7 @@ def save_computation_snapshot(
         "assessment_year": assessment_year,
         "version": version,
         "regime": regime,
-        **income,
+        **_income_columns(income),
         "computation_json": computation_result,
         "status": "draft",
         "notes": notes,
