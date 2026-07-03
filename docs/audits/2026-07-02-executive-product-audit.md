@@ -1598,3 +1598,114 @@ cleanly, including over a database that had an earlier draft of itself).
 numbering), R2.11 (bank parser), R2.12 (receipt atomicity), then the Tier 2
 regression review and Tier 3.
 
+## Milestone R2.8 — Make AI extraction real, F19 remainder (DELIVERED)
+
+**Goal:** F19 flagged that document extraction fabricates data; re-verification
+found the finding understated the blast radius — there were four overlapping
+extraction generations, two of which don't just return fake data but
+*persist* it, plus two unrelated cross-firm data leaks into the AI copilot's
+own prompt context discovered while tracing the extraction call paths.
+
+**document-intelligence-v1 (invoices).** `_mock_extraction()` — a hardcoded
+"Sample Vendor Pvt Ltd" / GSTIN `27AABCS1429B1Z5` / ₹11,800 payload — deleted
+outright. `_run_extraction` now returns a `(data, error, status_code)` tuple:
+no `GROQ_API_KEY` configured → honest 503; a raised exception from the real
+Groq call → honest 502. Never a fabricated success.
+
+**document-intelligence-v2 (government notices) — the consequential one.**
+This router didn't just fabricate; on any extraction attempt it unconditionally
+persisted a `government_notices` row, created a linked task, and notified the
+partner — using `_mock_extract()`'s guessed/hardcoded fields (`reference_no:
+"REF-MOCK-001"`) whenever Groq was unavailable or failed. `_mock_extract` is
+deleted; `_run_notice_extraction` returns the same honest
+`(data, error, status_code)` shape as v1, and extraction now runs *before* any
+persistence — the insert/task/notification block only executes on a genuine
+successful extraction. A failed or unavailable extraction now creates nothing.
+
+**routers/documents.py `/parse` — a fully dead mock, unconditionally.** No AI
+call was ever made here: every request returned one of two hardcoded dicts
+(`MOCK_FORM16_EXTRACTION` — fake employee "Rajesh Kumar Sharma", fake PAN,
+fake TDS; `MOCK_GST_INVOICE_EXTRACTION`) with a fabricated `confidence_score:
+0.94`, regardless of the uploaded file. Both dicts deleted; the endpoint now
+returns an honest 501 pointing callers at the real v1/v2 endpoints.
+
+**A 4th, undisclosed generation — found during the fix phase.**
+`routers/document_intelligence.py` (the unversioned `/api/document-intelligence`
+router, mounted in `main.py` but never mentioned in F19 or the original
+implementation pass) served hardcoded fabricated data verbatim via
+`GET /{doc_id}/extraction` — same class of issue as the other three, with zero
+frontend callers. Retired: the import and `app.include_router(...)` call
+removed from `main.py`, with a comment recording why and confirming its
+demo `doc-NNN` IDs never collide with real UUID-keyed documents (so
+unmounting it is a no-op for real traffic). `apps/web/lib/api/index.ts`'s
+matching dead client stub (unused by any page) removed too.
+
+**Cross-firm tenancy leaks into the AI copilot's own prompt context (F19-adjacent,
+found while tracing extraction's callers).** `routers/ai_copilot.py`'s
+`_build_firm_context` (used by `POST /chat`) and the sibling `get_firm_context`
+handler (`GET /firm-context`) both called `TaskDomainService().get_dashboard_summary()`
+with no `firm_id` at all — defaulting to a platform-wide aggregation — and
+`_build_firm_context` made the same mistake calling
+`compliance_record_service.get_firm_summary()` and `risk_engine.get_risk_dashboard_stats()`.
+Every one of these callees already correctly honors a `firm_id` parameter when
+given one; the bug was purely at the call sites, silently leaking every firm's
+task/compliance/risk counts into the system prompt the AI copilot builds for
+*any* firm's chat session. Fixed by passing `firm_id` through at all four call
+sites. A companion, same-class bug in `domain/task_service.py`'s
+`get_dashboard_summary`: `task_repo.find_overdue()` has no `firm_id` parameter
+(it scans every firm's tasks) and the `overdue_tasks` count used its raw
+length with no post-filter, while every other figure in the same function
+correctly threads `firm_id` through its own repo call — fixed with the same
+post-hoc Python filter already used for this exact repo method in
+`domain/ai_copilot_service.py._build_context`.
+
+**Adversarial review (two independent lenses, fresh-context, run via the
+Workflow tool's `pipeline()`/`parallel()` — fabrication-completeness and
+tenancy-and-regression — followed by a separate skeptical verification pass
+per finding) — findings, all fixed in the fix phase:**
+1. *Critical:* the 4th undisclosed extraction generation
+   (`routers/document_intelligence.py`) described above — not scoped in the
+   original implementation pass, caught only because a reviewer was
+   explicitly asked to check for "any other document-extraction code path
+   this milestone didn't touch."
+2. *High:* migration 052 created `public.government_notices` without
+   `ca_approved` / `ca_approved_by` / `ca_approved_at`, but
+   `document_intelligence_v2.py` has always read and written all three (the
+   extract endpoint inserts `ca_approved: False` on every new notice; the
+   approve endpoint updates all three as the required human-in-the-loop
+   step). Against real Postgres/PostgREST this means even a genuine,
+   non-fabricated extraction was never persisted in production — a
+   pre-existing bug this milestone's own mock-mode tests could never catch.
+   Fixed via migration 158 (additive-only, `ADD COLUMN IF NOT EXISTS`, same
+   repair pattern as 155/157) and proven against a real, freshly-migrated
+   Postgres database with the exact insert/update payloads the router
+   builds (`test_r2_8_fix_notice_ca_approval_pg.py`).
+3. *Medium (my own independent verification pass, not the workflow's
+   reviewers):* `risk_engine.get_risk_dashboard_stats`'s `resolved` count
+   scanned the raw global `MOCK_RISKS` list unconditionally — no `firm_id`
+   filter at all — while every other count in the same dict (including
+   `total_open`) correctly goes through the firm-scoped `get_all_risks()`,
+   which has a genuine, firm-filtered real-Postgres path via
+   `document_risks`. This is the same tenancy surface as finding 3 above
+   (it feeds the AI copilot's prompt context) so it's fixed in this
+   milestone rather than deferred: `resolved` now calls
+   `get_all_risks(firm_id=firm_id, status="resolved")`, mirroring the `open`
+   count immediately above it.
+
+**Verified:** 2,294 backend tests pass (67 in the new R2.8 suite, including
+mocked-Groq-failure tests that actually raise inside `_groq_extract`/
+`_extract_with_groq` — not just presence checks — and assert the honest
+502/503 responses, zero persistence on failure, and that both retired mock
+helper functions no longer exist on their modules); same 23 pre-existing,
+unrelated DB-dependent failures (`test_hardening.py`, `test_phase3_gst.py`,
+`test_phase3_mca.py`, `test_phase3_tds.py`), reconfirmed unrelated by rerun.
+Migration 158 proven against a real, freshly-migrated Postgres 16 database:
+schema check confirms all three columns exist with the right types/defaults,
+and both the exact `extract_notice` insert payload and the exact
+`approve_notice` update payload succeed and round-trip correctly.
+
+**Next:** R2.9 (document numbering for debit notes/receipts/purchase
+payments), R2.11 (bank statement parser hardening), R2.12 (receipt→AR→journal
+atomicity), R2.10 (payroll frontend→backend migration), then the Tier 2
+regression review and Tier 3.
+
