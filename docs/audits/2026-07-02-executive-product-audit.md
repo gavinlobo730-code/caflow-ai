@@ -1709,3 +1709,93 @@ payments), R2.11 (bank statement parser hardening), R2.12 (receipt→AR→journa
 atomicity), R2.10 (payroll frontend→backend migration), then the Tier 2
 regression review and Tier 3.
 
+## Milestone R2.9 — Document-number uniqueness for debit notes, receipts,
+purchase payments (DELIVERED)
+
+**Goal:** the R1.1/F6 regression review flagged that `debit_notes.debit_note_no`,
+`receipts.receipt_no` and `purchase_payments.payment_no` all generate a
+sequenced number (per firm+client+FY for the first two — CGST Rule 46/53's
+per-supplier series — per firm+FY only for payments, matching
+`_next_payment_seq`'s actual scope) but **none of the three backing tables had
+any uniqueness constraint at all**. A genuine concurrent race could commit two
+rows with an identical number — a live statutory-compliance gap for debit
+notes — and `services/numbering.py`'s retry-on-collision (already used by
+debit notes) could never actually fire, since nothing existed for a duplicate
+insert to violate.
+
+**Migration 159** de-dups any pre-existing duplicate first (partitions each
+table by its real scope, keeps the earliest row's number untouched, and
+suffixes every later duplicate with `-DUPn`, logged via `RAISE NOTICE` for
+manual review — the underlying financial row is never altered or deleted),
+then adds the three constraints matching each generator's real scope. Verified
+against real Postgres: two clients of one firm can share a debit-note/receipt
+number; a same-client duplicate is rejected; purchase-payments rejects a
+duplicate even **across two different clients of the same firm** (per-firm
+scope) but allows the same number for a different firm; and a dedicated test
+drops the constraint, inserts a genuine pre-existing collision via raw SQL,
+re-applies migration 159, and confirms the de-dup + re-enforcement both work.
+
+**A new failure mode this introduces.** Adding the receipts/purchase_payments
+constraints makes an insert fail in a way that was previously impossible.
+Both services post the GL journal **before** the number-bearing insert (the
+existing journal-first ordering from R1.6/F7), so a numbering collision on
+that insert must reverse the journal rather than leave a phantom GL entry.
+Fixed by wrapping the insert in `receipt_service.py`'s existing settlement
+compensation path, and by a new `_insert_payment_or_compensate` helper in
+`purchase_payments.py` used by both its INR and foreign-currency paths.
+`debit_notes.py` needed no such change — it never posts a journal at creation,
+only later when a human explicitly issues the note.
+
+**Adversarial review (2 lenses — correctness/atomicity and migration-safety —
+run via the Workflow tool's `pipeline()`/`parallel()`, each finding then
+independently re-verified by a separate skeptical agent) — 4 findings, all
+CONFIRMED:**
+1. **Critical, fixed:** `phase2_journal_service._create_journal`'s
+   pre-existing idempotency fast-path (`_find_existing`, intended so a
+   retried call with the same reference doesn't double-post) matches on
+   `(firm_id, client_id, reference_no, entry_date)` only — no receipt/payment
+   id. When two receipts race to the same auto-generated `receipt_no` (the
+   exact scenario migration 159 exists to catch), the LOSING request's
+   `journal_for_receipt` call can hit that fast-path and receive the WINNING
+   request's already-committed journal id back — not one of its own. The new
+   compensation code would then reverse the *winner's* valid, successful
+   journal, leaving that other receipt's books net-zeroed in the GL while its
+   receipt row and settled AR still show paid. Identical mechanism confirmed
+   in `create_foreign_receipt` and both purchase-payment paths. Fixed: before
+   reversing, `_compensate_failed_settlement` (receipt_service.py) and
+   `_insert_payment_or_compensate` (purchase_payments.py) now check whether
+   any *other* already-committed row already claims that exact
+   `journal_entry_id` — Postgres's own commit-before-conflict-report ordering
+   guarantees that row is visible by the time a 23505 is raised — and skip
+   the reversal if so, only cleaning up this failed attempt's own artifacts.
+2. **High, fixed:** `journal_for_purchase_payment` still swallowed any
+   non-`ValueError` exception and returned `None`, unlike `journal_for_receipt`
+   (hardened under F7/R1.6 to re-raise) — so the "journal posted first, so a
+   posting failure aborts before any sub-ledger mutation" invariant this
+   milestone's compensation logic depends on was not actually true for
+   purchase payments: a swallowed posting failure would let a vendor payment
+   be recorded and the linked bill marked paid with **no GL journal at all**.
+   Fixed to re-raise, matching `journal_for_receipt` exactly.
+3. **Low, documented, not fixed:** `debit_notes.py`'s `create_debit_note`
+   inserts the header via `insert_with_number` (now durably unique) and then
+   `debit_note_lines` afterward with no compensation; a lines-insert failure
+   leaves an orphaned draft header with zero lines. Pre-existing, untouched by
+   this diff, and not a money- or statutory-correctness issue (a draft with no
+   lines) — tracked as a follow-up rather than fixed here.
+4. **Nit, confirmatory:** reproduced against real Postgres that the
+   already-disclosed `-DUPn` suffix collision edge case (an extremely
+   contrived coincidence) surfaces as a loud `ALTER TABLE` failure requiring
+   manual cleanup, not silent data corruption — confirms the accepted-risk
+   framing in the migration's own docstring was accurate.
+
+**Verified:** 2,303 backend tests pass (13 new across two files — real-Postgres
+constraint/de-dup proof, and mock-mode compensation-logic unit tests including
+the two new ownership-check regression tests and the `journal_for_purchase_payment`
+re-raise test), same 23 pre-existing DB-dependent failures. Real-Postgres suite
+(numbering proof, R1.1's per-client proof, R2.8's notice-approval proof,
+migration-apply baseline, schema contract) rerun clean after the fixes.
+
+**Next:** R2.11 (bank statement parser hardening), R2.12 (receipt→AR→journal
+atomicity), R2.10 (payroll frontend→backend migration), then the Tier 2
+regression review and Tier 3.
+

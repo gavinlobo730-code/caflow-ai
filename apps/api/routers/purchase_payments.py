@@ -65,25 +65,49 @@ def _insert_payment_or_compensate(db, firm_id: str, payload: dict, journal_entry
     a failure here must reverse the already-committed journal rather than leave
     a phantom GL entry with no payment row (same class of gap F7/R1.6 fixed for
     receipts, mirrored here via services/receipt_service.py's compensation
-    pattern)."""
+    pattern).
+
+    R2.9 adversarial review finding (CONFIRMED): phase2_journal_service._create_journal
+    has an idempotency fast-path (_find_existing) keyed only on
+    (firm_id, client_id, reference_no, entry_date) — no payment id involved. When two
+    payments race to the same auto-generated payment_no (the exact scenario migration
+    159's UNIQUE constraint now catches), the LOSING request's journal_for_purchase_payment
+    call can match the WINNING request's already-committed journal via that fast-path and
+    receive ITS journal_entry_id back. Blindly reversing that journal would corrupt the
+    winning payment's already-successful books — so before reversing, confirm no OTHER
+    purchase_payments row already claims this exact journal_entry_id.
+    """
     try:
         resp = db.table("purchase_payments").insert(payload).execute()
         return (resp.data or [payload])[0]
     except Exception as e:
         if journal_entry_id:
-            from services.phase2_journal_service import phase2_journal_service
-            try:
-                phase2_journal_service.reverse_entry(
-                    db, firm_id, journal_entry_id, str(datetime.now(timezone.utc).date()),
-                    narration=f"Compensating reversal — payment {payload.get('payment_no')} insert failed",
-                    created_by=created_by,
+            owned_by_another = (
+                db.table("purchase_payments").select("id")
+                .eq("journal_entry_id", journal_entry_id)
+                .limit(1).execute().data
+            )
+            if owned_by_another:
+                _logger.warning(
+                    "R2.9: skipping journal reversal for journal=%s (firm=%s) — it belongs "
+                    "to another already-committed payment (%s), not this failed insert; "
+                    "reversing it would corrupt that other payment's books.",
+                    journal_entry_id, firm_id, owned_by_another[0].get("id"),
                 )
-            except Exception:
-                _logger.error(
-                    "R2.9 compensation FAILED for journal=%s (firm=%s) after a purchase "
-                    "payment insert failure — manual reconciliation required, a phantom "
-                    "GL entry may remain.", journal_entry_id, firm_id, exc_info=True,
-                )
+            else:
+                from services.phase2_journal_service import phase2_journal_service
+                try:
+                    phase2_journal_service.reverse_entry(
+                        db, firm_id, journal_entry_id, str(datetime.now(timezone.utc).date()),
+                        narration=f"Compensating reversal — payment {payload.get('payment_no')} insert failed",
+                        created_by=created_by,
+                    )
+                except Exception:
+                    _logger.error(
+                        "R2.9 compensation FAILED for journal=%s (firm=%s) after a purchase "
+                        "payment insert failure — manual reconciliation required, a phantom "
+                        "GL entry may remain.", journal_entry_id, firm_id, exc_info=True,
+                    )
         if _is_unique_violation(e):
             raise HTTPException(
                 status_code=409,

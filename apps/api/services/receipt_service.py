@@ -280,15 +280,41 @@ def _compensate_failed_settlement(
     earlier invoice's paid_paise/status is not rolled back here (safely reverting
     a concurrent CAS write requires its own transaction). `attempted_invoice_ids`
     is logged so that residual case is visible for manual review.
+
+    R2.9 adversarial review finding (CONFIRMED): phase2_journal_service._create_journal
+    has an idempotency fast-path (_find_existing) keyed only on
+    (firm_id, client_id, reference_no, entry_date) — no receipt id involved. When two
+    receipts race to the same auto-generated receipt_no (the exact scenario migration
+    159's UNIQUE constraint now catches), the LOSING request's journal_for_receipt call
+    can match the WINNING request's already-committed journal via that fast-path and
+    receive ITS journal_entry_id back — not a journal of its own. Blindly reversing
+    that journal here would corrupt the winning receipt's already-settled, successful
+    books. So before reversing, confirm no OTHER receipt already claims this exact
+    journal_id — if one does, the journal belongs to that other, successful receipt and
+    must be left alone; only this (failed) attempt's own artifacts are cleaned up.
     """
     try:
         if journal_id:
-            from services.phase2_journal_service import phase2_journal_service
-            phase2_journal_service.reverse_entry(
-                db, firm_id, journal_id, str(datetime.now(timezone.utc).date()),
-                narration=f"Compensating reversal — receipt {receipt_id} settlement failed",
-                created_by=(actor or {}).get("id"),
+            owned_by_another = (
+                db.table("receipts").select("id")
+                .eq("journal_entry_id", journal_id).neq("id", receipt_id)
+                .limit(1).execute().data
             )
+            if owned_by_another:
+                _logger.warning(
+                    "R2.9: skipping journal reversal for journal=%s (firm=%s client=%s) — "
+                    "it belongs to another already-committed receipt (%s), not this failed "
+                    "attempt (receipt=%s); reversing it would corrupt that other receipt's "
+                    "books. Only this attempt's own artifacts are being cleaned up.",
+                    journal_id, firm_id, client_id, owned_by_another[0].get("id"), receipt_id,
+                )
+            else:
+                from services.phase2_journal_service import phase2_journal_service
+                phase2_journal_service.reverse_entry(
+                    db, firm_id, journal_id, str(datetime.now(timezone.utc).date()),
+                    narration=f"Compensating reversal — receipt {receipt_id} settlement failed",
+                    created_by=(actor or {}).get("id"),
+                )
         db.table("receipts").delete().eq("id", receipt_id).execute()
         _logger.warning(
             "F7 compensation applied: reversed journal=%s and deleted receipt=%s "
