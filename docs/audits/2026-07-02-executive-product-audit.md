@@ -237,7 +237,7 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 
 **R2.11 — Bank statement parser hardening** *(pre-existing, surfaced by the R1.5 regression review).* `domain/banking/normalizer._to_paise` uses `rstrip("DrCr")`, which is case/char-set sensitive and zeroes balances suffixed `CR`/`DR`/lowercase; single signed-Amount + Dr/Cr-indicator statement layouts are unsupported and misparse every row as a debit; `Dr` (overdraft) balances lose their sign (stored same as `Cr`); and statement opening/closing balances are taken by file position, which inverts on newest-first exports (also noted in §6). Fix the Dr/Cr suffix parsing (regex, case-insensitive), add adapters (or an Amount+indicator mode) for single-amount layouts, preserve overdraft sign, and derive opening/closing by date order. Also add a one-off re-import path for statements imported before R1.5 (their rows keep the old corrupted values and won't re-dedupe). *Effort:* M. *Benefit:* correct bank feeds across more banks and export styles.
 
-**R2.10 — Route payroll compute through the backend** *(the F14 payroll slice, deferred from R1.3).* The web payroll page computes and persists runs/slips client-side (statutory logic in the browser, against CLAUDE.md); it also stores no run totals, so backend finalize can't process frontend-generated runs. Replace the client-side compute + direct `payroll_runs`/`payroll_slips` inserts with a call to `POST /api/payroll/runs` (server-side `_compute_slip` + totals), reconciling the status/`generated_at` column differences and fetching slips via the backend to avoid RLS re-read gaps. *Effort:* M. *Deps:* frontend CI test runner (currently absent — the 12 web test files are dead code). *Risk:* unverifiable without frontend test infra; must not regress the working generate/display flow. *Benefit:* single correct payroll engine; removes the browser tax logic and the missing-totals defect.
+**R2.10 — Route payroll compute through the backend** *(the F14 payroll slice, deferred from R1.3).* **DELIVERED.** Replaced the web payroll page's client-side compute + direct `payroll_runs`/`payroll_slips`/`payroll_employees` writes with calls to the existing `POST /api/payroll/runs` (server-side `_compute_slip` + totals) and the rest of the backend payroll API. Found and fixed a real backend bug while scoping this: `GET /runs/{id}/slips` filtered on a `payroll_slips.firm_id` column that has never existed, so the endpoint could never return data against real Postgres. Found and fixed a genuine tax-correctness gap: `_compute_pt` accepted a `state` parameter but silently ignored it, always applying Karnataka's slab — undiscovered until this migration because the frontend's own (correct, per-state) logic masked it; would have been a silent regression for every non-Karnataka client had this migration shipped without the fix. Also fixed the missing bearer token in `clients/[id]/payroll/page.tsx`'s `apiFetch` (every call there would 401 against a real backend) and wired the 12 dormant frontend `node:test` files into CI (Node bumped 20→22 for `--experimental-strip-types`). *Effort:* M (as estimated). *Benefit:* one correct payroll engine, real per-state Professional Tax, and CI now actually runs the frontend's existing test suite.
 
 **R2.9 — Document-number uniqueness for the remaining statutory docs** *(surfaced by the R1.1 regression review).* `debit_notes.debit_note_no` (medium), `receipts.receipt_no` and `purchase_payments.payment_no` (low) generate numbers but have **no** uniqueness constraint, so the numbering retry is dead code and concurrent duplicates are possible (CGST §34 / Rule 53 require serial uniqueness for debit notes). Add per-client (debit notes/receipts) / per-firm (payments, matching their generator) UNIQUE keys, **preceded by a de-dup migration** for any existing duplicates. *Effort:* M. *Deps:* R0.1. *Risk:* must de-dup live data before adding the constraint. *Benefit:* closes the numbering-integrity gap R1.1 deliberately scoped out.
 
@@ -2018,4 +2018,122 @@ milestone. Migration-apply baseline and schema contract tests rerun clean.
 
 **Next:** R2.11.1 (bank-statement re-import path), R2.10 (payroll
 frontend→backend migration), then the Tier 2 regression review and Tier 3.
+
+## Milestone R2.10 — Route payroll compute through the backend (DELIVERED)
+
+**Goal:** `apps/web/app/payroll/page.tsx` computed payroll (gross/PF/ESI/PT/TDS)
+client-side via its own `computeSlip()` and wrote directly to Supabase
+(`payroll_runs`/`payroll_slips`/`payroll_employees`), bypassing the backend's
+RBAC, Guardrail G4 (no payroll/HR for the internal practice client), and the
+already-correct server-side `_compute_slip()` behind `POST /api/payroll/runs`.
+It also wrote `payroll_runs.status = "generated"` — a value outside the
+`draft`/`review`/`finalized` CHECK constraint — and never populated the run's
+`total_*_paise`/`headcount` columns, permanently blocking `finalize_run` for
+any run created this way. Ultracode was off for this milestone, so — per its
+own standard opt-in rule — this was implemented and verified directly rather
+than via the Workflow tool's multi-agent adversarial-review pattern used for
+R2.8/R2.9/R2.11/R2.12; the findings below were surfaced by direct code
+reading and real-Postgres/browser testing, not a separate review pass.
+
+**What shipped:**
+- **Backend bug fix:** `GET /runs/{run_id}/slips` filtered
+  `.eq("firm_id", ...)` directly on `payroll_slips` — a column that has
+  never existed there (it's tenant-scoped transitively via
+  `run_id -> payroll_runs.firm_id`, migrations 014/093). PostgREST rejects
+  an unknown-column filter outright against real Postgres, so this endpoint
+  could never have returned data in production. Fixed to verify run
+  ownership via `payroll_runs.firm_id` first, then query slips by `run_id`
+  alone — proven directly against real Postgres (the old query pattern
+  reproduced failing, the new one reproduced succeeding).
+- **Backend API surface:** made `client_id` optional on `GET /employees` and
+  `GET /runs` (the same optional-filter idiom `routers/accounting.py`'s
+  journal listing already uses) so a firm-wide payroll dashboard can list
+  every client's employees/runs in one call each, instead of an N-calls
+  fan-out per client; a per-client workspace still passes `client_id` to
+  scope the result. Both forms stay firm-scoped — regression-tested for
+  cross-firm isolation in both the scoped and unscoped form.
+- **Tax-correctness fix (found while scoping, not part of the original
+  ask):** `_compute_pt(gross_paise, state)` accepted a `state` parameter but
+  its body ignored it entirely, always applying Karnataka's slab regardless
+  of the employee's actual `pt_state` — masked until now because the
+  frontend's own client-side PT logic (correct, per-state) was what
+  actually ran in production. Naively "just routing through the backend"
+  would have silently regressed Professional Tax to Karnataka's rate for
+  every non-Karnataka client — a real accounting-correctness regression,
+  not a neutral refactor. Fixed with a per-state slab table:
+  Karnataka keeps its existing, already-unit-tested 3-tier slab unchanged;
+  Maharashtra/West Bengal/Tamil Nadu are ported verbatim from the frontend's
+  own `PT_STATES` logic (the only source for those three states anywhere in
+  this repo) and explicitly flagged pending statutory verification — the
+  same "verified baseline vs. pending verification" split this session uses
+  for FY2026-27 income-tax figures, applied here to state PT law instead of
+  central IT Act slabs. An unset or unrecognised `pt_state` now returns 0
+  instead of silently defaulting to Karnataka's rate.
+- **Frontend rewrite (`app/payroll/page.tsx`):** removed `computeSlip()`,
+  the raw-Supabase `load()`/`AddEmployeeModal.save()`/`generatePayslips()`/
+  CSV-import writes, and the stale `INSTALL_SQL` "tables missing" fallback
+  (a leftover from before the real migrations existed). `generatePayslips()`
+  now calls `POST /api/payroll/runs` — the existing, already-correct compute
+  endpoint — instead of building slip rows client-side.
+  `AddEmployeeModal`/CSV import now call `POST /api/payroll/employees`,
+  gaining a per-employee Professional Tax (state) field the client-side path
+  never captured at all. The Monthly Run tab's pre-generation preview
+  (previously a fully computed table using the buggy client-side logic) was
+  replaced with a plain employee list — the server is now the ONLY place
+  gross/PF/ESI/PT/TDS are computed; building a second, throwaway "dry run"
+  compute path just to keep a live preview was judged out of scope for this
+  milestone. All data loading and mutation errors now surface through a
+  proper error banner (with a working Retry button) instead of an
+  unhandled promise rejection or a silent blank state.
+- **Frontend bug fix (`app/clients/[id]/payroll/page.tsx`):** its local
+  `apiFetch()` helper never attached the caller's bearer token — every call
+  from this page would 401 against a real (non-mock) backend, so this whole
+  page could never have worked in production. Fixed to attach
+  `Authorization: Bearer` exactly like `lib/api/index.ts`'s `request()`
+  helper does.
+- **`lib/api/index.ts`:** extended the `payroll` namespace with
+  `listEmployees`/`createEmployee`/`updateEmployee`/`listRuns`/`createRun`/
+  `getRunSlips`/`updateRunStatus`/`finalizeRun` (it previously had only
+  `downloadPayslip`).
+- **CI / test infra:** the 12 existing zero-npm-dependency `*.test.ts` files
+  (pure `node:test` + `node:assert/strict`, 93 tests total) had no CI runner
+  at all. `frontend-ci.yml` was pinned to Node 20, which predates
+  `--experimental-strip-types` (needs ≥22.6). Bumped CI to Node 22, added a
+  `pnpm test` script (`node --experimental-strip-types --test`, which
+  auto-discovers every `*.test.ts` file recursively with no glob
+  configuration needed), and added a Test step between type-check and build.
+
+**Verified:** Backend — 3 new real-Postgres tests
+(`test_r2_10_payroll_slips_pg.py`) proving `payroll_slips` genuinely has no
+`firm_id` column, that the pre-fix query pattern fails against real schema,
+and that the fixed pattern succeeds and returns the right rows; 6 new
+mock-mode tenancy tests (`test_tenancy_backstop.py`: 3 for `get_run_slips`
+cross-firm/own-firm/missing-run, 3 for the new optional-`client_id` list
+behavior proving both the scoped and firm-wide forms stay firm-isolated);
+8 new/updated PT unit tests (`test_v13_payroll_assets.py`) covering
+Karnataka's pre-existing slab (now passed explicitly rather than relying on
+the old accidental default), Maharashtra, West Bengal, Tamil Nadu, an
+unrecognised state code, an unset state, and case/whitespace insensitivity.
+Full mock-mode suite: 2,363 passed, same 23 pre-existing DB-dependent
+failures as every prior milestone. Frontend — `tsc --noEmit` clean,
+`eslint` clean, a full `next build` clean (every route compiles, including
+`/payroll` and `/clients/[id]/payroll`), and the new 93-test `node:test`
+suite passes via `pnpm test`. Manual dev-server verification via a
+headless-Chromium Playwright script: confirmed `/payroll` is correctly
+gated by `AuthGuard` when unauthenticated (redirects cleanly, no crash);
+then, with a synthetic session forced into `localStorage` to get past that
+gate — this sandbox has no live Supabase project, so a real login was not
+possible here — confirmed the rewritten page mounts cleanly, its `load()`
+effect chain runs to completion, a real backend error
+(`503 SUPABASE_URL not set`, since this sandbox's backend has no Supabase
+project configured either) is caught and rendered through the new error
+banner with a working Retry button, and zero uncaught client-side
+exceptions occur throughout. Deeper interactive verification — adding a
+real employee, generating an actual run, viewing computed payslips end to
+end — requires a live Supabase project and a real authenticated login,
+which this sandbox cannot provide; flagged explicitly here rather than
+claimed.
+
+**Next:** R2.11.1 (bank-statement re-import path), then the Tier 2
+regression review, then Tier 3.
 

@@ -213,13 +213,19 @@ def _compute_tds_192(taxable_annual_paise: int, fy: Optional[str] = None) -> int
 
 @router.get("/employees")
 def list_employees(
-    client_id: str = Query(...),
+    client_id: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
+    """client_id is optional — a firm-wide payroll dashboard lists every
+    client's employees in one call; a per-client workspace passes client_id
+    to scope the result."""
     db = _db()
     if not db:
         return api_response(True, [])
-    res = db.table("payroll_employees").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("status", "active").order("name").execute()
+    q = db.table("payroll_employees").select("*").eq("firm_id", current_user["firm_id"]).eq("status", "active")
+    if client_id:
+        q = q.eq("client_id", client_id)
+    res = q.order("name").execute()
     return api_response(True, res.data or [])
 
 
@@ -291,13 +297,17 @@ def create_salary_structure(
 
 @router.get("/runs")
 def list_runs(
-    client_id: str = Query(...),
+    client_id: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
+    """client_id is optional — see list_employees above for why."""
     db = _db()
     if not db:
         return api_response(True, [])
-    res = db.table("payroll_runs").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).order("month", desc=True).execute()
+    q = db.table("payroll_runs").select("*").eq("firm_id", current_user["firm_id"])
+    if client_id:
+        q = q.eq("client_id", client_id)
+    res = q.order("month", desc=True).execute()
     return api_response(True, res.data or [])
 
 

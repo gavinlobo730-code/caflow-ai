@@ -8,15 +8,27 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { supabase } from "@/lib/supabase/client";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildEmployees, EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// R2.10 fix: this helper never attached the caller's auth token, so every
+// call 401'd against a real (non-mock) backend — this whole page could never
+// have worked in production. Mirrors lib/api/index.ts's request() helper.
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ data: T }> {
-  const res = await fetch(`${API}${path}`, { credentials: "include", ...options,
-    headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) } });
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  const res = await fetch(`${API}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options?.headers ?? {}),
+    },
+  });
   return res.json();
 }
 
