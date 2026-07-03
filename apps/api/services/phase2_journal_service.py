@@ -1087,28 +1087,14 @@ class Phase2JournalService:
             entry_payload["rate_selected_by"] = rate_selected_by
             entry_payload["rate_selected_at"] = now_iso
 
-        # H2: the UNIQUE index closes the TOCTOU race — if a concurrent poster won,
-        # our insert raises 23505; recover by returning the winner's entry (idempotent).
-        try:
-            entry_resp = db.table("journal_entries").insert(entry_payload).execute()
-        except Exception as ins_err:
-            if not _USE_MOCK and reference_no and _is_unique_violation(ins_err):
-                dup = _find_existing()
-                if dup.data:
-                    _logger.warning(
-                        "Concurrent duplicate journal for firm=%s ref=%s date=%s — returning existing id",
-                        firm_id, reference_no, entry_date,
-                    )
-                    return dup.data[0]["id"]
-            raise
-        if not entry_resp.data:
-            raise RuntimeError(f"Failed to insert journal_entry for ref={reference_no}")
-
-        entry_id = entry_resp.data[0]["id"]
-
+        # Atomic posting (F2): the header and ALL its lines are inserted in ONE
+        # server-side transaction via post_journal_atomic (migration 152). A line
+        # failure now rolls the header back with it, so it can never strand an
+        # immutable orphan header (which the immutability trigger made unrepairable).
+        # The RPC also closes the (firm, client, reference_no, entry_date) idempotency
+        # race — on a concurrent duplicate (23505) it returns the winning entry's id.
         line_payloads = [
             {
-                "journal_entry_id": entry_id,
                 "account_id":       l["account_id"],
                 "debit_paise":      l["debit_paise"],
                 "credit_paise":     l["credit_paise"],
@@ -1128,7 +1114,27 @@ class Phase2JournalService:
             }
             for l in lines
         ]
-        db.table("journal_lines").insert(line_payloads).execute()
+        if hasattr(db, "rpc"):
+            # Real Supabase client (prod) and the e2e FakeDB both expose rpc — this
+            # is the atomic path that makes F2 impossible.
+            result = db.rpc(
+                "post_journal_atomic",
+                {"p_entry": entry_payload, "p_lines": line_payloads},
+            ).execute()
+            entry_id = result.data
+            if not entry_id:
+                raise RuntimeError(f"Failed to post journal for ref={reference_no}")
+        else:
+            # In-memory test double without rpc — two inserts (trivially atomic in
+            # a synchronous fake). Never reached in production (the Supabase client
+            # always exposes rpc).
+            entry_resp = db.table("journal_entries").insert(entry_payload).execute()
+            if not entry_resp.data:
+                raise RuntimeError(f"Failed to insert journal_entry for ref={reference_no}")
+            entry_id = entry_resp.data[0]["id"]
+            db.table("journal_lines").insert(
+                [{**lp, "journal_entry_id": entry_id} for lp in line_payloads]
+            ).execute()
 
         _logger.info(
             "%s journal %s | ref=%s | dr=%d cr=%d",
