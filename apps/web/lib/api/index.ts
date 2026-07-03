@@ -5,6 +5,16 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 /** Standard backend response envelope: { success, data, error }. */
 export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
 
+// Phase 4.5.1 — a client_portal_users row (F22 fix: invite_token is single-use,
+// never re-sent to the frontend once accepted — the field is present here only
+// because inviteContact()'s response carries it once, to build the invite link).
+export type PortalContact = {
+  id: string; client_id: string; email: string; name: string | null;
+  status: "invited" | "active" | "deactivated";
+  auth_user_id?: string | null; invite_token?: string | null;
+  invited_at?: string | null; activated_at?: string | null; deactivated_at?: string | null;
+};
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
@@ -438,19 +448,26 @@ export const api = {
     getDues: (firmId: string, clientId: string) =>
       request(`/api/portal/dues?firm_id=${firmId}&client_id=${clientId}`),
     // Phase 4.5.1 — CA-side multi-contact management
-    listContacts: (clientId: string) => request(`/api/portal/clients/${clientId}/contacts`),
+    listContacts: (clientId: string) =>
+      request<ApiResp<{ contacts: PortalContact[] }>>(`/api/portal/clients/${clientId}/contacts`),
     inviteContact: (clientId: string, body: { email: string; name?: string }) =>
-      request(`/api/portal/clients/${clientId}/contacts`, { method: "POST", body: JSON.stringify(body) }),
+      request<ApiResp<{ contact: PortalContact }>>(
+        `/api/portal/clients/${clientId}/contacts`, { method: "POST", body: JSON.stringify(body) }),
     resendInvite: (contactId: string) =>
-      request(`/api/portal/contacts/${contactId}/resend`, { method: "POST" }),
+      request<ApiResp<{ contact: PortalContact }>>(`/api/portal/contacts/${contactId}/resend`, { method: "POST" }),
     deactivateContact: (contactId: string) =>
-      request(`/api/portal/contacts/${contactId}/deactivate`, { method: "POST" }),
+      request<ApiResp<{ contact: PortalContact }>>(`/api/portal/contacts/${contactId}/deactivate`, { method: "POST" }),
   },
   // Phase 4.5.1 — client-facing portal self surface (auth = the client's own
   // Supabase session, resolved server-side via get_current_portal_client).
   portalSelf: {
     // All client memberships for the signed-in identity (client switcher source).
     memberships: () => request("/api/portal/memberships"),
+    // F22 fix: bind ONE client_portal_users invite by its single-use token.
+    // Must be called before that client shows up in memberships().
+    acceptInvite: (token: string) =>
+      request<ApiResp<{ client_id: string; name?: string }>>(
+        "/api/portal/accept-invite", { method: "POST", body: JSON.stringify({ token }) }),
     // me/dashboard select the active client explicitly via X-Portal-Client-Id when
     // the identity belongs to more than one client (no implicit switching).
     me: (clientId?: string) =>
@@ -757,9 +774,20 @@ export const api = {
   },
   // M6: identity administration (audited, server-side; Partner-only writes).
   identity: {
-    listUsers: () => request("/api/identity/users"),
+    listUsers: () => request<ApiResp<{
+      users: Array<{
+        id: string; full_name: string; email: string; role: string;
+        is_active?: boolean; created_at?: string; auth_user_id?: string; firm_id?: string;
+      }>;
+    }>>("/api/identity/users"),
     createUser: (full_name: string, email: string, role: string) =>
-      request("/api/identity/users", { method: "POST", body: JSON.stringify({ full_name, email, role }) }),
+      request<ApiResp<{ id: string; invite_token: string }>>(
+        "/api/identity/users", { method: "POST", body: JSON.stringify({ full_name, email, role }) }),
+    // F21 fix: the only way a users row's auth_user_id can be set — token comes
+    // from createUser's response, never from URL params.
+    acceptInvite: (token: string) =>
+      request<ApiResp<{ firm_id: string; role: string; full_name?: string }>>(
+        "/api/identity/accept-invite", { method: "POST", body: JSON.stringify({ token }) }),
     changeRole: (userId: string, role: string) =>
       request(`/api/identity/users/${userId}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
     suspend: (userId: string) => request(`/api/identity/users/${userId}/suspend`, { method: "POST" }),

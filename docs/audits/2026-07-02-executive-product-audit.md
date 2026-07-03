@@ -224,7 +224,7 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 
 **R2.4 — Add a database tenancy backstop (F1, F4).** Either execute the staged `USE_USER_JWT` cutover (after R2.6 fixes the RLS predicate) or make `firm_id` mandatory at the repository layer so a missing filter fails closed; add the missing `firm_id` filters (GSTR-9 et al.). *Effort:* L. *Benefit:* one mistake no longer equals a silent cross-firm leak.
 
-**R2.5 — Close the `/join` privilege escalation and portal-invite gaps (F21, F22).** Move `/join` account-linking to a backend endpoint validating a signed single-use invite token; add tokenized, expiring portal invites. *Effort:* M. *Benefit:* removes the most exploitable security holes.
+**R2.5 — Close the `/join` privilege escalation and portal-invite gaps (F21, F22). DELIVERED.** Moved `/join` account-linking to a backend endpoint validating a signed single-use invite token; added tokenized, expiring portal invites — and, discovered during implementation, rewired the actual live "Invite to Portal" UI (which bypassed the tokenized service entirely via a raw browser `signInWithOtp` + direct table write) onto the same audited path. See Implementation Log for the full account, including a self-caught UPDATE-based escalation bug and a self-caught regression in the `users`-table RLS hardening. *Effort:* M (actual, incl. the unplanned live-flow rewire). *Benefit:* removes the most exploitable security holes AND makes the client-portal invite feature actually work end-to-end for the first time.
 
 **R2.6 — Fix RLS predicates and migration hygiene (F20 + drift).** Correct policies that key on the never-issued `firm_id` claim; add a migration runner + tracking table; reconcile repo-vs-live drift; resolve duplicate migration numbers. *Effort:* M–L. *Benefit:* makes the eventual RLS cutover safe and schema state knowable.
 
@@ -242,6 +242,7 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 
 ### Tier 3 — Medium (productivity, consolidation, scale)
 
+- **R3.0 — Harden `client_portal_users` RLS/grants** *(surfaced by the R2.5 regression review)*. Migration 109's `client_portal_users_own_firm` policy is `FOR ALL USING/WITH CHECK (firm_id = get_my_firm_id())` — any authenticated firm staff member can directly INSERT/UPDATE a `client_portal_users` row from the browser (e.g. self-activating an arbitrary contact for any client in their own firm), bypassing `invite_contact`'s token/TTL/audit trail. Not a cross-tenant leak (staff already have equivalent CA-side access to the same client), but a real audit-integrity gap. Mirror the R2.5 `users`-table fix: SELECT-only for `authenticated`, all mutation via service-role (`portal_access_service.py` already covers every legitimate mutation path). *Effort:* S. *Benefit:* closes the last raw-table write path in the portal invite flow.
 - **R3.1 — Statutory rules-as-data registry (FY-versioned).** Single source of truth for slabs/thresholds/due-dates; eliminates the class of bugs behind F15/F17/F18. *Effort:* L. *Benefit:* tax law becomes maintainable data.
 - **R3.2 — Cross-client batch compliance cockpit** (generate/validate/mark-filed + ARN capture across clients). *Effort:* XL. *Benefit:* the #1 CA scale unlock.
 - **R3.3 — De-orphan or delete the ~40 unlinked routes and consolidate duplicate invoicing/fixed-asset/payroll stacks.** *Effort:* L. *Benefit:* coherence + lower maintenance.
@@ -742,4 +743,135 @@ and verified.
 **Next:** Tier 2 — R2.1 (year-end schema, F9), R2.2 (missing tables, F5), R2.4
 (tenancy backstop, F1/F4), R2.5 (`/join` + portal security, F21/F22), R2.3 (tax
 statutory logic incl. the elevated F18), R2.7 (workflow engine, F11/F12).
+
+## Milestone R2.5 — Close `/join` privilege escalation + tokenize portal invites, F21/F22 (DELIVERED)
+
+**Goal:** stop an authenticated Supabase user from self-granting Partner-level
+access to an arbitrary firm, and stop a portal invite from silently binding to
+whichever stranger happens to reuse or mistype the invited email.
+
+**F21 — `/join` privilege escalation.** `app/join/page.tsx` read `firm`/`role`/
+`name` from URL query params and, if no pre-invited `users` row matched, INSERTed
+a brand-new row with those attacker-controlled values directly from the browser.
+Two PERMISSIVE RLS policies applied to INSERT (`users_own_row`: only checked
+`auth_user_id = auth.uid()`, no firm constraint; `partners_can_invite_users`:
+checked `firm_id = get_my_firm_id()`) and Postgres ORs permissive policies
+together, so satisfying the trivial first policy was sufficient — `/join?
+firm=<any-uuid>&role=Partner` was a full account-takeover primitive against any
+firm. **Fix:** `create_user` (already Partner-only, RBAC `team:write` — that half
+was already correct from M6) now also issues a single-use, 7-day-expiring
+`invite_token`; a new `POST /api/identity/accept-invite` (JWT-only auth via
+`get_jwt_user`, no `users` row required yet) resolves `firm_id`/`role` **only**
+from the server-created invite row, keyed by verified JWT email + token — never
+from the request body (`test_accept_invite_cannot_forge_firm_or_role_via_request_body`
+proves an attacker-supplied `firm_id`/`role` in the body is silently ignored).
+`/join/page.tsx` was rewritten to be purely token-based: it reads `?token=` only
+and calls the new endpoint.
+
+**F22 — tokenless, auto-binding portal invites.** `portal_access_service.
+list_portal_memberships` auto-bound **any** `client_portal_users` invite whose
+email matched the caller's Supabase session email, on **every** portal page
+load — no token, no expiry. A recycled or typo'd email silently inherited that
+client's invoices/statements/compliance data on first login. **Fix:** the same
+invite-token/expiry pattern on `client_portal_users`; a new `accept_portal_invite
+(token, auth_user_id, email)` and `POST /api/portal/accept-invite`
+(`portal_self.py`); `list_portal_memberships` is now purely read-only (the
+auto-bind loop is gone). `/portal/dashboard/page.tsx` reads `?invite=<token>`,
+waits for the Supabase session to hydrate (bounded 10×500ms poll — the magic-link
+redirect can land before the client SDK finishes processing the auth hash), then
+calls accept-invite before loading memberships.
+
+**Schema (migration 153):** adds `invite_token`/`invite_expires_at` to both
+`users` and `client_portal_users` (unique partial indexes on the token). Also
+hardens `users` RLS/grants, since the INSERT vulnerability's root RLS policies
+needed closing at the database layer too (defense in depth), not just by
+deleting the vulnerable frontend code path: `REVOKE INSERT, UPDATE, DELETE ON
+public.users FROM authenticated`, replacing the dropped `users_own_row`/
+`partners_can_invite_users` policies with `users_own_row_select` (read own row
+only) plus a narrow `GRANT UPDATE (full_name) ON public.users TO authenticated`
++ `users_own_row_rename` policy so the existing "edit my display name"
+self-service feature (`app/settings/page.tsx`) keeps working.
+
+**Self-discovered escalation bug (caught during our own verification, not by the
+original audit):** the first draft of the `users` UPDATE fix used only an RLS
+policy — `USING/WITH CHECK (auth_user_id = auth.uid())`, no column restriction.
+Verified live on Postgres 16 that this let a legitimate authenticated user
+`UPDATE public.users SET role='Partner' WHERE id=<their own row>` and succeed —
+`WITH CHECK` constrains **which row** may be touched, not **which columns or
+values**, so the escalation just moved from INSERT to UPDATE. A second
+verification pass (prompted by the same review that would later catch the
+settings.tsx regression below) confirmed a blanket `REVOKE UPDATE` would also
+work but breaks the legitimate rename feature — the column-level `GRANT UPDATE
+(full_name)` closes the escalation **and** preserves the feature, verified with
+five live-Postgres proofs: attacker self-INSERT → `permission denied`;
+legitimate self-`role` UPDATE → `permission denied`; legitimate self-`firm_id`
+UPDATE → `permission denied`; legitimate self-`full_name` rename → succeeds,
+`role`/`firm_id` unchanged; cross-row rename attempt → `UPDATE 0` (RLS-filtered).
+
+**Regression review (adversarial) surfaced two more real findings:**
+
+- **HIGH — the fix protected a backend flow the product didn't actually use.**
+  `services/portal_access_service.py:invite_contact` (the audited, tokenized
+  invite path) was never called from anywhere in the frontend. The **actual**
+  live "Invite to Portal" button (`app/clients/[id]/portal/page.tsx`) called
+  `supabase.auth.signInWithOtp` directly from the browser with a redirect to
+  the legacy `/portal?client=<id>`, and wrote `clients.portal_enabled` via a raw
+  browser-side Supabase update — completely bypassing the tokenized service.
+  Worse: the legacy `/portal` page's own auto-bind (matching `?client=` against
+  `clients.portal_user_id`) was independently confirmed **RLS-unreachable** —
+  no `clients` policy (`clients_own_firm`, `clients_assignment_scope`) has ever
+  granted a non-staff identity direct access to that table, since both key off
+  a `users` row a portal client never has. Net effect: the flagship client
+  portal invite flow was silently non-functional for every real client, while
+  looking like it worked from the CA's side ("Invite sent!"). **Fixed:**
+  `app/clients/[id]/portal/page.tsx` now calls `api.portal.inviteContact(...)`
+  to create the tokenized invite server-side, then uses the returned token to
+  build the `signInWithOtp` redirect to `/portal/dashboard?invite=<token>` —
+  the same pattern already proven for staff invites in `team/page.tsx`. The
+  backend's own `_send_invite_email` link (which pointed at the same dead
+  `/portal` page) was corrected to the same `/portal/dashboard?invite=` target.
+  The now-fully-orphaned legacy `/portal/page.tsx` was replaced with a redirect
+  stub to `/portal/dashboard` (preserving `?invite=` if present) rather than
+  deleted outright, so any already-sent invite email or bookmark still lands
+  somewhere functional.
+- **HIGH — migration 153's original blanket `REVOKE UPDATE` broke a live
+  feature.** `app/settings/page.tsx`'s "save my display name"
+  (`.from("users").update({full_name}).eq("auth_user_id", ...)`) is a real,
+  reachable self-service feature the migration's own comment incorrectly
+  claimed didn't exist. **Fixed** by the column-level `GRANT UPDATE
+  (full_name)` described above — caught independently by both a live-Postgres
+  proof pass and an adversarial review agent before commit.
+- **MEDIUM (tracked as a Tier 3 follow-up, not blocking):**
+  `client_portal_users_own_firm` (migration 109, untouched by this milestone)
+  is `FOR ALL USING/WITH CHECK (firm_id = get_my_firm_id())` — any authenticated
+  firm staff member can directly INSERT/UPDATE a `client_portal_users` row from
+  the browser (e.g. self-activating an arbitrary contact for any client in
+  their own firm), bypassing `invite_contact`'s token/TTL/audit trail entirely.
+  Not a cross-tenant confidentiality escalation (staff already have equivalent
+  CA-side access to the same client data) but a real audit-integrity gap.
+  Recommended fix mirrors this milestone's `users` hardening: make
+  `client_portal_users` SELECT-only for `authenticated`, all mutation via
+  service-role.
+- **LOW (not fixed, cosmetic):** `routers/identity.py:accept_invite` parses
+  `invite_expires_at` without the `isinstance(..., datetime)` guard that
+  `portal_access_service.accept_portal_invite` has; harmless today since
+  PostgREST always returns ISO strings, but worth aligning for consistency.
+
+**Verified:** migration 153 applies cleanly on Postgres 16 (`test_migrations_apply.py`,
+drift baseline unchanged at 11); `test_schema_contract.py` passes; 7 previously-
+passing `test_portal_foundation.py` tests that encoded the old auto-bind
+behavior were rewritten to the explicit-accept model, plus new regression locks
+(`test_membership_listing_never_auto_binds_a_matching_email`,
+`test_accept_invite_wrong_token_rejected`, `test_accept_invite_email_mismatch_rejected`,
+`test_accept_invite_expired_rejected`, `test_accept_invite_is_single_use`); 7 new
+tests in `test_identity_admin.py` cover the same matrix for staff invites,
+including `test_accept_invite_cannot_forge_firm_or_role_via_request_body`. `tsc
+--noEmit` and a full `next build` (static export) both pass with no errors
+across every touched page. Full backend suite: 2165 passed / 52 skipped (23
+pre-existing, unrelated failures in `test_hardening.py`/`test_phase3_*.py`
+confirmed present on the pre-R2.5 baseline too — a test-isolation issue, not a
+regression from this milestone).
+
+**Next:** R2.6 (RLS predicate + migration-hygiene backlog), R2.4 (tenancy DB
+backstop, F1/F4), R2.1 (year-end schema repair, F9/F10).
 
