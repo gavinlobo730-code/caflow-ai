@@ -1211,3 +1211,165 @@ remain, reconfirmed unaffected).
 `get_supabase_client` production breakage (R2.4's finding), the year-end
 closing-mechanism and duplicate-implementation follow-ups noted above.
 
+## Milestone R2.3 — Correct TDS & ITR statutory logic, F17/F18 (DELIVERED)
+
+**Goal:** the same income-tax slab/rebate/surcharge numbers were hand-copied
+into five places (backend ITR engine, backend payroll §192, three frontend
+files) and had drifted to three different FYs' law — one copy (the
+income-tax deductions page) also carried a 10× paise-scaling bug that made
+every slab boundary wrong by an order of magnitude (F18); the vendor-payment
+TDS engine (F17) had stale pre-2025 thresholds, float arithmetic, and a
+nonexistent "April 31" Q4 due date. Rebuild all of it as FY-versioned data
+with one source of truth per domain.
+
+**Governing product decision (explicit user instruction, obtained by pausing
+mid-milestone):** FY 2025-26 is the verified statutory baseline; FY 2026-27
+must NOT be invented — its entries are carried forward from FY 2025-26 with
+an explicit `verified=False` flag, surfaced through the API (`rates_verified`
+on `/api/income-tax/compute`, `/api/tds/compute-amount`, `/api/tds/sections`,
+and a 26Q builder warning) so a CA sees "pending statutory verification"
+rather than silently trusting unconfirmed numbers. Updating a year to
+verified figures is a pure data change in one file per domain.
+
+**New single sources of truth (rules as data — this also front-loads the
+core of R3.1):**
+- `domain/income_tax/statutory_rates.py` — FY-versioned slabs (new regime +
+  old general/senior/very-senior), regime-specific standard deductions,
+  §87A rebate rules (threshold/cap/`marginal_relief` flag), surcharge
+  brackets with the new-regime 25% cap and the capital-gains 15% cap, cess;
+  plus pure integer-paise helpers (`slab_tax_paise`, `apply_rebate_87a`,
+  `apply_surcharge_with_marginal_relief`, `resolve_surcharge_bracket`,
+  `cess_paise`) shared by every consumer.
+- `domain/tds/section_rates.py` — FY-versioned vendor-TDS thresholds/rates
+  in integer basis points, and `quarter_dates(fy, quarter)` computing the
+  24Q/26Q calendar for ANY year per Rule 31A.
+
+**F18 (ITR engine + deductions page) fixes:**
+- Old regime standard deduction corrected to ₹50,000 (was applying the new
+  regime's ₹75,000 to both regimes — Section 16(ia) has been ₹50k for the
+  old regime since Finance Act 2019).
+- §87A rebate: marginal relief added for the NEW regime (the famous Budget
+  2025 example — taxable ₹12,10,000 → tax ₹10,000, not ₹61,500 — passes
+  exactly). The old regime is a statutory hard cliff (no 115BAC(1A)
+  proviso): crossing ₹5,00,000 forfeits the whole ₹12,500. Encoded as data
+  (`RebateRule.marginal_relief`), not a code branch.
+- Surcharge: Section 2(29C) marginal relief on the slab component (crossing
+  ₹50L by ₹10,000 can never cost more than ₹10,000 extra), new-regime cap
+  at 25%, and the 15% cap on ALL capital-gains tax — 111A/112A (FA 2019)
+  and Section 112 LTCG on any asset (FA 2022). Flat-rate CG tax gets the
+  flat capped bracket rate; only slab tax rides the marginal-relief math.
+- `fy` request field + `fy`/`rates_verified` response fields end to end
+  (engine dataclasses → Pydantic models → frontend types).
+- `apps/web/app/income-tax/deductions/page.tsx` — the file with the 10×
+  scaling bug (`const L = 100 * 100` treating ₹1L as ₹10,000, so e.g. the
+  ₹4,00,000 nil band ended at ₹40,000) — no longer computes ANY tax. Its
+  duplicate engine (which also wrongly granted HRA exemption against
+  new-regime income) is deleted; it now POSTs to `/api/income-tax/compute`
+  twice (one call per regime, debounced 400ms), renders the backend's
+  deduction/eligibility figures, shows an "unverified FY" banner off
+  `rates_verified`, and saves through `saveTaxPlanningRecord` instead of a
+  raw browser upsert that previously wrote to a nonexistent `fy` column
+  with a mismatched conflict target — two more latent bugs fixed in
+  `lib/data/income-tax.ts`: `computeITR()` sent no Authorization header
+  (would 401 against any real deployment) and the upsert's `onConflict`
+  omitted `firm_id`, not matching the table's actual
+  `UNIQUE (firm_id, client_id, financial_year)`.
+
+**F17 (payroll §192 + vendor TDS) fixes:**
+- `routers/payroll.py::_compute_tds_192` — was float arithmetic end to end
+  (`rupees = paise / 100`, `tax * 1.04`) on FY 2024-25 slabs with no §87A
+  and no surcharge; now integer paise via the registry, with rebate +
+  marginal relief + surcharge + marginal relief + cess (an employee at ₹5L
+  annual taxable now correctly withholds ZERO — the rebate zone — instead
+  of ₹866/month). `_compute_slip`'s hardcoded ₹50,000 "(Finance Act 2018)"
+  standard deduction → the FY's new-regime ₹75,000 (payroll withholding
+  defaults to the new regime per 115BAC(1A)). `create_payroll_run` derives
+  the FY from the payroll month, not "today", so a delayed March run posted
+  in April uses the right year's law.
+- `domain/tds/tds_computer.py` — `SECTION_THRESHOLDS` is now a derived
+  legacy view of `section_rates.py`; thresholds updated to Finance Act 2025
+  (193/194/194A/194K → ₹10k, 194D/G/H → ₹20k, 194I → ₹50k/month, 194J →
+  ₹50k, 194LA → ₹5L; 194C's ₹30k/₹1L-aggregate unchanged) and rates to
+  Finance (No. 2) Act 2024 (194D-individual/194G/194H 5% → 2%).
+  `compute_tds_amount` (the `/api/tds/compute-amount` calculator) delegated
+  to `resolve_tds` — killing its `paise * float_rate` arithmetic AND its
+  ignoring of the 194C aggregate. Both take an optional `fy`;
+  `purchase_bills.py` passes the BILL's FY (derived from bill_date), so a
+  late-entered prior-year bill resolves that year's thresholds.
+- Quarter calendar: the FY2025-26-pinned `QUARTER_DATES` dict is gone —
+  `quarter_dates(fy, quarter)` computes any year. `routers/
+  tds_workspace.py::_tds_return_due_date` no longer returns Q4 =
+  `"{start_year}-04-31"` — a date that does not exist, in the wrong month
+  AND wrong year (FY2025-26 Q4 was "2025-04-31"; statutory is 2026-05-31
+  per Rule 31A). CLAUDE.md's "31st of month following quarter end" summary
+  is documented at the fix as not literally applicable to Q4.
+- Frontend payroll: the two independently-drifted client-side §192
+  calculators (payroll/page.tsx — FY2023-24-ish ₹7L rebate ceiling, no
+  surcharge; payroll/reports/page.tsx — ad-hoc slab boundaries matching no
+  real FY) are consolidated into ONE shared module
+  (`lib/services/payrollTdsEstimate.ts`) with FY 2025-26 figures
+  value-for-value cross-verified against the Python engine at 13 income
+  levels spanning every slab and surcharge bracket (exact match including
+  marginal-relief and 25%-cap zones), plus the stale "≤ ₹7,00,000" help
+  text corrected to the FY 2025-26 ₹12L ceiling.
+
+**Adversarial review (fresh-context reviewer instructed to refute):** six
+findings, all resolved or expressly tracked —
+1. *Confirmed real (high):* my first pass wrongly generalized §87A marginal
+   relief to the OLD regime (understating tax by up to ~₹14.5k in the
+   ₹5,00,001–₹5,15,625 window). The statute conditions the proviso on
+   115BAC(1A). Fixed via the `marginal_relief` data flag; the two tests
+   that had enshrined the wrong behaviour now assert the cliff.
+2. *Confirmed real (high, documentation):* the shared frontend TDS module's
+   docstring claimed the backend is "the authoritative persisted
+   computation" — false for `/payroll`'s Generate Payslips, which still
+   persists browser-computed slips via direct Supabase inserts (the
+   clients/[id]/payroll page correctly posts to `/api/payroll/runs`).
+   Docstring rewritten to state this honestly; the actual migration stays
+   R2.10 (already tracked, deferred pending frontend test infra).
+3. *Confirmed real (medium):* stale ₹7L rebate text on the reports page —
+   fixed (above).
+4. *Confirmed real (medium):* Section 112 LTCG-other tax was folded into
+   the slab marginal-relief bucket, contradicting the code's own rationale
+   for excluding equity CG — and understating the statutorily correct
+   treatment anyway, since FA 2022 caps 112's surcharge at 15%. Fixed: all
+   flat-rate CG (111A/112A/112) now takes the capped flat bracket rate;
+   new regression test proves the 112 component pays exactly 15% while the
+   assessee's ordinary income pays 25%.
+5. *Confirmed real (low-medium):* every keystroke on the deductions page
+   fired two backend calls — 400ms debounce added (reviewer verified the
+   cancellation flag already prevented stale-response races).
+6. *Valid, pre-existing, out of scope:* Section 80CCD(2) (employer NPS) is
+   entirely unimplemented — notable because it IS deductible under the new
+   regime, unlike the rest of Chapter VI-A. Tracked as a roadmap follow-up,
+   not silently ignored.
+
+**Also documented, deliberately not fixed here:** the dead
+`tds_section_limits` table (migration 037 — zero runtime readers; candidate
+for retirement in R3.1 or a migration-hygiene pass); Section 206AB's
+possible omission by Finance Act 2025 (the non-filer doubled-rate check in
+`tds_validator.py` may be obsolete for FY 2025-26 — needs verification
+against the Act before changing a compliance-conservative behaviour); the
+capital-gains rates themselves (111A 20%, 112A/112 12.5%, ₹1.25L exemption)
+remain inline constants in `itr_engine.py` — correct today (Budget 2024)
+but belonging in the FY registry when R3.1 generalises it; the deductions
+page still writes `tax_planning_records` from the browser (RLS-protected,
+and now writing correct backend-computed numbers, but portal-write
+consolidation belongs with R2.10's frontend-persistence cleanup).
+
+**Verified:** 2,248 backend tests pass (24 new in
+`test_tds_section_rates.py`, 43 in the rewritten `test_itr_engine.py`, 26 in
+`test_statutory_rates.py`; the same 23 pre-existing DB-dependent failures
+noted since R2.5 remain, re-confirmed unrelated by running them against the
+pre-change tree). Statutory worked examples pass exactly: the Budget 2025
+₹12,10,000 → ₹10,000 marginal-relief illustration; the old-regime ₹5,10,000
+cliff (₹14,500, rebate forfeit); ₹20L new-regime cess arithmetic; the 194C
+five-bill aggregate-threshold sequence; Q4 due date 31 May of the FY's end
+year for any FY. TS port cross-verified value-for-value against the Python
+engine (13 income levels). Frontend: `tsc --noEmit` clean, ESLint clean,
+`next build` succeeds (165 pages).
+
+**Next:** R2.2 (missing tables, F5), R2.7 (workflow engine, F11/F12), then
+the remaining Tier 2 sequence; 80CCD(2), 206AB verification and the CG-rate
+registry move queue behind R3.1/R2.10 as noted.
+

@@ -277,12 +277,21 @@ def create_purchase_bill(
                          .gte("bill_date", fy_start).lte("bill_date", fy_end)
                          .execute().data) or []
                 fy_prior = sum(int(b.get("taxable_amount_paise") or 0) for b in prior)
+            # Resolve thresholds/rates for the FY the BILL falls in, not "today" —
+            # a bill entered late for a prior FY must use that year's law.
+            try:
+                _bill_d = datetime.strptime(str(data["bill_date"])[:10], "%Y-%m-%d").date()
+                _fy_start_year = _bill_d.year if _bill_d.month >= 4 else _bill_d.year - 1
+                bill_fy = f"{_fy_start_year}-{str(_fy_start_year + 1)[2:]}"
+            except (ValueError, KeyError):
+                bill_fy = None  # malformed/missing date → registry defaults to current FY
             try:
                 _tds = TDSComputer().resolve_tds(
                     section=tds_section,
                     taxable_paise=total_taxable,
                     fy_prior_taxable_paise=fy_prior,
                     is_company=is_company_pan(vendor.get("pan")),
+                    fy=bill_fy,
                 )
             except ValueError as ve:
                 raise HTTPException(status_code=422, detail=str(ve))

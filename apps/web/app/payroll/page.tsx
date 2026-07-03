@@ -16,6 +16,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatPaise } from "@/lib/services/formatting";
+import { monthlyTdsPaiseNewRegime } from "@/lib/services/payrollTdsEstimate";
 
 const EMPLOYEE_IMPORT_COLUMNS = [
   { key: "name",                    label: "Employee Name",       required: true,  hint: "e.g. Ramesh Kumar" },
@@ -100,46 +101,6 @@ function employeeGrossPaise(emp: Employee): number {
 }
 
 /**
- * Monthly salary TDS under the new regime (IT Act §192), in integer paise.
- *
- * FY 2024-25 (AY 2025-26): standard deduction ₹75,000; slabs 0–3L nil, 3–7L 5%,
- * 7–10L 10%, 10–12L 15%, 12–15L 20%, >15L 30%; §87A rebate makes tax nil up to
- * ₹7,00,000 taxable (with marginal relief just above the ceiling); 4% cess.
- *
- * Input and output are PAISE. The previous version compared a paise-scale annual
- * gross against rupee-scale thresholds (e.g. `annualGross > 1500000` meaning
- * ₹15,000 instead of ₹15,00,000) while the base amounts were paise, so it
- * massively over-deducted (finding F15). NOTE: this statutory logic belongs
- * server-side — the payroll compute should route through the backend
- * (POST /api/payroll/runs). Kept here, corrected, until that migration lands.
- *
- * PENDING (roadmap R2.3/R3.1 — FY-versioned rules): parameters here are FY
- * 2024-25 and must be updated to the current financial year (Budget 2025 revised
- * the new-regime slabs, standard deduction and §87A ceiling from FY 2025-26) —
- * across the backend engines too, so both stay in step. It also omits surcharge
- * (>₹50L taxable) and §80CCD(2)/§192(2B) declarations; this is a labelled monthly
- * ESTIMATE, trued up in the return.
- */
-function monthlyTdsPaiseNewRegime(annualGrossPaise: number): number {
-  const STD_DEDUCTION = 7_500_000;   // ₹75,000 in paise (new regime)
-  const REBATE_CEIL = 70_000_000;    // ₹7,00,000 taxable in paise (§87A)
-  const taxable = Math.max(0, annualGrossPaise - STD_DEDUCTION);
-  if (taxable <= REBATE_CEIL) return 0;
-
-  // Cumulative base tax (paise) at each slab floor + marginal rate above it.
-  let tax: number;
-  if (taxable > 150_000_000)      tax = 14_000_000 + Math.floor((taxable - 150_000_000) * 30 / 100);
-  else if (taxable > 120_000_000) tax =  8_000_000 + Math.floor((taxable - 120_000_000) * 20 / 100);
-  else if (taxable > 100_000_000) tax =  5_000_000 + Math.floor((taxable - 100_000_000) * 15 / 100);
-  else                            tax =  2_000_000 + Math.floor((taxable -  70_000_000) * 10 / 100);
-
-  // §87A marginal relief: tax cannot exceed the income above the ₹7,00,000 ceiling.
-  tax = Math.min(tax, taxable - REBATE_CEIL);
-  tax = tax + Math.floor(tax * 4 / 100);   // 4% health & education cess
-  return Math.floor(tax / 12);
-}
-
-/**
  * Compute payroll for one employee — all integer paise arithmetic.
  * IT Act Section 192: TDS on salary via new-regime basic slab rates.
  * ESI Act: employee 0.75%, employer 3.25% of gross (gross <= Rs 21,000/month).
@@ -177,8 +138,9 @@ function computeSlip(emp: Employee, ptState: string): {
     pt = 20800;
   }
 
-  // TDS estimate — IT Act §192, new regime (FY 2024-25). Integer paise; see
-  // monthlyTdsPaiseNewRegime for the slab/rebate/cess logic and the F15 fix note.
+  // TDS estimate — IT Act §192, new regime (FY 2025-26). Integer paise; see
+  // monthlyTdsPaiseNewRegime for the slab/rebate/surcharge/cess logic and the
+  // F15/F17 fix notes.
   const tds = monthlyTdsPaiseNewRegime(gross * 12);
 
   const net = gross - pf - esi - pt - tds;
