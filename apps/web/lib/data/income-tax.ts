@@ -44,6 +44,8 @@ export interface HRAInput {
 }
 
 export interface ComputeITRRequest {
+  /** Financial year e.g. "2025-26" — omit to default to the current FY. */
+  fy?: string;
   gross_salary_paise?: number;
   other_income_paise?: number;
   house_property_income_paise?: number;
@@ -69,6 +71,8 @@ export interface ComputeITRRequest {
 
 export interface ITRComputeResult {
   regime: "new" | "old";
+  fy: string;
+  rates_verified: boolean;
   income: {
     gross_total_paise: number;
     standard_deduction_paise: number;
@@ -111,10 +115,13 @@ export interface TaxPlanningRecord {
   lic_paise?: number;
   nsc_paise?: number;
   home_loan_principal_paise?: number;
+  tuition_fees_paise?: number;
+  other_80c_paise?: number;
   hra_paise?: number;
   nps_80ccd_paise?: number;
   health_insurance_80d_paise?: number;
   home_loan_interest_24b_paise?: number;
+  other_deductions_paise?: number;
   regime?: "old" | "new";
   tax_paise?: number;
 }
@@ -123,9 +130,14 @@ export interface TaxPlanningRecord {
 
 /** Compute ITR via backend engine. All computation server-side. */
 export async function computeITR(req: ComputeITRRequest): Promise<ITRComputeResult> {
+  const { data: { session } } = await getSupabaseClient().auth.getSession();
+  const token = session?.access_token;
   const res = await fetch(`${API_BASE}/api/income-tax/compute`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(req),
   });
   if (!res.ok) throw new Error(`ITR compute failed: ${res.statusText}`);
@@ -184,7 +196,7 @@ export async function saveTaxPlanningRecord(record: TaxPlanningRecord): Promise<
       firm_id: firmId,
       ...record,
       updated_at: new Date().toISOString(),
-    }, { onConflict: "client_id,financial_year" })
+    }, { onConflict: "firm_id,client_id,financial_year" })
     .select("id")
     .single();
   if (error || !data) throw new Error(error?.message ?? "Failed to save tax planning record");

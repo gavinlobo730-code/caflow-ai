@@ -8,7 +8,7 @@ PT: State-specific professional tax slab (default: Karnataka slab used as fallba
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 import math
 
 from models.common import api_response
@@ -16,6 +16,10 @@ from models.payroll import EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, Payr
 from core.permissions import rbac
 from services.timeline_service import timeline_service
 from services.internal_client_service import assert_not_internal_for_payroll
+from domain.income_tax.statutory_rates import (
+    rates_for, slab_tax_paise, apply_rebate_87a,
+    apply_surcharge_with_marginal_relief, cess_paise, current_fy,
+)
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
 
@@ -74,10 +78,13 @@ def _compute_esi(gross_paise: int) -> dict:
     return {"employee": employee, "employer": employer}
 
 
-def _compute_slip(emp: dict, attendance: Optional[dict] = None) -> dict:
+def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str] = None) -> dict:
     """
     Compute a single payroll slip in integer paise. No floating point on final values.
-    IT Act §192: TDS on salary — simplified monthly deduction (annual / 12).
+    IT Act Section 192: TDS on salary — simplified monthly deduction (annual
+    projected / 12). `fy` should be the financial year the payroll month
+    falls in (see current_fy()) so a retroactively-run payroll for an earlier
+    FY doesn't pick up a later year's rates; defaults to today's FY if omitted.
     """
     working_days  = (attendance or {}).get("working_days", 26)
     days_present  = (attendance or {}).get("days_present", 26)
@@ -97,12 +104,16 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None) -> dict:
     esi  = _compute_esi(gross) if emp.get("esi_applicable") else {"employee": 0, "employer": 0}
     pt   = _compute_pt(gross, emp.get("pt_state")) if emp.get("pt_applicable") else 0
 
-    # IT Act §192: simplified monthly TDS = (annual taxable - std deduction ₹50k) / 12
-    # Standard deduction ₹50,000 per annum (Finance Act 2018)
+    # IT Act §192: simplified monthly TDS = annual tax on (projected annual
+    # gross - standard deduction) / 12. Standard deduction and slabs come
+    # from the FY-versioned registry (domain/income_tax/statutory_rates.py) —
+    # the new-regime figure applies since payroll withholding defaults to the
+    # new regime (see _compute_tds_192).
+    rates = rates_for(fy)
     annual_gross = gross * 12
-    std_deduction_paise = 5000000  # ₹50,000
+    std_deduction_paise = rates.new_regime_standard_deduction_paise
     taxable_annual = max(0, annual_gross - std_deduction_paise)
-    tds_monthly = _compute_tds_192(taxable_annual)
+    tds_monthly = _compute_tds_192(taxable_annual, fy=fy)
 
     deductions = pf["employee"] + esi["employee"] + pt + tds_monthly
     net = gross - deductions
@@ -128,30 +139,33 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None) -> dict:
     }
 
 
-def _compute_tds_192(taxable_annual_paise: int) -> int:
+def _compute_tds_192(taxable_annual_paise: int, fy: Optional[str] = None) -> int:
     """
-    IT Act §192: TDS on salary, new tax regime FY 2024-25 slabs.
-    Monthly deduction = annual tax / 12.
+    IT Act Section 192: TDS on salary, computed on projected annual taxable
+    income. Employees are withheld under the new tax regime by default —
+    Section 115BAC(1A) makes the new regime the default for individuals, and
+    absent an employee declaration opting for the old regime (not yet
+    modelled by this payroll module — see roadmap), the employer withholds
+    on the new-regime basis. Includes Section 87A rebate (with marginal
+    relief) and Section 2(29C) surcharge (with marginal relief) — a
+    correctly-configured employer payroll system applies both when
+    projecting a high earner's annual withholding, not just the plain slab
+    rate. Rates come from the FY-versioned registry (statutory_rates.py),
+    the same source of truth used by the ITR engine. Integer paise
+    throughout — never float (CLAUDE.md).
     """
-    rupees = taxable_annual_paise / 100
-    tax = 0.0
-    if rupees <= 300000:
-        tax = 0
-    elif rupees <= 700000:
-        tax = (rupees - 300000) * 0.05
-    elif rupees <= 1000000:
-        tax = 20000 + (rupees - 700000) * 0.10
-    elif rupees <= 1200000:
-        tax = 50000 + (rupees - 1000000) * 0.15
-    elif rupees <= 1500000:
-        tax = 80000 + (rupees - 1200000) * 0.20
-    else:
-        tax = 140000 + (rupees - 1500000) * 0.30
-
-    # 4% health & education cess (Finance Act §2)
-    tax = tax * 1.04
-    monthly = math.floor((tax / 12) * 100)  # convert to paise
-    return monthly
+    rates = rates_for(fy)
+    slabs = rates.new_regime_slabs
+    tax = slab_tax_paise(taxable_annual_paise, slabs)
+    tax_after_rebate = apply_rebate_87a(taxable_annual_paise, tax, rates.new_regime_rebate)
+    surcharge = apply_surcharge_with_marginal_relief(
+        taxable_annual_paise, tax_after_rebate, rates.surcharge_brackets,
+        rates.new_regime_surcharge_cap_percent,
+        lambda income_paise: slab_tax_paise(income_paise, slabs),
+    )
+    annual_tax = tax_after_rebate + surcharge
+    annual_tax += cess_paise(annual_tax, rates)
+    return annual_tax // 12
 
 
 # ─── Employee Master ──────────────────────────────────────────────────────────
@@ -284,6 +298,7 @@ def create_run(
     emps = db.table("payroll_employees").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("status", "active").execute().data or []
 
     m, y = int(month.split("-")[1]), int(month.split("-")[0])
+    fy = current_fy(date(y, m, 1))  # FY of the payroll period, not "today"
 
     slips = []
     totals = {"gross": 0, "net": 0, "pf": 0, "esi": 0, "pt": 0, "tds": 0}
@@ -292,7 +307,7 @@ def create_run(
         att_res = db.table("attendance").select("*").eq("employee_id", emp["id"]).eq("month", m).eq("year", y).execute()
         attendance = (att_res.data or [None])[0]
 
-        slip = _compute_slip(emp, attendance)
+        slip = _compute_slip(emp, attendance, fy=fy)
         slip["run_id"]      = run_id
         slip["employee_id"] = emp["id"]
 

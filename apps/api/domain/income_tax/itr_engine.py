@@ -1,8 +1,11 @@
 """
 Income Tax Return computation engine.
 IT Act 1961 — Section 80C, 80CCD, 80D, 80G, 80TTA, 80TTB, 10(13A), 24(b), 87A.
-New regime slabs: Finance Act 2025 (FY 2025-26 onwards).
-Old regime slabs: Standard slab for individuals (non-senior, senior, very-senior).
+
+Slab/rebate/surcharge rates come from domain.income_tax.statutory_rates — the
+single, FY-versioned source of truth (Tier 2 R2.3). See that module's
+docstring for which financial years are verified against a confirmed Finance
+Act versus carried forward pending confirmation.
 
 All monetary values in integer paise. Never float.
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
@@ -11,8 +14,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
+from domain.income_tax.statutory_rates import (
+    FYTaxRates, apply_rebate_87a, apply_surcharge_with_marginal_relief,
+    cess_paise, rates_for, resolve_surcharge_bracket, slab_tax_paise,
+)
+
 
 # ── Constants (all paise) ─────────────────────────────────────────────────────
+# Chapter VI-A deduction limits are stable across recent Finance Acts (unlike
+# the slabs/rebate/surcharge in statutory_rates.py) — kept here rather than
+# FY-versioned unless a specific limit is found to have changed.
 
 # IT Act Section 80C — aggregate limit
 LIMIT_80C_PAISE: int = 150_000 * 100
@@ -34,25 +45,6 @@ LIMIT_80TTB_PAISE: int = 50_000 * 100
 
 # IT Act Section 24(b) — home loan interest self-occupied
 LIMIT_24B_PAISE: int = 200_000 * 100
-
-# Standard deduction — Finance Act 2024 (FY 2024-25 onwards)
-STANDARD_DEDUCTION_PAISE: int = 75_000 * 100
-
-# IT Act Section 87A rebate thresholds
-# New regime: income ≤ ₹12L → zero tax
-REBATE_87A_NEW_THRESHOLD_PAISE: int = 1_200_000 * 100
-# Old regime: income ≤ ₹5L → zero tax
-REBATE_87A_OLD_THRESHOLD_PAISE: int = 500_000 * 100
-REBATE_87A_OLD_MAX_PAISE: int = 12_500 * 100
-
-# Surcharge thresholds (IT Act Section 2(29C))
-SURCHARGE_THRESHOLD_50L_PAISE: int = 5_000_000 * 100
-SURCHARGE_THRESHOLD_1CR_PAISE: int = 10_000_000 * 100
-SURCHARGE_THRESHOLD_2CR_PAISE: int = 20_000_000 * 100
-SURCHARGE_THRESHOLD_5CR_PAISE: int = 50_000_000 * 100
-
-# Health and Education Cess — 4%
-CESS_RATE_BPS: int = 400
 
 
 # ── Data classes ──────────────────────────────────────────────────────────────
@@ -137,6 +129,10 @@ class ITRComputeRequest:
     is_senior_citizen: bool = False       # 60-80 years
     is_very_senior_citizen: bool = False  # > 80 years
 
+    # Financial year (e.g. "2025-26"); defaults to the current FY. See
+    # domain.income_tax.statutory_rates for which years are verified.
+    fy: Optional[str] = None
+
     # Deductions (only applicable under old regime except standard deduction)
     s80c: Deductions80C = field(default_factory=Deductions80C)
     nps_80ccd1b_paise: int = 0
@@ -183,6 +179,8 @@ class ITRComputeResult:
 
     # Meta
     regime: str = "new"
+    fy: str = ""
+    rates_verified: bool = True  # False -> see domain.income_tax.statutory_rates
     warnings: list[str] = field(default_factory=list)
     validation_errors: list[str] = field(default_factory=list)
 
@@ -197,11 +195,19 @@ class ITREngine:
     """
 
     def compute(self, req: ITRComputeRequest) -> ITRComputeResult:
+        rates = rates_for(req.fy)
         result = ITRComputeResult()
         result.regime = "new" if req.use_new_regime else "old"
+        result.fy = rates.fy
+        result.rates_verified = rates.verified
 
-        # 1. Standard deduction on salary (both regimes, IT Act Section 16(ia))
-        std_ded = min(STANDARD_DEDUCTION_PAISE, req.gross_salary_paise)
+        # 1. Standard deduction on salary (IT Act Section 16(ia)). F17 fix:
+        # this used to apply the NEW regime's ₹75,000 to both regimes — the
+        # old regime's standard deduction has been ₹50,000 since Finance Act
+        # 2019 and was never revised alongside the new-regime increases.
+        std_ded_limit = (rates.new_regime_standard_deduction_paise if req.use_new_regime
+                         else rates.old_regime_standard_deduction_paise)
+        std_ded = min(std_ded_limit, req.gross_salary_paise)
         result.standard_deduction_paise = std_ded
 
         # 2. Gross Total Income
@@ -273,15 +279,15 @@ class ITREngine:
                           + req.capital_gains_ltcg_paise + req.capital_gains_ltcg_other_paise)
         result.taxable_income_paise = taxable_income
 
-        # 5. Tax computation
-        if req.use_new_regime:
-            tax = self._new_regime_tax(ordinary_taxable)
-        else:
-            tax = self._old_regime_tax(ordinary_taxable, req.is_senior_citizen, req.is_very_senior_citizen)
+        # 5. Tax computation (ordinary/slab income only)
+        slabs = self._slabs_for(rates, req.use_new_regime, req.is_senior_citizen, req.is_very_senior_citizen)
+        tax = slab_tax_paise(ordinary_taxable, slabs)
 
-        # Special rate capital gains (add on top of slab tax)
+        # Special rate capital gains (add on top of slab tax; never eligible
+        # for Chapter VI-A deductions or §87A rebate/marginal relief below —
+        # see the F17 fix note ahead of the rebate step).
         # IT Act Section 111A: STCG on equity @ 20% (Budget 2024)
-        stcg_tax = req.capital_gains_stcg_paise * 2000 // 10000
+        stcg_tax = req.capital_gains_stcg_paise * 20 // 100
         # IT Act Section 112A: LTCG on equity @ 12.5% (Budget 2024), exemption ₹1.25L
         ltcg_exempt = 125_000 * 100
         ltcg_taxable = max(0, req.capital_gains_ltcg_paise - ltcg_exempt)
@@ -289,27 +295,54 @@ class ITREngine:
         # IT Act Section 112: LTCG other @ 12.5% (post-Budget 2024)
         ltcg_other_tax = req.capital_gains_ltcg_other_paise * 1250 // 10000
 
-        tax_before_rebate = tax + stcg_tax + ltcg_tax + ltcg_other_tax
-
-        # 6. Rebate u/s 87A
-        rebate = 0
-        if req.use_new_regime:
-            if taxable_income <= REBATE_87A_NEW_THRESHOLD_PAISE:
-                rebate = tax_before_rebate  # full tax wiped (only slab tax, not special rate CG tax)
-                rebate = min(rebate, tax)  # rebate only against slab tax
-        else:
-            if taxable_income <= REBATE_87A_OLD_THRESHOLD_PAISE:
-                rebate = min(tax, REBATE_87A_OLD_MAX_PAISE)
+        # 6. Rebate u/s 87A — reduces slab tax only, never special-rate CG tax.
+        # Pre-existing, deliberately conservative position: the CBDT's own ITR
+        # utility has historically disallowed an 87A rebate claim against
+        # 111A/112A income, a contested point across rulings — not revisited
+        # here, since F17 only asked for correct MARGINAL RELIEF, not a
+        # change to what the rebate applies against.
+        # F17 fix: previously a cliff in BOTH regimes — now marginal relief
+        # applies above the threshold, but only under the new regime, where
+        # the 115BAC(1A) proviso grants it. The old regime's rebate is a
+        # statutory hard cliff (crossing ₹5,00,000 by ₹1 forfeits the whole
+        # ₹12,500) — encoded on the RebateRule as data, not a code branch.
+        rebate_rule = rates.new_regime_rebate if req.use_new_regime else rates.old_regime_rebate
+        rebate = tax - apply_rebate_87a(taxable_income, tax, rebate_rule)
         result.rebate_87a_paise = rebate
-        result.tax_before_cess_paise = max(0, tax_before_rebate - rebate)
+        ordinary_tax_after_rebate = max(0, tax - rebate)
+        capital_gains_tax = stcg_tax + ltcg_tax + ltcg_other_tax  # Sections 111A + 112A + 112
+        result.tax_before_cess_paise = ordinary_tax_after_rebate + capital_gains_tax
 
-        # 7. Surcharge (IT Act Section 2(29C))
-        surcharge = self._compute_surcharge(result.tax_before_cess_paise, taxable_income, req.use_new_regime)
+        # 7. Surcharge (IT Act Section 2(29C)). F17 fixes:
+        #  (a) marginal relief on the slab-tax component, so crossing a
+        #      surcharge threshold by a few rupees costs a few rupees, not a
+        #      jump to the full new rate on the whole tax amount;
+        #  (b) capital-gains surcharge capped at 15% even when the assessee's
+        #      overall bracket is higher — Sections 111A/112A since Finance
+        #      Act 2019, extended to Section 112 LTCG on ANY asset by Finance
+        #      Act 2022. Computed SEPARATELY from ordinary income's
+        #      surcharge, both using the SAME resolved bracket (driven by
+        #      total taxable income).
+        # Marginal relief applies only to the slab-tax component: the
+        # discontinuity it exists to smooth is a slab phenomenon, and the
+        # "tax at threshold income" baseline is well-defined only for tax
+        # that scales with income. Every flat-rate CG component (111A, 112A,
+        # 112) instead gets the flat capped bracket rate — one consistent
+        # treatment for all special-rate tax.
+        new_cap = rates.new_regime_surcharge_cap_percent if req.use_new_regime else None
+        slab_tax_at = lambda income: slab_tax_paise(income, slabs)  # noqa: E731
+        ordinary_surcharge = apply_surcharge_with_marginal_relief(
+            taxable_income, ordinary_tax_after_rebate,
+            rates.surcharge_brackets, new_cap, slab_tax_at,
+        )
+        cg_rate, _ = resolve_surcharge_bracket(
+            taxable_income, rates.surcharge_brackets, rates.capital_gains_surcharge_cap_percent)
+        cg_surcharge = capital_gains_tax * cg_rate // 100
+        surcharge = ordinary_surcharge + cg_surcharge
         result.surcharge_paise = surcharge
 
         # 8. Health and Education Cess @ 4% on (tax + surcharge)
-        cess_base = result.tax_before_cess_paise + surcharge
-        result.cess_paise = cess_base * CESS_RATE_BPS // 10000
+        result.cess_paise = cess_paise(result.tax_before_cess_paise + surcharge, rates)
         result.total_tax_paise = result.tax_before_cess_paise + surcharge + result.cess_paise
 
         # 9. Net payable / refund
@@ -327,133 +360,20 @@ class ITREngine:
 
         return result
 
-    # ── Slab computation ─────────────────────────────────────────────────────
+    # ── Slab selection ────────────────────────────────────────────────────────
 
-    def _new_regime_tax(self, income_paise: int) -> int:
-        """
-        New regime slabs — Finance Act 2025 (FY 2025-26 and 2026-27).
-        0-4L: 0%, 4-8L: 5%, 8-12L: 10%, 12-16L: 15%, 16-20L: 20%, 20-24L: 25%, 24L+: 30%
-        """
-        if income_paise <= 0:
-            return 0
-        L = 10_000  # 1 lakh = 100 rupees * 100 paise = 10000 paise... wait
-        # 1 lakh = 1,00,000 rupees = 1,00,000 * 100 paise = 1,00,00,000 paise = 10^7
-        # Let L = 100_000 * 100 = 10_000_000 paise per lakh? No...
-        # 1 rupee = 100 paise. 1 lakh rupees = 100_000 rupees = 100_000 * 100 paise = 10_000_000 paise
-        # But in our system: gross_salary_paise is in paise. So ₹4L = 4,00,000 rupees = 4,00,00,000 paise
-        # Actually let's just work in paise directly.
-        # ₹4,00,000 = 4_00_000 * 100 paise? No. ₹1 = 100 paise. ₹4L = ₹4,00,000 = 400000 * 100 = 40000000 paise
-        # That seems right. Let me use the same basis as the frontend: L = 100 * 100 = 10000 (1 lakh = 100 * L)
-        # So ₹4L = 400 * L = 400 * 10000 = 4000000... that doesn't match either.
-        # Frontend: const L = 100 * 100; // 1 lakh in paise = 10000 paise → 1L = 100*100 = 10000
-        # So L = 10000 means ₹100 = 1L? That's wrong. Let me check: 100 * 100 = 10000 paise = ₹100. So L = ₹100 not ₹1L.
-        # Frontend comment says "1 lakh in paise" = 10000. But 1 lakh = 100000 rupees = 10000000 paise. That's wrong!
-        # Actually: "1L rupees = 100 * 100 paise" means the frontend is using L as ₹1 = L/100 concept? No...
-        # Reading more carefully: "1L = 100*100 = 10000" -- this seems to be saying 1 unit of their system = ₹100.
-        # Then "400 * L" = 400 * 10000 = 4000000 paise = ₹40000 (not ₹4L).
-        # Wait, const L = 100 * 100 -- "100 cents * 100"? Actually I think the frontend has a bug:
-        # The comment says "1 lakh in paise = 10000" which is WRONG. 1 lakh rupees = 1,00,000 rupees = 1,00,00,000 paise.
-        # But looking at the slab: "SLAB = [{upto: 400*L, rate: 0}...]" with L=10000, 400*L = 4,000,000 paise = ₹40,000. Not ₹4L!
-        # I think there's a bug in the frontend. Let me use CORRECT values.
-        # ₹4L = 4,00,000 rupees = 4,00,00,000 paise? No: ₹1 = 100p, ₹4L = 400000 * 100p = 40,000,000p? That seems huge.
-        # Wait: we use paise everywhere. ₹1 = 100 paise. ₹1L = ₹1,00,000 = 1,00,000 * 100 = 1,00,00,000 paise.
-        # Hmm but all our paise values for individual items are like ₹50,000 = 5,000,000 paise (5 million). That seems right.
-        # So ₹12L threshold for 87A = 12,00,000 * 100 = 12,00,00,000 paise = 1,200,000,000 paise = 1.2 billion. That matches REBATE_87A_NEW_THRESHOLD_PAISE above.
-        # Let me just use absolute paise values directly.
-        # ₹4L = 4_00_000 rupees = 4_00_000 * 100 paise = 40_000_000 paise
-
-        slabs = [
-            (400_000 * 100, 0),       # 0-4L: 0%
-            (800_000 * 100, 500),     # 4-8L: 5% → 500 bps
-            (1_200_000 * 100, 1000),  # 8-12L: 10%
-            (1_600_000 * 100, 1500),  # 12-16L: 15%
-            (2_000_000 * 100, 2000),  # 16-20L: 20%
-            (2_400_000 * 100, 2500),  # 20-24L: 25%
-        ]
-        tax = 0
-        prev = 0
-        for upto, rate_bps in slabs:
-            if income_paise <= prev:
-                break
-            slab_income = min(income_paise, upto) - prev
-            tax += slab_income * rate_bps // 10000
-            prev = upto
-        if income_paise > 2_400_000 * 100:
-            tax += (income_paise - 2_400_000 * 100) * 3000 // 10000
-        return tax
-
-    def _old_regime_tax(self, income_paise: int, senior: bool, very_senior: bool) -> int:
-        """
-        Old regime slabs.
-        Non-senior: 0-2.5L=0%, 2.5-5L=5%, 5-10L=20%, 10L+=30%
-        Senior (60-80): 0-3L=0%, 3-5L=5%, 5-10L=20%, 10L+=30%
-        Very senior (80+): 0-5L=0%, 5-10L=20%, 10L+=30%
-        """
-        if income_paise <= 0:
-            return 0
-        L = 100_000 * 100  # 1 lakh in paise
-
+    @staticmethod
+    def _slabs_for(rates: FYTaxRates, use_new_regime: bool, senior: bool, very_senior: bool):
+        """Which of the FY's slab tables applies. Old regime distinguishes
+        senior (60-79, wider nil band) and very-senior (80+, wider still)
+        citizens; the new regime does not (Finance Act 2023 onwards)."""
+        if use_new_regime:
+            return rates.new_regime_slabs
         if very_senior:
-            brackets = [
-                (5 * L, 0),
-                (10 * L, 2000),
-            ]
-            top_rate = 3000
-        elif senior:
-            brackets = [
-                (3 * L, 0),
-                (5 * L, 500),
-                (10 * L, 2000),
-            ]
-            top_rate = 3000
-        else:
-            brackets = [
-                (250_000 * 100, 0),
-                (500_000 * 100, 500),
-                (1_000_000 * 100, 2000),
-            ]
-            top_rate = 3000
-
-        tax = 0
-        prev = 0
-        for upto, rate_bps in brackets:
-            if income_paise <= prev:
-                break
-            slab_income = min(income_paise, upto) - prev
-            tax += slab_income * rate_bps // 10000
-            prev = upto
-
-        if income_paise > prev:
-            tax += (income_paise - prev) * top_rate // 10000
-        return tax
-
-    def _compute_surcharge(self, tax_paise: int, income_paise: int, new_regime: bool) -> int:
-        """
-        IT Act Section 2(29C): surcharge on individuals.
-        New regime max surcharge 25% (capped by Finance Act 2023).
-        Old regime max surcharge 37% for >5 Cr.
-        """
-        if income_paise <= SURCHARGE_THRESHOLD_50L_PAISE:
-            return 0
-
-        if new_regime:
-            if income_paise <= SURCHARGE_THRESHOLD_1CR_PAISE:
-                rate_bps = 1000  # 10%
-            elif income_paise <= SURCHARGE_THRESHOLD_2CR_PAISE:
-                rate_bps = 1500  # 15%
-            else:
-                rate_bps = 2500  # 25% (capped for new regime)
-        else:
-            if income_paise <= SURCHARGE_THRESHOLD_1CR_PAISE:
-                rate_bps = 1000
-            elif income_paise <= SURCHARGE_THRESHOLD_2CR_PAISE:
-                rate_bps = 1500
-            elif income_paise <= SURCHARGE_THRESHOLD_5CR_PAISE:
-                rate_bps = 2500
-            else:
-                rate_bps = 3700  # 37%
-
-        return tax_paise * rate_bps // 10000
+            return rates.old_regime_slabs_very_senior
+        if senior:
+            return rates.old_regime_slabs_senior
+        return rates.old_regime_slabs_general
 
 
 itr_engine = ITREngine()

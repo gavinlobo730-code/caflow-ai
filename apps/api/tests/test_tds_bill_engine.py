@@ -40,16 +40,16 @@ def _bill(db, vendor_id, rate, no):
 
 def test_h5_below_threshold_no_tds(monkeypatch):
     db = _setup(monkeypatch)
-    v = _vendor(db, "194J")                       # threshold ₹30,000
-    b = _bill(db, v, 20_000_00, "B1")             # ₹20,000 < 30k
-    assert b["tds_paise"] == 0 and b["tds_rate_bps"] == 0
+    v = _vendor(db, "194J")                       # threshold ₹50,000 (FA 2025)
+    b = _bill(db, v, 40_000_00, "B1")             # ₹40,000 ≤ 50k — was taxable
+    assert b["tds_paise"] == 0 and b["tds_rate_bps"] == 0   # under the pre-2025 ₹30k limit
 
 
 def test_h5_h6_above_threshold_deducts_and_persists_rate(monkeypatch):
     db = _setup(monkeypatch)
     v = _vendor(db, "194J")
-    b = _bill(db, v, 40_000_00, "B1")             # ₹40,000 > 30k → 10%
-    assert b["tds_paise"] == 4_000_00             # ₹4,000
+    b = _bill(db, v, 60_000_00, "B1")             # ₹60,000 > 50k (FA 2025) → 10%
+    assert b["tds_paise"] == 6_000_00             # ₹6,000
     assert b["tds_rate_bps"] == 1000              # H6: applied rate persisted
     assert b["tds_section"] == "194J"
 

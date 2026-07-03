@@ -43,54 +43,65 @@ def make_deductee(
 # ── TDS Amount Computation ─────────────────────────────────────────────────────
 
 class TestTDSAmountComputation:
-    """IT Act Section 194 — threshold and rate tests."""
+    """IT Act Chapter XVII-B — threshold and rate tests, pinned to fy="2025-26"
+    (Finance Act 2025 thresholds; the last verified year — see
+    domain/tds/section_rates.py)."""
+
+    FY = "2025-26"
 
     def setup_method(self):
         self.c = TDSComputer()
 
     def test_194j_above_threshold(self):
-        # Professional fees > 30,000 → 10% TDS
-        amt = self.c.compute_tds_amount("194J", 50_000_00)
-        assert amt == 5_000_00
+        # Professional fees > ₹50,000 (FA 2025, was 30,000) → 10% TDS
+        amt = self.c.compute_tds_amount("194J", 60_000_00, fy=self.FY)
+        assert amt == 6_000_00
 
     def test_194j_below_threshold_no_tds(self):
-        # < 30,000 threshold → no TDS
-        amt = self.c.compute_tds_amount("194J", 20_000_00)
+        # ≤ ₹50,000 threshold → no TDS
+        amt = self.c.compute_tds_amount("194J", 20_000_00, fy=self.FY)
         assert amt == 0
+        assert self.c.compute_tds_amount("194J", 50_000_00, fy=self.FY) == 0  # exactly at
 
     def test_194c_individual_rate(self):
         # Contractor, individual → 1%
-        amt = self.c.compute_tds_amount("194C", 50_000_00, is_company=False)
+        amt = self.c.compute_tds_amount("194C", 50_000_00, is_company=False, fy=self.FY)
         assert amt == 500_00  # 1% of 50,000
 
     def test_194c_company_rate(self):
         # Contractor, company → 2%
-        amt = self.c.compute_tds_amount("194C", 50_000_00, is_company=True)
+        amt = self.c.compute_tds_amount("194C", 50_000_00, is_company=True, fy=self.FY)
         assert amt == 1_000_00  # 2% of 50,000
 
     def test_194a_below_threshold(self):
-        # Interest < 4,000 → no TDS
-        amt = self.c.compute_tds_amount("194A", 3_999_00)
+        # Interest ≤ ₹10,000 ("any other payer", FA 2025) → no TDS
+        amt = self.c.compute_tds_amount("194A", 3_999_00, fy=self.FY)
         assert amt == 0
+        assert self.c.compute_tds_amount("194A", 10_000_00, fy=self.FY) == 0  # exactly at
 
     def test_194a_above_threshold(self):
-        # Interest = 10,000 → 10%
-        amt = self.c.compute_tds_amount("194A", 10_000_00)
-        assert amt == 1_000_00
+        # Interest ₹15,000 > ₹10,000 → 10%
+        amt = self.c.compute_tds_amount("194A", 15_000_00, fy=self.FY)
+        assert amt == 1_500_00
 
     def test_194i_rent_above_threshold(self):
-        # Rent 3,00,000 > 2,40,000 threshold → 10%
-        amt = self.c.compute_tds_amount("194I", 300_000_00)
+        # Rent ₹3,00,000 > ₹50,000/month threshold (FA 2025, was ₹2.4L/yr) → 10%
+        amt = self.c.compute_tds_amount("194I", 300_000_00, fy=self.FY)
         assert amt == 30_000_00
 
+    def test_194h_rate_cut_to_2_percent(self):
+        # Commission ₹30,000 > ₹20,000 threshold → 2% (F(No.2)A 2024 cut from 5%)
+        amt = self.c.compute_tds_amount("194H", 30_000_00, fy=self.FY)
+        assert amt == 600_00  # 2% of 30,000
+
     def test_integer_arithmetic_no_float(self):
-        # 33,333 × 10% = 3,333.30 → floor = 333330 paise (IT Act Section 145A: integer paise)
-        amt = self.c.compute_tds_amount("194J", 33_333_00)
+        # 83,333 × 10% = 8,333.30 → floor = 833330 paise (IT Act Section 145A)
+        amt = self.c.compute_tds_amount("194J", 83_333_00, fy=self.FY)
         assert isinstance(amt, int)
-        assert amt == 333_330  # floor(3333300 * 10 / 100) = 333330 paise
+        assert amt == 833_330  # 8_333_300 * 1000 // 10000
 
     def test_unknown_section_returns_zero(self):
-        amt = self.c.compute_tds_amount("999X", 100_000_00)
+        amt = self.c.compute_tds_amount("999X", 100_000_00, fy=self.FY)
         assert amt == 0
 
 

@@ -52,6 +52,13 @@ class HRAInput(BaseModel):
 
 
 class ComputeITRRequest(BaseModel):
+    # Financial year the statutory rates should be resolved for, e.g.
+    # "2025-26". Omit to default to today's FY. See domain/income_tax/
+    # statutory_rates.py — the response's rates_verified flag tells the
+    # caller whether this FY's numbers are confirmed against a Finance Act
+    # or carried forward pending verification.
+    fy: Optional[str] = None
+
     # Income heads (all paise)
     gross_salary_paise: int = 0
     other_income_paise: int = 0
@@ -92,6 +99,7 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
     Returns full computation working, deduction breakdown, and net payable/refund.
     """
     engine_req = ITRComputeRequest(
+        fy=req.fy,
         gross_salary_paise=req.gross_salary_paise,
         other_income_paise=req.other_income_paise,
         house_property_income_paise=req.house_property_income_paise,
@@ -145,6 +153,8 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
 
     return api_response(True, {
         "regime": result.regime,
+        "fy": result.fy,
+        "rates_verified": result.rates_verified,
         "income": {
             "gross_total_paise": result.gross_total_income_paise,
             "standard_deduction_paise": result.standard_deduction_paise,

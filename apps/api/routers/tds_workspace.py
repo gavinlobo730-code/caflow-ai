@@ -39,13 +39,18 @@ _MOCK_DEDUCTIONS: dict[str, dict] = {}
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _tds_return_due_date(quarter: str, fy: str) -> str:
-    """TDS return due: 31st of month following quarter end."""
-    # Quarter end months: Q1=Jun, Q2=Sep, Q3=Dec, Q4=Mar
-    quarter_end_month = {"Q1": 7, "Q2": 10, "Q3": 1, "Q4": 4}
-    fy_start_year = int(fy[:4])
-    month = quarter_end_month.get(quarter, 7)
-    year = fy_start_year if month >= 4 else fy_start_year + 1
-    return f"{year}-{month:02d}-31"
+    """24Q/26Q filing due date per IT Rules Rule 31A: Q1 → 31 Jul, Q2 → 31 Oct,
+    Q3 → 31 Jan, Q4 → 31 May. F17 fix: this used to compute Q4 as
+    "{fy_start_year}-04-31" — a date that does not exist (April has 30 days),
+    in the wrong month (Rule 31A gives Q4 until 31 May, not "the month after
+    quarter end" like Q1-Q3) and the wrong year (the FY's START year instead
+    of the year Q4 actually ends in). Delegates to the shared FY-aware
+    calendar in domain/tds/section_rates.py."""
+    from domain.tds.section_rates import quarter_dates
+    try:
+        return quarter_dates(fy, quarter)[2]
+    except ValueError:
+        return quarter_dates(fy, "Q1")[2]  # preserve old .get(quarter, Q1) fallback
 
 
 # ── Request Models ─────────────────────────────────────────────────────────────
