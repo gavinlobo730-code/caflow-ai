@@ -76,16 +76,19 @@ def _get_db_engagement(db, engagement_id: str, firm_id: str) -> dict:
 
 def _record_review_event(db, engagement_id: str, firm_id: str, event_type: str,
                           actor_id: str, comment: Optional[str]) -> None:
-    """Record review event in audit history table."""
+    """Record review event in audit history table (year_end_reviews, migration
+    067 — event_type/actor_id are additive columns, migration 155, since 067's
+    own review_type/action vocabulary doesn't cover this router's event names)."""
     import uuid
     try:
-        db.table("year_end_review_events").insert({
+        db.table("year_end_reviews").insert({
             "id":            str(uuid.uuid4()),
             "engagement_id": engagement_id,
             "firm_id":       firm_id,
             "event_type":    event_type,
             "comment":       comment,
             "actor_id":      actor_id,
+            "reviewed_by":   actor_id,
             "created_at":    datetime.now(timezone.utc).isoformat(),
         }).execute()
     except Exception:

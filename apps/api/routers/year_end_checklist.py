@@ -42,6 +42,23 @@ _VALID_ITEM_STATUSES = ["pending", "in_progress", "complete", "not_applicable"]
 _MOCK_CHECKLIST: dict[str, list[dict]] = {}
 
 
+def _fetch_engagement_db(db, engagement_id: str, firm_id: str) -> dict:
+    """F1/F4-class fix: validate the engagement belongs to the caller's firm
+    before touching its checklist -- neither endpoint checked this at all."""
+    row = (
+        db.table("year_end_engagements")
+        .select("id, firm_id")
+        .eq("id", engagement_id)
+        .eq("firm_id", firm_id)
+        .maybe_single()
+        .execute()
+        .data
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    return row
+
+
 def _init_checklist_items(engagement_id: str) -> list[dict]:
     """Create 12 standard items for an engagement."""
     now = datetime.now(timezone.utc).isoformat()
@@ -85,9 +102,10 @@ def list_checklist(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
+    eng = _fetch_engagement_db(db, engagement_id, current_user["firm_id"])
 
     existing = (
-        db.table("year_end_checklist_items")
+        db.table("year_end_checklists")
         .select("*")
         .eq("engagement_id", engagement_id)
         .order("sequence_no")
@@ -103,6 +121,7 @@ def list_checklist(
             rows_to_insert.append({
                 "id": str(uuid.uuid4()),
                 "engagement_id": engagement_id,
+                "firm_id": eng["firm_id"],
                 "category": tmpl["category"],
                 "item_code": tmpl["item_code"],
                 "item_label": tmpl["item_label"],
@@ -114,7 +133,7 @@ def list_checklist(
                 "created_at": now,
                 "updated_at": now,
             })
-        existing = db.table("year_end_checklist_items").insert(rows_to_insert).execute().data
+        existing = db.table("year_end_checklists").insert(rows_to_insert).execute().data
 
     return api_response(True, existing)
 
@@ -148,13 +167,14 @@ def update_checklist_item(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
+    _fetch_engagement_db(db, engagement_id, current_user["firm_id"])
 
     existing = (
-        db.table("year_end_checklist_items")
+        db.table("year_end_checklists")
         .select("*")
         .eq("id", item_id)
         .eq("engagement_id", engagement_id)
-        .single()
+        .maybe_single()
         .execute()
         .data
     )
@@ -171,7 +191,7 @@ def update_checklist_item(
         updates["notes"] = data.notes
 
     updated = (
-        db.table("year_end_checklist_items")
+        db.table("year_end_checklists")
         .update(updates)
         .eq("id", item_id)
         .execute()

@@ -171,33 +171,53 @@ def generate_financial_statements(
     if _USE_MOCK:
         return _mock_statements(client_id, firm_id, fy_start, fy_end)
 
-    # ── 1. Fetch posted journal lines for the FY date range ──────────────────
-    lines_res = (
-        supabase
-        .table("journal_lines")
-        .select(
-            "account_id, debit_paise, credit_paise, "
-            "journal_entries!inner(client_id, firm_id, entry_date, is_posted)"
+    # ── 1. Fetch posted journal lines ─────────────────────────────────────────
+    # F10 fix: Balance Sheet accounts (assets/liabilities/equity) carry a
+    # CUMULATIVE balance that must include every prior year's postings, not
+    # just the current FY's movement -- unlike P&L accounts (income/expense),
+    # which correctly reset each FY. The previous version applied the FY
+    # window uniformly to every account, silently dropping all prior-year
+    # carry-forward for any client with more than one year of ledger history.
+    # Fetch both windows; §4 below picks the correct one per account by its
+    # schedule_line classification.
+    def _fetch_lines(gte_date: str | None) -> list:
+        q = (
+            supabase
+            .table("journal_lines")
+            .select(
+                "account_id, debit_paise, credit_paise, "
+                "journal_entries!inner(client_id, firm_id, entry_date, is_posted)"
+            )
+            .eq("journal_entries.client_id", client_id)
+            .eq("journal_entries.firm_id", firm_id)
+            .eq("journal_entries.is_posted", True)
+            .lte("journal_entries.entry_date", fy_end)
         )
-        .eq("journal_entries.client_id", client_id)
-        .eq("journal_entries.firm_id", firm_id)
-        .eq("journal_entries.is_posted", True)
-        .gte("journal_entries.entry_date", fy_start)
-        .lte("journal_entries.entry_date", fy_end)
-        .execute()
-    )
-    raw_lines = lines_res.data or []
+        if gte_date:
+            q = q.gte("journal_entries.entry_date", gte_date)
+        return q.execute().data or []
 
-    # ── 2. Aggregate integer paise balance per account_id ───────────────────
+    fy_window_lines = _fetch_lines(fy_start)     # P&L: this year's movement only
+    cumulative_lines = _fetch_lines(None)        # Balance Sheet: all-time to fy_end
+
+    def _totals(raw_lines: list) -> tuple[Dict[str, int], Dict[str, int]]:
+        debit_totals: Dict[str, int] = {}
+        credit_totals: Dict[str, int] = {}
+        for line in raw_lines:
+            acct = line["account_id"]
+            debit_totals[acct] = debit_totals.get(acct, 0) + int(line["debit_paise"])
+            credit_totals[acct] = credit_totals.get(acct, 0) + int(line["credit_paise"])
+        return debit_totals, credit_totals
+
+    # ── 2. Aggregate integer paise balance per account_id, per window ───────
     # All arithmetic in integer paise — never float.
-    debit_totals: Dict[str, int]  = {}
-    credit_totals: Dict[str, int] = {}
-    for line in raw_lines:
-        acct = line["account_id"]
-        debit_totals[acct]  = debit_totals.get(acct, 0)  + int(line["debit_paise"])
-        credit_totals[acct] = credit_totals.get(acct, 0) + int(line["credit_paise"])
+    fy_debit_totals, fy_credit_totals = _totals(fy_window_lines)
+    cum_debit_totals, cum_credit_totals = _totals(cumulative_lines)
 
-    all_account_ids = set(debit_totals) | set(credit_totals)
+    all_account_ids = (
+        set(fy_debit_totals) | set(fy_credit_totals)
+        | set(cum_debit_totals) | set(cum_credit_totals)
+    )
 
     # ── 3. Load account_group_mappings for this firm ─────────────────────────
     mappings_res = (
@@ -216,17 +236,24 @@ def generate_financial_statements(
     raw_balances: Dict[str, int] = {}
 
     for acct_id in all_account_ids:
-        dr = debit_totals.get(acct_id, 0)
-        cr = credit_totals.get(acct_id, 0)
-
         mapping = mapping_lookup.get(acct_id)
         if not mapping:
-            # Unmapped accounts go to other_current_assets / other_expenses
+            # Unmapped accounts go to other_current_assets (a Balance Sheet line)
             schedule_line  = "other_current_assets"
             normal_balance = "debit"
         else:
             schedule_line  = mapping["schedule_line"]
             normal_balance = mapping.get("normal_balance", "debit")
+
+        is_balance_sheet_line = (
+            schedule_line in BS_EQUITY_LIABILITY_LINES or schedule_line in BS_ASSET_LINES
+        )
+        if is_balance_sheet_line:
+            dr = cum_debit_totals.get(acct_id, 0)
+            cr = cum_credit_totals.get(acct_id, 0)
+        else:
+            dr = fy_debit_totals.get(acct_id, 0)
+            cr = fy_credit_totals.get(acct_id, 0)
 
         # Compute balance using normal balance convention (integer paise)
         if normal_balance == "credit" or schedule_line in _CREDIT_NORMAL_LINES:

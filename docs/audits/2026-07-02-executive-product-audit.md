@@ -216,7 +216,7 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 
 ### Tier 2 — High (correctness, security, core workflows)
 
-**R2.1 — Repair the year-end workflow schema (F9, F10).** Rename router table/column refs to match migration 067 (or ship a corrective migration), fix the FY-window Balance Sheet to carry prior-year balances, add NOT-NULL `client_id`. *Effort:* L. *Deps:* R0.1. *Benefit:* year-end close works and statements are correct.
+**R2.1 — Repair the year-end workflow schema (F9, F10). DELIVERED.** Revalidation found F9's real scope was every one of migration 067's 8 tables, not just the 3 originally-cited wrong table names — fixed via a corrective migration (155) plus code fixes, proven with live-Postgres inserts matching every router's exact payload. F10 fixed by fetching two date windows (FY-only for P&L, cumulative-to-date for Balance Sheet) rather than one uniform window. Also fixed two tenancy gaps (same class as F1/F4) found while re-reading the routers. *Effort:* L (as estimated). *Benefit:* year-end close now actually works against a real database, and multi-year Balance Sheets stop silently dropping prior-year balances.
 
 **R2.2 — Create the ~13 missing tables or gate the features (F5).** Add migrations for e-invoice/e-way/XBRL/ITR-filing/26AS-record tables (and the missing RPC/columns), or feature-flag those modules off until backed. *Effort:* L. *Benefit:* removes 500s; makes the tax-record features real.
 
@@ -250,6 +250,8 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 - **R3.4 — Automate document collection & reminders** (WhatsApp Business API + cadence). *Effort:* L. *Benefit:* removes the biggest daily admin sink.
 - **R3.5 — Performance: paginate/aggregate in SQL, add indexes, cache auth lookups.** *Effort:* M–L. *Benefit:* holds up at 100–500 clients.
 - **R3.6 — UX consistency:** one skeleton/empty/error system, real dialog semantics, dashboard load-error states, shared client context. *Effort:* M. *Benefit:* daily usability.
+- **R3.7 — Year-end close: post an explicit closing journal entry** *(surfaced by the R2.1/F10 fix)*. There is no mechanism today that transfers a completed year's P&L into `reserves_and_surplus` via an actual posted journal entry — the "add current-year PAT to reserves" step is a live, presentational preview computed fresh on every request, not an accounting fact. A second prior year's retained profit, if that year was also never explicitly closed, would still be invisible in a third year's cumulative reserves. Needs a business/accounting decision first (should this post automatically when a Partner locks the engagement? does it need its own CA-review gate, matching the CLAUDE.md "never auto-submit" spirit even though this is internal not government-facing? which specific reserves sub-account?) — do not implement unilaterally. *Effort:* M. *Benefit:* true multi-year retained-earnings continuity, not just single-year carry-forward.
+- **R3.8 — Consolidate the two competing year-end status-transition implementations** *(surfaced by the R2.1 investigation)*. `routers/year_end.py`'s generic `PATCH /engagements/{id}/status` and `routers/year_end_reviews.py`'s four specific `POST /reviews/*` endpoints both drive the same draft→in_review→approved→locked transition on `year_end_engagements`, writing overlapping-but-different column sets (`reviewed_by`/`approved_by` vs. `submitted_by`/`revision_requested_by`/`final_approved_by`). Both work today (migration 155 added columns for both) but the duplication is a maintainability risk — a future change to one easily misses the other. *Effort:* M. *Benefit:* one source of truth for the year-end review workflow.
 
 ### Tier 4 — Long-term (differentiation)
 Government-data ingestion via GSP/ASP-pull + Account Aggregator (submit stays CA-confirmed); reliable two-way Tally/Busy/Zoho import; unified deterministic-then-narrate AI layer; RAG tax-law copilot with citations; DPDP consent vault; mobile/PWA companion. These are where PracticeSync becomes a *better* product, not a cheaper clone.
@@ -1067,4 +1069,145 @@ failures noted since R2.5 remain, reconfirmed unaffected).
 
 **Next:** R2.1 (year-end schema repair, F9/F10), R2.3 (tax statutory logic,
 F17/F18), the newly-found `get_supabase_client` production breakage.
+
+## Milestone R2.1 — Repair year-end workflow schema, F9/F10 (DELIVERED)
+
+**Goal:** every year-end close endpoint (engagements, checklist, adjustments,
+mappings, notes, reviews, exports, statements) currently 500s in a real
+deployment — make the whole module actually work against Postgres, and fix
+the Balance Sheet's silent prior-year data loss for multi-year clients.
+
+**F9 — schema drift, all 8 of migration 067's tables.** The audit's own
+evidence only cited 3 wrong table names (already tracked in
+`test_schema_contract.py`'s baseline); revalidating against 067's actual
+`CREATE TABLE` definitions found the real scope is much larger — **every one**
+of the 8 year-end tables has at least one column the router code needs but
+067 never created, several of which are **NOT NULL**, meaning the very first
+write on each table would fail. Root-caused by reading 067 in full alongside
+every `routers/year_end*.py` file line by line (not just grepping table
+names), then **proved on real Postgres 16** with the exact 8 INSERT payloads
+each router now builds — every one succeeded only after two additional gaps
+that grep alone couldn't find (a CHECK-constraint vocabulary mismatch and a
+genuinely missing column) were caught by that live testing and fixed. Fixed
+via migration **155** (additive `ADD COLUMN IF NOT EXISTS` / idempotent
+`RENAME COLUMN`, all existence-guarded) plus corresponding code fixes:
+
+- **Wrong table names** (already tracked): `year_end_checklist_items` →
+  `year_end_checklists`, `year_end_notes` → `notes_to_accounts` (fixed in
+  `year_end_notes.py` **and** a second, previously-unnoticed reference in
+  `year_end_exports.py`'s `_get_notes_data`), `year_end_review_events` →
+  `year_end_reviews`.
+- **Missing NOT NULL columns the router never populated** (would 500 on
+  every insert): `year_end_adjustments.client_id` (now derived from the
+  already firm-validated engagement, never trusted from client input);
+  `account_group_mappings.account_name`/`statement_type` (NOT NULL relaxed —
+  the mapping request body has no account_name, and statement_type is now
+  derived in code from `schedule_line` via a `_statement_type_for()` helper
+  that reuses `year_end_financial_service`'s own BS/PL line classification,
+  not a second copy of it); `notes_to_accounts.note_number` (now populated,
+  matching the existing `sequence_no`).
+- **Two more mismatches surfaced only by the live-Postgres proof, invisible
+  to a pure code/migration diff:** `year_end_checklists`' status CHECK
+  constraint allowed `not_started`, but the router's `_STANDARD_ITEMS` /
+  `_VALID_ITEM_STATUSES` has always written `pending` — every checklist
+  auto-initialization (the first thing that happens when any new engagement's
+  checklist is opened) would have violated it. Fixed by widening the CHECK
+  to the vocabulary the code actually uses (nothing else references
+  `not_started`). `account_group_mappings` had **no `updated_at` column at
+  all** in 067 (only `created_at`), while the router updates it on every
+  write — fixed by adding it.
+- **`year_end_reviews`' `review_type`/`action` CHECK-constrained columns**
+  don't cover this router's actual event vocabulary
+  (`submitted_for_review`/`revision_requested`/`final_approved_and_locked` vs.
+  067's `prepared`/`reviewed`/`approved` × `submitted`/`approved`/`rejected`/
+  `revision_requested`). Rather than force-fit or widen a CHECK meant for a
+  different (never-built) structured review model, added `event_type`/
+  `actor_id` as the columns the code actually needs and relaxed the two
+  NOT NULL constraints on the unused columns (`reviewed_by`, also NOT NULL,
+  **is** populated).
+- **Column renames chosen by majority usage, not left as two parallel
+  columns:** `year_end_exports.file_path` → `storage_path` (the router uses
+  `storage_path` exclusively, extensively, and has zero other consumers,
+  grep-confirmed) via an idempotent rename; `year_end_statements.py`'s
+  `statements_data` was simply a typo for 067's actual `statement_data` —
+  fixed in code, not the schema.
+
+**Two tenancy gaps found and fixed alongside (same bug class as R2.4's F1/F4,
+found while re-reading these routers line by line for F9):**
+- `routers/year_end_checklist.py`'s `list_checklist`/`update_checklist_item`
+  had **zero** firm-ownership check on `engagement_id` — any authenticated
+  year-end user could read or mutate another firm's checklist by guessing an
+  engagement id. Fixed with a `_fetch_engagement_db` guard (same pattern
+  already used correctly by every sibling year-end router) before any
+  checklist read or write.
+- `routers/year_end_mappings.py`'s `get_mappings` accepted a **client-supplied
+  `?firm_id=`** query param and used it verbatim, with zero ownership check —
+  a direct, one-request cross-tenant read of another firm's Schedule III
+  account mappings. Fixed by removing the override entirely; there is no
+  legitimate reason a normal (non-platform-admin) user needs another firm's
+  mappings.
+
+**F10 — Balance Sheet dropped prior-year carry-forward.**
+`year_end_financial_service.generate_financial_statements` applied the same
+FY date window (`gte(fy_start).lte(fy_end)`) to every account uniformly —
+correct for P&L (income/expense, which resets each year) but wrong for
+Balance Sheet accounts (assets/liabilities/equity, which carry a cumulative
+balance across every prior year). A multi-year client's Balance Sheet showed
+only the current year's movement, silently dropping everything before it.
+Investigated whether `domain/reporting/service.py`'s already-correct
+`ReportingService` (which does exactly this cumulative-vs-windowed split
+correctly, via `snapshot(firm_id, client_id, None, as_of)`) could just be
+swapped in — decided against a full swap: its Schedule III grouping is driven
+by a fixed internal account-type resolver, while year-end's is driven by each
+firm's own configurable `account_group_mappings`, and every downstream
+consumer (PDF generation, notes auto-generation, complete-pack export) keys
+off the current output shape. Fixed the actual bug surgically instead:
+fetch journal lines in **two** windows (FY-only for P&L, cumulative-to-`fy_end`
+for BS) and pick the correct one per account by its `schedule_line`
+classification — same output shape, same downstream contract, zero
+FakeDB/PDF/notes code touched.
+
+**Deliberately NOT solved here (a distinct, deeper architectural gap, flagged
+not fixed):** the codebase has no explicit "close the year" journal-posting
+mechanism that transfers a completed year's P&L into `reserves_and_surplus`.
+The existing (and unchanged) "add current-year PAT to reserves" step is a
+live, presentational preview, not a posted accounting fact — so a **second**
+prior year's retained profit, if that year was also never explicitly closed,
+would still be invisible in a third year's cumulative reserves figure. This
+is a real accounting-process question (should closing happen automatically at
+engagement-lock time? does the CA need to approve the specific closing
+narration? which reserves sub-account?) that requires a business/accounting
+decision, not a unilateral implementation choice — tracked as a roadmap item,
+not implemented.
+
+**Also noted, not fixed (architecture, not correctness):** `routers/
+year_end.py`'s generic `PATCH /engagements/{id}/status` and `routers/
+year_end_reviews.py`'s four specific `POST /reviews/*` endpoints are two
+**parallel, competing implementations** of the same draft→in_review→
+approved→locked transition, writing overlapping-but-different column sets to
+the same `year_end_engagements` row. Both now work (migration 155 added
+columns for both), but the duplication itself is a maintainability smell
+worth consolidating in a future pass — not attempted here to keep this
+milestone's diff to "make it correct," not "also redesign it."
+
+**Verified:** migration 155 applies cleanly on Postgres 16, drift baseline
+unchanged at 11. Live-Postgres proof: all 8 tables' exact insert payloads
+(matching the fixed router code precisely) succeed on a fresh database — this
+is what caught the two mismatches (`year_end_checklists` status CHECK,
+`account_group_mappings.updated_at`) that a pure text diff against 067 missed.
+`test_schema_contract.py`'s 3 resolved F9 baseline entries removed (ratchet
+ready to catch any regression). New `test_year_end_financial_service.py` (4
+tests) proves F10 directly: prior-year-only BS postings still appear in a
+later year with zero current-year activity; P&L stays correctly FY-windowed
+and does not leak across years; a BS account with both prior- and
+current-year postings sums both; cross-client/cross-firm lines never bleed
+in. New `test_year_end_tenancy.py` (4 tests) proves both tenancy fixes in
+both directions (legitimate same-firm access still works; cross-firm access
+is denied, with no partial state change). Full backend suite: 2186 passed /
+52 skipped (the same 23 pre-existing, unrelated failures noted since R2.5
+remain, reconfirmed unaffected).
+
+**Next:** R2.3 (tax statutory logic, F17/F18), R2.2 (missing tables, F5), the
+`get_supabase_client` production breakage (R2.4's finding), the year-end
+closing-mechanism and duplicate-implementation follow-ups noted above.
 
