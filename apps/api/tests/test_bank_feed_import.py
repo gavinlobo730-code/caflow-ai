@@ -124,6 +124,45 @@ def test_csv_hdfc_format_detected():
     assert len(txns) == 1 and txns[0].credit_paise == 1180000 and txns[0].reference_no == "REF1"
 
 
+def test_csv_axis_format_detected_and_directions_correct():
+    """F8 regression: Axis has a 'CHQNO' column, so the old detector routed it to
+    the HDFC adapter and its different column order flipped a ₹500 debit into a
+    ₹10,000 credit. Axis must now be detected as 'axis' and parsed correctly."""
+    headers = ["Tran Date", "CHQNO", "Narration", "Debit", "Credit", "Balance"]
+    assert detect_format(headers) == "axis"
+    csv = ("Tran Date,CHQNO,Narration,Debit,Credit,Balance\n"
+           "05/04/2026,123,ATM WITHDRAWAL,500.00,,10000.00\n"
+           "06/04/2026,,SALARY CREDIT,,50000.00,60000.00\n")
+    txns = parse_csv(csv)
+    assert len(txns) == 2
+    # Debit row stays a debit (was the corruption: ₹500 debit -> ₹10,000 credit).
+    assert txns[0].debit_paise == 50000 and txns[0].credit_paise == 0
+    assert txns[0].description == "ATM WITHDRAWAL" and txns[0].balance_paise == 1000000
+    # Credit row stays a credit.
+    assert txns[1].credit_paise == 5000000 and txns[1].debit_paise == 0
+
+
+def test_csv_sbi_format_detected_and_description_correct():
+    """F8 regression: SBI has a 'Ref/Cheque No' column, so the old detector routed
+    it to HDFC and read the Value Date column as the description. SBI must now be
+    detected as 'sbi'; amounts were already correct, the description is now right."""
+    headers = ["Txn Date", "Value Date", "Description", "Ref/Cheque No", "Debit", "Credit", "Balance"]
+    assert detect_format(headers) == "sbi"
+    csv = ("Txn Date,Value Date,Description,Ref/Cheque No,Debit,Credit,Balance\n"
+           "05/04/2026,04/04/2026,UPI PAYMENT,REF9,500.00,,9500.00\n")
+    txns = parse_csv(csv)
+    assert len(txns) == 1
+    assert txns[0].description == "UPI PAYMENT"          # not the Value Date
+    assert txns[0].debit_paise == 50000 and txns[0].credit_paise == 0
+
+
+def test_detect_format_shared_cheque_signal_does_not_shadow_banks():
+    """The shared cheque/reference column must not shadow bank-specific detection."""
+    assert detect_format(["Transaction Date", "Value Date", "Transaction Remarks", "Ref No", "Debit", "Credit", "Balance"]) == "icici"
+    # HDFC still detected (via Narration / Chq/Ref No) after the reorder.
+    assert detect_format(["Date", "Narration", "Value Dt", "Chq/Ref No", "Debit", "Credit", "Balance"]) == "hdfc"
+
+
 def test_csv_integer_paise_no_float_drift():
     # 0.1 + 0.2 style values must be exact in paise.
     csv = "Date,Description,Debit,Credit,Balance\n01/04/2026,x,0.10,,0.10\n02/04/2026,y,0.20,,0.20\n"

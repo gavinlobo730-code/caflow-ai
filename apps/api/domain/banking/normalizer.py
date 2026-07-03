@@ -52,17 +52,26 @@ _ADAPTERS: dict[str, dict[str, Optional[int]]] = {
 
 
 def detect_format(headers: list[str]) -> str:
-    """Pick a bank adapter from the header row (mirrors the prior client logic)."""
+    """Pick a bank adapter from the header row.
+
+    Order matters (F8): a cheque/reference column exists under DIFFERENT names in
+    several banks — HDFC "Chq/Ref No", Axis "CHQNO", SBI "Ref/Cheque No" — so the
+    generic "chq"/"cheque" heuristic must run LAST. Matching it first routed every
+    Axis and SBI statement to the HDFC adapter, and Axis's different column order
+    then corrupted debit/credit direction and amounts (a ₹500 debit became a
+    ₹10,000 credit). Bank-specific date/remarks columns are the reliable
+    discriminators, so they are tested first, most-specific to least.
+    """
     h = [str(x).lower().strip() for x in headers]
     blob = " ".join(h)
-    if "chq" in blob or "cheque" in blob:
-        return "hdfc"
-    if "txn date" in blob:
-        return "sbi"
-    if "transaction remarks" in blob:
+    if "transaction remarks" in blob:      # ICICI ("Transaction Remarks")
         return "icici"
-    if "narration" in blob:
-        return "axis"
+    if "txn date" in blob:                 # SBI ("Txn Date")
+        return "sbi"
+    if "tran date" in blob:                # Axis ("Tran Date"); note: distinct
+        return "axis"                      # from SBI "txn date" and ICICI "transaction date"
+    if "narration" in blob or "chq" in blob or "cheque" in blob:  # HDFC (shared cheque/narration signal, last)
+        return "hdfc"
     return "generic"
 
 
