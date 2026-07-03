@@ -144,8 +144,15 @@ class Phase2JournalService:
         settle_receipt_atomic path (which posts the journal, the receipt row, and
         every allocation in ONE database transaction) can resolve the same GL
         accounts and build the same lines without going through the separate
-        post_journal_atomic RPC journal_for_receipt itself still uses for the
-        (unmodified) multi-currency receipt path.
+        post_journal_atomic RPC journal_for_receipt itself still uses.
+
+        Adversarial-review correction: create_foreign_receipt (the multi-currency
+        receipt path) does NOT call this — it builds its own FX-aware lines
+        inline (services/receipt_service.py) and posts via _create_journal
+        directly. journal_for_receipt (and this helper, transitively) is only
+        reached via create_receipt_core's mock branch and its no-.rpc
+        test-double fallback — never in production, where .rpc is always
+        available and the atomic path above is always taken.
         """
         cash_paise = int(receipt["amount_paise"])
         tds_paise  = int(receipt.get("tds_paise", 0) or 0)
@@ -187,10 +194,11 @@ class Phase2JournalService:
     ) -> Optional[str]:
         """Build the receipt's journal lines and post them via post_journal_atomic
         (the single-document atomic path — see receipt_journal_lines' docstring for
-        why the line-building is factored out). Used by the multi-currency receipt
-        path (create_foreign_receipt); the plain-INR path posts through
-        settle_receipt_atomic instead (services/receipt_service.py), which folds
-        this same journal into the receipt+allocations transaction."""
+        why the line-building is factored out, and for which callers actually
+        reach this function in production — create_foreign_receipt is NOT one of
+        them). The plain-INR path posts through settle_receipt_atomic instead
+        (services/receipt_service.py), which folds this same journal into the
+        receipt+allocations transaction."""
         if _USE_MOCK:
             _logger.info("[MOCK] journal_for_receipt: %s", receipt.get("receipt_no"))
             return None
@@ -1155,8 +1163,16 @@ class Phase2JournalService:
                     {"p_entry": entry_payload, "p_lines": line_payloads},
                 ).execute()
             except Exception as rpc_err:
+                # R2.12 adversarial-review fix: a bare substring check on the
+                # function's own name misclassifies its OWN RAISE EXCEPTION
+                # ('post_journal_atomic: empty entry payload') as "RPC not
+                # found" — the same bug class found (and fixed) in
+                # services/receipt_service.py's identical check for
+                # settle_receipt_atomic. Require the actual missing-function
+                # signature (PGRST202, or a raw "function ... does not
+                # exist") instead of the function's own name.
                 msg = str(rpc_err).lower()
-                if "post_journal_atomic" in msg or "function" in msg and ("not exist" in msg or "not found" in msg or "pgrst202" in msg):
+                if "pgrst202" in msg or ("function" in msg and ("does not exist" in msg or "could not find the function" in msg)):
                     raise RuntimeError(
                         "post_journal_atomic RPC not found — migration 152 "
                         "(apps/api/migrations/152_atomic_journal_posting.sql) must be "
