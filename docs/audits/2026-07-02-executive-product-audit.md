@@ -1799,3 +1799,104 @@ migration-apply baseline, schema contract) rerun clean after the fixes.
 atomicity), R2.10 (payroll frontend→backend migration), then the Tier 2
 regression review and Tier 3.
 
+## Milestone R2.11 — Bank statement parser hardening (DELIVERED)
+
+**Goal:** the R1.5 regression review flagged three independent bugs in
+`domain/banking/normalizer.py`/`services/banking_service.py`: `_to_paise`'s
+Dr/Cr suffix handling was case-sensitive (silently zeroing most real-world
+case variants) and discarded the Dr/Cr sign entirely; single signed-Amount +
+Dr/Cr-indicator statement layouts (no separate Debit/Credit columns) were
+unsupported; and a statement's opening/closing balance was derived from raw
+file position, inverting on newest-first exports.
+
+**Fixes shipped:** `_to_paise` now strips a trailing Dr/Cr suffix via a
+case-insensitive regex (previously `.rstrip("DrCr")` stripped individual
+characters, so only the exact mixed-case "Dr"/"Cr" worked) and applies its
+sign (Dr = negative/overdrawn, Cr = positive) — `debit_paise`/`credit_paise`
+already wrap the result in `abs()`, so only the signed `balance` column is
+affected. A new `generic_amount_drcr` adapter (Date, Description, Amount,
+Dr/Cr, Balance) covers the single-amount-column layout, detected via a
+combined Dr/Cr header cell and classified per-row by an indicator token
+(unrecognized indicators skip the row rather than guess). A new
+`_opening_closing_balance` helper in `banking_service.py` derives
+opening/closing from the rows' `transaction_date` order instead of file
+position, reversing the row list when the file is in descending order.
+
+**Adversarial review (2 lenses — parsing-correctness and
+balance-derivation/integration, run via the Workflow tool, each finding
+independently re-verified) — 12 findings, all CONFIRMED (5 required code
+fixes, 7 were confirmatory/no-defect notes):**
+1. **High, fixed:** `_to_paise` double-negated the sign when a string
+   carried BOTH an explicit leading `-` and a Dr/Cr suffix — `Decimal()`
+   already parses the embedded minus into a negative value, then the Dr/Cr
+   override negated it a SECOND time (`"-150.00 Dr"` returned `+15000`
+   instead of `-15000`, hiding an overdraft; `"-150.00 Cr"` returned
+   `-15000`, silently ignoring the Cr claim). Fixed by always parsing to an
+   absolute magnitude first, then applying exactly one sign decision — a
+   Dr/Cr suffix (when present) is authoritative over any embedded sign or
+   parentheses, matching that the suffix is the statement's own explicit
+   accounting label.
+2. **Medium, fixed:** a Dr/Cr suffix trailing OUTSIDE a parenthesised amount
+   (`"(150.00) Dr"`) silently returned 0 — the parens check ran before the
+   suffix was located, so stripping only the leading `(` left an orphaned
+   `)` that failed `Decimal()` parsing. Fixed by locating and stripping the
+   suffix first, then checking for wrapping parens on what remains.
+3. **High, fixed:** the new amount-mode detection fired on any header cell
+   shaped like "Dr/Cr" without first checking whether the file *also* has
+   separate, clearly-labelled Debit AND Credit amount columns (a statement
+   can have both, with "Dr/Cr" marking the running balance's polarity, not
+   the transaction's direction) — misrouting that file to the new adapter,
+   which then failed every row and rejected the whole statement. Fixed by
+   requiring the ABSENCE of separate debit/credit-token columns before
+   routing to `generic_amount_drcr`.
+4. **High, fixed:** the amount-mode indicator match required an exact token
+   (`"dr"`/`"cr"`/etc.), so a bank using dotted abbreviations ("Dr.", "Cr.")
+   had every row on that side silently dropped with no error — a materially
+   incomplete import that looks like a success. Fixed by stripping trailing
+   punctuation before matching.
+5. **Medium, fixed:** `_opening_closing_balance`'s original two-endpoint
+   compare could be fooled by a non-monotonic file — most concretely, a file
+   whose FIRST and LAST rows coincidentally share one date while a row in
+   between is on a genuinely earlier date was misclassified as "single-day"
+   and silently discarded the true earliest date's balance entirely. Fixed
+   by finding the true min/max date across every row (matching how
+   `_import_core` already derives `statement_from`/`statement_to` via a full
+   sort) and deciding direction by a majority vote across every adjacent
+   pair, not just the two endpoints.
+6. **High, confirmatory (no code change, documentation strengthened):** the
+   deliberately-deferred "one-off re-import path" is a real, bounded risk,
+   more significant than originally scoped — historically-imported
+   statements hit by the OLD case-sensitivity bug had `balance_paise` (and
+   any Dr/Cr-suffixed debit/credit cell) silently stored as **zero**, not
+   merely mis-signed, for any non-mixed-case suffix (a common convention).
+   Re-uploading the same file post-fix produces different, correct values,
+   so the dedup hash won't match and the file re-imports as a **second,
+   parallel set of `bank_transactions`** rather than correcting the
+   historical rows — silently doubling totals, and risking a double-posted
+   ledger entry if a CA matches/posts both copies without realizing it's a
+   re-import. No cron or scheduled reprocessing exists anywhere in the repo
+   (confirmed by grep), so this can only happen via an explicit re-upload —
+   but given the severity, this follow-up (R2.11.1, not yet scheduled) is
+   promoted ahead of other Tier 3 items rather than left as a vague
+   documentation note.
+7. **Nits (3), confirmatory, no defect:** `_opening_closing_balance` runs on
+   the full deduped row list before the 500-row chunked insert loop, not per
+   chunk; dedup only removes rows and never reorders survivors, so it
+   doesn't independently make the direction heuristic less reliable; no
+   downstream consumer currently reads a `bank_statements` row's
+   opening/closing balance for any business logic (bank reconciliation
+   sessions use their own, separately CA-entered opening/closing fields) —
+   meaning this fix's benefit is real but presently dormant until something
+   wires the derived value into reconciliation/reporting.
+
+**Verified:** 34 unit tests in `test_r2_11_bank_parser_hardening.py` (10 new
+beyond the initial 24, each directly proving one of the confirmed findings
+above), all pure parsing/derivation logic with no database. Full suite:
+2,337 passed, same 23 pre-existing DB-dependent failures as every prior
+milestone.
+
+**Next:** R2.11.1 (bank-statement re-import/replace path for pre-fix
+statements — promoted by this milestone's own adversarial review), R2.12
+(receipt→AR→journal atomicity), R2.10 (payroll frontend→backend migration),
+then the Tier 2 regression review and Tier 3.
+

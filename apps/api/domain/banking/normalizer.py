@@ -75,11 +75,24 @@ def detect_format(headers: list[str]) -> str:
     """
     h = [str(x).lower().strip() for x in headers]
     blob = " ".join(h)
-    # A combined Dr/Cr indicator column header is an unambiguous signal for the
-    # single-amount layout — distinct from having separate Debit AND Credit
-    # columns — so it's checked first, same as ICICI's equally unambiguous
-    # "transaction remarks" signal below.
-    if any(re.fullmatch(r"dr\s*/\s*cr|dr\s+or\s+cr|cr\s*/\s*dr", x) for x in h):
+    # A combined Dr/Cr indicator column header is a signal for the single-
+    # amount layout — but ONLY when the file does NOT also have separate,
+    # clearly-labelled Debit AND Credit amount columns of its own (adversarial
+    # review, R2.11 fix phase): a statement can have separate Debit/Credit
+    # columns AND an unrelated "Dr/Cr" column marking the running balance's
+    # polarity, not the transaction's direction — routing that layout to the
+    # amount+indicator adapter misreads the balance-polarity column as a
+    # transaction indicator and fails every row. Requiring the ABSENCE of a
+    # separate debit-token cell and a separate credit-token cell keeps this
+    # check from firing on that shape, while still catching the true
+    # single-amount layout (checked first, same as ICICI's equally
+    # unambiguous "transaction remarks" signal below).
+    has_drcr_column = any(re.fullmatch(r"dr\s*/\s*cr|dr\s+or\s+cr|cr\s*/\s*dr", x) for x in h)
+    has_separate_debit_credit_columns = (
+        any(any(t in cell for t in _DEBIT_TOKENS) for cell in h)
+        and any(any(t in cell for t in _CREDIT_TOKENS) for cell in h)
+    )
+    if has_drcr_column and not has_separate_debit_credit_columns:
         return "generic_amount_drcr"
     if "transaction remarks" in blob:      # ICICI ("Transaction Remarks")
         return "icici"
@@ -192,6 +205,18 @@ def _to_paise(val) -> int:
     stripped, so a "Dr" balance was stored as if it were positive/"Cr"). The
     debit_paise/credit_paise columns wrap this in abs() at the call site, so
     applying the sign here is harmless for them and only matters for balance.
+
+    Adversarial-review fix (R2.11 fix phase): the Dr/Cr suffix is located and
+    stripped BEFORE the parens check (not after), so a suffix trailing OUTSIDE
+    a parenthesised amount — e.g. "(150.00) Dr" — no longer leaves an orphaned
+    ")" that fails to parse. The numeric magnitude is also parsed and made
+    absolute BEFORE any sign is applied, rather than negating whatever sign
+    Decimal happened to find in the source string — so an amount that already
+    carries an explicit leading "-" (e.g. "-150.00 Dr") is not double-negated.
+    When a Dr/Cr suffix is present it is authoritative over any other sign
+    signal (parens or an embedded "-"), since it is the statement's own
+    explicit accounting label; parens/explicit "-" are only used as a
+    fallback sign source when no suffix is present.
     """
     if val is None:
         return 0
@@ -203,8 +228,6 @@ def _to_paise(val) -> int:
     if s in ("", "-"):
         return 0
     s = re.sub(r"[₹,\s]", "", s)
-    neg = s.startswith("(") and s.endswith(")")
-    s = s.strip("()")
     m = _DRCR_SUFFIX_RE.search(s)
     drcr = None
     if m:
@@ -212,14 +235,25 @@ def _to_paise(val) -> int:
         s = s[:m.start()]
     if not s:
         return 0
+    parens_neg = s.startswith("(") and s.endswith(")")
+    s = s.strip("()")
+    if not s:
+        return 0
     try:
-        paise = int((Decimal(s) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        raw = Decimal(s)
+    except InvalidOperation:
+        return 0
+    explicit_neg = raw < 0
+    try:
+        paise = int((abs(raw) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     except (InvalidOperation, ValueError):
         return 0
     if drcr == "dr":
         neg = True
     elif drcr == "cr":
         neg = False
+    else:
+        neg = parens_neg or explicit_neg
     return -paise if neg else paise
 
 
@@ -258,9 +292,12 @@ def _rows_to_txns(rows: list[list], header_idx: int) -> list[NormalizedTxn]:
         if amount_mode:
             # R2.11: single signed-amount + separate Dr/Cr indicator column —
             # classify by the indicator rather than by column position, since
-            # there is no separate debit/credit column to read.
+            # there is no separate debit/credit column to read. Trailing
+            # punctuation ("Dr.", "Cr.") is stripped (adversarial-review fix)
+            # so a bank's own dotted abbreviation isn't silently unrecognised
+            # and its rows dropped with no error.
             amount = abs(_to_paise(col("amount")))
-            indicator = str(col("drcr") or "").strip().lower()
+            indicator = str(col("drcr") or "").strip().lower().rstrip(".")
             is_debit = indicator in _INDICATOR_DEBIT_TOKENS
             is_credit = indicator in _INDICATOR_CREDIT_TOKENS
             if amount == 0 or (not is_debit and not is_credit):

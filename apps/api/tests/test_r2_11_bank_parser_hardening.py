@@ -72,6 +72,32 @@ class TestToPaiseDrCrSuffix:
         assert _to_paise(150) == 15000
         assert _to_paise(150.5) == 15050
 
+    # ── Adversarial-review fixes (R2.11 fix phase) ──────────────────────────
+
+    def test_explicit_minus_with_dr_suffix_not_double_negated(self):
+        """CONFIRMED finding: an explicit leading '-' plus a 'Dr' suffix used
+        to double-negate back to positive, hiding an overdraft."""
+        assert _to_paise("-150.00 Dr") == -15000
+
+    def test_explicit_minus_with_cr_suffix_honors_the_explicit_label(self):
+        """The Cr label is authoritative over a stray embedded '-' — the
+        statement's own explicit accounting label wins."""
+        assert _to_paise("-150.00 Cr") == 15000
+
+    def test_parens_with_suffix_outside_them(self):
+        """CONFIRMED finding: '(150.00) Dr' used to silently return 0 (an
+        orphaned ')' after the suffix was stripped broke Decimal parsing)."""
+        assert _to_paise("(150.00) Dr") == -15000
+
+    def test_parens_with_suffix_and_lakh_commas(self):
+        assert _to_paise("(1,50,000.00) Dr") == -15000000
+
+    def test_no_explicit_sign_still_works_with_suffix(self):
+        # Regression guard: the reordered parens/suffix logic must not break
+        # the plain (no embedded sign) cases already covered above.
+        assert _to_paise("150.00 Dr") == -15000
+        assert _to_paise("150.00 Cr") == 15000
+
 
 # ─── 2. Single Amount + Dr/Cr indicator layout ──────────────────────────────
 
@@ -137,6 +163,32 @@ class TestAmountDrCrIndicatorLayout:
         with pytest.raises(StatementParseError):
             _validate_adapter("generic_amount_drcr", bad_headers)
 
+    # ── Adversarial-review fixes (R2.11 fix phase) ──────────────────────────
+
+    def test_separate_debit_credit_columns_with_extra_drcr_column_not_misdetected(self):
+        """CONFIRMED finding: a file with its OWN separate Debit/Credit amount
+        columns plus an unrelated Dr/Cr column (e.g. marking running-balance
+        polarity) used to be misrouted to the amount+indicator adapter purely
+        because a 'Dr/Cr'-shaped header cell existed anywhere in the row,
+        causing every row to fail classification and the whole file to be
+        rejected as having no transactions."""
+        headers = ["Date", "Description", "Debit Amount", "Credit Amount", "Balance", "Dr/Cr"]
+        assert detect_format(headers) == "generic"
+
+    def test_indicator_with_trailing_period_recognised(self):
+        """CONFIRMED finding: 'Dr.'/'Cr.' (a common dotted abbreviation) used
+        to fail the exact-token match and be silently dropped as
+        unclassifiable, with no error to reveal the missing rows."""
+        rows = [
+            self.HEADERS,
+            ["05/04/2026", "Debit row", "500.00", "Dr.", "9500.00"],
+            ["06/04/2026", "Credit row", "100.00", "CREDIT", "9600.00"],
+        ]
+        txns = _rows_to_txns(rows, 0)
+        assert len(txns) == 2
+        assert txns[0].debit_paise == 50000 and txns[0].credit_paise == 0
+        assert txns[1].debit_paise == 0 and txns[1].credit_paise == 10000
+
 
 # ─── 3. services/banking_service._opening_closing_balance: date order ───────
 
@@ -174,3 +226,38 @@ class TestOpeningClosingBalanceDateOrder:
 
     def test_empty_rows(self):
         assert _opening_closing_balance([]) == (0, 0)
+
+    def test_single_row(self):
+        rows = [{"transaction_date": "2026-04-05", "balance_paise": 42}]
+        assert _opening_closing_balance(rows) == (42, 42)
+
+    # ── Adversarial-review fixes (R2.11 fix phase) ──────────────────────────
+
+    def test_coincidental_same_first_last_date_is_not_treated_as_single_day(self):
+        """CONFIRMED finding: a file whose FIRST and LAST rows happen to share
+        one date, while a row in between is on a genuinely earlier date, used
+        to be misclassified as 'single-day' by the old rows[0]-vs-rows[-1]
+        compare — silently discarding the true earliest date's balance
+        entirely. The true min/max must be found across ALL rows."""
+        rows = [
+            {"transaction_date": "2026-04-05", "balance_paise": 200000},
+            {"transaction_date": "2026-04-01", "balance_paise": 50000},
+            {"transaction_date": "2026-04-05", "balance_paise": 180000},
+        ]
+        opening, closing = _opening_closing_balance(rows)
+        assert opening == 50000, "the true earliest date (04-01) must supply the opening balance"
+        assert closing == 180000, "the last file-order occurrence of the true latest date (04-05)"
+
+    def test_mostly_ascending_with_one_out_of_place_row(self):
+        """A single backdated/out-of-order row must not flip the whole file's
+        detected direction (majority vote across adjacent pairs, not a bare
+        two-endpoint compare)."""
+        rows = [
+            {"transaction_date": "2026-04-01", "balance_paise": 100000},
+            {"transaction_date": "2026-04-03", "balance_paise": 90000},
+            {"transaction_date": "2026-04-02", "balance_paise": 95000},  # one out-of-place row
+            {"transaction_date": "2026-04-10", "balance_paise": 2050000},
+        ]
+        opening, closing = _opening_closing_balance(rows)
+        assert opening == 100000
+        assert closing == 2050000
