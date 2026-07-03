@@ -576,3 +576,32 @@ the F16 amount-scaling fix.
 
 **Next:** Milestone R1.5 (fix Axis/SBI bank-format detection, F8).
 
+## Milestone R1.5 — Axis/SBI bank-format detection, F8 (DELIVERED)
+
+**Goal:** stop bank-statement import from corrupting debit/credit direction and
+amounts for Axis (and mis-describing SBI) statements.
+
+**Revalidation:** confirmed. `domain/banking/normalizer.py:detect_format` tested
+`"chq"/"cheque"` **first**, but that substring appears in HDFC "Chq/Ref No", Axis
+"CHQNO" *and* SBI "Ref/Cheque No" — so both Axis and SBI routed to the HDFC
+adapter. Axis's different column order (`ref,desc,debit,credit,balance` at 1–5 vs
+HDFC's `debit,credit,balance` at 4–6) then read the balance column as the credit:
+a ₹500 debit became a ₹10,000 credit. SBI's amounts survived (same 4/5/6 layout)
+but its description was read from the Value Date column.
+
+**Fix:** reordered `detect_format` so the reliable bank-specific discriminators
+run first — `transaction remarks`→ICICI, `txn date`→SBI, `tran date`→Axis — and
+the shared cheque/narration heuristic runs **last** for HDFC. (`tran date` is
+distinct from SBI's `txn date` and ICICI's `transaction date`.) No adapter column
+maps changed.
+
+**Verified:** reproduced the exact F8 case — the Axis ₹500 debit now parses as a
+₹500 debit (`debit_paise=50000, credit_paise=0`), SBI reads the real description,
+and HDFC/ICICI still route correctly. Added three regression tests
+(`test_csv_axis_format_detected_and_directions_correct`,
+`test_csv_sbi_format_detected_and_description_correct`,
+`test_detect_format_shared_cheque_signal_does_not_shadow_banks`). Full suite 2166
+passed / 49 skipped.
+
+**Next:** Milestone R1.6 (make journal & receipt posting atomic, F2/F7).
+
