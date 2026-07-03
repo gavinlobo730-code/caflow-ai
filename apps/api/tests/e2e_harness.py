@@ -218,6 +218,9 @@ class FakeDB:
     def table(self, name: str) -> _Query:
         return _Query(self, name)
 
+    def rpc(self, fn: str, params: Optional[dict] = None) -> "_Rpc":
+        return _Rpc(self, fn, params or {})
+
     # convenience for tests/harness
     def seed(self, table: str, row: dict) -> dict:
         r = dict(row)
@@ -227,6 +230,48 @@ class FakeDB:
 
     def rows(self, table: str) -> list[dict]:
         return self._tables.setdefault(table, [])
+
+
+# --------------------------------------------------------------------------- #
+#  RPC double — mirrors the SQL functions the kernel calls
+# --------------------------------------------------------------------------- #
+class _Rpc:
+    def __init__(self, db: "FakeDB", fn: str, params: dict):
+        self.db = db
+        self.fn = fn
+        self.params = params
+
+    def execute(self) -> _Result:
+        handler = getattr(self, f"_fn_{self.fn}", None)
+        if handler is None:
+            raise Exception(f"FakeDB: unsupported rpc {self.fn!r}")
+        return _Result(handler())
+
+    def _fn_post_journal_atomic(self):
+        """Mirror migrations/152 post_journal_atomic: insert header + lines
+        atomically (trivially atomic in-memory), with (firm, client, reference_no,
+        entry_date) idempotency. Returns the entry id."""
+        entry = dict(self.params["p_entry"])
+        lines = self.params["p_lines"]
+        entries = self.db._tables.setdefault("journal_entries", [])
+        ref = entry.get("reference_no")
+        if ref is not None:
+            for r in entries:
+                if (r.get("firm_id") == entry.get("firm_id")
+                        and r.get("client_id") == entry.get("client_id")
+                        and r.get("reference_no") == ref
+                        and r.get("entry_date") == entry.get("entry_date")
+                        and not r.get("deleted_at")):
+                    return r["id"]  # dedup: return the existing winner
+        entry.setdefault("id", str(uuid.uuid4()))
+        entries.append(entry)
+        line_store = self.db._tables.setdefault("journal_lines", [])
+        for l in lines:
+            lr = dict(l)
+            lr["journal_entry_id"] = entry["id"]
+            lr.setdefault("id", str(uuid.uuid4()))
+            line_store.append(lr)
+        return entry["id"]
 
 
 # --------------------------------------------------------------------------- #
