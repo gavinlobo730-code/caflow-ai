@@ -1119,11 +1119,28 @@ class Phase2JournalService:
         ]
         if hasattr(db, "rpc"):
             # Real Supabase client (prod) and the e2e FakeDB both expose rpc — this
-            # is the atomic path that makes F2 impossible.
-            result = db.rpc(
-                "post_journal_atomic",
-                {"p_entry": entry_payload, "p_lines": line_payloads},
-            ).execute()
+            # is the atomic path that makes F2 impossible. DEPLOYMENT REQUIREMENT:
+            # migration 152 (which creates post_journal_atomic) MUST be applied to
+            # the target database before this code is deployed — there is no
+            # fallback, deliberately: falling back to the old two-insert path would
+            # silently reintroduce the F2 orphan-header bug this milestone fixes.
+            # A missing function surfaces as a clear, diagnosable error below
+            # instead of an opaque 500, so a migrate-before-deploy mistake is
+            # immediately obvious rather than presenting as "every posting is down."
+            try:
+                result = db.rpc(
+                    "post_journal_atomic",
+                    {"p_entry": entry_payload, "p_lines": line_payloads},
+                ).execute()
+            except Exception as rpc_err:
+                msg = str(rpc_err).lower()
+                if "post_journal_atomic" in msg or "function" in msg and ("not exist" in msg or "not found" in msg or "pgrst202" in msg):
+                    raise RuntimeError(
+                        "post_journal_atomic RPC not found — migration 152 "
+                        "(apps/api/migrations/152_atomic_journal_posting.sql) must be "
+                        "applied to this database before the API is deployed."
+                    ) from rpc_err
+                raise
             entry_id = result.data
             if not entry_id:
                 raise RuntimeError(f"Failed to post journal for ref={reference_no}")

@@ -131,16 +131,25 @@ def _iter_code_files():
 
 
 def _referenced(pattern: re.Pattern) -> dict[str, list[str]]:
-    """name -> list of 'file:line' where it is referenced."""
+    """name -> list of 'file:line' where it is referenced.
+
+    Scans each file's FULL TEXT (not line-by-line) so a call whose name-string
+    wraps onto the next line — e.g. `db.rpc(\n    "post_journal_atomic", ...)` —
+    is still matched. `\\s*` in the patterns already matches newlines; the earlier
+    per-line scan was what made multi-line calls invisible to this guard (found
+    by the R1.6 regression review — post_journal_atomic and is_fy_locked were both
+    missed this way, passing vacuously rather than being checked against a
+    migration).
+    """
     out: dict[str, list[str]] = {}
     for f in _iter_code_files():
         try:
             text = f.read_text()
         except Exception:
             continue
-        for i, line in enumerate(text.splitlines(), 1):
-            for name in pattern.findall(line):
-                out.setdefault(name, []).append(f"{f.relative_to(API_ROOT)}:{i}")
+        for m in pattern.finditer(text):
+            line_no = text.count("\n", 0, m.start()) + 1
+            out.setdefault(m.group(1), []).append(f"{f.relative_to(API_ROOT)}:{line_no}")
     return out
 
 

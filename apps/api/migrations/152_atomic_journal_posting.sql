@@ -22,10 +22,22 @@
 -- The header is inserted as a PARTIAL row (only the keys present in p_entry), so
 -- columns omitted by the caller keep their DB defaults — byte-for-byte identical
 -- to the previous PostgREST .insert(payload) behaviour.
+--
+-- DEPLOYMENT REQUIREMENT (apply before deploying the app code that depends on
+-- it): the kernel (services/phase2_journal_service.py) now calls this RPC
+-- unconditionally for every journal post in production — sales invoices,
+-- receipts, purchase bills, payroll finalization, opening balances, reversals.
+-- There is deliberately NO fallback to the old two-insert path (that would
+-- silently reintroduce the F2 orphan-header bug). If this migration is not yet
+-- applied when the new app code is deployed, EVERY journal post fails until it
+-- is. The kernel wraps the call to surface that specific failure as a clear,
+-- named error rather than an opaque 500, but the correct operational answer is:
+-- apply migration 152 to the target database FIRST, then deploy.
 
 CREATE OR REPLACE FUNCTION post_journal_atomic(p_entry jsonb, p_lines jsonb)
 RETURNS uuid
 LANGUAGE plpgsql
+SET search_path = public, pg_catalog
 AS $$
 DECLARE
   v_keys text;
