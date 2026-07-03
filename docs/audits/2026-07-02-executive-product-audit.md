@@ -232,6 +232,8 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 
 **R2.8 — Make AI extraction real (F19).** Pin `groq` in `requirements.txt`; create the missing `increment_message_count` RPC; stop persisting mock-derived notices/tasks; surface extraction failures instead of fabricating. *Effort:* M. *Benefit:* the AI value prop stops silently faking data.
 
+**R2.12 — Full receipt→AR→journal atomicity** *(follow-up from R1.6/F7).* R1.6 made the receipt path journal-first + idempotent (dedup on `receipt_no`), which converges on retry and eliminated the "settled AR with no GL" harm. The stronger guarantee is a single multi-table RPC that writes the receipt, its allocations, the invoice `paid_paise`/status CAS, and the journal in ONE transaction — closing the residual "journal posted, then AR settle fails" window and the manual-path retry double-settle the audit flagged. Extend the `post_journal_atomic` pattern to a `settle_receipt_atomic` function. *Effort:* M. *Deps:* R0.1, R1.6. *Benefit:* receipts can never leave sub-ledger and GL out of step.
+
 **R2.11 — Bank statement parser hardening** *(pre-existing, surfaced by the R1.5 regression review).* `domain/banking/normalizer._to_paise` uses `rstrip("DrCr")`, which is case/char-set sensitive and zeroes balances suffixed `CR`/`DR`/lowercase; single signed-Amount + Dr/Cr-indicator statement layouts are unsupported and misparse every row as a debit; `Dr` (overdraft) balances lose their sign (stored same as `Cr`); and statement opening/closing balances are taken by file position, which inverts on newest-first exports (also noted in §6). Fix the Dr/Cr suffix parsing (regex, case-insensitive), add adapters (or an Amount+indicator mode) for single-amount layouts, preserve overdraft sign, and derive opening/closing by date order. Also add a one-off re-import path for statements imported before R1.5 (their rows keep the old corrupted values and won't re-dedupe). *Effort:* M. *Benefit:* correct bank feeds across more banks and export styles.
 
 **R2.10 — Route payroll compute through the backend** *(the F14 payroll slice, deferred from R1.3).* The web payroll page computes and persists runs/slips client-side (statutory logic in the browser, against CLAUDE.md); it also stores no run totals, so backend finalize can't process frontend-generated runs. Replace the client-side compute + direct `payroll_runs`/`payroll_slips` inserts with a call to `POST /api/payroll/runs` (server-side `_compute_slip` + totals), reconciling the status/`generated_at` column differences and fetching slips via the backend to avoid RLS re-read gaps. *Effort:* M. *Deps:* frontend CI test runner (currently absent — the 12 web test files are dead code). *Risk:* unverifiable without frontend test infra; must not regress the working generate/display flow. *Benefit:* single correct payroll engine; removes the browser tax logic and the missing-totals defect.
@@ -630,4 +632,50 @@ imported before R1.5 keep their corrupted values and won't re-dedupe, so affecte
 statements must be re-imported. All routed to R2.11.
 
 **Next:** Milestone R1.6 (make journal & receipt posting atomic, F2/F7).
+
+## Milestone R1.6 — Atomic journal & receipt posting, F2/F7 (DELIVERED)
+
+**Goal:** stop the general ledger from diverging from the sub-ledgers on a
+posting failure.
+
+**F2 — journal atomicity.** The kernel inserted the journal header and its lines
+as two separate PostgREST calls; a line failure after the header committed left a
+POSTED header with no lines, which the immutability trigger (055) made
+**unrepairable**, and dedup then returned that orphan forever. Fix: migration
+**152** adds `post_journal_atomic(p_entry, p_lines)` — a plpgsql function (one
+transaction) that inserts the header (partial insert, DB defaults preserved) and
+all lines together, and resolves the `(firm, client, reference_no, entry_date)`
+idempotency race by returning the winner on `unique_violation`. The kernel calls
+it via `db.rpc(...)` when rpc is available (real Supabase client + the e2e
+FakeDB), falling back to two inserts only for rpc-less in-memory doubles
+(trivially atomic; never reached in prod). **Proven on Postgres 16**
+(`tests/test_atomic_journal_posting.py`): a line that violates the XOR check makes
+the whole call roll back with **no orphan header**; happy path and dedup verified.
+
+**F7 — receipt ordering.** `create_receipt_core` inserted the receipt and settled
+AR (`paid_paise`) *before* posting the journal, and `journal_for_receipt`
+swallowed non-ValueError errors (returned None) — so a posting failure left
+**settled AR with no GL entry**. Fix: post the journal **first** (it needs only
+the receipt dict, so no row is written yet), and make `journal_for_receipt`
+**re-raise** instead of swallowing. A failure now aborts before any AR mutation;
+on success the receipt is written (now stamped with `journal_entry_id`) and AR
+settled. **Verified** (`test_f7_journal_failure_does_not_settle_ar`): a forced
+journal failure leaves the invoice unpaid and writes no receipt.
+
+FakeDB gained an `rpc()` double mirroring `post_journal_atomic`. Migration 152
+applies cleanly (drift baseline unchanged at 11). Full suite 2169 passed / 52
+skipped.
+
+**Follow-up noted (R2.12):** the receipt path is now journal-first + idempotent
+(dedup on `receipt_no`), which converges on retry — but full receipt→AR→journal
+atomicity (a single multi-table RPC) is the stronger guarantee and would also
+close the residual "journal posted, then AR settle fails" window and the retry
+double-settle on the manual path. Tracked as R2.12.
+
+This completes **Tier 1** — all six Critical launch blockers (R1.1–R1.6) are fixed
+and verified.
+
+**Next:** Tier 2 — R2.1 (year-end schema, F9), R2.2 (missing tables, F5), R2.4
+(tenancy backstop, F1/F4), R2.5 (`/join` + portal security, F21/F22), R2.3 (tax
+statutory logic incl. the elevated F18), R2.7 (workflow engine, F11/F12).
 
