@@ -163,6 +163,28 @@ def test_detect_format_shared_cheque_signal_does_not_shadow_banks():
     assert detect_format(["Date", "Narration", "Value Dt", "Chq/Ref No", "Debit", "Credit", "Balance"]) == "hdfc"
 
 
+def test_unsupported_layout_fails_loud_not_silent():
+    """F8-class safety: an unknown bank whose layout doesn't fit the detected
+    adapter must raise StatementParseError, not silently mis-map debit/credit."""
+    # 6-column export with a Chq/Ref column trips the hdfc signal, but hdfc needs
+    # 7 columns — must fail loud rather than read balance out-of-range as 0.
+    csv = ("Date,Description,Chq/Ref No,Debit,Credit,Balance\n"
+           "05/04/2026,PURCHASE,REF1,500.00,,9500.00\n")
+    with pytest.raises(StatementParseError):
+        parse_csv(csv)
+
+
+def test_hdfc_variant_mislabeled_date_fails_loud():
+    """An HDFC 7-col layout whose date column is mislabeled 'Tran Date' routes to
+    the axis adapter, whose debit index lands on the Chq/Ref column — must fail
+    loud (the debit/credit-column validation), not silently flip a debit."""
+    headers = ["Tran Date", "Narration", "Value Dt", "Chq/Ref No", "Debit", "Credit", "Balance"]
+    assert detect_format(headers) == "axis"      # routed by 'tran date'
+    csv = ",".join(headers) + "\n05/04/2026,PAYMENT,05/04/2026,REF1,500.00,,9500.00\n"
+    with pytest.raises(StatementParseError):
+        parse_csv(csv)
+
+
 def test_csv_integer_paise_no_float_drift():
     # 0.1 + 0.2 style values must be exact in paise.
     csv = "Date,Description,Debit,Credit,Balance\n01/04/2026,x,0.10,,0.10\n02/04/2026,y,0.20,,0.20\n"

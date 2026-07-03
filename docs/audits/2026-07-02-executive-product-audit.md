@@ -232,6 +232,8 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 
 **R2.8 — Make AI extraction real (F19).** Pin `groq` in `requirements.txt`; create the missing `increment_message_count` RPC; stop persisting mock-derived notices/tasks; surface extraction failures instead of fabricating. *Effort:* M. *Benefit:* the AI value prop stops silently faking data.
 
+**R2.11 — Bank statement parser hardening** *(pre-existing, surfaced by the R1.5 regression review).* `domain/banking/normalizer._to_paise` uses `rstrip("DrCr")`, which is case/char-set sensitive and zeroes balances suffixed `CR`/`DR`/lowercase; single signed-Amount + Dr/Cr-indicator statement layouts are unsupported and misparse every row as a debit; `Dr` (overdraft) balances lose their sign (stored same as `Cr`); and statement opening/closing balances are taken by file position, which inverts on newest-first exports (also noted in §6). Fix the Dr/Cr suffix parsing (regex, case-insensitive), add adapters (or an Amount+indicator mode) for single-amount layouts, preserve overdraft sign, and derive opening/closing by date order. Also add a one-off re-import path for statements imported before R1.5 (their rows keep the old corrupted values and won't re-dedupe). *Effort:* M. *Benefit:* correct bank feeds across more banks and export styles.
+
 **R2.10 — Route payroll compute through the backend** *(the F14 payroll slice, deferred from R1.3).* The web payroll page computes and persists runs/slips client-side (statutory logic in the browser, against CLAUDE.md); it also stores no run totals, so backend finalize can't process frontend-generated runs. Replace the client-side compute + direct `payroll_runs`/`payroll_slips` inserts with a call to `POST /api/payroll/runs` (server-side `_compute_slip` + totals), reconciling the status/`generated_at` column differences and fetching slips via the backend to avoid RLS re-read gaps. *Effort:* M. *Deps:* frontend CI test runner (currently absent — the 12 web test files are dead code). *Risk:* unverifiable without frontend test infra; must not regress the working generate/display flow. *Benefit:* single correct payroll engine; removes the browser tax logic and the missing-totals defect.
 
 **R2.9 — Document-number uniqueness for the remaining statutory docs** *(surfaced by the R1.1 regression review).* `debit_notes.debit_note_no` (medium), `receipts.receipt_no` and `purchase_payments.payment_no` (low) generate numbers but have **no** uniqueness constraint, so the numbering retry is dead code and concurrent duplicates are possible (CGST §34 / Rule 53 require serial uniqueness for debit notes). Add per-client (debit notes/receipts) / per-firm (payments, matching their generator) UNIQUE keys, **preceded by a de-dup migration** for any existing duplicates. *Effort:* M. *Deps:* R0.1. *Risk:* must de-dup live data before adding the constraint. *Benefit:* closes the numbering-integrity gap R1.1 deliberately scoped out.
@@ -602,6 +604,30 @@ and HDFC/ICICI still route correctly. Added three regression tests
 `test_csv_sbi_format_detected_and_description_correct`,
 `test_detect_format_shared_cheque_signal_does_not_shadow_banks`). Full suite 2166
 passed / 49 skipped.
+
+**Regression review (3 lenses, adversarially verified):** the F8 reorder was
+confirmed **correct** — all four canonical headers route to the right adapter and
+the substring-collision safety was verified (`tran date` ≠ inside `transaction
+date`, `chq` ≠ inside `cheque`). It raised a **high** of the same class (silent
+debit/credit corruption when an *unknown or mismatched* layout is force-fit into
+an adapter), and noted the reorder added a small opposite risk (an HDFC export
+mislabeled `Txn/Tran Date` would route to sbi/axis). **Fixed as part of this
+milestone:** added `_validate_adapter` — after detection, it requires every mapped
+column to fit the header width AND the debit/credit columns to actually be
+labelled debit/withdrawal and credit/deposit; otherwise it raises
+`StatementParseError`. So any misroute or unsupported layout now **fails loud**
+instead of silently producing wrong numbers (verified: the four banks + generic
+still parse; a 6-column unknown layout and an HDFC-variant-with-`Tran Date` both
+now raise). Full suite 2168 passed / 49 skipped.
+
+**Deferred to R2.11 (verified pre-existing, different class — not caused by R1.5):**
+the review also found `_to_paise`'s `rstrip("DrCr")` zeroes balances suffixed
+`CR/DR` (case/char-set sensitive); single signed-Amount + Dr/Cr-indicator layouts
+are unsupported and misparse; `Dr` (overdraft) balance sign is dropped; and
+opening/closing balances are taken by file position (wrong for newest-first
+exports — this one the original audit also flagged). Plus a data note: rows
+imported before R1.5 keep their corrupted values and won't re-dedupe, so affected
+statements must be re-imported. All routed to R2.11.
 
 **Next:** Milestone R1.6 (make journal & receipt posting atomic, F2/F7).
 

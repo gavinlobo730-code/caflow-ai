@@ -75,6 +75,43 @@ def detect_format(headers: list[str]) -> str:
     return "generic"
 
 
+_DEBIT_TOKENS = ("debit", "withdrawal", "withdraw")
+_CREDIT_TOKENS = ("credit", "deposit")
+
+
+def _validate_adapter(fmt: str, headers: list[str]) -> None:
+    """Fail loud when the detected adapter does not actually fit the header.
+
+    detect_format uses fuzzy header signals; if a file's real layout differs from
+    the chosen adapter — an unsupported bank, or a variant with a shifted column
+    order — the fixed index map would silently read debit/credit off the wrong
+    columns (the F8 class of corruption). So verify the adapter fits: every mapped
+    column exists within the header width, and the debit/credit columns really are
+    labelled debit/withdrawal and credit/deposit. Otherwise raise, so a CA sees an
+    'unsupported format' error instead of silently wrong numbers.
+    """
+    a = _ADAPTERS[fmt]
+    n = len(headers)
+    low = [str(x).lower().strip() for x in headers]
+    for key, idx in a.items():
+        if idx is not None and idx >= n:
+            raise StatementParseError(
+                f"Bank statement layout doesn't match the detected '{fmt}' format "
+                f"(needs a '{key}' column at position {idx + 1}, but the file has {n} columns). "
+                "Supported: HDFC, SBI, ICICI, Axis, or a generic "
+                "Date/Description/Debit/Credit/Balance CSV."
+            )
+    di, ci = a["debit"], a["credit"]
+    debit_hdr = low[di] if di is not None and di < n else ""
+    credit_hdr = low[ci] if ci is not None and ci < n else ""
+    if not any(t in debit_hdr for t in _DEBIT_TOKENS) or not any(t in credit_hdr for t in _CREDIT_TOKENS):
+        raise StatementParseError(
+            "Unsupported bank statement format — could not identify the debit and "
+            "credit columns. Supported: HDFC, SBI, ICICI, Axis, or a generic "
+            "Date/Description/Debit/Credit/Balance CSV."
+        )
+
+
 # ── value parsers ─────────────────────────────────────────────────────────────
 
 _MONTHS = {m: f"{i:02d}" for i, m in enumerate(
@@ -135,6 +172,7 @@ def _looks_like_header(cells: list[str]) -> bool:
 def _rows_to_txns(rows: list[list], header_idx: int) -> list[NormalizedTxn]:
     headers = [str(c) for c in rows[header_idx]]
     fmt = detect_format(headers)
+    _validate_adapter(fmt, headers)
     a = _ADAPTERS[fmt]
     out: list[NormalizedTxn] = []
     for cells in rows[header_idx + 1:]:
