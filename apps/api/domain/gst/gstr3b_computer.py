@@ -11,9 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Sequence
 
-# Canonical GST paise->rupees conversion (single source of truth, shared with the
-# GSTR-1 builder) — GSTN JSON is in rupees while internal computation is paise.
-from domain.gst.gstr1_builder import _paise_to_rupees
+# GSTR-3B is declared and paid in WHOLE rupees (CGST Act §170) — not the 2-decimal
+# rupees GSTR-1 uses. Conversion lives in the shared GST money module.
+from domain.gst.money import paise_to_rupees_whole
 
 
 @dataclass(frozen=True)
@@ -91,12 +91,13 @@ class GSTR3BResult:
         """Return GSTN-compatible GSTR-3B JSON.
 
         Format follows GSTN API specification v1.3. Every monetary field is in
-        RUPEES (2 decimals) — internal computation is integer paise, but the GSTN
-        portal requires rupees (finding F16: the earlier version emitted raw paise,
-        making every amount 100x too large). Conversion mirrors the GSTR-1 builder.
+        WHOLE RUPEES — internal computation is integer paise, but GSTR-3B is
+        declared and paid in whole rupees (CGST Act §170, round half up). Finding
+        F16: the earlier version emitted raw paise, making every amount 100x too
+        large.
         # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
         """
-        r = _paise_to_rupees
+        r = paise_to_rupees_whole
         return {
             "gstin": gstin,
             "ret_period": period,

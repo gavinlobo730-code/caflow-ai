@@ -548,9 +548,31 @@ itc_net). No circular import (gstr1_builder does not import gstr3b_computer). Fu
 suite 2162 passed / 49 skipped; the standalone e2e GST script only checks key
 presence, so it is unaffected.
 
-**Note:** amounts are 2-decimal rupees (mirroring GSTR-1). If the GSTN GSTR-3B API
-requires whole-rupee integers, that rounding is a small follow-up; 2-decimal is
-correct-scale and consistent, and removes the launch blocker.
+**Regression review (3 lenses, adversarially verified):** conversion coverage
+confirmed **complete and correct** (every field wrapped once, no double-division;
+GSTR-1 independently verified clean, no sibling 100× payload found). It raised a
+well-grounded **high** correction, now **applied**: GSTR-3B is declared and *paid*
+in **whole rupees** (CGST Act §170, half rounds up), not the 2-decimal rupees I
+first used — a 2-decimal liability can't be paid exactly from the whole-rupee cash
+ledger, causing a reconciliation mismatch and possible portal rejection. Changes
+made in response:
+- New shared module `domain/gst/money.py` with two conversions —
+  `paise_to_rupees_2dp` (GSTR-1) and `paise_to_rupees_whole` (GSTR-3B, §170
+  round-half-up via `(paise+50)//100`). This also resolves the **medium** finding
+  (GSTR-3B no longer reaches into GSTR-1's private helper; each return uses the
+  rounding its statute requires). GSTR-1 now imports the shared 2dp function too
+  (single source; all GSTR-1 tests still pass).
+- GSTR-3B payload emits whole-rupee **integers**, which also fixed the low
+  int-0-vs-float inconsistency.
+- Added `test_f16_gstr3b_rounds_to_whole_rupees_section_170` with sub-rupee inputs
+  (₹1,23,456.78→123457, .49→45000, .50→45001) to pin §170 rounding — the earlier
+  exact-rupee tests couldn't distinguish 2-decimal from whole-rupee.
+Full suite 2163 passed / 49 skipped.
+
+**Out of scope (noted, pre-existing):** the payload omits Table 6.1 net tax
+payable (a separate GSTN call — defensible) and `osup_zero` hardcodes zero IGST
+(exports-with-payment unmodelled). Both are computation-scope items, not part of
+the F16 amount-scaling fix.
 
 **Next:** Milestone R1.5 (fix Axis/SBI bank-format detection, F8).
 
