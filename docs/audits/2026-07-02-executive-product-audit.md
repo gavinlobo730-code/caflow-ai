@@ -672,6 +672,70 @@ atomicity (a single multi-table RPC) is the stronger guarantee and would also
 close the residual "journal posted, then AR settle fails" window and the retry
 double-settle on the manual path. Tracked as R2.12.
 
+**Regression review (4 lenses, adversarially verified)** confirmed the RPC itself
+is structurally correct (partial insert, line casts, dedup, and true
+single-transaction atomicity all hold) and surfaced real, actionable gaps —
+**all fixed as part of this milestone**:
+
+- **HIGH — the F7 reorder relocated the danger window, not closed it.** Posting
+  the journal *before* the AR-settlement loop meant an over-allocated request (a
+  single request, no concurrency needed) could still post a phantom Dr Bank / Cr
+  Trade Receivables journal *and* a receipt row before the loop discovered the
+  422 — worse than before, since now both the journal and the receipt persisted
+  for an operation the API reported as failed. **Fixed:** added upfront
+  validation of every allocation against LIVE invoice outstanding, summed per
+  invoice, **before** anything posts — the primary, non-concurrent case can no
+  longer reach the journal at all. For the now-much-narrower residual (a genuine
+  concurrent settlement race exhausting the CAS retry), added a compensation
+  path: `reverse_entry` reverses the journal and the orphaned receipt row is
+  deleted, so a failure self-heals instead of leaving a permanent phantom entry.
+  Applied to both `create_receipt_core` and the foreign-currency
+  `create_foreign_receipt` (identical structure, same gap).
+- **MEDIUM — retry after a partial commit could double-post.** A consequence of
+  the above; closed by the same fix (the reachable single-request case no longer
+  commits before failing, so there's nothing to retry into).
+- **MEDIUM — re-raising `journal_for_receipt` could strand an online payment in
+  the `'capturing'` sentinel forever** (no compensation existed for the new
+  non-swallowing behavior). **Fixed:** `_apply_event` now reverts the payment
+  status back to the event's status on a settlement failure, so a webhook
+  redelivery or manual retry can re-attempt settlement instead of the payment
+  being stuck permanently.
+- **HIGH (deployability) — hard, unguarded RPC dependency.** Since there is
+  deliberately no fallback (a fallback would silently reintroduce F2), a missing
+  migration 152 on the target database would 500 every journal post in
+  production. **Addressed:** the kernel now catches a missing-function error and
+  raises a clear, named error identifying migration 152 by number and path (not
+  an opaque 500); migration 152 itself now carries an explicit
+  "apply-before-deploy" deployment requirement in its header. No automatic
+  fallback was added — correctness over availability for the GL, by design.
+- **MEDIUM — the schema-contract test's phantom-RPC guard was blind to
+  multi-line `.rpc(` calls**, so `post_journal_atomic` (and `is_fy_locked`,
+  pre-existing) passed vacuously rather than being checked against a migration —
+  defeating the safety net for the exact dependency this milestone introduced.
+  **Fixed:** `test_schema_contract.py`'s reference scanner now searches whole-file
+  text (not line-by-line), so a call whose name-string wraps onto the next line
+  is still matched; both RPCs are now genuinely validated.
+- **LOW — migration 152 lacked `SET search_path`**, re-tripping the
+  `function_search_path_mutable` advisor migration 144 was written to clear.
+  **Fixed:** added `SET search_path = public, pg_catalog`, matching the project
+  convention.
+
+New regression tests added: `test_f7_over_allocated_receipt_posts_no_phantom_journal`
+(over-allocation posts nothing), `test_journal_failure_reverts_capturing_claim_not_stranded`
+(online payment survives a journal failure and can retry). Full suite 2178
+passed / 45 skipped, no regressions.
+
+**Residual, explicitly tracked (not silently left, R2.12 scope stands):** if a
+receipt allocates to *multiple* invoices and an *earlier* invoice's
+compare-and-set already succeeded before a *later* one fails under a genuine
+concurrent race, that earlier invoice's `paid_paise` is not rolled back by the
+compensation (safely reverting a concurrent CAS write needs its own
+transaction) — the compensation logs the affected invoice ids for manual
+review. Also noted but out of scope here: a dedup'd pre-152 orphan header (if
+one already existed in a live database before this migration) is still returned
+by the idempotency dedup — 152 prevents new orphans, it does not backfill old
+ones; a one-time production check query is included in the migration's comments.
+
 This completes **Tier 1** — all six Critical launch blockers (R1.1–R1.6) are fixed
 and verified.
 
