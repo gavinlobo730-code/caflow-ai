@@ -3909,3 +3909,130 @@ resolving that duplication, so the bug fix proceeds on the existing
 `fee_invoices`/`fee_receipts` tables; the duplication itself is flagged as
 a product question, not resolved unilaterally).
 
+---
+
+## Milestone R3.9b — fix the fee_receipts partial-payment bug (DELIVERED, critical)
+
+**Goal:** the R3.9 re-scope's #2 finding. `billing/page.tsx`'s ("Fee
+Billing," linked from `AccountingPanel`) "Record Receipt" flow wrote a
+receipt directly into `fee_receipts` and unconditionally force-set the
+paired `fee_invoices.status` to `"Paid"` regardless of the amount entered
+— a ₹500 receipt against a ₹50,000 invoice marked the whole invoice fully
+paid. `fee_invoices` had no running total of payments received at all
+(no `paid_paise` column existed), and `fee_receipts` had zero backend
+Python reference anywhere, so the receipt itself was invisible to every
+reporting surface.
+
+**Scope discovery, handled conservatively:** investigating the write site
+surfaced that `fee_engagements`/`fee_invoices`/`fee_receipts` and
+`billing_schedules`/`client_sales_invoices` (the "internal customer"
+system behind `/practice/billing`, `/practice/revenue`, `/practice/ar`,
+`/practice/collections`) appear to be two independently-built, overlapping
+systems for the firm's own revenue — both live, both feeding real
+reporting. Untangling that is a product decision, not attempted here; this
+fix corrects the reported bug on the system as it exists today, matching
+the same proportionality judgment this mission has applied elsewhere
+(fix the reported defect, flag the bigger architectural question).
+
+**What shipped:** migration 172 adds `paid_paise` to `fee_invoices`
+(backfilling existing `'Paid'` rows to `paid_paise = total_paise`, the
+only reasonable assumption since nothing tracked partial payment before
+this), and a `record_fee_receipt_atomic` RPC that inserts the receipt and
+updates `paid_paise`/`status` in one transaction — the same
+`post_journal_atomic`/`settle_receipt_atomic` pattern as migrations
+152/160. New `services/fee_billing_service.py` wraps it (with a mock-mode
+path for the CI job), exposed via `POST /api/billing/fee-invoices/{id}/
+receipts` and wired into the frontend. A partial receipt now correctly
+leaves status untouched; only cumulative receipts covering the total flip
+it to `Paid`. The migration then closes the direct-write surface (`REVOKE
+INSERT, UPDATE, DELETE` on `fee_receipts`, `REVOKE UPDATE` on
+`fee_invoices`, both `FROM authenticated`) — the same hardening pattern as
+migrations 166/170/171.
+
+**Verified:** 6 new tests in `test_r3_9b_fee_receipt_atomic_pg.py` against
+real Postgres 16 (partial receipt leaves status unchanged + correct
+`paid_paise`; a receipt covering the remaining balance flips to `Paid`;
+own-firm SELECT still works; direct INSERT/UPDATE denied with "permission
+denied"; `service_role` — the RPC's own caller — unaffected), plus 5
+mock-mode tests in `test_r3_9b_fee_receipt_mock.py` (amount validation,
+cross-firm rejection, invoice-not-found). Full mock-mode suite: 2,490
+passed, same 23 pre-existing unrelated failures. `tsc`/`eslint` clean.
+
+**Next:** R3.9c (document the remaining 11 lower-severity unmediated-write
+tables as a ranked backlog rather than fixing all in this pass — matches
+the CLAUDE.md MVP Phase 1 scope discipline), then R3.5 performance.
+
+---
+
+## Milestone R3.9c — remaining unmediated-write tables, ranked backlog (DOCUMENTED, not fixed)
+
+Per the priority-ordered synthesis above, the remaining 11 tables from
+R3.9's re-scope are architecture-duplication / UI-state gaps, not active
+money-corruption bugs like R3.9a/b — each is documented here with its own
+severity note rather than built out in this pass, consistent with the
+CLAUDE.md MVP Phase 1 scope discipline (no new backend surfaces beyond
+what's needed to fix a real bug). `demo_filings` needs no action (by
+design, intentionally sandboxed — see R3.9's original report).
+`compliance_calendar` is tracked separately under the R3.13 compliance
+consolidation follow-up above, not repeated here.
+
+1. **`transactions`/`transaction_lines`** (highest remaining severity) —
+   `apps/web/lib/data/transactions.ts`'s `classifyAndPersistTransactions()`
+   updates `transactions.gst_invoice_category` directly, and is live: called
+   from `buildGSTR1()`, which backs the linked `/gst/gstr1` workspace — a
+   real, active write feeding a statutory GST return with no app-level
+   firm/client check beyond `.eq("id", id)` and no audit-log entry (RLS is
+   the only guardrail). `createInvoice()`'s two inserts in the same file
+   are dead code today (zero callers). No backend persistence endpoint
+   exists to redirect this write to — `routers/gst.py` is compute-only.
+2. **`it_notices`** — `income-tax/notices/page.tsx` tracks IT notices in a
+   table the backend never reads, while `government_notices` (fully
+   managed by `document_intelligence_v2.py`) already feeds the health
+   score's notice-deadline dimension. A parallel shadow system for exactly
+   the kind of deadline-sensitive record the health score exists to catch.
+3. **`msme_payments`** — `accounting/msme-tracker/page.tsx` tracks Section
+   43B(h) 45-day MSME payment deadlines with zero backend reference
+   anywhere; missing a deadline causes real expense disallowance under the
+   Income Tax Act, and it's invisible to `compliance_records`/the health
+   score.
+4. **`fixed_deposits`** — `accounting/loans/page.tsx` records real client
+   investment/interest-rate data with no backend visibility for any
+   asset/wealth reporting.
+5. **`suppliers`** — `accounting/suppliers/page.tsx` duplicates the
+   backend-managed `vendors` table (`routers/vendors.py`); TDS-section
+   mappings entered here never inform the backend's actual TDS computation
+   on purchase bills — a fragmentation risk, not direct money-movement.
+6. **`tax_audits`** — `income-tax/tax-audit/page.tsx` tracks Section 44AB
+   filing status (UDIN, ack number, filed date) disconnected from the
+   canonical `compliance_records` obligation tracker, which only generates
+   a due-date reminder stub for this obligation type and never syncs with
+   this table's actual status.
+7. **`tax_planning_records`** — `lib/data/income-tax.ts` upserts real
+   deduction/income estimates (80C/80D/HRA/24(b)) with no backend
+   persistence; advisory/estimate data, not a filed return or money
+   movement, but wrong numbers here mean bad advice with real downstream
+   consequences.
+8. **`client_documents`** — three separate pages (`client-portal/page.tsx`,
+   `clients/[id]/documents/page.tsx`, `clients/documents/page.tsx`) insert
+   directly, bypassing the backend-managed `documents` table's dedup/
+   audit-log/OCR pipeline (`documents.py`/`document_repository.py`/
+   `document_intelligence_v2.py`) — metadata duplication, not money-moving,
+   but statutory-notice/workpaper documents uploaded here skip dedup and
+   audit logging entirely.
+9. **`leave_balances`** — `payroll/attendance/page.tsx` upserts leave
+   balances the actual payroll-run computation (`payroll_runs`/
+   `payroll_slips`) never reads (it reads raw `attendance` only) — can show
+   an employee a leave balance inconsistent with what payroll actually
+   computes; an employee-trust/wage-dispute risk, not client money.
+10. **`scheduled_reports`** — `settings/scheduled-reports/page.tsx` writes
+    with no backend reference; bonus finding from the original R3.9 pass —
+    no scheduler/cron job anywhere reads this table either, so the
+    "email me this report on a schedule" feature may not functionally
+    deliver anything today, independent of the write-mediation gap.
+11. **`shared_reports`** — `clients/[id]/accounting/page.tsx` records which
+    generated report file is shared to the client portal; the lowest-
+    stakes item on this list (gates portal report visibility only).
+
+None of these block the rest of the priority-ordered plan; R3.5
+(performance) is next.
+
