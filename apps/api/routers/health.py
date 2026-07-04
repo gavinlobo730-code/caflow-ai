@@ -42,6 +42,7 @@ import uuid
 
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import filter_by_client, assert_client_access
 from services.timeline_service import timeline_service
 
 router = APIRouter(prefix="/api/health", tags=["health"])
@@ -703,15 +704,19 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
 @router.get("/clients/{client_id}")
 def get_client_health(
     client_id: str,
-    firm_id: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("client", "read")),
 ):
     """
     GET /api/health/clients/{client_id}
     Returns Product Bible Chapter 16 health shape with 7 dimensions and hard override.
     """
+    assert_client_access(current_user, client_id)
     db = _db()
-    effective_firm = firm_id or current_user.get("firm_id", "")
+    # firm scope always comes from the authenticated caller — never a query
+    # param (a caller-supplied firm_id here would let any authenticated user
+    # read another firm's client health data; the scope must never be
+    # client-controllable).
+    effective_firm = current_user.get("firm_id", "")
 
     if not db:
         scores = _MOCK_SCORES.get(client_id) or _calculate_scores_mock(client_id)
@@ -763,16 +768,16 @@ def get_client_health(
 @router.get("/clients/{client_id}/dimension-detail")
 def get_dimension_detail(
     client_id: str,
-    firm_id: Optional[str] = Query(None),
     dimension: str = Query(..., description="One of the 7 Product Bible dimensions"),
     current_user: dict = Depends(rbac("client", "read")),
 ):
     """
-    GET /api/health/clients/{client_id}/dimension-detail?firm_id=&dimension=
+    GET /api/health/clients/{client_id}/dimension-detail?dimension=
     Returns list of factors dragging the given dimension down.
     Each factor: { label, impact, action_label, action_url }
     Powers the 'click to see detail' UI per Product Bible Chapter 16.
     """
+    assert_client_access(current_user, client_id)
     valid_dims = set(DIMENSION_WEIGHTS_BP.keys())
     if dimension not in valid_dims:
         raise HTTPException(
@@ -781,7 +786,8 @@ def get_dimension_detail(
         )
 
     db = _db()
-    effective_firm = firm_id or current_user.get("firm_id", "")
+    # firm scope always comes from the authenticated caller — see get_client_health.
+    effective_firm = current_user.get("firm_id", "")
 
     if not db:
         factors = _dimension_detail_mock(client_id, dimension)
@@ -815,7 +821,7 @@ def list_scores(
         if is_at_risk is not None:
             result = [s for s in result if s.get("is_at_risk") == is_at_risk]
         result.sort(key=lambda s: s.get("overall_score", 100))
-        return api_response(True, result)
+        return api_response(True, filter_by_client(current_user, result))
 
     q = db.table("health_scores").select("*").eq("firm_id", current_user["firm_id"])
     if is_critical is not None:
@@ -823,7 +829,7 @@ def list_scores(
     if is_at_risk is not None:
         q = q.eq("is_at_risk", is_at_risk)
     res = q.order("overall_score").execute()  # worst first (ascending)
-    return api_response(True, res.data or [])
+    return api_response(True, filter_by_client(current_user, res.data or []))
 
 
 @router.get("/scores/{client_id}")
@@ -831,6 +837,7 @@ def get_score(
     client_id: str,
     current_user: dict = Depends(rbac("client", "read")),
 ):
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         score = _MOCK_SCORES.get(client_id)
@@ -952,6 +959,7 @@ def get_score_history(
     limit: int = Query(20),
     current_user: dict = Depends(rbac("client", "read")),
 ):
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         result = [h for h in _MOCK_HISTORY if h.get("client_id") == client_id]
@@ -972,6 +980,7 @@ def list_overrides(
     client_id: str = Query(...),
     current_user: dict = Depends(rbac("client", "read")),
 ):
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         result = [o for o in _MOCK_OVERRIDES if o.get("client_id") == client_id and o.get("is_active")]
@@ -1086,6 +1095,8 @@ def list_alerts(
     severity: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("client", "read")),
 ):
+    if client_id:
+        assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         result = [a for a in _MOCK_ALERTS if not a.get("is_resolved")]
@@ -1093,7 +1104,7 @@ def list_alerts(
             result = [a for a in result if a.get("client_id") == client_id]
         if severity:
             result = [a for a in result if a.get("severity") == severity]
-        return api_response(True, result)
+        return api_response(True, filter_by_client(current_user, result))
 
     q = db.table("health_alerts").select("*").eq("firm_id", current_user["firm_id"]).eq("is_resolved", False)
     if client_id:
@@ -1101,7 +1112,7 @@ def list_alerts(
     if severity:
         q = q.eq("severity", severity)
     res = q.order("created_at", desc=True).execute()
-    return api_response(True, res.data or [])
+    return api_response(True, filter_by_client(current_user, res.data or []))
 
 
 @router.post("/alerts/{alert_id}/resolve")
