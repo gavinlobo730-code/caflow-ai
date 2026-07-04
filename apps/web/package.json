@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "pages:build": "next build",
+    "generate:redirects": "node scripts/generate-redirects.js",
+    "build": "npm run generate:redirects && next build",
+    "pages:build": "npm run generate:redirects && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "node --experimental-strip-types --test"
