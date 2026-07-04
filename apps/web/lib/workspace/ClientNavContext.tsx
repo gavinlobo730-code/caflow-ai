@@ -43,6 +43,7 @@ export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   { id: "purchases",    label: "Purchases",     href: (id) => `/clients/${id}/purchases/` },
   { id: "compliance",   label: "Compliance",    href: (id) => `/clients/${id}/compliance/` },
   { id: "payroll",      label: "Payroll",       href: (id) => `/clients/${id}/payroll/` },
+  { id: "fixed-assets", label: "Fixed Assets",  href: (id) => `/clients/${id}/fixed-assets/` },
   { id: "year-end",     label: "Year End",      href: (id) => `/clients/${id}/year-end/` },
   { id: "tax",          label: "Tax",           href: (id) => `/clients/${id}/tax/` },
   { id: "documents",    label: "Documents",     href: (id) => `/clients/${id}/documents/` },

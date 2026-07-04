@@ -3668,3 +3668,151 @@ retired. The `/risks` page's separate client-side duplicate risk
 computation (found in R3.13d, not addressed) remains open too. With those
 resolved, the R3.13 compliance data-model consolidation will be complete.
 
+---
+
+## Synthesis — priority-ordered plan across all 7 fresh Tier-3 findings
+
+Before starting the next phase of work, all seven items from the "fresh
+Tier 3 re-scope" (`## Final Engineering Completion & Production Readiness
+Mission — fresh Tier 3 re-scope` above) were re-verified against the
+codebase as it exists today — not against the original scoping notes —
+via three parallel research passes (R3.3 routes, R3.9 unmediated-write
+tables, R3.5 performance), each instructed to cite exact file:line
+evidence rather than repeat earlier claims. Two of the three original
+estimates needed correction as a result (R3.3: ~44 → 54 routes; R3.9's
+~15 estimate held, but the two highest-severity items — silent ledger
+corruption and a partial-payment bug — were not in the original framing
+at all). R3.8 and R3.11 are already delivered. R3.6 has not yet had this
+same fresh re-verification pass (see item 7).
+
+**Priority order and rationale:** real financial-integrity bugs first
+(data corruption/incorrect money-state, regardless of which finding
+bucket they came from), then access/architecture hygiene, then
+discoverability (real, working, statutory features users can't find),
+then performance, then UX polish — matching the severity discipline used
+throughout this mission (see Tier 1/2/3 groupings earlier in this doc).
+
+### 1. R3.9's two newly-discovered critical bugs — highest priority
+
+Both surfaced only because this re-scope pass read actual write sites and
+their consuming code, not just table names:
+
+- **`journal_entry_lines` silent double-entry corruption**
+  (`apps/web/app/accounting/recurring/page.tsx:251`, inside `postNow()`).
+  `journal_entry_lines` is a JOIN-based **view** (migration `012`, rebuilt
+  read-only by migration `016`) — the direct `.insert()` almost certainly
+  fails, but the code never checks the result, while the preceding
+  `journal_entries` insert (line 233-246) succeeds with `status: "posted"`
+  and real debit/credit totals. Net effect: "Post Now" on a recurring
+  template can create a phantom **posted** journal header with zero real
+  line items — invisible to trial balance/P&L/balance sheet, the same
+  failure class migration 166 fixed for `sales_invoices`, except silent
+  rather than visible. Fix: repoint `postNow()` at the real posting kernel
+  (`POST /accounting/journal` → `manual_journal_service` →
+  `phase2_journal_service._create_journal`, documented in-code as the
+  single posting path every other workflow already uses).
+- **`fee_receipts` partial-payment bug** (`apps/web/app/billing/page.tsx:239,248`).
+  Recording a cash receipt force-sets the paired `fee_invoices.status` to
+  `"Paid"` regardless of the amount entered — a ₹500 receipt against a
+  ₹50,000 invoice marks it fully paid — and the receipt lands in a table
+  (`fee_receipts`) nothing backend-side reads, so `collections_service.py`'s
+  `paid_paise`-based AR-aging model never sees it. Fix: a backend-mediated
+  receipt path mirroring the existing `receipts.py`/`receipt_allocations`
+  pattern used for client AR, incrementing `paid_paise` correctly and only
+  flipping status to `Paid` once `paid_paise >= total_paise`.
+
+### 2. R3.3's mechanical, zero-risk cleanup — do alongside item 1
+
+Six confirmed-orphaned `MovedToClientWorkspace` stubs, three logo-concept
+dev-artifact pages, and four historical redirect shims have zero incoming
+references anywhere in the codebase — safe to delete outright. Alongside
+this, `ClientNavContext.tsx`'s `CLIENT_SECTIONS` array is missing a
+`"fixed-assets"` entry despite the type/icon already existing — a
+one-line fix that makes an already-built 801-line Fixed Asset Register
+visible for the first time.
+
+### 3. R3.3's discoverability fixes — real, working, statutory features nobody can reach
+
+15 exact statutory-suite routes (GST filing suite, e-invoice, income-tax
+suite, TDS, MCA/ROC) are fully built, server-computed, "CA REVIEW
+REQUIRED"-gated, and completely unlinked from any nav surface — the
+single highest product-value item in this synthesis, since these are
+core statutory-compliance tools a CA firm would default to needing. Then:
+the unlinked `/accounting` hub (unlocks 10 more built features at once),
+then the remaining 11 shipped-but-unlinked features (execns dashboard,
+AI copilot/memory, time tracking, task templates, relationship
+intelligence, etc.), then the 4 "linked-but-dead-end" stub repoints
+(`workspaceConfig.ts`'s default accounting route, the dashboard welcome
+card, `search.py`'s two hrefs, `reports/page.tsx`'s link) which unblocks
+deleting those last 4 stubs safely. Four genuine product-decision points
+(`/workflows`+`/workflows/approvals` vs. `/approvals`; `/clients/documents`
+vs. `/documents`; `/clients/[id]/coa` vs. the accounting tab's own CoA
+view; `/tds/returns` vs. `/tds`'s inline returns view) are flagged for
+explicit user input rather than guessed — matching this mission's
+standing rule to pause only where a decision is genuinely product/business
+judgment, not a research gap.
+
+### 4. Compliance consolidation follow-ups — small, already fully scoped
+
+Migrate the 4 newly-discovered `compliance_calendar` consumers
+(`gst/page.tsx`, `income-tax/page.tsx` — an active writer — `risks/page.tsx`,
+`reports/cash-flow/page.tsx`) onto `compliance_records`, then RLS-harden
+`compliance_calendar` itself (closing System C the same way migration 170
+closed System B). Also resolve `/risks`' duplicate client-side risk logic
+found (but not addressed) in R3.13d.
+
+### 5. R3.9's remaining 12 unmediated-write tables — ranked backlog, not a fix-all-now item
+
+`it_notices`, `msme_payments`, `fixed_deposits`, `suppliers`, `tax_audits`,
+`tax_planning_records`, `client_documents` (3 pages), `leave_balances`,
+`scheduled_reports`, `shared_reports` are real architecture-duplication /
+UI-state gaps (parallel shadow tables the backend never reads) but are
+not active corruption bugs like items 1's two findings — each is
+documented with its own severity note rather than built out in this pass,
+consistent with the CLAUDE.md MVP Phase 1 scope discipline (no new
+backend surfaces beyond what's needed to fix a real bug). `demo_filings`
+is intentionally sandboxed and needs no action.
+
+### 6. R3.5 performance — ranked by blast radius, in order
+
+1. `domain/ai_copilot_service.py` — cross-tenant `task_repo.find_overdue()`
+   (scans every firm's tasks, not just the caller's) plus 4x redundant
+   unbounded `compliance_records` fetches, on every chat turn and every
+   executive-dashboard load — worst by both scope (cross-tenant) and
+   frequency (per chat message).
+2. `services/compliance_obligation_service.py` dashboard/calendar/escalate —
+   unbounded whole-history `compliance_records` fetch on live, actively-used
+   endpoints.
+3. `domain/task_service.py get_dashboard_summary()` — unbounded `tasks`
+   fetch + the same cross-tenant `find_overdue()` bug + an N+1 per-client
+   health-score loop.
+4. `routers/analytics.py` — whole-firm-history `tasks` fetch on every
+   analytics page load, plus a standalone functional bug: `client_analytics`/
+   `firm_analytics`/`team_analytics`'s pattern, and separately
+   `revenue_vs_effort`'s `ClientRepository()` `NameError` (never imported,
+   only the `client_repo` singleton is) — that endpoint 500s on every call
+   today, independent of its query shape.
+5. `core/auth.py get_current_user()` — 2 serialized, zero-cached DB round
+   trips (+1 conditional) on ~88/93 routers, every request.
+6. `routers/compliance.py /calendar` — worst literal pattern match but
+   confirmed likely dead code (zero frontend callers per migration 170).
+7. Index gaps: `government_notices` and `document_requests` have **zero
+   indexes at all** (not just missing composites) despite each being hit
+   by 5+ `health.py` queries — higher priority than the `tasks`/
+   `compliance_records`/`bank_transactions` composite gaps, which at least
+   have single-column coverage today.
+
+### 7. R3.6 UX consistency — lowest priority, needs its own re-scope pass first
+
+Only a summary-level finding exists so far (EmptyState/ErrorState/
+AsyncBoundary ~20-25% adoption gap; `ClientNavContext` covers only
+`/clients/[id]/*`, leaving 30 global tool pages to roll their own
+client-selector state) — unlike the other 6 findings, this one has not
+yet had a fresh file:line re-verification pass. Lowest severity of the
+seven (pure consistency/polish, not correctness or data-integrity), so it
+is scoped precisely and executed last, after item 6.
+
+**Execution starts now** with items 1-2 (independent of each other, both
+safe to do immediately), then proceeds through items 3-7 in the order
+above, pausing only for the four explicit product-decision flags in item 3.
+
