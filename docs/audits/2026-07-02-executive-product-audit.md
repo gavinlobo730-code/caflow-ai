@@ -3379,3 +3379,89 @@ who shouldn't have had access in the first place).
 **Next:** returning to R3.13c, the five-way health-score reconciliation,
 now that `routers/health.py` is both functional and correctly scoped.
 
+## Milestone R3.13c — retire the frontend's shadow health-score engine (DELIVERED)
+
+**Goal:** with `routers/health.py` now functional (R3.14) and correctly
+scoped (R3.15), retire System 1 — the frontend's client-side
+`health-score-compute.ts`, which computed its own shallow 4-dimension
+formula via direct Supabase reads (bypassing backend RBAC/assignment-scope
+entirely) and wrote to a table (`client_health_scores`) with zero backend
+readers — in favour of the canonical Product Bible Chapter 16 engine.
+System 2 (`compliance_record_service.get_client_health_score()`) is left
+untouched: it backs a genuinely different, still-reused signal (dashboard
+aggregation, AI-insight triggers), not a competing "client health" surface.
+
+**What shipped:**
+- **`apps/web/lib/services/health-score-compute.ts` rewritten** from a
+  Supabase-direct compute engine into a thin wrapper over the backend:
+  `getLatestHealthScore(clientId)` calls `GET /api/health/clients/{id}`
+  (null on 404, no calculation triggered); `getOrCalculateClientHealth`
+  additionally calls `POST /api/health/scores/{id}/calculate` on a 404,
+  mirroring the backend's own on-demand model (there is no scheduled
+  recalculation job — computation has always been caller-triggered, old
+  system included); `getLatestHealthScores(clientIds[])` keeps its exact
+  prior signature and return shape (`Record<string, number>`) by calling
+  the (now assignment-scoped, R3.15) `GET /api/health/scores` once and
+  filtering to the requested ids — so its only caller, `clients/page.tsx`,
+  needed **zero changes**. `deriveHealthAlerts` is reworked to read the new
+  7-dimension breakdown + `hard_override` (a statutory trigger — notice
+  deadline missed, GSTR-3B overdue >2mo, etc. — genuinely more precise than
+  the old blunt overdue-count heuristic) instead of raw compliance-calendar
+  entries; it stays presentational-only (no new network calls), operating
+  on data the page already fetched.
+- **`apps/web/lib/api/index.ts`** — new `api.health` wrapper group
+  (`client`/`scores`/`calculate`), matching the existing `complianceOps`
+  thin-wrapper convention.
+- **`components/ClientHeader.tsx`** — one-line change: passes the real
+  (now correctly parsed) `trend` through instead of hardcoding `null`.
+- **`app/clients/[id]/overview/page.tsx`** — the health sidebar now renders
+  the real 7 Chapter-16 dimensions (`Object.entries(health.dimensions)`,
+  labelled via a small `DIMENSION_LABELS` map) instead of the old 4
+  (compliance/accounting/document/responsiveness) — a strict upgrade, not
+  a lossy remap, since the new engine's dimensions are richer real signals
+  (bank-reconciliation age, AI risk insights, notice deadlines, work-item
+  overdue tracking) rather than the old shallow heuristics. The
+  compliance-calendar seeding logic in this same file is untouched — that's
+  a separate table (`compliance_calendar`) targeted by the still-open
+  R3.13e migration, not this one.
+- The backend's `trend` (a signed-delta string, `"+15"`/`"-5"`/`"+0"`) is
+  converted to the word-label (`"improving"`/`"stable"`/`"declining"`) the
+  existing `HealthBadge` components already render, using the exact same
+  >2 / <-2 thresholds the old client-side formula used — so a ±1–2 point
+  fluctuation still reads as "stable," preserving the prior UX contract
+  exactly, not just approximately.
+
+**Verified:** `tsc --noEmit` clean, `eslint` clean, full `next build` clean
+across all touched files. Backend regression check: full mock-mode suite
+2,468 passed (unchanged), same 23 pre-existing unrelated failures — this
+was a frontend-only change, no backend test surface to add to.
+**Limitation, disclosed rather than glossed over:** interactive Playwright
+verification (the technique used successfully for every other
+frontend-facing milestone this session) could not be completed for this
+specific page. `app/clients/[id]/overview/page.tsx` sits under a
+statically-exported `[id]` dynamic route (`generateStaticParams()` returns
+only `"_placeholder"`; production relies on Cloudflare rewriting the real
+client-id URL to that pre-built page while the browser still shows the
+real URL) — a pre-existing site-architecture property, not something this
+change introduced. Simulating that rewrite plus a valid Supabase browser
+session in a local dev server proved too brittle to get working in the
+time available (multiple synthetic-session/localStorage-key and
+network-mock attempts did not get the client-side auth gate to recognize
+a fake session). `getLatestHealthScores` — the one function shared with
+the directly-testable `/clients` list page — could not be confirmed
+rendering live either, for the same root cause (the auth gate never
+passed). This is disclosed as an untested path, not claimed as verified:
+the `tsc`/`eslint`/`build` cleanliness and the byte-for-byte-compatible
+`getLatestHealthScores` return shape are the evidence this pass actually
+produced.
+
+**Next:** R3.13d — rewire the backend-only consumers still exclusively
+wired to `compliance_tasks` (`get_client_workspace`, `ai_copilot_service`,
+`memory_pipeline`, plus the blended `task_service`/`risk_engine`/
+`_check_delete_blockers`), then R3.13e — migrate the six R3.13 frontend
+consumers (deadlines, client-portal, clients/[id]/overview,
+clients/[id]/compliance, reports, and this same overview page's remaining
+compliance-calendar seeding) onto the canonical `compliance_records` API,
+and RLS-harden (not drop — no confirmed absence of production data)
+`compliance_tasks`/`compliance_calendar`.
+
