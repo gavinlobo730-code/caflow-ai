@@ -43,3 +43,37 @@ def insert_with_number(db, table, base_payload, number_field, format_number, nex
                 continue
             raise
     raise last  # pragma: no cover
+
+
+def insert_numbered_document_with_lines(
+    db, header_table, base_payload, number_field, format_number, next_seq,
+    lines_table, lines, lines_fk_column, attempts: int = 6,
+):
+    """Same retry-on-collision contract as insert_with_number, but for a
+    numbered header with child line rows (debit/credit notes) — header and
+    lines are inserted atomically per attempt via the numbered_document_atomic
+    RPC (migration 167), so a lines-insert failure can never leave an
+    orphaned header the way two separate unguarded inserts could (R3.11).
+
+    Args:
+      lines:            list of dicts, WITHOUT the header FK column (this
+                         function attaches it from the header attempt's id).
+      lines_fk_column:  e.g. "debit_note_id".
+    """
+    last: Exception | None = None
+    for attempt in range(attempts):
+        payload = {**base_payload, number_field: format_number(next_seq())}
+        try:
+            resp = db.rpc("numbered_document_atomic", {
+                "p_header_table": header_table, "p_header": payload,
+                "p_lines_table": lines_table, "p_lines": lines,
+                "p_lines_fk_column": lines_fk_column,
+            }).execute()
+            return resp.data
+        except Exception as e:            # noqa: BLE001
+            last = e
+            if _is_unique_violation(e) and attempt < attempts - 1:
+                _logger.warning("numbering collision on %s (attempt %d) — retrying", header_table, attempt + 1)
+                continue
+            raise
+    raise last  # pragma: no cover

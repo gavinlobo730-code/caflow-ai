@@ -273,6 +273,27 @@ class _Rpc:
             line_store.append(lr)
         return entry["id"]
 
+    def _fn_numbered_document_atomic(self):
+        """Mirror migration 167 numbered_document_atomic: insert a numbered
+        header + its lines atomically (trivially atomic in-memory). Returns
+        the header row (dict), matching the real RPC's scalar jsonb return."""
+        header_table = self.params["p_header_table"]
+        header = dict(self.params["p_header"])
+        lines_table = self.params["p_lines_table"]
+        lines = self.params["p_lines"]
+        fk_column = self.params["p_lines_fk_column"]
+
+        header.setdefault("id", str(uuid.uuid4()))
+        self.db._tables.setdefault(header_table, []).append(header)
+
+        line_store = self.db._tables.setdefault(lines_table, [])
+        for l in lines:
+            lr = dict(l)
+            lr[fk_column] = header["id"]
+            lr.setdefault("id", str(uuid.uuid4()))
+            line_store.append(lr)
+        return header
+
     def _fn_settle_receipt_atomic(self):
         """Mirror migrations/160+162 settle_receipt_atomic: insert the journal
         header+lines, the receipt row, and every allocation's invoice update

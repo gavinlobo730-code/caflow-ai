@@ -257,7 +257,7 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 - **R2.11.1 — Bank-statement re-import path for pre-R2.11 statements** *(surfaced by the R2.11 fix phase, promoted here at Tier 2 close — not yet scoped)*. Statements imported before R2.11's parser fixes keep their old, incorrectly-signed/scaled rows on disk — nothing re-derives them from the fix, and the existing dedupe logic won't treat a corrected re-upload as new rows (by design, to prevent double-counting). Needs a product/design decision before implementation: how aggressive should re-import matching be (exact hash match vs. fuzzy date+amount match), does it replace rows in place or supersede them with an audit trail, and does it need its own CA-confirmation step given it can change historical reconciled balances. *Effort:* M. *Benefit:* firms that imported bank data before R2.11 get correct historical balances without a manual re-entry.
 - **R3.9 — Audit the ~57 migration-created tables with no backend reader** *(surfaced by the R2.2 regression review)*. Some may be reached directly from the frontend via PostgREST rather than through a backend router — the same F14 concern (business logic / unmediated table access from the browser) flagged elsewhere in this audit. Needs a systematic per-table check (grep `apps/web` for direct `.from("<table>")` reads/writes against each name) before deciding whether each is dead schema (safe to leave or formally deprecate) or an undocumented frontend-direct access path (a CLAUDE.md violation — "zero business logic in the frontend" — needing the same treatment as R2.10's payroll migration). *Effort:* M. *Benefit:* closes the door on any remaining unmediated-table-access surface; removes schema clutter.
 - **R3.10 — Implement Section 80CCD(2) and verify Sections 206AA/206AB's status** *(surfaced by the R2.3 regression review; 206AA scope widened by the R3.1 re-audit)*. Section 80CCD(2) (employer NPS contribution) is deductible under the new regime — unlike the rest of Chapter VI-A — but is entirely unimplemented in `domain/income_tax`. Separately, `tds_validator.py` hardcodes BOTH Section 206AA (missing-PAN, 20% floor — duplicated in `tds_computer.py` too) and Section 206AB (non-filer doubled rate) with no FY registry and no `verified` flag; 206AB in particular may have been altered by Finance Act 2025 and needs verification against the Act's actual text before either changing a compliance-conservative behaviour or leaving a since-repealed check silently in place. *Effort:* S–M. *Benefit:* closes a real deduction gap and confirms/corrects two compliance-sensitive checks.
-- **R3.11 — Compensate `debit_notes.create_debit_note`'s header/lines insert** *(surfaced by the R2.9 regression review, low priority)*. The header is inserted via `insert_with_number` (now durably unique per R2.9) and `debit_note_lines` afterward with no compensation — a lines-insert failure leaves an orphaned draft header with zero lines. Not a money- or statutory-correctness issue (a draft, not a posted document) but worth closing for consistency with every other multi-step insert this Tier 2 pass hardened. *Effort:* S. *Benefit:* no orphaned draft rows from a partial write.
+- **R3.11 — Compensate `debit_notes.create_debit_note`'s header/lines insert. DELIVERED (scope widened to `credit_notes` too).** *(surfaced by the R2.9 regression review, low priority)*. The header was inserted via `insert_with_number` (now durably unique per R2.9) and `debit_note_lines` afterward with no compensation — a lines-insert failure left an orphaned draft header with zero lines. While implementing the fix, found `credit_notes.py::create_credit_note` has the byte-for-byte identical gap (same `insert_with_number`-then-unguarded-lines-insert shape) against a line table (`credit_note_lines`) with an identical column shape — fixed both via one shared `numbered_document_atomic` RPC (migration 167) rather than duplicating the fix. Not a money- or statutory-correctness issue (drafts, not posted documents) but closes the last multi-step insert this Tier 2/3 pass hadn't hardened yet. *Effort:* S (as estimated; the credit-notes twin added negligible extra scope given the shared RPC). *Benefit:* no orphaned draft rows from a partial write, for either document type.
 - **R3.12 — Verify Maharashtra/West Bengal/Tamil Nadu Professional Tax slabs against current state notifications** *(surfaced by the R2.10 regression review)*. `routers/payroll.py::_PT_SLABS_BY_STATE`'s Karnataka entry is this codebase's original, unit-tested baseline; the other three states were ported verbatim from the frontend's pre-existing (pre-R2.10) client-side logic — the only source for those states anywhere in this repo — and have not been independently re-confirmed against each state's current Profession Tax Act/notification. Same "pending statutory verification" treatment as FY 2026-27's income-tax figures; updating a verified value is a one-line data change in `_PT_SLABS_BY_STATE`, not a code change. *Effort:* S (verification only, assuming the existing slab shape is correct). *Benefit:* removes the one remaining unverified-statutory-value flag from the payroll module.
 - **R3.13 — Migrate remaining frontend pages that compute-and-persist statutory calculations independently of the backend. PARTIALLY DELIVERED (R3.13a).** *(surfaced by the R3.1 re-audit; R3.1b covers the capital-gains instance separately given its size)*. Three instances found; a scoping pass ahead of full delivery (see Implementation Log) found the advance-tax item was not just a relocation job but an actual formula bug, and fixed it first (R3.13a) as the highest-value, most isolated piece. Two remain:
   - `apps/web/lib/data/compliance.ts`'s `seedComplianceCalendar()` computes GSTR-1/3B/9 due dates client-side AND writes them directly to a `compliance_calendar` Supabase table from the browser — the same "zero business logic in the frontend" violation R2.3/R2.10 already fixed elsewhere, but for compliance due dates instead of tax slabs. The scoping pass found this is a genuine three-way consolidation, not a one-line swap: the backend already has an equivalent (`POST /api/compliance/seed` in `routers/compliance.py`, using `services/compliance_engine.py`'s due-date functions), but it writes to a *different* table (`compliance_tasks`) than the one the frontend uses (`compliance_calendar`, which has zero backend readers) — and a third system (`compliance_records`/`compliance_obligation_service.py`) also exists. Needs a decision on which becomes canonical before migrating this (also gates R3.2, below). *Effort:* M.
@@ -2927,4 +2927,62 @@ project to complete the request past that point).
 
 **Next:** R3.11 (debit_notes header/lines compensation) — small, well-
 scoped, with a direct precedent to mirror.
+
+## Milestone R3.11 — compensate debit/credit note header/lines inserts (DELIVERED)
+
+**Goal:** `debit_notes.create_debit_note` inserts a numbered header, then
+the line rows as a separate, unguarded call — a lines-insert failure
+leaves the already-committed header orphaned with zero lines.
+
+**Widened while implementing:** `credit_notes.create_credit_note` has the
+identical shape (`insert_with_number` for the header, then an unguarded
+`credit_note_lines` insert) against a line table with an identical column
+set to `debit_note_lines` (`description`/`hsn_sac`/`quantity`/`rate_paise`/
+`gst_rate_bps`/`taxable_amount_paise`/`cgst_paise`/`sgst_paise`/`igst_paise`/
+`line_total_paise`, differing only in the header FK column name) — fixed
+both with one shared function rather than writing the same SQL twice.
+
+**What shipped:**
+- **Migration 167** — `numbered_document_atomic(p_header_table, p_header,
+  p_lines_table, p_lines, p_lines_fk_column)`, mirroring
+  `post_journal_atomic`'s (migration 152) partial-insert-via-
+  `jsonb_populate_record` structure: header and lines insert inside ONE
+  plpgsql function body (one transaction), so a lines-insert failure rolls
+  back the header too. Unlike `post_journal_atomic` (which treats a
+  unique-number collision as an idempotent retry and returns the existing
+  winner), debit/credit-note numbers have no natural idempotency key — a
+  collision must retry with a genuinely new number, so this function lets
+  `unique_violation` propagate instead of swallowing it.
+- **`services/numbering.py::insert_numbered_document_with_lines`** —
+  same retry-on-collision contract as the existing `insert_with_number`
+  (recomputes the sequence and retries the whole attempt on a unique
+  violation), but calls the new RPC instead of a plain `.insert()`, so
+  every retry attempt is atomic across header+lines together.
+  `routers/debit_notes.py` and `routers/credit_notes.py` both now call
+  this instead of their old two-step insert.
+- `tests/e2e_harness.py`'s `FakeDB` gained a `_fn_numbered_document_atomic`
+  handler (trivially atomic in-memory, mirroring the real RPC's contract)
+  so the existing mock-mode debit/credit-note test suites exercise the new
+  path without any test rewrites needed.
+
+**Verified:** 3 new tests
+(`test_r3_11_numbered_document_atomic_pg.py`) against real Postgres 16 —
+header+lines commit together on success, a lines-table failure rolls back
+the header (proving the actual fix — manually confirmed first via a
+direct `psql` session before writing the automated test), and a
+zero-line document (a legitimate case) still inserts cleanly. All 14
+pre-existing debit/credit-note tests (`test_debit_notes.py`,
+`test_credit_note_application.py`, `test_e2e_customer_statements.py`,
+`test_rc1_full_cycle_validation.py`) and all 7 `test_r2_9_document_
+numbering_pg.py` real-Postgres numbering tests still pass unchanged,
+proving the new atomic path preserves the exact retry-on-collision
+numbering behavior. Full mock-mode suite: 2,428 passed, same 23
+pre-existing unrelated failures (93 skipped, up from 90 — the 3 new
+real-Postgres-only tests correctly skip without `HARNESS_PG`). Migration
+numbering ratchet clean.
+
+**Next:** R3.10 (Section 80CCD(2) + Section 206AA/206AB) — the remaining
+statutory-correctness item with a real live compliance gap (206AA's
+PAN-missing floor is currently only a warning, never actually applied to
+the computed tax).
 
