@@ -5,8 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "generate:redirects": "node scripts/generate-redirects.js",
-    "build": "npm run generate:redirects && next build",
-    "pages:build": "npm run generate:redirects && next build",
+    "generate:known-routes": "node scripts/generate-known-routes.js",
+    "build": "npm run generate:redirects && npm run generate:known-routes && next build",
+    "pages:build": "npm run generate:redirects && npm run generate:known-routes && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "node --experimental-strip-types --test"

@@ -49,6 +49,13 @@ const HEADER = `# GENERATED FILE — do not hand-edit.
  * explicit decision about its rewrite shape, not a guess. */
 export function walkPages(dir, segments = []) {
   const routes = [];
+  // A directory's own page.tsx is normally captured by its PARENT's
+  // iteration below — except the very first call, whose "parent" is
+  // whoever called walkPages(). Check it explicitly so e.g. app/page.tsx
+  // (the "/" route) isn't silently dropped from the walk.
+  if (fs.existsSync(path.join(dir, "page.tsx"))) {
+    routes.push(segments);
+  }
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const name = entry.name;
@@ -61,9 +68,6 @@ export function walkPages(dir, segments = []) {
     const segment = isDynamic ? `:${name.slice(1, -1)}` : name;
     const childDir = path.join(dir, name);
     const childSegments = [...segments, segment];
-    if (fs.existsSync(path.join(childDir, "page.tsx"))) {
-      routes.push(childSegments);
-    }
     routes.push(...walkPages(childDir, childSegments));
   }
   return routes;

@@ -15,6 +15,8 @@ import {
   WORKSPACE_CONFIGS,
   getActiveWorkspaceForPathname,
 } from "./workspaceConfig";
+import { matchesKnownRoute } from "./routeManifest";
+import { KNOWN_ROUTE_SHAPES } from "./knownRoutes.generated";
 
 export interface WorkspaceContextValue {
   /**
@@ -49,14 +51,18 @@ const STORAGE_KEY = "practicesync_workspace_v2";
 const KNOWN_WORKSPACE_IDS = new Set(WORKSPACE_CONFIGS.map((w) => w.id));
 
 /**
- * A persisted route is only trusted if it still maps back to the SAME
- * workspace under the current routing rules. This is what actually catches
- * staleness — a route to a deleted or moved page — rather than merely
- * checking the key exists, which stale data always passes. Anything that
- * fails (unknown workspace id, malformed value, or a route that no longer
- * belongs to that workspace) falls back to that workspace's own
- * DEFAULT_WORKSPACE_ROUTES entry, so the app can never navigate a user to a
- * dead page because of stale localStorage.
+ * A persisted route is only trusted if BOTH:
+ *  - it still maps back to the SAME workspace under the current routing
+ *    rules (catches a route reassigned to a different workspace), and
+ *  - it's still a real page (catches a route deleted from WITHIN a
+ *    workspace whose other pages are still live — e.g.
+ *    /accounting/chart-of-accounts still starts with "/accounting", a
+ *    workspace that's very much still alive, even though that exact page
+ *    was retired; the same-workspace check alone would let it through).
+ * Anything that fails either check (also: unknown workspace id, malformed
+ * value) falls back to that workspace's own DEFAULT_WORKSPACE_ROUTES entry,
+ * so the app can never navigate a user to a dead page because of stale
+ * localStorage.
  */
 function sanitizeLastRoute(raw: unknown): Record<WorkspaceId, string> {
   const out: Record<WorkspaceId, string> = { ...DEFAULT_WORKSPACE_ROUTES };
@@ -65,6 +71,7 @@ function sanitizeLastRoute(raw: unknown): Record<WorkspaceId, string> {
     if (!KNOWN_WORKSPACE_IDS.has(key as WorkspaceId)) continue;
     if (typeof route !== "string" || !route.startsWith("/")) continue;
     if (getActiveWorkspaceForPathname(route) !== key) continue;
+    if (!matchesKnownRoute(route, KNOWN_ROUTE_SHAPES)) continue;
     out[key as WorkspaceId] = route;
   }
   return out;
