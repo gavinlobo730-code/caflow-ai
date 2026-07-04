@@ -4162,6 +4162,121 @@ re-verified against current code this session).
 
 ---
 
+## Milestone R3.5a — fix cross-tenant scan + redundant unbounded fetches in ai_copilot_service.py (DELIVERED)
+
+**Goal:** the R3.5 re-scope's #1 finding. `repositories/task_repository.py`'s
+`find_overdue()` took no `firm_id` parameter at all — it scanned every
+firm's tasks system-wide, then Python-filtered to the caller's firm
+afterward. `domain/ai_copilot_service.py` called it on every chat-context
+build and every executive-dashboard load: not just a performance problem,
+a genuine cross-tenant scan on a hot path.
+
+**What shipped:** added an optional `firm_id` param to `find_overdue()`
+(backward compatible — omitting it keeps the old scan-everything behavior
+for `task_service.py`'s own call site, fixed separately in R3.5c) and
+updated both `ai_copilot_service.py` call sites to push the scope to the
+query. Also collapsed 3 redundant fetches of the firm's entire
+`compliance_records` history down to 1: `_build_context`'s "compliance"
+branch called both `_overdue_compliance_records` and
+`_due_within_days_compliance_records`, each independently re-fetching the
+same table, while `get_compliance_intelligence` fetched it a third time on
+top. Both now fetch once and derive overdue/due-soon from that single
+result; `_overdue_compliance_records` also now pushes `status="Overdue"`
+to the query instead of fetching every status.
+
+**Verified:** 3 new tests in `test_r3_5a_ai_copilot_perf.py` (firm-scoped
+`find_overdue`, single-fetch assertions via a call-counting fake repo for
+both call sites). Full mock-mode suite: 2,493 passed, same 23
+pre-existing unrelated failures.
+
+**Next:** R3.5b (`compliance_obligation_service`'s `escalate()`).
+
+---
+
+## Milestone R3.5b — bound compliance_obligation_service's escalate(); document dashboard/calendar scope limit (DELIVERED)
+
+**Goal:** the R3.5 re-scope's #2 finding. `escalate()` fetched the firm's
+entire `compliance_records` history — every status, every FY — just to
+discard every Filed/Completed row in Python; it never acts on closed
+obligations at all.
+
+**What shipped:** added `exclude_statuses` to
+`compliance_records_repository.find_all()` (pushed server-side via
+`.not_.in_()`, the same pattern already used elsewhere in this codebase)
+plus a `count_all()` lightweight-count helper, then wired
+`exclude_statuses` into `escalate()`. The existing
+`test_escalate_tiers_and_idempotent` (which seeds a "Filed" record
+expected to be ignored) still passes unchanged — behavior preserved, only
+the query shape improved.
+
+**Explicitly NOT changed in this pass — flagged, not fixed:**
+`dashboard()`/`calendar()` were investigated but left alone. The "Total"
+metric shown on `/practice/compliance` is computed as `len(all records
+ever, including Filed/Completed)` via `aggregate_dashboard()` (a pure
+function with its own test, `test_dashboard_aggregation_pure`, that locks
+in this exact contract), and the "queue" response is consumed by the
+frontend with a client-side status filter defaulting to "all" — both are
+load-bearing today. Bounding either would change a displayed business
+metric or drop data the UI already depends on — a product decision
+(should "Total" mean lifetime-total or a bounded window?), not a
+query-shape fix. **Still open as of the final production-readiness audit
+below** — no product decision has been made, and the underlying fetch in
+`compliance_obligation_service.py`'s `dashboard()`/`calendar()`/
+`aggregate_dashboard()` remains genuinely unbounded, a live R3.5-class
+performance risk that survives R3.5's closure.
+
+**Verified:** 4 new tests in `test_r3_5b_compliance_records_repo.py`. Full
+mock-mode suite: 2,497 passed, same 23 pre-existing unrelated failures.
+
+**Next:** R3.5c (`task_service.get_dashboard_summary()`).
+
+---
+
+## Milestone R3.5c — fix task_service.get_dashboard_summary() (unbounded fetch, cross-tenant scan, N+1) (DELIVERED)
+
+**Goal:** the R3.5 re-scope's #3 finding. `get_dashboard_summary()`
+fetched every task ever created for the firm (all statuses) just to
+discard completed ones in Python; called the same firm-less,
+all-system `task_repo.find_overdue()` as `ai_copilot_service.py` (R3.5a);
+and looped every active client calling
+`compliance_record_service.get_client_health_score()` individually — 2 DB
+round trips per client (a client lookup + its own `compliance_records`
+fetch), unbounded by firm size.
+
+**What shipped:** reused `task_repository.py`'s new `exclude_statuses`
+param (open tasks fetched directly instead of filtered post-fetch),
+`find_overdue`'s new `firm_id` param (R3.5a), and a new
+`ComplianceRecordService.score_from_records()` static method extracted
+from `get_client_health_score()`'s scoring math — the dashboard already
+fetches the firm's full `compliance_records` once for its own
+`compliance_due_week`/overdue metrics, so grouping that same result by
+`client_id` and running the identical scoring formula in Python replaces
+N per-client DB round trips with zero. Also fixed
+`repositories/task_repository.py`'s mock-mode `find_all()`: it never
+filtered by `firm_id` at all (only the real-Supabase branch did) — the
+same cross-tenant mock-mode gap already fixed for `client_repository.py`
+in R3.13b.
+
+**Verified:** updated 2 existing tests that had encoded the old (buggy)
+architecture as expected behavior —
+`test_r2_8_ai_extraction.py`'s `TestDashboardSummaryOverdueTasksFirmScoped`
+now verifies `find_overdue()` is called WITH `firm_id` (previously
+asserted only the post-filtered output); `test_stabilization.py`'s
+`test_summary_uses_client_repo_not_mock` now stubs `score_from_records`
+instead of the now-unused `get_client_health_score`. 2 new tests prove the
+N+1 elimination and the server-side status exclusion. Full mock-mode
+suite: 2,499 passed, same 23 pre-existing unrelated failures.
+
+**Documentation note:** R3.5a/b/c were delivered and pushed earlier this
+session but did not get their own milestone sections at the time — this
+gap was caught by the final production-readiness audit's review of the
+doc against git history and is backfilled here for an accurate record.
+
+**Next:** R3.5d (bound `analytics.py`'s three unbounded endpoints + fix
+the `revenue_vs_effort` `NameError`).
+
+---
+
 ## Milestone R3.5d — bound analytics.py's client/firm analytics; fix revenue_vs_effort (DELIVERED)
 
 **Goal:** the R3.5 re-scope's #4 finding. `client_analytics` and
