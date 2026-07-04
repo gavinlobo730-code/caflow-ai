@@ -67,21 +67,30 @@ class TaskRepository(BaseRepository[dict]):
     def find_by_status(self, status: str, firm_id: Optional[str] = None) -> list[dict]:
         return self.find_all(status=status, firm_id=firm_id)
 
-    def find_overdue(self) -> list[dict]:
+    def find_overdue(self, firm_id: Optional[str] = None) -> list[dict]:
+        """Overdue (past-due, not completed) tasks. firm_id is optional and
+        defaults to None (every firm) only for backward compatibility with
+        existing callers still doing their own post-filter — new callers
+        should always pass firm_id so the scope is pushed to the query."""
         from datetime import date
         today = date.today().isoformat()
         if _USE_MOCK:
-            return [
+            tasks = [
                 t for t in MOCK_TASKS
                 if t.get("due_date") and t["due_date"] < today and t["status"] not in ("completed",)
             ]
-        result = (
+            if firm_id:
+                tasks = [t for t in tasks if t.get("firm_id") == firm_id]
+            return tasks
+        query = (
             _get_db().table("tasks").select("*")
             .lt("due_date", today)
             .neq("status", "completed")
             .is_("deleted_at", None)
-            .execute()
         )
+        if firm_id:
+            query = query.eq("firm_id", firm_id)
+        result = query.execute()
         return result.data or []
 
     def find_due_today(self) -> list[dict]:
