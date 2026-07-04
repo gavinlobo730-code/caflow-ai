@@ -17,6 +17,9 @@ from domain.income_tax.itr_engine import (
 from domain.income_tax.capital_gains_engine import (
     compute_capital_gains, ASSET_TYPES, REGISTER_ASSET_TYPES, CII_BY_FY, LATEST_CII_FY,
 )
+from domain.income_tax.advance_tax_interest_engine import (
+    compute_234c_interest, installment_schedule, InstallmentPayment, INSTALLMENT_RULES,
+)
 
 router = APIRouter(prefix="/api/income-tax", tags=["income-tax"])
 
@@ -376,3 +379,134 @@ def delete_capital_gains(
     if not row.data:
         raise HTTPException(status_code=404, detail="Capital gains record not found")
     return api_response(True, {"id": record_id})
+
+
+# ── Advance tax interest (R3.13a) ───────────────────────────────────────────
+# Section 207/208 (instalment schedule) / 234C (interest for deferment) —
+# see domain/income_tax/advance_tax_interest_engine.py for the full
+# computation and its verification-status note. Replaces apps/web/app/
+# income-tax/advance-tax/page.tsx's compute234CInterest(), which used the
+# wrong (234B-shaped, actual-delay) formula with no trigger tolerance.
+
+class AdvanceTaxInstallmentInput(BaseModel):
+    installment_number: int = Field(ge=1, le=4)
+    paid_amount_paise: int = Field(default=0, ge=0)
+    paid_date: Optional[date] = None
+    challan_number: Optional[str] = None
+
+    @field_validator("paid_date")
+    @classmethod
+    def paid_date_not_in_future(cls, v: Optional[date]) -> Optional[date]:
+        if v and v > date.today():
+            raise ValueError("paid_date cannot be in the future")
+        return v
+
+
+class ComputeAdvanceTaxRequest(BaseModel):
+    fy: str
+    estimated_tax_paise: int = Field(ge=0)
+    installments: list[AdvanceTaxInstallmentInput] = Field(default_factory=list)
+
+    @field_validator("installments")
+    @classmethod
+    def one_entry_per_installment_number(cls, v: list[AdvanceTaxInstallmentInput]) -> list[AdvanceTaxInstallmentInput]:
+        numbers = [i.installment_number for i in v]
+        if len(numbers) != len(set(numbers)):
+            raise ValueError("installments must not repeat an installment_number")
+        return v
+
+
+def _at_response(estimated_tax_paise: int, req_installments: list[AdvanceTaxInstallmentInput], fy: str) -> dict:
+    result = compute_234c_interest(
+        fy, estimated_tax_paise,
+        [InstallmentPayment(i.installment_number, i.paid_amount_paise, i.paid_date) for i in req_installments],
+    )
+    return {
+        "fy": fy,
+        "estimated_tax_paise": estimated_tax_paise,
+        "total_interest_paise": result.total_interest_paise,
+        "section_ref": "Section 234C",
+        "installments": [
+            {
+                "installment_number": i.installment_number,
+                "due_date": i.due_date.isoformat(),
+                "cumulative_required_percent": i.cumulative_required_percent,
+                "trigger_percent": i.trigger_percent,
+                "required_cumulative_paise": i.required_cumulative_paise,
+                "actual_cumulative_paid_paise": i.actual_cumulative_paid_paise,
+                "is_short": i.is_short,
+                "shortfall_paise": i.shortfall_paise,
+                "interest_months": i.interest_months,
+                "interest_paise": i.interest_paise,
+            }
+            for i in result.installments
+        ],
+    }
+
+
+@router.post("/advance-tax/compute")
+def compute_advance_tax_interest(
+    req: ComputeAdvanceTaxRequest,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Stateless Section 234C interest estimator — does not persist anything.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
+    return api_response(True, _at_response(req.estimated_tax_paise, req.installments, req.fy))
+
+
+@router.get("/advance-tax")
+def list_advance_tax(
+    client_id: str = Query(...),
+    fy: str = Query(...),
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    db = _db()
+    if not db:
+        return api_response(True, [])
+    res = (db.table("advance_tax_payments").select("*")
+           .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("financial_year", fy)
+           .order("installment_number").execute())
+    return api_response(True, res.data or [])
+
+
+_REQUIRED_PERCENT_BY_INSTALLMENT = {r.number: r.cumulative_required_percent for r in INSTALLMENT_RULES}
+
+
+class SaveAdvanceTaxRequest(ComputeAdvanceTaxRequest):
+    client_id: str
+
+
+@router.post("/advance-tax")
+def save_advance_tax(
+    req: SaveAdvanceTaxRequest,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Persists the recorded payment facts (paid amount/date/challan) for
+    each instalment — due_date and required_percent are always derived
+    server-side from the FY's Section 208 schedule, never trusted from the
+    client. Interest itself is never stored (it is derived, not a fact);
+    call /advance-tax/compute for the current computed breakdown.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
+    db = _db()
+    due_dates = dict(installment_schedule(req.fy))
+    by_number = {i.installment_number: i for i in req.installments}
+    rows = []
+    for number, due_date in due_dates.items():
+        inst = by_number.get(number)
+        rows.append({
+            "firm_id": current_user["firm_id"],
+            "client_id": req.client_id,
+            "financial_year": req.fy,
+            "installment_number": number,
+            "due_date": due_date.isoformat(),
+            "required_percent": _REQUIRED_PERCENT_BY_INSTALLMENT[number],
+            "estimated_tax_paise": req.estimated_tax_paise,
+            "paid_amount_paise": inst.paid_amount_paise if inst else 0,
+            "paid_date": inst.paid_date.isoformat() if inst and inst.paid_date else None,
+            "challan_number": inst.challan_number if inst else None,
+        })
+    if not db:
+        return api_response(True, rows)
+    result = (db.table("advance_tax_payments")
+              .upsert(rows, on_conflict="client_id,financial_year,installment_number").execute())
+    return api_response(True, result.data or rows)

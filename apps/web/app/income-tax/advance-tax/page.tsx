@@ -1,10 +1,17 @@
 "use client";
 
 /**
- * Advance Tax Tracker — IT Act Section 207/208/234B/234C
+ * Advance Tax Tracker — IT Act Section 207/208/234C
  * Taxpayers with annual tax liability > ₹10,000 must pay advance tax in 4 instalments.
  * Due dates: 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)
- * Interest for default: Section 234B (234C for instalments) — 1% per month simple interest.
+ *
+ * R3.13a: all schedule/interest computation now happens on the backend
+ * (domain/income_tax/advance_tax_interest_engine.py) — this page only
+ * collects input and displays results. It previously computed Section 234C
+ * interest itself with the wrong formula (actual payment-delay months, no
+ * 12%/36% trigger tolerance — the Section 234B shape, not 234C's fixed
+ * 3/3/3/1-month periods) and wrote straight to advance_tax_payments from
+ * the browser.
  *
  * All monetary calculations use integer paise arithmetic (never floating point).
  */
@@ -16,77 +23,27 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { formatPaise } from "@/lib/services/formatting";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
+import {
+  computeAdvanceTaxInterest, listAdvanceTaxPayments, saveAdvanceTaxPayments,
+  type AdvanceTaxComputeResult, type AdvanceTaxInstallmentInput,
+} from "@/lib/data/income-tax";
 import type { Client } from "@/lib/types";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface InstallmentDef {
-  number: 1 | 2 | 3 | 4;
-  label: string;
-  percent: number; // cumulative %
-  dueDate: string; // ISO date
-}
-
-interface AdvanceTaxRow {
-  id: string | null; // null if not yet in DB
-  firm_id: string;
-  client_id: string;
-  financial_year: string;
-  installment_number: 1 | 2 | 3 | 4;
-  due_date: string;
-  required_percent: number;
-  estimated_tax_paise: number;
-  paid_amount_paise: number;
-  paid_date: string | null;
-  challan_number: string | null;
-}
-
-// ─── Installment schedule — IT Act Section 208 ───────────────────────────────
-
-function installmentSchedule(fy: string): InstallmentDef[] {
-  const startYear = parseInt(fy.split("-")[0]);
-  return [
-    { number: 1, label: "1st Installment (15 Jun)", percent: 15, dueDate: `${startYear}-06-15` },
-    { number: 2, label: "2nd Installment (15 Sep)", percent: 45, dueDate: `${startYear}-09-15` },
-    { number: 3, label: "3rd Installment (15 Dec)", percent: 75, dueDate: `${startYear}-12-15` },
-    { number: 4, label: "4th Installment (15 Mar)", percent: 100, dueDate: `${startYear + 1}-03-15` },
-  ];
-}
-
-// ─── Interest computation — IT Act Section 234C ──────────────────────────────
-/**
- * Compute Section 234C interest for an installment.
- * Simple interest @ 1% per month (or part thereof).
- * Shortfall = required cumulative amount - actual cumulative paid
- */
-function compute234CInterest(
-  shortfallPaise: number,
-  dueDate: string,
-  paidDate: string | null
-): number {
-  if (shortfallPaise <= 0) return 0;
-  const due = new Date(dueDate);
-  const paid = paidDate ? new Date(paidDate) : new Date();
-  const diffDays = Math.ceil((paid.getTime() - due.getTime()) / 86400000);
-  if (diffDays <= 0) return 0;
-  // Months = ceil(days / 30) — IT Act Section 234C
-  const months = Math.ceil(diffDays / 30);
-  // Interest = shortfall × 1% × months (integer paise)
-  return Math.round((shortfallPaise * months) / 100);
-}
-
 const TODAY = new Date().toISOString().slice(0, 10);
+const FY_OPTIONS = ["2026-27", "2025-26", "2024-25"];
+const INSTALLMENT_LABELS: Record<number, string> = {
+  1: "1st Installment (15 Jun)",
+  2: "2nd Installment (15 Sep)",
+  3: "3rd Installment (15 Dec)",
+  4: "4th Installment (15 Mar)",
+};
 
-function rowStatus(row: AdvanceTaxRow, requiredPaise: number): "paid" | "overdue" | "upcoming" {
-  if (row.paid_amount_paise >= requiredPaise) return "paid";
-  if (TODAY > row.due_date) return "overdue";
+function rowStatus(dueDate: string, requiredPaise: number, paidPaise: number): "paid" | "overdue" | "upcoming" {
+  if (paidPaise >= requiredPaise) return "paid";
+  if (TODAY > dueDate) return "overdue";
   return "upcoming";
 }
-
-const FY_OPTIONS = ["2026-27", "2025-26", "2024-25"];
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
@@ -95,7 +52,6 @@ export default function AdvanceTaxPage() {
   const [clientId, setClientId] = useState("");
   const [fy, setFy] = useState(FY_OPTIONS[0]);
   const [estimatedTaxRs, setEstimatedTaxRs] = useState("");
-  const [rows, setRows] = useState<AdvanceTaxRow[]>([]);
   const [editPaidRs, setEditPaidRs] = useState<Record<number, string>>({});
   const [editPaidDate, setEditPaidDate] = useState<Record<number, string>>({});
   const [editChallan, setEditChallan] = useState<Record<number, string>>({});
@@ -104,10 +60,11 @@ export default function AdvanceTaxPage() {
   const [error, setError] = useState<string | null>(null);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
+  const [result, setResult] = useState<AdvanceTaxComputeResult | null>(null);
+  const [computeError, setComputeError] = useState<string | null>(null);
+
   useEffect(() => {
-    getClients()
-      .then(c => { setClients(c); if (c.length > 0) setClientId(c[0].id); })
-      .catch(() => {});
+    getClients().then(c => { setClients(c); if (c.length > 0) setClientId(c[0].id); }).catch(() => {});
   }, []);
 
   const loadData = useCallback(async () => {
@@ -115,53 +72,21 @@ export default function AdvanceTaxPage() {
     setLoading(true);
     setError(null);
     try {
-      const firmId = await getFirmId();
-      const sb = getSupabaseClient();
-      const schedule = installmentSchedule(fy);
-
-      const { data } = await sb
-        .from("advance_tax_payments")
-        .select("*")
-        .eq("client_id", clientId)
-        .eq("financial_year", fy);
-
-      const dbMap = new Map((data ?? []).map((r: AdvanceTaxRow) => [r.installment_number, r]));
-
-      const built: AdvanceTaxRow[] = schedule.map(inst => {
-        const existing = dbMap.get(inst.number);
-        return existing ?? {
-          id: null,
-          firm_id: firmId,
-          client_id: clientId,
-          financial_year: fy,
-          installment_number: inst.number,
-          due_date: inst.dueDate,
-          required_percent: inst.percent,
-          estimated_tax_paise: 0,
-          paid_amount_paise: 0,
-          paid_date: null,
-          challan_number: null,
-        };
-      });
-
-      setRows(built);
-
-      // Initialize edit state from DB
+      const rows = await listAdvanceTaxPayments(clientId, fy);
       const paidRs: Record<number, string> = {};
       const paidDate: Record<number, string> = {};
       const challan: Record<number, string> = {};
-      for (const r of built) {
-        paidRs[r.installment_number] = r.paid_amount_paise > 0 ? (r.paid_amount_paise / 100).toFixed(2) : "";
-        paidDate[r.installment_number] = r.paid_date ?? "";
-        challan[r.installment_number] = r.challan_number ?? "";
+      for (const n of [1, 2, 3, 4]) {
+        const row = rows.find(r => r.installment_number === n);
+        paidRs[n] = row && row.paid_amount_paise > 0 ? (row.paid_amount_paise / 100).toFixed(2) : "";
+        paidDate[n] = row?.paid_date ?? "";
+        challan[n] = row?.challan_number ?? "";
       }
       setEditPaidRs(paidRs);
       setEditPaidDate(paidDate);
       setEditChallan(challan);
-
-      if (built.length > 0 && built[0].estimated_tax_paise > 0) {
-        setEstimatedTaxRs((built[0].estimated_tax_paise / 100).toFixed(2));
-      }
+      const withEstimate = rows.find(r => r.estimated_tax_paise > 0);
+      if (withEstimate) setEstimatedTaxRs((withEstimate.estimated_tax_paise / 100).toFixed(2));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -171,9 +96,30 @@ export default function AdvanceTaxPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // All money in integer paise
   const estimatedTaxPaise = Math.round(parseFloat(estimatedTaxRs || "0") * 100);
-  const schedule = installmentSchedule(fy);
+
+  // Server-side compute, debounced 400ms (matches the capital-gains
+  // calculator's pattern) so every keystroke doesn't fire a request.
+  useEffect(() => {
+    if (estimatedTaxPaise <= 0) {
+      setResult(null);
+      setComputeError(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      const installments: AdvanceTaxInstallmentInput[] = [1, 2, 3, 4].map(n => ({
+        installment_number: n as 1 | 2 | 3 | 4,
+        paid_amount_paise: Math.round(parseFloat(editPaidRs[n] || "0") * 100),
+        paid_date: editPaidDate[n] || null,
+        challan_number: editChallan[n] || null,
+      }));
+      computeAdvanceTaxInterest({ fy, estimated_tax_paise: estimatedTaxPaise, installments })
+        .then(r => { setResult(r); setComputeError(null); })
+        .catch(e => { setResult(null); setComputeError(e instanceof Error ? e.message : "Failed to compute"); });
+    }, 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fy, estimatedTaxPaise, editPaidRs, editPaidDate, editChallan]);
 
   async function handleSave() {
     if (!clientId || estimatedTaxPaise <= 0) {
@@ -183,27 +129,13 @@ export default function AdvanceTaxPage() {
     setSaving(true);
     setError(null);
     try {
-      const firmId = await getFirmId();
-      const sb = getSupabaseClient();
-      const upserts = schedule.map(inst => {
-        const paidPaise = Math.round(parseFloat(editPaidRs[inst.number] || "0") * 100);
-        return {
-          firm_id: firmId,
-          client_id: clientId,
-          financial_year: fy,
-          installment_number: inst.number,
-          due_date: inst.dueDate,
-          required_percent: inst.percent,
-          estimated_tax_paise: estimatedTaxPaise,
-          paid_amount_paise: paidPaise,
-          paid_date: editPaidDate[inst.number] || null,
-          challan_number: editChallan[inst.number] || null,
-        };
-      });
-      const { error: err } = await sb
-        .from("advance_tax_payments")
-        .upsert(upserts, { onConflict: "client_id,financial_year,installment_number" });
-      if (err) throw new Error(err.message);
+      const installments: AdvanceTaxInstallmentInput[] = [1, 2, 3, 4].map(n => ({
+        installment_number: n as 1 | 2 | 3 | 4,
+        paid_amount_paise: Math.round(parseFloat(editPaidRs[n] || "0") * 100),
+        paid_date: editPaidDate[n] || null,
+        challan_number: editChallan[n] || null,
+      }));
+      await saveAdvanceTaxPayments({ client_id: clientId, fy, estimated_tax_paise: estimatedTaxPaise, installments });
       setSaveMsg("Saved");
       setTimeout(() => setSaveMsg(null), 3000);
       await loadData();
@@ -215,15 +147,7 @@ export default function AdvanceTaxPage() {
   }
 
   const totalPaid = Object.values(editPaidRs).reduce((s, v) => s + Math.round(parseFloat(v || "0") * 100), 0);
-  const totalInterest = schedule.reduce((sum, inst) => {
-    const cumRequired = Math.round((estimatedTaxPaise * inst.percent) / 100);
-    // Cumulative paid up to this installment
-    const cumPaid = schedule.filter(i => i.number <= inst.number).reduce(
-      (s, i) => s + Math.round(parseFloat(editPaidRs[i.number] || "0") * 100), 0
-    );
-    const shortfall = Math.max(0, cumRequired - cumPaid);
-    return sum + compute234CInterest(shortfall, inst.dueDate, editPaidDate[inst.number] || null);
-  }, 0);
+  const totalInterest = result?.total_interest_paise ?? 0;
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -269,6 +193,7 @@ export default function AdvanceTaxPage() {
       </div>
 
       {error && <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div>}
+      {computeError && <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{computeError}</div>}
       {saveMsg && <div className="bg-green-50 text-green-700 rounded-lg px-5 py-2 text-sm">{saveMsg}</div>}
 
       {/* Summary */}
@@ -308,15 +233,14 @@ export default function AdvanceTaxPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F8FAFC]">
-                {schedule.map((inst, idx) => {
-                  const cumRequired = Math.round((estimatedTaxPaise * inst.percent) / 100);
-                  const cumPaid = schedule.filter(i => i.number <= inst.number).reduce(
-                    (s, i) => s + Math.round(parseFloat(editPaidRs[i.number] || "0") * 100), 0
-                  );
-                  const shortfall = Math.max(0, cumRequired - cumPaid);
-                  const interest = compute234CInterest(shortfall, inst.dueDate, editPaidDate[inst.number] || null);
-                  const row = rows[idx];
-                  const status = row ? rowStatus(row, cumRequired) : "upcoming";
+                {[1, 2, 3, 4].map(n => {
+                  const inst = result?.installments.find(i => i.installment_number === n);
+                  const dueDate = inst?.due_date ?? "";
+                  const requiredPercent = inst?.cumulative_required_percent ?? [15, 45, 75, 100][n - 1];
+                  const requiredPaise = inst?.required_cumulative_paise ?? 0;
+                  const interest = inst?.interest_paise ?? 0;
+                  const paidPaise = Math.round(parseFloat(editPaidRs[n] || "0") * 100);
+                  const status = dueDate ? rowStatus(dueDate, requiredPaise, paidPaise) : "upcoming";
 
                   const statusEl = status === "paid"
                     ? <span className="inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded-full"><CheckCircle size={11} /> Paid</span>
@@ -325,27 +249,27 @@ export default function AdvanceTaxPage() {
                     : <span className="inline-flex items-center gap-1 text-xs text-[#475569] bg-[#F1F5F9] px-2 py-0.5 rounded-full"><Clock size={11} /> Upcoming</span>;
 
                   return (
-                    <tr key={inst.number} className="hover:bg-[#F8FAFC]">
-                      <td className="px-5 py-3 text-sm font-medium">{inst.label}</td>
-                      <td className="px-3 py-3 text-xs text-[#475569]">{inst.dueDate}</td>
-                      <td className="px-3 py-3 text-sm text-right tabular-nums">{inst.percent}%</td>
-                      <td className="px-3 py-3 text-sm text-right tabular-nums font-medium">{formatPaise(cumRequired)}</td>
+                    <tr key={n} className="hover:bg-[#F8FAFC]">
+                      <td className="px-5 py-3 text-sm font-medium">{INSTALLMENT_LABELS[n]}</td>
+                      <td className="px-3 py-3 text-xs text-[#475569]">{dueDate || "—"}</td>
+                      <td className="px-3 py-3 text-sm text-right tabular-nums">{requiredPercent}%</td>
+                      <td className="px-3 py-3 text-sm text-right tabular-nums font-medium">{formatPaise(requiredPaise)}</td>
                       <td className="px-3 py-3">
                         <input type="number" min="0" step="0.01"
-                          value={editPaidRs[inst.number] ?? ""}
-                          onChange={e => setEditPaidRs(prev => ({ ...prev, [inst.number]: e.target.value }))}
+                          value={editPaidRs[n] ?? ""}
+                          onChange={e => setEditPaidRs(prev => ({ ...prev, [n]: e.target.value }))}
                           className="w-28 border border-[#E2E8F0] rounded px-2 py-1 text-sm text-right outline-none focus:border-blue-500" />
                       </td>
                       <td className="px-3 py-3">
                         <input type="date"
-                          value={editPaidDate[inst.number] ?? ""}
-                          onChange={e => setEditPaidDate(prev => ({ ...prev, [inst.number]: e.target.value }))}
+                          value={editPaidDate[n] ?? ""}
+                          onChange={e => setEditPaidDate(prev => ({ ...prev, [n]: e.target.value }))}
                           className="border border-[#E2E8F0] rounded px-2 py-1 text-xs outline-none focus:border-blue-500" />
                       </td>
                       <td className="px-3 py-3">
                         <input type="text"
-                          value={editChallan[inst.number] ?? ""}
-                          onChange={e => setEditChallan(prev => ({ ...prev, [inst.number]: e.target.value }))}
+                          value={editChallan[n] ?? ""}
+                          onChange={e => setEditChallan(prev => ({ ...prev, [n]: e.target.value }))}
                           placeholder="BSR/challan"
                           className="w-32 border border-[#E2E8F0] rounded px-2 py-1 text-xs outline-none focus:border-blue-500" />
                       </td>
@@ -363,8 +287,9 @@ export default function AdvanceTaxPage() {
       </Card>
 
       <p className="text-xs text-[#94A3B8] text-center">
-        Interest computed under IT Act Section 234C @ 1% per month simple interest on shortfall.
-        CA Review Required before filing.
+        Interest computed under IT Act Section 234C: a fixed 3-month period on the
+        shortfall for instalments 1–3, 1 month for instalment 4 — not based on how
+        late the payment actually was. CA Review Required before filing.
       </p>
     </div>
   );
