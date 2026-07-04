@@ -3571,3 +3571,97 @@ drop — no confirmed absence of production data) `compliance_tasks`/
 `compliance_calendar`. Also tracked, not yet started: the `/risks` page's
 own client-side duplicate risk computation found during this pass.
 
+## Milestone R3.13e — migrate the frontend off compliance_calendar; harden compliance_tasks (DELIVERED, scope corrected mid-flight)
+
+**Goal:** migrate the six originally-identified frontend consumers off
+`compliance_calendar` (System C, direct-Supabase) onto the canonical
+`compliance_records`/`compliance_ops` API, closing the loop the R3.13
+series started, then RLS-harden the two losing tables now that nothing
+reads or writes them directly from the browser.
+
+**Blocker resolved first — the workflow-vocabulary mismatch:** these pages'
+"Mark as Filed" button assumes a simple pending→filed model; the canonical
+system's real workflow (`VALID_TRANSITIONS`) requires walking `Not Started
+→ ... → Ready To File → Filed` step by step, and correctly rejects a direct
+jump. Rather than weakening that validated state machine (a real product
+decision this pass deliberately did not make unilaterally) or breaking the
+one-click UX, added `compliance_record_service.mark_filed()` — walks the
+shortest valid path to Filed server-side, so every intermediate step is
+still individually valid and audited, with a new `POST /api/compliance/
+obligations/{id}/mark-filed` endpoint. Shipped and verified as its own
+commit ahead of the frontend work (9 new backend tests).
+
+**What shipped:**
+- **`lib/data/compliance.ts` rewritten** into a thin wrapper over
+  `api.complianceOps` — `getComplianceCalendar`/`seedComplianceCalendar`
+  keep their exact prior signatures; `updateFilingStatus` is replaced by
+  `markFiled` (its only ever-observed call shape, in both consumer pages,
+  was "mark this filed" — never any other status). The `ComplianceEntry`
+  interface keeps its established field names/vocabulary
+  (`filing_status`: pending/in_progress/filed/overdue; `arn_number`;
+  `compliance_type` as the granular obligation type) — a status-vocabulary
+  adapter maps the canonical 8-state workflow down to this 5-state shape,
+  which is genuinely equivalent for these pages' purposes since none of
+  them ever exposed the intermediate review states as distinct concepts.
+  Two dead exports (`generateGSTDeadlines`, `getUpcomingDeadlines` — the
+  latter already zero-caller per the earlier research) removed.
+- **`app/deadlines/page.tsx`, `app/clients/[id]/compliance/page.tsx`** —
+  renamed the import to `markFiled`; the latter's timeline event
+  `entity_type` corrected from the retiring `"compliance_calendar"` to
+  `"compliance_record"`.
+- **`app/client-portal/page.tsx`, `app/clients/[id]/overview/page.tsx`** —
+  zero changes needed; both already used only field names the new adapter
+  preserves exactly.
+- **`app/reports/page.tsx`** — the compliance-status report's client-name
+  lookup previously read a `clients.client_name` Supabase embed that the
+  backend response doesn't provide; fixed by fetching the client list
+  separately and joining by `client_id`, matching the same report page's
+  own `outstanding_invoices` branch precedent.
+- **New `api.health`-style `api.complianceOps.markFiled` wrapper** in
+  `lib/api/index.ts`; updated its stale "No filing" comment (no longer
+  true — `markFiled` records that a CA confirmed a return was filed,
+  it never auto-files anything with any government portal).
+
+**Scope correction found mid-flight, handled conservatively:** grepping for
+every remaining `compliance_calendar` reference (to plan the RLS-hardening
+step) found **four more direct consumers the original "six frontend
+consumers" framing never counted**: `app/gst/page.tsx`, `app/risks/page.tsx`,
+`app/reports/cash-flow/page.tsx`, and — critically — `app/income-tax/page.tsx`,
+which both **inserts and updates** `compliance_calendar` directly. Hardening
+`compliance_calendar`'s RLS in this pass, as originally planned, would have
+broken that live write path. **Not done.** `compliance_calendar` is left
+exactly as-is (unhardened, still fully writable) until those four pages are
+also migrated — tracked explicitly as follow-up work below, not silently
+dropped.
+- `compliance_tasks` (System B) had no such blocker — its only remaining
+  backend reader, `routers/compliance.py`, backs an `api.compliance.*`
+  wrapper with zero callers anywhere in `apps/web` (confirmed in R3.13d) —
+  so it was safe to harden now. **New migration 170** — `REVOKE INSERT,
+  UPDATE, DELETE ... FROM authenticated` + recreate its firm-isolation
+  policy as `FOR SELECT` only, the same established pattern as migration
+  166 (`sales_invoices`/`fixed_assets`). Additive/non-destructive — no row
+  touched, the service-role backend path unaffected.
+
+**Verified:** `tsc --noEmit` clean, `eslint` clean, full `next build` clean
+across every touched frontend file. 5 new tests in
+`test_r3_13e_compliance_tasks_rls_pg.py` against real Postgres 16 (SELECT
+still works for the caller's own firm; INSERT/UPDATE/DELETE all rejected
+with "permission denied"; the service-role path is unaffected). Full
+mock-mode suite: 2,485 passed, same 23 pre-existing unrelated failures.
+**Limitation, disclosed rather than glossed over:** the same interactive-
+Playwright constraint documented in R3.13c recurred here — the app's
+client-side auth guard redirected to `/login` before the synthetic session
+was recognized, so live-browser rendering of the migrated pages could not
+be independently confirmed in this sandbox. Verification rests on
+`tsc`/`eslint`/`build` cleanliness and a field-by-field compatibility
+review of every touched file against the new adapter's shape (documented
+above), not a claimed interactive pass.
+
+**Next:** the four newly-discovered `compliance_calendar` consumers
+(`gst/page.tsx`, `risks/page.tsx`, `reports/cash-flow/page.tsx`,
+`income-tax/page.tsx` — the last one an active writer) need their own
+migration pass before `compliance_calendar` itself can be RLS-hardened or
+retired. The `/risks` page's separate client-side duplicate risk
+computation (found in R3.13d, not addressed) remains open too. With those
+resolved, the R3.13 compliance data-model consolidation will be complete.
+

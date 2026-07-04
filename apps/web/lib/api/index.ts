@@ -231,7 +231,9 @@ export const api = {
     summary: () => request("/api/tasks/summary/dashboard"),
   },
   // Phase 4.4 — Compliance & Engagement operations (canonical = compliance_records).
-  // Thin wrappers; all due-date/aggregation logic is server-side. No filing.
+  // Thin wrappers; all due-date/aggregation/workflow logic is server-side.
+  // Never auto-submits to any government portal — markFiled records that a
+  // CA has confirmed a return was filed, it never files anything itself.
   complianceOps: {
     dashboard: () => request("/api/compliance/dashboard"),
     obligations: (params?: Record<string, string>) =>
@@ -244,6 +246,10 @@ export const api = {
       request(`/api/compliance/obligations/${id}/assign`, { method: "POST", body: JSON.stringify(body) }),
     transition: (id: string, status: string) =>
       request(`/api/compliance/obligations/${id}/transition`, { method: "POST", body: JSON.stringify({ status }) }),
+    markFiled: (id: string, acknowledgementNo?: string) =>
+      request(`/api/compliance/obligations/${id}/mark-filed`, {
+        method: "POST", body: JSON.stringify({ acknowledgement_no: acknowledgementNo ?? null }),
+      }),
     runEscalations: () => request("/api/compliance/run-escalations", { method: "POST" }),
   },
   // R3.13c — canonical client health engine (Product Bible Ch.16, routers/health.py).

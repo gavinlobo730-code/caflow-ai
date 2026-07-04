@@ -626,15 +626,14 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
           netPL: totalRevenue - totalExpenses,
         } as PLData);
       } else if (reportId === "compliance_status") {
-        const entries = await getComplianceCalendar();
+        const [entries, allClients] = await Promise.all([getComplianceCalendar(), getClients()]);
+        const clientNameById = new Map(allClients.map((c) => [c.id, c.client_name]));
         const today = new Date().toISOString().split("T")[0];
 
         // Group by client
         const map = new Map<string, { name: string; entries: ComplianceEntry[] }>();
         for (const e of entries) {
-          const name =
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (e as any).clients?.client_name ?? e.client_id;
+          const name = clientNameById.get(e.client_id) ?? e.client_id;
           if (!map.has(e.client_id)) map.set(e.client_id, { name, entries: [] });
           map.get(e.client_id)!.entries.push(e);
         }

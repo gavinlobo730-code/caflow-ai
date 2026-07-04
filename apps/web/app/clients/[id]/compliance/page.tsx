@@ -5,7 +5,7 @@ import { CheckCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { getComplianceCalendar, updateFilingStatus, seedComplianceCalendar } from "@/lib/data/compliance";
+import { getComplianceCalendar, markFiled as markObligationFiled, seedComplianceCalendar } from "@/lib/data/compliance";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { formatDate } from "@/lib/services/formatting";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
@@ -190,7 +190,7 @@ export default function CompliancePage() {
     setFilingLoading(true);
     try {
       const entry = compliance.find((c) => c.id === markFiled.id);
-      await updateFilingStatus(markFiled.id, "filed", markFiled.arn || undefined);
+      await markObligationFiled(markFiled.id, markFiled.arn || undefined);
       setCompliance((prev) =>
         prev.map((c) =>
           c.id === markFiled.id ? { ...c, filing_status: "filed", arn_number: markFiled.arn || undefined } : c
@@ -210,7 +210,7 @@ export default function CompliancePage() {
           severity: "success",
           title: `${entry?.compliance_type ?? "Filing"} marked as filed`,
           description: markFiled.arn ? `ARN: ${markFiled.arn}` : undefined,
-          entity_type: "compliance_calendar",
+          entity_type: "compliance_record",
           entity_id: markFiled.id,
           actor_type: "user",
         });
