@@ -5,48 +5,81 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useReducer,
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   type WorkspaceId,
   DEFAULT_WORKSPACE_ROUTES,
-  getWorkspaceForPathname,
+  WORKSPACE_CONFIGS,
+  getActiveWorkspaceForPathname,
 } from "./workspaceConfig";
 
 export interface WorkspaceContextValue {
-  activeWorkspace: WorkspaceId;
+  /**
+   * The workspace whose rail icon should be lit right now — derived fresh
+   * from the current pathname on every render, never stored. null on routes
+   * no workspace owns (/settings, /platform, /search, or anything
+   * unmapped). Consumers that need to render *something* regardless (e.g.
+   * ContextPanel choosing a panel) apply their own "home" fallback; this
+   * value itself must never be coerced to "home".
+   */
+  activeWorkspace: WorkspaceId | null;
   lastRoute: Record<WorkspaceId, string>;
   setWorkspace: (id: WorkspaceId) => void;
   updateLastRoute: (workspaceId: WorkspaceId, route: string) => void;
 }
 
 interface WorkspaceState {
-  activeWorkspace: WorkspaceId;
   lastRoute: Record<WorkspaceId, string>;
 }
 
 type WorkspaceAction =
-  | { type: "SET_WORKSPACE"; id: WorkspaceId }
   | { type: "UPDATE_LAST_ROUTE"; workspaceId: WorkspaceId; route: string }
   | { type: "HYDRATE"; state: WorkspaceState };
 
-const STORAGE_KEY = "practicesync_workspace_v1";
+// v2 — v1 could hold routes to pages deleted since it was written (e.g. the
+// retired /accounting/chart-of-accounts), which sanitizeLastRoute below now
+// guards against going forward, but existing v1 values were never validated
+// on write. A version bump is the clean one-time fix for whatever's already
+// in a returning user's browser; v2 is validated on every hydrate from here on.
+const STORAGE_KEY = "practicesync_workspace_v2";
 
-function reducer(
-  state: WorkspaceState,
-  action: WorkspaceAction
-): WorkspaceState {
+const KNOWN_WORKSPACE_IDS = new Set(WORKSPACE_CONFIGS.map((w) => w.id));
+
+/**
+ * A persisted route is only trusted if it still maps back to the SAME
+ * workspace under the current routing rules. This is what actually catches
+ * staleness — a route to a deleted or moved page — rather than merely
+ * checking the key exists, which stale data always passes. Anything that
+ * fails (unknown workspace id, malformed value, or a route that no longer
+ * belongs to that workspace) falls back to that workspace's own
+ * DEFAULT_WORKSPACE_ROUTES entry, so the app can never navigate a user to a
+ * dead page because of stale localStorage.
+ */
+function sanitizeLastRoute(raw: unknown): Record<WorkspaceId, string> {
+  const out: Record<WorkspaceId, string> = { ...DEFAULT_WORKSPACE_ROUTES };
+  if (!raw || typeof raw !== "object") return out;
+  for (const [key, route] of Object.entries(raw as Record<string, unknown>)) {
+    if (!KNOWN_WORKSPACE_IDS.has(key as WorkspaceId)) continue;
+    if (typeof route !== "string" || !route.startsWith("/")) continue;
+    if (getActiveWorkspaceForPathname(route) !== key) continue;
+    out[key as WorkspaceId] = route;
+  }
+  return out;
+}
+
+function getInitialState(): WorkspaceState {
+  return { lastRoute: { ...DEFAULT_WORKSPACE_ROUTES } };
+}
+
+function reducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
   switch (action.type) {
-    case "SET_WORKSPACE":
-      return { ...state, activeWorkspace: action.id };
     case "UPDATE_LAST_ROUTE":
       return {
         ...state,
-        lastRoute: {
-          ...state.lastRoute,
-          [action.workspaceId]: action.route,
-        },
+        lastRoute: { ...state.lastRoute, [action.workspaceId]: action.route },
       };
     case "HYDRATE":
       return action.state;
@@ -55,38 +88,21 @@ function reducer(
   }
 }
 
-function getInitialState(pathname: string): WorkspaceState {
-  return {
-    activeWorkspace: getWorkspaceForPathname(pathname),
-    lastRoute: { ...DEFAULT_WORKSPACE_ROUTES },
-  };
-}
-
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const [state, dispatch] = useReducer(reducer, pathname, getInitialState);
+  const [state, dispatch] = useReducer(reducer, undefined, getInitialState);
 
-  // Hydrate from localStorage on mount
+  // Hydrate from localStorage on mount, validating every persisted route.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as WorkspaceState;
-        dispatch({
-          type: "HYDRATE",
-          state: {
-            activeWorkspace:
-              parsed.activeWorkspace ?? getWorkspaceForPathname(pathname),
-            lastRoute: {
-              ...DEFAULT_WORKSPACE_ROUTES,
-              ...parsed.lastRoute,
-            },
-          },
-        });
+        const parsed = JSON.parse(raw) as { lastRoute?: unknown };
+        dispatch({ type: "HYDRATE", state: { lastRoute: sanitizeLastRoute(parsed.lastRoute) } });
       }
     } catch {
       // ignore malformed storage
@@ -103,19 +119,35 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state]);
 
-  // Sync active workspace and lastRoute whenever pathname changes
+  // Record lastRoute whenever pathname changes — only for routes a workspace
+  // actually owns. getActiveWorkspaceForPathname returning null (/settings,
+  // /platform, /search, unmapped) must never pollute any workspace's
+  // lastRoute; previously this fell through to "home", so visiting e.g.
+  // /copilot before it was mapped would silently overwrite Home's
+  // remembered route.
   useEffect(() => {
-    if (pathname.startsWith("/settings")) return; // settings is not a workspace — don't pollute lastRoute
-    const ws = getWorkspaceForPathname(pathname);
-    dispatch({ type: "SET_WORKSPACE", id: ws });
-    dispatch({ type: "UPDATE_LAST_ROUTE", workspaceId: ws, route: pathname });
+    const ws = getActiveWorkspaceForPathname(pathname);
+    if (ws) dispatch({ type: "UPDATE_LAST_ROUTE", workspaceId: ws, route: pathname });
   }, [pathname]);
+
+  // The rail highlight is derived fresh from the pathname on every render —
+  // never stored — so it can never go stale independently of the URL. This
+  // is what fixes Settings (and every other unmapped route) incorrectly
+  // keeping Home lit: there is no persisted "previous" workspace to fall
+  // back to anymore.
+  const activeWorkspace = useMemo(() => getActiveWorkspaceForPathname(pathname), [pathname]);
 
   const setWorkspace = useCallback(
     (id: WorkspaceId) => {
-      dispatch({ type: "SET_WORKSPACE", id });
+      // Clicking "Clients" always opens the client list. Resuming a
+      // specific client's last-visited section is a per-client concern
+      // (clientSectionHistory.ts, consulted by app/clients/[id]/page.tsx
+      // when a specific client is opened) — not something the workspace
+      // switcher itself does.
       const target =
-        state.lastRoute[id] ?? DEFAULT_WORKSPACE_ROUTES[id];
+        id === "clients"
+          ? DEFAULT_WORKSPACE_ROUTES.clients
+          : state.lastRoute[id] ?? DEFAULT_WORKSPACE_ROUTES[id];
       router.push(target);
     },
     [state.lastRoute, router]
@@ -129,7 +161,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value: WorkspaceContextValue = {
-    activeWorkspace: state.activeWorkspace,
+    activeWorkspace,
     lastRoute: state.lastRoute,
     setWorkspace,
     updateLastRoute,

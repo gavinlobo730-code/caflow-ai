@@ -132,10 +132,18 @@ export const DEFAULT_WORKSPACE_ROUTES: Record<WorkspaceId, string> = {
 };
 
 /**
- * Maps the current pathname to the most appropriate workspace.
- * Used to sync active workspace when navigating directly via URL.
+ * Maps the current pathname to the workspace whose rail icon should be lit
+ * and whose lastRoute should be updated. Returns null for routes that are
+ * NOT part of any workspace — /settings (its own gear icon lights instead,
+ * see ActivityRail), /platform (the super-admin console, which sits above
+ * the firm workspace model entirely and is never linked from any panel),
+ * and /search (the global command-palette's results page, a cross-cutting
+ * utility owned by no single workspace) — plus any route this mapping
+ * doesn't yet recognize. null must NEVER be coerced to "home" here; the
+ * "home" panel is a separate, deliberate content fallback applied only by
+ * consumers that need to render *something* (see ContextPanel).
  */
-export function getWorkspaceForPathname(pathname: string): WorkspaceId {
+export function getActiveWorkspaceForPathname(pathname: string): WorkspaceId | null {
   if (
     pathname === "/" ||
     pathname.startsWith("/calendar") ||
@@ -157,14 +165,16 @@ export function getWorkspaceForPathname(pathname: string): WorkspaceId {
     pathname.startsWith("/gst") ||
     pathname.startsWith("/income-tax") ||
     pathname.startsWith("/tds") ||
-    pathname.startsWith("/mca")
+    pathname.startsWith("/mca") ||
+    pathname.startsWith("/einvoice")
   )
     return "deadlines";
 
   if (
     pathname.startsWith("/accounting") ||
     pathname.startsWith("/billing") ||
-    pathname.startsWith("/payroll")
+    pathname.startsWith("/payroll") ||
+    pathname.startsWith("/migration")
   )
     return "accounting";
 
@@ -174,7 +184,7 @@ export function getWorkspaceForPathname(pathname: string): WorkspaceId {
   if (pathname.startsWith("/health"))
     return "health";
 
-  if (pathname.startsWith("/practice"))
+  if (pathname.startsWith("/practice") || pathname.startsWith("/executive-dashboard"))
     return "practice";
 
   if (pathname.startsWith("/knowledge"))
@@ -183,7 +193,11 @@ export function getWorkspaceForPathname(pathname: string): WorkspaceId {
   if (pathname.startsWith("/engagements"))
     return "engagements";
 
-  if (pathname.startsWith("/work") || pathname.startsWith("/tasks"))
+  if (
+    pathname.startsWith("/work") ||
+    pathname.startsWith("/tasks") ||
+    pathname.startsWith("/time")
+  )
     return "work";
 
   if (pathname.startsWith("/team") || pathname.startsWith("/approvals"))
@@ -193,9 +207,13 @@ export function getWorkspaceForPathname(pathname: string): WorkspaceId {
     pathname.startsWith("/ai-assistant") ||
     pathname.startsWith("/assistant") ||
     pathname.startsWith("/risks") ||
-    pathname.startsWith("/reports")
+    pathname.startsWith("/reports") ||
+    pathname.startsWith("/copilot") ||
+    pathname.startsWith("/memory")
   )
     return "ai";
 
-  return "home";
+  // /settings, /platform, /search, and anything else unrecognized: no
+  // workspace owns this route.
+  return null;
 }
