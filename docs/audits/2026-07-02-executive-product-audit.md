@@ -4191,3 +4191,67 @@ failures.
 **Next:** R3.5e (auth-lookup caching + missing indexes on
 `government_notices`/`document_requests`/`tasks`/`compliance_records`),
 then R3.6 (UX consistency — needs its own fresh re-scoping pass first).
+
+---
+
+## Milestone R3.5e — cache get_current_user() lookups; add missing composite indexes (DELIVERED)
+
+**Goal:** the R3.5 re-scope's last two findings. (1) `get_current_user()` —
+the dependency injected into ~88/93 routers — ran 2 serialized, uncached DB
+round trips (`users`, `firms`) on every single authenticated request, no
+matter how frequently the same user hit the API. (2) `government_notices`
+and `document_requests` had zero indexes beyond the implicit primary key
+(migrations 052/024 created them with RLS policies only, confirmed by grep
+— no `CREATE INDEX` anywhere for either table), despite 5+ distinct
+`routers/health.py` queries per client-health computation filtering
+`firm_id`+`client_id`+`status` (some also a date range) on each — every one
+a full sequential scan. `tasks` and `compliance_records` had only
+single-column indexes despite `routers/analytics.py` and
+`domain/compliance_record_service.py` repeatedly filtering the same 3-4
+columns together with no composite to match.
+
+**What shipped:**
+- `core/auth.py`: a 30-second in-process cache keyed by `auth_user_id`
+  around both the `users` and `firms` lookups (`_get_user_and_firm`).
+  Bounds the staleness window for a disabled account / session revocation /
+  suspended firm to at most the TTL after the triggering DB write, in
+  exchange for skipping both queries on every other request within that
+  window. Only successful lookups are cached — a miss (e.g. a user
+  mid-onboarding whose row isn't visible yet) is never cached, so a
+  legitimate new user is never stuck behind a stale 403. Per-process only
+  (no cross-worker sharing); an explicit, documented trade-off for a
+  bounded staleness window, not a correctness gap.
+- Migration 173: 4 new composite indexes — `government_notices
+  (firm_id, client_id, status)`, `document_requests (firm_id, client_id,
+  status, created_at)`, `tasks (firm_id, status, updated_at) WHERE
+  deleted_at IS NULL`, `compliance_records (firm_id, client_id, due_date)
+  WHERE deleted_at IS NULL`. Additive/non-destructive (`IF NOT EXISTS`).
+  Also confirms, with no action needed: the re-scope's other flagged
+  finding — a "dead migration-055 `bank_transactions` index referencing a
+  non-existent `txn_date` column" — was already superseded by migration
+  094's correct `transaction_date`/`match_status`/`firm_id+client_id`
+  indexes, per 094's own header comment documenting the fix explicitly.
+
+**Verified:** `test_r3_5e_auth_cache.py` (4 tests: second call within TTL
+skips both DB lookups; different users get independent cache entries;
+expired entries trigger a fresh lookup; a failed lookup is never cached).
+`test_session_mfa.py` and `test_m1_auth_portal.py` both reuse a single
+hardcoded JWT `sub` across multiple test functions with different mocked
+rows — each now clears `_user_lookup_cache` in its shared patch helper so
+test order can't leak a stale row across cases. `test_r3_5e_indexes_pg.py`
+(5 tests against real Postgres 16, gated on `HARNESS_PG`): all 4 indexes
+exist with the exact column order and partial `deleted_at IS NULL`
+predicates the migration declares (via direct `pg_indexes` inspection, not
+just a clean migration-runner exit code), plus the migration re-applies
+idempotently. Full mock-mode suite: 2,506 passed, same 23 pre-existing
+unrelated failures.
+
+**R3.5 is now closed** — all 5 sub-findings (a: ai_copilot_service N+1s,
+b: compliance_records repo, c: dashboard summary N+1s, d: analytics.py
+unbounded fetches + revenue_vs_effort NameError, e: auth-lookup caching +
+missing indexes) delivered and verified this session.
+
+**Next:** R3.6 (UX consistency — needs its own fresh re-scoping pass
+first, the only one of the 7 original findings not yet re-verified
+against current code this session), then a final production-readiness
+audit before hand-back for manual QA.
