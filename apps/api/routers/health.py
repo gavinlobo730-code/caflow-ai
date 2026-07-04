@@ -188,10 +188,17 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
     except Exception:
         pass
 
-    # 4. Income tax return overdue > 6 months (IT Act s.139)
+    # 4. Income tax return overdue > 6 months (IT Act s.139). R3.13d: reads
+    # compliance_records (System A) — compliance_tasks (System B, the table
+    # this used to query) is being retired, and this query referenced a
+    # task_type column and a "Pending" status value that never existed on it.
     try:
         six_months_ago = (today - timedelta(days=183)).isoformat()
-        itr = db.table("compliance_tasks").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("task_type", "ITR").eq("status", "Pending").lt("due_date", six_months_ago).limit(1).execute().data or []
+        itr = (db.table("compliance_records").select("id")
+               .eq("firm_id", firm_id).eq("client_id", client_id)
+               .eq("obligation_type", "ITR")
+               .not_.in_("status", ["Filed", "Completed"])
+               .lt("due_date", six_months_ago).limit(1).execute().data or [])
         if itr:
             return "itr_overdue_6months"
     except Exception:
@@ -230,14 +237,26 @@ def _dim_compliance_health_db(db, client_id: str, firm_id: str) -> int:
     """
     score = 100
 
+    # R3.13d: reads compliance_records (System A) — compliance_tasks (System
+    # B) is being retired, and these queries referenced a "Pending" status
+    # value and a filed_late column that never existed on it.
     try:
-        overdue_returns = db.table("compliance_tasks").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Pending").lt("due_date", date.today().isoformat()).execute().data or []
+        overdue_returns = (db.table("compliance_records").select("id")
+                           .eq("firm_id", firm_id).eq("client_id", client_id)
+                           .not_.in_("status", ["Filed", "Completed"])
+                           .lt("due_date", date.today().isoformat()).execute().data or [])
         score -= len(overdue_returns) * 25
     except Exception:
         pass
 
     try:
-        late_filings = db.table("compliance_tasks").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Filed").eq("filed_late", True).execute().data or []
+        filed = (db.table("compliance_records").select("due_date, filed_date")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                 .in_("status", ["Filed", "Completed"]).execute().data or [])
+        late_filings = [
+            r for r in filed
+            if r.get("filed_date") and r.get("due_date") and r["filed_date"] > r["due_date"]
+        ]
         score -= len(late_filings) * 8
     except Exception:
         pass
@@ -554,11 +573,16 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
     factors: list[dict] = []
 
     if dimension == "compliance_health":
+        # R3.13d: reads compliance_records (System A) — see _dim_compliance_health_db.
         try:
-            overdue = db.table("compliance_tasks").select("id, task_name, due_date").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Pending").lt("due_date", today.isoformat()).execute().data or []
+            overdue = (db.table("compliance_records").select("id, period_label, compliance_type, due_date")
+                      .eq("firm_id", firm_id).eq("client_id", client_id)
+                      .not_.in_("status", ["Filed", "Completed"])
+                      .lt("due_date", today.isoformat()).execute().data or [])
             for t in overdue[:5]:
+                label = t.get("period_label") or t.get("compliance_type") or "Return"
                 factors.append({
-                    "label": f"{t.get('task_name', 'Return')} overdue since {t.get('due_date', '')}",
+                    "label": f"{label} overdue since {t.get('due_date', '')}",
                     "impact": -25,
                     "action_label": "File Now",
                     "action_url": f"/clients/{client_id}/compliance",

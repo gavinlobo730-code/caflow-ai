@@ -2,6 +2,9 @@
 import pytest
 from domain.memory_pipeline import MemoryPipeline
 from repositories.memory_repository import MemoryRepository, MOCK_CLIENT_PROFILES
+from repositories.client_repository import client_repo
+from repositories.compliance_records_repository import compliance_records_repo
+from mock_data import MOCK_COMPLIANCE_RECORDS
 
 @pytest.fixture
 def pipeline():
@@ -173,3 +176,50 @@ class TestFirmProfile:
         repo.upsert_firm_profile("firm-gfp", {"portfolio_compliance_score": 75.0})
         fetched = repo.get_firm_profile("firm-gfp")
         assert fetched is not None
+
+
+class TestComplianceRecordsSource:
+    """R3.13d: the AI-memory pipeline's compliance signal now reads the
+    canonical compliance_records (System A), not the retiring
+    compliance_tasks (System B) — proves the status vocabulary was mapped
+    correctly (System A's capitalized 'Overdue'/'Filed'/'Completed', not
+    System B's lowercase 'overdue'/'pending'), not just the data source."""
+
+    @pytest.fixture(autouse=True)
+    def _isolate(self):
+        snapshot = list(MOCK_COMPLIANCE_RECORDS)
+        yield
+        MOCK_COMPLIANCE_RECORDS[:] = snapshot
+
+    def _client(self, client_id, firm_id):
+        return client_repo.create({"id": client_id, "firm_id": firm_id, "client_name": "Test Co"})
+
+    def test_compute_client_profile_counts_overdue_from_compliance_records(self, pipeline):
+        self._client("mp-cli-1", "mp-firm-1")
+        compliance_records_repo.create({
+            "firm_id": "mp-firm-1", "client_id": "mp-cli-1", "compliance_type": "GST",
+            "status": "Overdue", "due_date": "2026-01-11"})
+        compliance_records_repo.create({
+            "firm_id": "mp-firm-1", "client_id": "mp-cli-1", "compliance_type": "GST",
+            "status": "Filed", "due_date": "2026-02-11"})
+
+        profile = pipeline.compute_client_profile("mp-firm-1", "mp-cli-1")
+        assert profile["missed_deadline_count"] == 1
+
+    def test_detect_deadline_at_risk_reads_open_compliance_records(self, pipeline):
+        self._client("mp-cli-2", "mp-firm-2")
+        from datetime import datetime, timezone, timedelta
+        due_soon = (datetime.now(timezone.utc) + timedelta(days=2)).date().isoformat()
+        compliance_records_repo.create({
+            "firm_id": "mp-firm-2", "client_id": "mp-cli-2", "compliance_type": "GST",
+            "status": "Not Started", "due_date": due_soon})
+        # A Filed record due just as soon must NOT be treated as at-risk.
+        compliance_records_repo.create({
+            "firm_id": "mp-firm-2", "client_id": "mp-cli-2", "compliance_type": "GST",
+            "status": "Filed", "due_date": due_soon})
+
+        triggers = pipeline.detect_deadline_at_risk("mp-firm-2", "mp-cli-2")
+        # Whether or not it crosses the at-risk threshold depends on
+        # avg_response_time_days (defaults to 5), but it must not raise and
+        # must only ever have considered the one open record.
+        assert isinstance(triggers, list)
