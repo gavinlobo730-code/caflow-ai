@@ -205,10 +205,11 @@ class TestDocumentsParseNoLongerFabricates:
 
 class TestDashboardSummaryOverdueTasksFirmScoped:
     """domain/task_service.py get_dashboard_summary: overdue_tasks must only
-    count the caller's own firm. task_repo.find_overdue() itself has no
-    firm filter (repositories/task_repository.py), so the domain service
-    must post-filter the results — the same pattern already used for this
-    exact repo call in domain/ai_copilot_service.py's _build_context."""
+    count the caller's own firm. Fixed in R3.5c: task_repo.find_overdue()
+    now takes a firm_id parameter and pushes the scope to the query
+    (repositories/task_repository.py) instead of scanning every firm's
+    tasks and post-filtering in Python — same fix applied to
+    domain/ai_copilot_service.py's call sites (R3.5a)."""
 
     def test_overdue_tasks_scoped_to_firm(self):
         from domain.task_service import task_domain_service
@@ -217,13 +218,17 @@ class TestDashboardSummaryOverdueTasksFirmScoped:
             {"id": "t2", "firm_id": FIRM_B, "client_id": "c2", "status": "open", "due_date": "2020-01-01"},
             {"id": "t3", "firm_id": FIRM_B, "client_id": "c3", "status": "open", "due_date": "2020-01-01"},
         ]
+
+        def fake_find_overdue(firm_id=None):
+            return [t for t in overdue_mixed if not firm_id or t["firm_id"] == firm_id]
+
         with patch("domain.task_service.client_repo") as mock_clients, \
              patch("domain.task_service.task_repo") as mock_tasks, \
              patch("repositories.compliance_repository.compliance_repo") as mock_ctasks, \
              patch("domain.compliance_record_service.compliance_record_service") as mock_records:
             mock_clients.find_all.return_value = []
             mock_tasks.find_all.return_value = []
-            mock_tasks.find_overdue.return_value = overdue_mixed
+            mock_tasks.find_overdue.side_effect = fake_find_overdue
             mock_ctasks.find_all.return_value = []
             mock_records.list_records.return_value = []
 
@@ -232,6 +237,10 @@ class TestDashboardSummaryOverdueTasksFirmScoped:
 
         assert result_a["overdue_tasks"] == 1   # only t1 belongs to FIRM_A
         assert result_b["overdue_tasks"] == 2   # t2 + t3 belong to FIRM_B
+        # The scoping is now pushed at the call site, not post-filtered —
+        # confirm get_dashboard_summary actually passes firm_id through.
+        mock_tasks.find_overdue.assert_any_call(firm_id=FIRM_A)
+        mock_tasks.find_overdue.assert_any_call(firm_id=FIRM_B)
 
 
 class TestAiCopilotFirmContextScoping:

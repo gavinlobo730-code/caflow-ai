@@ -27,8 +27,10 @@ class TaskDomainService:
         all_clients = client_repo.find_all(firm_id=firm_id)
         active_clients = [c for c in all_clients if c.get("status") == "active"]
 
-        tasks = task_repo.find_all(firm_id=firm_id)
-        open_tasks = [t for t in tasks if t.get("status") != "completed"]
+        # Nothing below needs a completed task's row — push the exclusion to
+        # the query instead of fetching every task ever created and
+        # discarding the completed ones in Python.
+        open_tasks = task_repo.find_all(firm_id=firm_id, exclude_statuses=["completed"])
 
         # R3.13d: compliance_records (System A) is the sole source now —
         # compliance_tasks (System B) is being retired.
@@ -39,20 +41,22 @@ class TaskDomainService:
             if r.get("status") not in ("Filed",) and today_str <= r.get("due_date", "") <= week_end
         ])
 
-        high_risk_clients = 0
-        for client in active_clients:
-            hs = compliance_record_service.get_client_health_score(client["id"])
-            if hs["health_score"] < 50:
-                high_risk_clients += 1
+        # Batched instead of N+1: get_client_health_score() used to be called
+        # once per active client (2 DB round trips each — a client lookup and
+        # its own compliance_records fetch). all_records already holds every
+        # client's compliance records for this firm, so group in Python and
+        # reuse the same scoring math for every client in one pass.
+        records_by_client: dict[str, list[dict]] = {}
+        for r in all_records:
+            records_by_client.setdefault(r.get("client_id"), []).append(r)
+        high_risk_clients = sum(
+            1 for c in active_clients
+            if compliance_record_service.score_from_records(records_by_client.get(c["id"], []))[0] < 50
+        )
 
-        # task_repo.find_overdue() has no firm_id parameter (it scans every
-        # firm's tasks) — filter the result in Python to the caller's firm,
-        # the same post-hoc scoping pattern used for this exact repo method
-        # in domain/ai_copilot_service.py's _build_context. Tenancy fix, R2.8/F19.
-        overdue_tasks = [
-            t for t in task_repo.find_overdue()
-            if not firm_id or t.get("firm_id") == firm_id
-        ]
+        # find_overdue() now takes firm_id directly — pushed to the query
+        # instead of scanning every firm's tasks and re-filtering in Python.
+        overdue_tasks = task_repo.find_overdue(firm_id=firm_id)
 
         return {
             "active_clients": len(active_clients),

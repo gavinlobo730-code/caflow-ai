@@ -231,7 +231,7 @@ class TestDashboardSummary:
             mock_tasks.find_all.return_value = []
             mock_tasks.find_overdue.return_value = []
             mock_records.list_records.return_value = []
-            mock_records.get_client_health_score.return_value = {"health_score": 80}
+            mock_records.score_from_records.return_value = (80, [])
             result = task_domain_service.get_dashboard_summary(firm_id=FIRM_A)
         assert result["active_clients"] == 1
         mock_clients.find_all.assert_called_with(firm_id=FIRM_A)
