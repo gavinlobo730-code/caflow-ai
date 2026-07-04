@@ -48,6 +48,10 @@ def _patch_auth(monkeypatch, user_row):
     monkeypatch.setattr(auth.jwt, "decode",
                         lambda *a, **k: {"sub": "auth-1", "email": "u@firm.com"})
     monkeypatch.setattr(auth, "get_service_supabase", lambda: _FakeSupabase(user_row))
+    # R3.5e: get_current_user() now caches the users/firms lookup by
+    # auth_user_id. These tests all reuse the same sub ("auth-1") with
+    # different mocked rows, so each test needs a clean cache.
+    monkeypatch.setattr(auth, "_user_lookup_cache", {})
 
 
 def test_disabled_user_is_rejected(monkeypatch):

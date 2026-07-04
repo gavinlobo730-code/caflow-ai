@@ -29,6 +29,11 @@ def _patch(monkeypatch, row, payload):
     monkeypatch.setattr(auth, "_get_jwks_client", lambda: _J())
     monkeypatch.setattr(auth.jwt, "decode", lambda *a, **k: payload)
     monkeypatch.setattr(auth, "get_service_supabase", lambda: _Supa(row))
+    # R3.5e: get_current_user() now caches the users/firms lookup by
+    # auth_user_id. These tests all use the same sub ("a") with different
+    # mocked rows to test different revocation states, so each test needs a
+    # clean cache — otherwise test order would leak a stale row across tests.
+    monkeypatch.setattr(auth, "_user_lookup_cache", {})
 
 
 # ── Session revocation ────────────────────────────────────────────────────────
