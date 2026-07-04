@@ -17,7 +17,6 @@ import {
   ChevronUp,
   Loader2,
   X,
-  BarChart3,
 } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getClients } from "@/lib/data/clients";
@@ -866,32 +865,6 @@ export default function ReportsPage() {
                 </p>
                 <p className="text-xs text-[#94A3B8] mt-0.5 leading-relaxed">
                   6-month projection based on unpaid invoices, loan EMIs, and GST dues
-                </p>
-              </div>
-              <ChevronDown
-                size={14}
-                className="text-[#CBD5E1] group-hover:text-blue-600 transition-colors mt-1 shrink-0 -rotate-90"
-              />
-            </Link>
-          </div>
-        )}
-
-        {/* Financial Statements link card */}
-        {!activeReport && (
-          <div className="print:hidden">
-            <Link
-              href="/reports/financial-statements"
-              className="group flex items-start gap-4 p-5 bg-white rounded-xl border border-[#F1F5F9] hover:border-blue-200 hover:shadow-sm transition-all text-left w-full"
-            >
-              <div className="p-2.5 bg-[#F8FAFC] rounded-lg group-hover:bg-blue-50 transition-colors shrink-0">
-                <BarChart3 size={18} className="text-[#64748B] group-hover:text-blue-600 transition-colors" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-[#0F172A] group-hover:text-blue-700 transition-colors">
-                  Financial Statements
-                </p>
-                <p className="text-xs text-[#94A3B8] mt-0.5 leading-relaxed">
-                  Year-on-year P&L and Balance Sheet comparison with variance analysis and Excel export
                 </p>
               </div>
               <ChevronDown

@@ -352,8 +352,8 @@ export default function BudgetPage() {
 
           {accounts.length === 0 && (
             <div className="text-center py-10 text-sm text-[#94A3B8]">
-              No Revenue or Expense accounts found. Add accounts in{" "}
-              <Link href="/accounting/chart-of-accounts" className="text-blue-600 hover:underline">Chart of Accounts</Link>.
+              No Revenue or Expense accounts found. Import accounts via{" "}
+              <Link href="/accounting/coa-import" className="text-blue-600 hover:underline">Import COA</Link>.
             </div>
           )}
         </>
