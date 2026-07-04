@@ -287,6 +287,70 @@ def test_transition_filed_to_completed_sets_completed_at():
     assert out["status"] == "Completed" and out.get("completed_at")
 
 
+# ── mark_filed (R3.13e: one-click "mark filed" for compliance_calendar migrants) ──
+
+def test_mark_filed_walks_the_full_workflow_from_not_started():
+    rec = compliance_records_repo.create({"firm_id": FIRM, "client_id": "CL-1", "compliance_type": "GST",
+                                          "due_date": "2026-06-20", "status": "Not Started"})
+    out = compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR)
+    assert out["status"] == "Filed"
+    assert out.get("filed_date")
+
+
+def test_mark_filed_from_awaiting_documents():
+    rec = compliance_records_repo.create({"firm_id": FIRM, "client_id": "CL-1", "compliance_type": "GST",
+                                          "due_date": "2026-06-20", "status": "Awaiting Documents"})
+    out = compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR)
+    assert out["status"] == "Filed"
+
+
+def test_mark_filed_from_overdue():
+    rec = compliance_records_repo.create({"firm_id": FIRM, "client_id": "CL-1", "compliance_type": "GST",
+                                          "due_date": "2026-06-20", "status": "Overdue"})
+    out = compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR)
+    assert out["status"] == "Filed"
+
+
+def test_mark_filed_from_ready_to_file_takes_the_last_step_only():
+    rec = compliance_records_repo.create({"firm_id": FIRM, "client_id": "CL-1", "compliance_type": "GST",
+                                          "due_date": "2026-06-20", "status": "Ready To File"})
+    out = compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR)
+    assert out["status"] == "Filed"
+
+
+def test_mark_filed_records_acknowledgement_number():
+    rec = compliance_records_repo.create({"firm_id": FIRM, "client_id": "CL-1", "compliance_type": "GST",
+                                          "due_date": "2026-06-20", "status": "Not Started"})
+    out = compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR, acknowledgement_no="ARN12345")
+    assert out["status"] == "Filed" and out["acknowledgement_no"] == "ARN12345"
+
+
+def test_mark_filed_is_a_noop_when_already_filed():
+    rec = compliance_records_repo.create({"firm_id": FIRM, "client_id": "CL-1", "compliance_type": "GST",
+                                          "due_date": "2026-06-20", "status": "Filed", "filed_date": "2026-06-15"})
+    out = compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR)
+    assert out["status"] == "Filed" and out["filed_date"] == "2026-06-15"
+
+
+def test_mark_filed_already_completed_stays_completed():
+    rec = compliance_records_repo.create({"firm_id": FIRM, "client_id": "CL-1", "compliance_type": "GST",
+                                          "due_date": "2026-06-20", "status": "Completed"})
+    out = compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR)
+    assert out["status"] == "Completed"
+
+
+def test_mark_filed_each_intermediate_step_is_audited():
+    rec = compliance_records_repo.create({"firm_id": FIRM, "client_id": "CL-1", "compliance_type": "GST",
+                                          "due_date": "2026-06-20", "status": "Not Started"})
+    import services.audit_service as au
+    audit_calls = []
+    import unittest.mock
+    with unittest.mock.patch.object(au, "log_event", lambda *a, **k: audit_calls.append(a)):
+        compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR)
+    # Not Started -> In Progress -> Ready For Review -> Ready To File -> Filed: 4 transitions
+    assert len(audit_calls) == 4
+
+
 # ── Escalations (internal, idempotent) ───────────────────────────────────────
 
 def _obl(due, status="Not Started", **extra):
@@ -377,3 +441,24 @@ def test_calendar_assignment_scope(monkeypatch):
     calp = resp["data"]
     rowsp = calp["upcoming"] + calp["overdue"] + calp["completed"]
     assert {o["client_id"] for o in rowsp} == {"CL-A", "CL-B"}  # Partner sees all
+
+
+# ── mark-filed endpoint (router level) ───────────────────────────────────────
+
+def test_mark_filed_endpoint_walks_workflow_and_records_arn():
+    from routers.compliance_ops import mark_filed_obligation, MarkFiledBody
+    rec = _seed_obl("CL-A", "GSTR3B", "2026-06-20", status="Not Started")
+    resp = mark_filed_obligation(rec["id"], MarkFiledBody(acknowledgement_no="ARN99"), current_user=PARTNER)
+    obligation = resp["data"]["obligation"]
+    assert obligation["status"] == "Filed"
+    assert obligation["acknowledgement_no"] == "ARN99"
+
+
+def test_mark_filed_endpoint_404_other_firm():
+    from routers.compliance_ops import mark_filed_obligation, MarkFiledBody
+    rec = compliance_records_repo.create({"firm_id": "OTHER-FIRM", "client_id": "CL-X",
+                                          "compliance_type": "GST", "due_date": "2026-06-20",
+                                          "status": "Not Started"})
+    with pytest.raises(HTTPException) as ei:
+        mark_filed_obligation(rec["id"], MarkFiledBody(), current_user=PARTNER)
+    assert ei.value.status_code == 404
