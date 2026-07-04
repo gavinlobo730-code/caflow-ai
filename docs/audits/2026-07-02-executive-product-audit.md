@@ -4255,3 +4255,76 @@ missing indexes) delivered and verified this session.
 first, the only one of the 7 original findings not yet re-verified
 against current code this session), then a final production-readiness
 audit before hand-back for manual QA.
+
+---
+
+## Milestone R3.6 — UX consistency: shared loading skeletons + client-picker duplication (DELIVERED)
+
+**Goal:** the last of the 7 original re-scope findings, and the only one
+never re-verified against current code this session. Two claims: (1)
+EmptyState/ErrorState/AsyncBoundary/skeleton primitives
+(`components/ui/{states,skeleton}.tsx`) sat at an estimated ~20-25%
+adoption; (2) `ClientNavContext` only covers `/clients/[id]/*`, so ~30
+global tool pages roll their own client-selector state.
+
+**Re-scope (fresh research pass):** both claims confirmed accurate, with
+precision. Real adoption measured at 18% (22/121 pages with a
+loading/error/empty concern) — worse than the original estimate. Three
+copy-paste clusters accounted for ~25 unadopted pages: (a) 13 identical
+loading ladders across the 3 compliance sub-tab files
+(`clients/[id]/compliance/{gst,mca,tds}/page.tsx`); (b) 7 `animate-pulse`
+"Loading…" divs matching `docs/LOADING_UX_AUDIT.md`'s own §8 backlog item
+2, never completed; (c) 8 bare "Loading…" divs across knowledge/portal/
+team/practice pages. On the client-selector claim: `ClientNavContext`
+(`lib/workspace/ClientNavContext.tsx`) is confirmed URL-derived and
+`/clients/[id]/*`-only (19 files, zero usages elsewhere); 27 global pages
+outside that tree roll their own picker state. Already **partially**
+mitigated by an earlier, unrelated pass (`ClientLookup` rollout, commits
+`9c5900e`/`335ee64`) that gave all 27 a consistent picker *UI* — but the
+underlying *state/fetch* duplication (separate `useState` + separate
+`sb.from("clients")` queries per page) remained.
+
+**What shipped:**
+- Clusters (a)-(c) above (28 loading-state instances, 15 files) swapped
+  to the existing shared primitives (`TableSkeleton`, `DashboardSkeleton`,
+  `ListSkeleton`, `PageLoader`) — mechanical, same conditional structure,
+  only the loading markup changed. Adoption roughly doubles (22 → ~47 of
+  121 pages, ~39%).
+- New `lib/workspace/useClientPicker.ts`: a small shared hook
+  centralizing the clients-list + selected-id + loading state onto the
+  `getClients()` helper 24/27 of the pages already call elsewhere.
+  Deliberately does **not** auto-select a first client — every genuine
+  page-scoping use (cash-flow forecast, TDS return computation) requires
+  an explicit pick before acting, unlike a create-record modal's
+  default-to-first dropdown (a distinct, narrower concern left alone).
+  Migrated the 2 pages with matching semantics:
+  `reports/cash-flow/page.tsx` and `app/tds/returns/page.tsx`.
+- **Bug found and fixed along the way:** both migrated pages' inline
+  queries selected `clients.name` — a column that has never existed on
+  the table (confirmed via `\d clients` against real Postgres 16 with
+  every migration applied — only `client_name`/`legal_name`/`trade_name`
+  do). Neither call site checked the query's `error`, so both pages'
+  client dropdowns silently rendered empty in production. Routing both
+  through `getClients()` (which correctly selects `client_name`) fixes
+  this outright — not just a consistency refactor, a real functional fix.
+
+**Deliberately not done:** the other ~25 pages in the client-selector
+list have genuinely different selection semantics from the 2 migrated
+pilots — an auto-select-first default inside a create-record modal
+(e.g. `gst/page.tsx`'s `AddFilingModal`), or an "all clients" filter
+default over an already-firm-wide-loaded list (e.g.
+`income-tax/notices/page.tsx`). Forcing all of them through one hook
+shape risked silently changing intended UX (auto-selecting a client where
+none was selected before, or turning a filter into a hard requirement).
+That's a product-level call per page, not a mechanical refactor — flagged
+here rather than force-fit, same discipline used for the missing-CoA-editor
+gap (R3.3b) and the fee_engagements/billing_schedules duplication (R3.9b).
+
+**Verified:** `tsc --noEmit` clean, `eslint` clean, full `next build`
+succeeds. Backend untouched; mock-mode suite unaffected (2,506 passed,
+same 23 pre-existing unrelated failures).
+
+**R3.6 is now closed. All 7 of the original re-scope's findings
+(R3.3, R3.5a-e, R3.6) are delivered and verified.**
+
+**Next:** final production-readiness audit before hand-back for manual QA.
