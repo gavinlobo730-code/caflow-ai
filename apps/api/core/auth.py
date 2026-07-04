@@ -4,6 +4,7 @@ Validates Supabase-issued JWTs via JWKS (supports ES256 / RS256 / HS256).
 Extracts user identity and resolves firm_id from the users table.
 """
 import os
+import time
 from typing import Optional
 from fastapi import Header, HTTPException, status, Depends
 import jwt
@@ -11,6 +12,56 @@ from jwt import PyJWKClient
 from core.supabase_client import get_service_supabase
 
 _jwks_client: Optional[PyJWKClient] = None
+
+# R3.5e — get_current_user() ran 2 serialized, uncached DB round trips (users,
+# firms) on ~88/93 routers, every single request. Short-TTL in-process cache,
+# keyed by auth_user_id: bounds a disabled account / session revocation /
+# suspended firm to at most this many seconds of staleness after the DB write,
+# in exchange for skipping both lookups on every other request in that window.
+# Only successful lookups are cached — a miss (user row not yet visible, e.g.
+# mid-onboarding) is never cached, so a legitimate new user is never stuck
+# behind a stale 403. Per-process only (no cross-worker sharing); that's an
+# acceptable trade-off for a bounded staleness window, not a correctness gap.
+_USER_LOOKUP_CACHE_TTL_SECONDS = 30
+_user_lookup_cache: dict[str, tuple[float, dict, Optional[dict]]] = {}
+
+
+def _get_user_and_firm(supabase, auth_user_id: str) -> tuple[Optional[dict], Optional[dict]]:
+    cached = _user_lookup_cache.get(auth_user_id)
+    if cached is not None and (time.monotonic() - cached[0]) < _USER_LOOKUP_CACHE_TTL_SECONDS:
+        return cached[1], cached[2]
+
+    try:
+        result = (
+            supabase.table("users")
+            .select("id, firm_id, role, full_name, is_active, sessions_revoked_at")
+            .eq("auth_user_id", auth_user_id)
+            .single()
+            .execute()
+        )
+        user_data = result.data
+    except Exception:
+        user_data = None
+
+    if not user_data:
+        return None, None
+
+    firm_row = None
+    firm_id_for_status = user_data.get("firm_id")
+    if firm_id_for_status:
+        try:
+            firm_row = (
+                supabase.table("firms")
+                .select("is_active, deleted_at")
+                .eq("id", firm_id_for_status)
+                .single()
+                .execute()
+            ).data
+        except Exception:
+            firm_row = None
+
+    _user_lookup_cache[auth_user_id] = (time.monotonic(), user_data, firm_row)
+    return user_data, firm_row
 
 
 def _get_jwks_client() -> PyJWKClient:
@@ -87,22 +138,13 @@ def get_current_user(
     if not auth_user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing sub claim")
 
-    # Resolve firm_id from users table.
+    # Resolve firm_id from users table (+ the firm's active/deleted status),
+    # short-TTL cached — see _get_user_and_firm / _USER_LOOKUP_CACHE_TTL_SECONDS.
     # supabase-py 2.x raises postgrest.exceptions.APIError (406) when
     # .single() finds no matching row instead of returning result.data=None,
     # so we catch that and convert it to a clean 403.
     supabase = get_service_supabase()
-    try:
-        result = (
-            supabase.table("users")
-            .select("id, firm_id, role, full_name, is_active, sessions_revoked_at")
-            .eq("auth_user_id", auth_user_id)
-            .single()
-            .execute()
-        )
-        user_data = result.data
-    except Exception:
-        user_data = None
+    user_data, firm_row = _get_user_and_firm(supabase, auth_user_id)
 
     if not user_data:
         raise HTTPException(
@@ -121,23 +163,11 @@ def get_current_user(
 
     # Platform Admin enforcement: a suspended or soft-deleted firm blocks ALL of
     # its users. Enforced centrally here so every firm endpoint is gated at once.
-    firm_id_for_status = user_data.get("firm_id")
-    if firm_id_for_status:
-        try:
-            firm_row = (
-                supabase.table("firms")
-                .select("is_active, deleted_at")
-                .eq("id", firm_id_for_status)
-                .single()
-                .execute()
-            ).data
-        except Exception:
-            firm_row = None
-        if firm_row:
-            if firm_row.get("deleted_at"):
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Firm unavailable")
-            if firm_row.get("is_active") is False:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Firm suspended")
+    if firm_row:
+        if firm_row.get("deleted_at"):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Firm unavailable")
+        if firm_row.get("is_active") is False:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Firm suspended")
 
     # M6 — Session revocation / forced logout: reject any token issued before the
     # account's sessions_revoked_at instant (set by suspend / force-logout / global
