@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Library, Search, RefreshCw } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { PageLoader } from "@/components/ui/skeleton";
 
 interface Article { id: string; title: string; current_version: number; tags?: string[]; updated_at?: string }
 
@@ -40,7 +41,7 @@ export default function ClientKnowledgePage() {
           placeholder="Search client articles…" className="flex-1 text-sm outline-none" />
       </div>
       {error && <div className="text-[12px] text-red-600 mb-2">{error}</div>}
-      {loading ? <div className="text-sm text-gray-500">Loading…</div> : (
+      {loading ? <PageLoader /> : (
         <div className="space-y-2">
           {articles.length === 0 && <p className="text-[12px] text-gray-400">No client-scoped articles.</p>}
           {articles.map((a) => (

@@ -22,6 +22,7 @@ import { ChevronLeft, Calculator, Info, BookOpen, Plus, X, Trash2 } from "lucide
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { TableSkeleton } from "@/components/ui/skeleton";
 import { api, type ApiResp } from "@/lib/api";
 import {
   computeCapitalGains, listCapitalGains, createCapitalGain, deleteCapitalGain, getCiiTable,
@@ -495,7 +496,7 @@ export default function CapitalGainsPage() {
               </CardTitle>
             </CardHeader>
             {regLoading ? (
-              <div className="px-5 py-8 text-sm text-[#94A3B8] text-center animate-pulse">Loading…</div>
+              <TableSkeleton cols={10} bare />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">

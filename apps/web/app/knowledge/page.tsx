@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Library, Search, Plus, History, RotateCcw, RefreshCw } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { PageLoader } from "@/components/ui/skeleton";
 
 interface Article {
   id: string; scope: string; department?: string | null; client_id?: string | null;
@@ -107,7 +108,7 @@ function KnowledgeInner() {
         </form>
       )}
 
-      {loading ? <div className="text-sm text-gray-500">Loading…</div> : (
+      {loading ? <PageLoader /> : (
         <div className="space-y-2">
           {articles.length === 0 && <p className="text-[12px] text-gray-400">No articles found.</p>}
           {articles.map((a) => (
@@ -148,7 +149,7 @@ function KnowledgeInner() {
 
 export default function KnowledgePage() {
   return (
-    <Suspense fallback={<div className="p-8 text-sm text-gray-500">Loading…</div>}>
+    <Suspense fallback={<PageLoader />}>
       <KnowledgeInner />
     </Suspense>
   );

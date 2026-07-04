@@ -22,6 +22,7 @@ import { ChevronLeft, Save, AlertTriangle, CheckCircle, Clock } from "lucide-rea
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
 import { getClients } from "@/lib/data/clients";
 import {
@@ -215,7 +216,7 @@ export default function AdvanceTaxPage() {
       {/* Installment table */}
       <Card>
         {loading ? (
-          <div className="p-8 text-center text-[#94A3B8] text-sm animate-pulse">Loading…</div>
+          <TableSkeleton cols={9} bare />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

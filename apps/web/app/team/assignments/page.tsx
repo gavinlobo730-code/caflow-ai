@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Link2, Search, Check, Loader2, ShieldAlert } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { PageLoader } from "@/components/ui/skeleton";
 
 interface Member { id: string; full_name?: string; email?: string; role?: string }
 interface Client { id: string; client_name?: string; entity_type?: string; gstin?: string }
@@ -94,7 +95,7 @@ export default function AssignmentsPage() {
       {error && <div className="text-[12px] text-red-600 mb-3">{error}</div>}
 
       {loading ? (
-        <div className="text-sm text-gray-500">Loading…</div>
+        <PageLoader />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4">
           {/* Staff list */}
