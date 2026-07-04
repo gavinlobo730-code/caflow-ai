@@ -4159,3 +4159,35 @@ the `revenue_vs_effort` `NameError`), then R3.5e (auth-lookup caching +
 missing indexes), then R3.6 (UX consistency — needs its own fresh
 re-scoping pass first, the only one of the 7 original findings not yet
 re-verified against current code this session).
+
+---
+
+## Milestone R3.5d — bound analytics.py's client/firm analytics; fix revenue_vs_effort (DELIVERED)
+
+**Goal:** the R3.5 re-scope's #4 finding. `client_analytics` and
+`firm_analytics` each fetched every task the firm has ever created —
+every status, every FY — just to discard completed tasks outside the
+requested period in Python.
+
+**What shipped:** split each endpoint's single unbounded fetch into two
+bounded queries — completed tasks with `status="completed"` plus a
+`gte`/`lte` date range pushed to Postgres, and open tasks
+(`status != "completed"`, inherently unbounded by date since open tasks
+haven't completed yet) — the exact pattern `team_analytics` already used
+correctly a few lines above both of them in the same file. Also fixed
+`revenue_vs_effort`'s `client_repo = ClientRepository()` —
+`ClientRepository` is never imported anywhere in this file (only the
+`client_repo` singleton, imported at module scope) — which raised
+`NameError` on every single call, 500ing `/api/analytics/revenue-vs-effort`
+unconditionally in production. Removed the broken re-instantiation; the
+already-imported singleton works identically.
+
+**Verified:** 3 new tests in `test_r3_5d_analytics_perf.py` (a completed
+task from last year must not count toward the current period's stats for
+either endpoint; `revenue_vs_effort` actually returns instead of raising).
+Full mock-mode suite: 2,495 passed, same 23 pre-existing unrelated
+failures.
+
+**Next:** R3.5e (auth-lookup caching + missing indexes on
+`government_notices`/`document_requests`/`tasks`/`compliance_records`),
+then R3.6 (UX consistency — needs its own fresh re-scoping pass first).
