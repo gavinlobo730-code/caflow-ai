@@ -32,6 +32,10 @@ class TransitionBody(BaseModel):
     status: str
 
 
+class MarkFiledBody(BaseModel):
+    acknowledgement_no: Optional[str] = None
+
+
 @router.get("/obligations")
 def list_obligations(client_id: Optional[str] = Query(None),
                      status: Optional[str] = Query(None),
@@ -74,6 +78,23 @@ def transition_obligation(record_id: str, body: TransitionBody,
         updated = obligations.transition(current_user["firm_id"], record_id, body.status, actor=current_user)
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Compliance obligation not found.")
+    return api_response(True, {"obligation": updated})
+
+
+@router.post("/obligations/{record_id}/mark-filed")
+def mark_filed_obligation(record_id: str, body: MarkFiledBody,
+                          current_user: dict = Depends(rbac("compliance", "write"))):
+    """R3.13e — one-click "mark as filed" for callers migrating off the
+    simple pending/filed model of compliance_calendar: walks the real
+    multi-step workflow's shortest valid path to Filed rather than requiring
+    the caller to step through it manually. Optionally records an ARN /
+    acknowledgement number in the same call."""
+    try:
+        updated = compliance_record_service.mark_filed(
+            record_id, firm_id=current_user["firm_id"], actor=current_user,
+            acknowledgement_no=body.acknowledgement_no)
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Compliance obligation not found.")
     return api_response(True, {"obligation": updated})

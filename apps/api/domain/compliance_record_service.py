@@ -187,6 +187,31 @@ class ComplianceRecordService:
             _audit_transition(record, old_status, new_status, firm_id, actor)
         return {**updated, "risk_score": _compute_risk_score(updated)}
 
+    # Deterministic path from any open status to Filed, skipping the
+    # documents-waiting branch (not applicable when a CA is asserting the
+    # simple, terminal fact "this was filed").
+    _FAST_FORWARD_PATH = ["In Progress", "Ready For Review", "Ready To File", "Filed"]
+
+    def mark_filed(self, record_id: str, firm_id: Optional[str] = None,
+                   actor: Optional[dict] = None, acknowledgement_no: Optional[str] = None) -> dict:
+        """R3.13e: one-click "mark as filed" for callers migrating off
+        compliance_calendar's simple pending/filed model — walks the real
+        multi-step workflow (VALID_TRANSITIONS) via its shortest path rather
+        than bypassing it, so every intermediate step is still individually
+        valid and still audited/timelined. A no-op if already Filed/Completed."""
+        record = self.get_record(record_id, firm_id=firm_id)
+        if record["status"] in ("Filed", "Completed"):
+            updated = record
+        else:
+            start = self._FAST_FORWARD_PATH.index(record["status"]) \
+                if record["status"] in self._FAST_FORWARD_PATH else -1
+            for step in self._FAST_FORWARD_PATH[start + 1:]:
+                updated = self.update_record(record_id, {"status": step}, firm_id=firm_id, actor=actor)
+        if acknowledgement_no:
+            updated = self.update_record(record_id, {"acknowledgement_no": acknowledgement_no},
+                                         firm_id=firm_id, actor=actor)
+        return updated
+
     def get_client_health_score(self, client_id: str, firm_id: Optional[str] = None) -> dict:
         """Client health score 0-100. Start at 100, subtract for risks. Integer arithmetic only."""
         client = client_repo.find_by_id(client_id)
