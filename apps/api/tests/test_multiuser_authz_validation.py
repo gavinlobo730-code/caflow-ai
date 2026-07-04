@@ -43,9 +43,13 @@ ASSIGNMENTS = {
 
 @pytest.fixture(autouse=True)
 def enforced(monkeypatch):
-    """Force the real (non-mock) enforcement path with fixed assignments."""
+    """Force the real (non-mock) enforcement path with fixed assignments.
+    C_A and C_B both belong to firm F1 (every persona's firm) -- this suite's
+    scenarios are all within-firm assignment scoping; cross-FIRM denial is
+    covered separately by test_authz_engine.py's F1 regression tests."""
     monkeypatch.setattr(authz, "_USE_MOCK", False)
     monkeypatch.setattr(authz, "assigned_client_ids", lambda u: ASSIGNMENTS.get(u.get("id"), set()))
+    monkeypatch.setattr(authz, "_client_belongs_to_firm", lambda client_id, firm_id: firm_id == "F1")
 
 
 def _client_for(user):

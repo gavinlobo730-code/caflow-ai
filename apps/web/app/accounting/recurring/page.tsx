@@ -7,7 +7,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import type { Account } from "@/lib/types";
+import { getClients } from "@/lib/data/clients";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { api } from "@/lib/api";
+import type { Account, Client } from "@/lib/types";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -16,6 +19,7 @@ type RecurringStatus = "Active" | "Paused";
 
 interface RecurringTemplate {
   id: string;
+  client_id: string;            // journal_entries.client_id is a required FK
   name: string;
   frequency: Frequency;
   day_of_month: number;        // 1–28
@@ -92,6 +96,7 @@ async function getFirmId(): Promise<string> {
 // ─── Empty form ────────────────────────────────────────────────────────────
 
 interface TemplateForm {
+  client_id: string;
   name: string;
   frequency: Frequency;
   day_of_month: number;
@@ -104,6 +109,7 @@ interface TemplateForm {
 }
 
 const EMPTY_FORM: TemplateForm = {
+  client_id: "",
   name: "",
   frequency: "Monthly",
   day_of_month: 1,
@@ -120,6 +126,7 @@ const EMPTY_FORM: TemplateForm = {
 export default function RecurringPage() {
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [firmId, setFirmId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -128,7 +135,9 @@ export default function RecurringPage() {
   const [postingId, setPostingId] = useState<string | null>(null);
   const [postSuccess, setPostSuccess] = useState<string | null>(null);
 
-  // Load accounts from Supabase
+  // Load accounts + clients from Supabase. A recurring template posts a real
+  // journal_entries row, which requires a client_id (NOT NULL FK) — so every
+  // template must be associated with the client it belongs to.
   const loadAccounts = useCallback(async () => {
     setLoadingAccounts(true);
     try {
@@ -149,10 +158,19 @@ export default function RecurringPage() {
     }
   }, []);
 
+  const loadClients = useCallback(async () => {
+    try {
+      setClients(await getClients());
+    } catch {
+      // silently degrade — client dropdown just won't populate
+    }
+  }, []);
+
   useEffect(() => {
     setTemplates(loadTemplates());
     loadAccounts();
-  }, [loadAccounts]);
+    loadClients();
+  }, [loadAccounts, loadClients]);
 
   // ── Modal open/close ───────────────────────────────────────────────────
 
@@ -169,6 +187,7 @@ export default function RecurringPage() {
   // ── Save template ──────────────────────────────────────────────────────
 
   function handleSave() {
+    if (!form.client_id) { setFormError("Client is required"); return; }
     if (!form.name.trim()) { setFormError("Name is required"); return; }
     if (!form.debit_account_id) { setFormError("Debit account is required"); return; }
     if (!form.credit_account_id) { setFormError("Credit account is required"); return; }
@@ -182,6 +201,7 @@ export default function RecurringPage() {
 
     const newTpl: RecurringTemplate = {
       id: crypto.randomUUID(),
+      client_id: form.client_id,
       name: form.name.trim(),
       frequency: form.frequency,
       day_of_month: form.day_of_month,
@@ -226,45 +246,27 @@ export default function RecurringPage() {
     if (!firmId) return;
     setPostingId(tpl.id);
     setPostSuccess(null);
-    const sb = getSupabaseClient();
     const today = todayISO();
     try {
-      // All money uses integer paise — no floating point
-      const { data: newEntry, error: entryErr } = await sb
-        .from("journal_entries")
-        .insert({
-          firm_id: firmId,
-          entry_date: today,
-          reference_no: `REC-${tpl.id.slice(0, 8).toUpperCase()}`,
-          narration: tpl.narration || tpl.name,
-          entry_type: "Journal",
-          status: "posted",
-          total_debit_paise: tpl.amount_paise,
-          total_credit_paise: tpl.amount_paise,
-        })
-        .select()
-        .single();
-      if (entryErr) throw new Error(entryErr.message);
-
-      if (newEntry) {
-        const entryId = (newEntry as { id: string }).id;
-        await sb.from("journal_entry_lines").insert([
-          {
-            journal_entry_id: entryId,
-            account_id: tpl.debit_account_id,
-            debit_paise: tpl.amount_paise,
-            credit_paise: 0,
-            narration: tpl.narration || tpl.name,
-          },
-          {
-            journal_entry_id: entryId,
-            account_id: tpl.credit_account_id,
-            debit_paise: 0,
-            credit_paise: tpl.amount_paise,
-            narration: tpl.narration || tpl.name,
-          },
-        ]);
-      }
+      // Posts through the backend's single posting kernel (manual_journal_service
+      // → phase2_journal_service._create_journal — the same atomic-transaction
+      // engine every other journal-posting flow uses), instead of writing
+      // journal_entries/journal_entry_lines directly: journal_entry_lines is a
+      // read-only JOIN view (not a real, writable table), so a direct insert
+      // here always failed, and total_debit_paise/total_credit_paise are
+      // computed response fields, not real journal_entries columns.
+      await api.accounting.createJournalEntry({
+        client_id: tpl.client_id,
+        entry_date: today,
+        reference_no: `REC-${tpl.id.slice(0, 8).toUpperCase()}`,
+        narration: tpl.narration || tpl.name,
+        entry_type: "Journal",
+        status: "posted",
+        lines: [
+          { account_id: tpl.debit_account_id, debit_paise: tpl.amount_paise, credit_paise: 0, narration: tpl.narration || tpl.name },
+          { account_id: tpl.credit_account_id, debit_paise: 0, credit_paise: tpl.amount_paise, narration: tpl.narration || tpl.name },
+        ],
+      });
 
       // Update last posted date
       const updated = templates.map(t =>
@@ -431,6 +433,20 @@ export default function RecurringPage() {
           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <h2 className="text-sm font-semibold text-[#0F172A] mb-4">New Recurring Template</h2>
             <div className="space-y-3">
+
+              {/* Client */}
+              <div>
+                <label className="text-xs text-[#64748B] font-medium">Client *</label>
+                <div className="mt-1">
+                  <ClientLookup
+                    clients={clients}
+                    value={form.client_id}
+                    onChange={(id) => setForm({ ...form, client_id: id })}
+                    ariaLabel="Client"
+                    placeholder="Select client…"
+                  />
+                </div>
+              </div>
 
               {/* Name */}
               <div>

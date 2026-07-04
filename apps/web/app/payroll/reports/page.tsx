@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { monthlyTdsPaiseNewRegime } from "@/lib/services/payrollTdsEstimate";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -145,31 +146,6 @@ function currentFy(): string {
 function monthLabel(yyyyMm: string): string {
   const [y, m] = yyyyMm.split("-").map(Number);
   return new Date(y, m - 1, 1).toLocaleString("en-IN", { month: "short", year: "numeric" });
-}
-
-// ── TDS Computation helper (IT Act Section 192) ───────────────────────────
-
-/**
- * Estimate monthly TDS given annual gross in paise.
- * IT Act Section 192 — new regime slabs FY 2024-25.
- * Rebate u/s 87A: no tax if total income <= Rs 7,00,000.
- */
-function estimateMonthlyTds(annualGrossPaise: number): number {
-  if (annualGrossPaise <= 700000 * 100) return 0;
-  let annualTax = 0;
-  const g = annualGrossPaise;
-  if (g > 1500000 * 100) {
-    annualTax = Math.round((g - 1500000 * 100) * 30 / 100) + 12500 * 100;
-  } else if (g > 1250000 * 100) {
-    annualTax = Math.round((g - 1250000 * 100) * 25 / 100) + 7500 * 100;
-  } else if (g > 1000000 * 100) {
-    annualTax = Math.round((g - 1000000 * 100) * 20 / 100) + 5000 * 100;
-  } else if (g > 750000 * 100) {
-    annualTax = Math.round((g - 750000 * 100) * 15 / 100) + 2500 * 100;
-  } else if (g > 500000 * 100) {
-    annualTax = Math.round((g - 500000 * 100) * 10 / 100);
-  }
-  return Math.round(annualTax / 12);
 }
 
 // ── Statutory Dues Calendar helpers ──────────────────────────────────────
@@ -732,7 +708,7 @@ function TdsProjectionTab({ slips, employees }: { slips: PayrollSlip[]; employee
     : 0;
 
   const estimatedAnnualGross = estimatedMonthlyGross * 12;
-  const estimatedAnnualTds = estimateMonthlyTds(estimatedAnnualGross) * 12;
+  const estimatedAnnualTds = monthlyTdsPaiseNewRegime(estimatedAnnualGross) * 12;
 
   type ProjectionRow = {
     month: string;
@@ -758,7 +734,7 @@ function TdsProjectionTab({ slips, employees }: { slips: PayrollSlip[]; employee
     const hasActual = !!slip;
     const actualGross = slip?.gross_paise ?? 0;
     const actualTds = slip?.tds_paise ?? 0;
-    const projectedTds = estimateMonthlyTds(estimatedAnnualGross);
+    const projectedTds = monthlyTdsPaiseNewRegime(estimatedAnnualGross);
     cumulativeActual += actualTds;
     const cumulativeRemaining = Math.max(0, estimatedAnnualTds - cumulativeActual);
     projectionRows.push({ month, actualGross, actualTds, projectedTds, hasActual, cumulativeActual, cumulativeRemaining });
@@ -878,8 +854,8 @@ function TdsProjectionTab({ slips, employees }: { slips: PayrollSlip[]; employee
             </table>
           </div>
           <p className="text-xs text-[#94A3B8] mt-3">
-            * Projected TDS based on estimated annual income at current salary using new-regime slabs (IT Act Section 192).
-            Rebate u/s 87A applied for income ≤ ₹7,00,000. Consult employee&apos;s actual investment declarations for accuracy.
+            * Projected TDS based on estimated annual income at current salary using FY 2025-26 new-regime slabs (IT Act Section 192).
+            Rebate u/s 87A applied for taxable income ≤ ₹12,00,000 (Finance Act 2025). Consult employee&apos;s actual investment declarations for accuracy.
           </p>
         </CardContent>
       </Card>

@@ -69,50 +69,120 @@ class TestESI:
         assert result["employer"] == 0
 
 
-# ─── PT Tests (Karnataka slab) ────────────────────────────────────────────────
+# ─── PT Tests (state-specific slabs — R2.10) ──────────────────────────────────
+# _compute_pt used to ignore its `state` argument entirely and always applied
+# the Karnataka slab. These tests now pass state explicitly since an unset/
+# unrecognised state correctly returns 0 (see _compute_pt's docstring).
 
 class TestPT:
     def test_pt_below_threshold(self):
-        """Gross < ₹15,000 → no PT."""
-        assert _compute_pt(1400000) == 0
+        """Karnataka: gross < ₹15,000 → no PT."""
+        assert _compute_pt(1400000, "KA") == 0
 
     def test_pt_slab_1(self):
-        """₹15,000 to ₹29,999 → ₹150/month."""
-        assert _compute_pt(1500000) == 15000  # ₹150
-        assert _compute_pt(2500000) == 15000
+        """Karnataka: ₹15,000 to ₹29,999 → ₹150/month."""
+        assert _compute_pt(1500000, "KA") == 15000  # ₹150
+        assert _compute_pt(2500000, "KA") == 15000
 
     def test_pt_slab_2(self):
-        """₹30,000+ → ₹200/month."""
-        assert _compute_pt(3000000) == 20000  # ₹200
-        assert _compute_pt(10000000) == 20000
+        """Karnataka: ₹30,000+ → ₹200/month."""
+        assert _compute_pt(3000000, "KA") == 20000  # ₹200
+        assert _compute_pt(10000000, "KA") == 20000
+
+    def test_pt_maharashtra(self):
+        """Maharashtra: > ₹10,000/month → ₹200; at/below → nil."""
+        assert _compute_pt(1000000, "MH") == 0
+        assert _compute_pt(1000001, "MH") == 20000
+        assert _compute_pt(5000000, "MH") == 20000
+
+    def test_pt_west_bengal(self):
+        """West Bengal: > ₹10,000/month → ₹200; at/below → nil."""
+        assert _compute_pt(1000000, "WB") == 0
+        assert _compute_pt(1000001, "WB") == 20000
+
+    def test_pt_tamil_nadu(self):
+        """Tamil Nadu: > ₹21,000/month → ₹208; at/below → nil."""
+        assert _compute_pt(2100000, "TN") == 0
+        assert _compute_pt(2100001, "TN") == 20800
+
+    def test_pt_unrecognised_state_is_zero_not_karnataka(self):
+        """An unknown state code must not silently fall back to Karnataka's
+        rate — the historical bug this replaces."""
+        assert _compute_pt(10000000, "XX") == 0
+
+    def test_pt_unset_state_is_zero(self):
+        """No state set at all → 0, not a silent Karnataka default."""
+        assert _compute_pt(10000000) == 0
+        assert _compute_pt(10000000, None) == 0
+
+    def test_pt_state_is_case_and_whitespace_insensitive(self):
+        assert _compute_pt(10000000, " ka ") == 20000
+        assert _compute_pt(10000000, "ka") == 20000
 
 
 # ─── TDS §192 Tests ───────────────────────────────────────────────────────────
+# _compute_tds_192 withholds under the new regime (Section 115BAC(1A) default)
+# using the FY-versioned statutory_rates registry. Tests pin fy="2025-26" (the
+# last user-verified year, see statutory_rates.py) so they don't silently
+# start failing once a later FY's rates are updated from carried-forward
+# placeholders to real verified Finance Act figures.
 
 class TestTDS192:
-    def test_no_tax_below_300k(self):
-        """Annual taxable ≤ ₹3L → no TDS."""
-        assert _compute_tds_192(30000000) == 0  # ₹3,00,000
+    def test_no_tax_below_4l_nil_band(self):
+        """Annual taxable ≤ ₹4L (new-regime nil band) → no TDS."""
+        assert _compute_tds_192(30000000, fy="2025-26") == 0  # ₹3,00,000
 
-    def test_slab_5_percent(self):
-        """₹3L–₹7L: 5% on excess. Annual ₹5L → tax = ₹10,000 + cess."""
+    def test_slab_5_percent_but_full_87a_rebate_applies(self):
+        """₹4L–₹8L slab is 5%, but total income ₹5L is still under the ₹12L
+        Section 87A rebate threshold, so the rebate wipes out the slab tax
+        entirely -- annual TDS is zero, not just the plain 5% slab amount."""
         annual = 50000000  # ₹5,00,000
-        monthly = _compute_tds_192(annual)
-        # tax = (500000 - 300000) * 0.05 = 10000, +4% cess = 10400
-        expected_monthly = math.floor(10400 * 100 / 12)  # paise / 12
-        assert monthly == expected_monthly
+        monthly = _compute_tds_192(annual, fy="2025-26")
+        assert monthly == 0
 
     def test_no_float_in_result(self):
         """Result must be an integer (paise), not float."""
-        result = _compute_tds_192(120000000)
+        result = _compute_tds_192(120000000, fy="2025-26")
         assert isinstance(result, int)
 
-    def test_high_income(self):
-        """₹20L annual → 30% slab applies."""
+    def test_high_income_above_rebate_threshold(self):
+        """₹20L annual is above the ₹12L rebate threshold -- real tax applies
+        across the new-regime slabs up to the 20% bracket."""
         annual = 200000000  # ₹20,00,000
-        monthly = _compute_tds_192(annual)
+        monthly = _compute_tds_192(annual, fy="2025-26")
         assert monthly > 0
         assert isinstance(monthly, int)
+
+    def test_surcharge_applies_above_50l(self):
+        """Annual taxable > ₹50L triggers Section 2(29C) surcharge on top of
+        slab tax -- confirm it's actually being added, not silently skipped."""
+        below = _compute_tds_192(499000000, fy="2025-26")   # ₹49.9L
+        above = _compute_tds_192(600000000, fy="2025-26")   # ₹60L
+        # Sanity: both should scale up with income even before comparing
+        # surcharge-specific behaviour.
+        assert above > below
+        # At ₹60L the marginal 10% surcharge bracket applies; annual tax with
+        # surcharge+cess must exceed plain slab tax with cess alone.
+        from domain.income_tax.statutory_rates import rates_for, slab_tax_paise, cess_paise
+        rates = rates_for("2025-26")
+        plain_tax = slab_tax_paise(600000000, rates.new_regime_slabs)
+        plain_with_cess = plain_tax + cess_paise(plain_tax, rates)
+        assert above * 12 > plain_with_cess
+
+    def test_new_regime_surcharge_capped_at_25_percent(self):
+        """Even far above ₹5Cr (where the old regime's 37% bracket would
+        apply), the new regime's surcharge never exceeds 25% (Finance Act
+        2023 dropped the 37% slab for the new regime only)."""
+        from domain.income_tax.statutory_rates import rates_for, slab_tax_paise
+        rates = rates_for("2025-26")
+        taxable = 6000000000  # ₹6 Cr
+        monthly = _compute_tds_192(taxable, fy="2025-26")
+        annual = monthly * 12
+        plain_tax = slab_tax_paise(taxable, rates.new_regime_slabs)
+        # annual (tax+surcharge+cess) must stay within a 25%-surcharge +
+        # 4%-cess envelope of plain slab tax, not a 37%-surcharge envelope.
+        max_with_25pct_surcharge_and_cess = math.ceil(plain_tax * 1.25 * 1.04 / 12)
+        assert monthly <= max_with_25pct_surcharge_and_cess + 1  # +1 paise rounding slack
 
 
 # ─── Payroll Slip Tests ───────────────────────────────────────────────────────
@@ -310,37 +380,43 @@ class TestESIBoundary:
 
 class TestTDS192Boundary:
     def test_exactly_at_300k_threshold(self):
-        """Annual ₹3,00,000 exactly → no TDS (not exceeding)."""
-        assert _compute_tds_192(30000000) == 0
+        """Annual ₹3,00,000 exactly (below the new-regime ₹4L nil band) → no TDS."""
+        assert _compute_tds_192(30000000, fy="2025-26") == 0
 
     def test_one_rupee_above_threshold(self):
-        """Annual ₹3,00,001 → marginal TDS > 0."""
-        monthly = _compute_tds_192(30000100)
+        """Annual ₹3,00,001 → still nil (well below the ₹4L nil band)."""
+        monthly = _compute_tds_192(30000100, fy="2025-26")
         assert monthly >= 0  # may be 0 due to floor division
         assert isinstance(monthly, int)
 
-    def test_700k_boundary(self):
-        """Annual ₹7,00,000: still in 5% slab. ₹7,00,001 moves to 10%."""
-        monthly_7L = _compute_tds_192(70000000)
-        monthly_above = _compute_tds_192(70000100)
-        assert isinstance(monthly_7L, int)
-        assert isinstance(monthly_above, int)
+    def test_tds_monotonic_with_income(self):
+        """Monthly TDS must never decrease as projected annual income rises,
+        across every new-regime slab boundary (4L/8L/12L/16L/20L/24L) and
+        through the Section 87A rebate zone below ₹12L."""
+        incomes = [30000000, 50000000, 80000000, 120000000, 121000000,
+                   160000000, 200000000, 240000000, 300000000]
+        monthlies = [_compute_tds_192(inc, fy="2025-26") for inc in incomes]
+        assert monthlies == sorted(monthlies)
 
-    def test_cess_is_4_percent(self):
-        """IT Act §87A cess: 4% on income tax. Verify cess is added (±12 paise rounding tolerance)."""
-        # ₹5L annual: tax = ₹10,000 * 100 paise, cess = ₹400 * 100 paise, total = ₹10,400 * 100 paise
-        import math as m
-        annual_tds = _compute_tds_192(50000000) * 12
-        base_tax = (50000000 - 30000000) * 5 // 100
-        cess = m.floor(base_tax * 4 / 100)
-        expected_annual = base_tax + cess
-        # Allow ≤12 paise rounding tolerance (floor division applied per month × 12)
-        assert abs(annual_tds - expected_annual) <= 12
+    def test_cess_is_4_percent_of_tax_when_no_surcharge(self):
+        """Health & Education Cess is 4% of tax (+ surcharge, but there's none
+        here). At ₹20L annual -- above the Section 87A rebate threshold so
+        rebate doesn't zero out the tax, and below the ₹50L surcharge
+        threshold -- cess should be exactly 4% of plain slab tax."""
+        from domain.income_tax.statutory_rates import rates_for, slab_tax_paise
+        rates = rates_for("2025-26")
+        taxable = 200000000  # ₹20,00,000
+        tax = slab_tax_paise(taxable, rates.new_regime_slabs)
+        expected_annual = tax + (tax * 4 // 100)
+        monthly = _compute_tds_192(taxable, fy="2025-26")
+        annual = monthly * 12
+        # Floor-dividing by 12 then re-multiplying can lose up to 11 paise.
+        assert abs(annual - expected_annual) <= 11
 
     def test_tds_never_negative(self):
         """TDS must always be non-negative."""
         for gross in [0, 100000, 2999999, 30000000, 100000000]:
-            assert _compute_tds_192(gross) >= 0
+            assert _compute_tds_192(gross, fy="2025-26") >= 0
 
 
 # ─── Validator Tests ──────────────────────────────────────────────────────────

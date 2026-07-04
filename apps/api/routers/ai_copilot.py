@@ -47,23 +47,30 @@ class CopilotRequest(BaseModel):
 
 
 def _build_firm_context(firm_id: str) -> str:
-    """Build context string from live service layer data scoped to firm."""
+    """Build context string from live service layer data scoped to firm.
+
+    R2.8/F19 tenancy fix: every call below must be scoped to firm_id — these
+    three previously defaulted to firm_id=None, which returns platform-wide
+    counts (active_clients, overdue_tasks, compliance_overdue, high_risk
+    counts across every firm) into the Groq system prompt instead of the
+    caller's own firm's numbers.
+    """
     try:
         from domain.task_service import TaskDomainService
         task_svc = TaskDomainService()
-        dashboard = task_svc.get_dashboard_summary()
+        dashboard = task_svc.get_dashboard_summary(firm_id=firm_id)
     except Exception:
         dashboard = {}
 
     try:
         from domain.compliance_record_service import compliance_record_service
-        firm_summary = compliance_record_service.get_firm_summary()
+        firm_summary = compliance_record_service.get_firm_summary(firm_id=firm_id)
     except Exception:
         firm_summary = {}
 
     try:
         from domain.risk_engine import get_risk_dashboard_stats
-        risk_stats = get_risk_dashboard_stats()
+        risk_stats = get_risk_dashboard_stats(firm_id=firm_id)
     except Exception:
         risk_stats = {}
 
@@ -98,7 +105,10 @@ def get_firm_context(current_user: dict = Depends(rbac("ai", "copilot"))):
 
     try:
         from domain.task_service import TaskDomainService
-        dashboard = TaskDomainService().get_dashboard_summary()
+        # R2.8/F19 tenancy fix: must be scoped to firm_id — omitting it returns
+        # platform-wide active_clients/overdue_tasks/due_today/due_this_week
+        # counts instead of the caller's own firm's numbers.
+        dashboard = TaskDomainService().get_dashboard_summary(firm_id=firm_id)
     except Exception:
         dashboard = {}
 

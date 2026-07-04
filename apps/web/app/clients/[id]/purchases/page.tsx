@@ -358,9 +358,14 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
             }))
           );
         }
+      } else {
+        // R2.8/F19: the backend no longer fabricates a plausible-looking
+        // invoice when AI extraction is unavailable or fails — surface the
+        // honest error instead of silently leaving the form blank.
+        setMsg({ type: "err", text: json.error || "AI extraction failed. Please enter the bill details manually." });
       }
     } catch {
-      /* non-blocking */
+      setMsg({ type: "err", text: "AI extraction failed. Please enter the bill details manually." });
     } finally {
       setExtracting(false);
     }

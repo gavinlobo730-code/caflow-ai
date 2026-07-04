@@ -3,7 +3,6 @@ from models.client import ClientCreate, ClientUpdate
 from models.common import api_response
 from core.permissions import rbac
 from repositories.client_repository import client_repo
-from repositories.compliance_repository import compliance_repo
 from repositories.compliance_records_repository import compliance_records_repo
 from repositories.document_repository import document_repo
 from repositories.task_repository import task_repo
@@ -43,17 +42,6 @@ def _check_delete_blockers(client_id: str, firm_id: str, client_pan: str | None 
     existing checks tolerate empty/erroring repos).
     """
     blockers: list[str] = []
-
-    open_compliance = [
-        t for t in compliance_repo.find_all(firm_id=firm_id, client_id=client_id)
-        if t.get("status") not in ("filed", "not_applicable")
-    ]
-    if open_compliance:
-        blockers.append(
-            f"{len(open_compliance)} open compliance task(s): "
-            + ", ".join(t.get("compliance_type", "?") for t in open_compliance[:3])
-            + (" and more" if len(open_compliance) > 3 else "")
-        )
 
     active_records = [
         r for r in compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)
@@ -192,7 +180,13 @@ def get_client_workspace(client_id: str = Path(...), current_user: dict = Depend
     # Guardrail G1: the internal practice client is Partner-only (404 to non-partners).
     assert_can_view_client(client, current_user)
 
-    tasks = compliance_repo.find_all(firm_id=firm_id, client_id=client_id)
+    # R3.13d: compliance_tasks (System B) is being retired — compliance_records
+    # (System A) is the canonical obligation entity. Status vocabulary differs
+    # (System A: Not Started/Awaiting Documents/In Progress/Ready For Review/
+    # Ready To File/Filed/Completed/Overdue — capitalized, not System B's
+    # lowercase pending/in_progress/filed/overdue/not_applicable).
+    tasks = compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)
+    open_compliance = [t for t in tasks if t.get("status") not in ("Filed", "Completed")]
     docs = document_repo.find_all(firm_id=firm_id, client_id=client_id)
     insights = ai_insights_repo.find_all(firm_id=firm_id, client_id=client_id)
     client_tasks = task_repo.find_all(firm_id=firm_id, client_id=client_id)
@@ -204,10 +198,7 @@ def get_client_workspace(client_id: str = Path(...), current_user: dict = Depend
     completed_tasks = [t for t in client_tasks if t.get("status") == "completed"]
     today_iso = date.today().isoformat()
 
-    upcoming = sorted(
-        [t for t in tasks if t.get("status") in ("pending", "overdue")],
-        key=lambda t: t.get("due_date", "")
-    )[:5]
+    upcoming = sorted(open_compliance, key=lambda t: t.get("due_date", ""))[:5]
 
     return api_response(True, {
         "profile": client,
@@ -226,9 +217,9 @@ def get_client_workspace(client_id: str = Path(...), current_user: dict = Depend
         },
         "summary": {
             "total_tasks": len(tasks),
-            "overdue_count": sum(1 for t in tasks if t.get("status") == "overdue"),
-            "pending_count": sum(1 for t in tasks if t.get("status") == "pending"),
-            "filed_count": sum(1 for t in tasks if t.get("status") == "filed"),
+            "overdue_count": sum(1 for t in tasks if t.get("status") == "Overdue"),
+            "pending_count": sum(1 for t in tasks if t.get("status") == "Not Started"),
+            "filed_count": sum(1 for t in tasks if t.get("status") in ("Filed", "Completed")),
             "document_count": len(docs),
             "open_insights": sum(1 for i in insights if i.get("status") == "open"),
         }

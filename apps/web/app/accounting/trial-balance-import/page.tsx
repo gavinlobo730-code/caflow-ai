@@ -427,7 +427,7 @@ export default function TrialBalanceImportPage() {
                 {importResult.errors > 0 && (
                   <p className="text-red-600">{importResult.errors} errors encountered.</p>
                 )}
-                <Link href="/accounting/chart-of-accounts">
+                <Link href="/accounting/account-groups">
                   <Button className="mt-6 flex items-center gap-1.5">
                     <LinkIcon size={14} />View Chart of Accounts
                   </Button>

@@ -281,7 +281,20 @@ def _apply_event(db, payment: dict, event, firm_id: str) -> None:
                    .neq("status", "capturing").execute().data or [])
         if not claimed:
             return  # another delivery is settling / already settled this payment
-        receipt = _settle(db, payment, event)
+        try:
+            receipt = _settle(db, payment, event)
+        except Exception:
+            # F7 follow-up: journal_for_receipt now re-raises instead of swallowing
+            # posting failures, so a GL error here must not stick this payment in
+            # 'capturing' forever. Revert to the event's (captured) status — the
+            # gateway DID capture the money, we just haven't reconciled a receipt
+            # yet — so the claim condition (receipt_id IS NULL, status !=
+            # 'capturing') is satisfied again and a webhook redelivery or manual
+            # reconciliation retry can re-attempt settlement.
+            db.table("customer_payments").update({
+                "status": event.status, "updated_at": _now(),
+            }).eq("id", payment["id"]).execute()
+            raise
         db.table("customer_payments").update({
             "status": CAPTURED, "receipt_id": receipt.get("id"), "updated_at": _now(),
         }).eq("id", payment["id"]).execute()

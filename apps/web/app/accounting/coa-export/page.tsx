@@ -91,7 +91,7 @@ export default function CoaExportPage() {
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-5">
       <div className="flex items-center gap-3">
-        <Link href="/accounting/chart-of-accounts" className="text-[#94A3B8] hover:text-[#475569]">
+        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
           <ChevronLeft size={18} />
         </Link>
         <div>

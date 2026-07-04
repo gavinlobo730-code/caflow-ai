@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Receipt, RefreshCw, Target, FileText, ClipboardCheck, IndianRupee, Scale, Lock, Layers, Landmark, Users, Clock, Building2, ArrowRight } from "lucide-react";
+import { RefreshCw, Target, FileText, ClipboardCheck, IndianRupee, Scale, Lock, Landmark, Users, Clock, Building2, ArrowRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { api } from "@/lib/api";
 
@@ -13,10 +13,8 @@ import { api } from "@/lib/api";
 // firm's own books are the internal "practice" client. The old duplicate
 // firm-level accounting screens have been retired.
 const ADMIN_CARDS = [
-  { label: "Invoices", description: "Sales & purchase invoices with GST tracking", href: "/accounting/invoices", icon: Receipt },
   { label: "Supplier Master", description: "Manage supplier TDS sections, credit limits and payment terms", href: "/accounting/suppliers", icon: Users },
   { label: "Receivables Aging", description: "Outstanding invoices grouped by aging bucket", href: "/accounting/receivables", icon: Clock },
-  { label: "Fixed Assets", description: "Asset register with SL/WDV depreciation per IT Act 1961 Schedule II", href: "/accounting/fixed-assets", icon: Layers },
   { label: "Loans & FD", description: "Loans, EMI schedules and FD investments with maturity & TDS flags", href: "/accounting/loans", icon: Landmark },
   { label: "Recurring Transactions", description: "Automate monthly, quarterly & yearly entries", href: "/accounting/recurring", icon: RefreshCw },
   { label: "Budget vs Actuals", description: "Compare budgeted amounts with posted entries", href: "/accounting/budget", icon: Target },

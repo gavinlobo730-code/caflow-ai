@@ -183,7 +183,7 @@ def get_engagement(
 
     # Checklist completion %
     checklist_rows = (
-        db.table("year_end_checklist_items")
+        db.table("year_end_checklists")
         .select("id, status")
         .eq("engagement_id", engagement_id)
         .execute()
@@ -281,14 +281,10 @@ def update_engagement_status(
         .data[0]
     )
 
-    # Year-end integration: completing the engagement (→ locked) also locks the
-    # financial year for posting. This transition is already Partner-gated, so the
-    # system lock bypasses the interactive PIN. Idempotent and audited.
-    if new_status == "locked" and row.get("financial_year"):
-        from services.year_lock_service import set_lock
-        set_lock(
-            db, firm_id, row["financial_year"], lock=True, bypass_pin=True,
-            actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
-        )
+    from services.year_end_workflow_service import lock_year_if_completing
+    lock_year_if_completing(
+        db, firm_id, row.get("financial_year"), new_status,
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+    )
 
     return api_response(True, updated)

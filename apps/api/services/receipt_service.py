@@ -31,6 +31,28 @@ MOCK_RECEIPTS: list[dict] = []
 MOCK_RECEIPT_ALLOCATIONS: list[dict] = []
 
 
+def _is_unique_violation(err: Exception) -> bool:
+    """True when a Postgres/PostgREST error is a unique-constraint violation
+    (23505) — used to recognise a receipt_no collision against migration 159's
+    UNIQUE (firm_id, client_id, receipt_no) constraint."""
+    s = str(err).lower()
+    return "23505" in s or "duplicate key" in s or "already exists" in s
+
+
+def _is_missing_rpc_function(err: Exception) -> bool:
+    """True only for PostgREST/Postgres's OWN 'no such function' signature —
+    deliberately does NOT match on the function's own name (adversarial-review
+    fix, R2.12): settle_receipt_atomic's legitimate business-rule
+    RAISE EXCEPTIONs (invoice-not-found, exceeds-outstanding) are themselves
+    prefixed with 'settle_receipt_atomic: ...', so a bare substring check on
+    that name previously misclassified those as 'migration not applied' —
+    masking the real error with a false diagnosis, including for a genuine
+    concurrent-race exceeds-outstanding case this milestone was built to
+    handle correctly."""
+    s = str(err).lower()
+    return "pgrst202" in s or ("function" in s and ("does not exist" in s or "could not find the function" in s))
+
+
 def _current_fy() -> str:
     now = datetime.now(timezone.utc)
     if now.month >= 4:
@@ -179,7 +201,9 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
         rate_overridden=overridden, currency_policy=CurrencyPolicy(active=True, functional_currency="INR"),
     )
 
+    receipt_id = str(uuid.uuid4())
     receipt_payload = {
+        "id": receipt_id,
         "firm_id": firm_id, "client_id": client_id, "customer_id": data["customer_id"],
         "receipt_no": receipt_no, "receipt_date": data["receipt_date"],
         "amount_paise": cash_base, "tds_paise": 0, "unallocated_paise": unalloc_base,
@@ -190,34 +214,265 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
         "rate_source": r1_source, "rate_type": "booking", "rate_date": str(data["receipt_date"])[:10],
         "rate_selected_by": (actor or {}).get("id"), "rate_overridden": overridden,
     }
-    receipt = (db.table("receipts").insert(receipt_payload).execute().data or [receipt_payload])[0]
-    receipt_id = receipt.get("id", str(uuid.uuid4()))
 
+    # F7/R2.9 hardening: the journal above is already committed (this path always
+    # posts the journal first), so from HERE ON (starting with the receipt insert
+    # itself) a failure must be compensated (journal reversed, receipt deleted)
+    # rather than left as a phantom GL entry. This now also covers a receipt_no
+    # unique-constraint collision (migration 159, R2.9) — previously impossible
+    # to hit since no constraint existed, so the insert itself was never in this
+    # try block. Settlement amounts were already validated against each invoice's
+    # live outstanding when settle_plan was built (before the journal posted), so
+    # the loop's 409 is now only reachable via a genuine concurrent race.
     alloc_rows = []
-    for (inv, f, ar_relieved, new_paid, new_paid_txn, status) in settle_plan:
-        # Optimistic guard (H1): only settle if paid_paise is unchanged since our read.
-        upd = (db.table("client_sales_invoices")
-               .update({"paid_paise": new_paid, "paid_txn": new_paid_txn, "status": status})
-               .eq("id", inv["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
-               .eq("paid_paise", int(inv.get("paid_paise") or 0)).execute())
-        if not upd.data:
-            raise HTTPException(status_code=409, detail="Concurrent settlement detected; please retry.")
-        alloc_rows.append({"receipt_id": receipt_id, "sales_invoice_id": inv["id"], "allocated_paise": ar_relieved})
-    if alloc_rows:
-        db.table("receipt_allocations").insert(alloc_rows).execute()
+    try:
+        receipt = (db.table("receipts").insert(receipt_payload).execute().data or [receipt_payload])[0]
+        receipt_id = receipt.get("id", receipt_id)
 
-    if fx_diff != 0:
-        db.table("fx_adjustments").insert({
-            "firm_id": firm_id, "client_id": client_id, "kind": "realized",
-            "document_type": "receipt", "document_id": receipt_id, "currency": ccy,
-            "settlement_rate": str(R1), "base_delta_paise": fx_diff,
-            "journal_entry_id": entry_id, "rate_source": r1_source,
-            "created_by": (actor or {}).get("id"),
-        }).execute()
+        for (inv, f, ar_relieved, _new_paid, _new_paid_txn, _status) in settle_plan:
+            # R2.12 adversarial-review fix: settle_plan's new_paid/new_paid_txn/
+            # status were computed from a read taken BEFORE the journal posted
+            # (a wide staleness window), and the original CAS below had NO
+            # retry at all — a single collision failed immediately, a weaker
+            # guarantee than the plain-INR path's 6-attempt retry loop this
+            # milestone's atomic rewrite replaced (finding: leaving this path
+            # unfixed was a HIGHER concurrency risk than the framing implied,
+            # not a lower one). Re-read fresh on every attempt instead of
+            # trusting settle_plan's stale snapshot.
+            inv_id = inv["id"]
+            for _attempt in range(6):
+                cur = (db.table("client_sales_invoices")
+                       .select("paid_paise,paid_txn,txn_total")
+                       .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                       .limit(1).execute().data or [None])[0]
+                if not cur:
+                    break
+                old_paid = int(cur.get("paid_paise") or 0)
+                old_paid_txn = int(cur.get("paid_txn") or 0)
+                fresh_new_paid = old_paid + ar_relieved
+                fresh_new_paid_txn = old_paid_txn + f
+                txn_total = int(cur.get("txn_total") or 0)
+                if fresh_new_paid_txn > txn_total:
+                    raise HTTPException(status_code=422, detail=f"Invoice {inv_id}: allocation would exceed invoice outstanding")
+                fresh_status = "paid" if fresh_new_paid_txn >= txn_total else "partially_paid"
+                upd = (db.table("client_sales_invoices")
+                       .update({"paid_paise": fresh_new_paid, "paid_txn": fresh_new_paid_txn, "status": fresh_status})
+                       .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                       .eq("paid_paise", old_paid).execute())
+                if upd.data:
+                    break                        # CAS won
+            else:
+                raise HTTPException(status_code=409, detail=f"Invoice {inv_id} is being updated concurrently — please retry.")
+            alloc_rows.append({"receipt_id": receipt_id, "sales_invoice_id": inv_id, "allocated_paise": ar_relieved})
+        if alloc_rows:
+            db.table("receipt_allocations").insert(alloc_rows).execute()
+
+        if fx_diff != 0:
+            db.table("fx_adjustments").insert({
+                "firm_id": firm_id, "client_id": client_id, "kind": "realized",
+                "document_type": "receipt", "document_id": receipt_id, "currency": ccy,
+                "settlement_rate": str(R1), "base_delta_paise": fx_diff,
+                "journal_entry_id": entry_id, "rate_source": r1_source,
+                "created_by": (actor or {}).get("id"),
+            }).execute()
+    except HTTPException:
+        _compensate_failed_settlement(
+            db, firm_id, client_id, receipt_id, entry_id, actor,
+            [inv["id"] for (inv, *_ ) in settle_plan],
+        )
+        raise
+    except Exception as e:
+        _compensate_failed_settlement(
+            db, firm_id, client_id, receipt_id, entry_id, actor,
+            [inv["id"] for (inv, *_ ) in settle_plan],
+        )
+        if _is_unique_violation(e):
+            raise HTTPException(
+                status_code=409,
+                detail="A receipt numbering collision was detected; please retry.",
+            ) from e
+        raise
 
     log_event(firm_id, "receipt", receipt_id, "create", actor_id=(actor or {}).get("auth_user_id"),
               actor_email=(actor or {}).get("email"), new_data={"amount_paise": cash_base, "currency": ccy})
     return {**receipt, "allocations": alloc_rows, "journal_entry_id": entry_id, "realized_fx_paise": fx_diff}
+
+
+def _compensate_failed_settlement(
+    db, firm_id: str, client_id: str, receipt_id: str, journal_id, actor: dict,
+    attempted_invoice_ids: list,
+) -> None:
+    """F7 hardening: undo a receipt whose AR settlement failed AFTER the journal
+    and receipt row were already committed.
+
+    Reachable only via a genuine CONCURRENT settlement race on one of the
+    allocated invoices (CAS exhaustion) — a same-request over-allocation is now
+    rejected by upfront validation before anything posts, so it can no longer
+    reach this point. Reverses the journal (append-only — the kernel's standard
+    reversal path) and deletes the now-orphaned receipt row, so the failed
+    operation leaves no phantom cash/AR entry for a receipt the caller was told
+    failed. Best-effort: if compensation itself fails, log loudly rather than
+    mask the original error — a human must reconcile.
+
+    Residual gap (tracked under roadmap R2.12 — full receipt/AR/journal
+    atomicity): if this receipt allocated to MULTIPLE invoices and an EARLIER
+    invoice's compare-and-set already succeeded before a LATER one failed, that
+    earlier invoice's paid_paise/status is not rolled back here (safely reverting
+    a concurrent CAS write requires its own transaction). `attempted_invoice_ids`
+    is logged so that residual case is visible for manual review.
+
+    R2.9 adversarial review finding (CONFIRMED): phase2_journal_service._create_journal
+    has an idempotency fast-path (_find_existing) keyed only on
+    (firm_id, client_id, reference_no, entry_date) — no receipt id involved. When two
+    receipts race to the same auto-generated receipt_no (the exact scenario migration
+    159's UNIQUE constraint now catches), the LOSING request's journal_for_receipt call
+    can match the WINNING request's already-committed journal via that fast-path and
+    receive ITS journal_entry_id back — not a journal of its own. Blindly reversing
+    that journal here would corrupt the winning receipt's already-settled, successful
+    books. So before reversing, confirm no OTHER receipt already claims this exact
+    journal_id — if one does, the journal belongs to that other, successful receipt and
+    must be left alone; only this (failed) attempt's own artifacts are cleaned up.
+    """
+    try:
+        if journal_id:
+            owned_by_another = (
+                db.table("receipts").select("id")
+                .eq("journal_entry_id", journal_id).neq("id", receipt_id)
+                .limit(1).execute().data
+            )
+            if owned_by_another:
+                _logger.warning(
+                    "R2.9: skipping journal reversal for journal=%s (firm=%s client=%s) — "
+                    "it belongs to another already-committed receipt (%s), not this failed "
+                    "attempt (receipt=%s); reversing it would corrupt that other receipt's "
+                    "books. Only this attempt's own artifacts are being cleaned up.",
+                    journal_id, firm_id, client_id, owned_by_another[0].get("id"), receipt_id,
+                )
+            else:
+                from services.phase2_journal_service import phase2_journal_service
+                phase2_journal_service.reverse_entry(
+                    db, firm_id, journal_id, str(datetime.now(timezone.utc).date()),
+                    narration=f"Compensating reversal — receipt {receipt_id} settlement failed",
+                    created_by=(actor or {}).get("id"),
+                )
+        db.table("receipts").delete().eq("id", receipt_id).execute()
+        _logger.warning(
+            "F7 compensation applied: reversed journal=%s and deleted receipt=%s "
+            "(firm=%s client=%s) after a settlement failure. Invoices touched this "
+            "request: %s — verify none were left partially settled without this receipt.",
+            journal_id, receipt_id, firm_id, client_id, attempted_invoice_ids,
+        )
+    except Exception:
+        _logger.error(
+            "F7 compensation FAILED for receipt=%s journal=%s (firm=%s client=%s) — "
+            "manual reconciliation required, a phantom GL entry may remain.",
+            receipt_id, journal_id, firm_id, client_id, exc_info=True,
+        )
+
+
+def _settle_receipt_via_atomic_rpc(
+    db, firm_id: str, client_id: str, receipt_payload: dict, allocations: list, actor: dict,
+) -> dict:
+    """R2.12: post the journal, the receipt row, and every allocation's invoice
+    row-locked update in ONE database transaction via settle_receipt_atomic
+    (migration 160) — see that migration's docstring for why this supersedes
+    the journal-first + compensate pattern for the plain-INR receipt path. Any
+    failure (bad account, receipt_no collision, over-allocation) rolls back
+    the WHOLE transaction; nothing partial is ever left to compensate.
+    """
+    from services.phase2_journal_service import phase2_journal_service
+
+    lines = phase2_journal_service.receipt_journal_lines(db, receipt_payload, firm_id, client_id)
+    entry_date = receipt_payload["receipt_date"]
+    actor_id = (actor or {}).get("id")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    entry_payload = {
+        "firm_id": firm_id, "client_id": client_id, "entry_date": entry_date,
+        "reference_no": receipt_payload["receipt_no"],
+        "narration": f"Receipt {receipt_payload['receipt_no']} from customer",
+        "entry_type": "Receipt", "is_posted": True, "status": "posted",
+        "posted_at": now_iso, "posted_by": actor_id, "created_by": actor_id,
+    }
+    line_payloads = [
+        {
+            "account_id": l["account_id"], "debit_paise": l["debit_paise"],
+            "credit_paise": l["credit_paise"], "narration": l.get("narration", ""),
+            "txn_currency": "INR", "base_currency": "INR", "exchange_rate": "1",
+            "txn_debit": l["debit_paise"], "txn_credit": l["credit_paise"],
+            "rate_source": "identity", "rate_type": "booking", "rate_date": entry_date,
+        }
+        for l in lines
+    ]
+    alloc_payloads = [
+        {"sales_invoice_id": a.get("sales_invoice_id"), "allocated_paise": int(a.get("allocated_paise", 0) or 0)}
+        for a in allocations
+        if a.get("sales_invoice_id") and int(a.get("allocated_paise", 0) or 0) > 0
+    ]
+
+    try:
+        result = db.rpc("settle_receipt_atomic", {
+            "p_receipt": receipt_payload,
+            "p_journal_entry": entry_payload,
+            "p_journal_lines": line_payloads,
+            "p_allocations": alloc_payloads,
+        }).execute()
+    except Exception as e:
+        if _is_missing_rpc_function(e):
+            raise RuntimeError(
+                "settle_receipt_atomic RPC not found — migrations 160/162 "
+                "(apps/api/migrations/160_atomic_receipt_settlement.sql, "
+                "162_atomic_receipt_settlement_hardening.sql) must be applied to "
+                "this database before the API is deployed."
+            ) from e
+        if _is_unique_violation(e):
+            raise HTTPException(
+                status_code=409,
+                detail="A receipt numbering collision was detected; please retry.",
+            ) from e
+        raise
+
+    out = result.data or {}
+    receipt_id = out.get("receipt_id") or receipt_payload["id"]
+    journal_id = out.get("journal_entry_id")
+    alloc_results = out.get("allocations") or []
+    # R2.12 fix phase: log the ACTUAL DB row (migration 162 returns it) rather
+    # than reconstructing one from the Python-side payload, which silently
+    # omitted DB-default columns (allocated_paise, updated_at) the
+    # pre-atomicity path's equivalent audit entries always included.
+    db_receipt_row = out.get("receipt")
+
+    receipt = {**receipt_payload, **(db_receipt_row or {}), "id": receipt_id, "journal_entry_id": journal_id}
+
+    log_event(
+        firm_id or "", "receipt", receipt_id,
+        "create", actor_id=actor.get("auth_user_id"),
+        actor_email=actor.get("email"), new_data=receipt,
+    )
+    timeline_service.log_timeline_event(
+        client_id=client_id,
+        firm_id=firm_id or "",
+        financial_year=_current_fy_long(),
+        category="accounting",
+        event_type="receipt_recorded",
+        title=f"Receipt {receipt_payload.get('receipt_no', '')} recorded",
+        description=f"Payment of ₹{receipt_payload['amount_paise'] // 100:,} received from customer.",
+        severity="success",
+        entity_type="receipt",
+        entity_id=receipt_id,
+        amount_paise=receipt_payload["amount_paise"],
+        actor_id=actor.get("auth_user_id"),
+        actor_name=actor.get("email"),
+    )
+
+    receipt["allocations"] = [
+        {
+            "receipt_id": receipt_id,
+            "sales_invoice_id": r.get("sales_invoice_id"),
+            "allocated_paise": r.get("allocated_paise"),
+        }
+        for r in alloc_results
+    ]
+    return receipt
 
 
 def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
@@ -304,10 +559,38 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
             if not chk.data:
                 raise HTTPException(status_code=422, detail=f"Invoice {_inv} is not part of this client's books.")
 
+    # F7 hardening: validate EVERY allocation against LIVE invoice outstanding
+    # BEFORE posting anything (journal or receipt). Previously this check only ran
+    # deep inside the settlement loop, AFTER the journal and receipt had already
+    # committed — so a single over-allocated request left a phantom Dr Bank / Cr
+    # Trade Receivables entry and a receipt row for an operation the API reported
+    # as failed. Multiple allocation rows for the same invoice are summed so the
+    # check reflects the whole request, not just one row at a time.
+    _alloc_by_invoice: dict = {}
+    for _a in allocations:
+        _inv = _a.get("sales_invoice_id")
+        _amt = int(_a.get("allocated_paise", 0) or 0)
+        if _inv and _amt > 0:
+            _alloc_by_invoice[_inv] = _alloc_by_invoice.get(_inv, 0) + _amt
+    for _inv_id, _cum_amt in _alloc_by_invoice.items():
+        _row = (db.table("client_sales_invoices").select("total_paise,paid_paise,credited_paise")
+                .eq("id", _inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                .limit(1).execute().data)
+        if not _row:
+            continue  # already rejected by the ownership check above
+        _total = int(_row[0].get("total_paise", 0))
+        _credited = int(_row[0].get("credited_paise", 0) or 0)
+        _paid = int(_row[0].get("paid_paise", 0) or 0)
+        if _paid + _credited + _cum_amt > _total:
+            raise HTTPException(status_code=422,
+                detail=f"Invoice {_inv_id}: allocation would exceed invoice outstanding")
+
     seq = _next_receipt_seq(db, firm_id, client_id, fy)
     receipt_no = f"RCPT-{fy}-{seq:04d}"
 
+    receipt_id = str(uuid.uuid4())
     receipt_payload = {
+        "id":                receipt_id,   # pre-generated so the GL journal, the receipt row and its allocations share one id
         "firm_id":           firm_id,
         "client_id":         client_id,
         "customer_id":       data["customer_id"],
@@ -323,70 +606,117 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         **_ccy_cols,
     }
 
-    rcpt_resp  = db.table("receipts").insert(receipt_payload).execute()
-    receipt    = rcpt_resp.data[0] if rcpt_resp.data else receipt_payload
-    receipt_id = receipt.get("id", str(uuid.uuid4()))
+    # R2.12: the real Supabase client always exposes .rpc, so production always
+    # takes this atomic path — settle_receipt_atomic (migration 160) posts the
+    # journal, the receipt row, and every allocation's invoice update in ONE
+    # database transaction, so no partial state can ever be observed and no
+    # app-level compensation is needed (there is nothing to compensate). Test
+    # doubles without .rpc fall through to the pre-atomicity journal-first +
+    # insert + CAS-retry path below, preserved byte-for-byte — the same
+    # established fallback pattern as phase2_journal_service._create_journal's
+    # own hasattr(db, "rpc") branch.
+    if hasattr(db, "rpc"):
+        return _settle_receipt_via_atomic_rpc(db, firm_id, client_id, receipt_payload, allocations, actor)
 
-    # Insert allocations and update invoice statuses.
-    alloc_payloads = []
-    for alloc in allocations:
-        inv_id    = alloc.get("sales_invoice_id")
-        alloc_amt = int(alloc.get("allocated_paise", 0))
-        if not inv_id or alloc_amt <= 0:
-            continue
-        alloc_payloads.append({
-            "receipt_id":       receipt_id,
-            "sales_invoice_id": inv_id,
-            "allocated_paise":  alloc_amt,
-        })
-
-        # H1 — lost-update prevention: read-modify-write on paid_paise is guarded by an
-        # optimistic compare-and-set (UPDATE ... WHERE paid_paise = <value we read>). If
-        # a concurrent receipt changed paid_paise between our read and write, the CAS
-        # matches 0 rows and we re-read and retry, so concurrent settlements can never
-        # lose an update or overshoot the invoice total.
-        for _attempt in range(6):
-            inv_resp = (
-                db.table("client_sales_invoices")
-                .select("total_paise,paid_paise,credited_paise")
-                .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                .limit(1)
-                .execute()
-            )
-            if not inv_resp.data:
-                break
-            inv = inv_resp.data[0]
-            total    = int(inv.get("total_paise", 0))
-            credited = int(inv.get("credited_paise", 0) or 0)   # credit notes already applied
-            old_paid = int(inv.get("paid_paise", 0) or 0)
-            new_paid = old_paid + alloc_amt
-            # Fully settled when cash paid + credit notes reach the total; the allocation
-            # may not push settlement past the total.
-            if new_paid + credited > total:
-                raise HTTPException(status_code=422, detail=f"Invoice {inv_id}: allocation would exceed invoice outstanding")
-            new_status = "paid" if (new_paid + credited) >= total else "partially_paid"
-            upd = (db.table("client_sales_invoices").update({
-                "paid_paise": new_paid,
-                "status":     new_status,
-            }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
-              .eq("paid_paise", old_paid)   # compare-and-set guard
-              .execute())
-            if upd.data:
-                break                        # CAS won
-        else:
-            raise HTTPException(status_code=409,
-                detail=f"Invoice {inv_id} is being updated concurrently — please retry.")
-
-    if alloc_payloads:
-        db.table("receipt_allocations").insert(alloc_payloads).execute()
-
-    # Auto-create journal entry (Dr Bank / Cr Trade Receivables).
+    # F7: post the GL journal FIRST — resolve the CoA accounts and post before any
+    # AR mutation, so a missing-account / posting failure aborts here (the journal
+    # helper now re-raises instead of swallowing) rather than leaving settled AR
+    # with no GL entry. In mock mode the helper returns None (no GL) which is fine;
+    # in real mode a failure propagates and nothing below runs.
     from services.phase2_journal_service import phase2_journal_service
     journal_id = phase2_journal_service.journal_for_receipt(
-        receipt=receipt,
+        receipt=receipt_payload,
         firm_id=firm_id or "",
         client_id=client_id,
     )
+    if journal_id:
+        receipt_payload["journal_entry_id"] = journal_id
+
+    # F7/R2.9 hardening: the journal above is already committed, so from HERE ON
+    # (starting with the receipt insert itself) a failure must be compensated
+    # (journal reversed, receipt deleted) rather than left as a phantom GL
+    # entry. This now also covers a receipt_no unique-constraint collision
+    # (migration 159, R2.9) — previously impossible to hit since no constraint
+    # existed, so the insert itself was never in this try block. With
+    # allocations pre-validated above, the loop's own 422 is no longer
+    # reachable on a single request; it now only fires under a genuine
+    # concurrent settlement race (CAS exhaustion, 409), which the same
+    # compensation below also covers.
+    alloc_payloads = []
+    _attempted_invoice_ids = [a.get("sales_invoice_id") for a in allocations if a.get("sales_invoice_id")]
+    try:
+        rcpt_resp  = db.table("receipts").insert(receipt_payload).execute()
+        receipt    = rcpt_resp.data[0] if rcpt_resp.data else receipt_payload
+        receipt_id = receipt.get("id", receipt_id)
+
+        for alloc in allocations:
+            inv_id    = alloc.get("sales_invoice_id")
+            alloc_amt = int(alloc.get("allocated_paise", 0))
+            if not inv_id or alloc_amt <= 0:
+                continue
+            alloc_payloads.append({
+                "receipt_id":       receipt_id,
+                "sales_invoice_id": inv_id,
+                "allocated_paise":  alloc_amt,
+            })
+
+            # H1 — lost-update prevention: read-modify-write on paid_paise is guarded by an
+            # optimistic compare-and-set (UPDATE ... WHERE paid_paise = <value we read>). If
+            # a concurrent receipt changed paid_paise between our read and write, the CAS
+            # matches 0 rows and we re-read and retry, so concurrent settlements can never
+            # lose an update or overshoot the invoice total.
+            for _attempt in range(6):
+                inv_resp = (
+                    db.table("client_sales_invoices")
+                    .select("total_paise,paid_paise,credited_paise")
+                    .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                    .limit(1)
+                    .execute()
+                )
+                if not inv_resp.data:
+                    break
+                inv = inv_resp.data[0]
+                total    = int(inv.get("total_paise", 0))
+                credited = int(inv.get("credited_paise", 0) or 0)   # credit notes already applied
+                old_paid = int(inv.get("paid_paise", 0) or 0)
+                new_paid = old_paid + alloc_amt
+                # Fully settled when cash paid + credit notes reach the total; the allocation
+                # may not push settlement past the total. (Defense-in-depth: pre-validated
+                # above already, so this is now only reachable via a concurrent race.)
+                if new_paid + credited > total:
+                    raise HTTPException(status_code=422, detail=f"Invoice {inv_id}: allocation would exceed invoice outstanding")
+                new_status = "paid" if (new_paid + credited) >= total else "partially_paid"
+                upd = (db.table("client_sales_invoices").update({
+                    "paid_paise": new_paid,
+                    "status":     new_status,
+                }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                  .eq("paid_paise", old_paid)   # compare-and-set guard
+                  .execute())
+                if upd.data:
+                    break                        # CAS won
+            else:
+                raise HTTPException(status_code=409,
+                    detail=f"Invoice {inv_id} is being updated concurrently — please retry.")
+
+        if alloc_payloads:
+            db.table("receipt_allocations").insert(alloc_payloads).execute()
+    except HTTPException:
+        _compensate_failed_settlement(
+            db, firm_id, client_id, receipt_id, journal_id, actor, _attempted_invoice_ids,
+        )
+        raise
+    except Exception as e:
+        _compensate_failed_settlement(
+            db, firm_id, client_id, receipt_id, journal_id, actor, _attempted_invoice_ids,
+        )
+        if _is_unique_violation(e):
+            raise HTTPException(
+                status_code=409,
+                detail="A receipt numbering collision was detected; please retry.",
+            ) from e
+        raise
+
+    # (The GL journal was already posted above, BEFORE settling AR — see F7.)
 
     log_event(
         firm_id or "", "receipt", receipt_id,

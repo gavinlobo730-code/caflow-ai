@@ -128,3 +128,21 @@ def test_status_endpoint_requires_team_read():
     client_user = {"id": "c", "firm_id": "F1", "role": "Client", "email": "c@firm.com"}
     r = _client(client_user).get("/api/scheduler/status")
     assert r.status_code == 403
+
+
+# ── R2.7: _past_scheduled_hour must resolve the IST timezone ──────────────────
+# (pytz was never a dependency — this always hit the except branch and
+# silently returned True regardless of the actual time, same bug class as
+# _compute_next_run's missing croniter/pytz fallback.)
+
+def test_past_scheduled_hour_resolves_real_timezone():
+    result = sched._past_scheduled_hour()
+    assert isinstance(result, bool)
+
+
+def test_past_scheduled_hour_matches_manual_ist_calculation():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
+    expected = now_ist.hour >= sched._SCHEDULED_HOUR_IST
+    assert sched._past_scheduled_hour() == expected

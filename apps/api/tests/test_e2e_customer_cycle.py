@@ -91,6 +91,77 @@ def test_customer_cycle_end_to_end(monkeypatch):
     assert tb["total_debit_paise"] == tb["total_credit_paise"]
 
 
+def test_f7_journal_failure_does_not_settle_ar(monkeypatch):
+    """F7: the receipt posts its GL journal BEFORE settling AR, so a journal
+    failure must leave the invoice unpaid and write no receipt — never settled AR
+    with no GL entry."""
+    cu, si, rc, cs, col, db = _setup(monkeypatch)
+    cust = cu.create_customer(CustomerIn(client_id="CLI", name="B", email="b@x.test"), CALLER)["data"]
+    inv = si.create_invoice(SalesInvoiceIn(
+        client_id="CLI", customer_id=cust["id"], invoice_date="2020-01-10", due_date="2020-01-25",
+        lines=[InvoiceLineIn(description="x", hsn_sac="9982", quantity=1,
+                             rate_paise=1_000_000, gst_rate_percent=18.0)]), CALLER)["data"]
+    si.issue_invoice(inv["id"], CALLER)
+    inv_id = inv["id"]
+    assert db.table("client_sales_invoices").select("*").eq("id", inv_id).execute().data[0]["paid_paise"] == 0
+
+    # Simulate a GL posting failure (e.g. a missing Chart-of-Accounts account).
+    # R2.12: create_receipt_core's atomic path (services.receipt_service.
+    # _settle_receipt_via_atomic_rpc) resolves accounts via
+    # phase2_journal_service.receipt_journal_lines -> _find_account directly,
+    # not via journal_for_receipt (which the pre-atomicity fallback path still
+    # uses) — mocking _find_account itself simulates the failure identically
+    # for either code path.
+    import services.phase2_journal_service as pjs
+
+    def _boom(*_a, **_k):
+        raise ValueError("Required account not found: Bank")
+    monkeypatch.setattr(pjs.phase2_journal_service, "_find_account", _boom)
+
+    try:
+        resp = rc.create_receipt(ReceiptIn(
+            client_id="CLI", customer_id=cust["id"], receipt_date="2020-02-01", amount_paise=1_180_000,
+            allocations=[ReceiptAllocationIn(sales_invoice_id=inv_id, allocated_paise=1_180_000)]), CALLER)
+        assert resp.get("success") is False    # surfaced as an error envelope, not a silent success
+    except Exception:
+        pass                                   # or it propagated — also fine
+
+    # The F7 guarantee: AR untouched, no receipt written.
+    after = db.table("client_sales_invoices").select("*").eq("id", inv_id).execute().data[0]
+    assert after["paid_paise"] == 0 and after["status"] != "paid", "AR must not settle when the GL journal fails"
+    assert db.table("receipts").select("id").execute().data == [], "no receipt row when the journal fails"
+
+
+def test_f7_over_allocated_receipt_posts_no_phantom_journal(monkeypatch):
+    """F7 hardening: an over-allocated receipt must be rejected BEFORE anything
+    posts — no phantom Dr Bank / Cr Trade Receivables journal, no receipt row —
+    not deep inside the settlement loop after the journal already committed."""
+    cu, si, rc, cs, col, db = _setup(monkeypatch)
+    cust = cu.create_customer(CustomerIn(client_id="CLI", name="C", email="c@x.test"), CALLER)["data"]
+    inv = si.create_invoice(SalesInvoiceIn(
+        client_id="CLI", customer_id=cust["id"], invoice_date="2020-01-10", due_date="2020-01-25",
+        lines=[InvoiceLineIn(description="x", hsn_sac="9982", quantity=1,
+                             rate_paise=1_000_000, gst_rate_percent=18.0)]), CALLER)["data"]
+    si.issue_invoice(inv["id"], CALLER)
+    inv_id = inv["id"]
+    ar_before = account_balance(db, coa_id(db, FIRM, "ar"))
+    bank_before = account_balance(db, coa_id(db, FIRM, "bank"))
+
+    with pytest.raises(HTTPException) as ei:
+        rc.create_receipt(ReceiptIn(
+            client_id="CLI", customer_id=cust["id"], receipt_date="2020-02-01",
+            amount_paise=10_000_000,   # far more than the invoice's outstanding
+            allocations=[ReceiptAllocationIn(sales_invoice_id=inv_id, allocated_paise=10_000_000)]), CALLER)
+    assert ei.value.status_code == 422
+
+    # No phantom cash/AR movement, no receipt row, invoice untouched.
+    assert account_balance(db, coa_id(db, FIRM, "ar")) == ar_before
+    assert account_balance(db, coa_id(db, FIRM, "bank")) == bank_before
+    assert db.table("receipts").select("id").execute().data == []
+    after = db.table("client_sales_invoices").select("*").eq("id", inv_id).execute().data[0]
+    assert after["paid_paise"] == 0 and after["status"] != "paid"
+
+
 def test_customer_cycle_reminder_only_when_overdue(monkeypatch):
     cu, si, rc, cs, col, db = _setup(monkeypatch)
     cust = cu.create_customer(CustomerIn(client_id="CLI", name="A", email="a@x.test"), CALLER)["data"]

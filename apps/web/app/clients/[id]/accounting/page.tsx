@@ -619,27 +619,29 @@ function JournalEntryForm({
     if (validLines.length < 2) { setError("At least 2 lines with account and amount required."); return; }
     setSaving(true); setError(null);
     try {
-      const supabase = getSupabaseClient();
-      // Enforce FY lock — prevent posting to a locked financial year
+      // Posts through the backend's single posting kernel (manual_journal_service →
+      // phase2_journal_service._create_journal), which writes the header and every
+      // line in one DB transaction (post_journal_atomic) and authoritatively
+      // enforces the FY lock server-side — no separate client-side pre-check or
+      // direct-to-Supabase writes, so a failed second write can never leave a
+      // posted header with zero lines.
       const firmId = await getFirmId();
-      const { data: firmRow } = await supabase.from("firms").select("locked_financial_years").eq("id", firmId).maybeSingle();
-      const lockedYears: string[] = (firmRow as { locked_financial_years?: string[] } | null)?.locked_financial_years ?? [];
-      if (lockedYears.includes(financialYear)) {
-        setSaving(false);
-        setError(`FY ${financialYear} is locked. New entries cannot be posted. To make corrections, unlock the FY or use a reversal entry in the next period.`);
-        return;
-      }
-      const { data: entry, error: entryErr } = await supabase
-        .from("journal_entries")
-        .insert({ firm_id: firmId, client_id: clientId, entry_date: entryDate, reference_no: referenceNo.trim() || null, narration: narration.trim(), entry_type: entryType, is_posted: post, posted_at: post ? new Date().toISOString() : null })
-        .select("id").single();
-      if (entryErr || !entry) throw new Error(entryErr?.message ?? "Failed to create entry");
-      const { error: linesErr } = await supabase.from("journal_lines").insert(
-        validLines.map((l) => ({ journal_entry_id: entry.id, account_id: l.account_id, debit_paise: l.debit_paise, credit_paise: l.credit_paise, narration: l.narration.trim() || null }))
-      );
-      if (linesErr) throw new Error(linesErr.message);
+      const res = await api.accounting.createJournalEntry({
+        client_id: clientId,
+        entry_date: entryDate,
+        reference_no: referenceNo.trim() || undefined,
+        narration: narration.trim(),
+        entry_type: entryType,
+        status: post ? "posted" : "draft",
+        lines: validLines.map((l) => ({
+          account_id: l.account_id,
+          debit_paise: l.debit_paise,
+          credit_paise: l.credit_paise,
+          narration: l.narration.trim() || undefined,
+        })),
+      }) as { success: boolean; data: { id: string } };
       try {
-        await writeTimelineEvent({ client_id: clientId, firm_id: firmId, financial_year: financialYear, category: "accounting", event_type: post ? "journal_entry_posted" : "journal_entry_saved", severity: "info", title: post ? "Journal entry posted" : "Journal entry saved (draft)", description: narration.trim(), entity_type: "journal_entry", entity_id: entry.id, actor_type: "user" });
+        await writeTimelineEvent({ client_id: clientId, firm_id: firmId, financial_year: financialYear, category: "accounting", event_type: post ? "journal_entry_posted" : "journal_entry_saved", severity: "info", title: post ? "Journal entry posted" : "Journal entry saved (draft)", description: narration.trim(), entity_type: "journal_entry", entity_id: res.data.id, actor_type: "user" });
       } catch { /* non-blocking */ }
       setSuccess(true);
       setNarration(""); setReferenceNo("");

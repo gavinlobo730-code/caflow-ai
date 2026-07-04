@@ -2,12 +2,21 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CheckSquare, ListTodo } from "lucide-react";
+import { CheckSquare, ListTodo, Clock, LayoutTemplate, Workflow, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const WORK_ITEMS = [
   { href: "/work", label: "All Work", icon: CheckSquare },
   { href: "/tasks", label: "Tasks", icon: ListTodo },
+  { href: "/tasks/templates", label: "Task Templates", icon: LayoutTemplate },
+  { href: "/time", label: "Time Tracking", icon: Clock },
+];
+
+// Workflow-automation engine (templates/instances/its own approval steps) —
+// distinct from Team's /approvals (general staff-request approvals).
+const AUTOMATION_ITEMS = [
+  { href: "/workflows", label: "Workflow Automation", icon: Workflow },
+  { href: "/workflows/approvals", label: "Workflow Approvals", icon: ShieldCheck },
 ];
 
 export function WorkPanel() {
@@ -28,6 +37,36 @@ export function WorkPanel() {
           {WORK_ITEMS.map(({ href, label, icon: Icon }) => {
             const active =
               href === "/work" ? pathname === "/work" : pathname === href;
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  "flex items-center gap-2.5 px-2.5 py-2 rounded-[7px] text-[12.5px] font-medium transition-all duration-75",
+                  active
+                    ? "bg-[#182350] text-white"
+                    : "text-gray-600 hover:bg-[#F8FAFC] hover:text-[#182350]"
+                )}
+              >
+                <Icon
+                  size={15}
+                  className={cn(
+                    "shrink-0",
+                    active ? "text-white" : "text-gray-500"
+                  )}
+                />
+                <span className="truncate">{label}</span>
+              </Link>
+            );
+          })}
+        </div>
+
+        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5 mt-4">
+          Automation
+        </p>
+        <div className="space-y-0.5">
+          {AUTOMATION_ITEMS.map(({ href, label, icon: Icon }) => {
+            const active = pathname === href;
             return (
               <Link
                 key={href}

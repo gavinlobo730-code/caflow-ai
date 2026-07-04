@@ -36,7 +36,9 @@ class NormalizedTxn:
 
 # ── Bank adapters — the ONLY place that knows bank-specific column layouts ─────
 # Each adapter maps a detected format to 0-based column indices. "ref"/"balance"
-# may be None when a bank export omits them.
+# may be None when a bank export omits them. An adapter with an "amount" key
+# (instead of separate "debit"/"credit" keys) uses a single signed-amount
+# column plus a separate Dr/Cr indicator column — see "generic_amount_drcr".
 _ADAPTERS: dict[str, dict[str, Optional[int]]] = {
     # Date, Narration, Value Dt, Ref No, Debit, Credit, Balance
     "hdfc":    {"date": 0, "desc": 1, "ref": 3, "debit": 4, "credit": 5, "balance": 6},
@@ -48,22 +50,111 @@ _ADAPTERS: dict[str, dict[str, Optional[int]]] = {
     "axis":    {"date": 0, "ref": 1, "desc": 2, "debit": 3, "credit": 4, "balance": 5},
     # Generic: Date, Description, Debit, Credit, Balance
     "generic": {"date": 0, "desc": 1, "ref": None, "debit": 2, "credit": 3, "balance": 4},
+    # R2.11: some exports use ONE signed-amount column plus a separate Dr/Cr
+    # indicator instead of separate Debit/Credit columns — Date, Description,
+    # Amount, Dr/Cr, Balance. Previously unsupported: every row misparsed as a
+    # debit (the fixed debit/credit indices pointed at the wrong columns, or
+    # at nothing at all).
+    "generic_amount_drcr": {
+        "date": 0, "desc": 1, "ref": None,
+        "debit": None, "credit": None, "amount": 2, "drcr": 3, "balance": 4,
+    },
 }
 
 
 def detect_format(headers: list[str]) -> str:
-    """Pick a bank adapter from the header row (mirrors the prior client logic)."""
+    """Pick a bank adapter from the header row.
+
+    Order matters (F8): a cheque/reference column exists under DIFFERENT names in
+    several banks — HDFC "Chq/Ref No", Axis "CHQNO", SBI "Ref/Cheque No" — so the
+    generic "chq"/"cheque" heuristic must run LAST. Matching it first routed every
+    Axis and SBI statement to the HDFC adapter, and Axis's different column order
+    then corrupted debit/credit direction and amounts (a ₹500 debit became a
+    ₹10,000 credit). Bank-specific date/remarks columns are the reliable
+    discriminators, so they are tested first, most-specific to least.
+    """
     h = [str(x).lower().strip() for x in headers]
     blob = " ".join(h)
-    if "chq" in blob or "cheque" in blob:
-        return "hdfc"
-    if "txn date" in blob:
-        return "sbi"
-    if "transaction remarks" in blob:
+    # A combined Dr/Cr indicator column header is a signal for the single-
+    # amount layout — but ONLY when the file does NOT also have separate,
+    # clearly-labelled Debit AND Credit amount columns of its own (adversarial
+    # review, R2.11 fix phase): a statement can have separate Debit/Credit
+    # columns AND an unrelated "Dr/Cr" column marking the running balance's
+    # polarity, not the transaction's direction — routing that layout to the
+    # amount+indicator adapter misreads the balance-polarity column as a
+    # transaction indicator and fails every row. Requiring the ABSENCE of a
+    # separate debit-token cell and a separate credit-token cell keeps this
+    # check from firing on that shape, while still catching the true
+    # single-amount layout (checked first, same as ICICI's equally
+    # unambiguous "transaction remarks" signal below).
+    has_drcr_column = any(re.fullmatch(r"dr\s*/\s*cr|dr\s+or\s+cr|cr\s*/\s*dr", x) for x in h)
+    has_separate_debit_credit_columns = (
+        any(any(t in cell for t in _DEBIT_TOKENS) for cell in h)
+        and any(any(t in cell for t in _CREDIT_TOKENS) for cell in h)
+    )
+    if has_drcr_column and not has_separate_debit_credit_columns:
+        return "generic_amount_drcr"
+    if "transaction remarks" in blob:      # ICICI ("Transaction Remarks")
         return "icici"
-    if "narration" in blob:
-        return "axis"
+    if "txn date" in blob:                 # SBI ("Txn Date")
+        return "sbi"
+    if "tran date" in blob:                # Axis ("Tran Date"); note: distinct
+        return "axis"                      # from SBI "txn date" and ICICI "transaction date"
+    if "narration" in blob or "chq" in blob or "cheque" in blob:  # HDFC (shared cheque/narration signal, last)
+        return "hdfc"
     return "generic"
+
+
+_DEBIT_TOKENS = ("debit", "withdrawal", "withdraw")
+_CREDIT_TOKENS = ("credit", "deposit")
+_DRCR_HEADER_TOKENS = ("dr", "cr", "type")
+
+
+def _validate_adapter(fmt: str, headers: list[str]) -> None:
+    """Fail loud when the detected adapter does not actually fit the header.
+
+    detect_format uses fuzzy header signals; if a file's real layout differs from
+    the chosen adapter — an unsupported bank, or a variant with a shifted column
+    order — the fixed index map would silently read debit/credit off the wrong
+    columns (the F8 class of corruption). So verify the adapter fits: every mapped
+    column exists within the header width, and the debit/credit columns really are
+    labelled debit/withdrawal and credit/deposit. Otherwise raise, so a CA sees an
+    'unsupported format' error instead of silently wrong numbers.
+    """
+    a = _ADAPTERS[fmt]
+    n = len(headers)
+    low = [str(x).lower().strip() for x in headers]
+    for key, idx in a.items():
+        if idx is not None and idx >= n:
+            raise StatementParseError(
+                f"Bank statement layout doesn't match the detected '{fmt}' format "
+                f"(needs a '{key}' column at position {idx + 1}, but the file has {n} columns). "
+                "Supported: HDFC, SBI, ICICI, Axis, a generic "
+                "Date/Description/Debit/Credit/Balance CSV, or a generic "
+                "Date/Description/Amount/Dr-Cr/Balance CSV."
+            )
+    if a.get("amount") is not None:
+        ai, di = a["amount"], a["drcr"]
+        amount_hdr = low[ai] if ai is not None and ai < n else ""
+        drcr_hdr = low[di] if di is not None and di < n else ""
+        if "amount" not in amount_hdr or not any(t in drcr_hdr for t in _DRCR_HEADER_TOKENS):
+            raise StatementParseError(
+                "Unsupported bank statement format — could not identify the amount "
+                "and Dr/Cr columns. Supported: HDFC, SBI, ICICI, Axis, a generic "
+                "Date/Description/Debit/Credit/Balance CSV, or a generic "
+                "Date/Description/Amount/Dr-Cr/Balance CSV."
+            )
+        return
+    di, ci = a["debit"], a["credit"]
+    debit_hdr = low[di] if di is not None and di < n else ""
+    credit_hdr = low[ci] if ci is not None and ci < n else ""
+    if not any(t in debit_hdr for t in _DEBIT_TOKENS) or not any(t in credit_hdr for t in _CREDIT_TOKENS):
+        raise StatementParseError(
+            "Unsupported bank statement format — could not identify the debit and "
+            "credit columns. Supported: HDFC, SBI, ICICI, Axis, a generic "
+            "Date/Description/Debit/Credit/Balance CSV, or a generic "
+            "Date/Description/Amount/Dr-Cr/Balance CSV."
+        )
 
 
 # ── value parsers ─────────────────────────────────────────────────────────────
@@ -94,8 +185,39 @@ def _to_iso_date(val) -> Optional[str]:
     return None
 
 
+_DRCR_SUFFIX_RE = re.compile(r"(dr|cr)$", re.IGNORECASE)
+
+
 def _to_paise(val) -> int:
-    """Parse a money cell to integer paise. Empty / '-' → 0. Never uses float."""
+    """Parse a money cell to integer paise. Empty / '-' → 0. Never uses float.
+
+    R2.11: a trailing Dr/Cr suffix is common across Indian bank exports in ANY
+    case ('Dr', 'DR', 'dr', 'Cr', 'CR', 'cr') — the previous `.rstrip("DrCr")`
+    stripped individual CHARACTERS 'D','r','C' (case-sensitive, so it happened
+    to handle mixed-case "Dr"/"Cr" but silently zeroed every other case
+    variant, since e.g. "150.00DR" has no matching trailing chars to strip and
+    Decimal("150.00DR") then raises, caught below, returning 0). Fixed via a
+    case-insensitive regex match on the two-letter suffix itself.
+
+    The suffix also carries sign information a bank statement's BALANCE column
+    relies on: "Dr" denotes an overdrawn (negative) balance, "Cr" a normal
+    (positive) one — previously discarded entirely (both suffixes were just
+    stripped, so a "Dr" balance was stored as if it were positive/"Cr"). The
+    debit_paise/credit_paise columns wrap this in abs() at the call site, so
+    applying the sign here is harmless for them and only matters for balance.
+
+    Adversarial-review fix (R2.11 fix phase): the Dr/Cr suffix is located and
+    stripped BEFORE the parens check (not after), so a suffix trailing OUTSIDE
+    a parenthesised amount — e.g. "(150.00) Dr" — no longer leaves an orphaned
+    ")" that fails to parse. The numeric magnitude is also parsed and made
+    absolute BEFORE any sign is applied, rather than negating whatever sign
+    Decimal happened to find in the source string — so an amount that already
+    carries an explicit leading "-" (e.g. "-150.00 Dr") is not double-negated.
+    When a Dr/Cr suffix is present it is authoritative over any other sign
+    signal (parens or an embedded "-"), since it is the statement's own
+    explicit accounting label; parens/explicit "-" are only used as a
+    fallback sign source when no suffix is present.
+    """
     if val is None:
         return 0
     if isinstance(val, (int,)):
@@ -106,15 +228,32 @@ def _to_paise(val) -> int:
     if s in ("", "-"):
         return 0
     s = re.sub(r"[₹,\s]", "", s)
-    # parentheses or trailing Dr/Cr are sign hints; we store magnitudes per column.
-    neg = s.startswith("(") and s.endswith(")")
-    s = s.strip("()").rstrip("DrCr").strip()
+    m = _DRCR_SUFFIX_RE.search(s)
+    drcr = None
+    if m:
+        drcr = m.group(1).lower()
+        s = s[:m.start()]
+    if not s:
+        return 0
+    parens_neg = s.startswith("(") and s.endswith(")")
+    s = s.strip("()")
     if not s:
         return 0
     try:
-        paise = int((Decimal(s) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        raw = Decimal(s)
+    except InvalidOperation:
+        return 0
+    explicit_neg = raw < 0
+    try:
+        paise = int((abs(raw) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     except (InvalidOperation, ValueError):
         return 0
+    if drcr == "dr":
+        neg = True
+    elif drcr == "cr":
+        neg = False
+    else:
+        neg = parens_neg or explicit_neg
     return -paise if neg else paise
 
 
@@ -123,10 +262,16 @@ def _looks_like_header(cells: list[str]) -> bool:
     return "date" in low and ("debit" in low or "amount" in low or "withdrawal" in low or "credit" in low)
 
 
+_INDICATOR_DEBIT_TOKENS = ("d", "dr", "debit", "withdrawal")
+_INDICATOR_CREDIT_TOKENS = ("c", "cr", "credit", "deposit")
+
+
 def _rows_to_txns(rows: list[list], header_idx: int) -> list[NormalizedTxn]:
     headers = [str(c) for c in rows[header_idx]]
     fmt = detect_format(headers)
+    _validate_adapter(fmt, headers)
     a = _ADAPTERS[fmt]
+    amount_mode = a.get("amount") is not None
     out: list[NormalizedTxn] = []
     for cells in rows[header_idx + 1:]:
         if not cells or len([c for c in cells if str(c).strip()]) < 3:
@@ -143,12 +288,32 @@ def _rows_to_txns(rows: list[list], header_idx: int) -> list[NormalizedTxn]:
         if not iso or not desc:
             continue  # skip non-transaction rows (totals, blanks, sub-headers)
         ref = col("ref")
+
+        if amount_mode:
+            # R2.11: single signed-amount + separate Dr/Cr indicator column —
+            # classify by the indicator rather than by column position, since
+            # there is no separate debit/credit column to read. Trailing
+            # punctuation ("Dr.", "Cr.") is stripped (adversarial-review fix)
+            # so a bank's own dotted abbreviation isn't silently unrecognised
+            # and its rows dropped with no error.
+            amount = abs(_to_paise(col("amount")))
+            indicator = str(col("drcr") or "").strip().lower().rstrip(".")
+            is_debit = indicator in _INDICATOR_DEBIT_TOKENS
+            is_credit = indicator in _INDICATOR_CREDIT_TOKENS
+            if amount == 0 or (not is_debit and not is_credit):
+                continue  # can't classify this row's direction — skip rather than guess
+            debit_paise = amount if is_debit else 0
+            credit_paise = amount if is_credit else 0
+        else:
+            debit_paise = abs(_to_paise(col("debit")))
+            credit_paise = abs(_to_paise(col("credit")))
+
         out.append(NormalizedTxn(
             transaction_date=iso,
             description=desc,
             reference_no=(str(ref).strip() or None) if ref is not None else None,
-            debit_paise=abs(_to_paise(col("debit"))),
-            credit_paise=abs(_to_paise(col("credit"))),
+            debit_paise=debit_paise,
+            credit_paise=credit_paise,
             balance_paise=_to_paise(col("balance")),
         ))
     return out

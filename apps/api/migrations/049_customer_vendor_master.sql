@@ -8,14 +8,14 @@ CREATE TABLE IF NOT EXISTS customers (
   name                     TEXT NOT NULL,
   -- GSTIN format: 2-digit state code + PAN (10 chars) + entity digit + Z + check digit (CGST Act, Section 25)
   gstin                    TEXT,
-  state_code               TEXT(2),  -- derived from gstin[0:2] if present, else manual entry
+  state_code               TEXT,  -- 2-char state code; derived from gstin[0:2] if present, else manual entry
   pan                      TEXT,
   email                    TEXT,
   phone                    TEXT,
   address                  TEXT,
   city                     TEXT,
   state                    TEXT,
-  pincode                  TEXT(6),
+  pincode                  TEXT,
   -- All monetary values in integer paise to avoid floating point errors
   -- positive value = receivable from customer
   opening_balance_paise    BIGINT NOT NULL DEFAULT 0,
@@ -45,14 +45,14 @@ CREATE TABLE IF NOT EXISTS vendors (
   name                     TEXT NOT NULL,
   -- GSTIN format: 2-digit state code + PAN (10 chars) + entity digit + Z + check digit (CGST Act, Section 25)
   gstin                    TEXT,
-  state_code               TEXT(2),  -- derived from gstin[0:2] if present, else manual entry
+  state_code               TEXT,  -- 2-char state code; derived from gstin[0:2] if present, else manual entry
   pan                      TEXT,
   email                    TEXT,
   phone                    TEXT,
   address                  TEXT,
   city                     TEXT,
   state                    TEXT,
-  pincode                  TEXT(6),
+  pincode                  TEXT,
   -- TDS applicability per IT Act Section 194C (contractors), 194I (rent), 194J (professional fees)
   tds_applicable           BOOLEAN NOT NULL DEFAULT FALSE,
   tds_section              TEXT,     -- e.g. '194C', '194I', '194J'

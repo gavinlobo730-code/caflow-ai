@@ -96,7 +96,7 @@ def _require_positive_paise(amount_paise: int) -> None:
 def _fetch_engagement_db(db, engagement_id: str, firm_id: str) -> dict:
     row = (
         db.table("year_end_engagements")
-        .select("id, status, firm_id")
+        .select("id, status, firm_id, client_id")
         .eq("id", engagement_id)
         .eq("firm_id", firm_id)
         .single()
@@ -151,12 +151,16 @@ def create_adjustment(
 
     if _USE_MOCK:
         _guard_locked_mock(engagement_id)
+        record["client_id"] = "client-001"
         _MOCK_ADJUSTMENTS.setdefault(engagement_id, []).append(record)
         return api_response(True, record)
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    _fetch_engagement_db(db, engagement_id, current_user["firm_id"])
+    # F9 fix: client_id is NOT NULL on year_end_adjustments; derive it from the
+    # (firm-validated) engagement rather than trusting client input.
+    eng = _fetch_engagement_db(db, engagement_id, current_user["firm_id"])
+    record["client_id"] = eng["client_id"]
 
     result = db.table("year_end_adjustments").insert(record).execute()
     created = result.data[0]

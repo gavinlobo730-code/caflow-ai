@@ -29,6 +29,10 @@ class CreateJobRequest(BaseModel):
     )
     description: Optional[str] = None
     source_file_size_bytes: Optional[int] = None
+    # Target client whose books these are. Required in practice for
+    # customer/vendor imports (per-client masters); optional for firm-level
+    # ledger/journal migration.
+    client_id: Optional[str] = None
 
 
 class ParseXMLRequest(BaseModel):
@@ -46,6 +50,19 @@ def create_job(
 ):
     """Create a Tally migration job."""
     from domain.tally.migration_service import create_migration_job
+
+    # A supplied client_id must belong to the caller's firm (never trust a
+    # request-body id — same guard pattern as every client-scoped router).
+    if req.client_id:
+        import os
+        if os.environ.get("SUPABASE_URL"):
+            from core.supabase_client import get_supabase
+            owned = get_supabase().table("clients").select("id").eq(
+                "id", req.client_id
+            ).eq("firm_id", current_user["firm_id"]).execute().data
+            if not owned:
+                raise HTTPException(404, detail="Client not found")
+
     try:
         job = create_migration_job(
             firm_id=current_user["firm_id"],
@@ -56,6 +73,7 @@ def create_job(
             import_types=req.import_types,
             description=req.description,
             source_file_size_bytes=req.source_file_size_bytes,
+            client_id=req.client_id,
         )
         return api_response(True, job)
     except Exception as e:
@@ -159,6 +177,9 @@ def execute_import(
             "ca_review_required": True,
             "warning": "Review all items in preview before setting is_dry_run=false",
         })
+    except ValueError as e:
+        # Job not found for THIS firm — cross-firm ids must 404, not 500.
+        raise HTTPException(404, detail=str(e))
     except Exception as e:
         _logger.exception("Import failed for job %s", job_id)
         raise HTTPException(500, detail=str(e))
@@ -174,5 +195,8 @@ def rollback_import(
     try:
         result = rollback_migration(current_user["firm_id"], job_id, current_user["id"])
         return api_response(True, result)
+    except ValueError as e:
+        # Job not found for THIS firm — cross-firm ids must 404, not 500.
+        raise HTTPException(404, detail=str(e))
     except Exception as e:
         raise HTTPException(500, detail=str(e))

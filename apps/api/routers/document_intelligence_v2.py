@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from models.common import api_response
@@ -85,33 +86,22 @@ def _extract_with_groq(document_text: str) -> dict:
     return json.loads(raw)
 
 
-def _mock_extract(document_text: str) -> dict:
-    """Fallback mock extraction when no GROQ_API_KEY."""
-    text_lower = document_text.lower()
-    if "gst" in text_lower or "gstin" in text_lower:
-        notice_type = "gst_scrutiny"
-        authority = "GSTN"
-    elif "income tax" in text_lower or "itr" in text_lower:
-        notice_type = "income_tax_notice"
-        authority = "Income Tax Department"
-    elif "mca" in text_lower or "cin" in text_lower:
-        notice_type = "mca_show_cause"
-        authority = "MCA21"
-    elif "tds" in text_lower or "traces" in text_lower:
-        notice_type = "tds_default"
-        authority = "TRACES"
-    else:
-        notice_type = "other"
-        authority = "Government Authority"
+def _run_notice_extraction(document_text: str) -> tuple[Optional[dict], Optional[str], int]:
+    """
+    Attempt AI extraction via Groq. Never fabricates notice data: on any
+    failure returns (None, reason, http_status). The caller MUST NOT persist
+    a government_notices/tasks/notification record when this fails — R2.8/F19.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    if not _GROQ_KEY:
+        _logger.info("No GROQ_API_KEY — refusing to fabricate a notice extraction")
+        return None, "AI extraction unavailable — GROQ_API_KEY is not configured on the server", 503
 
-    return {
-        "authority": authority,
-        "notice_type": notice_type,
-        "reference_no": "REF-MOCK-001",
-        "issue_date": None,
-        "response_due_date": None,
-        "description": "Mock extraction — GROQ_API_KEY not set. Please review manually.",
-    }
+    try:
+        return _extract_with_groq(document_text), None, 200
+    except Exception as e:
+        _logger.error("Groq notice extraction failed: %s", e)
+        return None, "AI extraction failed — please retry or enter the notice details manually", 502
 
 
 def _create_task_for_notice(firm_id: str, client_id: str, notice: dict, db=None) -> Optional[str]:
@@ -158,19 +148,17 @@ def extract_notice(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
     Call POST /notices/{id}/approve after CA reviews extracted data.
     """
+    firm_id = current_user["firm_id"]
+
+    # R2.8/F19: AI extraction happens BEFORE any persistence. A failed or
+    # unavailable extraction returns an honest error here and now — no
+    # government_notices row, no task, no partner notification is ever
+    # created for fabricated/mock data.
+    extracted, error, status_code = _run_notice_extraction(body.document_text)
+    if error:
+        return JSONResponse(status_code=status_code, content=api_response(False, None, error))
+
     try:
-        firm_id = current_user["firm_id"]
-
-        # AI extraction — fallback to mock if no API key
-        if _GROQ_KEY:
-            try:
-                extracted = _extract_with_groq(body.document_text)
-            except Exception as e:
-                _logger.warning("Groq extraction failed, using mock: %s", e)
-                extracted = _mock_extract(body.document_text)
-        else:
-            extracted = _mock_extract(body.document_text)
-
         db = None
         if not _USE_MOCK:
             from core.supabase_client import get_supabase

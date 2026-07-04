@@ -74,7 +74,7 @@ export const WORKSPACE_CONFIGS: WorkspaceConfig[] = [
     id: "accounting",
     label: "Accounting",
     description: "Chart of Accounts & firm accounting",
-    defaultRoute: "/accounting/chart-of-accounts",
+    defaultRoute: "/accounting",
     icon: BookOpen,
   },
   {
@@ -123,7 +123,7 @@ export const DEFAULT_WORKSPACE_ROUTES: Record<WorkspaceId, string> = {
   work: "/work",
   team: "/team",
   ai: "/ai-assistant",
-  accounting: "/accounting/chart-of-accounts",
+  accounting: "/accounting",
   relationships: "/relationships",
   health: "/health",
   practice: "/practice",

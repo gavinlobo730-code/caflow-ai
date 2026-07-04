@@ -48,6 +48,17 @@ class UserRepository(BaseRepository[dict]):
         result = _get_db().table("users").select("*").eq("auth_user_id", auth_user_id).maybe_single().execute()
         return result.data
 
+    def find_by_invite_token(self, token: str) -> Optional[dict]:
+        """A row awaiting invite acceptance (F21 fix) — never matches an
+        already-linked row, since auth_user_id must still be NULL."""
+        if _USE_MOCK:
+            return next((u for u in MOCK_TEAM_MEMBERS
+                         if u.get("invite_token") == token and not u.get("auth_user_id")), None)
+        result = (_get_db().table("users").select("*")
+                  .eq("invite_token", token).is_("auth_user_id", None)
+                  .maybe_single().execute())
+        return result.data
+
     def get_or_raise(self, id: str) -> dict:
         user = self.find_by_id(id)
         if not user:

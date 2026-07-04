@@ -16,6 +16,7 @@ import { ChevronLeft, Plus, X, AlertTriangle, CheckCircle, Clock, Download } fro
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -368,7 +369,7 @@ export default function MSMETrackerPage() {
       {/* Table */}
       <Card>
         {loading ? (
-          <div className="p-8 text-center text-[#94A3B8] text-sm animate-pulse">Loading…</div>
+          <TableSkeleton cols={9} bare />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[900px]">

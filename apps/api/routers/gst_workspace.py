@@ -22,6 +22,7 @@ from core.permissions import rbac
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
+from services.compliance_engine import gstr1_due_date, gstr3b_due_date
 
 router = APIRouter(prefix="/api/gst-workspace", tags=["gst_workspace"])
 _logger = logging.getLogger("caflow.gst_workspace")
@@ -35,23 +36,20 @@ _MOCK_GSTR2B: dict[str, dict] = {}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+# R3.1: these used to hand-roll the same CGST §37/§39 due-date arithmetic
+# services/compliance_engine.py already computes canonically (and every other
+# caller of due dates already uses) — now thin string<->date adapters over it.
 
 def _gstr1_due_date(period: str) -> str:
     """CGST Act §37 — GSTR-1 due 11th of month following the return period."""
-    mm = int(period[:2])
-    yyyy = int(period[2:])
-    next_month = mm % 12 + 1
-    next_year = yyyy + (1 if mm == 12 else 0)
-    return f"{next_year}-{next_month:02d}-11"
+    mm, yyyy = int(period[:2]), int(period[2:])
+    return gstr1_due_date(yyyy, mm).isoformat()
 
 
 def _gstr3b_due_date(period: str) -> str:
     """CGST Act §39 — GSTR-3B due 20th of month following the return period."""
-    mm = int(period[:2])
-    yyyy = int(period[2:])
-    next_month = mm % 12 + 1
-    next_year = yyyy + (1 if mm == 12 else 0)
-    return f"{next_year}-{next_month:02d}-20"
+    mm, yyyy = int(period[:2]), int(period[2:])
+    return gstr3b_due_date(yyyy, mm).isoformat()
 
 
 # ── Request Models ─────────────────────────────────────────────────────────────
@@ -534,8 +532,13 @@ def save_gstr9(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        # CGST Act §44: GSTR-9 unique per client per FY
-        existing = db.table("gstr1_returns").select("id").eq("client_id", client_id).eq("financial_year", fy).eq("return_type", "gstr9").limit(1).execute()
+        # CGST Act §44: GSTR-9 unique per client per FY. F4 fix: also scope by
+        # firm_id -- without it, a firm that merely knew/guessed another
+        # firm's client_id could overwrite that firm's existing annual return
+        # draft via this same "update if exists" path.
+        existing = (db.table("gstr1_returns").select("id").eq("client_id", client_id)
+                    .eq("financial_year", fy).eq("return_type", "gstr9")
+                    .eq("firm_id", firm_id).limit(1).execute())
         if existing.data:
             # Update existing draft
             upd = db.table("gstr1_returns").update(payload).eq("id", existing.data[0]["id"]).execute()
@@ -587,12 +590,15 @@ def get_gstr9(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
+        # F4 fix: scope by firm_id too -- otherwise any firm that knew/guessed
+        # another firm's client_id could read that firm's annual return draft.
         res = (
             db.table("gstr1_returns")
             .select("*")
             .eq("client_id", client_id)
             .eq("financial_year", financial_year)
             .eq("return_type", "gstr9")
+            .eq("firm_id", current_user.get("firm_id"))
             .limit(1)
             .execute()
         )

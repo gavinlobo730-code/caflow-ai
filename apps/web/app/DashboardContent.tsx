@@ -33,7 +33,7 @@ const NEXT_STEPS = [
     icon: Upload,
     title: "Import Existing Data",
     desc: "Import bank statements, trial balance, or client lists.",
-    href: "/accounting/bank-import",
+    href: "/migration",
     color: "bg-violet-500/20 text-violet-100",
   },
   {
@@ -45,9 +45,9 @@ const NEXT_STEPS = [
   },
   {
     icon: BookOpen,
-    title: "Customize Chart of Accounts",
-    desc: "Add or edit accounts in your auto-generated CoA.",
-    href: "/accounting/chart-of-accounts",
+    title: "Review Chart of Accounts",
+    desc: "View your auto-generated CoA, grouped by category.",
+    href: "/accounting/account-groups",
     color: "bg-emerald-500/20 text-emerald-100",
   },
 ];

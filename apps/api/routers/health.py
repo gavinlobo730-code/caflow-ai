@@ -42,6 +42,7 @@ import uuid
 
 from models.common import api_response
 from core.permissions import rbac
+from core.authz import filter_by_client, assert_client_access
 from services.timeline_service import timeline_service
 
 router = APIRouter(prefix="/api/health", tags=["health"])
@@ -143,9 +144,12 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
     """
     today = date.today()
 
-    # 1. Government notice with response deadline missed
+    # 1. Government notice with response deadline missed. F5 fix: this read a
+    # nonexistent "notices" table with invented column/status names — the real
+    # table is government_notices (migration 052: status open/in_progress/
+    # responded/closed, deadline column response_due_date).
     try:
-        missed = db.table("notices").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Open").lt("response_deadline", today.isoformat()).limit(1).execute().data or []
+        missed = db.table("government_notices").select("id").eq("firm_id", firm_id).eq("client_id", client_id).in_("status", ["open", "in_progress"]).lt("response_due_date", today.isoformat()).limit(1).execute().data or []
         if missed:
             return "notice_deadline_missed"
     except Exception:
@@ -164,19 +168,37 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
     except Exception:
         pass
 
-    # 3. GSTR-3B overdue > 2 months (CGST Act s.39)
+    # 3. GSTR-3B overdue > 2 months (CGST Act s.39). F5 fix: this read a
+    # nonexistent "gst_returns" table. The real gstr3b_returns (migration 036)
+    # has no due-date column — periods are "MMYYYY" and the return is due the
+    # 20th of the following month (CLAUDE.md), so overdue-ness is derived
+    # here: any non-submitted row whose statutory due date is 61+ days past.
     try:
-        two_months_ago = (today - timedelta(days=61)).isoformat()
-        gstr3b = db.table("gst_returns").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("return_type", "GSTR-3B").eq("status", "Pending").lt("due_date", two_months_ago).limit(1).execute().data or []
-        if gstr3b:
-            return "gstr3b_overdue_2months"
+        rows = db.table("gstr3b_returns").select("period, status").eq("firm_id", firm_id).eq("client_id", client_id).neq("status", "submitted").execute().data or []
+        for r in rows:
+            period = str(r.get("period") or "")
+            if len(period) != 6 or not period.isdigit():
+                continue
+            m, y = int(period[:2]), int(period[2:])
+            if not 1 <= m <= 12:
+                continue
+            due_m, due_y = (m + 1, y) if m < 12 else (1, y + 1)
+            if (today - date(due_y, due_m, 20)).days > 61:
+                return "gstr3b_overdue_2months"
     except Exception:
         pass
 
-    # 4. Income tax return overdue > 6 months (IT Act s.139)
+    # 4. Income tax return overdue > 6 months (IT Act s.139). R3.13d: reads
+    # compliance_records (System A) — compliance_tasks (System B, the table
+    # this used to query) is being retired, and this query referenced a
+    # task_type column and a "Pending" status value that never existed on it.
     try:
         six_months_ago = (today - timedelta(days=183)).isoformat()
-        itr = db.table("compliance_tasks").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("task_type", "ITR").eq("status", "Pending").lt("due_date", six_months_ago).limit(1).execute().data or []
+        itr = (db.table("compliance_records").select("id")
+               .eq("firm_id", firm_id).eq("client_id", client_id)
+               .eq("obligation_type", "ITR")
+               .not_.in_("status", ["Filed", "Completed"])
+               .lt("due_date", six_months_ago).limit(1).execute().data or [])
         if itr:
             return "itr_overdue_6months"
     except Exception:
@@ -215,20 +237,32 @@ def _dim_compliance_health_db(db, client_id: str, firm_id: str) -> int:
     """
     score = 100
 
+    # R3.13d: reads compliance_records (System A) — compliance_tasks (System
+    # B) is being retired, and these queries referenced a "Pending" status
+    # value and a filed_late column that never existed on it.
     try:
-        overdue_returns = db.table("compliance_tasks").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Pending").lt("due_date", date.today().isoformat()).execute().data or []
+        overdue_returns = (db.table("compliance_records").select("id")
+                           .eq("firm_id", firm_id).eq("client_id", client_id)
+                           .not_.in_("status", ["Filed", "Completed"])
+                           .lt("due_date", date.today().isoformat()).execute().data or [])
         score -= len(overdue_returns) * 25
     except Exception:
         pass
 
     try:
-        late_filings = db.table("compliance_tasks").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Filed").eq("filed_late", True).execute().data or []
+        filed = (db.table("compliance_records").select("due_date, filed_date")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                 .in_("status", ["Filed", "Completed"]).execute().data or [])
+        late_filings = [
+            r for r in filed
+            if r.get("filed_date") and r.get("due_date") and r["filed_date"] > r["due_date"]
+        ]
         score -= len(late_filings) * 8
     except Exception:
         pass
 
     try:
-        pending_notices = db.table("notices").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Open").execute().data or []
+        pending_notices = db.table("government_notices").select("id").eq("firm_id", firm_id).eq("client_id", client_id).in_("status", ["open", "in_progress"]).execute().data or []
         score -= len(pending_notices) * 20
     except Exception:
         pass
@@ -272,14 +306,16 @@ def _dim_work_progress_db(db, client_id: str, firm_id: str) -> int:
     today = date.today()
     at_risk_cutoff = (today + timedelta(days=3)).isoformat()
 
+    # F5 fix: "work_items" never existed — work lives in tasks (migration 002;
+    # status vocabulary is lowercase: todo/in_progress/waiting_client/…).
     try:
-        overdue = db.table("work_items").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "In Progress").lt("due_date", today.isoformat()).execute().data or []
+        overdue = db.table("tasks").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "in_progress").lt("due_date", today.isoformat()).execute().data or []
         score -= len(overdue) * 15
     except Exception:
         pass
 
     try:
-        at_risk = db.table("work_items").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "In Progress").gte("due_date", today.isoformat()).lte("due_date", at_risk_cutoff).execute().data or []
+        at_risk = db.table("tasks").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "in_progress").gte("due_date", today.isoformat()).lte("due_date", at_risk_cutoff).execute().data or []
         score -= len(at_risk) * 10
     except Exception:
         pass
@@ -337,9 +373,9 @@ def _dim_open_notices_db(db, client_id: str, firm_id: str) -> int:
     today = date.today()
 
     try:
-        notices = db.table("notices").select("id, response_deadline").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Open").execute().data or []
+        notices = db.table("government_notices").select("id, response_due_date").eq("firm_id", firm_id).eq("client_id", client_id).in_("status", ["open", "in_progress"]).execute().data or []
         for notice in notices:
-            deadline_str = notice.get("response_deadline")
+            deadline_str = notice.get("response_due_date")
             if deadline_str:
                 try:
                     deadline = date.fromisoformat(deadline_str[:10])
@@ -537,11 +573,16 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
     factors: list[dict] = []
 
     if dimension == "compliance_health":
+        # R3.13d: reads compliance_records (System A) — see _dim_compliance_health_db.
         try:
-            overdue = db.table("compliance_tasks").select("id, task_name, due_date").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Pending").lt("due_date", today.isoformat()).execute().data or []
+            overdue = (db.table("compliance_records").select("id, period_label, compliance_type, due_date")
+                      .eq("firm_id", firm_id).eq("client_id", client_id)
+                      .not_.in_("status", ["Filed", "Completed"])
+                      .lt("due_date", today.isoformat()).execute().data or [])
             for t in overdue[:5]:
+                label = t.get("period_label") or t.get("compliance_type") or "Return"
                 factors.append({
-                    "label": f"{t.get('task_name', 'Return')} overdue since {t.get('due_date', '')}",
+                    "label": f"{label} overdue since {t.get('due_date', '')}",
                     "impact": -25,
                     "action_label": "File Now",
                     "action_url": f"/clients/{client_id}/compliance",
@@ -550,7 +591,7 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
             pass
 
         try:
-            notices = db.table("notices").select("id, notice_type, issued_date").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Open").execute().data or []
+            notices = db.table("government_notices").select("id, notice_type, issue_date").eq("firm_id", firm_id).eq("client_id", client_id).in_("status", ["open", "in_progress"]).execute().data or []
             for n in notices[:5]:
                 factors.append({
                     "label": f"Pending notice: {n.get('notice_type', 'Government Notice')}",
@@ -577,7 +618,7 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
 
     elif dimension == "work_progress":
         try:
-            overdue = db.table("work_items").select("id, title, due_date").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "In Progress").lt("due_date", today.isoformat()).execute().data or []
+            overdue = db.table("tasks").select("id, title, due_date").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "in_progress").lt("due_date", today.isoformat()).execute().data or []
             for w in overdue[:5]:
                 factors.append({
                     "label": f"{w.get('title', 'Work item')} overdue since {w.get('due_date', '')}",
@@ -628,9 +669,9 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
 
     elif dimension == "open_notices":
         try:
-            notices = db.table("notices").select("id, notice_type, response_deadline").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Open").execute().data or []
+            notices = db.table("government_notices").select("id, notice_type, response_due_date").eq("firm_id", firm_id).eq("client_id", client_id).in_("status", ["open", "in_progress"]).execute().data or []
             for n in notices[:5]:
-                deadline_str = n.get("response_deadline")
+                deadline_str = n.get("response_due_date")
                 if deadline_str:
                     try:
                         deadline = date.fromisoformat(deadline_str[:10])
@@ -687,15 +728,19 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
 @router.get("/clients/{client_id}")
 def get_client_health(
     client_id: str,
-    firm_id: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("client", "read")),
 ):
     """
     GET /api/health/clients/{client_id}
     Returns Product Bible Chapter 16 health shape with 7 dimensions and hard override.
     """
+    assert_client_access(current_user, client_id)
     db = _db()
-    effective_firm = firm_id or current_user.get("firm_id", "")
+    # firm scope always comes from the authenticated caller — never a query
+    # param (a caller-supplied firm_id here would let any authenticated user
+    # read another firm's client health data; the scope must never be
+    # client-controllable).
+    effective_firm = current_user.get("firm_id", "")
 
     if not db:
         scores = _MOCK_SCORES.get(client_id) or _calculate_scores_mock(client_id)
@@ -747,16 +792,16 @@ def get_client_health(
 @router.get("/clients/{client_id}/dimension-detail")
 def get_dimension_detail(
     client_id: str,
-    firm_id: Optional[str] = Query(None),
     dimension: str = Query(..., description="One of the 7 Product Bible dimensions"),
     current_user: dict = Depends(rbac("client", "read")),
 ):
     """
-    GET /api/health/clients/{client_id}/dimension-detail?firm_id=&dimension=
+    GET /api/health/clients/{client_id}/dimension-detail?dimension=
     Returns list of factors dragging the given dimension down.
     Each factor: { label, impact, action_label, action_url }
     Powers the 'click to see detail' UI per Product Bible Chapter 16.
     """
+    assert_client_access(current_user, client_id)
     valid_dims = set(DIMENSION_WEIGHTS_BP.keys())
     if dimension not in valid_dims:
         raise HTTPException(
@@ -765,7 +810,8 @@ def get_dimension_detail(
         )
 
     db = _db()
-    effective_firm = firm_id or current_user.get("firm_id", "")
+    # firm scope always comes from the authenticated caller — see get_client_health.
+    effective_firm = current_user.get("firm_id", "")
 
     if not db:
         factors = _dimension_detail_mock(client_id, dimension)
@@ -799,7 +845,7 @@ def list_scores(
         if is_at_risk is not None:
             result = [s for s in result if s.get("is_at_risk") == is_at_risk]
         result.sort(key=lambda s: s.get("overall_score", 100))
-        return api_response(True, result)
+        return api_response(True, filter_by_client(current_user, result))
 
     q = db.table("health_scores").select("*").eq("firm_id", current_user["firm_id"])
     if is_critical is not None:
@@ -807,7 +853,7 @@ def list_scores(
     if is_at_risk is not None:
         q = q.eq("is_at_risk", is_at_risk)
     res = q.order("overall_score").execute()  # worst first (ascending)
-    return api_response(True, res.data or [])
+    return api_response(True, filter_by_client(current_user, res.data or []))
 
 
 @router.get("/scores/{client_id}")
@@ -815,6 +861,7 @@ def get_score(
     client_id: str,
     current_user: dict = Depends(rbac("client", "read")),
 ):
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         score = _MOCK_SCORES.get(client_id)
@@ -846,6 +893,8 @@ def calculate_score(
         scores = _calculate_scores_mock(client_id)
         old = _MOCK_SCORES.get(client_id)
         old_overall = old.get("overall_score") if old else None
+        if old_overall is not None:
+            scores["trend"] = f"{scores['overall_score'] - old_overall:+d}"
 
         row = {
             "id":                str(uuid.uuid4()),
@@ -878,6 +927,8 @@ def calculate_score(
 
     old_row = db.table("health_scores").select("overall_score, id").eq("client_id", client_id).eq("firm_id", firm_id).limit(1).execute().data
     old_overall = (old_row[0]["overall_score"] if old_row else None)
+    if old_overall is not None:
+        scores["trend"] = f"{scores['overall_score'] - old_overall:+d}"
 
     score_id = str(uuid.uuid4())
     upsert_payload = {
@@ -889,19 +940,13 @@ def calculate_score(
         **scores,
     }
 
-    try:
-        res = db.table("health_scores").upsert(upsert_payload, on_conflict="client_id,firm_id").execute()
-        saved = (res.data or [upsert_payload])[0]
-    except Exception:
-        try:
-            res = db.table("health_scores").insert(upsert_payload).execute()
-            saved = (res.data or [upsert_payload])[0]
-        except Exception:
-            res = db.table("health_scores").update({
-                "last_calculated_at": now,
-                **scores,
-            }).eq("client_id", client_id).eq("firm_id", firm_id).execute()
-            saved = (res.data or [upsert_payload])[0]
+    # A plain upsert on the (firm_id, client_id) unique key is sufficient — the
+    # insert/update fallback chain this used to have was silently swallowing
+    # every exception and, on the update branch, returning the unpersisted
+    # upsert_payload as if it had saved when zero rows matched (the very first
+    # calculation for a client). A genuine write failure should surface, not lie.
+    res = db.table("health_scores").upsert(upsert_payload, on_conflict="client_id,firm_id").execute()
+    saved = (res.data or [upsert_payload])[0]
 
     # Insert history row
     try:
@@ -938,6 +983,7 @@ def get_score_history(
     limit: int = Query(20),
     current_user: dict = Depends(rbac("client", "read")),
 ):
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         result = [h for h in _MOCK_HISTORY if h.get("client_id") == client_id]
@@ -958,6 +1004,7 @@ def list_overrides(
     client_id: str = Query(...),
     current_user: dict = Depends(rbac("client", "read")),
 ):
+    assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         result = [o for o in _MOCK_OVERRIDES if o.get("client_id") == client_id and o.get("is_active")]
@@ -985,6 +1032,9 @@ def recalculate_all(
     for client in clients:
         try:
             scores = _calculate_scores_db(db, client["id"], firm_id)
+            old_row = db.table("health_scores").select("overall_score").eq("client_id", client["id"]).eq("firm_id", firm_id).limit(1).execute().data
+            if old_row:
+                scores["trend"] = f"{scores['overall_score'] - old_row[0]['overall_score']:+d}"
             score_id = str(uuid.uuid4())
             upsert_payload = {
                 "id": score_id, "client_id": client["id"], "firm_id": firm_id,
@@ -1069,6 +1119,8 @@ def list_alerts(
     severity: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("client", "read")),
 ):
+    if client_id:
+        assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         result = [a for a in _MOCK_ALERTS if not a.get("is_resolved")]
@@ -1076,7 +1128,7 @@ def list_alerts(
             result = [a for a in result if a.get("client_id") == client_id]
         if severity:
             result = [a for a in result if a.get("severity") == severity]
-        return api_response(True, result)
+        return api_response(True, filter_by_client(current_user, result))
 
     q = db.table("health_alerts").select("*").eq("firm_id", current_user["firm_id"]).eq("is_resolved", False)
     if client_id:
@@ -1084,7 +1136,7 @@ def list_alerts(
     if severity:
         q = q.eq("severity", severity)
     res = q.order("created_at", desc=True).execute()
-    return api_response(True, res.data or [])
+    return api_response(True, filter_by_client(current_user, res.data or []))
 
 
 @router.post("/alerts/{alert_id}/resolve")

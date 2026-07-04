@@ -4,17 +4,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Building2, LayoutDashboard, IndianRupee, Receipt, Wallet, ClipboardList,
-  StickyNote,
+  StickyNote, ShieldCheck, Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Amendment v1.1 — Practice workspace (Partner-only). Revenue Operations home.
 const NAV_ITEMS = [
   { label: "Overview",     href: "/practice",             icon: LayoutDashboard },
+  { label: "Executive Dashboard", href: "/executive-dashboard", icon: Gauge },
   { label: "Revenue",      href: "/practice/revenue",     icon: IndianRupee },
   { label: "Billing",      href: "/practice/billing",     icon: Receipt },
   { label: "Collections",  href: "/practice/collections", icon: Wallet },
   { label: "AR Aging",     href: "/practice/ar",          icon: ClipboardList },
+  { label: "Compliance Workload", href: "/practice/compliance", icon: ShieldCheck },
   // Knowledge Base intentionally omitted here — it lives in the dedicated,
   // all-staff Knowledge workspace (/knowledge), not under Partner-only Practice.
   { label: "Instructions", href: "/practice/instructions", icon: StickyNote },

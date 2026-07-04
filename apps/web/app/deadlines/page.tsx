@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { formatDate } from "@/lib/services/formatting";
-import { getComplianceCalendar, updateFilingStatus } from "@/lib/data/compliance";
+import { getComplianceCalendar, markFiled as markObligationFiled } from "@/lib/data/compliance";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
@@ -127,7 +127,7 @@ function DeadlinesContent() {
     if (!markFiled) return;
     setFilingLoading(true);
     try {
-      await updateFilingStatus(markFiled.id, "filed", markFiled.arn || undefined);
+      await markObligationFiled(markFiled.id, markFiled.arn || undefined);
       setRecords(prev => prev.map(r =>
         r.id === markFiled.id ? { ...r, filing_status: "filed", arn_number: markFiled.arn } : r
       ));

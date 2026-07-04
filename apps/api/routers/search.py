@@ -85,7 +85,10 @@ def global_search(
                     "id": a.get("id"), "category": "accounts",
                     "title": a.get("account_name", "—"),
                     "subtitle": a.get("account_code", ""),
-                    "href": "/accounting/chart-of-accounts",
+                    # Client-scoped accounting tab (its CoA view) is canonical —
+                    # /accounting/chart-of-accounts was a retired stub, and even
+                    # before that this href was never actually client-scoped.
+                    "href": f"/clients/{a['client_id']}/accounting" if a.get("client_id") else "/accounting",
                 })
         except Exception:
             pass
@@ -102,7 +105,10 @@ def global_search(
                     "id": j.get("id"), "category": "journals",
                     "title": j.get("narration", "Journal entry"),
                     "subtitle": j.get("entry_date", ""),
-                    "href": "/accounting/journal",
+                    # Client-scoped accounting tab is canonical — /accounting/
+                    # journal was a retired stub, and even before that this
+                    # href was never actually client-scoped.
+                    "href": f"/clients/{j['client_id']}/accounting" if j.get("client_id") else "/accounting",
                 })
         except Exception:
             pass

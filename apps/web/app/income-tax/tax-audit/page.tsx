@@ -15,6 +15,7 @@ import { ChevronLeft, Plus, X, CheckCircle, Clock, AlertTriangle, Pencil } from 
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -326,7 +327,7 @@ export default function TaxAuditPage() {
       {/* Table */}
       <Card>
         {loading ? (
-          <div className="p-8 text-center text-[#94A3B8] text-sm animate-pulse">Loading…</div>
+          <TableSkeleton cols={9} bare />
         ) : audits.length === 0 ? (
           <div className="p-10 text-center text-[#94A3B8] text-sm">
             No tax audits for FY {fyFilter}. Click &quot;Add Audit&quot; to track one.

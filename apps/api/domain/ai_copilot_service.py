@@ -39,9 +39,36 @@ def _get_task_repo():
     return task_repo
 
 
-def _get_compliance_repo():
-    from repositories.compliance_repository import compliance_repo
-    return compliance_repo
+def _get_compliance_records_repo():
+    """The canonical compliance_records repo (compliance_tasks/System B is
+    being retired, R3.13d). Unlike System B's repo, this one has no
+    find_overdue()/find_due_within_days() helpers — filtered in Python here,
+    matching the pattern services/compliance_obligation_service.py already uses."""
+    from repositories.compliance_records_repository import compliance_records_repo
+    return compliance_records_repo
+
+
+def _overdue_compliance_records(firm_id=None, client_id=None):
+    # Pushed server-side (status="Overdue") rather than fetching every status
+    # and filtering in Python — the repo's find_all() supports an equality
+    # filter on status.
+    return _get_compliance_records_repo().find_all(firm_id=firm_id, client_id=client_id, status="Overdue")
+
+
+def _due_within_days_compliance_records(days, firm_id=None, client_id=None):
+    records = _get_compliance_records_repo().find_all(firm_id=firm_id, client_id=client_id)
+    return _due_soon_from_records(records, days)
+
+
+def _due_soon_from_records(records, days):
+    from datetime import date
+    today_s = date.today().isoformat()
+    horizon_s = (date.today() + timedelta(days=days)).isoformat()
+    return [
+        r for r in records
+        if r.get("status") not in ("Filed", "Completed")
+        and today_s <= str(r.get("due_date", ""))[:10] <= horizon_s
+    ]
 
 
 def _get_workflow_repo():
@@ -197,13 +224,13 @@ class AICopilotService:
                             f"HEALTH SCORE: {client.get('health_score', 'N/A')}",
                             f"LIFECYCLE STAGE: {client.get('lifecycle_stage', 'N/A')}",
                         ]
-                        # Compliance tasks for this client
+                        # Compliance records for this client
                         try:
-                            comp_tasks = _get_compliance_repo().find_all(
+                            comp_records = _get_compliance_records_repo().find_all(
                                 firm_id=firm_id, client_id=context_id
                             )
-                            overdue_ct = [t for t in comp_tasks if t.get("status") == "overdue"]
-                            pending_ct = [t for t in comp_tasks if t.get("status") == "pending"]
+                            overdue_ct = [t for t in comp_records if t.get("status") == "Overdue"]
+                            pending_ct = [t for t in comp_records if t.get("status") == "Not Started"]
                             lines += [
                                 f"CLIENT OVERDUE COMPLIANCE TASKS: {len(overdue_ct)}",
                                 f"CLIENT PENDING COMPLIANCE TASKS: {len(pending_ct)}",
@@ -215,15 +242,15 @@ class AICopilotService:
 
         try:
             if context_type in ("global", "compliance"):
-                overdue_tasks = _get_task_repo().find_overdue()
-                firm_overdue = [
-                    t for t in overdue_tasks
-                    if not firm_id or t.get("firm_id") == firm_id
-                ]
-                lines.append(f"OVERDUE TASKS: {len(firm_overdue)}")
-                comp_overdue = _get_compliance_repo().find_overdue(firm_id=firm_id)
+                overdue_tasks = _get_task_repo().find_overdue(firm_id=firm_id)
+                lines.append(f"OVERDUE TASKS: {len(overdue_tasks)}")
+                # One fetch, not two — comp_overdue and due_soon are both
+                # derived from the same result set instead of each doing its
+                # own full-history find_all() for the same firm.
+                comp_records = _get_compliance_records_repo().find_all(firm_id=firm_id)
+                comp_overdue = [r for r in comp_records if r.get("status") == "Overdue"]
+                due_soon = _due_soon_from_records(comp_records, 7)
                 lines.append(f"OVERDUE COMPLIANCE FILINGS: {len(comp_overdue)}")
-                due_soon = _get_compliance_repo().find_due_within_days(7, firm_id=firm_id)
                 lines.append(f"COMPLIANCE FILINGS DUE IN 7 DAYS: {len(due_soon)}")
         except Exception:
             pass
@@ -376,12 +403,12 @@ class AICopilotService:
             pass
 
         try:
-            comp_tasks = _get_compliance_repo().find_all(
+            comp_records = _get_compliance_records_repo().find_all(
                 firm_id=firm_id, client_id=client_id
             )
-            overdue_count = len([t for t in comp_tasks if t.get("status") == "overdue"])
-            pending_count = len([t for t in comp_tasks if t.get("status") == "pending"])
-            compliance_types = list({t.get("compliance_type", "") for t in comp_tasks if t.get("compliance_type")})
+            overdue_count = len([t for t in comp_records if t.get("status") == "Overdue"])
+            pending_count = len([t for t in comp_records if t.get("status") == "Not Started"])
+            compliance_types = list({t.get("compliance_type", "") for t in comp_records if t.get("compliance_type")})
         except Exception:
             pass
 
@@ -452,9 +479,12 @@ Format as a structured professional report. Cite relevant sections of IT Act / C
         all_tasks: list[dict] = []
 
         try:
-            overdue_tasks = _get_compliance_repo().find_overdue(firm_id=firm_id)
-            due_soon_tasks = _get_compliance_repo().find_due_within_days(14, firm_id=firm_id)
-            all_tasks = _get_compliance_repo().find_all(firm_id=firm_id)
+            # One fetch instead of three — all_tasks, overdue_tasks and
+            # due_soon_tasks were each independently re-fetching the firm's
+            # entire compliance_records history.
+            all_tasks = _get_compliance_records_repo().find_all(firm_id=firm_id)
+            overdue_tasks = [r for r in all_tasks if r.get("status") == "Overdue"]
+            due_soon_tasks = _due_soon_from_records(all_tasks, 14)
         except Exception:
             pass
 
@@ -675,11 +705,7 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
             pass
 
         try:
-            all_tasks = _get_task_repo().find_overdue()
-            all_tasks = [
-                t for t in all_tasks
-                if not firm_id or t.get("firm_id") == firm_id
-            ]
+            all_tasks = _get_task_repo().find_overdue(firm_id=firm_id)
             tasks_overdue = len(all_tasks)
         except Exception:
             pass

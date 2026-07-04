@@ -116,13 +116,30 @@ class ComplianceRecordService:
         return {**r, "risk_score": _compute_risk_score(r)}
 
     def create_record(self, data: dict, firm_id: str) -> dict:
+        client_id = data["client_id"]
+        compliance_type = data["compliance_type"]
+        period_start = data.get("period_start") or ""
+        # App-level dedup for the manual-create path: the generator's
+        # (obligation_type, period_start) uniqueness (migration 108) doesn't
+        # apply here since manual records never set obligation_type — without
+        # this check a CA could freely create duplicate periods for the same
+        # client/compliance_type. Only enforced when a real period is supplied
+        # (an empty period carries no dedup meaning). DB-backed by migration
+        # 168's partial index.
+        if period_start:
+            existing = compliance_records_repo.find_all(
+                firm_id=firm_id, client_id=client_id, compliance_type=compliance_type)
+            if any(str(r.get("period_start") or "")[:10] == str(period_start)[:10] for r in existing):
+                raise ValidationError(
+                    "period_start",
+                    f"A {compliance_type} compliance record for this client and period already exists.")
         payload = {
             "firm_id": firm_id,  # Always from current_user, never from request body
-            "client_id": data["client_id"],
+            "client_id": client_id,
             "client_name": data.get("client_name"),
-            "compliance_type": data["compliance_type"],
+            "compliance_type": compliance_type,
             "period_label": data.get("period_label", ""),
-            "period_start": data.get("period_start", ""),
+            "period_start": period_start,
             "period_end": data.get("period_end", ""),
             "status": data.get("status", "Not Started"),
             "due_date": data["due_date"],
@@ -170,16 +187,38 @@ class ComplianceRecordService:
             _audit_transition(record, old_status, new_status, firm_id, actor)
         return {**updated, "risk_score": _compute_risk_score(updated)}
 
-    def get_client_health_score(self, client_id: str, firm_id: Optional[str] = None) -> dict:
-        """Client health score 0-100. Start at 100, subtract for risks. Integer arithmetic only."""
-        client = client_repo.find_by_id(client_id)
-        if not client:
-            raise NotFoundError("Client", client_id)
-        # Tenant isolation
-        if firm_id and client.get("firm_id") and client["firm_id"] != firm_id:
-            raise NotFoundError("Client", client_id)
+    # Deterministic path from any open status to Filed, skipping the
+    # documents-waiting branch (not applicable when a CA is asserting the
+    # simple, terminal fact "this was filed").
+    _FAST_FORWARD_PATH = ["In Progress", "Ready For Review", "Ready To File", "Filed"]
 
-        records = self.list_records(client_id=client_id, firm_id=firm_id)
+    def mark_filed(self, record_id: str, firm_id: Optional[str] = None,
+                   actor: Optional[dict] = None, acknowledgement_no: Optional[str] = None) -> dict:
+        """R3.13e: one-click "mark as filed" for callers migrating off
+        compliance_calendar's simple pending/filed model — walks the real
+        multi-step workflow (VALID_TRANSITIONS) via its shortest path rather
+        than bypassing it, so every intermediate step is still individually
+        valid and still audited/timelined. A no-op if already Filed/Completed."""
+        record = self.get_record(record_id, firm_id=firm_id)
+        if record["status"] in ("Filed", "Completed"):
+            updated = record
+        else:
+            start = self._FAST_FORWARD_PATH.index(record["status"]) \
+                if record["status"] in self._FAST_FORWARD_PATH else -1
+            for step in self._FAST_FORWARD_PATH[start + 1:]:
+                updated = self.update_record(record_id, {"status": step}, firm_id=firm_id, actor=actor)
+        if acknowledgement_no:
+            updated = self.update_record(record_id, {"acknowledgement_no": acknowledgement_no},
+                                         firm_id=firm_id, actor=actor)
+        return updated
+
+    @staticmethod
+    def score_from_records(records: list[dict]) -> tuple[int, list[dict]]:
+        """Pure health-score math over an already-fetched record set (100,
+        minus deductions). Factored out so callers who already have the
+        firm's full compliance_records in memory (e.g. a dashboard summing
+        risk across many clients) can score every client without an extra
+        DB round trip per client — see domain/task_service.py."""
         overdue_records = [r for r in records if r["status"] == "Overdue"]
         high_risk_records = [r for r in records if r["risk_score"] >= 70 and r["status"] != "Overdue"]
         missing_docs = len([r for r in records if r["status"] == "Awaiting Documents"])
@@ -199,7 +238,21 @@ class ComplianceRecordService:
             score -= 5
             breakdown.append({"label": "Missing/awaited document", "deduction": 5})
 
-        score = max(0, score)
+        return max(0, score), breakdown
+
+    def get_client_health_score(self, client_id: str, firm_id: Optional[str] = None) -> dict:
+        """Client health score 0-100. Start at 100, subtract for risks. Integer arithmetic only."""
+        client = client_repo.find_by_id(client_id)
+        if not client:
+            raise NotFoundError("Client", client_id)
+        # Tenant isolation
+        if firm_id and client.get("firm_id") and client["firm_id"] != firm_id:
+            raise NotFoundError("Client", client_id)
+
+        records = self.list_records(client_id=client_id, firm_id=firm_id)
+        overdue_records = [r for r in records if r["status"] == "Overdue"]
+        missing_docs = len([r for r in records if r["status"] == "Awaiting Documents"])
+        score, breakdown = self.score_from_records(records)
         risk_level = (
             "critical" if score < 40 else
             "high" if score < 60 else

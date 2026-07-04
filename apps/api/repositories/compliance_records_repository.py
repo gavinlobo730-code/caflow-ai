@@ -29,6 +29,7 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
         client_id: Optional[str] = None,
         status: Optional[str] = None,
         compliance_type: Optional[str] = None,
+        exclude_statuses: Optional[list[str]] = None,
     ) -> list[dict]:
         if _USE_MOCK:
             records = list(MOCK_COMPLIANCE_RECORDS)
@@ -40,6 +41,8 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
                 records = [r for r in records if r["status"] == status]
             if compliance_type:
                 records = [r for r in records if r["compliance_type"] == compliance_type]
+            if exclude_statuses:
+                records = [r for r in records if r.get("status") not in exclude_statuses]
             return records
 
         query = _get_db().table("compliance_records").select("*").is_("deleted_at", "null")
@@ -51,8 +54,23 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
             query = query.eq("status", status)
         if compliance_type:
             query = query.eq("compliance_type", compliance_type)
+        if exclude_statuses:
+            query = query.not_.in_("status", exclude_statuses)
         result = query.order("due_date").execute()
         return result.data or []
+
+    def count_all(self, firm_id: Optional[str] = None, client_id: Optional[str] = None) -> int:
+        """Lightweight row count (no full-row fetch) — for metrics that need a
+        total across the firm's entire history without paying to transfer it."""
+        if _USE_MOCK:
+            return len(self.find_all(firm_id=firm_id, client_id=client_id))
+        query = _get_db().table("compliance_records").select("id", count="exact").is_("deleted_at", "null")
+        if firm_id:
+            query = query.eq("firm_id", firm_id)
+        if client_id:
+            query = query.eq("client_id", client_id)
+        result = query.execute()
+        return result.count or 0
 
     def create(self, data: dict) -> dict:
         if _USE_MOCK:
