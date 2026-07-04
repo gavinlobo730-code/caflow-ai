@@ -3316,3 +3316,66 @@ statutory hard-overrides) — the frontend's `health-score-compute.ts` (System
 1) is the one that should very likely retire in its favour, not the reverse,
 once its 3 callers are rewired. Not yet implemented.
 
+## Milestone R3.15 — close two access-control gaps in the (now-functional) Health workspace (DELIVERED)
+
+**Goal:** having just made `routers/health.py` actually reach the database
+(R3.14), immediately audited its authorization before building anything on
+top of it — the same file that was silently failing every write could
+equally well have been silently *permissive* on reads. It was, on both
+counts checked.
+
+**Finding 1 — a genuine cross-tenant leak, more severe than anything else
+found this session.** `get_client_health()` and `get_dimension_detail()`
+both accepted an optional `firm_id` query parameter that silently
+**overrode** the authenticated caller's own firm: `effective_firm = firm_id
+or current_user.get("firm_id", "")`. Any authenticated user, from any firm,
+could call `GET /api/health/clients/{client_id}?firm_id=<another firm's
+id>` and read that other firm's client health data — a cross-tenant
+data leak reachable directly via the API (the frontend never sends this
+parameter, but the endpoint itself accepted and trusted it regardless).
+Unlike every RLS gap fixed earlier in this project, this bypasses RLS
+entirely by construction, since the backend already connects with the
+service-role key — the query parameter was the *only* thing standing
+between a caller and another firm's data. Fixed by removing the parameter
+outright; firm scope now comes exclusively from `current_user`, with no
+code path that can override it.
+
+**Finding 2 — no assignment-scoping anywhere in the router.** Every other
+canonical resource with client-level data (`compliance_records`,
+`compliance_ops`) applies the established M2/M5 pattern
+(`filter_by_client`/`assert_client_access`) so a non-firm-wide role
+(Executive, Reviewer) only sees clients they're actually assigned to.
+`routers/health.py` had none of it on any of its 8 read endpoints — a
+Reviewer assigned to 2 of a firm's 50 clients could see health scores,
+dimension breakdowns, override history, and unresolved alerts for all 50.
+Fixed by applying the exact same pattern already proven elsewhere:
+`assert_client_access` (404, existence not disclosed) on every
+single-client read (`get_client_health`, `get_dimension_detail`,
+`get_score`, `get_score_history`, `list_overrides`, and `list_alerts` when
+called with an explicit `client_id`), and `filter_by_client` on the two
+firm-wide list reads (`list_scores`, `list_alerts` with no `client_id`).
+Left `health_dashboard()` unscoped and the five write endpoints
+(`calculate_score`, `recalculate_all`, `create_override`,
+`deactivate_override`, `resolve_alert`) firm-scoped-only — deliberately
+matching the exact precedent `compliance_ops.py`/`compliance_records.py`
+already established (dashboards are firm-wide by design; writes are
+role-gated, not assignment-gated, in this codebase's authorization model),
+not a new policy invented for this file alone.
+
+**Verified:** 12 new tests in `test_r3_15_health_access_scoping.py` — the
+`firm_id` parameter's removal proven both structurally (`inspect.signature`
+no longer lists it) and behaviourally (two firms sharing a colliding
+`client_id` value, caller only ever sees their own firm's row); 404 on
+every single-client read for an unassigned Executive across all 6
+endpoints; `list_scores`/`list_alerts` correctly filtered to the assigned
+set for an Executive vs. unfiltered for a Partner; a write endpoint
+(`calculate_score`) confirmed still reachable for a non-assigned Executive,
+proving the read/write asymmetry was preserved deliberately, not lost by
+accident. Full mock-mode suite: 2,468 passed, same 23 pre-existing
+unrelated failures, zero regressions. No frontend changes required (no
+caller ever sent the removed parameter; the new 404s only affect callers
+who shouldn't have had access in the first place).
+
+**Next:** returning to R3.13c, the five-way health-score reconciliation,
+now that `routers/health.py` is both functional and correctly scoped.
+
