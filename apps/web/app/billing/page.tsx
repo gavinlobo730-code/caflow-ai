@@ -234,18 +234,15 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
     if (!invoiceId || amtPaise <= 0) { setError("Select invoice and enter valid amount"); return; }
     setSaving(true);
     try {
-      const firmId = await getFirmId();
-      const sb = getSupabaseClient();
-      const { error: err } = await sb.from("fee_receipts").insert({
-        firm_id: firmId,
-        invoice_id: invoiceId,
+      // Records through the backend (updates paid_paise and only marks the
+      // invoice Paid once cumulative receipts cover its total — a partial
+      // receipt no longer force-marks the whole invoice as paid).
+      await api.billing.recordFeeReceipt(invoiceId, {
         receipt_date: receiptDate,
         amount_paise: amtPaise,
         payment_mode: paymentMode,
-        reference_no: referenceNo,
+        reference_no: referenceNo || undefined,
       });
-      if (err) throw new Error(err.message);
-      await sb.from("fee_invoices").update({ status: "Paid" }).eq("id", invoiceId);
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
