@@ -256,7 +256,7 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 - **R3.8 — Fix the non-functional year-end review workflow and consolidate its two implementations. DELIVERED.** *(surfaced by the R2.1 investigation; found to be far more serious by the fresh Tier 3 re-scope)*. The original framing was "two competing implementations, both work, pick one" — the re-scope found neither was actually reachable: `apps/web/lib/api/yearEnd.ts` called `/api/year-end/engagements/{id}/review/...` while `routers/year_end_reviews.py`'s real routes were `/api/year-end/{id}/reviews/...` (no `/engagements/` segment at all, unlike every other year-end sub-resource router) — the review page's Submit/Approve/Request Revision/Final Approve buttons all 404'd in production. Fixed by adding the missing `/engagements/` segment to the router (matching convention) and correcting the frontend's paths; added the missing `GET .../reviews` endpoint the review page needs for its step-timeline and history display (previously fetched a route that never existed); extracted the one genuinely-shared behavior (`year_end.py`'s FY-lock-on-completion side effect, which — since its own endpoint was never reachable either — had never actually run for a real review-workflow completion) into `services/year_end_workflow_service.py` and wired it into `year_end_reviews.py`'s `final_approve`, the transition users can actually reach. `year_end.py`'s generic status endpoint and `year_end_reviews.py`'s richer per-step audit/revision-request workflow remain deliberately separate (a real, intentional difference in capability, not accidental duplication) but now share the one behavior that must not diverge. *Effort:* S (as re-scoped). *Benefit:* the year-end review workflow now actually works end-to-end; the FY-lock integration now fires on the real, used completion path.
 - **R2.11.1 — Bank-statement re-import path for pre-R2.11 statements** *(surfaced by the R2.11 fix phase, promoted here at Tier 2 close — not yet scoped)*. Statements imported before R2.11's parser fixes keep their old, incorrectly-signed/scaled rows on disk — nothing re-derives them from the fix, and the existing dedupe logic won't treat a corrected re-upload as new rows (by design, to prevent double-counting). Needs a product/design decision before implementation: how aggressive should re-import matching be (exact hash match vs. fuzzy date+amount match), does it replace rows in place or supersede them with an audit trail, and does it need its own CA-confirmation step given it can change historical reconciled balances. *Effort:* M. *Benefit:* firms that imported bank data before R2.11 get correct historical balances without a manual re-entry.
 - **R3.9 — Audit the ~57 migration-created tables with no backend reader** *(surfaced by the R2.2 regression review)*. Some may be reached directly from the frontend via PostgREST rather than through a backend router — the same F14 concern (business logic / unmediated table access from the browser) flagged elsewhere in this audit. Needs a systematic per-table check (grep `apps/web` for direct `.from("<table>")` reads/writes against each name) before deciding whether each is dead schema (safe to leave or formally deprecate) or an undocumented frontend-direct access path (a CLAUDE.md violation — "zero business logic in the frontend" — needing the same treatment as R2.10's payroll migration). *Effort:* M. *Benefit:* closes the door on any remaining unmediated-table-access surface; removes schema clutter.
-- **R3.10 — Implement Section 80CCD(2) and verify Sections 206AA/206AB's status** *(surfaced by the R2.3 regression review; 206AA scope widened by the R3.1 re-audit)*. Section 80CCD(2) (employer NPS contribution) is deductible under the new regime — unlike the rest of Chapter VI-A — but is entirely unimplemented in `domain/income_tax`. Separately, `tds_validator.py` hardcodes BOTH Section 206AA (missing-PAN, 20% floor — duplicated in `tds_computer.py` too) and Section 206AB (non-filer doubled rate) with no FY registry and no `verified` flag; 206AB in particular may have been altered by Finance Act 2025 and needs verification against the Act's actual text before either changing a compliance-conservative behaviour or leaving a since-repealed check silently in place. *Effort:* S–M. *Benefit:* closes a real deduction gap and confirms/corrects two compliance-sensitive checks.
+- **R3.10 — Implement Section 80CCD(2), migrate + actually enforce Section 206AA, flag Section 206AB. DELIVERED (206AB verification excepted — genuinely unverifiable from this repo).** *(surfaced by the R2.3 regression review; 206AA scope widened by the R3.1 re-audit, and widened again by this delivery)*. Section 80CCD(2) (employer NPS contribution, deductible under BOTH regimes unlike the rest of Chapter VI-A) implemented in `domain/income_tax/itr_engine.py`, wired into the compute endpoint and the deductions-planner frontend. The scoping pass ahead of delivery found Section 206AA's problem was worse than "duplicated in two files with no FY registry": `tds_computer.py::resolve_tds()` — the function that computes the REAL `tds_deducted_paise` persisted on every purchase bill — had **zero PAN awareness at all**, so a vendor with no PAN silently got taxed at the ordinary section rate instead of Section 206AA's mandatory 20% floor; the floor only ever appeared as a post-hoc validation *warning* on the 26Q return, never as a correction to the actually-withheld amount. Fixed at the real call site (`routers/purchase_bills.py`), not just migrated into the registry. Section 206AB: confirmed NOT actually duplicated (the roadmap's "duplicated in tds_computer.py too" applied only to 206AA); its rate is genuinely unverifiable from this repository (no prior implementation, no authoritative Finance Act 2025 text available here) and remains explicitly flagged, not guessed at or built out with assumed non-filer-status plumbing the schema doesn't have. *Effort:* S–M (as estimated). *Benefit:* closes a real deduction gap; closes a live under-withholding compliance bug, not just a code-duplication one.
 - **R3.11 — Compensate `debit_notes.create_debit_note`'s header/lines insert. DELIVERED (scope widened to `credit_notes` too).** *(surfaced by the R2.9 regression review, low priority)*. The header was inserted via `insert_with_number` (now durably unique per R2.9) and `debit_note_lines` afterward with no compensation — a lines-insert failure left an orphaned draft header with zero lines. While implementing the fix, found `credit_notes.py::create_credit_note` has the byte-for-byte identical gap (same `insert_with_number`-then-unguarded-lines-insert shape) against a line table (`credit_note_lines`) with an identical column shape — fixed both via one shared `numbered_document_atomic` RPC (migration 167) rather than duplicating the fix. Not a money- or statutory-correctness issue (drafts, not posted documents) but closes the last multi-step insert this Tier 2/3 pass hadn't hardened yet. *Effort:* S (as estimated; the credit-notes twin added negligible extra scope given the shared RPC). *Benefit:* no orphaned draft rows from a partial write, for either document type.
 - **R3.12 — Verify Maharashtra/West Bengal/Tamil Nadu Professional Tax slabs against current state notifications** *(surfaced by the R2.10 regression review)*. `routers/payroll.py::_PT_SLABS_BY_STATE`'s Karnataka entry is this codebase's original, unit-tested baseline; the other three states were ported verbatim from the frontend's pre-existing (pre-R2.10) client-side logic — the only source for those states anywhere in this repo — and have not been independently re-confirmed against each state's current Profession Tax Act/notification. Same "pending statutory verification" treatment as FY 2026-27's income-tax figures; updating a verified value is a one-line data change in `_PT_SLABS_BY_STATE`, not a code change. *Effort:* S (verification only, assuming the existing slab shape is correct). *Benefit:* removes the one remaining unverified-statutory-value flag from the payroll module.
 - **R3.13 — Migrate remaining frontend pages that compute-and-persist statutory calculations independently of the backend. PARTIALLY DELIVERED (R3.13a).** *(surfaced by the R3.1 re-audit; R3.1b covers the capital-gains instance separately given its size)*. Three instances found; a scoping pass ahead of full delivery (see Implementation Log) found the advance-tax item was not just a relocation job but an actual formula bug, and fixed it first (R3.13a) as the highest-value, most isolated piece. Two remain:
@@ -2985,4 +2985,90 @@ numbering ratchet clean.
 statutory-correctness item with a real live compliance gap (206AA's
 PAN-missing floor is currently only a warning, never actually applied to
 the computed tax).
+
+## Milestone R3.10 — Section 80CCD(2) + Section 206AA enforcement fix (DELIVERED)
+
+**Goal:** implement the missing Section 80CCD(2) deduction and resolve
+Section 206AA/206AB's registry/duplication gap. The scoping pass ahead of
+delivery found 206AA's problem was substantially more serious than
+originally framed.
+
+**Section 80CCD(2) — employer NPS contribution:**
+- New `LIMIT_80CCD2_GOVT_PERCENT = 14` / `LIMIT_80CCD2_OTHER_PERCENT = 10`
+  in `itr_engine.py`, computed **outside** the `if not use_new_regime`
+  gate — the one Chapter VI-A deduction (besides the standard deduction)
+  that Section 115BAC(2)(i) carves out of the new regime's blanket
+  disallowance. New `employer_nps_80ccd2_paise` / `is_government_employee`
+  / `salary_for_80ccd2_paise` request fields (the last, an optional
+  basic+DA override, falls back to gross salary as an approximation).
+  **Flagged, not guessed:** the cap percentages' government/other split is
+  long-settled and not in question, but whether Budget 2024 extended the
+  14% cap to non-government employees under the new regime specifically is
+  NOT independently confirmed from anything in this repository (no prior
+  implementation existed to port a verified baseline from, unlike R3.1b's
+  capital-gains rates) — the more conservative 10% is used for
+  non-government employees in both regimes until that detail is confirmed,
+  the safe direction (a filer may be entitled to a slightly larger
+  deduction than this computes, never a smaller one than the law allows).
+  Wired into `routers/income_tax.py`'s compute endpoint and the
+  `income-tax/deductions` frontend planner (new SectionCard, both regimes).
+- Also fixed the pre-existing new-regime warning text, which said "Section
+  80C/80CCD deductions are not available under the new regime" — now
+  correctly scoped to "80C/80CCD(1B)" so it doesn't misreport 80CCD(2),
+  which the same computation now correctly allows under the new regime.
+
+**Section 206AA — the real finding:** `tds_computer.py::resolve_tds()`,
+the function computing the `tds_deducted_paise` actually persisted on
+every purchase bill, had zero PAN-availability awareness at all — a
+no-PAN vendor's bill silently computed TDS at the ordinary section rate.
+Section 206AA's 20% floor only ever appeared as a post-hoc validation
+*warning* on the 26Q return (`_validate_26q`), never as a correction to
+the withheld amount. Fixed:
+- New `FYTDSRates.section_206aa_floor_rate_bps = 2000` in
+  `section_rates.py` (the FY-versioned registry) — the single source both
+  `tds_validator.py::applicable_rate` and `tds_computer.py`'s 26Q
+  validation now read, closing the actual two-hardcoded-20.0s duplication.
+- `resolve_tds()` gained a `has_pan: bool = True` parameter (default
+  preserves prior behaviour for callers not yet PAN-aware) — when False,
+  floors the computed rate at the registry's value. New `has_pan()` helper
+  (distinct from `TDSValidator.validate_pan()`, which treats the
+  PANNOTAVBL/PANAPPLIED sentinels as a valid *format* for return filing —
+  206AA cares whether a *real* PAN exists, a different question).
+- `routers/purchase_bills.py`'s real `resolve_tds()` call site — the one
+  that matters — now passes `has_pan=has_pan(vendor.get("pan"))`, so a
+  no-PAN vendor's bill is now actually taxed at the correct floored rate.
+  `routers/tds.py`'s standalone `/compute-amount` what-if calculator also
+  gained a `has_pan` option for consistency.
+
+**Section 206AB:** confirmed NOT actually duplicated in `tds_computer.py`
+(only 206AA was) — `tds_validator.py::is_higher_rate_applicable` remains
+the sole implementation, with zero live callers (tests only), unchanged.
+Migrating it into the FY registry properly would need `is_non_filer`
+domain modeling that doesn't exist anywhere in the schema (no non-filer
+status field on any TDS-related record), and its rate is genuinely
+unverifiable from this repository pending Finance Act 2025 confirmation —
+left as a documented, flagged gap rather than built out with assumed
+plumbing or a guessed rate.
+
+**Verified:** 16 new tests across `test_itr_engine.py` (80CCD(2): both-
+regime availability, government/other cap enforcement, explicit
+salary-base override, actual tax-reduction proof under the new regime),
+`test_tds_engine.py` (`resolve_tds`'s `has_pan` floor, the `has_pan()`
+sentinel helper), and `test_tds_bill_engine.py` (the real bug fix, driven
+through the actual `create_purchase_bill` path — a no-PAN vendor's bill
+now gets floored at 20% instead of the section's ordinary rate). One
+pre-existing test (`test_e2e_purchase_cycle.py`) had a vendor fixture with
+no PAN at all, which the old bug silently tolerated — fixed the fixture to
+carry a realistic PAN (the test's actual purpose is GL reconciliation, not
+PAN handling) rather than weakening the new correctness check. Full
+mock-mode suite: 2,444 passed, same 23 pre-existing unrelated failures.
+`tsc --noEmit` clean, `eslint` clean, full `next build` clean. Manual
+Playwright verification: the deductions page's new 80CCD(2) section and
+government-employee checkbox render, and typing into the field correctly
+sends `employer_nps_80ccd2_paise`/`is_government_employee` to the real
+backend endpoint.
+
+**Next:** the compliance data-model consolidation (`compliance_records` as
+canonical, per the fresh re-scope's finding) and its dependent R3.13
+remainder — the largest remaining piece of well-scoped Tier 3 work.
 

@@ -119,6 +119,15 @@ class TDSResolution:
     reason: str              # 'applied' | 'below_threshold'
 
 
+def has_pan(pan: Optional[str]) -> bool:
+    """Whether a real PAN (not missing, not the PANNOTAVBL/PANAPPLIED
+    sentinels) is on file — distinct from TDSValidator.validate_pan(), which
+    treats those sentinels as a VALID FORMAT for return-filing purposes.
+    Section 206AA's mandatory-PAN floor cares about the sentinel case too:
+    no real PAN → floor applies regardless of format validity."""
+    return bool(pan) and pan not in ("PANNOTAVBL", "PANAPPLIED")
+
+
 def is_company_pan(pan: Optional[str]) -> bool:
     """Return True when the payee should be taxed at the non-individual rate.
 
@@ -253,6 +262,7 @@ class TDSComputer:
         fy_prior_taxable_paise: int = 0,
         is_company: bool = False,
         fy: Optional[str] = None,
+        has_pan: bool = True,
     ) -> "TDSResolution":
         """Resolve TDS for a single purchase bill — the single source of TDS rules.
 
@@ -260,7 +270,13 @@ class TDSComputer:
           * unknown section  → ValueError (never silently deduct 0 — audit L6);
           * threshold + FY aggregation (single-payment OR §194C ₹1L aggregate — H5);
           * section- and payee-type-specific rate (individual/HUF vs other — H6);
-          * rate-based amount so TDS can never exceed the section rate (audit L1).
+          * rate-based amount so TDS can never exceed the section rate (audit L1);
+          * IT Act §206AA — no real PAN on file floors the rate at 20% (R3.10:
+            previously computed here with zero awareness of PAN availability at
+            all, so a no-PAN vendor's bill silently under-deducted at the
+            section's normal rate; §206AA only ever appeared as a post-hoc
+            validation warning on the 26Q return, never as an actual correction
+            to the withheld amount).
 
         Args:
           section:                e.g. '194C', '194J'.
@@ -272,6 +288,11 @@ class TDSComputer:
                                   bill dated in an earlier FY resolves that year's
                                   thresholds; defaults to today's FY. See
                                   section_rates.py for per-FY verification status.
+          has_pan:                False when the payee has no real PAN on file (see
+                                  has_pan() above for what counts) — floors the rate
+                                  at Section 206AA's threshold. Defaults to True so
+                                  callers that don't yet track PAN availability keep
+                                  their prior (pre-R3.10) behaviour unchanged.
         """
         section = (section or "").upper().strip()
         rates = tds_rates_for(fy)
@@ -285,6 +306,8 @@ class TDSComputer:
             and fy_total > rule.aggregate_threshold_paise
         )
         rate_bps = rule.company_rate_bps if is_company else rule.individual_rate_bps
+        if not has_pan:
+            rate_bps = max(rate_bps, rates.section_206aa_floor_rate_bps)
         rate = rate_bps / 100  # display only — computation stays in integer bps
         if not applies:
             return TDSResolution(False, section, 0, rate, rate_bps, is_company, "below_threshold")
@@ -309,15 +332,17 @@ class TDSComputer:
             errors.append("TAN must be 10 characters")
         if not payload.deductor_pan or len(payload.deductor_pan) != 10:
             errors.append("Deductor PAN must be 10 characters")
+        floor_rate_pct = tds_rates_for(payload.financial_year).section_206aa_floor_rate_bps / 100
         for d in payload.deductees:
             if d.deductee_pan not in ("PANNOTAVBL", "PANAPPLIED") and len(d.deductee_pan) != 10:
                 errors.append(f"Invalid PAN for {d.deductee_name}: {d.deductee_pan}")
             if d.tds_deducted_paise < 0:
                 errors.append(f"Negative TDS for {d.deductee_name}")
-            # IT Act Section 206AA — 20% if PAN not available
-            if d.deductee_pan == "PANNOTAVBL" and d.tds_rate_pct < 20.0:
+            # IT Act Section 206AA — floor rate if PAN not available
+            if d.deductee_pan == "PANNOTAVBL" and d.tds_rate_pct < floor_rate_pct:
                 errors.append(
-                    f"{d.deductee_name}: PAN not available — rate must be ≥20% per IT Act Section 206AA"
+                    f"{d.deductee_name}: PAN not available — rate must be ≥{floor_rate_pct:.0f}% "
+                    f"per IT Act Section 206AA"
                 )
         # Deducted vs deposited mismatch is an error if gap > 0
         gap = payload.total_tds_deducted_paise - payload.total_tds_deposited_paise

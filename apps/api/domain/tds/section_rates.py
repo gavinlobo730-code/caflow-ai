@@ -68,6 +68,18 @@ class FYTDSRates:
     fy: str        # "2025-26"
     verified: bool  # False = carried forward pending confirmation, see module docstring
     sections: dict[str, TDSSectionRule]
+    # IT Act Section 206AA — mandatory-PAN floor rate (20%). Long-settled
+    # statutory structure, not an annually-revised threshold/rate the way
+    # the section table above is — treated like statutory_rates.py's
+    # 111A/112A rates (implemented directly, no "pending verification"
+    # flag needed for the STRUCTURE itself). R3.10: previously hardcoded
+    # identically in two places (domain/tds/tds_validator.py and inline in
+    # tds_computer.py's 26Q validation) with no FY registry entry at all,
+    # and — the more serious half of that finding — never actually applied
+    # to the real computed tds_deducted_paise for a purchase bill, only
+    # surfaced as a post-hoc validation warning. See tds_computer.py's
+    # resolve_tds() for where it is now actually enforced.
+    section_206aa_floor_rate_bps: int = 2000
 
 
 # ── FY 2025-26 (Finance Act 2025 + Finance (No. 2) Act 2024) — VERIFIED ──────

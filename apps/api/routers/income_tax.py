@@ -84,6 +84,12 @@ class ComputeITRRequest(BaseModel):
     # Deductions
     s80c: S80CInput = Field(default_factory=S80CInput)
     nps_80ccd1b_paise: int = 0
+    # Section 80CCD(2) — employer NPS contribution, available under both
+    # regimes (see itr_engine.py's LIMIT_80CCD2_* constants for the
+    # government/other cap split and its verification status).
+    employer_nps_80ccd2_paise: int = 0
+    is_government_employee: bool = False
+    salary_for_80ccd2_paise: Optional[int] = None
     s80d: S80DInput = Field(default_factory=S80DInput)
     donations_80g: list[Donation80GInput] = Field(default_factory=list)
     savings_interest_80tta_paise: int = 0
@@ -130,6 +136,9 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
             ulip_paise=req.s80c.ulip_paise,
         ),
         nps_80ccd1b_paise=req.nps_80ccd1b_paise,
+        employer_nps_80ccd2_paise=req.employer_nps_80ccd2_paise,
+        is_government_employee=req.is_government_employee,
+        salary_for_80ccd2_paise=req.salary_for_80ccd2_paise,
         s80d=Deductions80D(
             self_family_premium_paise=req.s80d.self_family_premium_paise,
             self_family_is_senior=req.s80d.self_family_is_senior,
@@ -171,6 +180,7 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
         "deductions": {
             "s80c_paise": result.deduction_80c_paise,
             "s80ccd_paise": result.deduction_80ccd_paise,
+            "s80ccd2_paise": result.deduction_80ccd2_paise,
             "s80d_paise": result.deduction_80d_paise,
             "s80g_paise": result.deduction_80g_paise,
             "s80tta_paise": result.deduction_80tta_paise,
