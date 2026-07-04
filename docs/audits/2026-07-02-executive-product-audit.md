@@ -2720,10 +2720,13 @@ substantially changed the priority order.
    financial-amount tables (including the `sales_invoices`/`invoice_lines`
    pair R3.3 also flagged), 5 compliance/statutory tables (including
    `compliance_calendar`, tied to the compliance consolidation below), 3
-   general-metadata tables (`client_health_scores` is the worst: it computes
+   general-metadata tables (`client_health_scores` was the worst: it computed
    real weighted health-score logic in the browser before writing, not just
-   an unmediated write), and 3 lower-urgency UI-state tables. Tracked as a
-   follow-up batch, not all fixed in this pass — see Remaining Limitations.
+   an unmediated write — **resolved as a side effect of R3.13c**, which
+   retired that entire client-side compute engine in favour of the backend's
+   `routers/health.py`; the frontend no longer writes to
+   `client_health_scores` at all), and 3 lower-urgency UI-state tables.
+   Remaining ones tracked as a follow-up batch — see Remaining Limitations.
 3. **Compliance data-model consolidation** (blocking R3.13's remainder and
    R3.2). Investigated all three systems' schemas, callers, and test
    coverage. Clear answer: `compliance_records` (+
