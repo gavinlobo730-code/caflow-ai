@@ -1,7 +1,6 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-import { ClientNavProvider, getSectionForPathname } from "@/lib/workspace/ClientNavContext";
+import { ClientNavProvider } from "@/lib/workspace/ClientNavContext";
 import { ClientContextPanel } from "@/components/ClientContextPanel";
 import { ClientHeader } from "@/components/ClientHeader";
 
@@ -10,11 +9,8 @@ interface ClientWorkspaceShellProps {
 }
 
 export function ClientWorkspaceShell({ children }: ClientWorkspaceShellProps) {
-  const pathname = usePathname();
-  const initialSection = getSectionForPathname(pathname);
-
   return (
-    <ClientNavProvider initialSection={initialSection}>
+    <ClientNavProvider>
       <div className="flex h-full overflow-hidden">
         {/* Single collapsible sidebar — handles desktop + mobile drawer */}
         <ClientContextPanel />
