@@ -8,6 +8,7 @@ import {
   GitBranch,
   Copy,
   PieChart,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +17,7 @@ const NAV_ITEMS = [
   { label: "Relationship Explorer",  href: "/relationships/explorer",            icon: GitBranch },
   { label: "Cross-Client Matches",   href: "/relationships/cross-client",        icon: Copy },
   { label: "Ownership Map",          href: "/relationships/ownership-map",       icon: PieChart },
+  { label: "Risk Intelligence",      href: "/relationships/intelligence",        icon: AlertTriangle },
 ];
 
 export function RelationshipsPanel() {

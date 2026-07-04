@@ -10,6 +10,8 @@ import {
   BookOpen,
   Receipt,
   Briefcase,
+  ShieldCheck,
+  DatabaseZap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +26,8 @@ const NAV_ITEMS = [
   { label: "Export COA",          href: "/accounting/coa-export",            icon: Download },
   { label: "Fee Billing",         href: "/billing",                          icon: Receipt },
   { label: "Payroll",             href: "/payroll",                          icon: Briefcase },
+  { label: "Payroll Statutory",   href: "/payroll/statutory",                icon: ShieldCheck },
+  { label: "Data Migration",      href: "/migration",                        icon: DatabaseZap },
 ];
 
 export function AccountingPanel() {

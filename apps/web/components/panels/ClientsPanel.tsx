@@ -15,7 +15,10 @@ const CLIENTS_ITEMS = [
   { href: "/clients", label: "All Clients", icon: Users },
   { href: "/pipeline", label: "Pipeline", icon: KanbanSquare },
   { href: "/client-portal", label: "Client Portal", icon: ExternalLink },
+  // Two distinct document surfaces: /documents is the OCR/intelligence
+  // pipeline; /clients/documents is expiry-tracked Storage-backed vault.
   { href: "/documents", label: "Documents", icon: FolderOpen },
+  { href: "/clients/documents", label: "Document Vault", icon: FolderOpen },
 ];
 
 interface ClientsPanelProps {

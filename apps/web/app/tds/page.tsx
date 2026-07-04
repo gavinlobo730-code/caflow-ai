@@ -16,8 +16,9 @@
  */
 
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
-  IndianRupee, Calendar, AlertCircle, Plus, X, FileText, Award, Upload,
+  IndianRupee, Calendar, AlertCircle, Plus, X, FileText, Award, Upload, ArrowRight,
 } from "lucide-react";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { DataTable } from "@/components/ui/data-table";
@@ -599,36 +600,30 @@ export default function TDSPage() {
             <p className="text-sm text-amber-700">File 24Q/26Q returns manually on TRACES portal (traces.gov.in). PracticeSync does not auto-submit to any government portal.</p>
           </div>
           <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50">
-              <h2 className="text-sm font-semibold text-[#0F172A]">TDS Returns (24Q / 26Q / 27Q)</h2>
-              <p className="text-xs text-[#94A3B8] mt-0.5">IT Act Section 200(3) — quarterly TDS return filing status</p>
+            <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-[#0F172A]">TDS Returns (24Q / 26Q / 27Q)</h2>
+                <p className="text-xs text-[#94A3B8] mt-0.5">IT Act Section 200(3) — quarterly TDS return filing status</p>
+              </div>
+              <Link
+                href="/tds/returns"
+                className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 shrink-0"
+              >
+                Prepare a Return <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-50">
-                    {["Form Type", "Quarter", "FY", "Due Date", "Filed Date", "PRN / Acknowledgement", "Status"].map(h => (
-                      <th key={h} className="text-left text-xs font-medium text-[#94A3B8] px-4 py-3">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
-                  {returns.map(r => (
-                    <tr key={r.id} className="hover:bg-[#F8FAFC]/50">
-                      <td className="px-4 py-3 text-xs font-mono font-medium text-blue-700">{r.form_type}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">{r.quarter}</td>
-                      <td className="px-4 py-3 text-xs text-[#475569]">{r.fy}</td>
-                      <td className="px-4 py-3 text-xs text-[#475569]">{new Date(r.due_date).toLocaleDateString("en-IN")}</td>
-                      <td className="px-4 py-3 text-xs text-[#475569]">{r.filed_date ? new Date(r.filed_date).toLocaleDateString("en-IN") : "—"}</td>
-                      <td className="px-4 py-3 text-xs font-mono text-[#475569]">{r.prn || "—"}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLE[r.status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>{r.status}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="px-5 py-4 grid grid-cols-3 gap-4 text-center">
+              {(["Pending", "Filed", "Overdue"] as const).map(s => (
+                <div key={s}>
+                  <p className="text-2xl font-semibold text-[#0F172A]">{returns.filter(r => r.status === s).length}</p>
+                  <p className="text-xs text-[#64748B] mt-0.5">{s}</p>
+                </div>
+              ))}
             </div>
+            <p className="px-5 pb-4 text-xs text-[#94A3B8]">
+              Generate, review, and mark a specific quarter&apos;s return as filed in{" "}
+              <Link href="/tds/returns" className="text-blue-600 hover:underline">Prepare a Return</Link>.
+            </p>
           </div>
         </div>
       )}

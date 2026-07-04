@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Plus, Loader2, Calendar, ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { Plus, Loader2, Calendar, ChevronRight, FileCode } from "lucide-react";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -92,12 +93,20 @@ export default function YearEndPage() {
           <h2 className="text-sm font-semibold text-[#1E293B]">Year-End Engagements</h2>
           <p className="text-xs text-[#94A3B8] mt-0.5">Schedule III financial statements, notes, and audit pack</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
-        >
-          <Plus size={12} /> New Engagement
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/clients/${clientId}/year-end/xbrl`}
+            className="flex items-center gap-1.5 text-xs bg-white border border-[#E2E8F0] text-[#334155] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+          >
+            <FileCode size={12} /> XBRL Filing
+          </Link>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+          >
+            <Plus size={12} /> New Engagement
+          </button>
+        </div>
       </div>
 
       {showCreate && (

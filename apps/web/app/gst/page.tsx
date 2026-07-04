@@ -17,6 +17,8 @@ import {
   X,
   Calendar,
   GitMerge,
+  FileText,
+  Receipt,
 } from "lucide-react";
 import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -537,6 +539,20 @@ export default function GSTPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href="/gst/gstr1"
+            className="flex items-center gap-1.5 text-xs bg-white border border-[#E2E8F0] text-[#334155] px-3 py-2 rounded-lg hover:bg-[#F8FAFC]"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            GSTR-1
+          </Link>
+          <Link
+            href="/gst/gstr3b"
+            className="flex items-center gap-1.5 text-xs bg-white border border-[#E2E8F0] text-[#334155] px-3 py-2 rounded-lg hover:bg-[#F8FAFC]"
+          >
+            <Receipt className="w-3.5 h-3.5" />
+            GSTR-3B
+          </Link>
           <Link
             href="/gst/reconciliation"
             className="flex items-center gap-1.5 text-xs bg-white border border-[#E2E8F0] text-[#334155] px-3 py-2 rounded-lg hover:bg-[#F8FAFC]"
