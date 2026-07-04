@@ -4036,3 +4036,53 @@ consolidation follow-up above, not repeated here.
 None of these block the rest of the priority-ordered plan; R3.5
 (performance) is next.
 
+---
+
+## Milestone R3.3b — fix linked-but-dead-end stub references, then retire 4 stubs (DELIVERED)
+
+**Goal:** the 4 stubs R3.3's re-enumeration found "linked but dead-end" —
+reachable via a real nav path, but landing on a `MovedToClientWorkspace`
+stub. Fix each incoming reference, then delete the stub.
+
+**Scope discovery:** investigating `/accounting/chart-of-accounts`'s
+incoming links surfaced 6 more references the original pass missed — every
+sibling accounting-hub page (`coa-export`, `coa-import`,
+`trial-balance-import`, `schedule-iii-mapping`, `budget`,
+`account-groups`) links back to it as a "back" chevron or an "Edit/View
+Chart of Accounts" action, since it used to be the actual firm-level CoA
+editor. Fixed all of them: back chevrons now match the sibling-page
+convention (`/accounting`); action links now point to
+`/accounting/account-groups`, the closest living page that actually lists
+the firm's `chart_of_accounts`. Copy that promised edit capability ("Edit
+mappings/groups in COA →") was corrected, since **no manual single-account
+add/edit UI exists anywhere anymore** — only bulk import via
+`/accounting/coa-import`. This is a real, pre-existing product gap
+(uncovered by this investigation, not introduced by it): a CA firm can
+bulk-import or re-import a template Chart of Accounts, but cannot add or
+edit one account, or set its Schedule III mapping / account group, without
+a full re-import. Flagged here as a follow-up, not built — out of
+proportion for a nav-reference fix, and worth a product call on whether
+it's needed given bulk import covers the common case.
+
+**What shipped:** `workspaceConfig.ts`, `DashboardContent.tsx`'s two
+onboarding cards, `search.py`'s account/journal result hrefs (also fixed
+to be genuinely client-scoped — they never were, even before the stub),
+and `reports/page.tsx`'s "Financial Statements" card (removed outright —
+its "year-on-year comparison + variance analysis" description doesn't
+match anything reachable today) all repointed. `clients/[id]/coa/page.tsx`
+retired per product decision (the `[id]/accounting` tab's own CoA view is
+canonical; zero incoming references, confirmed by grep). All 4 originally
+orphaned-but-linked stubs deleted once every incoming reference was fixed.
+
+**Verified:** `tsc`/`eslint` clean, full `next build` succeeds with all 5
+deleted routes absent from the output, full mock-mode backend suite green
+(same 23 pre-existing failures).
+
+**Next:** R3.3c-e — link the 15 statutory-suite routes, the `/accounting`
+hub (unlocking its 10 hidden children), and the remaining shipped-but-
+unlinked features into nav, incorporating the user's decisions on the 4
+flagged duplications: `/workflows`+`/workflows/approvals` link in as a
+distinct feature; `/clients/documents` stays alongside `/documents` (clarify
+distinct roles); `/clients/[id]/coa` retired (done above); `/tds/returns`
+is canonical, `/tds`'s inline view gets simplified.
+
