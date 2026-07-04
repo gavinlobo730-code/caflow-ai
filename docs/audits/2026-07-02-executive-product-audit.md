@@ -253,7 +253,7 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 - **R3.5 — Performance: paginate/aggregate in SQL, add indexes, cache auth lookups.** *Effort:* M–L. *Benefit:* holds up at 100–500 clients.
 - **R3.6 — UX consistency:** one skeleton/empty/error system, real dialog semantics, dashboard load-error states, shared client context. *Effort:* M. *Benefit:* daily usability.
 - **R3.7 — Year-end close: post an explicit closing journal entry** *(surfaced by the R2.1/F10 fix)*. There is no mechanism today that transfers a completed year's P&L into `reserves_and_surplus` via an actual posted journal entry — the "add current-year PAT to reserves" step is a live, presentational preview computed fresh on every request, not an accounting fact. A second prior year's retained profit, if that year was also never explicitly closed, would still be invisible in a third year's cumulative reserves. Needs a business/accounting decision first (should this post automatically when a Partner locks the engagement? does it need its own CA-review gate, matching the CLAUDE.md "never auto-submit" spirit even though this is internal not government-facing? which specific reserves sub-account?) — do not implement unilaterally. *Effort:* M. *Benefit:* true multi-year retained-earnings continuity, not just single-year carry-forward.
-- **R3.8 — Consolidate the two competing year-end status-transition implementations** *(surfaced by the R2.1 investigation)*. `routers/year_end.py`'s generic `PATCH /engagements/{id}/status` and `routers/year_end_reviews.py`'s four specific `POST /reviews/*` endpoints both drive the same draft→in_review→approved→locked transition on `year_end_engagements`, writing overlapping-but-different column sets (`reviewed_by`/`approved_by` vs. `submitted_by`/`revision_requested_by`/`final_approved_by`). Both work today (migration 155 added columns for both) but the duplication is a maintainability risk — a future change to one easily misses the other. *Effort:* M. *Benefit:* one source of truth for the year-end review workflow.
+- **R3.8 — Fix the non-functional year-end review workflow and consolidate its two implementations. DELIVERED.** *(surfaced by the R2.1 investigation; found to be far more serious by the fresh Tier 3 re-scope)*. The original framing was "two competing implementations, both work, pick one" — the re-scope found neither was actually reachable: `apps/web/lib/api/yearEnd.ts` called `/api/year-end/engagements/{id}/review/...` while `routers/year_end_reviews.py`'s real routes were `/api/year-end/{id}/reviews/...` (no `/engagements/` segment at all, unlike every other year-end sub-resource router) — the review page's Submit/Approve/Request Revision/Final Approve buttons all 404'd in production. Fixed by adding the missing `/engagements/` segment to the router (matching convention) and correcting the frontend's paths; added the missing `GET .../reviews` endpoint the review page needs for its step-timeline and history display (previously fetched a route that never existed); extracted the one genuinely-shared behavior (`year_end.py`'s FY-lock-on-completion side effect, which — since its own endpoint was never reachable either — had never actually run for a real review-workflow completion) into `services/year_end_workflow_service.py` and wired it into `year_end_reviews.py`'s `final_approve`, the transition users can actually reach. `year_end.py`'s generic status endpoint and `year_end_reviews.py`'s richer per-step audit/revision-request workflow remain deliberately separate (a real, intentional difference in capability, not accidental duplication) but now share the one behavior that must not diverge. *Effort:* S (as re-scoped). *Benefit:* the year-end review workflow now actually works end-to-end; the FY-lock integration now fires on the real, used completion path.
 - **R2.11.1 — Bank-statement re-import path for pre-R2.11 statements** *(surfaced by the R2.11 fix phase, promoted here at Tier 2 close — not yet scoped)*. Statements imported before R2.11's parser fixes keep their old, incorrectly-signed/scaled rows on disk — nothing re-derives them from the fix, and the existing dedupe logic won't treat a corrected re-upload as new rows (by design, to prevent double-counting). Needs a product/design decision before implementation: how aggressive should re-import matching be (exact hash match vs. fuzzy date+amount match), does it replace rows in place or supersede them with an audit trail, and does it need its own CA-confirmation step given it can change historical reconciled balances. *Effort:* M. *Benefit:* firms that imported bank data before R2.11 get correct historical balances without a manual re-entry.
 - **R3.9 — Audit the ~57 migration-created tables with no backend reader** *(surfaced by the R2.2 regression review)*. Some may be reached directly from the frontend via PostgREST rather than through a backend router — the same F14 concern (business logic / unmediated table access from the browser) flagged elsewhere in this audit. Needs a systematic per-table check (grep `apps/web` for direct `.from("<table>")` reads/writes against each name) before deciding whether each is dead schema (safe to leave or formally deprecate) or an undocumented frontend-direct access path (a CLAUDE.md violation — "zero business logic in the frontend" — needing the same treatment as R2.10's payroll migration). *Effort:* M. *Benefit:* closes the door on any remaining unmediated-table-access surface; removes schema clutter.
 - **R3.10 — Implement Section 80CCD(2) and verify Sections 206AA/206AB's status** *(surfaced by the R2.3 regression review; 206AA scope widened by the R3.1 re-audit)*. Section 80CCD(2) (employer NPS contribution) is deductible under the new regime — unlike the rest of Chapter VI-A — but is entirely unimplemented in `domain/income_tax`. Separately, `tds_validator.py` hardcodes BOTH Section 206AA (missing-PAN, 20% floor — duplicated in `tds_computer.py` too) and Section 206AB (non-filer doubled rate) with no FY registry and no `verified` flag; 206AB in particular may have been altered by Finance Act 2025 and needs verification against the Act's actual text before either changing a compliance-conservative behaviour or leaving a since-repealed check silently in place. *Effort:* S–M. *Benefit:* closes a real deduction gap and confirms/corrects two compliance-sensitive checks.
@@ -2863,4 +2863,68 @@ now-deleted client-side business logic and raw-Supabase calls).
 **Next:** the remaining ~44 lower-risk orphaned routes (link-or-delete, no
 data hazard) are a follow-up, not attempted in this pass — proceeding to
 R3.8's broken-in-production year-end workflow next.
+
+## Milestone R3.8 — fix the non-functional year-end review workflow (DELIVERED)
+
+**Goal:** the original roadmap framing ("two competing implementations, both
+work today, pick one") undersold the item — the fresh Tier 3 re-scope found
+that neither implementation was actually reachable from the frontend at all,
+so real users could not progress a year-end engagement through review.
+
+**Root cause:** `apps/web/lib/api/yearEnd.ts`'s `review.*` functions called
+`/api/year-end/engagements/{id}/review/...` (singular "review", and
+`/review/submit` rather than `/review/submit-for-review`). The real router,
+`routers/year_end_reviews.py`, registered its routes as
+`/api/year-end/{id}/reviews/...` — no `/engagements/` path segment at all,
+unlike `year_end.py` and every other year-end sub-resource router
+(checklist/adjustments/statements/notes/exports), which all use
+`/engagements/{id}/...`. Neither side matched the other. Every button on
+the review page (Submit for Review, Approve, Request Revision, Final
+Approve & Lock) 404'd.
+
+**What shipped:**
+- `year_end_reviews.py`'s four `POST` routes gained the missing
+  `/engagements/` segment, matching every other year-end router's own
+  convention — a real backend inconsistency fixed at the source, not just
+  papered over in the frontend.
+- New `GET /engagements/{engagement_id}/reviews` endpoint — the review
+  page's step-timeline (`prepared`/`reviewed`/`approved`, each with the
+  completing user's resolved name/role) and full audit history, built from
+  the engagement's own per-step actor/timestamp columns and the
+  `year_end_reviews` audit table (`_record_review_event`), resolving
+  `auth_user_id` → name/role via a `users` lookup. This endpoint never
+  existed before — the frontend was calling a route with no backend
+  implementation whatsoever, not just a wrong path.
+- **New `services/year_end_workflow_service.py`** — extracts the one
+  behavior that genuinely must not diverge between the two routers
+  (`year_end.py`'s auto-lock-the-financial-year-on-completion side effect)
+  into a shared function, wired into both `year_end.py`'s status endpoint
+  (unchanged behavior, now delegating) and `year_end_reviews.py`'s
+  `final_approve` (previously missing it entirely — since
+  `year_end.py`'s own endpoint was never reachable either, this side effect
+  had never actually fired for a real review-workflow completion in
+  production). The two routers' genuinely different capabilities (a
+  generic transition vs. a richer 4-step audit/revision-request workflow)
+  are deliberately left separate — a real difference, not accidental
+  duplication, per the re-scope's finding.
+- Frontend `yearEnd.ts` corrected to call the fixed paths.
+
+**Verified:** 7 new tests (`test_r3_8_year_end_review_workflow.py`) proving
+the corrected paths are reachable, `final_approve` locks the financial year
+(the behavior only the unreachable endpoint had before), and the new GET
+endpoint returns correctly-built steps/history including resolved actor
+names and fixed from/to status pairs. All 11 pre-existing year-end tests
+(including `test_year_lock_management.py`'s FY-lock integration test)
+still pass unchanged. Full mock-mode suite: 2,428 passed, same 23
+pre-existing unrelated failures. `tsc --noEmit` clean, `eslint` clean.
+Manual dev-server verification via Playwright: navigated to the review
+page and confirmed the browser's network request now hits
+`/api/year-end/engagements/_placeholder/reviews` (the corrected path) and
+receives a real `503 SUPABASE_URL not set` *from inside the route
+handler* — proof the route now resolves at all (a path mismatch 404s
+before reaching any handler code; this sandbox has no live Supabase
+project to complete the request past that point).
+
+**Next:** R3.11 (debit_notes header/lines compensation) — small, well-
+scoped, with a direct precedent to mirror.
 
