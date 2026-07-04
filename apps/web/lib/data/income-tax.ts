@@ -320,21 +320,95 @@ export async function getCiiTable(): Promise<{ ciiByFy: Record<string, number>; 
   return { ciiByFy: json.data.cii_by_fy, latestVerifiedFy: json.data.latest_verified_fy };
 }
 
-export async function getAdvanceTaxPayments(
-  clientId: string,
-  financialYear: string,
-): Promise<Record<string, unknown>[]> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-  const { data, error } = await sb
-    .from("advance_tax_payments")
-    .select("*")
-    .eq("firm_id", firmId)
-    .eq("client_id", clientId)
-    .eq("financial_year", financialYear)
-    .order("installment_number");
-  if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as Record<string, unknown>[];
+// ── Advance tax interest (R3.13a) ───────────────────────────────────────────
+// Section 207/208/234C — all computed server-side by
+// domain/income_tax/advance_tax_interest_engine.py. Previously
+// apps/web/app/income-tax/advance-tax/page.tsx computed interest itself
+// with an incorrect formula (actual-payment-delay months, no 12%/36%
+// trigger tolerance — the Section 234B shape, not 234C's fixed 3/3/3/1
+// month periods) and wrote straight to advance_tax_payments from the
+// browser with no server-side validation.
+
+export interface AdvanceTaxInstallmentInput {
+  installment_number: 1 | 2 | 3 | 4;
+  paid_amount_paise: number;
+  paid_date?: string | null; // YYYY-MM-DD
+  challan_number?: string | null;
+}
+
+export interface ComputeAdvanceTaxRequest {
+  fy: string;
+  estimated_tax_paise: number;
+  installments: AdvanceTaxInstallmentInput[];
+}
+
+export interface AdvanceTaxInstallmentResult {
+  installment_number: 1 | 2 | 3 | 4;
+  due_date: string;
+  cumulative_required_percent: number;
+  trigger_percent: number;
+  required_cumulative_paise: number;
+  actual_cumulative_paid_paise: number;
+  is_short: boolean;
+  shortfall_paise: number;
+  interest_months: number;
+  interest_paise: number;
+}
+
+export interface AdvanceTaxComputeResult {
+  fy: string;
+  estimated_tax_paise: number;
+  total_interest_paise: number;
+  section_ref: string;
+  installments: AdvanceTaxInstallmentResult[];
+}
+
+export interface AdvanceTaxRecord {
+  id: string;
+  client_id: string;
+  financial_year: string;
+  installment_number: 1 | 2 | 3 | 4;
+  due_date: string;
+  required_percent: number;
+  estimated_tax_paise: number;
+  paid_amount_paise: number;
+  paid_date: string | null;
+  challan_number: string | null;
+}
+
+export interface SaveAdvanceTaxRequest extends ComputeAdvanceTaxRequest {
+  client_id: string;
+}
+
+/** Stateless Section 234C interest estimator — computes only, never persists. */
+export async function computeAdvanceTaxInterest(req: ComputeAdvanceTaxRequest): Promise<AdvanceTaxComputeResult> {
+  const res = await fetch(`${API_BASE}/api/income-tax/advance-tax/compute`, {
+    method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
+  });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error ?? `Advance tax compute failed: ${res.statusText}`);
+  return json.data as AdvanceTaxComputeResult;
+}
+
+export async function listAdvanceTaxPayments(clientId: string, fy: string): Promise<AdvanceTaxRecord[]> {
+  const params = new URLSearchParams({ client_id: clientId, fy });
+  const res = await fetch(`${API_BASE}/api/income-tax/advance-tax?${params}`, { headers: await _authHeaders() });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to load advance tax payments: ${res.statusText}`);
+  return (json.data ?? []) as AdvanceTaxRecord[];
+}
+
+/** Persists the recorded payment facts — due_date/required_percent are
+ * always derived server-side from the FY's Section 208 schedule, never
+ * sent by the caller. Interest is never stored (it's derived, not a
+ * fact) — call computeAdvanceTaxInterest() for the current breakdown. */
+export async function saveAdvanceTaxPayments(req: SaveAdvanceTaxRequest): Promise<AdvanceTaxRecord[]> {
+  const res = await fetch(`${API_BASE}/api/income-tax/advance-tax`, {
+    method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
+  });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to save advance tax payments: ${res.statusText}`);
+  return json.data as AdvanceTaxRecord[];
 }
 
 export async function getITNotices(clientId: string): Promise<Record<string, unknown>[]> {

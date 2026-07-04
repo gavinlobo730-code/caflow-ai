@@ -259,7 +259,15 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 - **R3.10 — Implement Section 80CCD(2) and verify Sections 206AA/206AB's status** *(surfaced by the R2.3 regression review; 206AA scope widened by the R3.1 re-audit)*. Section 80CCD(2) (employer NPS contribution) is deductible under the new regime — unlike the rest of Chapter VI-A — but is entirely unimplemented in `domain/income_tax`. Separately, `tds_validator.py` hardcodes BOTH Section 206AA (missing-PAN, 20% floor — duplicated in `tds_computer.py` too) and Section 206AB (non-filer doubled rate) with no FY registry and no `verified` flag; 206AB in particular may have been altered by Finance Act 2025 and needs verification against the Act's actual text before either changing a compliance-conservative behaviour or leaving a since-repealed check silently in place. *Effort:* S–M. *Benefit:* closes a real deduction gap and confirms/corrects two compliance-sensitive checks.
 - **R3.11 — Compensate `debit_notes.create_debit_note`'s header/lines insert** *(surfaced by the R2.9 regression review, low priority)*. The header is inserted via `insert_with_number` (now durably unique per R2.9) and `debit_note_lines` afterward with no compensation — a lines-insert failure leaves an orphaned draft header with zero lines. Not a money- or statutory-correctness issue (a draft, not a posted document) but worth closing for consistency with every other multi-step insert this Tier 2 pass hardened. *Effort:* S. *Benefit:* no orphaned draft rows from a partial write.
 - **R3.12 — Verify Maharashtra/West Bengal/Tamil Nadu Professional Tax slabs against current state notifications** *(surfaced by the R2.10 regression review)*. `routers/payroll.py::_PT_SLABS_BY_STATE`'s Karnataka entry is this codebase's original, unit-tested baseline; the other three states were ported verbatim from the frontend's pre-existing (pre-R2.10) client-side logic — the only source for those states anywhere in this repo — and have not been independently re-confirmed against each state's current Profession Tax Act/notification. Same "pending statutory verification" treatment as FY 2026-27's income-tax figures; updating a verified value is a one-line data change in `_PT_SLABS_BY_STATE`, not a code change. *Effort:* S (verification only, assuming the existing slab shape is correct). *Benefit:* removes the one remaining unverified-statutory-value flag from the payroll module.
-- **R3.13 — Migrate remaining frontend pages that compute-and-persist statutory calculations independently of the backend** *(surfaced by the R3.1 re-audit; R3.1b covers the capital-gains instance separately given its size)*. `apps/web/lib/data/compliance.ts`'s `seedComplianceCalendar()` computes GSTR-1/3B/9 due dates client-side AND writes them directly to a `compliance_calendar` Supabase table from the browser — the same "zero business logic in the frontend" violation R2.3/R2.10 already fixed elsewhere, but for compliance due dates instead of tax slabs. `apps/web/app/income-tax/advance-tax/page.tsx` has a frontend-only Section 234C interest calculator (`compute234CInterest`) with no backend equivalent, persisting computed interest to `advance_tax_payments`. `apps/web/app/payroll/page.tsx`'s `generatePfEcr`/`generateEsiStatement` CSV exporters independently re-hardcode PF/ESI rates a third time (after the backend and `payrollTdsEstimate.ts`) purely for export formatting — lower risk since it's export-only, not persisted, but still a third copy to keep in sync. *Effort:* M. *Benefit:* the last un-migrated "business logic in the frontend" instances close; one fewer place for compliance/advance-tax numbers to silently drift.
+- **R3.13 — Migrate remaining frontend pages that compute-and-persist statutory calculations independently of the backend. PARTIALLY DELIVERED (R3.13a).** *(surfaced by the R3.1 re-audit; R3.1b covers the capital-gains instance separately given its size)*. Three instances found; a scoping pass ahead of full delivery (see Implementation Log) found the advance-tax item was not just a relocation job but an actual formula bug, and fixed it first (R3.13a) as the highest-value, most isolated piece. Two remain:
+  - `apps/web/lib/data/compliance.ts`'s `seedComplianceCalendar()` computes GSTR-1/3B/9 due dates client-side AND writes them directly to a `compliance_calendar` Supabase table from the browser — the same "zero business logic in the frontend" violation R2.3/R2.10 already fixed elsewhere, but for compliance due dates instead of tax slabs. The scoping pass found this is a genuine three-way consolidation, not a one-line swap: the backend already has an equivalent (`POST /api/compliance/seed` in `routers/compliance.py`, using `services/compliance_engine.py`'s due-date functions), but it writes to a *different* table (`compliance_tasks`) than the one the frontend uses (`compliance_calendar`, which has zero backend readers) — and a third system (`compliance_records`/`compliance_obligation_service.py`) also exists. Needs a decision on which becomes canonical before migrating this (also gates R3.2, below). *Effort:* M.
+  - `apps/web/app/payroll/page.tsx`'s `generatePfEcr`/`generateEsiStatement` CSV exporters independently re-hardcode PF/ESI rates a third time (after the backend and `payrollTdsEstimate.ts`) purely for export formatting. The scoping pass checked these byte-for-byte against the backend's canonical `_compute_pf`/`_compute_esi` — no discrepancy found; lowest risk of the three, not persisted, arguably not worth touching. *Effort:* S.
+
+  *Benefit:* the last un-migrated "business logic in the frontend" instances close; one fewer place for compliance numbers to silently drift.
+
+### R3.13a — Section 234C advance-tax interest engine (DELIVERED)
+
+Scoping this item (see Implementation Log) found `apps/web/app/income-tax/advance-tax/page.tsx`'s `compute234CInterest()` was not merely unmigrated but structurally wrong: it computed interest as a function of *actual* payment delay (the Section 234B shape) instead of Section 234C's fixed 3-month (instalments 1–3) / 1-month (instalment 4) periods, and had no 12%/36% trigger tolerance for instalments 1/2 at all — both real, user-facing correctness defects, not just a frontend/backend duplication. Fixed with a new `domain/income_tax/advance_tax_interest_engine.py`, backend endpoints, hardened RLS (migration 165), and a frontend rewrite. *Effort:* S–M (as scoped). *Benefit:* closes a live wrong-interest-amount bug in a CA-facing tax calculator, and closes the last raw-table write path on `advance_tax_payments`.
 
 ### Tier 4 — Long-term (differentiation)
 Government-data ingestion via GSP/ASP-pull + Account Aggregator (submit stays CA-confirmed); reliable two-way Tally/Busy/Zoho import; unified deterministic-then-narrate AI layer; RAG tax-law copilot with citations; DPDP consent vault; mobile/PWA companion. These are where PracticeSync becomes a *better* product, not a cheaper clone.
@@ -2357,7 +2365,7 @@ batch compliance cockpit), per the user's priority; R2.6's production-drift
 reconciliation remains the standing highest-priority action for whoever has
 production credentials.
 
-## Milestone R3.1 — Statutory rules-as-data registry, re-scoped (IN PROGRESS)
+## Milestone R3.1 — Statutory rules-as-data registry, re-scoped (DELIVERED — R3.1a + R3.1b)
 
 **Goal:** the original roadmap text ("single source of truth for slabs/
 thresholds/due-dates; eliminates the class of bugs behind F15/F17/F18")
@@ -2567,4 +2575,123 @@ uncaught client-side exceptions occur throughout.
 priority — R3.2 (cross-client compliance cockpit), R3.13 (the remaining
 frontend pages that compute-and-persist independently of the backend), or
 R2.6's standing production-drift reconciliation.
+
+## Milestone R3.13 scoping — R3.2 and R3.13 sized before full delivery
+
+**Goal:** per the user's decision, scope R3.2 and R3.13 in detail before committing
+to full delivery of either — R3.1's re-audit had already shown that roadmap
+text can undersell (or, in R3.1b's case, mis-scope entirely) what a Tier 3
+item actually requires.
+
+**Findings:**
+- **R3.13's three instances are not uniform risk.** The advance-tax
+  Section 234C calculator turned out to be an actual formula bug (see
+  R3.13a below), not just unmigrated logic. The compliance-calendar item
+  (`lib/data/compliance.ts`) is a genuine three-way data-model
+  consolidation — a backend equivalent already exists (`POST
+  /api/compliance/seed`) but writes to a *different* table
+  (`compliance_tasks`) than the frontend's `compliance_calendar` (zero
+  backend readers), and a third system (`compliance_records`) also exists;
+  this needs a canonical-table decision before it can be migrated cleanly.
+  The payroll CSV-export item was checked byte-for-byte against the
+  backend's canonical PF/ESI logic and found to already match exactly —
+  lowest risk, arguably not worth a dedicated pass.
+- **R3.2's backend aggregation half is smaller than the roadmap assumed.**
+  `compliance_obligation_service.py`'s `generate_due`/`dashboard`/`calendar`
+  already loop across all of a firm's clients when `client_id` is omitted
+  — real, working cross-client aggregation exists today for the
+  generic due-date/status layer. What's still genuinely large: new
+  batch-aware "generate real GSTR-1/3B/TDS/MCA records" and
+  "mark-filed+ARN-capture" endpoints across N clients (the per-client
+  workspaces — `gst_workspace.py`/`tds_workspace.py`/`mca_workspace.py` —
+  all currently require a single mandatory `client_id`), a new firm-wide
+  cockpit UI, and the same compliance-data-model consolidation R3.13 needs.
+  Re-split estimate: backend batch endpoints M/L, cockpit UI L, data-model
+  decision blocking both.
+
+**Decision (with the user):** fix the 234C bug first (R3.13a) as the
+smallest, highest-value, most isolated finding — a live correctness defect
+in a CA-facing calculator, not just an architecture cleanup. The
+compliance-data-model consolidation (blocking the rest of R3.13 and all of
+R3.2) remains open, tracked under R3.13's roadmap entry.
+
+## Milestone R3.13a — Section 234C advance-tax interest engine (DELIVERED)
+
+**Goal:** `apps/web/app/income-tax/advance-tax/page.tsx`'s
+`compute234CInterest()` was not merely unmigrated frontend logic (the
+original framing) but a genuine formula bug: it computed interest as
+`shortfall × 1% × ceil(days-late / 30)` — the Section 234B ("interest for
+default") shape — instead of Section 234C's actual rule, a FIXED period per
+instalment (3 months for instalments 1–3, 1 month for instalment 4)
+regardless of how late the payment actually was. It also had no equivalent
+of Section 234C(1)'s 12%/36% trigger tolerance for instalments 1 and 2, so
+a CA who cleared that tolerance (e.g. paid exactly 12% by 15 Jun) would
+still see the old code charge interest they don't legally owe. The backend
+had no Section 234C capability at all.
+
+**What shipped:**
+- **New `domain/income_tax/advance_tax_interest_engine.py`** —
+  `INSTALLMENT_RULES` encodes Section 208's 15/45/75/100% cumulative
+  schedule together with Section 234C(1)'s 12/36/75/100% trigger
+  thresholds and 3/3/3/1-month fixed interest periods; `compute_234c_interest`
+  computes, per instalment, the cumulative amount actually paid *as of that
+  instalment's own due date* (a payment recorded late against an earlier
+  instalment's slot still correctly counts toward a later instalment's
+  cumulative, since by then it has genuinely been paid), whether the
+  trigger tolerance was breached, the shortfall, and the interest. Treats
+  Section 234C's numeric structure as settled statutory text (like
+  111A/112A were in R3.1b) rather than an annually-revised rate table —
+  no "pending verification" flag needed. Documented, not attempted:
+  Section 234C's proviso exempting shortfall caused by unforeseeable income
+  (capital gains, lottery winnings, certain dividends), since the existing
+  data model has no per-income-type breakdown to evaluate it.
+- **New endpoints** (`routers/income_tax.py`): `POST /advance-tax/compute`
+  (stateless), `GET /advance-tax` (firm+client+FY scoped), `POST
+  /advance-tax` (persists the recorded payment facts — paid amount/date/
+  challan — with `due_date`/`required_percent` always derived server-side
+  from the FY's Section 208 schedule; the request model has no field for
+  either, so a caller cannot supply and have stored a value the schedule
+  itself didn't dictate; interest itself is never persisted, since it's
+  derived, not a fact).
+- **`advance_tax_payments` RLS hardened** (migration 165) — the same
+  `FOR ALL`/firm-id-only gap R3.0/R3.1b fixed elsewhere: any authenticated
+  firm staff member could directly write a row with a self-reported
+  `paid_amount_paise`/`due_date`/`required_percent`. This table also
+  predates migration 084's assignment-scoped RLS sweep, so the real-Postgres
+  proof test uses a Partner-role fixture for the same documented reason as
+  R3.1b's capital-gains proof.
+- **Frontend rewrite:** `compute234CInterest()` removed entirely; the page
+  now calls the compute endpoint with the same 400ms-debounce pattern as
+  the capital-gains calculator, and renders the due date/required amount/
+  shortfall/interest the backend returns rather than deriving any of it
+  client-side. Also removed a dead, zero-caller raw-Supabase reader
+  (`getAdvanceTaxPayments` in `lib/data/income-tax.ts`) found during the
+  rewrite, replaced with the new backend-calling equivalent.
+
+**Verified:** 19 new backend tests (11 in
+`test_advance_tax_interest_engine.py` — including hand-worked cases for
+the trigger tolerance itself, the fixed-period-regardless-of-actual-delay
+behavior that was the core bug, and the late-payment-cascades-to-later-
+instalments cumulative logic; 8 in `test_r3_13a_advance_tax_endpoints.py`
+proving the save endpoint's request model cannot accept a caller-supplied
+`due_date`/`required_percent`); 5 in `test_r3_13a_advance_tax_rls_pg.py`
+against real Postgres 16. Full mock-mode suite: 2,421 passed, same 23
+pre-existing unrelated failures, 85 skipped (real-Postgres tests skip
+without `HARNESS_PG`). Combined with `HARNESS_PG` enabled (every
+real-Postgres proof across the whole repo in one pass, including all 41
+`-k pg` tests and this milestone's 5): 2,463 passed, same 23 failures, 43
+skipped, zero new. `tsc --noEmit` clean,
+`eslint` clean, full `next build` clean (`/income-tax/advance-tax`
+compiles at 7.75 kB). Manual dev-server verification via Playwright (same
+synthetic-session technique as R2.10/R3.1b): the rewritten page mounts
+cleanly, the debounced compute call fires against the real backend
+(observed failing with a real `503 SUPABASE_URL not set` in this sandbox,
+surfaced through the existing error banner), and zero uncaught client-side
+exceptions occur throughout.
+
+**Next:** the compliance-data-model consolidation (three parallel systems
+— `compliance_tasks`/`compliance_calendar`/`compliance_records` — blocking
+the rest of R3.13 and all of R3.2) remains the standing decision point;
+R2.6's production-drift reconciliation remains blocked on production
+credentials this session does not have.
 
