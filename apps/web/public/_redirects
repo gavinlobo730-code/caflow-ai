@@ -42,6 +42,10 @@
 /clients/:id/relationships/       /clients/_placeholder/relationships/        200
 /clients/:id/health               /clients/_placeholder/health/               200
 /clients/:id/health/              /clients/_placeholder/health/               200
+/clients/:id/knowledge            /clients/_placeholder/knowledge/            200
+/clients/:id/knowledge/           /clients/_placeholder/knowledge/            200
+/clients/:id/instructions         /clients/_placeholder/instructions/         200
+/clients/:id/instructions/        /clients/_placeholder/instructions/         200
 
 # Year-end deep subroutes (engagementId is also dynamic)
 /clients/:id/year-end/:eid/dashboard             /clients/_placeholder/year-end/_placeholder/dashboard/             200
@@ -60,6 +64,9 @@
 /clients/:id/year-end/:eid/exports/              /clients/_placeholder/year-end/_placeholder/exports/               200
 /clients/:id/year-end/:eid/schedules             /clients/_placeholder/year-end/_placeholder/schedules/             200
 /clients/:id/year-end/:eid/schedules/            /clients/_placeholder/year-end/_placeholder/schedules/             200
+
+/clients/:id/year-end/xbrl         /clients/_placeholder/year-end/xbrl/       200
+/clients/:id/year-end/xbrl/        /clients/_placeholder/year-end/xbrl/       200
 
 /clients/:id/year-end             /clients/_placeholder/year-end/             200
 /clients/:id/year-end/            /clients/_placeholder/year-end/             200
