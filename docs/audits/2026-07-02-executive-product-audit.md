@@ -4443,3 +4443,144 @@ same 23 pre-existing unrelated failures).
 (R3.3, R3.5a-e, R3.6) are delivered and verified.**
 
 **Next:** final production-readiness audit before hand-back for manual QA.
+
+---
+
+# Final Production-Readiness Audit (2026-07-04) — Handing Back for Manual QA
+
+This closes the engineering mission that produced everything above (Tier 1
+critical fixes, Tier 2 hardening, Tier 3 R-series scoping and delivery).
+Every item below was independently re-verified against current code as of
+this commit — not carried forward from memory.
+
+## Full regression, run fresh for this handoff
+
+- **Backend, mock mode:** `2,501 passed, 23 failed, 126 skipped`. The 23
+  failures are the same pre-existing, doc-acknowledged set that has been
+  constant all session (`test_hardening.py`, `test_phase3_gst.py`,
+  `test_phase3_mca.py`, `test_phase3_tds.py` — environment/fixture issues
+  unrelated to any change made this session, not new regressions). All 126
+  skips verified to be `HARNESS_PG`/`SUPABASE_URL`-gated real-Postgres or
+  production-integration proofs — none skipped for a missing dependency or
+  unrelated environment problem.
+- **Backend, real Postgres 16 (every `*_pg.py` file, every migration
+  applied):** `81 passed, 0 failed` across all 15 real-Postgres proof
+  files (RLS/grant hardening, atomic-RPC postings, schema-drift fixes,
+  index existence, tenancy backstops).
+- **Frontend:** `tsc --noEmit` clean, `eslint` clean, full `next build`
+  succeeds (143 pages).
+- **Test-suite hygiene fix:** removed `apps/api/test_invoice_generation.py`,
+  a stray root-level script (not under `tests/`) that re-implemented
+  GST/invoice-number math inline instead of importing real production
+  code, inflating the pass count by 5 without exercising any actual code
+  path. Real coverage for the same logic already exists properly under
+  `tests/`.
+
+## Items requiring a product, business, or statutory decision (not bugs — deferred deliberately)
+
+These are the accumulated set of findings across the whole mission that
+were investigated, confirmed real, and explicitly **not** resolved because
+the correct fix depends on a decision only the business/product owner (or
+in two cases, a statutory reference) can make. Re-verified against current
+code as of this commit; all still open:
+
+1. **`compliance_calendar` has 4 live frontend consumers left** —
+   `gst/page.tsx`, `risks/page.tsx`, `reports/cash-flow/page.tsx`, and
+   `income-tax/page.tsx` (the last one an active writer) all still read
+   `compliance_calendar` directly. It remains fully writable by
+   `authenticated` (no RLS hardening migration exists for it) and can't be
+   retired or hardened until these 4 pages migrate to the canonical
+   `compliance_tasks` model (R3.13e).
+2. **`/risks` duplicates its own risk-scoring logic client-side** instead
+   of calling `routers/risks.py`/`domain/risk_engine.py` — zero frontend
+   callers of `api.risks.*` exist. Two independent, potentially-diverging
+   implementations of the same business logic (R3.13d).
+3. **No manual single-account add/edit UI for the Chart of Accounts** —
+   only bulk import (`/accounting/coa-import`) since the old
+   `/accounting/chart-of-accounts` stub was retired (R3.3b). Worth a
+   product call on priority before a firm needs to hand-correct one
+   account.
+4. **The `/practice/compliance` "Total" metric's definition is undecided**
+   — currently lifetime-total (all records ever, including
+   Filed/Completed) via `aggregate_dashboard()`, which has its own test
+   locking in that exact contract. Bounding it to a window would change a
+   displayed business number; leaving it unbounded means
+   `compliance_obligation_service.py`'s `dashboard()`/`calendar()` remain
+   genuinely unbounded queries — a live R3.5-class performance risk that
+   was investigated (R3.5b) but correctly not guessed at (R3.5b's own
+   milestone was backfilled into this doc above after this final audit
+   caught it missing).
+5. **Two independent, overlapping billing systems remain live**:
+   `fee_engagements`/`fee_invoices`/`fee_receipts` (the firm's client
+   billing, hardened R3.9a/b) vs. `billing_schedules`/
+   `client_sales_invoices` (the firm's own internal-customer billing,
+   `billing_service.py`/`collections_service.py`) — both feed real
+   reporting today (`routers/analytics.py`'s `profitability_analytics`
+   reads one, `collections_service.py`'s AR/collections reads the other).
+   `routers/billing.py` itself carries a code comment acknowledging the
+   split. Untangling which system is canonical is a product decision.
+6. **Section 206AB (higher TDS for "specified persons"/non-filers) was
+   left unbuilt** (R3.10) — needs new `is_non_filer` schema modeling the
+   IT department doesn't expose an API for, plus a Finance Act 2025 rate
+   that couldn't be independently verified from IT Act text alone.
+   `tds_validator.py::is_higher_rate_applicable` exists but has zero live
+   callers — do not wire it up without CA/statutory sign-off on the rate.
+7. **Professional Tax slabs for Maharashtra, West Bengal, and Tamil Nadu**
+   (`routers/payroll.py::_PT_SLABS_BY_STATE`) are implemented but
+   unverified against current state government notifications (R3.12) — a
+   one-line data change once a CA confirms the current slabs.
+8. **R3.7's year-end closing journal is still a presentational preview,
+   not a real posting** — no mechanism posts an actual closing journal
+   moving P&L into `reserves_and_surplus`. Needs an explicit accounting
+   decision on the correct closing-journal shape before it's built.
+9. **R2.11.1: bank statements imported before that fix can't be safely
+   re-imported/deduplicated retroactively** — confirmed as a standing,
+   by-design limitation, not an oversight.
+10. **R3.9c's 11 remaining unmediated-write tables** are a ranked,
+    documented backlog (not silently forgotten) — notably `transactions`/
+    `transaction_lines` feed the live `/gst/gstr1` return with no backend
+    persistence endpoint at all. Prioritize before relying on that flow
+    for a real filing.
+
+## A test-coverage quality gap worth QA's attention
+
+`tests/test_health.py` and `tests/test_health_engine.py` still duplicate
+the health-scoring formula inline (with an explicit "duplicated here for
+isolation" comment) rather than importing `routers/health.py`'s real
+`DIMENSION_WEIGHTS_BP`/`_grade`/`_weighted_score`. This is the exact
+pattern that let the R3.14 schema drift ship undetected for as long as it
+did (R3.13d flagged this follow-up; it was never resolved). These tests
+will keep passing even if the real router's formula changes — they are
+not a safety net against that regression class. Recommend QA/engineering
+retire the inline duplicates in favor of importing the real helpers (the
+same fix R3.14's own test file already applies), rather than trusting
+green-here as proof the live scoring is correct.
+
+## What manual QA should focus on first
+
+Given the size of this mission, the highest-leverage manual QA passes are:
+
+- **End-to-end filing flows with a real Supabase project** (GST, TDS,
+  MCA, ITR) — this mission's real-Postgres proofs cover schema/RLS/
+  atomicity in isolation; they do not replace testing the full flow
+  against a live Supabase project with real JWTs, storage, and the
+  production JWKS endpoint. R2.6's production-drift reconciliation
+  against real Supabase was never run this session (requires human
+  production credentials) and remains the single highest-priority
+  pre-launch action.
+- **The "CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT" guardrails** on every
+  government-facing action (GSTR-1/3B/9, TDS returns, MCA filings) — spot
+  check that no code path bypasses the explicit-confirmation click.
+- **Multi-tenant isolation** under concurrent load — the RLS/grant
+  hardening this session added (journal_entries/journal_lines,
+  fee_receipts/fee_invoices, plus everything from Tier 2's R2.4/R2.6) is
+  proven correct in isolation via real-Postgres tests; a QA pass with two
+  real firms' worth of concurrent traffic is the next level of
+  confidence.
+- **The 30-second auth-lookup cache TTL** (R3.5e) — confirm the bounded
+  staleness window (a disabled account / suspended firm / forced logout
+  taking up to 30s to take effect) is acceptable for the security posture
+  the business wants; this was an explicit, documented trade-off, not an
+  oversight.
+- **The 10 decision items above** — none are "broken," all are real,
+  working-as-currently-designed features/gaps waiting on a business call.
