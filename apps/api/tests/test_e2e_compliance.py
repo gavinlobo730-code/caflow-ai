@@ -103,3 +103,38 @@ def test_compliance_foreign_firm_cannot_update(monkeypatch):
     assert ei.value.status_code == 404
     # unchanged
     assert cr.get_compliance_record(rid, CALLER)["data"]["status"] == "Not Started"
+
+
+# --------------------------------------------------------------------------- #
+#  Manual-create dedup guard (compliance data-model consolidation gap-close)
+# --------------------------------------------------------------------------- #
+def test_compliance_manual_create_rejects_duplicate_period(monkeypatch):
+    cr, db = _setup(monkeypatch)
+    cr.create_compliance_record(ComplianceRecordIn(
+        client_id="CLI", compliance_type="GST", due_date="2026-07-11",
+        period_start="2026-06-01", period_end="2026-06-30"), CALLER)
+    with pytest.raises(HTTPException) as ei:
+        cr.create_compliance_record(ComplianceRecordIn(
+            client_id="CLI", compliance_type="GST", due_date="2026-07-20",
+            period_start="2026-06-01", period_end="2026-06-30"), CALLER)
+    assert ei.value.status_code == 422
+
+
+def test_compliance_manual_create_allows_distinct_periods(monkeypatch):
+    cr, db = _setup(monkeypatch)
+    r1 = cr.create_compliance_record(ComplianceRecordIn(
+        client_id="CLI", compliance_type="GST", due_date="2026-07-11",
+        period_start="2026-06-01"), CALLER)["data"]
+    r2 = cr.create_compliance_record(ComplianceRecordIn(
+        client_id="CLI", compliance_type="GST", due_date="2026-08-11",
+        period_start="2026-07-01"), CALLER)["data"]
+    assert r1["id"] != r2["id"]
+
+
+def test_compliance_manual_create_without_period_never_dedups(monkeypatch):
+    """No period supplied ⇒ nothing to dedup against; both creates succeed
+    (matches the pre-existing behaviour for callers not yet passing periods)."""
+    cr, db = _setup(monkeypatch)
+    r1 = _create(cr)
+    r2 = _create(cr)
+    assert r1["id"] != r2["id"]

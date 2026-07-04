@@ -3072,3 +3072,135 @@ backend endpoint.
 canonical, per the fresh re-scope's finding) and its dependent R3.13
 remainder — the largest remaining piece of well-scoped Tier 3 work.
 
+## Milestone R3.13b — compliance data-model consolidation, part 1: close the generator gaps (DELIVERED)
+
+**Goal:** the fresh re-scope named three gaps that had to close in
+`compliance_records` before the two losing systems (`compliance_tasks`,
+`compliance_calendar`) could be retired: a no-engagement seeding fallback, a
+missing `UNIQUE(client_id, obligation_type, period_start)` constraint, and a
+health-score formula reconciliation. Re-investigated all three against
+current code (via two parallel deep-research passes covering all three
+backend systems and all six frontend consumers) before implementing — one
+of the three claims didn't survive contact with the code as originally
+worded, and a genuine test-harness bug surfaced while proving the fix.
+
+**Gap 1 — no-engagement fallback (confirmed real, the most consequential
+finding):** `generate_due()`/`generate_for_engagement()` only ever create
+obligations against an existing, ACTIVE `fee_engagements` row. A client with
+zero engagements got nothing generated — HTTP 200, zero records, no error.
+This matters because the frontend's pre-consolidation behaviour
+(`seedComplianceCalendar()`/`generateGSTDeadlines()`) has no engagement
+concept at all: it unconditionally seeds baseline GST obligations for
+*any* client visited, the first time its calendar is empty. Repointing the
+frontend at the canonical generator without fixing this would silently
+regress client onboarding to "generates nothing" for the (likely common)
+case of a client without a fee engagement on file yet.
+- New `generate_default_for_client()` in `compliance_obligation_service.py`
+  — generates the GST-only baseline set (`_gst_obligations()`: 12×GSTR-1 +
+  12×GSTR-3B + 1×GSTR-9 = 25 records, `engagement_id` left NULL), matching
+  the frontend's actual pre-existing default exactly (GST only — the old
+  frontend function never generated ITR/TDS/MCA, unlike the dead backend
+  `POST /api/compliance/seed` endpoint's 30-row set, which the research
+  pass discovered generates a *different*, wider default than the
+  frontend's; the frontend's is the one real users have actually been
+  getting, so it's the one preserved for parity).
+- `generate_due()` now computes `covered_client_ids` (clients with at least
+  one ACTIVE engagement) and applies the fallback only to clients with
+  none — deliberately never on top of a client whose active engagement
+  already scoped obligations on purpose (e.g. an ITR-only engagement must
+  not also gain GST obligations as a side effect of the fallback).
+  Firm-wide calls (`client_id=None`, e.g. the daily scheduler) resolve the
+  fallback target list from `client_repo.find_all(firm_id=...)`.
+- **Found and fixed a real mock-harness bug while proving this**:
+  `ClientRepository.find_all()`'s mock branch never filtered by `firm_id`
+  at all (only the real Supabase branch did) — a genuine cross-firm data
+  leak in mock/test mode, invisible in production (where the real branch
+  filters correctly) but silently defeating firm-scoping in every test that
+  calls `client_repo.find_all(firm_id=...)` under mock mode — 13 call sites
+  across routers/domain/services rely on this filter. Fixed by adding the
+  missing `firm_id` filter to the mock branch, matching the real branch.
+
+**Gap 2 — the "missing UNIQUE constraint" claim: refuted for the generator
+path, confirmed narrower for the manual-create path.** Migration 108
+already added `uq_compliance_records_obligation` — a partial unique index
+on `(firm_id, client_id, obligation_type, period_start) WHERE
+obligation_type IS NOT NULL` — so the claim as originally worded was wrong;
+the auto-generation path (which always sets `obligation_type`) was already
+protected. The real, narrower gap: the manual `POST /api/compliance-records`
+endpoint never sets `obligation_type` (so migration 108's partial index
+never applies to it) and had **zero** dedup of any kind — unlike
+`compliance_calendar`, the table it replaces, which had a plain
+`UNIQUE(client_id, compliance_type, period_start)`. Investigating this also
+surfaced that `ComplianceRecordIn` (the manual-create request model) was
+missing `period_start`/`period_end`/`period_label` entirely — every
+manually-created record silently got an empty period, which would have made
+a period-based dedup guard permanently inert (or worse, block all
+second-and-later manual creates for the same client/type, since every
+record's period compared equal). Fixed together, since the dedup fix is
+meaningless without the model actually carrying a period:
+- Added `period_start`/`period_end`/`period_label` to `ComplianceRecordIn`.
+- `compliance_record_service.create_record()` now rejects (422) a second
+  manual record for the same `(firm_id, client_id, compliance_type,
+  period_start)` — but only when a period is actually supplied, so callers
+  not yet passing one (today, none in the live frontend) see no behaviour
+  change.
+- **New migration 168** adds the DB-level backstop:
+  `uq_compliance_records_manual`, the mirror-image partial index `WHERE
+  obligation_type IS NULL AND deleted_at IS NULL` — proven on real
+  Postgres to reject a genuine duplicate insert, to leave migration 108's
+  own guard undisturbed, and to allow a manual and an auto-generated row to
+  coexist for the same client/period (they occupy different partial-index
+  partitions, which is correct — they're not the same kind of record).
+- `assigned_to`/`priority`/`client_name` remain accepted only via defaults
+  on manual create (not user-supplied) — a smaller, separate gap, noted in
+  Remaining Limitations rather than fixed here (out of scope for the
+  consolidation itself).
+
+**Gap 3 (health-score formula reconciliation) — not yet started,** tracked
+as the next piece: the frontend's `health-score-compute.ts` computes an
+entirely different, richer multi-dimension formula (compliance 50% +
+accounting 25% + document 15% + responsiveness 10%, reading
+`compliance_calendar` + `journal_entries` + `document_requests` +
+`portal_messages`) than the backend's `get_client_health_score()` (a
+simpler `100 − 20×overdue − 10×high-risk − 5×missing-doc` over
+`compliance_records`). These are different metrics computed for different
+purposes today, not a simple swap — reconciling them is its own milestone.
+
+**Cross-cutting finding also confirmed by the research pass (not yet
+acted on, tracked for the next milestones):** `routers/clients.py::
+get_client_workspace` (the live client-360 page), `domain/
+ai_copilot_service.py`, and `domain/memory_pipeline.py` are all wired
+*exclusively* to `compliance_tasks` (System B) today — retiring that table
+without rewiring these three first would silently blank the client
+workspace's compliance panel and the AI Copilot/Memory's compliance
+awareness. `domain/client_service.py` (a whole unused `ClientService`
+class built on System B) is confirmed dead code — zero importers anywhere
+— safe to delete outright rather than migrate. `routers/health.py` has 4
+raw `.table("compliance_tasks")` calls referencing columns that don't
+exist on the table (`task_type`, `filed_late`) and wrong-case status
+literals, wrapped in blanket `try/except: pass` — already silently inert,
+needs deleting for hygiene but changes no runtime behaviour.
+
+**Verified:** 8 new tests in `test_compliance_engagement.py` (client-scoped
+fallback seeds GST-only + is idempotent; an active non-GST engagement is
+excluded from the fallback; firm-wide generation applies the fallback only
+to uncovered clients; a direct `generate_default_for_client()` call), 3 new
+tests in `test_e2e_compliance.py` (duplicate-period rejection, distinct
+periods both allowed, no-period-supplied never dedups — driven through the
+real router), 4 new tests in `test_r3_13b_compliance_dedup_pg.py` against
+real Postgres 16 (duplicate manual insert rejected, distinct periods both
+allowed, migration 108's own guard undisturbed, manual+generated coexist).
+Full mock-mode suite: 2,456 passed, same 23 pre-existing unrelated
+failures, 93 skipped. Combined with `HARNESS_PG` enabled (every
+real-Postgres proof across the whole repo in one pass): confirmed clean —
+see the commit for the exact combined count.
+
+**Next:** R3.13c — the health-score formula reconciliation (gap 3), then
+R3.13d — rewiring the backend-only consumers still exclusively wired to
+`compliance_tasks` (`get_client_workspace`, `ai_copilot_service`,
+`memory_pipeline`, plus the blended `task_service`/`risk_engine`/
+`_check_delete_blockers`), then R3.13e — migrating the six frontend
+consumers onto the canonical API and RLS-hardening (not dropping — no
+confirmed absence of production data) `compliance_tasks`/
+`compliance_calendar`.
+
