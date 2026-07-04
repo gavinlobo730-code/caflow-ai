@@ -267,26 +267,26 @@ export const yearEndApi = {
   review: {
     get: (engagementId: string) =>
       request<{ success: boolean; data: { steps: ReviewStep[]; history: ReviewHistory[] }; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/review`
+        `/api/year-end/engagements/${engagementId}/reviews`
       ),
     submitForReview: (engagementId: string, comment?: string) =>
       request<{ success: boolean; data: YearEndEngagement; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/review/submit`,
+        `/api/year-end/engagements/${engagementId}/reviews/submit-for-review`,
         { method: "POST", body: JSON.stringify({ comment }) }
       ),
     approve: (engagementId: string, comment?: string) =>
       request<{ success: boolean; data: YearEndEngagement; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/review/approve`,
+        `/api/year-end/engagements/${engagementId}/reviews/approve`,
         { method: "POST", body: JSON.stringify({ comment }) }
       ),
     requestRevision: (engagementId: string, comment?: string) =>
       request<{ success: boolean; data: YearEndEngagement; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/review/request-revision`,
+        `/api/year-end/engagements/${engagementId}/reviews/request-revision`,
         { method: "POST", body: JSON.stringify({ comment }) }
       ),
     finalApprove: (engagementId: string, comment?: string) =>
       request<{ success: boolean; data: YearEndEngagement; error: string | null }>(
-        `/api/year-end/engagements/${engagementId}/review/final-approve`,
+        `/api/year-end/engagements/${engagementId}/reviews/final-approve`,
         { method: "POST", body: JSON.stringify({ comment }) }
       ),
   },
