@@ -440,9 +440,10 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
     today = today or date.today()
     today_s = today.isoformat()
     counts = {"due_7": 0, "due_3": 0, "due_1": 0, "overdue": 0}
-    for r in compliance_records_repo.find_all(firm_id=firm_id):
-        if not _OPEN_OBLIGATION(r.get("status")):
-            continue
+    # Pushed server-side: escalate() only ever acts on open obligations, so
+    # there's no reason to also fetch every Filed/Completed row just to
+    # discard it in Python.
+    for r in compliance_records_repo.find_all(firm_id=firm_id, exclude_statuses=("Filed", "Completed")):
         due = str(r.get("due_date", ""))[:10]
         if not due:
             continue
