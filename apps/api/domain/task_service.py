@@ -19,7 +19,6 @@ class TaskDomainService:
 
     def get_dashboard_summary(self, firm_id: Optional[str] = None) -> dict:
         from datetime import date, timedelta
-        from repositories.compliance_repository import compliance_repo
         from domain.compliance_record_service import compliance_record_service
         today = date.today()
         today_str = today.isoformat()
@@ -31,15 +30,14 @@ class TaskDomainService:
         tasks = task_repo.find_all(firm_id=firm_id)
         open_tasks = [t for t in tasks if t.get("status") != "completed"]
 
+        # R3.13d: compliance_records (System A) is the sole source now —
+        # compliance_tasks (System B) is being retired.
         all_records = compliance_record_service.list_records(firm_id=firm_id)
         compliance_overdue = len([r for r in all_records if r.get("status") == "Overdue"])
         compliance_due_week = len([
             r for r in all_records
             if r.get("status") not in ("Filed",) and today_str <= r.get("due_date", "") <= week_end
         ])
-
-        compliance_tasks = compliance_repo.find_all(firm_id=firm_id)
-        overdue_compliance_tasks = len([c for c in compliance_tasks if c.get("status") == "overdue"])
 
         high_risk_clients = 0
         for client in active_clients:
@@ -64,7 +62,6 @@ class TaskDomainService:
             "review_required": len([t for t in open_tasks if t.get("status") == "review_required"]),
             "total_open_tasks": len(open_tasks),
             "documents_pending_review": 2,
-            "overdue_compliance": overdue_compliance_tasks,
             "compliance_due_week": compliance_due_week,
             "compliance_overdue": compliance_overdue,
             "high_risk_clients": high_risk_clients,

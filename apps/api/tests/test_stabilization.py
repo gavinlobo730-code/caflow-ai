@@ -175,13 +175,13 @@ class TestClientWorkspace:
     def test_workspace_compliance_tasks_from_repo(self):
         from routers.clients import get_client_workspace
         with patch("routers.clients.client_repo") as mock_client, \
-             patch("routers.clients.compliance_repo") as mock_ctasks, \
+             patch("routers.clients.compliance_records_repo") as mock_crecords, \
              patch("routers.clients.document_repo") as mock_docs, \
              patch("routers.clients.task_repo") as mock_tasks, \
              patch("routers.clients.ai_insights_repo") as mock_insights:
             mock_client.find_by_id.return_value = self.CLIENT
-            mock_ctasks.find_all.return_value = [
-                {"id": "ct-1", "status": "pending", "due_date": "2026-07-11", "compliance_type": "GSTR1"}
+            mock_crecords.find_all.return_value = [
+                {"id": "cr-1", "status": "Not Started", "due_date": "2026-07-11", "compliance_type": "GST"}
             ]
             mock_docs.find_all.return_value = []
             mock_tasks.find_all.return_value = []
@@ -189,7 +189,7 @@ class TestClientWorkspace:
             result = get_client_workspace(client_id="c-001", current_user=USER_A)
         assert result["success"] is True
         assert len(result["data"]["compliance_tasks"]) == 1
-        mock_ctasks.find_all.assert_called_once_with(firm_id=FIRM_A, client_id="c-001")
+        mock_crecords.find_all.assert_called_once_with(firm_id=FIRM_A, client_id="c-001")
 
     def test_workspace_tenant_isolation(self):
         from routers.clients import get_client_workspace
@@ -203,12 +203,12 @@ class TestClientWorkspace:
     def test_workspace_documents_from_repo(self):
         from routers.clients import get_client_workspace
         with patch("routers.clients.client_repo") as mock_client, \
-             patch("routers.clients.compliance_repo") as mock_ctasks, \
+             patch("routers.clients.compliance_records_repo") as mock_crecords, \
              patch("routers.clients.document_repo") as mock_docs, \
              patch("routers.clients.task_repo") as mock_tasks, \
              patch("routers.clients.ai_insights_repo") as mock_insights:
             mock_client.find_by_id.return_value = self.CLIENT
-            mock_ctasks.find_all.return_value = []
+            mock_crecords.find_all.return_value = []
             mock_docs.find_all.return_value = [{"id": "doc-1", "file_name": "invoice.pdf"}]
             mock_tasks.find_all.return_value = []
             mock_insights.find_all.return_value = []
@@ -224,14 +224,12 @@ class TestDashboardSummary:
         from domain.task_service import task_domain_service
         with patch("domain.task_service.client_repo") as mock_clients, \
              patch("domain.task_service.task_repo") as mock_tasks, \
-             patch("repositories.compliance_repository.compliance_repo") as mock_ctasks, \
              patch("domain.compliance_record_service.compliance_record_service") as mock_records:
             mock_clients.find_all.return_value = [
                 {"id": "c-1", "status": "active"}, {"id": "c-2", "status": "archived"}
             ]
             mock_tasks.find_all.return_value = []
             mock_tasks.find_overdue.return_value = []
-            mock_ctasks.find_all.return_value = []
             mock_records.list_records.return_value = []
             mock_records.get_client_health_score.return_value = {"health_score": 80}
             result = task_domain_service.get_dashboard_summary(firm_id=FIRM_A)
@@ -242,12 +240,10 @@ class TestDashboardSummary:
         from domain.task_service import task_domain_service
         with patch("domain.task_service.client_repo") as mock_clients, \
              patch("domain.task_service.task_repo") as mock_tasks, \
-             patch("repositories.compliance_repository.compliance_repo") as mock_ctasks, \
              patch("domain.compliance_record_service.compliance_record_service") as mock_records:
             mock_clients.find_all.return_value = []
             mock_tasks.find_all.return_value = []
             mock_tasks.find_overdue.return_value = []
-            mock_ctasks.find_all.return_value = []
             mock_records.list_records.return_value = []
             task_domain_service.get_dashboard_summary(firm_id=FIRM_B)
         mock_clients.find_all.assert_called_with(firm_id=FIRM_B)

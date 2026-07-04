@@ -3465,3 +3465,109 @@ compliance-calendar seeding) onto the canonical `compliance_records` API,
 and RLS-harden (not drop — no confirmed absence of production data)
 `compliance_tasks`/`compliance_calendar`.
 
+## Milestone R3.13d — rewire the remaining backend-only compliance_tasks consumers (DELIVERED)
+
+**Goal:** the R3.13b research pass claimed five backend modules were live
+consumers of `compliance_tasks` (System B) requiring urgent rewiring before
+retirement — `get_client_workspace`, `task_service.get_dashboard_summary`,
+`risk_engine`, `ai_copilot_service`, `memory_pipeline` — warning that
+skipping this step would "silently blank the client workspace's compliance
+panel and the AI Copilot/Memory's compliance awareness." **Before touching
+any of them, re-verified each claim by grepping for actual frontend
+callers** (the same discipline that caught R3.13b's manual-create-dedup
+claim being narrower than described) — the claim did not fully survive
+contact with the code.
+
+**Correction to the prior claim:** of the five, only **`memory_pipeline.py`**
+(backing the live `/memory` page) is a genuinely reachable consumer today.
+`api.clients.getWorkspace()` (→ `GET /api/clients/{id}`),
+`api.dashboard.summary()` (→ `GET /api/tasks/summary/dashboard`), and
+`api.copilot.*`/`api.risks.*` all have **zero frontend callers** — grepped
+exhaustively across `apps/web`. The `/risks` page in particular reimplements
+its own client-side risk computation via direct Supabase reads rather than
+calling `routers/risks.py`/`domain/risk_engine.py` at all — a separate,
+adjacent duplicate-logic finding, noted here but not addressed (out of
+scope for this pass). This doesn't make the other four *wrong* to fix —
+they're real code that could be wired up later, and leaving them silently
+reading a retiring table is still debt worth clearing — but the original
+"silently blank" urgency framing was incorrect and is corrected here rather
+than left standing uncorrected in this doc.
+
+**What shipped (all five, correctly prioritized but all delivered):**
+- **`domain/memory_pipeline.py`** (the one live path) — `_get_compliance_repo()`
+  renamed to `_get_compliance_records_repo()`, now backed by
+  `compliance_records_repo`. Status-vocabulary bugs fixed in the same pass:
+  `"overdue"` → `"Overdue"`, `"pending"/"upcoming"` (the latter a dead
+  literal — `compliance_tasks`' CHECK constraint never allowed that value,
+  so that branch never matched anything) → `status not in ("Filed",
+  "Completed")`. Also deleted two genuinely dead local variables
+  (`gst_items`/`tds_items`) computed via a compliance-type match that
+  compared against hyphenated strings (`"GSTR-1"`) the real enum never
+  used (`"GSTR1"`) and never referenced again after computation.
+- **`routers/clients.py::get_client_workspace`/`_check_delete_blockers`** —
+  rewired to `compliance_records_repo`, mapping status vocabulary
+  (`"Overdue"`/`"Not Started"`/`"Filed"`+`"Completed"`) and dropping the
+  System-B-only delete-blocker check (System A's own check already exists
+  alongside it).
+- **`domain/task_service.py::get_dashboard_summary`** — removed the
+  `compliance_tasks`-derived `overdue_compliance` key entirely (dead per
+  the frontend-caller audit); `compliance_overdue`/`compliance_due_week`
+  (System A-derived) are unaffected and remain the sole compliance signal.
+- **`domain/risk_engine.py::_derive_compliance_risks`** — removed the
+  `compliance_tasks`-derived risk-generation branch; `compliance_records`-
+  derived risks are unaffected.
+- **`domain/ai_copilot_service.py`** — rewired all 4 call sites. System A
+  has no `find_overdue()`/`find_due_within_days()` repo helpers (System B's
+  `find_due_within_days` also depended on a precomputed `days_remaining`
+  field System A doesn't have) — added two small local helpers doing the
+  equivalent Python-side filtering, matching the pattern
+  `compliance_obligation_service.py` already uses elsewhere.
+- **`domain/client_service.py` deleted outright** — confirmed zero
+  importers anywhere (dead `ClientService` class superseded by
+  `routers/clients.py`'s own workspace endpoint).
+- **`routers/health.py`'s 4 `compliance_tasks` queries** — found to be a
+  more serious, *independent* bug than the "already dead, ignore" framing
+  the R3.13b research gave them: these are inside `_detect_hard_override_db`
+  (the ITR-overdue-6-months statutory trigger),
+  `_dim_compliance_health_db`, and `_dimension_detail_db` — all three
+  confirmed live and freshly fixed in R3.14/R3.15. The queries referenced a
+  `task_type` column and `"Pending"`/`filed_late` values/columns that never
+  existed on `compliance_tasks` (real column is `compliance_type`; no
+  `filed_late` column at all) — meaning the ITR hard-override has never
+  fired in any real deployment, and the compliance_health dimension's
+  overdue-return and late-filing penalties never applied either. Rewired to
+  `compliance_records`, computing "late filing" (no precomputed column on
+  either system) as a Python-side `filed_date > due_date` comparison over
+  Filed/Completed records.
+
+**Verified:** 2 new tests in `test_memory_pipeline.py` (compute_client_profile
+correctly counts an Overdue compliance_records row; detect_deadline_at_risk
+reads open records without raising), 1 rewritten test in
+`test_pilot_features.py` (seeds its own compliance_records row rather than
+depending on `mock_data.py`'s shared fixture rows — this itself caught a
+real test-isolation gap: the fixture's "Overdue" row is mutated by
+earlier-running test files over a full-suite run, so the original assertion
+was flaky in a way that hadn't shown up in isolated runs), 7 new tests in
+`test_r3_13d_health_compliance_records_source.py` (ITR hard-override
+fires/doesn't-fire/is-suppressed-when-filed, compliance_health dimension's
+overdue and late-filing penalties compute the correct integer deduction,
+dimension-detail factors surface the real `period_label`). Updated 6
+pre-existing tests across `test_client_lifecycle.py`/`test_stabilization.py`
+that patched the now-removed `compliance_repo` attribute on
+`routers.clients`/`domain.task_service`. Full mock suite: 2,475 passed, same
+23 pre-existing unrelated failures, zero regressions. Not fixed here,
+documented as a follow-up: `test_health.py` (stale A-F formula, doesn't
+match the router at all) and `test_health_engine.py` (duplicates the
+formula inline rather than importing `routers.health` — the same pattern
+that let the schema drift and these compliance_tasks bugs go undetected for
+however long they've existed) should be consolidated into real imports of
+the router's functions in a future pass.
+
+**Next:** R3.13e — migrate the six R3.13 frontend consumers
+(`deadlines`, `client-portal`, `clients/[id]/overview`'s remaining
+compliance-calendar seeding, `clients/[id]/compliance`, `reports`) onto the
+canonical `compliance_records`/`compliance_ops` API, then RLS-harden (not
+drop — no confirmed absence of production data) `compliance_tasks`/
+`compliance_calendar`. Also tracked, not yet started: the `/risks` page's
+own client-side duplicate risk computation found during this pass.
+

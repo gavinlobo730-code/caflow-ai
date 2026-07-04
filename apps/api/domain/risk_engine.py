@@ -156,38 +156,19 @@ MOCK_RISKS: list[dict] = [
 
 
 def _derive_compliance_risks(firm_id: Optional[str], client_id: Optional[str]) -> list[dict]:
-    """Derive risks from real compliance tasks and records."""
+    """Derive risks from compliance_records — the canonical obligation entity
+    (compliance_tasks/System B is being retired, R3.13d)."""
     import os
     if os.environ.get("SUPABASE_URL"):
-        from repositories.compliance_repository import compliance_repo
         from repositories.compliance_records_repository import compliance_records_repo
-        tasks = compliance_repo.find_all(firm_id=firm_id, client_id=client_id)
         records = compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)
     else:
-        from mock_data import MOCK_COMPLIANCE_TASKS
-        tasks = MOCK_COMPLIANCE_TASKS
-        if client_id:
-            tasks = [t for t in tasks if t.get("client_id") == client_id]
         from mock_data import MOCK_COMPLIANCE_RECORDS
         records = MOCK_COMPLIANCE_RECORDS
         if client_id:
             records = [r for r in records if r.get("client_id") == client_id]
 
     derived: list[dict] = []
-    for t in tasks:
-        if t.get("status") == "overdue":
-            derived.append({
-                "id": f"risk-task-{t['id']}",
-                "source": "compliance",
-                "client_id": t["client_id"],
-                "severity": "critical",
-                "category": "OTHER",
-                "title": f"{t.get('compliance_type', 'Filing')} Overdue",
-                "description": f"{t.get('compliance_type')} overdue. Penalties may apply under CGST Act Section 47.",
-                "resolution_status": "open",
-                "created_at": t.get("due_date", today.isoformat()),
-            })
-
     for r in records:
         if r.get("status") == "Overdue":
             derived.append({

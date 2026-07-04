@@ -20,9 +20,12 @@ def _get_task_repo():
     from repositories.task_repository import task_repo
     return task_repo
 
-def _get_compliance_repo():
-    from repositories.compliance_repository import compliance_repo
-    return compliance_repo
+def _get_compliance_records_repo():
+    """The canonical compliance_records repo (compliance_tasks/System B is
+    being retired; this AI-memory pipeline is the only genuinely live
+    consumer of compliance data found during that consolidation)."""
+    from repositories.compliance_records_repository import compliance_records_repo
+    return compliance_records_repo
 
 def _get_workflow_repo():
     from repositories.workflow_repository import workflow_repo
@@ -91,15 +94,11 @@ class MemoryPipeline:
 
         # ── Compliance history ────────────────────────────────────────────────
         try:
-            compliance_items = _get_compliance_repo().find_all(firm_id=firm_id) if hasattr(_get_compliance_repo(), 'find_all') else []
+            compliance_items = _get_compliance_records_repo().find_all(firm_id=firm_id)
             client_compliance = [c for c in compliance_items if c.get("client_id") == client_id]
             data_points += len(client_compliance)
 
-            missed = [c for c in client_compliance if c.get("status") == "overdue"]
-
-            # Compute average delay in days for GST items
-            gst_items = [c for c in client_compliance if c.get("compliance_type") in ("gst", "GSTR-1", "GSTR-3B", "GSTR-9")]
-            tds_items = [c for c in client_compliance if c.get("compliance_type") in ("tds", "26Q", "24Q")]
+            missed = [c for c in client_compliance if c.get("status") == "Overdue"]
 
             profile_data["missed_deadline_count"] = len(missed)
             profile_data["compliance_score"] = max(0, round(100 - (len(missed) / max(1, len(client_compliance)) * 50), 1))
@@ -226,7 +225,7 @@ class MemoryPipeline:
             profile_data["avg_tasks_per_client"] = round(len(all_tasks) / max(1, len(clients)), 1)
 
             # Deadline concentration by month
-            compliance_items = _get_compliance_repo().find_all(firm_id=firm_id) if hasattr(_get_compliance_repo(), 'find_all') else []
+            compliance_items = _get_compliance_records_repo().find_all(firm_id=firm_id)
             deadline_counts = {}
             for c in compliance_items:
                 if c.get("due_date"):
@@ -264,10 +263,10 @@ class MemoryPipeline:
             return triggers
 
         # Check if current period has conditions resembling historical issues
-        compliance_items = _get_compliance_repo().find_all(firm_id=firm_id) if hasattr(_get_compliance_repo(), 'find_all') else []
+        compliance_items = _get_compliance_records_repo().find_all(firm_id=firm_id)
         client_compliance = [c for c in compliance_items
                             if c.get("client_id") == client_id
-                            and c.get("status") in ("pending", "upcoming")]
+                            and c.get("status") not in ("Filed", "Completed")]
 
         for issue in recurring:
             issue_type = issue.get("type", "")
@@ -318,10 +317,10 @@ class MemoryPipeline:
         avg_response_days = (profile or {}).get("avg_response_time_days") or 5
 
         now = datetime.now(timezone.utc)
-        compliance_items = _get_compliance_repo().find_all(firm_id=firm_id) if hasattr(_get_compliance_repo(), 'find_all') else []
+        compliance_items = _get_compliance_records_repo().find_all(firm_id=firm_id)
         upcoming = [c for c in compliance_items
                    if c.get("client_id") == client_id
-                   and c.get("status") in ("pending", "upcoming")
+                   and c.get("status") not in ("Filed", "Completed")
                    and c.get("due_date")]
 
         for item in upcoming:
