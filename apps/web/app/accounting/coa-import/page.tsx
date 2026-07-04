@@ -188,7 +188,7 @@ export default function CoaImportPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-5">
       <div className="flex items-center gap-3">
-        <Link href="/accounting/chart-of-accounts" className="text-[#94A3B8] hover:text-[#475569]">
+        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
           <ChevronLeft size={18} />
         </Link>
         <div>
@@ -297,7 +297,7 @@ export default function CoaImportPage() {
             </div>
           )}
           <div className="flex gap-2">
-            <Link href="/accounting/chart-of-accounts" className="text-sm bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+            <Link href="/accounting/account-groups" className="text-sm bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
               View Chart of Accounts
             </Link>
             <button onClick={() => { setStep("upload"); setPreview([]); setFileName(null); setResult(null); setParseErrors([]); }} className="text-sm text-[#475569] border border-[#E2E8F0] px-4 py-2 rounded-md hover:bg-[#F8FAFC]">

@@ -64,7 +64,7 @@ export default function ScheduleIIIMappingPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-5">
       <div className="flex items-center gap-3">
-        <Link href="/accounting/chart-of-accounts" className="text-[#94A3B8] hover:text-[#475569]">
+        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
           <ChevronLeft size={18} />
         </Link>
         <div className="flex-1">
@@ -75,15 +75,15 @@ export default function ScheduleIIIMappingPage() {
             {accounts.filter(a => a.is_active && a.schedule_iii_mapping).length} of {accounts.filter(a => a.is_active).length} active accounts mapped
           </p>
         </div>
-        <Link href="/accounting/chart-of-accounts" className="text-xs text-blue-600 hover:underline">
-          Edit mappings in COA →
+        <Link href="/accounting/account-groups" className="text-xs text-blue-600 hover:underline">
+          View accounts →
         </Link>
       </div>
 
       {unmapped.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
           <p className="text-xs font-medium text-amber-800">{unmapped.length} active accounts have no Schedule III mapping</p>
-          <p className="text-xs text-amber-700 mt-0.5">Edit each account in Chart of Accounts to assign a mapping.</p>
+          <p className="text-xs text-amber-700 mt-0.5">Set schedule_iii_mapping during import (Import COA) to assign a mapping.</p>
         </div>
       )}
 
@@ -134,9 +134,7 @@ export default function ScheduleIIIMappingPage() {
                       <td className="px-4 py-2 font-mono text-[10px] text-[#94A3B8] w-16">{acc.account_code}</td>
                       <td className="px-3 py-2 font-medium text-[#0F172A]">{acc.account_name}</td>
                       <td className="px-3 py-2 text-[#64748B]">{acc.account_type}</td>
-                      <td className="px-4 py-2">
-                        <Link href="/accounting/chart-of-accounts" className="text-blue-600 hover:underline text-[10px]">Add mapping →</Link>
-                      </td>
+                      <td className="px-4 py-2" />
                     </tr>
                   ))}
                 </tbody>
