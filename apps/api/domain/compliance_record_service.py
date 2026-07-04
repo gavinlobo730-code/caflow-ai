@@ -212,16 +212,13 @@ class ComplianceRecordService:
                                          firm_id=firm_id, actor=actor)
         return updated
 
-    def get_client_health_score(self, client_id: str, firm_id: Optional[str] = None) -> dict:
-        """Client health score 0-100. Start at 100, subtract for risks. Integer arithmetic only."""
-        client = client_repo.find_by_id(client_id)
-        if not client:
-            raise NotFoundError("Client", client_id)
-        # Tenant isolation
-        if firm_id and client.get("firm_id") and client["firm_id"] != firm_id:
-            raise NotFoundError("Client", client_id)
-
-        records = self.list_records(client_id=client_id, firm_id=firm_id)
+    @staticmethod
+    def score_from_records(records: list[dict]) -> tuple[int, list[dict]]:
+        """Pure health-score math over an already-fetched record set (100,
+        minus deductions). Factored out so callers who already have the
+        firm's full compliance_records in memory (e.g. a dashboard summing
+        risk across many clients) can score every client without an extra
+        DB round trip per client — see domain/task_service.py."""
         overdue_records = [r for r in records if r["status"] == "Overdue"]
         high_risk_records = [r for r in records if r["risk_score"] >= 70 and r["status"] != "Overdue"]
         missing_docs = len([r for r in records if r["status"] == "Awaiting Documents"])
@@ -241,7 +238,21 @@ class ComplianceRecordService:
             score -= 5
             breakdown.append({"label": "Missing/awaited document", "deduction": 5})
 
-        score = max(0, score)
+        return max(0, score), breakdown
+
+    def get_client_health_score(self, client_id: str, firm_id: Optional[str] = None) -> dict:
+        """Client health score 0-100. Start at 100, subtract for risks. Integer arithmetic only."""
+        client = client_repo.find_by_id(client_id)
+        if not client:
+            raise NotFoundError("Client", client_id)
+        # Tenant isolation
+        if firm_id and client.get("firm_id") and client["firm_id"] != firm_id:
+            raise NotFoundError("Client", client_id)
+
+        records = self.list_records(client_id=client_id, firm_id=firm_id)
+        overdue_records = [r for r in records if r["status"] == "Overdue"]
+        missing_docs = len([r for r in records if r["status"] == "Awaiting Documents"])
+        score, breakdown = self.score_from_records(records)
         risk_level = (
             "critical" if score < 40 else
             "high" if score < 60 else
