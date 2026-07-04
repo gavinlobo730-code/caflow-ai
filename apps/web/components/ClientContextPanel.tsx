@@ -30,7 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CLIENT_SECTIONS, useClientNav } from "@/lib/workspace/ClientNavContext";
+import { CLIENT_SECTIONS, getSectionForPathname, useClientNav } from "@/lib/workspace/ClientNavContext";
 
 const SECTION_ICONS: Record<string, React.ElementType> = {
   overview:        LayoutGrid,
@@ -67,11 +67,18 @@ function NavItems({
   pathname: string;
   clientId: string;
 }) {
+  // Identity match on the section segment, not a URL-string prefix check —
+  // immune to Next stripping the trailing slash on client-side navigations
+  // (hrefs are always slash-terminated; usePathname() after a client
+  // transition is not) and to nested sub-routes (e.g. compliance/gst still
+  // resolves to "compliance").
+  const activeSection = getSectionForPathname(pathname);
+
   return (
     <nav className="flex-1 overflow-y-auto py-2 px-1.5 space-y-0.5">
       {CLIENT_SECTIONS.map(({ id, label, href }) => {
         const target = href(clientId);
-        const active = pathname.startsWith(target);
+        const active = id === activeSection;
         const Icon = SECTION_ICONS[id] ?? FileText;
         return (
           <Link

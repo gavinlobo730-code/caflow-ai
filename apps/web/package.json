@@ -4,8 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "pages:build": "next build",
+    "generate:redirects": "node scripts/generate-redirects.js",
+    "generate:known-routes": "node scripts/generate-known-routes.js",
+    "build": "npm run generate:redirects && npm run generate:known-routes && next build",
+    "pages:build": "npm run generate:redirects && npm run generate:known-routes && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "node --experimental-strip-types --test"

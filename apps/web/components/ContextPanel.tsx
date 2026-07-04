@@ -24,6 +24,11 @@ export function ContextPanel({ onOpenSearch }: ContextPanelProps) {
   const { activeWorkspace } = useWorkspace();
   const pathname = usePathname();
   const isSettings = pathname.startsWith("/settings");
+  // Home is the CONTENT fallback for routes no workspace owns (e.g.
+  // /platform, /search) so this panel is never left blank — a deliberate,
+  // separate decision from the rail's highlight, which must stay null
+  // there instead of falsely lighting Home (see WorkspaceContext).
+  const panelWorkspace = activeWorkspace ?? "home";
 
   return (
     <div className="flex flex-col h-full w-[220px] shrink-0 bg-white border-r border-gray-200">
@@ -31,20 +36,20 @@ export function ContextPanel({ onOpenSearch }: ContextPanelProps) {
         <SettingsPanel />
       ) : (
         <>
-          {activeWorkspace === "home" && <HomePanel />}
-          {activeWorkspace === "clients" && (
+          {panelWorkspace === "home" && <HomePanel />}
+          {panelWorkspace === "clients" && (
             <ClientsPanel onOpenSearch={onOpenSearch} />
           )}
-          {activeWorkspace === "deadlines" && <DeadlinesPanel />}
-          {activeWorkspace === "work" && <WorkPanel />}
-          {activeWorkspace === "team" && <TeamPanel />}
-          {activeWorkspace === "ai" && <AIPanel />}
-          {activeWorkspace === "accounting" && <AccountingPanel />}
-          {activeWorkspace === "relationships" && <RelationshipsPanel />}
-          {activeWorkspace === "health" && <HealthPanel />}
-          {activeWorkspace === "practice" && <PracticePanel />}
-          {activeWorkspace === "knowledge" && <KnowledgePanel />}
-          {activeWorkspace === "engagements" && <EngagementsPanel />}
+          {panelWorkspace === "deadlines" && <DeadlinesPanel />}
+          {panelWorkspace === "work" && <WorkPanel />}
+          {panelWorkspace === "team" && <TeamPanel />}
+          {panelWorkspace === "ai" && <AIPanel />}
+          {panelWorkspace === "accounting" && <AccountingPanel />}
+          {panelWorkspace === "relationships" && <RelationshipsPanel />}
+          {panelWorkspace === "health" && <HealthPanel />}
+          {panelWorkspace === "practice" && <PracticePanel />}
+          {panelWorkspace === "knowledge" && <KnowledgePanel />}
+          {panelWorkspace === "engagements" && <EngagementsPanel />}
         </>
       )}
     </div>
