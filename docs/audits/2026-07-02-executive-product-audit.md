@@ -3156,15 +3156,26 @@ meaningless without the model actually carrying a period:
   Remaining Limitations rather than fixed here (out of scope for the
   consolidation itself).
 
-**Gap 3 (health-score formula reconciliation) — not yet started,** tracked
-as the next piece: the frontend's `health-score-compute.ts` computes an
-entirely different, richer multi-dimension formula (compliance 50% +
-accounting 25% + document 15% + responsiveness 10%, reading
-`compliance_calendar` + `journal_entries` + `document_requests` +
-`portal_messages`) than the backend's `get_client_health_score()` (a
-simpler `100 − 20×overdue − 10×high-risk − 5×missing-doc` over
-`compliance_records`). These are different metrics computed for different
-purposes today, not a simple swap — reconciling them is its own milestone.
+**Gap 3 (health-score formula reconciliation) — re-scoped, much larger than
+believed, and it surfaced a critical, unrelated production bug fixed
+separately (see Milestone R3.14 below).** A dedicated research pass to plan
+this gap found not two competing health-score formulas but **five**:
+the frontend's `health-score-compute.ts` (client-side, writes
+`client_health_scores`); the backend's `get_client_health_score()` (simple,
+`compliance_records`-only, no persistence); a full **Product Bible Chapter
+16** 7-dimension weighted engine in `routers/health.py` (13 endpoints,
+`health_scores`/`health_score_history`, backing a top-level "Health"
+sidebar workspace + a per-client "Health" tab — fully wired into
+navigation for nearly every role); a separate `intelligence_service
+.compute_relationship_health()`; and a vestigial, never-written
+`clients.health_score` column read only by the AI Copilot/Memory. The
+`routers/health.py` engine is the most sophisticated and most deeply
+navigable of the five — but investigating it surfaced that it has been
+**completely non-functional against any real deployment**, for two
+independent reasons (schema drift + a missing grant) — see R3.14. Reconciling
+gap 3 properly can only happen once that engine actually works, so R3.14 was
+fixed first, out of the normal R3.13 sequence; the five-way reconciliation
+itself remains open, tracked as R3.13c below.
 
 **Cross-cutting finding also confirmed by the research pass (not yet
 acted on, tracked for the next milestones):** `routers/clients.py::
@@ -3203,4 +3214,105 @@ R3.13d — rewiring the backend-only consumers still exclusively wired to
 consumers onto the canonical API and RLS-hardening (not dropping — no
 confirmed absence of production data) `compliance_tasks`/
 `compliance_calendar`.
+
+## Milestone R3.14 — fix the completely non-functional Health workspace (DELIVERED, critical, out-of-sequence)
+
+**Goal:** originally just scoping "gap 3" of the R3.13 compliance
+consolidation (reconcile the frontend's and backend's competing client
+health-score formulas). Before writing a reconciliation plan, a dedicated
+research pass mapped every health-scoring surface in the codebase — and
+found `routers/health.py`, the most sophisticated of the five surfaces
+(Product Bible Chapter 16's 7-dimension weighted engine, backing a
+top-level "Health" sidebar workspace and a per-client "Health" tab, visible
+to nearly every role), has been **completely non-functional against any
+real, non-mock deployment** since the Chapter 16 rewrite shipped. This is
+categorically more severe and more urgent than the consolidation work it
+was found while scoping, so it was fixed immediately, out of the normal
+R3.13 sequence, rather than deferred.
+
+**Root cause 1 — schema drift, never migrated.** Migration 059 created
+`health_scores`/`health_score_history` for the original Phase 7-8-9 A-F
+letter-grade model. `routers/health.py` was later rewritten to the Chapter
+16 model (7 named dimensions, a `dimensions` JSONB breakdown, a `grade` band
+label, a `trend` delta, `hard_override`/`hard_override_reason`) — but no
+migration ever followed. Confirmed directly against a freshly-migrated real
+Postgres 16 instance (`\d health_scores`): none of the new columns exist,
+and the surviving `health_grade` CHECK only accepted single letters
+(`'A'..'F'`), not the Chapter 16 band labels (`"Healthy"`/`"Good"`/etc.) the
+code has always written there. Every `POST /api/health/scores/{id}
+/calculate` and `POST /api/health/recalculate-all` call has been failing
+against the real schema since day one.
+
+**Root cause 2 — an independent, compounding grant gap, found while proving
+root cause 1's fix.** Simulating the fixed payload against real Postgres
+still failed with `permission denied for table health_scores` even under
+`service_role`. Investigation found none of the five tables migration 059
+created (`health_scores`, `health_score_history`, `health_dimension_scores`,
+`health_overrides`, `health_alerts`) were ever granted to `service_role` —
+migrations 060/061 only ever granted `authenticated`. Since the FastAPI
+backend connects with the service-role key, this means **all 13 endpoints**
+in `routers/health.py` — not just the two write endpoints root cause 1
+covers — have been getting `permission denied` against any real deployment,
+independent of the column drift. Every other table in this schema picked up
+its service-role grant from migration 039's enumerated sweep (if it existed
+by then) or an explicit grant in the migration that created it; the five
+Phase 7-8-9 health tables are the one place in the whole codebase that
+pattern was missed.
+
+**Compounding discovery — the write path was also silently lying.**
+`calculate_score()`'s upsert had a defensive insert→update fallback chain
+predating this investigation, apparently added to paper over root cause 1
+without ever finding the actual cause. On the `update()` branch, a
+first-ever calculation for a client (no existing row) matches zero rows —
+not an error — so `saved = (res.data or [upsert_payload])[0]` silently fell
+back to the unpersisted in-memory dict as if it had saved. A CA calling
+"Calculate" would see a score render with an apparent HTTP 200 success that
+was never actually written to the database.
+
+**What shipped:**
+- **New migration 169** — adds the seven missing dimension-named score
+  columns, `dimensions`/`grade`/`trend`/`hard_override`/`hard_override_reason`,
+  widens the `health_grade` CHECK to a superset (existing A-F letters, if
+  any, plus the five Chapter 16 band labels), and grants
+  `SELECT, INSERT, UPDATE, DELETE` on all five Phase 7-8-9 health tables to
+  `service_role`. Additive only — no existing column, row, or grant removed.
+- **`routers/health.py`** — removed the insert/update fallback chain
+  entirely; `calculate_score()` now does a single `.upsert(..., on_conflict
+  ="client_id,firm_id")` and lets a genuine failure surface as a real error
+  instead of a silent lie. Fixed the previously-always-hardcoded
+  `"trend": "+0"` placeholder in both `calculate_score()` and
+  `recalculate_all()`: both now fetch the prior `overall_score` and compute
+  a real signed delta (`f"{new - old:+d}"`), matching the frontend's
+  existing `trend.startsWith("+")`/`!= "+0"` rendering contract exactly — no
+  frontend change needed.
+- Confirmed **not** in scope for this fix, tracked separately: `test_health
+  .py` tests an old, stale A-F-model formula that no longer matches
+  `routers/health.py` at all (dead/misleading test, not merely
+  duplicated — a smaller follow-up); `test_health_engine.py` covers the real
+  Chapter 16 formula but by hand-duplicating its constants rather than
+  importing them, so it can drift silently the same way the schema did.
+
+**Verified:** 4 new tests in `test_r3_14_health_scores_schema_pg.py`
+against real Postgres 16 — the exact dict shape
+`routers.health._calculate_scores_db()` produces (built via the real
+`DIMENSION_WEIGHTS_BP`/`_grade`/`_weighted_score` helpers, not hand-copied
+constants) now inserts cleanly, a hard-override Critical band label is
+accepted, the on-conflict upsert replaces in place rather than duplicating,
+and the `health_score_history` snapshot shape round-trips. 5 new tests in
+`test_r3_14_health_score_trend.py` (FakeDB e2e harness) proving the trend
+arithmetic: no prior score ⇒ untouched "+0", a real positive/negative/zero
+delta all compute correctly, and the write path is a single upsert with no
+fallback-branch involved. Full mock-mode suite: 2,456 passed (unchanged),
+same 23 pre-existing unrelated failures, tests collect and pass in
+isolation. `tsc`/`eslint`/build not applicable — no frontend files changed
+(the frontend's `trend` rendering contract was already correct; only the
+backend was broken).
+
+**Next:** with `routers/health.py` now actually functional, gap 3's
+five-way health-score reconciliation (R3.13c) is unblocked and has a much
+clearer answer than before this investigation: `routers/health.py`'s engine
+is the strongest canonical candidate (richest model, deepest UI wiring,
+statutory hard-overrides) — the frontend's `health-score-compute.ts` (System
+1) is the one that should very likely retire in its favour, not the reverse,
+once its 3 callers are rewired. Not yet implemented.
 

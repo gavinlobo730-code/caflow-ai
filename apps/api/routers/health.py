@@ -862,6 +862,8 @@ def calculate_score(
         scores = _calculate_scores_mock(client_id)
         old = _MOCK_SCORES.get(client_id)
         old_overall = old.get("overall_score") if old else None
+        if old_overall is not None:
+            scores["trend"] = f"{scores['overall_score'] - old_overall:+d}"
 
         row = {
             "id":                str(uuid.uuid4()),
@@ -894,6 +896,8 @@ def calculate_score(
 
     old_row = db.table("health_scores").select("overall_score, id").eq("client_id", client_id).eq("firm_id", firm_id).limit(1).execute().data
     old_overall = (old_row[0]["overall_score"] if old_row else None)
+    if old_overall is not None:
+        scores["trend"] = f"{scores['overall_score'] - old_overall:+d}"
 
     score_id = str(uuid.uuid4())
     upsert_payload = {
@@ -905,19 +909,13 @@ def calculate_score(
         **scores,
     }
 
-    try:
-        res = db.table("health_scores").upsert(upsert_payload, on_conflict="client_id,firm_id").execute()
-        saved = (res.data or [upsert_payload])[0]
-    except Exception:
-        try:
-            res = db.table("health_scores").insert(upsert_payload).execute()
-            saved = (res.data or [upsert_payload])[0]
-        except Exception:
-            res = db.table("health_scores").update({
-                "last_calculated_at": now,
-                **scores,
-            }).eq("client_id", client_id).eq("firm_id", firm_id).execute()
-            saved = (res.data or [upsert_payload])[0]
+    # A plain upsert on the (firm_id, client_id) unique key is sufficient — the
+    # insert/update fallback chain this used to have was silently swallowing
+    # every exception and, on the update branch, returning the unpersisted
+    # upsert_payload as if it had saved when zero rows matched (the very first
+    # calculation for a client). A genuine write failure should surface, not lie.
+    res = db.table("health_scores").upsert(upsert_payload, on_conflict="client_id,firm_id").execute()
+    saved = (res.data or [upsert_payload])[0]
 
     # Insert history row
     try:
@@ -1001,6 +999,9 @@ def recalculate_all(
     for client in clients:
         try:
             scores = _calculate_scores_db(db, client["id"], firm_id)
+            old_row = db.table("health_scores").select("overall_score").eq("client_id", client["id"]).eq("firm_id", firm_id).limit(1).execute().data
+            if old_row:
+                scores["trend"] = f"{scores['overall_score'] - old_row[0]['overall_score']:+d}"
             score_id = str(uuid.uuid4())
             upsert_payload = {
                 "id": score_id, "client_id": client["id"], "firm_id": firm_id,
