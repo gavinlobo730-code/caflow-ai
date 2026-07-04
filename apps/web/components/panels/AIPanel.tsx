@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Sparkles, ShieldAlert, BarChart3 } from "lucide-react";
+import { Sparkles, ShieldAlert, BarChart3, MessageSquare, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const AI_ITEMS = [
   { href: "/ai-assistant", label: "AI Assistant", icon: Sparkles },
+  { href: "/copilot", label: "AI Copilot", icon: MessageSquare },
+  { href: "/memory", label: "Memory & Signals", icon: Brain },
   { href: "/risks", label: "Risk Intelligence", icon: ShieldAlert },
   { href: "/reports", label: "Reports", icon: BarChart3 },
 ];

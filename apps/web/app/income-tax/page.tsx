@@ -469,6 +469,12 @@ export default function IncomeTaxPage() {
             <a href="/income-tax/notices" className="text-xs font-medium text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] px-2.5 py-1 rounded-lg hover:bg-[#F8FAFC] transition-colors">
               Notices
             </a>
+            <a href="/income-tax/deductions" className="text-xs font-medium text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] px-2.5 py-1 rounded-lg hover:bg-[#F8FAFC] transition-colors">
+              Deductions
+            </a>
+            <a href="/income-tax/tax-audit" className="text-xs font-medium text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] px-2.5 py-1 rounded-lg hover:bg-[#F8FAFC] transition-colors">
+              Tax Audit
+            </a>
           </div>
         </div>
         <button

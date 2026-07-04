@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import {
-  Play, Pause, Settings, CheckCircle2, Search, Zap, RefreshCw, Activity,
+  Play, Pause, CheckCircle2, Search, Zap, RefreshCw, Activity,
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
@@ -321,13 +321,6 @@ export default function WorkflowsPage() {
                         >
                           {template.is_active ? <><Play size={11} /> Active</> : <><Pause size={11} /> Inactive</>}
                         </button>
-                        <Link
-                          href={`/workflows/${template.id}`}
-                          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-[#E2E8F0] bg-white text-[#475569] hover:bg-[#F8FAFC] font-medium"
-                        >
-                          <Settings size={11} />
-                          Details
-                        </Link>
                       </div>
                     </div>
                   </div>
