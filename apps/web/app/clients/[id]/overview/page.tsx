@@ -6,7 +6,7 @@ import { getClient } from "@/lib/data/clients";
 import { getTasks } from "@/lib/data/tasks";
 import { getComplianceCalendar, seedComplianceCalendar } from "@/lib/data/compliance";
 import { getFirmId } from "@/lib/data/getFirmId";
-import { snapshotHealthScore, getLatestHealthScore, deriveHealthAlerts, type HealthAlert } from "@/lib/services/health-score-compute";
+import { getOrCalculateClientHealth, deriveHealthAlerts, DIMENSION_LABELS, type ClientHealth, type HealthAlert } from "@/lib/services/health-score-compute";
 import { ClientTimeline } from "@/components/ClientTimeline";
 import { ClientInstructions } from "@/components/knowledge/ClientInstructions";
 import { HealthBadge } from "@/components/HealthBadge";
@@ -16,21 +16,12 @@ import type { ComplianceEntry } from "@/lib/data/compliance";
 import { formatDate, ENTITY_TYPE_LABELS } from "@/lib/services/formatting";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
-interface HealthSnapshot {
-  overall_score: number;
-  compliance_score: number;
-  accounting_score: number;
-  document_score: number;
-  responsiveness_score: number;
-  trend: "improving" | "stable" | "declining" | null;
-}
-
 export default function OverviewPage() {
   const { clientId, financialYear } = useClientNav();
   const [client, setClient] = useState<Client | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [compliance, setCompliance] = useState<ComplianceEntry[]>([]);
-  const [health, setHealth] = useState<HealthSnapshot | null>(null);
+  const [health, setHealth] = useState<ClientHealth | null>(null);
   const [alerts, setAlerts] = useState<HealthAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,36 +51,11 @@ export default function OverviewPage() {
         if (cancelled) return;
         setCompliance(comp);
 
-        // Load or compute health score
-        if (firmId) {
-          const existing = await getLatestHealthScore(clientId);
-          const currentPeriod = new Date().toISOString().slice(0, 7);
-          if (existing && existing.snapshot_period === currentPeriod) {
-            const snap: HealthSnapshot = {
-              overall_score: existing.overall_score,
-              compliance_score: existing.compliance_score,
-              accounting_score: (existing as { accounting_score?: number }).accounting_score ?? 50,
-              document_score: (existing as { document_score?: number }).document_score ?? 50,
-              responsiveness_score: (existing as { responsiveness_score?: number }).responsiveness_score ?? 50,
-              trend: null,
-            };
-            setHealth(snap);
-            setAlerts(deriveHealthAlerts(snap.compliance_score, snap.accounting_score, snap.document_score, comp));
-          } else if (comp.length > 0) {
-            const result = await snapshotHealthScore(clientId, firmId, comp);
-            if (!cancelled) {
-              const snap: HealthSnapshot = {
-                overall_score: result.overall_score,
-                compliance_score: result.compliance_score,
-                accounting_score: result.accounting_score,
-                document_score: result.document_score,
-                responsiveness_score: result.responsiveness_score,
-                trend: result.trend,
-              };
-              setHealth(snap);
-              setAlerts(deriveHealthAlerts(snap.compliance_score, snap.accounting_score, snap.document_score, comp));
-            }
-          }
+        // Load (or calculate, on first visit) the canonical health score.
+        const snap = await getOrCalculateClientHealth(clientId).catch(() => null);
+        if (!cancelled && snap) {
+          setHealth(snap);
+          setAlerts(deriveHealthAlerts(snap));
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load client");
@@ -187,10 +153,9 @@ export default function OverviewPage() {
               <HealthBadge score={health.overall_score} size="md" trend={health.trend} />
             </div>
             <div className="space-y-1.5 mt-1">
-              <ScoreRow label="Compliance" value={health.compliance_score} />
-              <ScoreRow label="Accounting" value={health.accounting_score} />
-              <ScoreRow label="Documents" value={health.document_score} />
-              <ScoreRow label="Responsiveness" value={health.responsiveness_score} />
+              {Object.entries(health.dimensions).map(([key, dim]) => (
+                <ScoreRow key={key} label={DIMENSION_LABELS[key] ?? key} value={dim.score} />
+              ))}
             </div>
           </div>
         )}

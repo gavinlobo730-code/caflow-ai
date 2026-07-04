@@ -246,6 +246,13 @@ export const api = {
       request(`/api/compliance/obligations/${id}/transition`, { method: "POST", body: JSON.stringify({ status }) }),
     runEscalations: () => request("/api/compliance/run-escalations", { method: "POST" }),
   },
+  // R3.13c — canonical client health engine (Product Bible Ch.16, routers/health.py).
+  // Replaces the frontend's direct-Supabase health-score-compute.ts.
+  health: {
+    client: (clientId: string) => request(`/api/health/clients/${clientId}`),
+    scores: () => request("/api/health/scores"),
+    calculate: (clientId: string) => request(`/api/health/scores/${clientId}/calculate`, { method: "POST" }),
+  },
   // Note: the unversioned `documentIntelligence` wrapper (client-side, unused
   // by any page) that pointed at /api/document-intelligence/* was removed in
   // the R2.8 fix phase — that backend router was a retired, undisclosed 4th

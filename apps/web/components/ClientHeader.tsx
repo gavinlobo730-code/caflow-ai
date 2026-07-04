@@ -44,7 +44,7 @@ export function ClientHeader() {
         if (data) setClient(data as ClientData);
       });
     getLatestHealthScore(clientId).then((h) => {
-      if (h) setHealth({ overall_score: h.overall_score, trend: null });
+      if (h) setHealth({ overall_score: h.overall_score, trend: h.trend });
     }).catch(() => undefined);
   }, [clientId]);
 
