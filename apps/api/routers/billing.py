@@ -19,6 +19,7 @@ from models.common import api_response
 from core.permissions import rbac
 from services import billing_service
 from services import collections_service
+from services import fee_billing_service
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 
@@ -204,3 +205,50 @@ def set_staff_cost_rate(user_id: str, body: StaffCostRateIn,
     """Capture a staff member's cost rate (integer paise)."""
     return api_response(True, billing_service.set_staff_cost_rate(
         current_user["firm_id"], user_id, body.cost_rate_paise))
+
+
+# ── Fee Billing receipts (R3.9b) ─────────────────────────────────────────────
+# fee_invoices/fee_receipts are a separate "Fee Billing" system (apps/web/app/
+# billing/page.tsx) from the internal-customer billing_schedules/
+# client_sales_invoices system above — see migration 172's header comment.
+# This endpoint fixes that system's partial-payment bug in place rather than
+# migrating it onto the other engine (a bigger, separate product decision).
+
+class FeeReceiptIn(BaseModel):
+    receipt_date: Optional[str] = None  # YYYY-MM-DD; defaults to today
+    amount_paise: int
+    payment_mode: str = "NEFT"
+    reference_no: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("amount_paise")
+    @classmethod
+    def _positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("amount_paise must be positive")
+        return v
+
+    @field_validator("payment_mode")
+    @classmethod
+    def _mode(cls, v: str) -> str:
+        allowed = {"NEFT", "RTGS", "IMPS", "UPI", "Cheque", "Cash"}
+        if v not in allowed:
+            raise ValueError(f"payment_mode must be one of {sorted(allowed)}")
+        return v
+
+
+@router.post("/fee-invoices/{invoice_id}/receipts")
+def record_fee_receipt(invoice_id: str, body: FeeReceiptIn,
+                       current_user: dict = Depends(rbac("billing", "write"))):
+    """Record a receipt against a fee_invoices row. Only marks the invoice Paid
+    once cumulative receipts (paid_paise) cover its total — a partial receipt
+    no longer force-marks the whole invoice as paid."""
+    try:
+        result = fee_billing_service.record_receipt(
+            current_user["firm_id"], invoice_id, body.model_dump()
+        )
+        return api_response(True, result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

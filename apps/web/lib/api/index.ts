@@ -646,6 +646,12 @@ export const api = {
       request(`/api/billing/staff-cost-rates/${userId}`, {
         method: "PUT", body: JSON.stringify({ cost_rate_paise: costRatePaise }),
       }),
+    // Fee Billing (apps/web/app/billing/page.tsx) receipts — only marks the
+    // invoice Paid once cumulative receipts cover its total.
+    recordFeeReceipt: (invoiceId: string, data: unknown) =>
+      request(`/api/billing/fee-invoices/${invoiceId}/receipts`, {
+        method: "POST", body: JSON.stringify(data),
+      }),
   },
   salesInvoices: {
     list: (clientId: string, params?: Record<string, string>) =>
