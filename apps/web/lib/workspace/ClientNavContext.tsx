@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import { usePathname } from "next/navigation";
+import { recordLastClientSection } from "./clientSectionHistory";
 
 export type ClientSection =
   | "overview"
@@ -80,23 +81,17 @@ export function getSectionForPathname(pathname: string): ClientSection {
 
 export interface ClientNavContextValue {
   clientId: string;
-  activeSection: ClientSection;
   financialYear: string;
-  setSection: (section: ClientSection) => void;
   setFinancialYear: (fy: string) => void;
 }
 
 const ClientNavContext = createContext<ClientNavContextValue | null>(null);
 
 interface ClientNavProviderProps {
-  initialSection?: ClientSection;
   children: React.ReactNode;
 }
 
-export function ClientNavProvider({
-  initialSection = "overview",
-  children,
-}: ClientNavProviderProps) {
+export function ClientNavProvider({ children }: ClientNavProviderProps) {
   // window.location.pathname is always the real browser URL, even when
   // Cloudflare's 200-rewrite serves _placeholder HTML for a real client ID.
   // useParams() would return "_placeholder" (from pre-rendered HTML data).
@@ -110,9 +105,18 @@ export function ClientNavProvider({
   const pathname = usePathname();
   useEffect(() => {
     const m = window.location.pathname.match(/^\/clients\/([^/]+)/);
-    setClientId(m ? decodeURIComponent(m[1]) : "");
+    const id = m ? decodeURIComponent(m[1]) : "";
+    setClientId(id);
+    // Only record a real section (never the bare-root/"_placeholder" cases,
+    // which would otherwise transiently overwrite the real last section
+    // while app/clients/[id]/page.tsx's redirect is still in flight).
+    if (id && id !== "_placeholder") {
+      const section = window.location.pathname.split("/")[3] as ClientSection | undefined;
+      if (section && CLIENT_SECTIONS.some((s) => s.id === section)) {
+        recordLastClientSection(id, section);
+      }
+    }
   }, [pathname]);
-  const [activeSection, setActiveSection] = useState<ClientSection>(initialSection);
   // Persist the selected FY so it survives a page refresh / direct link, instead
   // of silently resetting to the current FY on every mount. Priority on init:
   // ?fy= URL param → localStorage → current FY.
@@ -123,10 +127,6 @@ export function ClientNavProvider({
     const stored = window.localStorage.getItem(FY_STORAGE_KEY);
     return stored || getCurrentFinancialYear();
   });
-
-  const setSection = useCallback((section: ClientSection) => {
-    setActiveSection(section);
-  }, []);
 
   const setFinancialYear = useCallback((fy: string) => {
     setFinancialYearState(fy);
@@ -140,9 +140,7 @@ export function ClientNavProvider({
 
   const value: ClientNavContextValue = {
     clientId,
-    activeSection,
     financialYear,
-    setSection,
     setFinancialYear,
   };
 
