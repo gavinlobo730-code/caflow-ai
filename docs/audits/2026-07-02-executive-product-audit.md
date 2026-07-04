@@ -4086,3 +4086,76 @@ distinct feature; `/clients/documents` stays alongside `/documents` (clarify
 distinct roles); `/clients/[id]/coa` retired (done above); `/tds/returns`
 is canonical, `/tds`'s inline view gets simplified.
 
+---
+
+## Milestone R3.3c-e — link the remaining 25 orphaned routes into nav; R3.3 CLOSED (DELIVERED)
+
+**Goal:** finish R3.3 — every remaining route from the re-enumeration
+(15 statutory-suite, the `/accounting` hub cluster, 11 shipped-but-
+unlinked features) either linked into nav or explicitly resolved per the
+4 product decisions from R3.3f.
+
+**What shipped:**
+- **Statutory suite** — `DeadlinesPanel.tsx` gained a "Filing Workspaces"
+  section (GST, e-Invoice, Income Tax, TDS, MCA/ROC), distinct from its
+  existing "By Type" deadline-filter shortcuts. Also fixed two hubs that
+  didn't even link their own children: `gst/page.tsx` never linked
+  `gstr1`/`gstr3b` (only `reconciliation`); `income-tax/page.tsx` never
+  linked `deductions`/`tax-audit` (only `capital-gains`/`advance-tax`/
+  `notices`).
+- **`/accounting` hub** — resolved as a side effect of R3.3b: fixing
+  `DEFAULT_WORKSPACE_ROUTES.accounting` to point at `/accounting` itself
+  (rather than the retired chart-of-accounts stub) means the Accounting
+  workspace icon now lands on the hub, which already links all 10 child
+  routes via its own `ADMIN_CARDS`. No additional nav change was needed —
+  confirmed by reading the workspace-switcher's navigation logic and the
+  hub's card list directly, not assumed.
+- **Remaining shipped-but-unlinked features** — `/copilot`/`/memory`
+  added to `AIPanel` (confirmed genuinely distinct from `/ai-assistant`:
+  different backends, `api.copilotV2` vs `api.assistant.ask`);
+  `/executive-dashboard`/`/practice/compliance` added to `PracticePanel`;
+  `/relationships/intelligence` added to `RelationshipsPanel`;
+  `/tasks/templates`/`/time` added to `WorkPanel`; `/payroll/statutory`/
+  `/migration` added to `AccountingPanel`; `/clients/[id]/year-end/xbrl`
+  linked from the year-end engagement list (it's client-scoped, not
+  engagement-scoped, so it doesn't belong under a specific engagement's
+  dashboard).
+- **The 4 R3.3f product decisions, executed:** `/workflows` +
+  `/workflows/approvals` linked into a new "Automation" section in
+  `WorkPanel`, kept distinct from Team's `/approvals` (confirmed genuinely
+  separate: workflow-engine-configured approval steps vs. general
+  staff-request approvals) — also removed a dead "Details" link in
+  `workflows/page.tsx` pointing at a `workflows/[id]/page.tsx` that
+  doesn't exist, which would have been a fresh 404 the moment `/workflows`
+  became reachable for the first time. `/clients/documents` linked into
+  `ClientsPanel` as "Document Vault," distinct from "Documents"
+  (confirmed genuinely different Storage-backed vaults, not a literal
+  duplicate). `/clients/[id]/coa` already retired in R3.3b. `/tds/returns`
+  confirmed canonical; `/tds`'s own inline "Returns" tab simplified from a
+  full duplicate status table to a status-count summary plus a "Prepare a
+  Return" link to `/tds/returns`.
+
+**Verified:** `tsc --noEmit` clean, `eslint` clean, full `next build`
+succeeds. A grep sweep confirmed every newly-linked route now has at
+least one real incoming reference (not just the nav entry itself).
+Full mock-mode backend suite: same 23 pre-existing unrelated failures (no
+backend code touched in this batch).
+
+**R3.3 is now closed.** Summary across R3.3a/b/c/d/e: 13 confirmed-dead
+files deleted (6 stubs, 3 dev artifacts, 4 redirect shims), 1 more
+retired stub deleted post-reference-fix (`/clients/[id]/coa`), 4
+linked-but-dead-end stubs repaired then deleted (`chart-of-accounts`,
+`bank-import`, `journal`, `financial-statements` — plus 10 sibling
+accounting-hub pages' dangling cross-references discovered and fixed
+along the way), one "flip a switch" fix (`CLIENT_SECTIONS` missing
+`fixed-assets`), and 25 real, previously-unreachable features linked into
+nav across 8 different panel components. One real, pre-existing product
+gap was uncovered and flagged rather than built: there is no manual
+single-account add/edit UI for the firm-level template Chart of Accounts
+anymore (only bulk import) — worth a product call on priority.
+
+**Next:** R3.5d (bound `analytics.py`'s three unbounded endpoints + fix
+the `revenue_vs_effort` `NameError`), then R3.5e (auth-lookup caching +
+missing indexes), then R3.6 (UX consistency — needs its own fresh
+re-scoping pass first, the only one of the 7 original findings not yet
+re-verified against current code this session).
