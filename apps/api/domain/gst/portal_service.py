@@ -74,8 +74,8 @@ def get_provider(provider_name: str = "manual") -> GSTPortalProvider:
 
 
 def _supabase():
-    from core.supabase_client import get_supabase_client
-    return get_supabase_client()
+    from core.supabase_client import get_supabase
+    return get_supabase()
 
 
 # ── Sync Jobs ──────────────────────────────────────────────────────────────────

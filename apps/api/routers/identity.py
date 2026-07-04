@@ -9,13 +9,15 @@ role, force-logout (single + firm-wide), login history. Every mutation is writte
 to audit_log; session-affecting actions also record a login_events row and bump
 users.sessions_revoked_at so existing JWTs are rejected immediately.
 """
-from datetime import datetime, timezone
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from models.common import api_response
+from core.auth import get_jwt_user
 from core.permissions import rbac, Role
 from repositories.user_repository import user_repo
 from repositories.login_events_repository import login_events_repo
@@ -24,6 +26,11 @@ from services.audit_service import log_event
 router = APIRouter(prefix="/api/identity", tags=["identity"])
 
 _CANONICAL = {r.value for r in Role}
+
+# F21 fix: an invite must be accepted within this window. Chosen to match the
+# window already advertised in the (previously non-functional) invite email
+# copy — "This link expires in 7 days" (services/email_service.send_firm_invite).
+_INVITE_TTL = timedelta(days=7)
 
 
 def _now() -> str:
@@ -57,14 +64,63 @@ def create_user(body: CreateUserBody, current_user: dict = Depends(rbac("team", 
     if body.role not in _CANONICAL:
         raise HTTPException(400, f"Invalid role. Must be one of: {', '.join(sorted(_CANONICAL))}")
     firm_id = current_user["firm_id"]
+    # F21 fix: the invite link now carries a single-use, expiring, server-issued
+    # token (not the firm_id/role themselves) — /join exchanges the token for a
+    # link via POST /api/identity/accept-invite; it can no longer insert a users
+    # row with client-supplied firm_id/role.
+    invite_token = secrets.token_urlsafe(32)
     created = user_repo.create({
         "firm_id": firm_id, "full_name": body.full_name, "email": body.email,
         "role": body.role, "is_active": True, "status": "invited",
+        "invite_token": invite_token,
+        "invite_expires_at": (datetime.now(timezone.utc) + _INVITE_TTL).isoformat(),
     })
     log_event(firm_id, "user", str(created.get("id", "")), "create",
               actor_id=current_user.get("id"), actor_email=current_user.get("email"),
               new_data={"email": body.email, "role": body.role})
-    return api_response(True, created)
+    return api_response(True, {**created, "invite_token": invite_token})
+
+
+class AcceptInviteBody(BaseModel):
+    token: str
+
+
+@router.post("/accept-invite")
+def accept_invite(body: AcceptInviteBody, jwt_user: dict = Depends(get_jwt_user)):
+    """Complete a staff invite (F21 fix). JWT-only auth — the caller has no
+    `users` row yet (that is exactly what this endpoint creates by linking).
+
+    Identity is established ENTIRELY from the verified Supabase JWT (auth_user_id
+    + email) and the pre-created invite row (firm_id + role) — never from a
+    client-supplied field. This is the only way a `users` row's auth_user_id can
+    ever be set; there is no client-side insert/update path left (see migration
+    153, which also removed the RLS/grant paths that made the old raw insert
+    possible)."""
+    invite = user_repo.find_by_invite_token(body.token)
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invalid or expired invite.")
+    expires_at = invite.get("invite_expires_at")
+    if not expires_at or datetime.fromisoformat(expires_at.replace("Z", "+00:00")) < datetime.now(timezone.utc):
+        raise HTTPException(status_code=404, detail="Invalid or expired invite.")
+    if (invite.get("email") or "").strip().lower() != (jwt_user.get("email") or "").strip().lower():
+        # Defense in depth: the token alone (a 256-bit random secret only ever
+        # transmitted to the invited email) is already unforgeable, but a mismatch
+        # here means the wrong mailbox somehow held the link — refuse rather than
+        # silently link the wrong identity.
+        raise HTTPException(status_code=404, detail="Invalid or expired invite.")
+
+    updated = user_repo.update(invite["id"], {
+        "auth_user_id": jwt_user["auth_user_id"],
+        "status": "active",
+        "is_active": True,
+        "invite_token": None,
+        "invite_expires_at": None,
+    })
+    log_event(invite["firm_id"], "user", str(invite["id"]), "invite_accepted",
+              actor_id=jwt_user.get("auth_user_id"), actor_email=jwt_user.get("email"))
+    return api_response(True, {
+        "firm_id": invite["firm_id"], "role": invite["role"], "full_name": invite.get("full_name"),
+    } if updated else None)
 
 
 @router.patch("/users/{user_id}/role")

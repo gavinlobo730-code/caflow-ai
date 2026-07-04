@@ -19,7 +19,6 @@ class TaskDomainService:
 
     def get_dashboard_summary(self, firm_id: Optional[str] = None) -> dict:
         from datetime import date, timedelta
-        from repositories.compliance_repository import compliance_repo
         from domain.compliance_record_service import compliance_record_service
         today = date.today()
         today_str = today.isoformat()
@@ -28,9 +27,13 @@ class TaskDomainService:
         all_clients = client_repo.find_all(firm_id=firm_id)
         active_clients = [c for c in all_clients if c.get("status") == "active"]
 
-        tasks = task_repo.find_all(firm_id=firm_id)
-        open_tasks = [t for t in tasks if t.get("status") != "completed"]
+        # Nothing below needs a completed task's row — push the exclusion to
+        # the query instead of fetching every task ever created and
+        # discarding the completed ones in Python.
+        open_tasks = task_repo.find_all(firm_id=firm_id, exclude_statuses=["completed"])
 
+        # R3.13d: compliance_records (System A) is the sole source now —
+        # compliance_tasks (System B) is being retired.
         all_records = compliance_record_service.list_records(firm_id=firm_id)
         compliance_overdue = len([r for r in all_records if r.get("status") == "Overdue"])
         compliance_due_week = len([
@@ -38,24 +41,31 @@ class TaskDomainService:
             if r.get("status") not in ("Filed",) and today_str <= r.get("due_date", "") <= week_end
         ])
 
-        compliance_tasks = compliance_repo.find_all(firm_id=firm_id)
-        overdue_compliance_tasks = len([c for c in compliance_tasks if c.get("status") == "overdue"])
+        # Batched instead of N+1: get_client_health_score() used to be called
+        # once per active client (2 DB round trips each — a client lookup and
+        # its own compliance_records fetch). all_records already holds every
+        # client's compliance records for this firm, so group in Python and
+        # reuse the same scoring math for every client in one pass.
+        records_by_client: dict[str, list[dict]] = {}
+        for r in all_records:
+            records_by_client.setdefault(r.get("client_id"), []).append(r)
+        high_risk_clients = sum(
+            1 for c in active_clients
+            if compliance_record_service.score_from_records(records_by_client.get(c["id"], []))[0] < 50
+        )
 
-        high_risk_clients = 0
-        for client in active_clients:
-            hs = compliance_record_service.get_client_health_score(client["id"])
-            if hs["health_score"] < 50:
-                high_risk_clients += 1
+        # find_overdue() now takes firm_id directly — pushed to the query
+        # instead of scanning every firm's tasks and re-filtering in Python.
+        overdue_tasks = task_repo.find_overdue(firm_id=firm_id)
 
         return {
             "active_clients": len(active_clients),
             "tasks_due_today": len([t for t in open_tasks if t.get("due_date") == today_str]),
-            "overdue_tasks": len(task_repo.find_overdue()),
+            "overdue_tasks": len(overdue_tasks),
             "waiting_client": len([t for t in open_tasks if t.get("status") == "waiting_client"]),
             "review_required": len([t for t in open_tasks if t.get("status") == "review_required"]),
             "total_open_tasks": len(open_tasks),
             "documents_pending_review": 2,
-            "overdue_compliance": overdue_compliance_tasks,
             "compliance_due_week": compliance_due_week,
             "compliance_overdue": compliance_overdue,
             "high_risk_clients": high_risk_clients,

@@ -162,16 +162,13 @@ def create_debit_note(data: DebitNoteIn, current_user: dict = Depends(rbac("acco
             return api_response(True, {**payload, "lines": computed})
 
         from core.supabase_client import get_supabase
-        from services.numbering import insert_with_number
+        from services.numbering import insert_numbered_document_with_lines
         db = get_supabase()
-        dn = insert_with_number(
+        dn = insert_numbered_document_with_lines(
             db, "debit_notes", payload, "debit_note_no",
             lambda s: f"DN-{fy}-{s:04d}",
-            lambda: _next_dn_seq(db, firm_id, client_id, fy))
-        dn_id = dn.get("id")
-        if computed:
-            db.table("debit_note_lines").insert(
-                [{**l, "debit_note_id": dn_id} for l in computed]).execute()
+            lambda: _next_dn_seq(db, firm_id, client_id, fy),
+            "debit_note_lines", computed, "debit_note_id")
         return api_response(True, {**dn, "lines": computed})
     except HTTPException:
         raise

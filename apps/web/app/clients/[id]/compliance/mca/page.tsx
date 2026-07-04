@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
+import { ListSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -126,7 +127,7 @@ function CompaniesTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {loading ? <p className="text-sm text-[#64748B]">Loading…</p> : (
+      {loading ? <ListSkeleton rows={3} /> : (
         <div className="space-y-3">
           {rows.map((c) => (
             <div key={c.id as string} className="border rounded p-4 space-y-1">
@@ -231,7 +232,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {loading ? <p className="text-sm text-[#64748B]">Loading…</p> : (
+      {loading ? <TableSkeleton cols={6} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-[#F8FAFC] text-left">
@@ -353,7 +354,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
         </div>
       )}
 
-      {loading ? <p className="text-sm text-[#64748B]">Loading…</p> : (
+      {loading ? <TableSkeleton cols={5} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-[#F8FAFC] text-left">
@@ -415,7 +416,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-4">
       <h3 className="font-medium">Filing History</h3>
-      {loading ? <p className="text-sm text-[#64748B]">Loading…</p> : (
+      {loading ? <TableSkeleton cols={5} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-[#F8FAFC] text-left">

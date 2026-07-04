@@ -41,7 +41,7 @@ def _setup(monkeypatch, tds_applicable=True):
     db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27ABCDE1234F1Z5"})  # state 27
     db.seed("vendors", {"id": "VEND", "firm_id": FIRM, "client_id": "CLI",
                         "name": "Supplier Co", "state_code": "27", "gstin": "27PQRST9012K1Z8",
-                        "is_active": True, "tds_applicable": tds_applicable,
+                        "pan": "PQRST9012K", "is_active": True, "tds_applicable": tds_applicable,
                         "tds_section": "194J", "tds_rate_bps": 1000})
     seed_standard_coa(db, FIRM, "CLI")
     return pb, pp, db

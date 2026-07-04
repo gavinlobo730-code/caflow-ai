@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
+import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -52,7 +53,7 @@ function GSTDashboard({ clientId }: { clientId: string }) {
       .finally(() => setLoading(false));
   }, [clientId]);
 
-  if (loading) return <p className="text-sm text-[#64748B]">Loading…</p>;
+  if (loading) return <DashboardSkeleton cards={4} />;
   if (!data) return <p className="text-sm text-red-500">Failed to load GST dashboard.</p>;
 
   const due = data.upcoming_due_dates as Record<string, string>;
@@ -155,7 +156,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {loading ? <p className="text-sm text-[#64748B]">Loading…</p> : (
+      {loading ? <TableSkeleton cols={5} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-[#F8FAFC] text-left">
@@ -269,7 +270,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {loading ? <p className="text-sm text-[#64748B]">Loading…</p> : (
+      {loading ? <TableSkeleton cols={6} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-[#F8FAFC] text-left">
@@ -413,7 +414,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
       .finally(() => setLoading(false));
   }, [clientId]);
 
-  if (loading) return <p className="text-sm text-[#64748B]">Loading…</p>;
+  if (loading) return <TableSkeleton cols={4} bare />;
   if (!data) return <p className="text-sm text-red-500">Failed to load filing history.</p>;
 
   const all = ([

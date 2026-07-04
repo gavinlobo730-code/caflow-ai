@@ -218,6 +218,9 @@ class FakeDB:
     def table(self, name: str) -> _Query:
         return _Query(self, name)
 
+    def rpc(self, fn: str, params: Optional[dict] = None) -> "_Rpc":
+        return _Rpc(self, fn, params or {})
+
     # convenience for tests/harness
     def seed(self, table: str, row: dict) -> dict:
         r = dict(row)
@@ -227,6 +230,152 @@ class FakeDB:
 
     def rows(self, table: str) -> list[dict]:
         return self._tables.setdefault(table, [])
+
+
+# --------------------------------------------------------------------------- #
+#  RPC double — mirrors the SQL functions the kernel calls
+# --------------------------------------------------------------------------- #
+class _Rpc:
+    def __init__(self, db: "FakeDB", fn: str, params: dict):
+        self.db = db
+        self.fn = fn
+        self.params = params
+
+    def execute(self) -> _Result:
+        handler = getattr(self, f"_fn_{self.fn}", None)
+        if handler is None:
+            raise Exception(f"FakeDB: unsupported rpc {self.fn!r}")
+        return _Result(handler())
+
+    def _fn_post_journal_atomic(self):
+        """Mirror migrations/152 post_journal_atomic: insert header + lines
+        atomically (trivially atomic in-memory), with (firm, client, reference_no,
+        entry_date) idempotency. Returns the entry id."""
+        entry = dict(self.params["p_entry"])
+        lines = self.params["p_lines"]
+        entries = self.db._tables.setdefault("journal_entries", [])
+        ref = entry.get("reference_no")
+        if ref is not None:
+            for r in entries:
+                if (r.get("firm_id") == entry.get("firm_id")
+                        and r.get("client_id") == entry.get("client_id")
+                        and r.get("reference_no") == ref
+                        and r.get("entry_date") == entry.get("entry_date")
+                        and not r.get("deleted_at")):
+                    return r["id"]  # dedup: return the existing winner
+        entry.setdefault("id", str(uuid.uuid4()))
+        entries.append(entry)
+        line_store = self.db._tables.setdefault("journal_lines", [])
+        for l in lines:
+            lr = dict(l)
+            lr["journal_entry_id"] = entry["id"]
+            lr.setdefault("id", str(uuid.uuid4()))
+            line_store.append(lr)
+        return entry["id"]
+
+    def _fn_numbered_document_atomic(self):
+        """Mirror migration 167 numbered_document_atomic: insert a numbered
+        header + its lines atomically (trivially atomic in-memory). Returns
+        the header row (dict), matching the real RPC's scalar jsonb return."""
+        header_table = self.params["p_header_table"]
+        header = dict(self.params["p_header"])
+        lines_table = self.params["p_lines_table"]
+        lines = self.params["p_lines"]
+        fk_column = self.params["p_lines_fk_column"]
+
+        header.setdefault("id", str(uuid.uuid4()))
+        self.db._tables.setdefault(header_table, []).append(header)
+
+        line_store = self.db._tables.setdefault(lines_table, [])
+        for l in lines:
+            lr = dict(l)
+            lr[fk_column] = header["id"]
+            lr.setdefault("id", str(uuid.uuid4()))
+            line_store.append(lr)
+        return header
+
+    def _fn_settle_receipt_atomic(self):
+        """Mirror migrations/160+162 settle_receipt_atomic: insert the journal
+        header+lines, the receipt row, and every allocation's invoice update
+        (trivially atomic in-memory — a real exception here would need to undo
+        prior appends to be a faithful mirror, but no test exercises a
+        mid-function failure path against this fake; that's proven for real
+        against Postgres in test_r2_12_atomic_receipt_settlement_pg.py).
+        Unlike post_journal_atomic, this does NOT dedupe/return-existing on a
+        matching reference — the real function doesn't either (R2.12: a
+        genuine collision must roll back and surface as an error, not silently
+        attribute the request to someone else's committed row). Mirrors 162's
+        balance/zero guard and per-invoice allocation aggregation too."""
+        receipt = dict(self.params["p_receipt"])
+        entry = dict(self.params["p_journal_entry"])
+        lines = self.params["p_journal_lines"]
+        allocations = self.params["p_allocations"]
+
+        total_debit = sum(int(l.get("debit_paise") or 0) for l in lines)
+        total_credit = sum(int(l.get("credit_paise") or 0) for l in lines)
+        if total_debit != total_credit:
+            raise Exception(f"settle_receipt_atomic: journal imbalance debit={total_debit} credit={total_credit}")
+        if total_debit == 0:
+            raise Exception("settle_receipt_atomic: refusing to post a zero-value journal entry")
+
+        entry.setdefault("id", str(uuid.uuid4()))
+        self.db._tables.setdefault("journal_entries", []).append(entry)
+        line_store = self.db._tables.setdefault("journal_lines", [])
+        for l in lines:
+            lr = dict(l)
+            lr["journal_entry_id"] = entry["id"]
+            lr.setdefault("id", str(uuid.uuid4()))
+            line_store.append(lr)
+
+        receipt["journal_entry_id"] = entry["id"]
+        receipt.setdefault("id", str(uuid.uuid4()))
+        self.db._tables.setdefault("receipts", []).append(receipt)
+
+        invoices = self.db._tables.setdefault("client_sales_invoices", [])
+        alloc_store = self.db._tables.setdefault("receipt_allocations", [])
+        alloc_results = []
+        by_invoice: dict = {}
+        for a in allocations:
+            allocated_paise = int(a.get("allocated_paise") or 0)
+            if allocated_paise <= 0:
+                continue
+            inv_id = a.get("sales_invoice_id")
+            by_invoice[inv_id] = by_invoice.get(inv_id, 0) + allocated_paise
+
+        for inv_id, allocated_paise in by_invoice.items():
+            inv = next(
+                (r for r in invoices
+                 if r.get("id") == inv_id
+                 and r.get("firm_id") == receipt.get("firm_id")
+                 and r.get("client_id") == receipt.get("client_id")),
+                None,
+            )
+            if inv is None:
+                raise Exception(f"settle_receipt_atomic: invoice {inv_id} is not part of this client's books")
+            total = int(inv.get("total_paise", 0))
+            credited = int(inv.get("credited_paise", 0) or 0)
+            new_paid = int(inv.get("paid_paise", 0) or 0) + allocated_paise
+            if new_paid + credited > total:
+                raise Exception(f"settle_receipt_atomic: allocation to invoice {inv_id} exceeds its outstanding")
+            new_status = "paid" if new_paid + credited >= total else "partially_paid"
+            inv["paid_paise"] = new_paid
+            inv["status"] = new_status
+            alloc_row = {
+                "id": str(uuid.uuid4()), "receipt_id": receipt["id"],
+                "sales_invoice_id": inv_id, "allocated_paise": allocated_paise,
+            }
+            alloc_store.append(alloc_row)
+            alloc_results.append({
+                "sales_invoice_id": inv_id, "allocated_paise": allocated_paise,
+                "new_paid_paise": new_paid, "new_status": new_status,
+            })
+
+        return {
+            "receipt_id": receipt["id"],
+            "journal_entry_id": entry["id"],
+            "receipt": dict(receipt),
+            "allocations": alloc_results,
+        }
 
 
 # --------------------------------------------------------------------------- #

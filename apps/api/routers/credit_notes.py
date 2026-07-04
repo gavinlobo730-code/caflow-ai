@@ -277,31 +277,14 @@ def create_credit_note(
             "created_at":           datetime.now(timezone.utc).isoformat(),
         }
 
-        from services.numbering import insert_with_number
-        cn = insert_with_number(
+        from services.numbering import insert_numbered_document_with_lines
+        cn = insert_numbered_document_with_lines(
             db, "credit_notes", cn_payload, "credit_note_no",
             lambda s: f"CN-{fy}-{s:04d}",
-            lambda: _next_cn_seq(db, firm_id, client_id, fy))
+            lambda: _next_cn_seq(db, firm_id, client_id, fy),
+            "credit_note_lines", computed_lines, "credit_note_id")
         cn_id = cn.get("id", str(uuid.uuid4()))
-
-        line_payloads = [
-            {
-                "credit_note_id":       cn_id,
-                "description":          ln["description"],
-                "hsn_sac":              ln["hsn_sac"],
-                "quantity":             ln["quantity"],
-                "rate_paise":           ln["rate_paise"],
-                "gst_rate_bps":         ln["gst_rate_bps"],
-                "taxable_amount_paise": ln["taxable_amount_paise"],
-                "cgst_paise":           ln["cgst_paise"],
-                "sgst_paise":           ln["sgst_paise"],
-                "igst_paise":           ln["igst_paise"],
-                "line_total_paise":     ln["line_total_paise"],
-            }
-            for ln in computed_lines
-        ]
-        lines_resp = db.table("credit_note_lines").insert(line_payloads).execute()  # type: ignore[possibly-undefined]
-        cn["lines"] = lines_resp.data or computed_lines
+        cn["lines"] = computed_lines
 
         log_event(
             firm_id or "", "credit_note", cn_id,

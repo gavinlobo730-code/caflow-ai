@@ -242,13 +242,19 @@ class TestRiskEngine:
         assert "risks_by_severity" in summary
         assert "top_risks" in summary
 
-    def test_compliance_risks_derived_from_overdue_tasks(self):
+    def test_compliance_risks_derived_from_overdue_compliance_records(self):
+        """R3.13d: derived from compliance_records (System A) — compliance_tasks
+        (System B) is being retired and no longer feeds this at all. Seeds its
+        own row rather than relying on mock_data.py's fixture rows, which
+        other test files mutate over the course of a full-suite run."""
         from domain.risk_engine import _derive_compliance_risks
-        from mock_data import MOCK_COMPLIANCE_TASKS
-        overdue = [t for t in MOCK_COMPLIANCE_TASKS if t.get("status") == "overdue"]
-        if overdue:
-            derived = _derive_compliance_risks(firm_id=None, client_id=overdue[0]["client_id"])
-            assert any(r["source"] == "compliance" for r in derived)
+        from repositories.compliance_records_repository import compliance_records_repo
+        record = compliance_records_repo.create({
+            "firm_id": "risk-firm-1", "client_id": "risk-client-1",
+            "compliance_type": "GST", "status": "Overdue", "due_date": "2026-01-11",
+        })
+        derived = _derive_compliance_risks(firm_id=None, client_id=record["client_id"])
+        assert any(r["source"] == "compliance" for r in derived)
 
     def test_risk_severity_filter(self):
         from routers.risks import list_risks

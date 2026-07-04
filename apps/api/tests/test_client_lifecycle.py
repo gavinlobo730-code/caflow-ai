@@ -412,9 +412,8 @@ class TestArchiveRestoreMirrorConsistency:
 # ── Deletion blocker logic ────────────────────────────────────────────────────
 
 def _all_empty_repos():
-    """Context manager that stubs all four blocker-check repos to return empty."""
+    """Context manager that stubs all blocker-check repos to return empty."""
     return (
-        patch("routers.clients.compliance_repo"),
         patch("routers.clients.compliance_records_repo"),
         patch("routers.clients.task_repo"),
         patch("routers.clients.document_repo"),
@@ -425,54 +424,21 @@ class TestDeleteBlockerLogic:
 
     def test_no_blockers_for_clean_client(self):
         from routers.clients import _check_delete_blockers
-        with patch("routers.clients.compliance_repo") as ct, \
-             patch("routers.clients.compliance_records_repo") as cr, \
+        with patch("routers.clients.compliance_records_repo") as cr, \
              patch("routers.clients.task_repo") as tk, \
              patch("routers.clients.document_repo") as doc:
-            ct.find_all.return_value = []
             cr.find_all.return_value = []
             tk.find_all.return_value = []
             doc.find_all.return_value = []
             blockers = _check_delete_blockers("c-clean", FIRM_A)
         assert blockers == []
 
-    def test_open_compliance_task_blocks_delete(self):
-        from routers.clients import _check_delete_blockers
-        open_task = {"client_id": "c-001", "firm_id": FIRM_A, "status": "pending", "compliance_type": "GSTR1"}
-        with patch("routers.clients.compliance_repo") as ct, \
-             patch("routers.clients.compliance_records_repo") as cr, \
-             patch("routers.clients.task_repo") as tk, \
-             patch("routers.clients.document_repo") as doc:
-            ct.find_all.return_value = [open_task]
-            cr.find_all.return_value = []
-            tk.find_all.return_value = []
-            doc.find_all.return_value = []
-            blockers = _check_delete_blockers("c-001", FIRM_A)
-        assert len(blockers) == 1
-        assert "GSTR1" in blockers[0]
-
-    def test_filed_compliance_task_does_not_block(self):
-        from routers.clients import _check_delete_blockers
-        filed_task = {"client_id": "c-001", "firm_id": FIRM_A, "status": "filed", "compliance_type": "GSTR1"}
-        with patch("routers.clients.compliance_repo") as ct, \
-             patch("routers.clients.compliance_records_repo") as cr, \
-             patch("routers.clients.task_repo") as tk, \
-             patch("routers.clients.document_repo") as doc:
-            ct.find_all.return_value = [filed_task]
-            cr.find_all.return_value = []
-            tk.find_all.return_value = []
-            doc.find_all.return_value = []
-            blockers = _check_delete_blockers("c-001", FIRM_A)
-        assert blockers == []
-
     def test_active_compliance_record_blocks_delete(self):
         from routers.clients import _check_delete_blockers
         active_record = {"id": "cr-1", "firm_id": FIRM_A, "client_id": "c-001", "status": "In Progress"}
-        with patch("routers.clients.compliance_repo") as ct, \
-             patch("routers.clients.compliance_records_repo") as cr, \
+        with patch("routers.clients.compliance_records_repo") as cr, \
              patch("routers.clients.task_repo") as tk, \
              patch("routers.clients.document_repo") as doc:
-            ct.find_all.return_value = []
             cr.find_all.return_value = [active_record]
             tk.find_all.return_value = []
             doc.find_all.return_value = []
@@ -483,11 +449,9 @@ class TestDeleteBlockerLogic:
     def test_filed_compliance_record_does_not_block(self):
         from routers.clients import _check_delete_blockers
         filed_record = {"id": "cr-1", "firm_id": FIRM_A, "client_id": "c-001", "status": "Filed"}
-        with patch("routers.clients.compliance_repo") as ct, \
-             patch("routers.clients.compliance_records_repo") as cr, \
+        with patch("routers.clients.compliance_records_repo") as cr, \
              patch("routers.clients.task_repo") as tk, \
              patch("routers.clients.document_repo") as doc:
-            ct.find_all.return_value = []
             cr.find_all.return_value = [filed_record]
             tk.find_all.return_value = []
             doc.find_all.return_value = []
@@ -497,11 +461,9 @@ class TestDeleteBlockerLogic:
     def test_active_work_task_blocks_delete(self):
         from routers.clients import _check_delete_blockers
         work_task = {"id": "t-1", "firm_id": FIRM_A, "client_id": "c-001", "status": "in_progress", "title": "Tax Filing"}
-        with patch("routers.clients.compliance_repo") as ct, \
-             patch("routers.clients.compliance_records_repo") as cr, \
+        with patch("routers.clients.compliance_records_repo") as cr, \
              patch("routers.clients.task_repo") as tk, \
              patch("routers.clients.document_repo") as doc:
-            ct.find_all.return_value = []
             cr.find_all.return_value = []
             tk.find_all.return_value = [work_task]
             doc.find_all.return_value = []
@@ -512,11 +474,9 @@ class TestDeleteBlockerLogic:
     def test_completed_work_task_does_not_block(self):
         from routers.clients import _check_delete_blockers
         done_task = {"id": "t-1", "firm_id": FIRM_A, "client_id": "c-001", "status": "completed", "title": "Tax Filing"}
-        with patch("routers.clients.compliance_repo") as ct, \
-             patch("routers.clients.compliance_records_repo") as cr, \
+        with patch("routers.clients.compliance_records_repo") as cr, \
              patch("routers.clients.task_repo") as tk, \
              patch("routers.clients.document_repo") as doc:
-            ct.find_all.return_value = []
             cr.find_all.return_value = []
             tk.find_all.return_value = [done_task]
             doc.find_all.return_value = []
@@ -526,11 +486,9 @@ class TestDeleteBlockerLogic:
     def test_attached_document_blocks_delete(self):
         from routers.clients import _check_delete_blockers
         doc_record = {"id": "d-1", "firm_id": FIRM_A, "client_id": "c-001", "file_name": "form16.pdf"}
-        with patch("routers.clients.compliance_repo") as ct, \
-             patch("routers.clients.compliance_records_repo") as cr, \
+        with patch("routers.clients.compliance_records_repo") as cr, \
              patch("routers.clients.task_repo") as tk, \
              patch("routers.clients.document_repo") as doc:
-            ct.find_all.return_value = []
             cr.find_all.return_value = []
             tk.find_all.return_value = []
             doc.find_all.return_value = [doc_record]
@@ -540,25 +498,21 @@ class TestDeleteBlockerLogic:
 
     def test_multiple_blockers_all_reported(self):
         from routers.clients import _check_delete_blockers
-        with patch("routers.clients.compliance_repo") as ct, \
-             patch("routers.clients.compliance_records_repo") as cr, \
+        with patch("routers.clients.compliance_records_repo") as cr, \
              patch("routers.clients.task_repo") as tk, \
              patch("routers.clients.document_repo") as doc:
-            ct.find_all.return_value = [{"status": "pending", "compliance_type": "GSTR1"}]
             cr.find_all.return_value = [{"status": "In Progress"}]
             tk.find_all.return_value = [{"status": "in_progress"}]
             doc.find_all.return_value = [{"file_name": "doc.pdf"}]
             blockers = _check_delete_blockers("c-001", FIRM_A)
-        assert len(blockers) == 4
+        assert len(blockers) == 3
 
     def test_cross_firm_tasks_not_counted_as_blockers(self):
         from routers.clients import _check_delete_blockers
-        # compliance_repo.find_all already filters by firm_id — returns empty for cross-firm
-        with patch("routers.clients.compliance_repo") as ct, \
-             patch("routers.clients.compliance_records_repo") as cr, \
+        # compliance_records_repo.find_all already filters by firm_id — returns empty for cross-firm
+        with patch("routers.clients.compliance_records_repo") as cr, \
              patch("routers.clients.task_repo") as tk, \
              patch("routers.clients.document_repo") as doc:
-            ct.find_all.return_value = []
             cr.find_all.return_value = []
             tk.find_all.return_value = []
             doc.find_all.return_value = []
@@ -572,12 +526,10 @@ class TestDeleteBlockerLogic:
             "id": "el-1", "firm_id": FIRM_A, "client_id": "c-001",
             "status": "Sent",
         }
-        with patch("routers.clients.compliance_repo") as ct, \
-             patch("routers.clients.compliance_records_repo") as cr, \
+        with patch("routers.clients.compliance_records_repo") as cr, \
              patch("routers.clients.task_repo") as tk, \
              patch("routers.clients.document_repo") as doc, \
              patch("routers.engagement_letters._MOCK_ENGAGEMENTS", [active_letter]):
-            ct.find_all.return_value = []
             cr.find_all.return_value = []
             tk.find_all.return_value = []
             doc.find_all.return_value = []
@@ -592,12 +544,10 @@ class TestDeleteBlockerLogic:
             "id": "el-2", "firm_id": FIRM_A, "client_id": "c-001",
             "status": "Rejected",
         }
-        with patch("routers.clients.compliance_repo") as ct, \
-             patch("routers.clients.compliance_records_repo") as cr, \
+        with patch("routers.clients.compliance_records_repo") as cr, \
              patch("routers.clients.task_repo") as tk, \
              patch("routers.clients.document_repo") as doc, \
              patch("routers.engagement_letters._MOCK_ENGAGEMENTS", [rejected_letter]):
-            ct.find_all.return_value = []
             cr.find_all.return_value = []
             tk.find_all.return_value = []
             doc.find_all.return_value = []
@@ -611,12 +561,10 @@ class TestDeleteBlockerLogic:
             "id": "el-3", "firm_id": FIRM_B, "client_id": "c-001",
             "status": "Sent",
         }
-        with patch("routers.clients.compliance_repo") as ct, \
-             patch("routers.clients.compliance_records_repo") as cr, \
+        with patch("routers.clients.compliance_records_repo") as cr, \
              patch("routers.clients.task_repo") as tk, \
              patch("routers.clients.document_repo") as doc, \
              patch("routers.engagement_letters._MOCK_ENGAGEMENTS", [other_firm_letter]):
-            ct.find_all.return_value = []
             cr.find_all.return_value = []
             tk.find_all.return_value = []
             doc.find_all.return_value = []

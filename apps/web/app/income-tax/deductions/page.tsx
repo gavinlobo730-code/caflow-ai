@@ -9,17 +9,24 @@
  * IT Act Section 80TTA/80TTB — Savings interest deduction
  * IT Act Section 10(13A) — HRA exemption
  * IT Act Section 24(b) — Home loan interest ₹2,00,000 limit
- * All calculations in integer paise. New regime slabs FY 2026-27.
+ *
+ * All tax computation (slabs, rebate, surcharge, cess, deduction eligibility,
+ * HRA exemption) happens server-side via computeITR() → POST
+ * /api/income-tax/compute (domain/income_tax/itr_engine.py), the FY-versioned
+ * single source of truth also used by ITR filing. This page previously
+ * duplicated that engine locally with its own slab tables, which had drifted
+ * out of sync (audit finding F18: a paise/rupee scaling bug made every slab
+ * boundary 10x too low) and incorrectly applied HRA exemption to the new
+ * regime's taxable income (Section 10(13A) is old-regime-only under Section
+ * 115BAC). CLAUDE.md: zero business logic in the frontend.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Save, ChevronDown, ChevronUp } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
+import { computeITR, saveTaxPlanningRecord, type ITRComputeResult } from "@/lib/data/income-tax";
 import type { Client } from "@/lib/types";
-import { useEffect } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,6 +52,11 @@ interface DeductionState {
   // 80C items (all in paise)
   s80c: S80CItems;
   nps80ccd: number;
+  // Section 80CCD(2) — employer NPS contribution. Unlike every other
+  // Chapter VI-A deduction on this page, available under BOTH regimes
+  // (see itr_engine.py's LIMIT_80CCD2_* constants for the cap split).
+  employerNps80ccd2: number;
+  isGovernmentEmployee: boolean;
   // 80D
   s80d: S80DItems;
   // 80G donations (paise, deduction %)
@@ -61,27 +73,27 @@ interface DeductionState {
   homeLoanInterestPaise: number;
 }
 
-// ─── Limits (all in paise) ────────────────────────────────────────────────────
-// IT Act Section 80C limit
+// ─── Display-only statutory limits (all in paise) ────────────────────────────
+// Fixed reference figures for the "Limit:"/"Remaining:" UI labels only — never
+// used to compute eligibility or tax. The actual eligible/capped amount for
+// each section comes from computeITR()'s response (old-regime deductions),
+// which is the only place these limits are applied.
 const LIMIT_80C = 150000 * 100;
-// IT Act Section 80CCD(1B) additional NPS limit
 const LIMIT_NPS = 50000 * 100;
-// IT Act Section 80D limits
+// Section 80CCD(2) cap is a % of salary, not a fixed amount — these
+// percentages are display-label-only (mirrors itr_engine.py's LIMIT_80CCD2_*
+// constants; see that module for the government/other split and its
+// PENDING STATUTORY VERIFICATION note re: the new-regime-only enhancement
+// for non-government employees).
+const LIMIT_80CCD2_OTHER_PCT = 10;
+const LIMIT_80CCD2_GOVT_PCT = 14;
 const LIMIT_80D_SELF = 25000 * 100;
 const LIMIT_80D_SELF_SENIOR = 50000 * 100;
 const LIMIT_80D_PARENTS = 25000 * 100;
 const LIMIT_80D_PARENTS_SENIOR = 50000 * 100;
-// IT Act Section 80TTA
 const LIMIT_80TTA = 10000 * 100;
-// IT Act Section 80TTB (senior citizen)
 const LIMIT_80TTB = 50000 * 100;
-// IT Act Section 24(b) — self-occupied property
 const LIMIT_24B = 200000 * 100;
-// Standard deduction FY 2024-25 onwards
-const STANDARD_DEDUCTION = 75000 * 100;
-
-/** min(a, b) for integer paise */
-function minPaise(a: number, b: number) { return a < b ? a : b; }
 
 /** Integer paise to ₹ display */
 function fmtP(paise: number): string {
@@ -101,68 +113,6 @@ function rsToPaise(rs: string): number {
 /** paise → ₹ string for input */
 function paiseToRsStr(p: number): string {
   return p === 0 ? "" : (p / 100).toFixed(2);
-}
-
-// ─── Compute HRA Exemption (IT Act Section 10(13A)) ──────────────────────────
-function calcHraExemption(basic: number, hraReceived: number, rentPaid: number, metro: boolean): number {
-  if (rentPaid === 0) return 0;
-  // Exemption = min(actual HRA, 50%/40% of basic, rent paid - 10% of basic)
-  const pct = metro ? 5000 : 4000; // basis points: 50% = 5000bp, 40% = 4000bp
-  const halfBasic = Math.round((basic * pct) / 10000);
-  const rentMinusTen = Math.max(0, rentPaid - Math.round((basic * 1000) / 10000));
-  return minPaise(hraReceived, minPaise(halfBasic, rentMinusTen));
-}
-
-// ─── Compute Tax — New Regime FY 2026-27 ─────────────────────────────────────
-// Slabs: 0-4L=0%, 4-8L=5%, 8-12L=10%, 12-16L=15%, 16-20L=20%, 20-24L=25%, 24L+=30%
-// Rebate u/s 87A: no tax if income ≤ ₹12L
-function calcNewRegimeTax(taxableIncomePaise: number): number {
-  if (taxableIncomePaise <= 0) return 0;
-  const inc = taxableIncomePaise; // paise
-  const L = 100 * 100; // 1 lakh in paise = 10000 paise → 1L = 100*100 = 10000
-  // Slabs in paise
-  const SLAB = [
-    { upto: 400 * L, rate: 0 },
-    { upto: 800 * L, rate: 500 },
-    { upto: 1200 * L, rate: 1000 },
-    { upto: 1600 * L, rate: 1500 },
-    { upto: 2000 * L, rate: 2000 },
-    { upto: 2400 * L, rate: 2500 },
-  ];
-  let tax = 0;
-  let prev = 0;
-  for (const slab of SLAB) {
-    if (inc <= prev) break;
-    const slabIncome = minPaise(inc, slab.upto) - prev;
-    tax += Math.round((slabIncome * slab.rate) / 10000);
-    prev = slab.upto;
-  }
-  if (inc > 2400 * L) {
-    tax += Math.round(((inc - 2400 * L) * 3000) / 10000);
-  }
-  // Rebate u/s 87A: no tax if taxable income ≤ ₹12L
-  if (taxableIncomePaise <= 1200 * L) return 0;
-  return tax;
-}
-
-// ─── Old Regime Tax (standard slabs with deductions) ─────────────────────────
-function calcOldRegimeTax(taxableIncomePaise: number): number {
-  if (taxableIncomePaise <= 0) return 0;
-  const L = 100 * 100;
-  // Standard slabs: 0-2.5L=0%, 2.5-5L=5%, 5-10L=20%, 10L+=30%
-  let tax = 0;
-  if (taxableIncomePaise > 250 * L) {
-    tax += Math.round((minPaise(taxableIncomePaise, 500 * L) - 250 * L) * 500 / 10000);
-  }
-  if (taxableIncomePaise > 500 * L) {
-    tax += Math.round((minPaise(taxableIncomePaise, 1000 * L) - 500 * L) * 2000 / 10000);
-  }
-  if (taxableIncomePaise > 1000 * L) {
-    tax += Math.round((taxableIncomePaise - 1000 * L) * 3000 / 10000);
-  }
-  // Rebate u/s 87A for old regime: income ≤ 5L
-  if (taxableIncomePaise <= 500 * L) return 0;
-  return tax;
 }
 
 // ─── Input ────────────────────────────────────────────────────────────────────
@@ -230,6 +180,8 @@ const DEFAULT_STATE: DeductionState = {
   grossIncomePaise: 0,
   s80c: { ppf: 0, elss: 0, lic: 0, nsc: 0, homeLoanPrincipal: 0, tuitionFees: 0, fd5yr: 0 },
   nps80ccd: 0,
+  employerNps80ccd2: 0,
+  isGovernmentEmployee: false,
   s80d: { selfFamilyPremium: 0, selfFamilySenior: false, parentsPremium: 0, parentsSenior: false },
   donations: [],
   savingsInterestPaise: 0,
@@ -249,77 +201,137 @@ export default function DeductionsPage() {
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
 
+  const [oldResult, setOldResult] = useState<ITRComputeResult | null>(null);
+  const [newResult, setNewResult] = useState<ITRComputeResult | null>(null);
+  const [computing, setComputing] = useState(false);
+  const [computeError, setComputeError] = useState<string | null>(null);
+
   useEffect(() => {
     getClients().then(c => { setClients(c); if (c.length > 0) setClientId(c[0].id); }).catch(() => {});
   }, []);
 
   const upd = useCallback((patch: Partial<DeductionState>) => setState(s => ({ ...s, ...patch })), []);
 
-  // ── Compute deductions ────────────────────────────────────────────────────
-
-  // IT Act Section 80C
+  // Raw entered totals — plain sums of user input for display, not eligibility decisions.
   const total80cRaw = Object.values(state.s80c).reduce((a, b) => a + b, 0);
-  const elig80c = minPaise(total80cRaw, LIMIT_80C);
 
-  // IT Act Section 80CCD(1B) — NPS additional
-  const eligNps = minPaise(state.nps80ccd, LIMIT_NPS);
+  // ── Server-side computation ───────────────────────────────────────────────
+  // Two calls (old/new regime) since /api/income-tax/compute takes one regime
+  // at a time — same pattern as clients/[id]/tax/computation/page.tsx.
+  // Debounced: `state` changes on every keystroke in every field (including
+  // fields like a donation's description that don't affect tax at all) —
+  // without the delay each character fires two RBAC-gated backend calls.
+  useEffect(() => {
+    let cancelled = false;
 
-  // IT Act Section 80D
-  const selfLimit = state.s80d.selfFamilySenior ? LIMIT_80D_SELF_SENIOR : LIMIT_80D_SELF;
-  const parentsLimit = state.s80d.parentsSenior ? LIMIT_80D_PARENTS_SENIOR : LIMIT_80D_PARENTS;
-  const elig80d = minPaise(state.s80d.selfFamilyPremium, selfLimit) + minPaise(state.s80d.parentsPremium, parentsLimit);
+    const baseReq = {
+      gross_salary_paise: state.grossIncomePaise,
+      is_senior_citizen: state.isSeniorCitizen,
+      s80c: {
+        ppf_paise: state.s80c.ppf,
+        elss_paise: state.s80c.elss,
+        lic_paise: state.s80c.lic,
+        nsc_paise: state.s80c.nsc,
+        home_loan_principal_paise: state.s80c.homeLoanPrincipal,
+        tuition_fees_paise: state.s80c.tuitionFees,
+        fd_5yr_paise: state.s80c.fd5yr,
+      },
+      nps_80ccd1b_paise: state.nps80ccd,
+      employer_nps_80ccd2_paise: state.employerNps80ccd2,
+      is_government_employee: state.isGovernmentEmployee,
+      s80d: {
+        self_family_premium_paise: state.s80d.selfFamilyPremium,
+        self_family_is_senior: state.s80d.selfFamilySenior,
+        parents_premium_paise: state.s80d.parentsPremium,
+        parents_is_senior: state.s80d.parentsSenior,
+      },
+      donations_80g: state.donations.map(d => ({
+        description: d.description,
+        amount_paise: d.amountPaise,
+        deduction_pct: d.deductionPct,
+      })),
+      savings_interest_80tta_paise: state.savingsInterestPaise,
+      hra: {
+        basic_salary_paise: state.basicSalaryPaise,
+        hra_received_paise: state.hraReceivedPaise,
+        rent_paid_paise: state.rentPaidPaise,
+        is_metro: state.cityType === "metro",
+      },
+      home_loan_interest_24b_paise: state.homeLoanInterestPaise,
+    };
 
-  // IT Act Section 80G — donations
-  const elig80g = state.donations.reduce((sum, d) => {
-    const pct = d.deductionPct === 100 ? 10000 : 5000;
-    return sum + Math.round((d.amountPaise * pct) / 10000);
-  }, 0);
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      setComputing(true);
+      setComputeError(null);
+      Promise.all([
+        computeITR({ ...baseReq, use_new_regime: false }),
+        computeITR({ ...baseReq, use_new_regime: true }),
+      ]).then(([oldR, newR]) => {
+        if (cancelled) return;
+        setOldResult(oldR);
+        setNewResult(newR);
+      }).catch(e => {
+        if (!cancelled) setComputeError(e instanceof Error ? e.message : "Computation failed");
+      }).finally(() => {
+        if (!cancelled) setComputing(false);
+      });
+    }, 400);
 
-  // IT Act Section 80TTA/80TTB
-  const ttaLimit = state.isSeniorCitizen ? LIMIT_80TTB : LIMIT_80TTA;
-  const eligTta = minPaise(state.savingsInterestPaise, ttaLimit);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [state]);
 
-  // IT Act Section 10(13A) — HRA
-  const hraExemption = calcHraExemption(
-    state.basicSalaryPaise, state.hraReceivedPaise, state.rentPaidPaise, state.cityType === "metro"
-  );
+  // Old regime is the only response with non-zero Chapter VI-A deductions —
+  // the new regime disallows all of these except the standard deduction AND
+  // Section 80CCD(2) (see itr_engine.py's regime-conditional deduction block).
+  const elig80c = oldResult?.deductions.s80c_paise ?? 0;
+  const eligNps = oldResult?.deductions.s80ccd_paise ?? 0;
+  // 80CCD(2) is identical in both regime responses (survives 115BAC) — read
+  // from newResult so it's populated even before an old-regime call resolves.
+  const eligCcd2 = newResult?.deductions.s80ccd2_paise ?? 0;
+  const elig80d = oldResult?.deductions.s80d_paise ?? 0;
+  const elig80g = oldResult?.deductions.s80g_paise ?? 0;
+  const eligTta = oldResult?.deductions.s80tta_paise ?? 0;
+  const hraExemption = oldResult?.deductions.hra_paise ?? 0;
+  const elig24b = oldResult?.deductions.s24b_paise ?? 0;
+  const standardDed = newResult?.income.standard_deduction_paise ?? 0;
+  const totalDeductions = oldResult?.income.total_deductions_paise ?? 0;
 
-  // IT Act Section 24(b) — home loan interest
-  const elig24b = minPaise(state.homeLoanInterestPaise, LIMIT_24B);
-
-  // Standard deduction (salary)
-  const standardDed = STANDARD_DEDUCTION;
-
-  const totalDeductions = elig80c + eligNps + elig80d + elig80g + eligTta + hraExemption + elig24b + standardDed;
-
-  const netTaxableNew = Math.max(0, state.grossIncomePaise - standardDed - hraExemption);
-  const netTaxableOld = Math.max(0, state.grossIncomePaise - totalDeductions);
-
-  const newRegimeTax = calcNewRegimeTax(netTaxableNew);
-  const oldRegimeTax = calcOldRegimeTax(netTaxableOld);
+  const netTaxableNew = newResult?.income.taxable_income_paise ?? 0;
+  const netTaxableOld = oldResult?.income.taxable_income_paise ?? 0;
+  const newRegimeTax = newResult?.tax.total_tax_paise ?? 0;
+  const oldRegimeTax = oldResult?.tax.total_tax_paise ?? 0;
+  const fy = newResult?.fy || oldResult?.fy || "";
+  const ratesVerified = (newResult?.rates_verified ?? true) && (oldResult?.rates_verified ?? true);
 
   const recommended = newRegimeTax <= oldRegimeTax ? "new" : "old";
 
+  const selfLimit = state.s80d.selfFamilySenior ? LIMIT_80D_SELF_SENIOR : LIMIT_80D_SELF;
+  const parentsLimit = state.s80d.parentsSenior ? LIMIT_80D_PARENTS_SENIOR : LIMIT_80D_PARENTS;
+  const ttaLimit = state.isSeniorCitizen ? LIMIT_80TTB : LIMIT_80TTA;
+
   async function handleSave() {
-    if (!clientId) return;
+    if (!clientId || !oldResult || !newResult) return;
     setSaving(true);
     try {
-      const firmId = await getFirmId();
-      const sb = getSupabaseClient();
-      const fy = "2026-27";
-      const { error } = await sb.from("tax_planning_records").upsert({
-        firm_id: firmId,
+      await saveTaxPlanningRecord({
         client_id: clientId,
-        fy,
+        financial_year: fy,
         gross_income_paise: state.grossIncomePaise,
-        total_deductions_paise: totalDeductions,
-        new_regime_tax_paise: newRegimeTax,
-        old_regime_tax_paise: oldRegimeTax,
-        recommended_regime: recommended,
-        notes,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "firm_id,client_id,fy" });
-      if (error) throw new Error(error.message);
+        ppf_paise: state.s80c.ppf,
+        elss_paise: state.s80c.elss,
+        lic_paise: state.s80c.lic,
+        nsc_paise: state.s80c.nsc,
+        home_loan_principal_paise: state.s80c.homeLoanPrincipal,
+        tuition_fees_paise: state.s80c.tuitionFees,
+        other_80c_paise: state.s80c.fd5yr,
+        hra_paise: hraExemption,
+        nps_80ccd_paise: state.nps80ccd,
+        health_insurance_80d_paise: state.s80d.selfFamilyPremium + state.s80d.parentsPremium,
+        home_loan_interest_24b_paise: state.homeLoanInterestPaise,
+        regime: recommended,
+        tax_paise: recommended === "new" ? newRegimeTax : oldRegimeTax,
+      });
       setSaveMsg("Saved successfully");
       setTimeout(() => setSaveMsg(null), 3000);
     } catch (e) {
@@ -347,6 +359,14 @@ export default function DeductionsPage() {
         </div>
       </div>
 
+      {!ratesVerified && fy && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+          FY {fy} statutory rates are carried forward from the last verified year, pending confirmation
+          against the official Finance Act / CBDT circulars for {fy}. Do not rely on these figures for
+          filing until verified.
+        </div>
+      )}
+
       {/* Gross Income */}
       <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
         <PaiseInput label="Gross Total Income (₹)" valuePaise={state.grossIncomePaise}
@@ -363,8 +383,8 @@ export default function DeductionsPage() {
 
       {/* Standard Deduction */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center justify-between">
-        <span className="text-sm text-blue-800">Standard Deduction (FY 2024-25 onwards)</span>
-        <span className="font-semibold text-blue-900">{fmtP(STANDARD_DEDUCTION)}</span>
+        <span className="text-sm text-blue-800">Standard Deduction (New Regime, FY {fy || "—"})</span>
+        <span className="font-semibold text-blue-900">{fmtP(standardDed)}</span>
       </div>
 
       {/* 80C */}
@@ -386,6 +406,25 @@ export default function DeductionsPage() {
       <SectionCard title="Section 80CCD(1B) — NPS (additional)" eligible={eligNps} limit={LIMIT_NPS} entered={state.nps80ccd}>
         <PaiseInput label="NPS Contribution (over 80C)" valuePaise={state.nps80ccd}
           onChange={v => upd({ nps80ccd: v })} />
+      </SectionCard>
+
+      {/* 80CCD(2) Employer NPS — available under BOTH regimes */}
+      <SectionCard
+        title="Section 80CCD(2) — Employer NPS (both regimes)"
+        eligible={eligCcd2} entered={state.employerNps80ccd2}
+      >
+        <PaiseInput label="Employer's NPS Contribution" valuePaise={state.employerNps80ccd2}
+          onChange={v => upd({ employerNps80ccd2: v })}
+          note={`Capped at ${state.isGovernmentEmployee ? LIMIT_80CCD2_GOVT_PCT : LIMIT_80CCD2_OTHER_PCT}% of salary`} />
+        <div className="flex items-center justify-between py-2">
+          <span className="text-sm text-[#334155]">Government Employee</span>
+          <input type="checkbox" checked={state.isGovernmentEmployee}
+            onChange={e => upd({ isGovernmentEmployee: e.target.checked })} />
+        </div>
+        <p className="text-xs text-[#94A3B8] mt-1">
+          Unlike every other deduction on this page, Section 80CCD(2) reduces tax under
+          both the old and new regime.
+        </p>
       </SectionCard>
 
       {/* 80D */}
@@ -454,7 +493,7 @@ export default function DeductionsPage() {
       </SectionCard>
 
       {/* HRA — IT Act Section 10(13A) */}
-      <SectionCard title="HRA Exemption — Section 10(13A)" eligible={hraExemption}>
+      <SectionCard title="HRA Exemption — Section 10(13A) (Old Regime Only)" eligible={hraExemption}>
         <div className="space-y-1">
           <PaiseInput label="Basic Salary" valuePaise={state.basicSalaryPaise}
             onChange={v => upd({ basicSalaryPaise: v })} />
@@ -485,6 +524,7 @@ export default function DeductionsPage() {
       {/* Summary */}
       <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 space-y-3">
         <h2 className="font-semibold text-[#0F172A] text-sm">Tax Summary</h2>
+        {computeError && <p className="text-xs text-red-600">{computeError}</p>}
         <div className="space-y-2 text-sm">
           <div className="flex justify-between"><span className="text-[#475569]">Gross Total Income</span><span className="font-mono">{fmtP(state.grossIncomePaise)}</span></div>
           <div className="flex justify-between"><span className="text-[#475569]">Total Deductions (Old Regime)</span><span className="font-mono text-green-600">— {fmtP(totalDeductions)}</span></div>
@@ -497,7 +537,7 @@ export default function DeductionsPage() {
             <p className="text-xs font-medium text-[#475569] mb-1">New Regime Tax {recommended === "new" && "✓ Recommended"}</p>
             <p className="text-xl font-bold font-mono text-[#0F172A]">{fmtP(newRegimeTax)}</p>
             <p className="text-xs text-[#64748B] mt-1">Taxable: {fmtP(netTaxableNew)}</p>
-            {netTaxableNew <= 1200 * 100 * 100 && <p className="text-xs text-green-600 mt-1">Rebate u/s 87A — NIL tax</p>}
+            {newResult && newRegimeTax === 0 && netTaxableNew > 0 && <p className="text-xs text-green-600 mt-1">Rebate u/s 87A — NIL tax</p>}
           </div>
           <div className={`rounded-lg p-3 border-2 ${recommended === "old" ? "border-green-500 bg-green-50" : "border-[#E2E8F0] bg-[#F8FAFC]"}`}>
             <p className="text-xs font-medium text-[#475569] mb-1">Old Regime Tax {recommended === "old" && "✓ Recommended"}</p>
@@ -507,7 +547,9 @@ export default function DeductionsPage() {
         </div>
 
         <div className={`rounded-lg px-4 py-3 text-sm font-medium ${recommended === "new" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}>
-          Recommendation: <strong>{recommended === "new" ? "New Regime" : "Old Regime"}</strong> saves {fmtP(Math.abs(newRegimeTax - oldRegimeTax))} more in taxes.
+          {computing
+            ? "Computing…"
+            : <>Recommendation: <strong>{recommended === "new" ? "New Regime" : "Old Regime"}</strong> saves {fmtP(Math.abs(newRegimeTax - oldRegimeTax))} more in taxes.</>}
         </div>
 
         <div>
@@ -517,7 +559,7 @@ export default function DeductionsPage() {
             placeholder="Planning notes…" />
         </div>
 
-        <button onClick={handleSave} disabled={saving || !clientId}
+        <button onClick={handleSave} disabled={saving || !clientId || computing || !oldResult || !newResult}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-60">
           <Save size={15} /> {saving ? "Saving…" : "Save for Client"}
         </button>

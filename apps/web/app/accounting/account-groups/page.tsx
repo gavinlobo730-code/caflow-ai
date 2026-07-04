@@ -69,7 +69,7 @@ export default function AccountGroupsPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-5">
       <div className="flex items-center gap-3">
-        <Link href="/accounting/chart-of-accounts" className="text-[#94A3B8] hover:text-[#475569]">
+        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
           <ChevronLeft size={18} />
         </Link>
         <div className="flex-1">
@@ -80,9 +80,6 @@ export default function AccountGroupsPage() {
             {parentGroups.length} parent groups · {accounts.length} active accounts
           </p>
         </div>
-        <Link href="/accounting/chart-of-accounts" className="text-xs text-blue-600 hover:underline">
-          Edit groups in COA →
-        </Link>
       </div>
 
       <div className="space-y-5">

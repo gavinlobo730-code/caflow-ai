@@ -66,7 +66,7 @@ interface CompanyClient {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const TODAY = new Date("2026-06-02");
+const TODAY = new Date();
 
 const FORM_TYPES = [
   { value: "AOC-4",      label: "AOC-4 — Annual Financial Statement (Section 137)" },
@@ -87,13 +87,41 @@ const STATUS_STYLE: Record<FilingStatus, string> = {
   Overdue:  "bg-red-100 text-red-700",
 };
 
-// Key annual MCA deadlines — Companies Act 2013
+// Key annual MCA deadlines — Companies Act 2013. This is a generic "upcoming
+// deadlines" summary (not tied to any one company's actual AGM date), so it
+// assumes the statutory-latest AGM fallback of 30 Sep — the same convention
+// services/compliance_engine.py::MCA_AGM_OFFSET_DAYS uses on the backend.
+// Recomputed relative to the real current date every time this module loads,
+// rather than a year hardcoded once (R3.1 fix — the previous version froze
+// both "today" and every deadline's year, so it silently went stale).
+function _nextOccurrence(month: number, day: number): Date {
+  const thisYear = new Date(TODAY.getFullYear(), month - 1, day);
+  return thisYear >= TODAY ? thisYear : new Date(TODAY.getFullYear() + 1, month - 1, day);
+}
+function _daysUntil(d: Date): number {
+  return Math.ceil((d.getTime() - TODAY.getTime()) / 86400000);
+}
+function _fmtShort(d: Date): string {
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+const _AGM = _nextOccurrence(9, 30); // statutory-latest AGM (30 Sep)
+function _fromAgm(days: number): Date {
+  return new Date(_AGM.getFullYear(), _AGM.getMonth(), _AGM.getDate() + days);
+}
+function _nextMsme1(): { date: Date; label: string; period: string } {
+  const h1 = _nextOccurrence(10, 31);  // Apr-Sep half, due 31 Oct
+  const h2 = _nextOccurrence(4, 30);   // Oct-Mar half, due 30 Apr
+  return h1 < h2
+    ? { date: h1, label: "MSME-1 (H1)", period: `Apr–Sep ${h1.getFullYear()}` }
+    : { date: h2, label: "MSME-1 (H2)", period: `Oct ${h2.getFullYear() - 1}–Mar ${h2.getFullYear()}` };
+}
+const _msme1 = _nextMsme1();
 const KEY_DEADLINES = [
-  { label: "DIR-3 KYC",    date: "30 Sep 2026", note: "Rule 12A — Director KYC annual", daysLeft: Math.ceil((new Date("2026-09-30").getTime() - TODAY.getTime()) / 86400000) },
-  { label: "AOC-4",        date: "30 Oct 2026", note: "Section 137 — 30 days from AGM", daysLeft: Math.ceil((new Date("2026-10-30").getTime() - TODAY.getTime()) / 86400000) },
-  { label: "MGT-7/7A",     date: "29 Nov 2026", note: "Section 92 — 60 days from AGM", daysLeft: Math.ceil((new Date("2026-11-29").getTime() - TODAY.getTime()) / 86400000) },
-  { label: "ADT-1",        date: "14 Oct 2026", note: "Section 139 — 15 days from AGM", daysLeft: Math.ceil((new Date("2026-10-14").getTime() - TODAY.getTime()) / 86400000) },
-  { label: "MSME-1 (H2)",  date: "30 Apr 2027", note: "Half-yearly — Oct 2026–Mar 2027", daysLeft: Math.ceil((new Date("2027-04-30").getTime() - TODAY.getTime()) / 86400000) },
+  { label: "DIR-3 KYC",  date: _fmtShort(_AGM), note: "Rule 12A — Director KYC annual", daysLeft: _daysUntil(_AGM) },
+  { label: "ADT-1",      date: _fmtShort(_fromAgm(15)), note: "Section 139 — 15 days from AGM", daysLeft: _daysUntil(_fromAgm(15)) },
+  { label: "AOC-4",      date: _fmtShort(_fromAgm(30)), note: "Section 137 — 30 days from AGM", daysLeft: _daysUntil(_fromAgm(30)) },
+  { label: "MGT-7/7A",   date: _fmtShort(_fromAgm(60)), note: "Section 92 — 60 days from AGM", daysLeft: _daysUntil(_fromAgm(60)) },
+  { label: _msme1.label, date: _fmtShort(_msme1.date), note: `Half-yearly — ${_msme1.period}`, daysLeft: _daysUntil(_msme1.date) },
 ];
 
 // MCA filings, companies, and directors are loaded from the firm's real data;

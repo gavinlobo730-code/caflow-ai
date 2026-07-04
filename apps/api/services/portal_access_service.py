@@ -10,15 +10,21 @@ Lifecycle: invite (status='invited') → first login binds auth_user_id and flip
 mutation is audit-logged. NO staff privilege is ever granted to a portal contact.
 """
 import os
+import secrets
 import uuid
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import HTTPException
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.portal_access")
+
+# F22 fix: a portal invite must be explicitly accepted (token presented) within
+# this window. Clients check email less frequently than staff, so the window is
+# longer than the staff-invite TTL (7 days, routers/identity.py).
+_INVITE_TTL = timedelta(days=14)
 
 # Mock stores (mock/dev mode only).
 MOCK_PORTAL_CONTACTS: list[dict] = []
@@ -77,37 +83,78 @@ def _legacy_client(auth_user_id: str, db) -> Optional[dict]:
     return {"client_id": rows[0]["id"], "firm_id": rows[0]["firm_id"]} if rows else None
 
 
-def _find_all_invited_by_email(email: str, db) -> list[dict]:
-    """ALL pending invites for an email (a person may be invited to several clients)."""
-    if not email:
-        return []
-    e = email.strip().lower()
+def _find_by_invite_token(token: str, db) -> Optional[dict]:
+    """A pending invite awaiting acceptance (F22 fix) — never matches an
+    already-bound row, since auth_user_id must still be NULL."""
+    if not token:
+        return None
     if _USE_MOCK:
-        return [c for c in MOCK_PORTAL_CONTACTS
-                if (c.get("email") or "").strip().lower() == e
-                and c.get("status") == "invited" and not c.get("auth_user_id")]
-    return (db.table("client_portal_users").select("*")
-            .ilike("email", e).eq("status", "invited").is_("auth_user_id", "null").execute().data or [])
+        return next((c for c in MOCK_PORTAL_CONTACTS
+                     if c.get("invite_token") == token and c.get("status") == "invited"
+                     and not c.get("auth_user_id")), None)
+    rows = (db.table("client_portal_users").select("*")
+            .eq("invite_token", token).eq("status", "invited").is_("auth_user_id", "null")
+            .limit(1).execute().data or [])
+    return rows[0] if rows else None
 
 
 def _bind(contact: dict, auth_user_id: str, db) -> None:
-    """Activation: bind the Supabase uid to an invited contact on first login."""
-    fields = {"auth_user_id": auth_user_id, "status": "active", "activated_at": _now(), "updated_at": _now()}
+    """Activation: bind the Supabase uid to an invited contact. Single-use — the
+    invite token is cleared so it cannot be replayed."""
+    fields = {
+        "auth_user_id": auth_user_id, "status": "active", "activated_at": _now(), "updated_at": _now(),
+        "invite_token": None, "invite_expires_at": None,
+    }
     if _USE_MOCK:
         contact.update(fields)
         return
     db.table("client_portal_users").update(fields).eq("id", contact["id"]).execute()
 
 
-def list_portal_memberships(auth_user_id: Optional[str], email: Optional[str], db=None) -> list[dict]:
-    """ALL client memberships for a Supabase identity (no first-match-wins).
-    On first login, binds + activates EVERY pending invite that matches the email
-    (so a multi-company owner / shared CFO gets all their clients at once). Includes
-    the legacy portal_user_id link. Each entry is a portal-client context."""
+def accept_portal_invite(token: str, auth_user_id: str, email: str, db=None) -> dict:
+    """Explicitly accept ONE portal invite by its token (F22 fix).
+
+    Previously list_portal_memberships auto-bound ANY client_portal_users row
+    whose email matched the caller's Supabase session email, on every single
+    portal page load — no token, no expiry, no explicit action by the invitee.
+    A recycled or typo'd email address silently inherited that client's portal
+    access (invoices, statements, compliance status) on first login. Binding now
+    requires presenting the single-use, expiring token the invite email actually
+    carries; email is checked too as defense in depth, but the token (a 256-bit
+    random secret) is what makes this unforgeable.
+
+    Raises HTTPException(404) for any invalid/expired/mismatched token — kept
+    generic so the error can't be used as an oracle to distinguish why it failed.
+    """
     db = db or (None if _USE_MOCK else _db())
-    if email:
-        for inv in _find_all_invited_by_email(email, db):
-            _bind(inv, auth_user_id, db)
+    invite = _find_by_invite_token(token, db)
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invalid or expired invite.")
+    expires_at = invite.get("invite_expires_at")
+    if not expires_at:
+        raise HTTPException(status_code=404, detail="Invalid or expired invite.")
+    exp = expires_at if isinstance(expires_at, datetime) else datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+    if exp < datetime.now(timezone.utc):
+        raise HTTPException(status_code=404, detail="Invalid or expired invite.")
+    if (invite.get("email") or "").strip().lower() != (email or "").strip().lower():
+        raise HTTPException(status_code=404, detail="Invalid or expired invite.")
+
+    _bind(invite, auth_user_id, db)
+    _audit(invite.get("firm_id"), invite["client_id"], invite.get("id"), "portal_invite_accepted",
+           {"auth_user_id": auth_user_id, "email": email})
+    return _ctx(invite)
+
+
+def list_portal_memberships(auth_user_id: Optional[str], email: Optional[str], db=None) -> list[dict]:
+    """ALL ALREADY-ACTIVE client memberships for a Supabase identity (a person may
+    be a portal contact for several clients — a multi-company owner / shared CFO
+    sees all of them here). Includes the legacy portal_user_id link.
+
+    Read-only (F22 fix): this used to ALSO auto-bind any pending invite matching
+    the email on every call — see accept_portal_invite for the explicit,
+    token-gated replacement. A NEW invite must be accepted once (via its token)
+    before it appears here; already-active memberships are unaffected."""
+    db = db or (None if _USE_MOCK else _db())
     memberships = [_ctx(c) for c in _find_all_active_by_auth(auth_user_id, db)]
     legacy = _legacy_client(auth_user_id, db)
     if legacy and not any(str(m["client_id"]) == str(legacy["client_id"]) for m in memberships):
@@ -144,14 +191,21 @@ def _audit(firm_id, client_id, contact_id, action, actor, extra=None):
         pass
 
 
-def _send_invite_email(email: str, client_id: str, firm_id: str) -> None:
+def _send_invite_email(email: str, client_id: str, firm_id: str, invite_token: str) -> None:
     try:
         from services.email_service import _send
-        base = os.environ.get("PORTAL_BASE_URL", "https://caflow-ai.pages.dev/portal")
-        link = f"{base}?client={client_id}"
+        # F22 fix: previously defaulted to https://.../portal — the legacy,
+        # pre-Phase-4.5.1 page that never learned about invite tokens (it only
+        # understood ?client=, and its own auto-bind was against the un-tokened
+        # clients.portal_user_id link). The token-gated accept-invite flow lives
+        # on the dashboard route (POST /api/portal/accept-invite, consumed by
+        # portal/dashboard/page.tsx) — that is the only page this link may point to.
+        base = os.environ.get("PORTAL_BASE_URL", "https://caflow-ai.pages.dev/portal/dashboard")
+        link = f"{base}?invite={invite_token}"
         _send(email, "You've been invited to your accountant's client portal",
               f'<p>You have been granted access to your secure client portal.</p>'
-              f'<p><a href="{link}">Open the portal</a> and sign in with this email to continue.</p>')
+              f'<p><a href="{link}">Open the portal</a> and sign in with this email to continue.</p>'
+              f'<p>This link expires in 14 days.</p>')
     except Exception:  # pragma: no cover - email is best-effort
         pass
 
@@ -205,10 +259,15 @@ def invite_contact(firm_id: str, client_id: str, email: str, name: Optional[str]
                 .eq("client_id", client_id).ilike("email", e).limit(1).execute().data or [])
         existing = rows[0] if rows else None
 
+    # F22 fix: a fresh single-use token every time a (re-)invite is issued — also
+    # backfills a token for any pre-migration invite that never had one.
+    invite_token = secrets.token_urlsafe(32)
+    invite_expires_at = (datetime.now(timezone.utc) + _INVITE_TTL).isoformat()
+
     if existing:
         fields = {"status": "invited", "invited_at": _now(), "deactivated_at": None,
                   "name": name or existing.get("name"), "invited_by": (actor or {}).get("auth_user_id"),
-                  "updated_at": _now()}
+                  "updated_at": _now(), "invite_token": invite_token, "invite_expires_at": invite_expires_at}
         if _USE_MOCK:
             existing.update(fields)
             contact = dict(existing)
@@ -217,7 +276,8 @@ def invite_contact(firm_id: str, client_id: str, email: str, name: Optional[str]
                        .eq("id", existing["id"]).execute().data or [existing])[0]
     else:
         payload = {"firm_id": firm_id, "client_id": client_id, "email": email.strip(), "name": name,
-                   "status": "invited", "invited_by": (actor or {}).get("auth_user_id"), "invited_at": _now()}
+                   "status": "invited", "invited_by": (actor or {}).get("auth_user_id"), "invited_at": _now(),
+                   "invite_token": invite_token, "invite_expires_at": invite_expires_at}
         if _USE_MOCK:
             payload["id"] = str(uuid.uuid4())
             payload["created_at"] = _now()
@@ -227,7 +287,7 @@ def invite_contact(firm_id: str, client_id: str, email: str, name: Optional[str]
             contact = db.table("client_portal_users").insert(payload).execute().data[0]
 
     _audit(firm_id, client_id, contact.get("id"), "portal_invite", actor, {"email": email})
-    _send_invite_email(email, client_id, firm_id)
+    _send_invite_email(email, client_id, firm_id, invite_token)
     return contact
 
 
@@ -237,7 +297,10 @@ def resend_invite(firm_id: str, contact_id: str, actor: Optional[dict] = None, d
         raise HTTPException(status_code=404, detail="Portal contact not found.")
     if contact.get("status") == "deactivated":
         raise HTTPException(status_code=422, detail="Reactivate the contact (re-invite) instead of resending.")
-    fields = {"invited_at": _now(), "updated_at": _now()}
+    # F22 fix: rotate the token on every resend (a stale/leaked link stops working).
+    invite_token = secrets.token_urlsafe(32)
+    fields = {"invited_at": _now(), "updated_at": _now(), "invite_token": invite_token,
+              "invite_expires_at": (datetime.now(timezone.utc) + _INVITE_TTL).isoformat()}
     if _USE_MOCK:
         for c in MOCK_PORTAL_CONTACTS:
             if c.get("id") == contact_id:
@@ -245,7 +308,7 @@ def resend_invite(firm_id: str, contact_id: str, actor: Optional[dict] = None, d
     else:
         (db or _db()).table("client_portal_users").update(fields).eq("id", contact_id).eq("firm_id", firm_id).execute()
     _audit(firm_id, contact["client_id"], contact_id, "portal_invite_resend", actor)
-    _send_invite_email(contact["email"], contact["client_id"], firm_id)
+    _send_invite_email(contact["email"], contact["client_id"], firm_id, invite_token)
     return {**contact, **fields}
 
 

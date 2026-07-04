@@ -131,17 +131,74 @@ class Phase2JournalService:
             _logger.error("journal_for_sales_invoice error: %s", e)
             return None
 
-    def journal_for_receipt(
-        self, receipt: dict, firm_id: str, client_id: str
-    ) -> Optional[str]:
-        """
+    def receipt_journal_lines(self, db, receipt: dict, firm_id: str, client_id: str) -> list[dict]:
+        """Build (but do not post) the double-entry lines for a receipt:
         Dr Bank Account      = amount_paise (cash received)
         Dr TDS Receivable    = tds_paise    (if the client deducted TDS — IT Act §194J)
         Cr Trade Receivables = amount_paise + tds_paise (total settlement)
         The invoice can be fully settled even when cash < invoice value because the
         TDS portion is recorded as a receivable (claimable against the firm's IT,
         reconcilable to 26AS/AIS).
+
+        R2.12: extracted out of journal_for_receipt so services/receipt_service.py's
+        settle_receipt_atomic path (which posts the journal, the receipt row, and
+        every allocation in ONE database transaction) can resolve the same GL
+        accounts and build the same lines without going through the separate
+        post_journal_atomic RPC journal_for_receipt itself still uses.
+
+        Adversarial-review correction: create_foreign_receipt (the multi-currency
+        receipt path) does NOT call this — it builds its own FX-aware lines
+        inline (services/receipt_service.py) and posts via _create_journal
+        directly. journal_for_receipt (and this helper, transitively) is only
+        reached via create_receipt_core's mock branch and its no-.rpc
+        test-double fallback — never in production, where .rpc is always
+        available and the atomic path above is always taken.
         """
+        cash_paise = int(receipt["amount_paise"])
+        tds_paise  = int(receipt.get("tds_paise", 0) or 0)
+        settlement = cash_paise + tds_paise
+
+        bank_id        = self._find_account(db, firm_id, client_id, "%Bank%", system_key="bank")
+        receivables_id = self._find_account(
+            db, firm_id, client_id, "%Trade Receivable%", system_key="ar"
+        )
+
+        lines = [
+            {
+                "account_id": bank_id,
+                "debit_paise": cash_paise,
+                "credit_paise": 0,
+                "narration": "Cash/bank received from customer",
+            },
+        ]
+        if tds_paise > 0:
+            tds_recv_id = self._find_account(
+                db, firm_id, client_id, "%TDS Receivable%", system_key="tds_receivable"
+            )
+            lines.append({
+                "account_id": tds_recv_id,
+                "debit_paise": tds_paise,
+                "credit_paise": 0,
+                "narration": "TDS deducted by client — receivable (IT Act §194J)",
+            })
+        lines.append({
+            "account_id": receivables_id,
+            "debit_paise": 0,
+            "credit_paise": settlement,
+            "narration": "Trade receivable cleared (cash + TDS)",
+        })
+        return lines
+
+    def journal_for_receipt(
+        self, receipt: dict, firm_id: str, client_id: str
+    ) -> Optional[str]:
+        """Build the receipt's journal lines and post them via post_journal_atomic
+        (the single-document atomic path — see receipt_journal_lines' docstring for
+        why the line-building is factored out, and for which callers actually
+        reach this function in production — create_foreign_receipt is NOT one of
+        them). The plain-INR path posts through settle_receipt_atomic instead
+        (services/receipt_service.py), which folds this same journal into the
+        receipt+allocations transaction."""
         if _USE_MOCK:
             _logger.info("[MOCK] journal_for_receipt: %s", receipt.get("receipt_no"))
             return None
@@ -149,41 +206,7 @@ class Phase2JournalService:
         try:
             from core.supabase_client import get_supabase
             db = get_supabase()
-
-            cash_paise = int(receipt["amount_paise"])
-            tds_paise  = int(receipt.get("tds_paise", 0) or 0)
-            settlement = cash_paise + tds_paise
-
-            bank_id        = self._find_account(db, firm_id, client_id, "%Bank%", system_key="bank")
-            receivables_id = self._find_account(
-                db, firm_id, client_id, "%Trade Receivable%", system_key="ar"
-            )
-
-            lines = [
-                {
-                    "account_id": bank_id,
-                    "debit_paise": cash_paise,
-                    "credit_paise": 0,
-                    "narration": "Cash/bank received from customer",
-                },
-            ]
-            if tds_paise > 0:
-                tds_recv_id = self._find_account(
-                    db, firm_id, client_id, "%TDS Receivable%", system_key="tds_receivable"
-                )
-                lines.append({
-                    "account_id": tds_recv_id,
-                    "debit_paise": tds_paise,
-                    "credit_paise": 0,
-                    "narration": "TDS deducted by client — receivable (IT Act §194J)",
-                })
-            lines.append({
-                "account_id": receivables_id,
-                "debit_paise": 0,
-                "credit_paise": settlement,
-                "narration": "Trade receivable cleared (cash + TDS)",
-            })
-
+            lines = self.receipt_journal_lines(db, receipt, firm_id, client_id)
             _ccy = self._currency_kwargs(db, receipt, firm_id, client_id, lines)
             return self._create_journal(
                 db=db,
@@ -199,8 +222,11 @@ class Phase2JournalService:
         except ValueError:
             raise
         except Exception as e:
+            # F7: do NOT swallow. A receipt settles AR, so a silently-dropped
+            # journal would leave settled AR with no GL entry. Re-raise so the
+            # caller aborts before (or rolls back) the AR mutation.
             _logger.error("journal_for_receipt error: %s", e)
-            return None
+            raise
 
     def journal_for_credit_note(
         self, cn: dict, firm_id: str, client_id: str
@@ -530,8 +556,78 @@ class Phase2JournalService:
         except ValueError:
             raise
         except Exception as e:
+            # R2.9 adversarial review finding (CONFIRMED): unlike journal_for_receipt
+            # (hardened under F7/R1.6 to re-raise), this used to swallow the error and
+            # return None. A vendor payment relieves the AP sub-ledger the same way a
+            # receipt relieves AR, so a silently-dropped journal here leaves a payment
+            # marked paid with NO corresponding GL entry — the exact phantom-subledger
+            # bug F7 closed for receipts. Re-raise so the caller aborts before the
+            # payment row (and the bill's paid_paise/status) is ever written.
             _logger.error("journal_for_purchase_payment error: %s", e)
-            return None
+            raise
+
+    @staticmethod
+    def _build_payroll_lines(account_ids: dict, run: dict) -> list[dict]:
+        """Build a BALANCED payroll-accrual journal (fixes F13).
+
+        The employer's total cost of employment = gross wages + employer PF/ESI.
+        By the payroll identity (net = gross − employee PF − employee ESI − PT −
+        TDS, and total_pf/total_esi carry employee+employer), that total equals
+        (net + PF + ESI + PT + TDS) — i.e. the sum of every payable credit. Booking
+        the Salaries Expense debit as that sum makes the entry balance by
+        construction, whatever the mix of contributions. The prior code debited
+        only `gross`, leaving it short by the employer PF/ESI, so _create_journal's
+        balance check raised and finalization 500'd on essentially every run.
+
+        Employer PF/ESI is folded into Salaries Expense here (matching the module's
+        single-expense-account design). A future enhancement could split it into a
+        dedicated "Contribution to PF & Other Funds" account for the Schedule III
+        employee-benefit sub-classification — see roadmap.
+        """
+        net = run["total_net_paise"]
+        pf = run["total_pf_paise"]
+        esi = run["total_esi_paise"]
+        pt = run["total_pt_paise"]
+        tds = run["total_tds_paise"]
+        month = run.get("month", "")
+
+        # Payable credits — only include a line when the amount is non-zero.
+        credits: list[tuple[str, int, str]] = [
+            (account_ids["net"], net, "Net salary payable to employees"),
+        ]
+        if pf > 0:
+            credits.append((account_ids["pf"], pf, "PF payable (employee + employer) — EPF Act"))
+        if esi > 0:
+            credits.append((account_ids["esi"], esi, "ESI payable (employee + employer) — ESI Act"))
+        if pt > 0:
+            credits.append((account_ids["pt"], pt, "Professional Tax payable — IT Act §16(iii)"))
+        if tds > 0:
+            credits.append((account_ids["tds"], tds, "TDS on salary payable 24Q — IT Act §192"))
+
+        total_cost = sum(amount for _, amount, _ in credits)  # = gross + employer PF/ESI
+
+        # Defensive invariant (fail loud instead of posting a wrong-but-balanced
+        # journal): because the debit is DEFINED as sum(credits), the kernel's
+        # balance check can no longer catch a mis-computed run. total_cost must equal
+        # gross + employer PF/ESI, hence lie in [gross, gross + PF + ESI]. A value
+        # below gross means `net` was reduced by a deduction with no matching credit
+        # leg here (e.g. a future loan/advance recovery) — which would silently
+        # understate salary expense. Guarded so that regression surfaces immediately.
+        gross = int(run.get("total_gross_paise") or 0)
+        if gross and not (gross <= total_cost <= gross + pf + esi):
+            raise ValueError(
+                f"Payroll journal identity violated: total_cost={total_cost} outside "
+                f"[{gross}, {gross + pf + esi}] — a deduction is missing a credit leg."
+            )
+
+        lines: list[dict] = [{
+            "account_id": account_ids["salary_exp"], "debit_paise": total_cost, "credit_paise": 0,
+            "narration": f"Salaries + employer statutory contributions for {month} — IT Act §192",
+        }]
+        for account_id, amount, narration in credits:
+            lines.append({"account_id": account_id, "debit_paise": 0, "credit_paise": amount,
+                          "narration": narration})
+        return lines
 
     def journal_for_payroll(
         self, run: dict, firm_id: str, client_id: str
@@ -542,12 +638,17 @@ class Phase2JournalService:
         EPF Act: PF Payable (employer + employee combined).
         ESI Act: ESI Payable. PT: state-wise Professional Tax Payable.
 
-        Dr  Salaries Expense        (total gross)
+        Dr  Salaries Expense        (gross wages + employer PF/ESI = total cost)
           Cr  Net Salary Payable    (net pay)
           Cr  PF Payable            (employee + employer PF)
           Cr  ESI Payable           (employee + employer ESI)
           Cr  PT Payable
           Cr  TDS Payable - Salary
+
+        The debit is the employer's TOTAL cost of employment, so the entry
+        balances (see _build_payroll_lines). A prior version debited only `gross`,
+        which is short by the employer PF/ESI, so every finalization with the
+        default contributions failed the posting-kernel balance check (F13).
         """
         if _USE_MOCK:
             _logger.info("[MOCK] journal_for_payroll: %s", run.get("month"))
@@ -565,37 +666,13 @@ class Phase2JournalService:
             pt_id          = self._find_account(db, firm_id, client_id, "%PT Payable%")
             tds_sal_id     = self._find_account(db, firm_id, client_id, "%TDS Payable - Salary%")
 
-            gross    = run["total_gross_paise"]
-            net      = run["total_net_paise"]
-            pf       = run["total_pf_paise"]
-            esi      = run["total_esi_paise"]
-            pt       = run["total_pt_paise"]
-            tds      = run["total_tds_paise"]
-
-            # Net salary = gross - employee deductions; gross includes employer cost
-            # Rebalance: Dr Salaries Expense = net + employee_pf + employee_esi + pt + tds
-            # Employer PF/ESI are additional Dr (PF Expense / ESI Expense) — simplified here
-            # as single Salaries Expense debit for MVP
-
-            lines = [
-                {"account_id": salary_exp_id, "debit_paise": gross, "credit_paise": 0,
-                 "narration": f"Salary expense for {run['month']} — IT Act §192"},
-                {"account_id": net_sal_id,    "debit_paise": 0, "credit_paise": net,
-                 "narration": "Net salary payable to employees"},
-            ]
-
-            if pf > 0:
-                lines.append({"account_id": pf_id, "debit_paise": 0, "credit_paise": pf,
-                               "narration": "PF payable (employee + employer) — EPF Act"})
-            if esi > 0:
-                lines.append({"account_id": esi_id, "debit_paise": 0, "credit_paise": esi,
-                               "narration": "ESI payable (employee + employer) — ESI Act"})
-            if pt > 0:
-                lines.append({"account_id": pt_id, "debit_paise": 0, "credit_paise": pt,
-                               "narration": "Professional Tax payable — IT Act §16(iii)"})
-            if tds > 0:
-                lines.append({"account_id": tds_sal_id, "debit_paise": 0, "credit_paise": tds,
-                               "narration": "TDS on salary payable 24Q — IT Act §192"})
+            lines = self._build_payroll_lines(
+                {
+                    "salary_exp": salary_exp_id, "net": net_sal_id, "pf": pf_id,
+                    "esi": esi_id, "pt": pt_id, "tds": tds_sal_id,
+                },
+                run,
+            )
 
             return self._create_journal(
                 db=db,
@@ -1043,28 +1120,14 @@ class Phase2JournalService:
             entry_payload["rate_selected_by"] = rate_selected_by
             entry_payload["rate_selected_at"] = now_iso
 
-        # H2: the UNIQUE index closes the TOCTOU race — if a concurrent poster won,
-        # our insert raises 23505; recover by returning the winner's entry (idempotent).
-        try:
-            entry_resp = db.table("journal_entries").insert(entry_payload).execute()
-        except Exception as ins_err:
-            if not _USE_MOCK and reference_no and _is_unique_violation(ins_err):
-                dup = _find_existing()
-                if dup.data:
-                    _logger.warning(
-                        "Concurrent duplicate journal for firm=%s ref=%s date=%s — returning existing id",
-                        firm_id, reference_no, entry_date,
-                    )
-                    return dup.data[0]["id"]
-            raise
-        if not entry_resp.data:
-            raise RuntimeError(f"Failed to insert journal_entry for ref={reference_no}")
-
-        entry_id = entry_resp.data[0]["id"]
-
+        # Atomic posting (F2): the header and ALL its lines are inserted in ONE
+        # server-side transaction via post_journal_atomic (migration 152). A line
+        # failure now rolls the header back with it, so it can never strand an
+        # immutable orphan header (which the immutability trigger made unrepairable).
+        # The RPC also closes the (firm, client, reference_no, entry_date) idempotency
+        # race — on a concurrent duplicate (23505) it returns the winning entry's id.
         line_payloads = [
             {
-                "journal_entry_id": entry_id,
                 "account_id":       l["account_id"],
                 "debit_paise":      l["debit_paise"],
                 "credit_paise":     l["credit_paise"],
@@ -1084,7 +1147,52 @@ class Phase2JournalService:
             }
             for l in lines
         ]
-        db.table("journal_lines").insert(line_payloads).execute()
+        if hasattr(db, "rpc"):
+            # Real Supabase client (prod) and the e2e FakeDB both expose rpc — this
+            # is the atomic path that makes F2 impossible. DEPLOYMENT REQUIREMENT:
+            # migration 152 (which creates post_journal_atomic) MUST be applied to
+            # the target database before this code is deployed — there is no
+            # fallback, deliberately: falling back to the old two-insert path would
+            # silently reintroduce the F2 orphan-header bug this milestone fixes.
+            # A missing function surfaces as a clear, diagnosable error below
+            # instead of an opaque 500, so a migrate-before-deploy mistake is
+            # immediately obvious rather than presenting as "every posting is down."
+            try:
+                result = db.rpc(
+                    "post_journal_atomic",
+                    {"p_entry": entry_payload, "p_lines": line_payloads},
+                ).execute()
+            except Exception as rpc_err:
+                # R2.12 adversarial-review fix: a bare substring check on the
+                # function's own name misclassifies its OWN RAISE EXCEPTION
+                # ('post_journal_atomic: empty entry payload') as "RPC not
+                # found" — the same bug class found (and fixed) in
+                # services/receipt_service.py's identical check for
+                # settle_receipt_atomic. Require the actual missing-function
+                # signature (PGRST202, or a raw "function ... does not
+                # exist") instead of the function's own name.
+                msg = str(rpc_err).lower()
+                if "pgrst202" in msg or ("function" in msg and ("does not exist" in msg or "could not find the function" in msg)):
+                    raise RuntimeError(
+                        "post_journal_atomic RPC not found — migration 152 "
+                        "(apps/api/migrations/152_atomic_journal_posting.sql) must be "
+                        "applied to this database before the API is deployed."
+                    ) from rpc_err
+                raise
+            entry_id = result.data
+            if not entry_id:
+                raise RuntimeError(f"Failed to post journal for ref={reference_no}")
+        else:
+            # In-memory test double without rpc — two inserts (trivially atomic in
+            # a synchronous fake). Never reached in production (the Supabase client
+            # always exposes rpc).
+            entry_resp = db.table("journal_entries").insert(entry_payload).execute()
+            if not entry_resp.data:
+                raise RuntimeError(f"Failed to insert journal_entry for ref={reference_no}")
+            entry_id = entry_resp.data[0]["id"]
+            db.table("journal_lines").insert(
+                [{**lp, "journal_entry_id": entry_id} for lp in line_payloads]
+            ).execute()
 
         _logger.info(
             "%s journal %s | ref=%s | dr=%d cr=%d",

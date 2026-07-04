@@ -40,16 +40,16 @@ def _bill(db, vendor_id, rate, no):
 
 def test_h5_below_threshold_no_tds(monkeypatch):
     db = _setup(monkeypatch)
-    v = _vendor(db, "194J")                       # threshold ₹30,000
-    b = _bill(db, v, 20_000_00, "B1")             # ₹20,000 < 30k
-    assert b["tds_paise"] == 0 and b["tds_rate_bps"] == 0
+    v = _vendor(db, "194J")                       # threshold ₹50,000 (FA 2025)
+    b = _bill(db, v, 40_000_00, "B1")             # ₹40,000 ≤ 50k — was taxable
+    assert b["tds_paise"] == 0 and b["tds_rate_bps"] == 0   # under the pre-2025 ₹30k limit
 
 
 def test_h5_h6_above_threshold_deducts_and_persists_rate(monkeypatch):
     db = _setup(monkeypatch)
     v = _vendor(db, "194J")
-    b = _bill(db, v, 40_000_00, "B1")             # ₹40,000 > 30k → 10%
-    assert b["tds_paise"] == 4_000_00             # ₹4,000
+    b = _bill(db, v, 60_000_00, "B1")             # ₹60,000 > 50k (FA 2025) → 10%
+    assert b["tds_paise"] == 6_000_00             # ₹6,000
     assert b["tds_rate_bps"] == 1000              # H6: applied rate persisted
     assert b["tds_section"] == "194J"
 
@@ -76,6 +76,19 @@ def test_h6_individual_vs_company_rate_194c(monkeypatch):
     v_co = _vendor(db, "194C", pan="ABCCD1234E")   # 4th char C → company → 2%
     b2 = _bill(db, v_co, 50_000_00, "C1")
     assert b2["tds_rate_bps"] == 200 and b2["tds_paise"] == 1_000_00
+
+
+def test_206aa_no_pan_vendor_gets_the_floored_rate_not_the_section_rate(monkeypatch):
+    """R3.10: previously create_purchase_bill's resolve_tds() call had zero
+    PAN awareness -- a no-PAN vendor's bill silently deducted at the
+    ordinary 194J rate (10%) instead of Section 206AA's 20% floor. Driven
+    through the real bill-creation path, not just the domain function
+    directly, to prove the actual production bug is fixed end to end."""
+    db = _setup(monkeypatch)
+    v = _vendor(db, "194J", pan="PANNOTAVBL")      # no real PAN on file
+    b = _bill(db, v, 60_000_00, "B1")              # > ₹50,000 (FA 2025) threshold
+    assert b["tds_rate_bps"] == 2000                # floored to 20%, not 194J's ordinary 10%
+    assert b["tds_paise"] == 12_000_00              # 20% of ₹60,000, not ₹6,000
 
 
 def test_l1_tds_never_reaches_full_taxable(monkeypatch):

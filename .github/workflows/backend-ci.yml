@@ -14,7 +14,7 @@ on:
 
 jobs:
   test:
-    name: pytest (Python 3.11)
+    name: pytest — mock mode (Python 3.11)
     runs-on: ubuntu-latest
 
     steps:
@@ -30,8 +30,58 @@ jobs:
         working-directory: apps/api
         run: pip install -r requirements.txt
 
-      - name: Run tests
+      - name: Run tests (in-memory / FakeDB)
         working-directory: apps/api
         env:
           APP_ENV: development
+        # Includes the database-free schema-contract test
+        # (tests/test_schema_contract.py), which fails if code references a
+        # table/RPC that no migration creates.
         run: pytest tests/ -v --tb=short
+
+  migrations:
+    name: migration apply — real Postgres 16
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Pinned minor (not the floating `postgres:16` tag) so the migration-apply
+        # ratchet stays deterministic across runner image updates.
+        image: postgres:16.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Install pytest
+        run: pip install "pytest>=8.0.0"
+
+      # Applies the full migration set (with the Supabase-compat bootstrap) to a
+      # throwaway database and asserts the set of migrations that fail to apply
+      # equals the documented drift baseline (tests/test_migrations_apply.py).
+      # New invalid SQL / ordering drift fails here; a fixed migration also fails
+      # (forcing the baseline to shrink) — see roadmap R2.6.
+      - name: Run migration-apply ratchet
+        working-directory: apps/api
+        env:
+          # 127.0.0.1 (not localhost) so libpq targets the IPv4-published service
+          # port directly and never stalls on an IPv6 ::1 attempt first.
+          HARNESS_PG: "host=127.0.0.1 port=5432 user=postgres password=postgres"
+        run: pytest tests/test_migrations_apply.py -v --tb=short

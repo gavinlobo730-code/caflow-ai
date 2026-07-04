@@ -30,8 +30,8 @@ _MOCK_ITEMS: dict[str, list] = {}
 
 
 def _supabase():
-    from core.supabase_client import get_supabase_client
-    return get_supabase_client()
+    from core.supabase_client import get_supabase
+    return get_supabase()
 
 
 # ── Job Management ────────────────────────────────────────────────────────────
@@ -45,11 +45,13 @@ def create_migration_job(
     import_types: list[str] | None = None,
     description: str | None = None,
     source_file_size_bytes: int | None = None,
+    client_id: str | None = None,
 ) -> dict:
     if _USE_MOCK:
         job = {
             "id": str(uuid4()),
             "firm_id": firm_id,
+            "client_id": client_id,
             "name": name,
             "description": description,
             "source_file_name": source_file_name,
@@ -76,6 +78,7 @@ def create_migration_job(
     sb = _supabase()
     row = {
         "firm_id": firm_id,
+        "client_id": client_id,
         "name": name,
         "description": description,
         "source_file_name": source_file_name,
@@ -326,7 +329,7 @@ def save_migration_items(
         "total_items": len(items),
         "status": "previewing",
         "updated_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", job_id).execute()
+    }).eq("id", job_id).eq("firm_id", firm_id).execute()
 
 
 def get_migration_preview(firm_id: str, job_id: str) -> dict:
@@ -384,6 +387,15 @@ def execute_import(
         return report
 
     sb = _supabase()
+    # Firm-scoped job fetch: gives the importer the job's target client_id
+    # (customers/vendors need it) and doubles as the ownership check.
+    job_res = sb.table("tally_migration_jobs").select("id, client_id").eq(
+        "id", job_id
+    ).eq("firm_id", firm_id).execute().data
+    if not job_res:
+        raise ValueError("Migration job not found")
+    job_client_id = job_res[0].get("client_id")
+
     items_res = sb.table("tally_migration_items").select("*").eq("job_id", job_id).eq(
         "firm_id", firm_id
     ).execute()
@@ -404,18 +416,22 @@ def execute_import(
             continue
 
         try:
-            created_id = _import_single_item(firm_id, item, sb)
+            created_id, created_type = _import_single_item(firm_id, job_client_id, item, sb)
+            # created_record_type is what rollback_migration deletes from —
+            # it was never written before, making every rollback a silent
+            # no-op (R2.2 investigation finding).
             sb.table("tally_migration_items").update({
                 "status": "imported",
                 "created_record_id": created_id,
-            }).eq("id", item["id"]).execute()
+                "created_record_type": created_type,
+            }).eq("id", item["id"]).eq("firm_id", firm_id).execute()
             imported += 1
             audit_log.append({"item_id": item["id"], "status": "imported", "record_id": created_id})
         except Exception as e:
             sb.table("tally_migration_items").update({
                 "status": "failed",
                 "error_message": str(e),
-            }).eq("id", item["id"]).execute()
+            }).eq("id", item["id"]).eq("firm_id", firm_id).execute()
             failed += 1
             audit_log.append({"item_id": item["id"], "status": "failed", "error": str(e)})
 
@@ -428,7 +444,7 @@ def execute_import(
         "is_dry_run": is_dry_run,
         "completed_at": datetime.now(timezone.utc).isoformat() if not is_dry_run else None,
         "updated_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", job_id).execute()
+    }).eq("id", job_id).eq("firm_id", firm_id).execute()
 
     return {
         "total": len(items),
@@ -440,34 +456,51 @@ def execute_import(
     }
 
 
-def _import_single_item(firm_id: str, item: dict, sb: Any) -> str | None:
-    """Import a single Tally item into CAflow tables. Returns created record ID."""
+def _import_single_item(
+    firm_id: str, client_id: str | None, item: dict, sb: Any
+) -> tuple[str | None, str | None]:
+    """Import a single Tally item into CAflow tables. Returns
+    (created_record_id, created_record_table) — the table name is persisted on
+    the item so rollback knows where to delete from.
+
+    customers/vendors are PER-CLIENT masters (client_id NOT NULL, migration
+    049), so those item types require the job to target a client — refused
+    with a clear error instead of an opaque NOT NULL violation."""
     item_type = item["item_type"]
     data = item.get("tally_data", {})
+
+    if item_type in ("customer", "vendor") and not client_id:
+        raise ValueError(
+            f"Cannot import {item_type}s: this migration job has no target "
+            "client. Create the job with a client_id to import customer/"
+            "vendor masters."
+        )
 
     if item_type in ("customer",):
         res = sb.table("customers").insert({
             "firm_id": firm_id,
+            "client_id": client_id,
             "name": data.get("name", ""),
             "gstin": data.get("gstin"),
             "pan": data.get("pan"),
             "email": data.get("email"),
             "address": data.get("address"),
         }).execute()
-        return res.data[0]["id"] if res.data else None
+        return (res.data[0]["id"] if res.data else None), "customers"
 
     if item_type in ("vendor",):
         res = sb.table("vendors").insert({
             "firm_id": firm_id,
+            "client_id": client_id,
             "name": data.get("name", ""),
             "gstin": data.get("gstin"),
             "pan": data.get("pan"),
             "email": data.get("email"),
             "address": data.get("address"),
         }).execute()
-        return res.data[0]["id"] if res.data else None
+        return (res.data[0]["id"] if res.data else None), "vendors"
 
-    return None  # Other types require more complex mapping
+    return None, None  # Other types require more complex mapping
 
 
 def rollback_migration(firm_id: str, job_id: str, actor_id: str) -> dict:
@@ -481,16 +514,30 @@ def rollback_migration(firm_id: str, job_id: str, actor_id: str) -> dict:
         return {"rolled_back": True, "message": "Rollback completed"}
 
     sb = _supabase()
-    # Get all created records
+    # Ownership check FIRST: without it, any authenticated user who guessed a
+    # job id could delete another firm's imported customers/vendors and flip
+    # their job to rolled_back (R2.2 investigation finding — cross-tenant
+    # destructive action; RLS is the backstop, this is the primary guard).
+    job = sb.table("tally_migration_jobs").select("id").eq("id", job_id).eq(
+        "firm_id", firm_id
+    ).execute().data
+    if not job:
+        raise ValueError("Migration job not found")
+
+    # Get all created records — firm-scoped, matching every other item read.
     items_res = sb.table("tally_migration_items").select(
         "created_record_id, created_record_type"
-    ).eq("job_id", job_id).eq("status", "imported").execute()
+    ).eq("job_id", job_id).eq("firm_id", firm_id).eq("status", "imported").execute()
+
+    # Deleting only from the tables the importer writes — never a
+    # caller-influenced name (defence in depth around the dynamic .table()).
+    _ROLLBACK_TABLES = {"customers", "vendors"}
 
     rolled_back = 0
     for item in (items_res.data or []):
         rec_id = item.get("created_record_id")
         rec_type = item.get("created_record_type")
-        if rec_id and rec_type:
+        if rec_id and rec_type in _ROLLBACK_TABLES:
             try:
                 sb.table(rec_type).delete().eq("id", rec_id).eq("firm_id", firm_id).execute()
                 rolled_back += 1
@@ -501,6 +548,6 @@ def rollback_migration(firm_id: str, job_id: str, actor_id: str) -> dict:
         "status": "rolled_back",
         "rolled_back_at": datetime.now(timezone.utc).isoformat(),
         "rolled_back_by": actor_id,
-    }).eq("id", job_id).execute()
+    }).eq("id", job_id).eq("firm_id", firm_id).execute()
 
     return {"rolled_back": True, "records_deleted": rolled_back}

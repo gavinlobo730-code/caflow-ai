@@ -442,3 +442,76 @@ class TestScheduler:
 
         due = repo.list_schedules_due(now_iso)
         assert inactive["id"] not in {s["id"] for s in due}
+
+    def test_create_schedule_seeds_next_run_at(self, repo):
+        """R2.7 adversarial-review finding: create_schedule used to leave
+        next_run_at NULL forever — list_schedules_due only matches non-NULL
+        next_run_at, so a freshly created schedule could never become due."""
+        schedule = repo.create_schedule("firm-seed", None, "Nightly", "0 2 * * *")
+        assert schedule["next_run_at"] is not None
+        assert schedule["next_run_at"] > datetime.now(timezone.utc).isoformat()
+
+    def test_toggle_schedule_reseeds_next_run_at_on_activation(self, repo):
+        """Re-activating a schedule must re-seed next_run_at from 'now', not
+        leave a stale (possibly already-past) timestamp in place."""
+        from repositories.workflow_repository import MOCK_SCHEDULES
+        schedule = repo.create_schedule("firm-retoggle", None, "Retoggle", "0 3 * * *")
+        stale = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+        for s in MOCK_SCHEDULES:
+            if s["id"] == schedule["id"]:
+                s["next_run_at"] = stale
+                break
+
+        off = repo.toggle_schedule("firm-retoggle", schedule["id"])
+        assert off["is_active"] is False
+
+        back_on = repo.toggle_schedule("firm-retoggle", schedule["id"])
+        assert back_on["is_active"] is True
+        assert back_on["next_run_at"] > stale
+        assert back_on["next_run_at"] > datetime.now(timezone.utc).isoformat()
+
+    def test_run_due_schedules_fires_only_its_own_template(self, repo):
+        """R2.7 adversarial-review finding: a schedule must fire ONLY the
+        template it targets — not every active 'scheduled'-type template in
+        the firm (which both starts unrelated workflows and, for a schedule
+        whose target has any OTHER trigger_type, fires nothing at all while
+        still recording the run as a success)."""
+        from jobs.scheduler import run_due_schedules
+        from repositories.workflow_repository import MOCK_SCHEDULES
+
+        firm_id = "firm-sched-scoped"
+        target = _make_template(repo, firm_id, "Target template", trigger_type="scheduled")
+        decoy = _make_template(repo, firm_id, "Decoy template", trigger_type="scheduled")
+
+        schedule = repo.create_schedule(firm_id, target["id"], "Runs target only", "0 9 * * *")
+        past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        for s in MOCK_SCHEDULES:
+            if s["id"] == schedule["id"]:
+                s["next_run_at"] = past
+                break
+
+        run_due_schedules()
+
+        target_instances = repo.list_instances(firm_id, template_id=target["id"])
+        decoy_instances = repo.list_instances(firm_id, template_id=decoy["id"])
+        assert len(target_instances) == 1, "the targeted template must fire exactly once"
+        assert len(decoy_instances) == 0, "an unrelated same-trigger-type template must NOT fire"
+
+    def test_run_due_schedules_fires_regardless_of_target_trigger_type(self, repo):
+        """A schedule fires its target template directly — the target's own
+        trigger_type (e.g. 'gst_due', not 'scheduled') must not block it."""
+        from jobs.scheduler import run_due_schedules
+        from repositories.workflow_repository import MOCK_SCHEDULES
+
+        firm_id = "firm-sched-anytype"
+        target = _make_template(repo, firm_id, "GST due template", trigger_type="gst_due")
+        schedule = repo.create_schedule(firm_id, target["id"], "Runs regardless", "0 9 * * *")
+        past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        for s in MOCK_SCHEDULES:
+            if s["id"] == schedule["id"]:
+                s["next_run_at"] = past
+                break
+
+        run_due_schedules()
+
+        assert len(repo.list_instances(firm_id, template_id=target["id"])) == 1

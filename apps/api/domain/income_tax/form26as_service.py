@@ -25,8 +25,8 @@ MISMATCH_THRESHOLD_PCT = 1.0
 
 
 def _supabase():
-    from core.supabase_client import get_supabase_client
-    return get_supabase_client()
+    from core.supabase_client import get_supabase
+    return get_supabase()
 
 
 # ── Upload ─────────────────────────────────────────────────────────────────────

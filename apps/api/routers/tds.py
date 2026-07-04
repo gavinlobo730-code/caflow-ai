@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from core.permissions import rbac
 from domain.tds import TDSComputer, TDSDeducteeRecord
+from domain.tds.section_rates import tds_rates_for
 from repositories.tds_repository import tds_repo
 
 router = APIRouter(prefix="/api/tds", tags=["tds"])
@@ -76,6 +77,13 @@ class TDSAmountRequest(BaseModel):
     section: str
     payment_amount_paise: int = Field(gt=0)
     is_company: bool = False
+    # Financial year to resolve thresholds/rates for (e.g. "2025-26");
+    # omit for the current FY. See domain/tds/section_rates.py.
+    fy: Optional[str] = None
+    # IT Act §206AA — set False to model a payee with no PAN on file (rate
+    # floors at the registry's section_206aa_floor_rate_bps). Defaults to
+    # True (has a PAN) so existing callers' behaviour is unchanged.
+    has_pan: bool = True
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -234,45 +242,56 @@ def compute_24q(req: Compute24QRequest, user: dict = Depends(rbac("tds", "comput
 def compute_tds_amount(req: TDSAmountRequest, user: dict = Depends(rbac("tds", "compute"))):
     """
     Calculate TDS for a single payment given section and amount.
-    Returns applicable rate and TDS amount in paise.
-    IT Act Section 194.
+    Returns applicable rate and TDS amount in paise, resolved for the
+    requested FY (defaults to the current FY).
+    IT Act Chapter XVII-B.
     """
-    from domain.tds.tds_computer import SECTION_THRESHOLDS
-    if req.section not in SECTION_THRESHOLDS:
+    try:
+        resolution = computer.resolve_tds(
+            req.section, req.payment_amount_paise, is_company=req.is_company, fy=req.fy,
+            has_pan=req.has_pan)
+    except ValueError:
         raise HTTPException(status_code=400, detail=f"Unknown TDS section: {req.section}")
 
-    amount = computer.compute_tds_amount(req.section, req.payment_amount_paise, req.is_company)
-    threshold, ind_rate, co_rate = SECTION_THRESHOLDS[req.section]
-    applicable_rate = co_rate if req.is_company else ind_rate
-
+    rates = tds_rates_for(req.fy)
+    rule = rates.sections[resolution.section]
     return {
         "success": True,
         "data": {
-            "section": req.section,
+            "section": resolution.section,
+            "fy": rates.fy,
+            "rates_verified": rates.verified,
             "payment_amount_paise": req.payment_amount_paise,
-            "threshold_paise": threshold,
-            "tds_applicable": req.payment_amount_paise > threshold,
-            "applicable_rate_pct": applicable_rate,
-            "tds_paise": amount,
+            "threshold_paise": rule.single_threshold_paise,
+            "aggregate_threshold_paise": rule.aggregate_threshold_paise,
+            "tds_applicable": resolution.applies,
+            "applicable_rate_pct": resolution.rate_pct,
+            "tds_paise": resolution.tds_paise,
         },
         "error": None,
     }
 
 
 @router.get("/sections")
-def list_tds_sections(user: dict = Depends(rbac("tds", "read"))):
-    """List all TDS sections with thresholds and rates."""
-    from domain.tds.tds_computer import SECTION_THRESHOLDS
+def list_tds_sections(fy: Optional[str] = None, user: dict = Depends(rbac("tds", "read"))):
+    """List all TDS sections with thresholds and rates for the given FY
+    (defaults to the current FY)."""
+    rates = tds_rates_for(fy)
     sections = [
         {
             "section": sec,
-            "threshold_paise": thresh,
-            "rate_individual_pct": ind,
-            "rate_company_pct": co,
+            "threshold_paise": rule.single_threshold_paise,
+            "aggregate_threshold_paise": rule.aggregate_threshold_paise,
+            "rate_individual_pct": rule.individual_rate_bps / 100,
+            "rate_company_pct": rule.company_rate_bps / 100,
         }
-        for sec, (thresh, ind, co) in SECTION_THRESHOLDS.items()
+        for sec, rule in rates.sections.items()
     ]
-    return {"success": True, "data": sections, "error": None}
+    return {
+        "success": True,
+        "data": {"fy": rates.fy, "rates_verified": rates.verified, "sections": sections},
+        "error": None,
+    }
 
 
 @router.get("/returns/{client_id}")

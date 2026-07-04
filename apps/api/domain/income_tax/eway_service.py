@@ -49,8 +49,8 @@ class ManualEWayProvider(EWayBillProvider):
 
 
 def _supabase():
-    from core.supabase_client import get_supabase_client
-    return get_supabase_client()
+    from core.supabase_client import get_supabase
+    return get_supabase()
 
 
 def create_eway_bill(

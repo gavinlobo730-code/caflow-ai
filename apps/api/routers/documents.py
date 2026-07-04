@@ -2,6 +2,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
+from fastapi.responses import JSONResponse
 from models.common import api_response
 from repositories.document_repository import document_repo
 from services.activity_service import log_activity
@@ -21,45 +22,6 @@ def _scope_client(client_id, current_user):
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
-
-MOCK_FORM16_EXTRACTION = {
-    "employee_name": "Rajesh Kumar Sharma",
-    "pan": "ABCRS1234D",
-    "employer_name": "TechCorp India Pvt Ltd",
-    "employer_tan": "MUMB12345C",
-    "assessment_year": "2024-25",
-    "financial_year": "2023-24",
-    "gross_salary_paise": 120000000,
-    "gross_salary_display": "₹12,00,000",
-    "total_tds_paise": 18500000,
-    "total_tds_display": "₹1,85,000",
-    "standard_deduction_paise": 5000000,
-    "standard_deduction_display": "₹50,000",
-    "net_taxable_income_paise": 115000000,
-    "net_taxable_income_display": "₹11,50,000",
-}
-
-MOCK_GST_INVOICE_EXTRACTION = {
-    "supplier_name": "Hindustan Goods Suppliers Pvt Ltd",
-    "gstin": "27AABCH1234B1ZA",
-    "invoice_number": "HGS/2024-25/001234",
-    "invoice_date": "2024-03-15",
-    "taxable_value_paise": 10000000,
-    "taxable_value_display": "₹1,00,000",
-    "cgst_rate": "9%",
-    "cgst_paise": 900000,
-    "cgst_display": "₹9,000",
-    "sgst_rate": "9%",
-    "sgst_paise": 900000,
-    "sgst_display": "₹9,000",
-    "igst_rate": "0%",
-    "igst_paise": 0,
-    "igst_display": "₹0",
-    "total_amount_paise": 11800000,
-    "total_amount_display": "₹1,18,000",
-    "hsn_code": "8471",
-    "place_of_supply": "Maharashtra (27)",
-}
 
 BUCKET = "Documents"
 
@@ -231,27 +193,28 @@ async def parse_document(
     client_id: str = Form(None),
     current_user: dict = Depends(rbac("document", "write")),
 ):
+    """
+    R2.8/F19: this endpoint used to return hardcoded, unconditionally
+    fabricated Form16/GST-invoice fields (with a fake confidence_score of
+    0.94) for every request — no AI call was ever made. That silently
+    fabricated data has been removed rather than left live. Real AI-backed
+    extraction lives at /api/document-intelligence-v1/extract-invoice
+    (invoices) and /api/document-intelligence-v2/notices/extract (government
+    notices); this route now fails honestly instead of inventing content.
+    """
     allowed = {"form16": "FORM16", "gst_invoice": "GST_INVOICE",
                "FORM16": "FORM16", "GST_INVOICE": "GST_INVOICE"}
     if document_type not in allowed:
         raise HTTPException(status_code=400, detail=f"Unsupported document_type: {document_type}")
 
     _scope_client(client_id, current_user)  # block parsing against an unassigned client
-    doc_type = allowed[document_type]
-    fields = MOCK_FORM16_EXTRACTION if doc_type == "FORM16" else MOCK_GST_INVOICE_EXTRACTION
 
-    activity = log_activity(
-        action="document_uploaded",
-        description=f"{doc_type} parsed: {file.filename}",
-        client_id=client_id,
-        entity_type="document",
+    return JSONResponse(
+        status_code=501,
+        content=api_response(
+            False, None,
+            "Document parsing is not implemented on this endpoint. Use "
+            "/api/document-intelligence-v1/extract-invoice for invoices or "
+            "/api/document-intelligence-v2/notices/extract for government notices.",
+        ),
     )
-
-    return api_response(True, {
-        "document_type": doc_type,
-        "file_name": file.filename,
-        "fields": fields,
-        "confidence_score": 0.94,
-        "review_status": "pending_review",
-        "activity": activity,
-    })

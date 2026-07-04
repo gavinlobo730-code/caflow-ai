@@ -298,8 +298,13 @@ def start_scheduler() -> None:
     _scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
     # 06:00 IST daily — before the Indian working day starts
     _scheduler.add_job(run_daily_jobs, CronTrigger(hour=6, minute=0), id="daily_automation")
+    # Workflow schedule tick (R2.7/F12): run_due_schedules existed but was
+    # never registered, so cron workflow schedules silently never fired.
+    # Every minute; a fast no-op when nothing is due.
+    _scheduler.add_job(run_due_schedules, CronTrigger(minute="*"), id="workflow_schedules")
     _scheduler.start()
-    logger.info("Background scheduler started (daily automation at 06:00 IST)")
+    logger.info("Background scheduler started (daily automation at 06:00 IST; "
+                "workflow schedule tick every minute)")
 
 
 def stop_scheduler() -> None:
@@ -362,10 +367,14 @@ def _last_run_for_job(job_name: str) -> Optional[dict]:
 
 def _past_scheduled_hour() -> bool:
     """True if the current IST time is at/after the scheduled run hour (06:00 IST).
-    Falls back to True (so staleness can still be flagged) if tz lookup fails."""
+    Falls back to True (so staleness can still be flagged) if tz lookup fails.
+
+    Uses stdlib zoneinfo, not pytz — pytz was never in requirements.txt (same
+    class of bug as _compute_next_run's missing croniter/pytz, R2.7
+    adversarial-review finding), so this always hit the except branch."""
     try:
-        import pytz
-        now_ist = datetime.now(pytz.timezone("Asia/Kolkata"))
+        from zoneinfo import ZoneInfo
+        now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
         return now_ist.hour >= _SCHEDULED_HOUR_IST
     except Exception:  # pragma: no cover - defensive
         return True
@@ -452,14 +461,23 @@ def log_scheduler_startup_health() -> dict:
 # ── Phase 10B — Workflow Schedule Runner ──────────────────────────────────────
 
 def _compute_next_run(cron_expression: str, timezone_str: str = "Asia/Kolkata") -> str:
-    """Compute next run time from a cron expression using croniter."""
+    """Compute the next run time from a standard 5-field cron expression.
+
+    Uses APScheduler's own CronTrigger.from_crontab (already a hard
+    dependency) plus the stdlib zoneinfo — NOT croniter/pytz, which were
+    never added to requirements.txt: every call silently hit the except
+    branch and fell back to "now + 1 day", so no workflow schedule's cron
+    expression was ever actually honored (R2.7 adversarial-review finding).
+    """
     try:
-        import pytz
-        from croniter import croniter
-        tz = pytz.timezone(timezone_str)
+        from zoneinfo import ZoneInfo
+        from apscheduler.triggers.cron import CronTrigger
+        tz = ZoneInfo(timezone_str)
+        trigger = CronTrigger.from_crontab(cron_expression, timezone=tz)
         now = datetime.now(tz)
-        cron = croniter(cron_expression, now)
-        next_dt = cron.get_next(datetime)
+        next_dt = trigger.get_next_fire_time(None, now)
+        if next_dt is None:
+            raise ValueError(f"cron expression '{cron_expression}' has no future fire time")
         return next_dt.astimezone(timezone.utc).isoformat()
     except Exception as e:
         logger.error("Failed to compute next run for cron %s: %s", cron_expression, e)
@@ -505,6 +523,15 @@ def run_due_schedules() -> None:
         tz_str = schedule.get("timezone", "Asia/Kolkata")
 
         try:
+            # Fire the SPECIFIC template this schedule targets
+            # (workflow_schedules.template_id), not every active template in
+            # the firm whose trigger_type happens to be 'scheduled' — a
+            # schedule is "run this exact workflow on this cron", not a
+            # firm-wide broadcast (R2.7 adversarial-review finding: the old
+            # code fired every 'scheduled'-type template regardless of which
+            # schedule was due, and fired ZERO instances for a schedule
+            # pointing at a template with any other trigger_type, while
+            # still recording that run as a success).
             engine.fire_trigger(
                 firm_id=firm_id,
                 trigger_type="scheduled",
@@ -514,6 +541,7 @@ def run_due_schedules() -> None:
                     "fired_at": now_iso,
                 },
                 client_id=None,
+                template_id=schedule.get("template_id"),
             )
             run_status = "success"
             logger.info("Workflow schedule %s fired for firm %s", schedule_id, firm_id)

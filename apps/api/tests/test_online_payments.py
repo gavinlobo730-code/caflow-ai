@@ -337,6 +337,38 @@ def test_concurrent_capture_double_delivery_settles_once():
     assert db.data["customer_payments"][0]["receipt_id"] == db.data["receipts"][0]["id"]
 
 
+def test_journal_failure_reverts_capturing_claim_not_stranded(monkeypatch):
+    """F7 follow-up: journal_for_receipt now re-raises instead of swallowing
+    posting failures (F7). A failure here must NOT strand the payment in the
+    'capturing' sentinel forever — the claim must revert so a retry can settle."""
+    import services.phase2_journal_service as js
+    monkeypatch.setattr(js.phase2_journal_service, "journal_for_receipt",
+                         lambda *a, **k: (_ for _ in ()).throw(ValueError("Required account not found: Bank")))
+
+    db = FakeDB(); _seed_invoice(db, total=100000, paid=0)
+    link = ps.create_link(db, FIRM, INVOICE, actor={"auth_user_id": "u1", "email": "x"})
+    headers, body = _captured(db, link, event_id="evt-1", payment_id="pay-1")
+
+    with pytest.raises(ValueError):
+        ps.process_webhook(db, "mock", headers, body)
+
+    pay = db.data["customer_payments"][0]
+    assert pay["status"] == "captured", "must revert to a claimable status, not stay 'capturing'"
+    assert pay.get("receipt_id") is None
+    assert db.data.get("receipts", []) == []
+    assert db.data["client_sales_invoices"][0]["paid_paise"] == 0   # AR untouched
+
+    # A retry (e.g. webhook redelivery) can now re-attempt settlement.
+    js.phase2_journal_service.journal_for_receipt = lambda *a, **k: "JE-mock"
+    from services.payments.base import VerifiedEvent
+    ev = VerifiedEvent(provider="mock", event_id="evt-2", event_type="payment.captured",
+                       status="captured", signature_verified=True,
+                       provider_payment_id="pay-1", amount_paise=100000)
+    ps._apply_event(db, dict(db.data["customer_payments"][0]), ev, FIRM)
+    assert len(db.data["receipts"]) == 1
+    assert db.data["customer_payments"][0]["receipt_id"] == db.data["receipts"][0]["id"]
+
+
 def test_webhook_invalid_signature_rejected_no_accounting():
     db = FakeDB(); _seed_invoice(db, total=100000, paid=0)
     link = ps.create_link(db, FIRM, INVOICE, actor={"auth_user_id": "u1", "email": "x"})

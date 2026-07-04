@@ -17,8 +17,9 @@ import services.compliance_obligation_service as ob
 from domain.compliance_record_service import VALID_TRANSITIONS, compliance_record_service
 from repositories.compliance_records_repository import compliance_records_repo
 from repositories.engagement_repository import engagement_repo
+from repositories.client_repository import client_repo
 from routers.engagements import ENGAGEMENT_TRANSITIONS
-from mock_data import MOCK_COMPLIANCE_RECORDS, MOCK_ENGAGEMENTS, ENGAGEMENT_INDEX
+from mock_data import MOCK_COMPLIANCE_RECORDS, MOCK_ENGAGEMENTS, ENGAGEMENT_INDEX, MOCK_CLIENTS, CLIENT_INDEX
 from routers.sales_invoices import MOCK_SALES_INVOICES
 
 FIRM = "F1"
@@ -32,6 +33,7 @@ def _isolate(monkeypatch):
     MOCK_ENGAGEMENTS.clear()
     ENGAGEMENT_INDEX.clear()
     MOCK_SALES_INVOICES.clear()
+    clients_snapshot = list(MOCK_CLIENTS)
     # Capture audit; silence timeline (both imported lazily inside the service).
     audit: list = []
     import services.audit_service as au
@@ -43,6 +45,13 @@ def _isolate(monkeypatch):
     MOCK_ENGAGEMENTS.clear()
     ENGAGEMENT_INDEX.clear()
     MOCK_SALES_INVOICES.clear()
+    MOCK_CLIENTS[:] = clients_snapshot
+    CLIENT_INDEX.clear()
+    CLIENT_INDEX.update({c["id"]: c for c in MOCK_CLIENTS})
+
+
+def _client(client_id, firm=FIRM):
+    return client_repo.create({"id": client_id, "firm_id": firm, "client_name": f"Client {client_id}"})
 
 
 def _engagement(service_type, firm=FIRM, client="CL-1", assigned_to="prep-1",
@@ -171,6 +180,64 @@ def test_generation_has_no_accounting_side_effects():
     assert MOCK_SALES_INVOICES == []                                  # no invoices/journals created
 
 
+# ── No-engagement fallback ────────────────────────────────────────────────────
+# A client with zero ACTIVE engagements previously got nothing generated at all —
+# a regression risk once the frontend's unconditional seedComplianceCalendar()
+# (which needed no engagement concept) is repointed at this generator. These
+# prove the fallback restores that "every client gets baseline GST coverage"
+# behaviour without overriding a client whose active engagement already scoped
+# obligations deliberately (e.g. an ITR-only engagement should not also receive
+# GST obligations as an unrequested side effect).
+
+def test_generate_due_client_scoped_fallback_seeds_gst_only():
+    _client("CL-NOENG")
+    res = ob.generate_due(FIRM, client_id="CL-NOENG", financial_year=FY, actor=ACTOR)
+    assert res["generated"] == 25 and res["skipped"] == 0
+    recs = compliance_records_repo.find_all(firm_id=FIRM, client_id="CL-NOENG")
+    assert len(recs) == 25
+    assert {r["obligation_type"] for r in recs} == {"GSTR1", "GSTR3B", "GSTR9"}
+    assert all(r.get("engagement_id") is None for r in recs)
+    # idempotent re-run
+    again = ob.generate_due(FIRM, client_id="CL-NOENG", financial_year=FY, actor=ACTOR)
+    assert again["generated"] == 0 and again["skipped"] == 25
+
+
+def test_generate_due_active_engagement_client_excluded_from_fallback():
+    """An ITR-only active engagement must not gain GST obligations as a side
+    effect of the fallback — the fallback applies only to clients with zero
+    active engagements, never on top of a deliberately-scoped one."""
+    eng = _engagement("Income Tax Return", client="CL-ITR")
+    res = ob.generate_due(FIRM, client_id="CL-ITR", financial_year=FY, actor=ACTOR)
+    assert res["generated"] == 1                                     # ITR only, no GST fallback
+    recs = compliance_records_repo.find_all(firm_id=FIRM, client_id="CL-ITR")
+    assert {r["obligation_type"] for r in recs} == {"ITR"}
+    assert recs[0]["engagement_id"] == eng["id"]
+
+
+def test_generate_due_firm_wide_applies_fallback_to_uncovered_clients_only():
+    _engagement("GST Compliance", client="CL-WITH-ENG")   # active → covered, no fallback
+    _client("CL-WITH-ENG")
+    _client("CL-NO-ENG-A")
+    _client("CL-NO-ENG-B")
+    res = ob.generate_due(FIRM, financial_year=FY, actor=ACTOR)
+    assert res["generated"] == 75                                    # 25 x 3 clients
+    by_client = {}
+    for r in compliance_records_repo.find_all(firm_id=FIRM):
+        by_client.setdefault(r["client_id"], []).append(r)
+    assert set(by_client) == {"CL-WITH-ENG", "CL-NO-ENG-A", "CL-NO-ENG-B"}
+    assert all(r.get("engagement_id") for r in by_client["CL-WITH-ENG"])
+    assert all(r.get("engagement_id") is None for r in by_client["CL-NO-ENG-A"])
+    assert all(r.get("engagement_id") is None for r in by_client["CL-NO-ENG-B"])
+
+
+def test_generate_default_for_client_direct_call_is_pure_gst():
+    _client("CL-DIRECT")
+    res = ob.generate_default_for_client(FIRM, "CL-DIRECT", FY, actor=ACTOR)
+    assert res["generated"] == 25
+    recs = compliance_records_repo.find_all(firm_id=FIRM, client_id="CL-DIRECT")
+    assert all(r["compliance_type"] == "GST" for r in recs)
+
+
 # ── Assignment chain ─────────────────────────────────────────────────────────
 
 def test_assign_sets_chain_and_audits(_isolate):
@@ -218,6 +285,70 @@ def test_transition_filed_to_completed_sets_completed_at():
                                           "due_date": "2026-06-20", "status": "Filed"})
     out = ob.transition(FIRM, rec["id"], "Completed", actor=ACTOR)
     assert out["status"] == "Completed" and out.get("completed_at")
+
+
+# ── mark_filed (R3.13e: one-click "mark filed" for compliance_calendar migrants) ──
+
+def test_mark_filed_walks_the_full_workflow_from_not_started():
+    rec = compliance_records_repo.create({"firm_id": FIRM, "client_id": "CL-1", "compliance_type": "GST",
+                                          "due_date": "2026-06-20", "status": "Not Started"})
+    out = compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR)
+    assert out["status"] == "Filed"
+    assert out.get("filed_date")
+
+
+def test_mark_filed_from_awaiting_documents():
+    rec = compliance_records_repo.create({"firm_id": FIRM, "client_id": "CL-1", "compliance_type": "GST",
+                                          "due_date": "2026-06-20", "status": "Awaiting Documents"})
+    out = compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR)
+    assert out["status"] == "Filed"
+
+
+def test_mark_filed_from_overdue():
+    rec = compliance_records_repo.create({"firm_id": FIRM, "client_id": "CL-1", "compliance_type": "GST",
+                                          "due_date": "2026-06-20", "status": "Overdue"})
+    out = compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR)
+    assert out["status"] == "Filed"
+
+
+def test_mark_filed_from_ready_to_file_takes_the_last_step_only():
+    rec = compliance_records_repo.create({"firm_id": FIRM, "client_id": "CL-1", "compliance_type": "GST",
+                                          "due_date": "2026-06-20", "status": "Ready To File"})
+    out = compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR)
+    assert out["status"] == "Filed"
+
+
+def test_mark_filed_records_acknowledgement_number():
+    rec = compliance_records_repo.create({"firm_id": FIRM, "client_id": "CL-1", "compliance_type": "GST",
+                                          "due_date": "2026-06-20", "status": "Not Started"})
+    out = compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR, acknowledgement_no="ARN12345")
+    assert out["status"] == "Filed" and out["acknowledgement_no"] == "ARN12345"
+
+
+def test_mark_filed_is_a_noop_when_already_filed():
+    rec = compliance_records_repo.create({"firm_id": FIRM, "client_id": "CL-1", "compliance_type": "GST",
+                                          "due_date": "2026-06-20", "status": "Filed", "filed_date": "2026-06-15"})
+    out = compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR)
+    assert out["status"] == "Filed" and out["filed_date"] == "2026-06-15"
+
+
+def test_mark_filed_already_completed_stays_completed():
+    rec = compliance_records_repo.create({"firm_id": FIRM, "client_id": "CL-1", "compliance_type": "GST",
+                                          "due_date": "2026-06-20", "status": "Completed"})
+    out = compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR)
+    assert out["status"] == "Completed"
+
+
+def test_mark_filed_each_intermediate_step_is_audited():
+    rec = compliance_records_repo.create({"firm_id": FIRM, "client_id": "CL-1", "compliance_type": "GST",
+                                          "due_date": "2026-06-20", "status": "Not Started"})
+    import services.audit_service as au
+    audit_calls = []
+    import unittest.mock
+    with unittest.mock.patch.object(au, "log_event", lambda *a, **k: audit_calls.append(a)):
+        compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR)
+    # Not Started -> In Progress -> Ready For Review -> Ready To File -> Filed: 4 transitions
+    assert len(audit_calls) == 4
 
 
 # ── Escalations (internal, idempotent) ───────────────────────────────────────
@@ -310,3 +441,24 @@ def test_calendar_assignment_scope(monkeypatch):
     calp = resp["data"]
     rowsp = calp["upcoming"] + calp["overdue"] + calp["completed"]
     assert {o["client_id"] for o in rowsp} == {"CL-A", "CL-B"}  # Partner sees all
+
+
+# ── mark-filed endpoint (router level) ───────────────────────────────────────
+
+def test_mark_filed_endpoint_walks_workflow_and_records_arn():
+    from routers.compliance_ops import mark_filed_obligation, MarkFiledBody
+    rec = _seed_obl("CL-A", "GSTR3B", "2026-06-20", status="Not Started")
+    resp = mark_filed_obligation(rec["id"], MarkFiledBody(acknowledgement_no="ARN99"), current_user=PARTNER)
+    obligation = resp["data"]["obligation"]
+    assert obligation["status"] == "Filed"
+    assert obligation["acknowledgement_no"] == "ARN99"
+
+
+def test_mark_filed_endpoint_404_other_firm():
+    from routers.compliance_ops import mark_filed_obligation, MarkFiledBody
+    rec = compliance_records_repo.create({"firm_id": "OTHER-FIRM", "client_id": "CL-X",
+                                          "compliance_type": "GST", "due_date": "2026-06-20",
+                                          "status": "Not Started"})
+    with pytest.raises(HTTPException) as ei:
+        mark_filed_obligation(rec["id"], MarkFiledBody(), current_user=PARTNER)
+    assert ei.value.status_code == 404

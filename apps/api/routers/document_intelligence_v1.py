@@ -9,6 +9,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.responses import JSONResponse
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import assert_client_access
@@ -82,7 +83,13 @@ async def extract_invoice(
     content_type = (file.content_type or "").lower()
     filename = file.filename or ""
 
-    extracted = _run_extraction(content, content_type, filename)
+    extracted, error, status_code = _run_extraction(content, content_type, filename)
+    if error:
+        # R2.8/F19: no more fabricated fallback data — surface the failure
+        # honestly so the CA knows to enter the bill manually, instead of a
+        # plausible-looking invoice silently flowing into the draft bill form.
+        return JSONResponse(status_code=status_code, content=api_response(False, None, error))
+
     return api_response(True, {
         "extracted": extracted,
         "confidence": _estimate_confidence(extracted),
@@ -91,21 +98,24 @@ async def extract_invoice(
     })
 
 
-def _run_extraction(content: bytes, content_type: str, filename: str) -> dict:
+def _run_extraction(
+    content: bytes, content_type: str, filename: str
+) -> tuple[Optional[dict], Optional[str], int]:
     """
-    Attempt AI extraction via Groq. Falls back to mock if no API key.
+    Attempt AI extraction via Groq. Never fabricates data: on any failure
+    returns (None, reason, http_status) instead of falling back to a mock.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     if not _GROQ_KEY:
-        _logger.info("No GROQ_API_KEY — returning mock extraction")
-        return _mock_extraction(filename)
+        _logger.info("No GROQ_API_KEY — refusing to fabricate an extraction")
+        return None, "AI extraction unavailable — GROQ_API_KEY is not configured on the server", 503
 
     try:
         doc_text = _read_document_text(content, content_type, filename)
-        return _groq_extract(doc_text)
+        return _groq_extract(doc_text), None, 200
     except Exception as e:
         _logger.error("AI extraction failed: %s", e)
-        return _mock_extraction(filename)
+        return None, "AI extraction failed — please retry or enter the bill details manually", 502
 
 
 def _read_document_text(content: bytes, content_type: str, filename: str) -> str:
@@ -164,34 +174,10 @@ def _groq_extract(doc_text: str) -> dict:
     return data
 
 
-def _mock_extraction(filename: str) -> dict:
-    """Return plausible mock extraction for testing without API key."""
-    return {
-        "vendor_name": "Sample Vendor Pvt Ltd",
-        "vendor_gstin": "27AABCS1429B1Z5",
-        "invoice_no": "INV-2025-001",
-        "invoice_date": "2025-06-01",
-        "taxable_amount_paise": 1000000,
-        "cgst_paise": 90000,
-        "sgst_paise": 90000,
-        "igst_paise": 0,
-        "total_paise": 1180000,
-        "line_items": [
-            {
-                "description": "Professional Services",
-                "hsn_sac": "998313",
-                "quantity": 1.0,
-                "rate_paise": 1000000,
-                "gst_rate_bps": 1800,
-            }
-        ],
-        "_is_mock": True,
-        "_source_file": filename,
-    }
-
-
 def _estimate_confidence(extracted: dict) -> str:
-    """Simple heuristic confidence score based on fields populated."""
+    """Simple heuristic confidence score based on fields populated.
+    R2.8/F19: extracted is always a real Groq result here — the mock
+    fallback has been removed, so there is no `_is_mock` branch anymore."""
     score = 0
     if extracted.get("vendor_name"):
         score += 2
@@ -203,8 +189,6 @@ def _estimate_confidence(extracted: dict) -> str:
         score += 2
     if extracted.get("total_paise", 0) > 0:
         score += 2
-    if extracted.get("_is_mock"):
-        return "low"
     if score >= 8:
         return "high"
     if score >= 5:

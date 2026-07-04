@@ -135,8 +135,14 @@ def client_analytics(
     clients_result = db.table("clients").select("id, client_name").eq("firm_id", firm_id).eq("is_internal", False).execute()
     clients = clients_result.data or []
 
-    all_tasks_result = db.table("tasks").select("id, client_id, status, due_date, updated_at").eq("firm_id", firm_id).execute()
-    all_tasks = all_tasks_result.data or []
+    # Bounded to the period, not the firm's entire task history (same pattern
+    # already used correctly by team_analytics above) — completed tasks from
+    # years ago were previously fetched in full just to be filtered out here.
+    completed_result = db.table("tasks").select("id, client_id, status, due_date, updated_at").eq("firm_id", firm_id).eq("status", "completed").gte("updated_at", date_from).lte("updated_at", f"{date_to}T23:59:59Z").execute()
+    completed_tasks = completed_result.data or []
+
+    open_result = db.table("tasks").select("id, client_id, status, due_date, updated_at").eq("firm_id", firm_id).neq("status", "completed").execute()
+    open_tasks = open_result.data or []
 
     # M6 #6: per-client analytics must respect assignment — a non-Partner must not
     # infer activity for clients they cannot access directly. effective set None
@@ -145,16 +151,17 @@ def client_analytics(
     _eff = effective_client_ids(current_user)
     if _eff is not None:
         clients = [c for c in clients if str(c["id"]) in _eff]
-        all_tasks = [t for t in all_tasks if str(t.get("client_id")) in _eff]
+        completed_tasks = [t for t in completed_tasks if str(t.get("client_id")) in _eff]
+        open_tasks = [t for t in open_tasks if str(t.get("client_id")) in _eff]
 
     stats: dict[str, dict] ={c["id"]: {"client_id": c["id"], "client_name": c["client_name"], "tasks_completed": 0, "tasks_overdue": 0, "open_tasks": 0} for c in clients}
-    for t in all_tasks:
+    for t in completed_tasks:
         cid = t.get("client_id")
-        if not cid or cid not in stats:
-            continue
-        if t["status"] == "completed" and t.get("updated_at", "") >= date_from:
+        if cid in stats:
             stats[cid]["tasks_completed"] += 1
-        elif t["status"] != "completed":
+    for t in open_tasks:
+        cid = t.get("client_id")
+        if cid in stats:
             stats[cid]["open_tasks"] += 1
             if t.get("due_date") and t["due_date"] < today:
                 stats[cid]["tasks_overdue"] += 1
@@ -202,15 +209,19 @@ def firm_analytics(
     date_from, date_to, label = _period_range(period)
     today = date.today().isoformat()
 
-    all_tasks_result = db.table("tasks").select("id, client_id, status, due_date, updated_at, assigned_to").eq("firm_id", firm_id).execute()
-    all_tasks = all_tasks_result.data or []
+    # Bounded to the period, not the firm's entire task history (same pattern
+    # already used correctly by team_analytics above) — completed tasks from
+    # years ago were previously fetched in full just to be filtered out here.
+    completed_result = db.table("tasks").select("id, client_id, status, due_date, updated_at, assigned_to").eq("firm_id", firm_id).eq("status", "completed").gte("updated_at", date_from).lte("updated_at", f"{date_to}T23:59:59Z").execute()
+    completed = completed_result.data or []
+
+    open_result = db.table("tasks").select("id, client_id, status, due_date, updated_at, assigned_to").eq("firm_id", firm_id).neq("status", "completed").execute()
+    open_tasks = open_result.data or []
 
     # Guardrail G2: the internal practice client is not part of the active-client KPI.
     clients_result = db.table("clients").select("id").eq("firm_id", firm_id).eq("status", "active").eq("is_internal", False).execute()
     active_clients = len(clients_result.data or [])
 
-    completed = [t for t in all_tasks if t["status"] == "completed" and t.get("updated_at", "") >= date_from]
-    open_tasks = [t for t in all_tasks if t["status"] != "completed"]
     overdue = [t for t in open_tasks if t.get("due_date") and t["due_date"] < today]
 
     total_c = len(completed)
@@ -439,8 +450,10 @@ def revenue_vs_effort(
     all_engagements = engagement_repo.find_all(firm_id=firm_id)
     engagement_map = {e["id"]: e for e in all_engagements}
 
-    # Fetch all clients for metadata
-    client_repo = ClientRepository()
+    # Fetch all clients for metadata. Was previously `client_repo =
+    # ClientRepository()` — ClientRepository is never imported (only the
+    # client_repo singleton, imported at module scope), which raised
+    # NameError on every call and 500'd this endpoint unconditionally.
     all_clients = client_repo.find_all(firm_id=firm_id)
     client_map = {c["id"]: c for c in all_clients}
 

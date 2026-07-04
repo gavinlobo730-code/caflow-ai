@@ -65,12 +65,9 @@ class InvoiceForGSTR1:
     lines: list[InvoiceLine]
 
 
-def _paise_to_rupees(paise: int) -> float:
-    """Convert integer paise to rupees with 2 decimal places.
-
-    All internal computation uses paise. GSTN JSON requires rupees.
-    """
-    return round(paise / 100, 2)
+# GSTR-1 permits paise, so its GSTN JSON uses 2-decimal rupees. Canonical
+# conversion lives in the shared GST money module (GSTR-3B uses whole rupees).
+from domain.gst.money import paise_to_rupees_2dp as _paise_to_rupees
 
 
 def _format_date_gstn(iso_date: str) -> str:

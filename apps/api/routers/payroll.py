@@ -8,7 +8,7 @@ PT: State-specific professional tax slab (default: Karnataka slab used as fallba
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 import math
 
 from models.common import api_response
@@ -16,6 +16,10 @@ from models.payroll import EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, Payr
 from core.permissions import rbac
 from services.timeline_service import timeline_service
 from services.internal_client_service import assert_not_internal_for_payroll
+from domain.income_tax.statutory_rates import (
+    rates_for, slab_tax_paise, apply_rebate_87a,
+    apply_surcharge_with_marginal_relief, cess_paise, current_fy,
+)
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
 
@@ -33,16 +37,57 @@ def _db():
     return get_supabase()
 
 
-# ─── PT Slabs (Karnataka as default; extend per state) ────────────────────────
+# ─── PT Slabs by state ─────────────────────────────────────────────────────────
+# Profession Tax is levied under each STATE's own Profession Tax Act, not a
+# central statute, so the slab depends on the employee's pt_state — there is
+# no single national default.
+#
+# Karnataka: Karnataka Tax on Professions, Trades, Callings and Employments
+# Act, 1976. This 3-tier slab is this codebase's original, unit-tested
+# baseline (test_v13_payroll_assets.py::TestPT) and is kept as-is.
 _PT_SLABS_KA = [
     (0,        14999_00,  0),
     (15000_00, 29999_00, 150_00),
     (30000_00, None,     200_00),
 ]
 
+# Maharashtra / West Bengal / Tamil Nadu: carried over verbatim from this
+# project's pre-existing frontend implementation (apps/web/app/payroll/page.tsx
+# computeSlip/PT_STATES), which is the only source for these three states
+# anywhere in this repo. PENDING STATUTORY VERIFICATION — not independently
+# re-confirmed against each state's current Profession Tax notification during
+# this migration (same "verified baseline vs. pending verification" split
+# used for FY2026-27 income-tax figures in domain/income_tax/statutory_rates.py).
+_PT_SLABS_MH = [
+    (0,       1000000, 0),
+    (1000001, None,    20000),   # > Rs 10,000/month -> Rs 200
+]
+_PT_SLABS_WB = [
+    (0,       1000000, 0),
+    (1000001, None,    20000),   # > Rs 10,000/month -> Rs 200
+]
+_PT_SLABS_TN = [
+    (0,       2100000, 0),
+    (2100001, None,    20800),   # > Rs 21,000/month -> Rs 208
+]
+
+_PT_SLABS_BY_STATE = {
+    "KA": _PT_SLABS_KA,
+    "MH": _PT_SLABS_MH,
+    "WB": _PT_SLABS_WB,
+    "TN": _PT_SLABS_TN,
+}
+
+
 def _compute_pt(gross_paise: int, state: Optional[str] = None) -> int:
-    """Professional Tax per month in paise. IT Act §16(iii) — deductible from salary."""
-    for low, high, tax in _PT_SLABS_KA:
+    """Professional Tax per month in paise. IT Act §16(iii) — PT actually paid
+    is deductible from salary income; the PT liability itself is fixed by the
+    employee's state (see _PT_SLABS_BY_STATE above). An unset or unrecognised
+    state has no known slab in this build and returns 0 rather than silently
+    falling back to any one state's rate — the CA must set pt_state explicitly
+    on the employee for PT to be withheld."""
+    slabs = _PT_SLABS_BY_STATE.get((state or "").strip().upper(), ())
+    for low, high, tax in slabs:
         if gross_paise >= low and (high is None or gross_paise <= high):
             return tax
     return 0
@@ -74,10 +119,13 @@ def _compute_esi(gross_paise: int) -> dict:
     return {"employee": employee, "employer": employer}
 
 
-def _compute_slip(emp: dict, attendance: Optional[dict] = None) -> dict:
+def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str] = None) -> dict:
     """
     Compute a single payroll slip in integer paise. No floating point on final values.
-    IT Act §192: TDS on salary — simplified monthly deduction (annual / 12).
+    IT Act Section 192: TDS on salary — simplified monthly deduction (annual
+    projected / 12). `fy` should be the financial year the payroll month
+    falls in (see current_fy()) so a retroactively-run payroll for an earlier
+    FY doesn't pick up a later year's rates; defaults to today's FY if omitted.
     """
     working_days  = (attendance or {}).get("working_days", 26)
     days_present  = (attendance or {}).get("days_present", 26)
@@ -97,12 +145,16 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None) -> dict:
     esi  = _compute_esi(gross) if emp.get("esi_applicable") else {"employee": 0, "employer": 0}
     pt   = _compute_pt(gross, emp.get("pt_state")) if emp.get("pt_applicable") else 0
 
-    # IT Act §192: simplified monthly TDS = (annual taxable - std deduction ₹50k) / 12
-    # Standard deduction ₹50,000 per annum (Finance Act 2018)
+    # IT Act §192: simplified monthly TDS = annual tax on (projected annual
+    # gross - standard deduction) / 12. Standard deduction and slabs come
+    # from the FY-versioned registry (domain/income_tax/statutory_rates.py) —
+    # the new-regime figure applies since payroll withholding defaults to the
+    # new regime (see _compute_tds_192).
+    rates = rates_for(fy)
     annual_gross = gross * 12
-    std_deduction_paise = 5000000  # ₹50,000
+    std_deduction_paise = rates.new_regime_standard_deduction_paise
     taxable_annual = max(0, annual_gross - std_deduction_paise)
-    tds_monthly = _compute_tds_192(taxable_annual)
+    tds_monthly = _compute_tds_192(taxable_annual, fy=fy)
 
     deductions = pf["employee"] + esi["employee"] + pt + tds_monthly
     net = gross - deductions
@@ -128,43 +180,52 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None) -> dict:
     }
 
 
-def _compute_tds_192(taxable_annual_paise: int) -> int:
+def _compute_tds_192(taxable_annual_paise: int, fy: Optional[str] = None) -> int:
     """
-    IT Act §192: TDS on salary, new tax regime FY 2024-25 slabs.
-    Monthly deduction = annual tax / 12.
+    IT Act Section 192: TDS on salary, computed on projected annual taxable
+    income. Employees are withheld under the new tax regime by default —
+    Section 115BAC(1A) makes the new regime the default for individuals, and
+    absent an employee declaration opting for the old regime (not yet
+    modelled by this payroll module — see roadmap), the employer withholds
+    on the new-regime basis. Includes Section 87A rebate (with marginal
+    relief) and Section 2(29C) surcharge (with marginal relief) — a
+    correctly-configured employer payroll system applies both when
+    projecting a high earner's annual withholding, not just the plain slab
+    rate. Rates come from the FY-versioned registry (statutory_rates.py),
+    the same source of truth used by the ITR engine. Integer paise
+    throughout — never float (CLAUDE.md).
     """
-    rupees = taxable_annual_paise / 100
-    tax = 0.0
-    if rupees <= 300000:
-        tax = 0
-    elif rupees <= 700000:
-        tax = (rupees - 300000) * 0.05
-    elif rupees <= 1000000:
-        tax = 20000 + (rupees - 700000) * 0.10
-    elif rupees <= 1200000:
-        tax = 50000 + (rupees - 1000000) * 0.15
-    elif rupees <= 1500000:
-        tax = 80000 + (rupees - 1200000) * 0.20
-    else:
-        tax = 140000 + (rupees - 1500000) * 0.30
-
-    # 4% health & education cess (Finance Act §2)
-    tax = tax * 1.04
-    monthly = math.floor((tax / 12) * 100)  # convert to paise
-    return monthly
+    rates = rates_for(fy)
+    slabs = rates.new_regime_slabs
+    tax = slab_tax_paise(taxable_annual_paise, slabs)
+    tax_after_rebate = apply_rebate_87a(taxable_annual_paise, tax, rates.new_regime_rebate)
+    surcharge = apply_surcharge_with_marginal_relief(
+        taxable_annual_paise, tax_after_rebate, rates.surcharge_brackets,
+        rates.new_regime_surcharge_cap_percent,
+        lambda income_paise: slab_tax_paise(income_paise, slabs),
+    )
+    annual_tax = tax_after_rebate + surcharge
+    annual_tax += cess_paise(annual_tax, rates)
+    return annual_tax // 12
 
 
 # ─── Employee Master ──────────────────────────────────────────────────────────
 
 @router.get("/employees")
 def list_employees(
-    client_id: str = Query(...),
+    client_id: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
+    """client_id is optional — a firm-wide payroll dashboard lists every
+    client's employees in one call; a per-client workspace passes client_id
+    to scope the result."""
     db = _db()
     if not db:
         return api_response(True, [])
-    res = db.table("payroll_employees").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("status", "active").order("name").execute()
+    q = db.table("payroll_employees").select("*").eq("firm_id", current_user["firm_id"]).eq("status", "active")
+    if client_id:
+        q = q.eq("client_id", client_id)
+    res = q.order("name").execute()
     return api_response(True, res.data or [])
 
 
@@ -236,13 +297,17 @@ def create_salary_structure(
 
 @router.get("/runs")
 def list_runs(
-    client_id: str = Query(...),
+    client_id: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
+    """client_id is optional — see list_employees above for why."""
     db = _db()
     if not db:
         return api_response(True, [])
-    res = db.table("payroll_runs").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).order("month", desc=True).execute()
+    q = db.table("payroll_runs").select("*").eq("firm_id", current_user["firm_id"])
+    if client_id:
+        q = q.eq("client_id", client_id)
+    res = q.order("month", desc=True).execute()
     return api_response(True, res.data or [])
 
 
@@ -284,6 +349,7 @@ def create_run(
     emps = db.table("payroll_employees").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("status", "active").execute().data or []
 
     m, y = int(month.split("-")[1]), int(month.split("-")[0])
+    fy = current_fy(date(y, m, 1))  # FY of the payroll period, not "today"
 
     slips = []
     totals = {"gross": 0, "net": 0, "pf": 0, "esi": 0, "pt": 0, "tds": 0}
@@ -292,7 +358,7 @@ def create_run(
         att_res = db.table("attendance").select("*").eq("employee_id", emp["id"]).eq("month", m).eq("year", y).execute()
         attendance = (att_res.data or [None])[0]
 
-        slip = _compute_slip(emp, attendance)
+        slip = _compute_slip(emp, attendance, fy=fy)
         slip["run_id"]      = run_id
         slip["employee_id"] = emp["id"]
 
@@ -335,10 +401,21 @@ def get_run_slips(
     run_id: str,
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
+    """R2.10 fix: payroll_slips has no firm_id column (migrations 014/093 —
+    it's tenant-scoped transitively via run_id -> payroll_runs.firm_id, same
+    as the RLS policy). The previous .eq("firm_id", ...) filter directly on
+    payroll_slips referenced a column that doesn't exist, which PostgREST
+    rejects outright against a real (non-mock) database — this endpoint
+    could never return data in production. Fixed to verify the run belongs
+    to the caller's firm first (like salary_register below), then query
+    slips by run_id alone."""
     db = _db()
     if not db:
         return api_response(True, [])
-    slips = db.table("payroll_slips").select("*, payroll_employees(name, pan, designation, department)").eq("run_id", run_id).eq("firm_id", current_user["firm_id"]).execute()
+    run = db.table("payroll_runs").select("id").eq("id", run_id).eq("firm_id", current_user["firm_id"]).execute()
+    if not run.data:
+        raise HTTPException(status_code=404, detail=f"Payroll run {run_id} not found")
+    slips = db.table("payroll_slips").select("*, payroll_employees(name, pan, designation, department)").eq("run_id", run_id).execute()
     return api_response(True, slips.data or [])
 
 
@@ -389,7 +466,8 @@ def update_run_status(
         if run_id in _MOCK_FINALIZED_RUNS:
             raise HTTPException(status_code=409, detail="Run already finalized — cannot change status")
         return api_response(True, {"id": run_id, "status": new_status})
-    row = db.table("payroll_runs").update({"status": new_status}).eq("id", run_id).neq("status", "finalized").execute()
+    row = (db.table("payroll_runs").update({"status": new_status}).eq("id", run_id)
+           .eq("firm_id", current_user["firm_id"]).neq("status", "finalized").execute())
     if not row.data:
         raise HTTPException(status_code=404, detail="Run not found or already finalized")
     return api_response(True, row.data[0])
@@ -404,14 +482,16 @@ def finalize_run(
     Finalize payroll run — Partner only. Immutable after this point.
     Creates journal entry per Product Bible immutability rules:
 
-    Dr  Salaries Expense        (total gross)
+    Dr  Salaries Expense        (gross wages + employer PF/ESI = total cost)
       Cr  Net Salary Payable    (total net pay)
       Cr  PF Payable            (employee + employer PF)
       Cr  ESI Payable           (employee + employer ESI)
       Cr  PT Payable
       Cr  TDS Payable - Salary  (feeds 24Q)
 
-    IT Act §192 TDS recorded for 24Q return.
+    IT Act §192 TDS recorded for 24Q return. The run is marked finalized ONLY if
+    the journal actually posts, so a posting failure leaves the run re-runnable
+    rather than immutably finalized with no GL entry.
     """
     db = _db()
     if not db:
@@ -420,7 +500,13 @@ def finalize_run(
         _MOCK_FINALIZED_RUNS.add(run_id)
         return api_response(True, {"id": run_id, "status": "finalized"})
 
-    run = db.table("payroll_runs").select("*").eq("id", run_id).single().execute().data
+    # F1/F4 fix: scope by firm_id -- an unscoped lookup let any Partner finalize
+    # (and post a real, immutable GL journal for) another firm's payroll run by
+    # guessing its run_id. maybe_single() (not single()) so a run belonging to
+    # a different firm is indistinguishable from a nonexistent one -- both
+    # cleanly 404 instead of the query raising.
+    run = (db.table("payroll_runs").select("*").eq("id", run_id)
+           .eq("firm_id", current_user["firm_id"]).maybe_single().execute().data)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if run["status"] == "finalized":
@@ -429,10 +515,22 @@ def finalize_run(
     client_id = run["client_id"]
     firm_id   = run["firm_id"]
 
-    # Create payroll journal
+    # Nothing to post (no active employees / all-zero run) — refuse gracefully
+    # instead of building an empty journal that the kernel rejects (would 500).
+    if int(run.get("total_gross_paise") or 0) <= 0:
+        raise HTTPException(status_code=400, detail="Cannot finalize an empty payroll run (no computed salary).")
+
+    # Post the payroll journal FIRST; only mark the run finalized if it posted.
     from services.phase2_journal_service import Phase2JournalService
     svc = Phase2JournalService()
     journal_id = svc.journal_for_payroll(run, firm_id, client_id)
+    if not journal_id:
+        # In DB mode journal_for_payroll returns None only on a swallowed posting
+        # failure (logged there). Do NOT mark the run finalized — leaving it
+        # re-runnable so the Partner can retry once the cause is cleared (a retry is
+        # safe: the kernel dedupes on reference_no=PAY-{month}). Prevents an
+        # immutable "finalized" run with no GL entry reported as success.
+        return api_response(False, None, "Payroll journal could not be posted. The run was not finalized; please retry.")
 
     db.table("payroll_runs").update({
         "status":          "finalized",

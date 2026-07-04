@@ -6,7 +6,7 @@ Section 206AB (non-filers — doubled rate or 5%).
 All monetary values in integer paise — IT Act Section 145A.
 """
 import pytest
-from domain.tds.tds_computer import TDSComputer, TDSDeducteeRecord, SECTION_THRESHOLDS
+from domain.tds.tds_computer import TDSComputer, TDSDeducteeRecord, SECTION_THRESHOLDS, has_pan
 from domain.tds.tds_validator import TDSValidator
 
 
@@ -43,55 +43,121 @@ def make_deductee(
 # ── TDS Amount Computation ─────────────────────────────────────────────────────
 
 class TestTDSAmountComputation:
-    """IT Act Section 194 — threshold and rate tests."""
+    """IT Act Chapter XVII-B — threshold and rate tests, pinned to fy="2025-26"
+    (Finance Act 2025 thresholds; the last verified year — see
+    domain/tds/section_rates.py)."""
+
+    FY = "2025-26"
 
     def setup_method(self):
         self.c = TDSComputer()
 
     def test_194j_above_threshold(self):
-        # Professional fees > 30,000 → 10% TDS
-        amt = self.c.compute_tds_amount("194J", 50_000_00)
-        assert amt == 5_000_00
+        # Professional fees > ₹50,000 (FA 2025, was 30,000) → 10% TDS
+        amt = self.c.compute_tds_amount("194J", 60_000_00, fy=self.FY)
+        assert amt == 6_000_00
 
     def test_194j_below_threshold_no_tds(self):
-        # < 30,000 threshold → no TDS
-        amt = self.c.compute_tds_amount("194J", 20_000_00)
+        # ≤ ₹50,000 threshold → no TDS
+        amt = self.c.compute_tds_amount("194J", 20_000_00, fy=self.FY)
         assert amt == 0
+        assert self.c.compute_tds_amount("194J", 50_000_00, fy=self.FY) == 0  # exactly at
 
     def test_194c_individual_rate(self):
         # Contractor, individual → 1%
-        amt = self.c.compute_tds_amount("194C", 50_000_00, is_company=False)
+        amt = self.c.compute_tds_amount("194C", 50_000_00, is_company=False, fy=self.FY)
         assert amt == 500_00  # 1% of 50,000
 
     def test_194c_company_rate(self):
         # Contractor, company → 2%
-        amt = self.c.compute_tds_amount("194C", 50_000_00, is_company=True)
+        amt = self.c.compute_tds_amount("194C", 50_000_00, is_company=True, fy=self.FY)
         assert amt == 1_000_00  # 2% of 50,000
 
     def test_194a_below_threshold(self):
-        # Interest < 4,000 → no TDS
-        amt = self.c.compute_tds_amount("194A", 3_999_00)
+        # Interest ≤ ₹10,000 ("any other payer", FA 2025) → no TDS
+        amt = self.c.compute_tds_amount("194A", 3_999_00, fy=self.FY)
         assert amt == 0
+        assert self.c.compute_tds_amount("194A", 10_000_00, fy=self.FY) == 0  # exactly at
 
     def test_194a_above_threshold(self):
-        # Interest = 10,000 → 10%
-        amt = self.c.compute_tds_amount("194A", 10_000_00)
-        assert amt == 1_000_00
+        # Interest ₹15,000 > ₹10,000 → 10%
+        amt = self.c.compute_tds_amount("194A", 15_000_00, fy=self.FY)
+        assert amt == 1_500_00
 
     def test_194i_rent_above_threshold(self):
-        # Rent 3,00,000 > 2,40,000 threshold → 10%
-        amt = self.c.compute_tds_amount("194I", 300_000_00)
+        # Rent ₹3,00,000 > ₹50,000/month threshold (FA 2025, was ₹2.4L/yr) → 10%
+        amt = self.c.compute_tds_amount("194I", 300_000_00, fy=self.FY)
         assert amt == 30_000_00
 
+    def test_194h_rate_cut_to_2_percent(self):
+        # Commission ₹30,000 > ₹20,000 threshold → 2% (F(No.2)A 2024 cut from 5%)
+        amt = self.c.compute_tds_amount("194H", 30_000_00, fy=self.FY)
+        assert amt == 600_00  # 2% of 30,000
+
     def test_integer_arithmetic_no_float(self):
-        # 33,333 × 10% = 3,333.30 → floor = 333330 paise (IT Act Section 145A: integer paise)
-        amt = self.c.compute_tds_amount("194J", 33_333_00)
+        # 83,333 × 10% = 8,333.30 → floor = 833330 paise (IT Act Section 145A)
+        amt = self.c.compute_tds_amount("194J", 83_333_00, fy=self.FY)
         assert isinstance(amt, int)
-        assert amt == 333_330  # floor(3333300 * 10 / 100) = 333330 paise
+        assert amt == 833_330  # 8_333_300 * 1000 // 10000
 
     def test_unknown_section_returns_zero(self):
-        amt = self.c.compute_tds_amount("999X", 100_000_00)
+        amt = self.c.compute_tds_amount("999X", 100_000_00, fy=self.FY)
         assert amt == 0
+
+
+# ── Section 206AA — mandatory-PAN floor actually enforced (R3.10) ──────────────
+# Previously resolve_tds() had zero PAN awareness at all: a no-PAN vendor's
+# bill silently computed TDS at the ordinary section rate, and Section
+# 206AA's 20% floor only ever appeared as a post-hoc validation WARNING on
+# the 26Q return -- never as a correction to the actually-withheld amount.
+
+class TestSection206AAEnforcement:
+    FY = "2025-26"
+
+    def setup_method(self):
+        self.c = TDSComputer()
+
+    def test_no_pan_floors_the_rate_at_20_percent(self):
+        # 194J professional fees: normal rate 10%, no PAN -> floored to 20%.
+        r = self.c.resolve_tds("194J", 1_00_000_00, fy=self.FY, has_pan=False)
+        assert r.rate_bps == 2000
+        assert r.tds_paise == 1_00_000_00 * 2000 // 10000
+
+    def test_has_pan_true_is_unaffected(self):
+        r = self.c.resolve_tds("194J", 1_00_000_00, fy=self.FY, has_pan=True)
+        assert r.rate_bps == 1000  # ordinary 194J rate, no floor applied
+
+    def test_default_has_pan_matches_prior_behaviour(self):
+        """has_pan defaults to True so callers that don't pass it (existing
+        code, prior to this fix) see no behaviour change."""
+        with_default = self.c.resolve_tds("194J", 1_00_000_00, fy=self.FY)
+        explicit_true = self.c.resolve_tds("194J", 1_00_000_00, fy=self.FY, has_pan=True)
+        assert with_default.rate_bps == explicit_true.rate_bps
+
+    def test_no_pan_floor_never_lowers_an_already_higher_rate(self):
+        # 194B (lottery winnings): 30% already exceeds the 20% floor -> unaffected.
+        r = self.c.resolve_tds("194B", 50_000_00, fy=self.FY, has_pan=False)
+        assert r.rate_bps == 3000
+
+    def test_no_pan_floor_applies_regardless_of_payee_type(self):
+        r_individual = self.c.resolve_tds("194C", 50_000_00, is_company=False, fy=self.FY, has_pan=False)
+        r_company = self.c.resolve_tds("194C", 50_000_00, is_company=True, fy=self.FY, has_pan=False)
+        assert r_individual.rate_bps == r_company.rate_bps == 2000
+
+
+class TestHasPanHelper:
+    def test_real_pan_is_true(self):
+        assert has_pan("ABCDE1234F") is True
+
+    def test_pannotavbl_sentinel_is_false(self):
+        assert has_pan("PANNOTAVBL") is False
+
+    def test_panapplied_sentinel_is_false(self):
+        assert has_pan("PANAPPLIED") is False
+
+    def test_missing_pan_is_false(self):
+        assert has_pan(None) is False
+        assert has_pan("") is False
 
 
 # ── 26Q Computation ────────────────────────────────────────────────────────────

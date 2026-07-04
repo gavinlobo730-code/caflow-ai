@@ -5,6 +5,16 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 /** Standard backend response envelope: { success, data, error }. */
 export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
 
+// Phase 4.5.1 — a client_portal_users row (F22 fix: invite_token is single-use,
+// never re-sent to the frontend once accepted — the field is present here only
+// because inviteContact()'s response carries it once, to build the invite link).
+export type PortalContact = {
+  id: string; client_id: string; email: string; name: string | null;
+  status: "invited" | "active" | "deactivated";
+  auth_user_id?: string | null; invite_token?: string | null;
+  invited_at?: string | null; activated_at?: string | null; deactivated_at?: string | null;
+};
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
@@ -119,12 +129,6 @@ export const api = {
     update: (id: string, body: unknown) => request(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     dashboardSummary: () => request("/api/tasks/summary/dashboard"),
   },
-  workflows: {
-    list: () => request("/api/workflows"),
-    get: (id: string) => request(`/api/workflows/${id}`),
-    instantiate: (id: string, body: unknown) =>
-      request(`/api/workflows/${id}/instantiate`, { method: "POST", body: JSON.stringify(body) }),
-  },
   team: {
     list: () => request("/api/team"),
   },
@@ -227,7 +231,9 @@ export const api = {
     summary: () => request("/api/tasks/summary/dashboard"),
   },
   // Phase 4.4 — Compliance & Engagement operations (canonical = compliance_records).
-  // Thin wrappers; all due-date/aggregation logic is server-side. No filing.
+  // Thin wrappers; all due-date/aggregation/workflow logic is server-side.
+  // Never auto-submits to any government portal — markFiled records that a
+  // CA has confirmed a return was filed, it never files anything itself.
   complianceOps: {
     dashboard: () => request("/api/compliance/dashboard"),
     obligations: (params?: Record<string, string>) =>
@@ -240,16 +246,26 @@ export const api = {
       request(`/api/compliance/obligations/${id}/assign`, { method: "POST", body: JSON.stringify(body) }),
     transition: (id: string, status: string) =>
       request(`/api/compliance/obligations/${id}/transition`, { method: "POST", body: JSON.stringify({ status }) }),
+    markFiled: (id: string, acknowledgementNo?: string) =>
+      request(`/api/compliance/obligations/${id}/mark-filed`, {
+        method: "POST", body: JSON.stringify({ acknowledgement_no: acknowledgementNo ?? null }),
+      }),
     runEscalations: () => request("/api/compliance/run-escalations", { method: "POST" }),
   },
-  documentIntelligence: {
-    list: (client_id?: string) => request(`/api/document-intelligence/documents${client_id ? `?client_id=${client_id}` : ""}`),
-    stats: () => request("/api/document-intelligence/stats"),
-    getExtraction: (docId: string) => request(`/api/document-intelligence/${docId}/extraction`),
-    triggerExtraction: (docId: string) => request(`/api/document-intelligence/${docId}/extract`, { method: "POST" }),
-    getRisks: (docId: string) => request(`/api/document-intelligence/${docId}/risks`),
-    resolveRisk: (docId: string, riskId: string) => request(`/api/document-intelligence/${docId}/risks/${riskId}/resolve`, { method: "POST" }),
+  // R3.13c — canonical client health engine (Product Bible Ch.16, routers/health.py).
+  // Replaces the frontend's direct-Supabase health-score-compute.ts.
+  health: {
+    client: (clientId: string) => request(`/api/health/clients/${clientId}`),
+    scores: () => request("/api/health/scores"),
+    calculate: (clientId: string) => request(`/api/health/scores/${clientId}/calculate`, { method: "POST" }),
   },
+  // Note: the unversioned `documentIntelligence` wrapper (client-side, unused
+  // by any page) that pointed at /api/document-intelligence/* was removed in
+  // the R2.8 fix phase — that backend router was a retired, undisclosed 4th
+  // extraction generation serving hardcoded fabricated data. Real document
+  // extraction lives at /api/document-intelligence-v1 and
+  // /api/document-intelligence-v2 (called directly via fetch() from the
+  // pages that use them, e.g. app/clients/[id]/purchases/page.tsx).
   risks: {
     list: (params?: Record<string, string>) => request(`/api/risks${params ? "?" + new URLSearchParams(params) : ""}`),
     stats: () => request("/api/risks/stats"),
@@ -284,6 +300,23 @@ export const api = {
       request(`/api/ai-copilot/client/${clientId}/chat`, { method: "POST", body: JSON.stringify(body) }),
   },
   payroll: {
+    // client_id omitted -> every client in the firm (firm-wide dashboard);
+    // client_id given -> scoped to one client (per-client workspace).
+    listEmployees: (clientId?: string) =>
+      request(`/api/payroll/employees${clientId ? `?client_id=${clientId}` : ""}`),
+    createEmployee: (body: unknown) =>
+      request("/api/payroll/employees", { method: "POST", body: JSON.stringify(body) }),
+    updateEmployee: (id: string, body: unknown) =>
+      request(`/api/payroll/employees/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    listRuns: (clientId?: string) =>
+      request(`/api/payroll/runs${clientId ? `?client_id=${clientId}` : ""}`),
+    createRun: (body: { client_id: string; month: string }) =>
+      request("/api/payroll/runs", { method: "POST", body: JSON.stringify(body) }),
+    getRunSlips: (runId: string) => request(`/api/payroll/runs/${runId}/slips`),
+    updateRunStatus: (runId: string, status: string) =>
+      request(`/api/payroll/runs/${runId}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
+    finalizeRun: (runId: string) =>
+      request(`/api/payroll/runs/${runId}/finalize`, { method: "POST" }),
     downloadPayslip: (slipId: string, fallbackFilename = `payslip-${slipId}.pdf`) =>
       downloadFile(`/api/payroll/salary-slips/${slipId}/pdf`, fallbackFilename),
   },
@@ -438,19 +471,26 @@ export const api = {
     getDues: (firmId: string, clientId: string) =>
       request(`/api/portal/dues?firm_id=${firmId}&client_id=${clientId}`),
     // Phase 4.5.1 — CA-side multi-contact management
-    listContacts: (clientId: string) => request(`/api/portal/clients/${clientId}/contacts`),
+    listContacts: (clientId: string) =>
+      request<ApiResp<{ contacts: PortalContact[] }>>(`/api/portal/clients/${clientId}/contacts`),
     inviteContact: (clientId: string, body: { email: string; name?: string }) =>
-      request(`/api/portal/clients/${clientId}/contacts`, { method: "POST", body: JSON.stringify(body) }),
+      request<ApiResp<{ contact: PortalContact }>>(
+        `/api/portal/clients/${clientId}/contacts`, { method: "POST", body: JSON.stringify(body) }),
     resendInvite: (contactId: string) =>
-      request(`/api/portal/contacts/${contactId}/resend`, { method: "POST" }),
+      request<ApiResp<{ contact: PortalContact }>>(`/api/portal/contacts/${contactId}/resend`, { method: "POST" }),
     deactivateContact: (contactId: string) =>
-      request(`/api/portal/contacts/${contactId}/deactivate`, { method: "POST" }),
+      request<ApiResp<{ contact: PortalContact }>>(`/api/portal/contacts/${contactId}/deactivate`, { method: "POST" }),
   },
   // Phase 4.5.1 — client-facing portal self surface (auth = the client's own
   // Supabase session, resolved server-side via get_current_portal_client).
   portalSelf: {
     // All client memberships for the signed-in identity (client switcher source).
     memberships: () => request("/api/portal/memberships"),
+    // F22 fix: bind ONE client_portal_users invite by its single-use token.
+    // Must be called before that client shows up in memberships().
+    acceptInvite: (token: string) =>
+      request<ApiResp<{ client_id: string; name?: string }>>(
+        "/api/portal/accept-invite", { method: "POST", body: JSON.stringify({ token }) }),
     // me/dashboard select the active client explicitly via X-Portal-Client-Id when
     // the identity belongs to more than one client (no implicit switching).
     me: (clientId?: string) =>
@@ -606,6 +646,12 @@ export const api = {
       request(`/api/billing/staff-cost-rates/${userId}`, {
         method: "PUT", body: JSON.stringify({ cost_rate_paise: costRatePaise }),
       }),
+    // Fee Billing (apps/web/app/billing/page.tsx) receipts — only marks the
+    // invoice Paid once cumulative receipts cover its total.
+    recordFeeReceipt: (invoiceId: string, data: unknown) =>
+      request(`/api/billing/fee-invoices/${invoiceId}/receipts`, {
+        method: "POST", body: JSON.stringify(data),
+      }),
   },
   salesInvoices: {
     list: (clientId: string, params?: Record<string, string>) =>
@@ -757,9 +803,20 @@ export const api = {
   },
   // M6: identity administration (audited, server-side; Partner-only writes).
   identity: {
-    listUsers: () => request("/api/identity/users"),
+    listUsers: () => request<ApiResp<{
+      users: Array<{
+        id: string; full_name: string; email: string; role: string;
+        is_active?: boolean; created_at?: string; auth_user_id?: string; firm_id?: string;
+      }>;
+    }>>("/api/identity/users"),
     createUser: (full_name: string, email: string, role: string) =>
-      request("/api/identity/users", { method: "POST", body: JSON.stringify({ full_name, email, role }) }),
+      request<ApiResp<{ id: string; invite_token: string }>>(
+        "/api/identity/users", { method: "POST", body: JSON.stringify({ full_name, email, role }) }),
+    // F21 fix: the only way a users row's auth_user_id can be set — token comes
+    // from createUser's response, never from URL params.
+    acceptInvite: (token: string) =>
+      request<ApiResp<{ firm_id: string; role: string; full_name?: string }>>(
+        "/api/identity/accept-invite", { method: "POST", body: JSON.stringify({ token }) }),
     changeRole: (userId: string, role: string) =>
       request(`/api/identity/users/${userId}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
     suspend: (userId: string) => request(`/api/identity/users/${userId}/suspend`, { method: "POST" }),

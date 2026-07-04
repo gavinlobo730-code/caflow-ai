@@ -45,6 +45,57 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _opening_closing_balance(rows: list[dict]) -> tuple[int, int]:
+    """Return (opening_balance_paise, closing_balance_paise) derived from the
+    rows' transaction_date order, not raw file position.
+
+    R2.11: some bank exports list the most recent transaction FIRST
+    (newest-first/descending), which previously inverted opening/closing —
+    row[0]'s balance (actually the closing balance) was stored as "opening"
+    and vice versa.
+
+    Adversarial-review fix (R2.11 fix phase): the original version compared
+    only rows[0] vs rows[-1], which a single out-of-place row (or a file whose
+    first/last row coincidentally share one date while OTHER rows in between
+    span different dates) could fool into either the wrong direction or a
+    false "single-day" classification — silently discarding the true min/max
+    date's balance. This version finds the TRUE earliest/latest date across
+    every row (matching how _import_core derives statement_from/statement_to
+    via a full sort), decides the file's overall direction by a majority vote
+    across every adjacent pair (robust to a handful of out-of-order rows,
+    unlike a bare two-endpoint compare), and picks the correct occurrence of
+    the extreme date accordingly — the FIRST file-order occurrence of the
+    earliest date and the LAST file-order occurrence of the latest date if
+    the file is ascending overall, or the reverse if descending. A genuinely
+    single-day statement (every row shares one date) has no cross-date signal
+    at all and falls back to file order — a residual limitation of date-only
+    (no timestamp) granularity. An exact ascending/descending tie (e.g. only
+    two rows total) defaults to ascending, the more common convention.
+    """
+    if not rows:
+        return 0, 0
+    if len(rows) == 1:
+        return rows[0]["balance_paise"], rows[0]["balance_paise"]
+
+    dates = [r["transaction_date"] for r in rows]
+    min_date, max_date = min(dates), max(dates)
+    if min_date == max_date:
+        return rows[0]["balance_paise"], rows[-1]["balance_paise"]
+
+    ascending_votes = sum(1 for a, b in zip(dates, dates[1:]) if a <= b)
+    descending_votes = sum(1 for a, b in zip(dates, dates[1:]) if a >= b)
+    is_descending = descending_votes > ascending_votes
+
+    first_at_min = next(r for r in rows if r["transaction_date"] == min_date)
+    last_at_min = next(r for r in reversed(rows) if r["transaction_date"] == min_date)
+    first_at_max = next(r for r in rows if r["transaction_date"] == max_date)
+    last_at_max = next(r for r in reversed(rows) if r["transaction_date"] == max_date)
+
+    if is_descending:
+        return last_at_min["balance_paise"], first_at_max["balance_paise"]
+    return first_at_min["balance_paise"], last_at_max["balance_paise"]
+
+
 class BankingService:
     """All bank-transaction mutations. db is the Supabase client (caller-supplied)."""
 
@@ -123,12 +174,13 @@ class BankingService:
 
         # 3) statement header (summary over the rows actually stored).
         dates = sorted(r["transaction_date"] for r in new_rows)
+        opening_paise, closing_paise = _opening_closing_balance(new_rows)
         stmt_payload = {
             "firm_id": firm_id, "client_id": client_id, "bank_name": bank_name,
             "account_number": account_number,
             "statement_from": dates[0], "statement_to": dates[-1],
-            "opening_balance_paise": new_rows[0]["balance_paise"],
-            "closing_balance_paise": new_rows[-1]["balance_paise"],
+            "opening_balance_paise": opening_paise,
+            "closing_balance_paise": closing_paise,
             "total_debits_paise": sum(r["debit_paise"] for r in new_rows),
             "total_credits_paise": sum(r["credit_paise"] for r in new_rows),
             "row_count": len(new_rows), "import_status": "pending",

@@ -50,28 +50,85 @@ def test_select_active_membership_pure():
 
 def test_one_user_one_client(_isolate):
     c = pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
-    ms = pa.list_portal_memberships("uid-A", "a@c.test")     # first login binds + activates
+    # F22 fix: membership requires the invite to be explicitly accepted by token —
+    # it no longer auto-binds just because list_portal_memberships is called.
+    pa.accept_portal_invite(c["invite_token"], "uid-A", "a@c.test")
+    ms = pa.list_portal_memberships("uid-A", "a@c.test")
     assert _ids(ms) == ["CL-1"]
     bound = pa.MOCK_PORTAL_CONTACTS[0]
     assert bound["auth_user_id"] == "uid-A" and bound["status"] == "active" and bound["activated_at"]
+    assert bound["invite_token"] is None and bound["invite_expires_at"] is None  # single-use, cleared
     assert ms[0]["contact_id"] == c["id"]
 
 
-def test_one_user_multiple_clients_binds_all(_isolate):
-    pa.invite_contact(FIRM, "CL-1", "owner@co.test", "Owner", actor=ACTOR)
-    pa.invite_contact(FIRM, "CL-2", "owner@co.test", "Owner", actor=ACTOR)
-    ms = pa.list_portal_memberships("uid-O", "owner@co.test")
-    assert _ids(ms) == ["CL-1", "CL-2"]                # both invites activated on first login
-    # subsequent login resolves both directly by auth_user_id
+def test_one_user_multiple_clients_requires_accepting_each(_isolate):
+    c1 = pa.invite_contact(FIRM, "CL-1", "owner@co.test", "Owner", actor=ACTOR)
+    c2 = pa.invite_contact(FIRM, "CL-2", "owner@co.test", "Owner", actor=ACTOR)
+    # F22 fix: NEITHER shows up until its OWN token is accepted (no more
+    # any-matching-email-binds-everything) — a multi-company owner still ends up
+    # with all their clients, but each relationship was individually proven.
+    assert pa.list_portal_memberships("uid-O", "owner@co.test") == []
+    pa.accept_portal_invite(c1["invite_token"], "uid-O", "owner@co.test")
+    assert _ids(pa.list_portal_memberships("uid-O", "owner@co.test")) == ["CL-1"]
+    pa.accept_portal_invite(c2["invite_token"], "uid-O", "owner@co.test")
     assert _ids(pa.list_portal_memberships("uid-O", "owner@co.test")) == ["CL-1", "CL-2"]
 
 
 def test_mixed_active_and_deactivated_memberships(_isolate):
-    pa.invite_contact(FIRM, "CL-1", "owner@co.test", "Owner", actor=ACTOR)
+    c1 = pa.invite_contact(FIRM, "CL-1", "owner@co.test", "Owner", actor=ACTOR)
     c2 = pa.invite_contact(FIRM, "CL-2", "owner@co.test", "Owner", actor=ACTOR)
-    pa.list_portal_memberships("uid-O", "owner@co.test")     # activate both
+    pa.accept_portal_invite(c1["invite_token"], "uid-O", "owner@co.test")
+    pa.accept_portal_invite(c2["invite_token"], "uid-O", "owner@co.test")
     pa.deactivate_contact(FIRM, c2["id"], actor=ACTOR)       # revoke CL-2
     assert _ids(pa.list_portal_memberships("uid-O", "owner@co.test")) == ["CL-1"]
+
+
+# ── F22 regression: no auto-bind, token/expiry/email checks ──────────────────
+
+def test_membership_listing_never_auto_binds_a_matching_email(_isolate):
+    """The core F22 regression lock: a pending invite must NEVER activate just
+    because list_portal_memberships (or get_current_portal_client) is called
+    with a matching email — that was the entire vulnerability."""
+    pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
+    for _ in range(3):   # repeated calls — still must not bind
+        assert pa.list_portal_memberships("uid-STRANGER", "a@c.test") == []
+    bound = pa.MOCK_PORTAL_CONTACTS[0]
+    assert bound.get("auth_user_id") is None and bound["status"] == "invited"
+
+
+def test_accept_invite_wrong_token_rejected(_isolate):
+    pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
+    with pytest.raises(HTTPException) as ei:
+        pa.accept_portal_invite("not-the-real-token", "uid-A", "a@c.test")
+    assert ei.value.status_code == 404
+
+
+def test_accept_invite_email_mismatch_rejected(_isolate):
+    c = pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
+    with pytest.raises(HTTPException) as ei:
+        pa.accept_portal_invite(c["invite_token"], "uid-STRANGER", "stranger@evil.test")
+    assert ei.value.status_code == 404
+    assert pa.MOCK_PORTAL_CONTACTS[0].get("auth_user_id") is None   # not bound
+
+
+def test_accept_invite_expired_rejected(_isolate, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    c = pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
+    # Simulate an invite issued 15 days ago (TTL is 14 days).
+    for row in pa.MOCK_PORTAL_CONTACTS:
+        if row["id"] == c["id"]:
+            row["invite_expires_at"] = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with pytest.raises(HTTPException) as ei:
+        pa.accept_portal_invite(c["invite_token"], "uid-A", "a@c.test")
+    assert ei.value.status_code == 404
+
+
+def test_accept_invite_is_single_use(_isolate):
+    c = pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
+    pa.accept_portal_invite(c["invite_token"], "uid-A", "a@c.test")
+    with pytest.raises(HTTPException) as ei:
+        pa.accept_portal_invite(c["invite_token"], "uid-A", "a@c.test")   # replay
+    assert ei.value.status_code == 404
 
 
 def test_legacy_portal_user_id_backward_compatible(_isolate):
@@ -87,7 +144,8 @@ def test_unknown_identity_has_no_memberships(_isolate):
 # ── Identity layer: deterministic, explicit active-client selection ──────────
 
 def test_identity_single_membership_no_header(_isolate):
-    pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
+    c = pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
+    pa.accept_portal_invite(c["invite_token"], "uid-A", "a@c.test")
     ctx = get_current_portal_client(jwt_user={"auth_user_id": "uid-A", "email": "a@c.test"},
                                     x_portal_client_id=None)
     assert ctx["portal"] is True and ctx["client_id"] == "CL-1" and ctx["role"] == "PortalClient"
@@ -97,8 +155,10 @@ def test_identity_single_membership_no_header(_isolate):
 
 
 def test_identity_multiple_requires_explicit_selection(_isolate):
-    pa.invite_contact(FIRM, "CL-1", "owner@co.test", "Owner", actor=ACTOR)
-    pa.invite_contact(FIRM, "CL-2", "owner@co.test", "Owner", actor=ACTOR)
+    c1 = pa.invite_contact(FIRM, "CL-1", "owner@co.test", "Owner", actor=ACTOR)
+    c2 = pa.invite_contact(FIRM, "CL-2", "owner@co.test", "Owner", actor=ACTOR)
+    pa.accept_portal_invite(c1["invite_token"], "uid-O", "owner@co.test")
+    pa.accept_portal_invite(c2["invite_token"], "uid-O", "owner@co.test")
     jwt = {"auth_user_id": "uid-O", "email": "owner@co.test"}
     # no header → 409 (never implicit), available memberships returned
     with pytest.raises(HTTPException) as ei:
@@ -120,10 +180,11 @@ def test_identity_cannot_select_non_member_client(_isolate):
 
 
 def test_identity_deactivated_member_denied(_isolate):
-    pa.invite_contact(FIRM, "CL-1", "owner@co.test", "Owner", actor=ACTOR)
+    c1 = pa.invite_contact(FIRM, "CL-1", "owner@co.test", "Owner", actor=ACTOR)
     c2 = pa.invite_contact(FIRM, "CL-2", "owner@co.test", "Owner", actor=ACTOR)
     jwt = {"auth_user_id": "uid-O", "email": "owner@co.test"}
-    get_current_portal_client(jwt_user=jwt, x_portal_client_id="CL-1")           # activate both
+    pa.accept_portal_invite(c1["invite_token"], "uid-O", "owner@co.test")
+    pa.accept_portal_invite(c2["invite_token"], "uid-O", "owner@co.test")        # activate both
     pa.deactivate_contact(FIRM, c2["id"], actor=ACTOR)
     # CL-2 now denied; CL-1 still fine (now the sole membership → no header needed)
     with pytest.raises(HTTPException) as ei:
@@ -151,6 +212,9 @@ def test_reinvite_after_deactivate_reactivates(_isolate):
     pa.deactivate_contact(FIRM, c["id"], actor=ACTOR)
     again = pa.invite_contact(FIRM, "CL-1", "a@c.test", "Alice", actor=ACTOR)
     assert again["id"] == c["id"] and again["status"] == "invited" and again["deactivated_at"] is None
+    # Re-inviting rotates the token (a stale/leaked prior link must stop working).
+    assert again["invite_token"] and again["invite_token"] != c.get("invite_token")
+    pa.accept_portal_invite(again["invite_token"], "uid-A", "a@c.test")
     assert _ids(pa.list_portal_memberships("uid-A", "a@c.test")) == ["CL-1"]
 
 

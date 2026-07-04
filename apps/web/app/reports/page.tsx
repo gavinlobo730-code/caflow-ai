@@ -17,7 +17,6 @@ import {
   ChevronUp,
   Loader2,
   X,
-  BarChart3,
 } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getClients } from "@/lib/data/clients";
@@ -626,15 +625,14 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
           netPL: totalRevenue - totalExpenses,
         } as PLData);
       } else if (reportId === "compliance_status") {
-        const entries = await getComplianceCalendar();
+        const [entries, allClients] = await Promise.all([getComplianceCalendar(), getClients()]);
+        const clientNameById = new Map(allClients.map((c) => [c.id, c.client_name]));
         const today = new Date().toISOString().split("T")[0];
 
         // Group by client
         const map = new Map<string, { name: string; entries: ComplianceEntry[] }>();
         for (const e of entries) {
-          const name =
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (e as any).clients?.client_name ?? e.client_id;
+          const name = clientNameById.get(e.client_id) ?? e.client_id;
           if (!map.has(e.client_id)) map.set(e.client_id, { name, entries: [] });
           map.get(e.client_id)!.entries.push(e);
         }
@@ -867,32 +865,6 @@ export default function ReportsPage() {
                 </p>
                 <p className="text-xs text-[#94A3B8] mt-0.5 leading-relaxed">
                   6-month projection based on unpaid invoices, loan EMIs, and GST dues
-                </p>
-              </div>
-              <ChevronDown
-                size={14}
-                className="text-[#CBD5E1] group-hover:text-blue-600 transition-colors mt-1 shrink-0 -rotate-90"
-              />
-            </Link>
-          </div>
-        )}
-
-        {/* Financial Statements link card */}
-        {!activeReport && (
-          <div className="print:hidden">
-            <Link
-              href="/reports/financial-statements"
-              className="group flex items-start gap-4 p-5 bg-white rounded-xl border border-[#F1F5F9] hover:border-blue-200 hover:shadow-sm transition-all text-left w-full"
-            >
-              <div className="p-2.5 bg-[#F8FAFC] rounded-lg group-hover:bg-blue-50 transition-colors shrink-0">
-                <BarChart3 size={18} className="text-[#64748B] group-hover:text-blue-600 transition-colors" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-[#0F172A] group-hover:text-blue-700 transition-colors">
-                  Financial Statements
-                </p>
-                <p className="text-xs text-[#94A3B8] mt-0.5 leading-relaxed">
-                  Year-on-year P&L and Balance Sheet comparison with variance analysis and Excel export
                 </p>
               </div>
               <ChevronDown

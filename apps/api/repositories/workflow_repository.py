@@ -853,6 +853,15 @@ class WorkflowRepository(BaseRepository):
         result = query.order("created_at", desc=True).execute()
         return result.data or []
 
+    @staticmethod
+    def _next_run_for(cron_expression: str, tz: str) -> str:
+        """Seed next_run_at from the cron expression. R2.7 adversarial-review
+        finding: create_schedule left next_run_at NULL and nothing else ever
+        set it — list_schedules_due only matches non-NULL next_run_at, so a
+        freshly created (or re-activated) schedule could never become due."""
+        from jobs.scheduler import compute_next_run
+        return compute_next_run(cron_expression, tz)
+
     def create_schedule(
         self,
         firm_id: str,
@@ -862,6 +871,7 @@ class WorkflowRepository(BaseRepository):
         timezone: str = "Asia/Kolkata",
         user_id: Optional[str] = None,
     ) -> dict:
+        next_run_at = self._next_run_for(cron_expression, timezone)
         if _USE_MOCK:
             schedule = {
                 "id": _uid(),
@@ -872,7 +882,7 @@ class WorkflowRepository(BaseRepository):
                 "timezone": timezone,
                 "is_active": True,
                 "last_run_at": None,
-                "next_run_at": None,
+                "next_run_at": next_run_at,
                 "last_run_status": None,
                 "run_count": 0,
                 "created_by": user_id,
@@ -892,7 +902,7 @@ class WorkflowRepository(BaseRepository):
             "timezone": timezone,
             "is_active": True,
             "last_run_at": None,
-            "next_run_at": None,
+            "next_run_at": next_run_at,
             "last_run_status": None,
             "run_count": 0,
             "created_by": user_id,
@@ -907,6 +917,13 @@ class WorkflowRepository(BaseRepository):
             for s in MOCK_SCHEDULES:
                 if s["id"] == schedule_id and s["firm_id"] == firm_id:
                     s["is_active"] = not s["is_active"]
+                    # Re-seed next_run_at on (re-)activation — a schedule
+                    # toggled off then back on must become due again from
+                    # "now", not carry a stale (possibly past) timestamp.
+                    s["next_run_at"] = (
+                        self._next_run_for(s["cron_expression"], s.get("timezone", "Asia/Kolkata"))
+                        if s["is_active"] else s["next_run_at"]
+                    )
                     s["updated_at"] = _now()
                     return s
             return None
@@ -915,7 +932,7 @@ class WorkflowRepository(BaseRepository):
         # Fetch current state first to toggle
         result = (
             db.table("workflow_schedules")
-            .select("is_active")
+            .select("is_active, cron_expression, timezone")
             .eq("id", schedule_id)
             .eq("firm_id", firm_id)
             .maybe_single()
@@ -924,9 +941,13 @@ class WorkflowRepository(BaseRepository):
         if not result.data:
             return None
         new_state = not result.data["is_active"]
+        update_payload = {"is_active": new_state, "updated_at": _now()}
+        if new_state:
+            update_payload["next_run_at"] = self._next_run_for(
+                result.data["cron_expression"], result.data.get("timezone", "Asia/Kolkata"))
         update_result = (
             db.table("workflow_schedules")
-            .update({"is_active": new_state, "updated_at": _now()})
+            .update(update_payload)
             .eq("id", schedule_id)
             .eq("firm_id", firm_id)
             .execute()

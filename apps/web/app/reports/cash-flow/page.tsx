@@ -6,19 +6,14 @@
  * All monetary values in integer paise. Never use floating point for rupee calculations.
  */
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { getFirmId } from "@/lib/data/getFirmId";
+import { useClientPicker } from "@/lib/workspace/useClientPicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Client {
-  id: string;
-  name: string;
-}
 
 interface MonthRow {
   label: string;         // "Jul 2025"
@@ -50,34 +45,11 @@ function addMonths(year: number, month: number, add: number): { year: number; mo
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CashFlowForecastPage() {
-  const [clients, setClients] = useState<Client[]>([]);
-  const [clientsLoaded, setClientsLoaded] = useState(false);
-  const [selectedClientId, setSelectedClientId] = useState("");
+  const { clients, clientId: selectedClientId, setClientId: setSelectedClientId } = useClientPicker();
   const [openingBalanceInput, setOpeningBalanceInput] = useState("0");
   const [rows, setRows] = useState<MonthRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Load clients on first render
-  const loadClients = useCallback(async () => {
-    if (clientsLoaded) return;
-    try {
-      const supabase = getSupabaseClient();
-      const firmId = await getFirmId();
-      const { data } = await supabase
-        .from("clients")
-        .select("id, name")
-        .eq("firm_id", firmId)
-        .order("name");
-      setClients(data ?? []);
-      setClientsLoaded(true);
-    } catch (e) {
-      console.error("loadClients:", e);
-    }
-  }, [clientsLoaded]);
-
-  // Run on mount
-  useState(() => { loadClients(); });
 
   async function handleGenerate() {
     if (!selectedClientId) {

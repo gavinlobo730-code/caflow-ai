@@ -11,6 +11,7 @@ import {
   Building2,
   KeyRound,
   Info,
+  QrCode,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,17 @@ const DEADLINE_ITEMS = [
   { href: "/deadlines?type=ITR",    label: "Income Tax",  icon: Calculator, typeParam: "ITR"    },
   { href: "/deadlines?type=TDS",    label: "TDS",         icon: Landmark,   typeParam: "TDS"    },
   { href: "/deadlines?type=MCA",    label: "MCA",         icon: Building2,  typeParam: "MCA"    },
+];
+
+// R3.3c — the actual statutory filing tools (GST/Income Tax/TDS/MCA/e-invoice
+// workspaces), as opposed to DEADLINE_ITEMS above, which only filter the
+// deadlines triage view by type. Each hub links to its own sub-pages.
+const FILING_WORKSPACE_ITEMS = [
+  { href: "/gst", label: "GST", icon: Receipt },
+  { href: "/einvoice", label: "e-Invoice", icon: QrCode },
+  { href: "/income-tax", label: "Income Tax", icon: Calculator },
+  { href: "/tds", label: "TDS", icon: Landmark },
+  { href: "/mca", label: "MCA / ROC", icon: Building2 },
 ];
 
 function DeadlinesPanelInner() {
@@ -80,6 +92,35 @@ function DeadlinesPanelInner() {
               </Link>
             );
           })}
+        </div>
+
+        <div className="mt-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5">
+            Filing Workspaces
+          </p>
+          <div className="space-y-0.5">
+            {FILING_WORKSPACE_ITEMS.map(({ href, label, icon: Icon }) => {
+              const active = pathname === href || pathname.startsWith(`${href}/`);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    "flex items-center gap-2.5 px-2.5 py-2 rounded-[7px] text-[12.5px] font-medium transition-all duration-75",
+                    active
+                      ? "bg-[#182350] text-white"
+                      : "text-gray-600 hover:bg-[#F8FAFC] hover:text-[#182350]"
+                  )}
+                >
+                  <Icon
+                    size={15}
+                    className={cn("shrink-0", active ? "text-white" : "text-gray-500")}
+                  />
+                  <span className="truncate">{label}</span>
+                </Link>
+              );
+            })}
+          </div>
         </div>
 
         <div className="mt-4">

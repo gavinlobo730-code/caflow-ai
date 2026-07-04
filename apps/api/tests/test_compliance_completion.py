@@ -150,31 +150,40 @@ class TestGSTINValidation:
 # ═══════════════════════════════════════════════════════════════
 
 class TestTDSDueDates:
-    """IT Act: TDS return 26Q is due on 31st of month after quarter end."""
+    """IT Rules Rule 31A: 24Q/26Q due 31 Jul / 31 Oct / 31 Jan / 31 May.
+    quarter_dates() is FY-parameterised (the old QUARTER_DATES dict was pinned
+    to FY 2025-26's literal dates — audit F17)."""
 
     def test_26q_q1_due_date_31_july(self):
         """Q1 (Apr–Jun): 26Q due on 31st July."""
-        from domain.tds.tds_computer import QUARTER_DATES
-        _, q_end, due = QUARTER_DATES["Q1"]
+        from domain.tds.section_rates import quarter_dates
+        _, q_end, due = quarter_dates("2025-26", "Q1")
         assert due == "2025-07-31", "26Q Q1 must be due on 31st July"
 
     def test_26q_q2_due_date_31_october(self):
         """Q2 (Jul–Sep): 26Q due on 31st October."""
-        from domain.tds.tds_computer import QUARTER_DATES
-        _, q_end, due = QUARTER_DATES["Q2"]
+        from domain.tds.section_rates import quarter_dates
+        _, q_end, due = quarter_dates("2025-26", "Q2")
         assert due == "2025-10-31", "26Q Q2 must be due on 31st October"
 
     def test_26q_q3_due_date_31_january(self):
-        """Q3 (Oct–Dec): 26Q due on 31st January."""
-        from domain.tds.tds_computer import QUARTER_DATES
-        _, q_end, due = QUARTER_DATES["Q3"]
+        """Q3 (Oct–Dec): 26Q due on 31st January (of the FY's END year)."""
+        from domain.tds.section_rates import quarter_dates
+        _, q_end, due = quarter_dates("2025-26", "Q3")
         assert due == "2026-01-31", "26Q Q3 must be due on 31st January"
 
     def test_26q_q4_due_date_31_may(self):
-        """Q4 (Jan–Mar): 26Q due on 31st May."""
-        from domain.tds.tds_computer import QUARTER_DATES
-        _, q_end, due = QUARTER_DATES["Q4"]
+        """Q4 (Jan–Mar): 26Q due on 31st MAY of the FY's end year (Rule 31A) —
+        not "31 April", which does not exist."""
+        from domain.tds.section_rates import quarter_dates
+        _, q_end, due = quarter_dates("2025-26", "Q4")
         assert due == "2026-05-31", "26Q Q4 must be due on 31st May"
+
+    def test_quarter_dates_work_for_any_fy(self):
+        """The calendar must be FY-derived, not hardcoded to one year."""
+        from domain.tds.section_rates import quarter_dates
+        assert quarter_dates("2026-27", "Q1") == ("2026-04-01", "2026-06-30", "2026-07-31")
+        assert quarter_dates("2026-27", "Q4") == ("2027-01-01", "2027-03-31", "2027-05-31")
 
 
 class TestTDSRates:
@@ -200,13 +209,22 @@ class TestTDSRates:
         assert co_rate == 10.0, "194J company rate must be 10% (IT Act Section 194J)"
 
     def test_194j_tds_computed_in_integer_paise(self):
-        """IT Act Section 145A: All monetary computations must use integer paise (no floats)."""
+        """IT Act Section 145A: All monetary computations must use integer paise
+        (no floats). Payment must EXCEED the ₹50,000 threshold (Finance Act
+        2025 raised 194J from ₹30,000) for TDS to apply."""
         from domain.tds.tds_computer import TDSComputer
         computer = TDSComputer()
-        # Payment ₹50,000 (5000000 paise), Section 194J @ 10%
-        tds = computer.compute_tds_amount("194J", 5_000_000, is_company=False)
+        # Payment ₹60,000 (6000000 paise), Section 194J @ 10%
+        tds = computer.compute_tds_amount("194J", 6_000_000, is_company=False, fy="2025-26")
         assert isinstance(tds, int), "TDS must be integer paise — IT Act Section 145A"
-        assert tds == 500_000, "194J TDS on ₹50,000 should be ₹5,000 (500000 paise)"
+        assert tds == 600_000, "194J TDS on ₹60,000 should be ₹6,000 (600000 paise)"
+
+    def test_194j_at_exactly_threshold_no_tds(self):
+        """₹50,000 exactly does not EXCEED the ₹50,000 threshold → no TDS."""
+        from domain.tds.tds_computer import TDSComputer
+        computer = TDSComputer()
+        tds = computer.compute_tds_amount("194J", 5_000_000, is_company=False, fy="2025-26")
+        assert tds == 0
 
     def test_26as_reconciliation_deducted_vs_deposited(self):
         """26AS reconciliation: TDS deducted > deposited must generate validation error."""

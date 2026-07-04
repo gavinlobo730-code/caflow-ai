@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { History, LogOut, Loader2, ShieldAlert } from "lucide-react";
 import { api, type LoginEvent } from "@/lib/api";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { PageLoader } from "@/components/ui/skeleton";
 
 // M6 — administrative login history + global force-logout (Partner oversight).
 const EVENT_STYLE: Record<string, string> = {
@@ -76,7 +77,7 @@ export default function LoginHistoryPage() {
       {notice && <div className="text-[12px] text-emerald-700 mb-2">{notice}</div>}
 
       {loading ? (
-        <div className="text-sm text-gray-500">Loading…</div>
+        <PageLoader />
       ) : events.length === 0 ? (
         <div className="py-12 text-center text-[12px] text-gray-400">No login events recorded yet.</div>
       ) : (
