@@ -10,14 +10,14 @@
  * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to TRACES or any government portal.
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   FileText, CheckCircle, AlertTriangle, Download,
   Info, X,
 } from "lucide-react";
 import Link from "next/link";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import {
   getTDSDeductions, getTDSChallans,
   compute26Q, compute24Q, approveTDSReturn, markTDSFiled,
@@ -46,8 +46,7 @@ const QUARTER_LABELS: Record<TDSQuarter, string> = {
 };
 
 export default function TDSReturnsPage() {
-  const [clients, setClients] = useState<{ id: string; name: string; tan?: string }[]>([]);
-  const [clientId, setClientId] = useState("");
+  const { clients, clientId, setClientId } = useClientPicker();
   const [returnType, setReturnType] = useState<TDSReturnType>("26Q");
   const [financialYear, setFinancialYear] = useState(currentFinancialYear());
   const [quarter, setQuarter] = useState<TDSQuarter>(currentQuarter());
@@ -64,15 +63,6 @@ export default function TDSReturnsPage() {
   const [ackNumber, setAckNumber] = useState("");
 
   const [tab, setTab] = useState<"summary" | "deductees" | "challans" | "json">("summary");
-
-  useEffect(() => {
-    const sb = getSupabaseClient();
-    sb.from("clients")
-      .select("id,name")
-      .eq("status", "active")
-      .order("name")
-      .then(({ data }) => setClients((data ?? []) as { id: string; name: string }[]));
-  }, []);
 
   async function handleCompute() {
     if (!clientId) { setError("Select a client"); return; }
@@ -118,7 +108,7 @@ export default function TDSReturnsPage() {
 
       // Fetch TAN from client's compliance data (best-effort)
       const tan = "MUMB00000A"; // placeholder — must be configured per client
-      const deductorName = clients.find(c => c.id === clientId)?.name ?? "";
+      const deductorName = clients.find(c => c.id === clientId)?.client_name ?? "";
 
       const req = {
         client_id: clientId,
