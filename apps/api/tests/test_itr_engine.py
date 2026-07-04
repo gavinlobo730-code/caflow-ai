@@ -10,7 +10,7 @@ import pytest
 from domain.income_tax.itr_engine import (
     ITREngine, ITRComputeRequest, Deductions80C, Deductions80D, Donation80G, HRADetails,
     LIMIT_80C_PAISE, LIMIT_80CCD1B_PAISE, LIMIT_80TTA_PAISE, LIMIT_80TTB_PAISE,
-    LIMIT_24B_PAISE,
+    LIMIT_24B_PAISE, LIMIT_80CCD2_GOVT_PERCENT, LIMIT_80CCD2_OTHER_PERCENT,
 )
 from domain.income_tax.statutory_rates import RATES_BY_FY
 
@@ -277,6 +277,70 @@ class TestSection80C:
         ))
         assert r.deduction_80c_paise == 0
         assert any("80C" in w for w in r.warnings)
+
+
+# ── Section 80CCD(2) — employer NPS, both regimes ──────────────────────────────
+
+class TestSection80CCD2:
+    def test_available_under_new_regime_unlike_80c(self):
+        r = req(
+            gross_salary_paise=10 * L, use_new_regime=True,
+            employer_nps_80ccd2_paise=1 * L,
+        )
+        result = engine.compute(r)
+        assert result.deduction_80ccd2_paise == 1 * L
+        assert not any("80CCD(2)" in w for w in result.warnings)
+
+    def test_available_under_old_regime_too(self):
+        r = req(
+            gross_salary_paise=10 * L, use_new_regime=False,
+            employer_nps_80ccd2_paise=1 * L,
+        )
+        assert engine.compute(r).deduction_80ccd2_paise == 1 * L
+
+    def test_capped_at_10_percent_for_non_government_employee(self):
+        r = req(
+            gross_salary_paise=10 * L, use_new_regime=True,
+            is_government_employee=False,
+            employer_nps_80ccd2_paise=5 * L,  # way over any plausible cap
+        )
+        result = engine.compute(r)
+        assert result.deduction_80ccd2_paise == 10 * L * LIMIT_80CCD2_OTHER_PERCENT // 100
+
+    def test_capped_at_14_percent_for_government_employee(self):
+        r = req(
+            gross_salary_paise=10 * L, use_new_regime=True,
+            is_government_employee=True,
+            employer_nps_80ccd2_paise=5 * L,
+        )
+        result = engine.compute(r)
+        assert result.deduction_80ccd2_paise == 10 * L * LIMIT_80CCD2_GOVT_PERCENT // 100
+
+    def test_uses_explicit_salary_base_when_supplied(self):
+        """basic+DA may differ from gross salary (which can include HRA/other
+        allowances) -- when supplied explicitly, the cap must use it, not gross."""
+        r = req(
+            gross_salary_paise=20 * L,  # gross includes large allowances
+            salary_for_80ccd2_paise=8 * L,  # basic+DA is much smaller
+            use_new_regime=True, is_government_employee=False,
+            employer_nps_80ccd2_paise=5 * L,
+        )
+        result = engine.compute(r)
+        assert result.deduction_80ccd2_paise == 8 * L * LIMIT_80CCD2_OTHER_PERCENT // 100
+
+    def test_included_in_new_regime_total_deductions(self):
+        """80CCD(2) must actually reduce taxable income under the new
+        regime, not just appear in the breakdown -- this is the whole point
+        of it surviving Section 115BAC(2)(i)'s otherwise-blanket disallowance.
+        Uses an income well above the new-regime rebate threshold so the
+        reduced tax is actually observable (not masked by 87A zeroing both)."""
+        with_ccd2 = engine.compute(req(
+            gross_salary_paise=30 * L, use_new_regime=True,
+            employer_nps_80ccd2_paise=1 * L,
+        ))
+        without_ccd2 = engine.compute(req(gross_salary_paise=30 * L, use_new_regime=True))
+        assert with_ccd2.taxable_income_paise == without_ccd2.taxable_income_paise - 1 * L
+        assert with_ccd2.total_tax_paise < without_ccd2.total_tax_paise
 
 
 # ── Section 80D ───────────────────────────────────────────────────────────────

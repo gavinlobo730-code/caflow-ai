@@ -31,6 +31,27 @@ LIMIT_80C_PAISE: int = 150_000 * 100
 # IT Act Section 80CCD(1B) — additional NPS
 LIMIT_80CCD1B_PAISE: int = 50_000 * 100
 
+# IT Act Section 80CCD(2) — employer's NPS contribution, capped at a % of
+# "salary" (basic + DA). Deductible under BOTH regimes (Section 115BAC(2)(i)
+# specifically carves this out of the new regime's blanket Chapter VI-A
+# disallowance) — unlike every other limit in this file, which applies to
+# old-regime filers only.
+#
+# PENDING STATUTORY VERIFICATION (R3.10): Budget 2024/Finance Act 2024 is
+# understood to have raised the new-regime cap for NON-government
+# employees from 10% to 14% of salary, matching what government employees
+# already had — but that specific change is not independently confirmed
+# against the Act's own text from anything in this repository (no prior
+# implementation of this section existed anywhere to port a verified
+# baseline from, unlike R3.1b's capital-gains rates). The long-established,
+# not-in-question 10%/14% government-vs-other split is used here in BOTH
+# regimes until the newer regime-dependent enhancement for non-government
+# employees is confirmed — the conservative direction (a filer may be
+# entitled to a slightly larger 80CCD(2) deduction under the new regime
+# than this computes), never the dangerous one (over-claiming a deduction).
+LIMIT_80CCD2_GOVT_PERCENT: int = 14
+LIMIT_80CCD2_OTHER_PERCENT: int = 10
+
 # IT Act Section 80D limits
 LIMIT_80D_SELF_PAISE: int = 25_000 * 100
 LIMIT_80D_SELF_SENIOR_PAISE: int = 50_000 * 100
@@ -133,9 +154,17 @@ class ITRComputeRequest:
     # domain.income_tax.statutory_rates for which years are verified.
     fy: Optional[str] = None
 
-    # Deductions (only applicable under old regime except standard deduction)
+    # Deductions (only applicable under old regime except standard deduction
+    # and 80CCD(2))
     s80c: Deductions80C = field(default_factory=Deductions80C)
     nps_80ccd1b_paise: int = 0
+    # Section 80CCD(2) — employer's NPS contribution. Available under both
+    # regimes. `salary_for_80ccd2_paise` is "salary" (basic + DA) the cap is
+    # computed against; if not supplied, gross_salary_paise is used as an
+    # approximation (exact only when allowances are a small share of gross).
+    employer_nps_80ccd2_paise: int = 0
+    is_government_employee: bool = False
+    salary_for_80ccd2_paise: Optional[int] = None
     s80d: Deductions80D = field(default_factory=Deductions80D)
     donations_80g: list[Donation80G] = field(default_factory=list)
     savings_interest_80tta_paise: int = 0
@@ -159,6 +188,7 @@ class ITRComputeResult:
     # Deduction breakdown
     deduction_80c_paise: int = 0
     deduction_80ccd_paise: int = 0
+    deduction_80ccd2_paise: int = 0
     deduction_80d_paise: int = 0
     deduction_80g_paise: int = 0
     deduction_80tta_paise: int = 0
@@ -228,6 +258,18 @@ class ITREngine:
 
         # 3. Chapter VI-A deductions (only for old regime for most)
         deductions = 0
+
+        # 80CCD(2) — employer NPS, deductible under BOTH regimes (see the
+        # LIMIT_80CCD2_* constants' docstring for the government/other cap
+        # split and its verification status).
+        cap_percent = (LIMIT_80CCD2_GOVT_PERCENT if req.is_government_employee
+                       else LIMIT_80CCD2_OTHER_PERCENT)
+        salary_base_80ccd2 = (req.salary_for_80ccd2_paise if req.salary_for_80ccd2_paise is not None
+                              else req.gross_salary_paise)
+        d80ccd2 = min(req.employer_nps_80ccd2_paise, salary_base_80ccd2 * cap_percent // 100)
+        result.deduction_80ccd2_paise = d80ccd2
+        deductions += d80ccd2
+
         if not req.use_new_regime:
             # 80C
             s80c_total = req.s80c.total_paise()
@@ -351,7 +393,10 @@ class ITREngine:
 
         # 10. Warnings
         if req.use_new_regime and (req.s80c.total_paise() > 0 or req.nps_80ccd1b_paise > 0):
-            result.warnings.append("Section 80C/80CCD deductions are not available under the new regime")
+            result.warnings.append(
+                "Section 80C/80CCD(1B) deductions are not available under the new regime "
+                "(Section 80CCD(2), employer NPS, is — see the deductions breakdown)"
+            )
         if req.house_property_income_paise < -LIMIT_24B_PAISE:
             result.warnings.append(
                 f"House property loss capped at ₹2,00,000 (Section 71). Excess loss ₹"

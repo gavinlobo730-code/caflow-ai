@@ -78,6 +78,19 @@ def test_h6_individual_vs_company_rate_194c(monkeypatch):
     assert b2["tds_rate_bps"] == 200 and b2["tds_paise"] == 1_000_00
 
 
+def test_206aa_no_pan_vendor_gets_the_floored_rate_not_the_section_rate(monkeypatch):
+    """R3.10: previously create_purchase_bill's resolve_tds() call had zero
+    PAN awareness -- a no-PAN vendor's bill silently deducted at the
+    ordinary 194J rate (10%) instead of Section 206AA's 20% floor. Driven
+    through the real bill-creation path, not just the domain function
+    directly, to prove the actual production bug is fixed end to end."""
+    db = _setup(monkeypatch)
+    v = _vendor(db, "194J", pan="PANNOTAVBL")      # no real PAN on file
+    b = _bill(db, v, 60_000_00, "B1")              # > ₹50,000 (FA 2025) threshold
+    assert b["tds_rate_bps"] == 2000                # floored to 20%, not 194J's ordinary 10%
+    assert b["tds_paise"] == 12_000_00              # 20% of ₹60,000, not ₹6,000
+
+
 def test_l1_tds_never_reaches_full_taxable(monkeypatch):
     db = _setup(monkeypatch)
     for section in ("194C", "194J", "194I", "194H"):

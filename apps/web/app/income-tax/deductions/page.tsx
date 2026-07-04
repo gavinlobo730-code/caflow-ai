@@ -52,6 +52,11 @@ interface DeductionState {
   // 80C items (all in paise)
   s80c: S80CItems;
   nps80ccd: number;
+  // Section 80CCD(2) — employer NPS contribution. Unlike every other
+  // Chapter VI-A deduction on this page, available under BOTH regimes
+  // (see itr_engine.py's LIMIT_80CCD2_* constants for the cap split).
+  employerNps80ccd2: number;
+  isGovernmentEmployee: boolean;
   // 80D
   s80d: S80DItems;
   // 80G donations (paise, deduction %)
@@ -75,6 +80,13 @@ interface DeductionState {
 // which is the only place these limits are applied.
 const LIMIT_80C = 150000 * 100;
 const LIMIT_NPS = 50000 * 100;
+// Section 80CCD(2) cap is a % of salary, not a fixed amount — these
+// percentages are display-label-only (mirrors itr_engine.py's LIMIT_80CCD2_*
+// constants; see that module for the government/other split and its
+// PENDING STATUTORY VERIFICATION note re: the new-regime-only enhancement
+// for non-government employees).
+const LIMIT_80CCD2_OTHER_PCT = 10;
+const LIMIT_80CCD2_GOVT_PCT = 14;
 const LIMIT_80D_SELF = 25000 * 100;
 const LIMIT_80D_SELF_SENIOR = 50000 * 100;
 const LIMIT_80D_PARENTS = 25000 * 100;
@@ -168,6 +180,8 @@ const DEFAULT_STATE: DeductionState = {
   grossIncomePaise: 0,
   s80c: { ppf: 0, elss: 0, lic: 0, nsc: 0, homeLoanPrincipal: 0, tuitionFees: 0, fd5yr: 0 },
   nps80ccd: 0,
+  employerNps80ccd2: 0,
+  isGovernmentEmployee: false,
   s80d: { selfFamilyPremium: 0, selfFamilySenior: false, parentsPremium: 0, parentsSenior: false },
   donations: [],
   savingsInterestPaise: 0,
@@ -223,6 +237,8 @@ export default function DeductionsPage() {
         fd_5yr_paise: state.s80c.fd5yr,
       },
       nps_80ccd1b_paise: state.nps80ccd,
+      employer_nps_80ccd2_paise: state.employerNps80ccd2,
+      is_government_employee: state.isGovernmentEmployee,
       s80d: {
         self_family_premium_paise: state.s80d.selfFamilyPremium,
         self_family_is_senior: state.s80d.selfFamilySenior,
@@ -266,10 +282,13 @@ export default function DeductionsPage() {
   }, [state]);
 
   // Old regime is the only response with non-zero Chapter VI-A deductions —
-  // the new regime disallows all of these except the standard deduction
-  // (see itr_engine.py's regime-conditional deduction block).
+  // the new regime disallows all of these except the standard deduction AND
+  // Section 80CCD(2) (see itr_engine.py's regime-conditional deduction block).
   const elig80c = oldResult?.deductions.s80c_paise ?? 0;
   const eligNps = oldResult?.deductions.s80ccd_paise ?? 0;
+  // 80CCD(2) is identical in both regime responses (survives 115BAC) — read
+  // from newResult so it's populated even before an old-regime call resolves.
+  const eligCcd2 = newResult?.deductions.s80ccd2_paise ?? 0;
   const elig80d = oldResult?.deductions.s80d_paise ?? 0;
   const elig80g = oldResult?.deductions.s80g_paise ?? 0;
   const eligTta = oldResult?.deductions.s80tta_paise ?? 0;
@@ -387,6 +406,25 @@ export default function DeductionsPage() {
       <SectionCard title="Section 80CCD(1B) — NPS (additional)" eligible={eligNps} limit={LIMIT_NPS} entered={state.nps80ccd}>
         <PaiseInput label="NPS Contribution (over 80C)" valuePaise={state.nps80ccd}
           onChange={v => upd({ nps80ccd: v })} />
+      </SectionCard>
+
+      {/* 80CCD(2) Employer NPS — available under BOTH regimes */}
+      <SectionCard
+        title="Section 80CCD(2) — Employer NPS (both regimes)"
+        eligible={eligCcd2} entered={state.employerNps80ccd2}
+      >
+        <PaiseInput label="Employer's NPS Contribution" valuePaise={state.employerNps80ccd2}
+          onChange={v => upd({ employerNps80ccd2: v })}
+          note={`Capped at ${state.isGovernmentEmployee ? LIMIT_80CCD2_GOVT_PCT : LIMIT_80CCD2_OTHER_PCT}% of salary`} />
+        <div className="flex items-center justify-between py-2">
+          <span className="text-sm text-[#334155]">Government Employee</span>
+          <input type="checkbox" checked={state.isGovernmentEmployee}
+            onChange={e => upd({ isGovernmentEmployee: e.target.checked })} />
+        </div>
+        <p className="text-xs text-[#94A3B8] mt-1">
+          Unlike every other deduction on this page, Section 80CCD(2) reduces tax under
+          both the old and new regime.
+        </p>
       </SectionCard>
 
       {/* 80D */}

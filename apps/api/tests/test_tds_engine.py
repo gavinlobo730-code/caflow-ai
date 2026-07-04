@@ -6,7 +6,7 @@ Section 206AB (non-filers — doubled rate or 5%).
 All monetary values in integer paise — IT Act Section 145A.
 """
 import pytest
-from domain.tds.tds_computer import TDSComputer, TDSDeducteeRecord, SECTION_THRESHOLDS
+from domain.tds.tds_computer import TDSComputer, TDSDeducteeRecord, SECTION_THRESHOLDS, has_pan
 from domain.tds.tds_validator import TDSValidator
 
 
@@ -103,6 +103,61 @@ class TestTDSAmountComputation:
     def test_unknown_section_returns_zero(self):
         amt = self.c.compute_tds_amount("999X", 100_000_00, fy=self.FY)
         assert amt == 0
+
+
+# ── Section 206AA — mandatory-PAN floor actually enforced (R3.10) ──────────────
+# Previously resolve_tds() had zero PAN awareness at all: a no-PAN vendor's
+# bill silently computed TDS at the ordinary section rate, and Section
+# 206AA's 20% floor only ever appeared as a post-hoc validation WARNING on
+# the 26Q return -- never as a correction to the actually-withheld amount.
+
+class TestSection206AAEnforcement:
+    FY = "2025-26"
+
+    def setup_method(self):
+        self.c = TDSComputer()
+
+    def test_no_pan_floors_the_rate_at_20_percent(self):
+        # 194J professional fees: normal rate 10%, no PAN -> floored to 20%.
+        r = self.c.resolve_tds("194J", 1_00_000_00, fy=self.FY, has_pan=False)
+        assert r.rate_bps == 2000
+        assert r.tds_paise == 1_00_000_00 * 2000 // 10000
+
+    def test_has_pan_true_is_unaffected(self):
+        r = self.c.resolve_tds("194J", 1_00_000_00, fy=self.FY, has_pan=True)
+        assert r.rate_bps == 1000  # ordinary 194J rate, no floor applied
+
+    def test_default_has_pan_matches_prior_behaviour(self):
+        """has_pan defaults to True so callers that don't pass it (existing
+        code, prior to this fix) see no behaviour change."""
+        with_default = self.c.resolve_tds("194J", 1_00_000_00, fy=self.FY)
+        explicit_true = self.c.resolve_tds("194J", 1_00_000_00, fy=self.FY, has_pan=True)
+        assert with_default.rate_bps == explicit_true.rate_bps
+
+    def test_no_pan_floor_never_lowers_an_already_higher_rate(self):
+        # 194B (lottery winnings): 30% already exceeds the 20% floor -> unaffected.
+        r = self.c.resolve_tds("194B", 50_000_00, fy=self.FY, has_pan=False)
+        assert r.rate_bps == 3000
+
+    def test_no_pan_floor_applies_regardless_of_payee_type(self):
+        r_individual = self.c.resolve_tds("194C", 50_000_00, is_company=False, fy=self.FY, has_pan=False)
+        r_company = self.c.resolve_tds("194C", 50_000_00, is_company=True, fy=self.FY, has_pan=False)
+        assert r_individual.rate_bps == r_company.rate_bps == 2000
+
+
+class TestHasPanHelper:
+    def test_real_pan_is_true(self):
+        assert has_pan("ABCDE1234F") is True
+
+    def test_pannotavbl_sentinel_is_false(self):
+        assert has_pan("PANNOTAVBL") is False
+
+    def test_panapplied_sentinel_is_false(self):
+        assert has_pan("PANAPPLIED") is False
+
+    def test_missing_pan_is_false(self):
+        assert has_pan(None) is False
+        assert has_pan("") is False
 
 
 # ── 26Q Computation ────────────────────────────────────────────────────────────

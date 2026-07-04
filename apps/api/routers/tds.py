@@ -80,6 +80,10 @@ class TDSAmountRequest(BaseModel):
     # Financial year to resolve thresholds/rates for (e.g. "2025-26");
     # omit for the current FY. See domain/tds/section_rates.py.
     fy: Optional[str] = None
+    # IT Act §206AA — set False to model a payee with no PAN on file (rate
+    # floors at the registry's section_206aa_floor_rate_bps). Defaults to
+    # True (has a PAN) so existing callers' behaviour is unchanged.
+    has_pan: bool = True
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -244,7 +248,8 @@ def compute_tds_amount(req: TDSAmountRequest, user: dict = Depends(rbac("tds", "
     """
     try:
         resolution = computer.resolve_tds(
-            req.section, req.payment_amount_paise, is_company=req.is_company, fy=req.fy)
+            req.section, req.payment_amount_paise, is_company=req.is_company, fy=req.fy,
+            has_pan=req.has_pan)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Unknown TDS section: {req.section}")
 

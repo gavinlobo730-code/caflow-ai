@@ -264,7 +264,7 @@ def create_purchase_bill(
                     status_code=422,
                     detail="Vendor is marked TDS-applicable but has no TDS section set.",
                 )
-            from domain.tds.tds_computer import TDSComputer, is_company_pan
+            from domain.tds.tds_computer import TDSComputer, is_company_pan, has_pan
             # FY-aggregate of this vendor's prior taxable under the same section, so the
             # §194C ₹1L aggregate threshold is honoured across multiple bills.
             fy_prior = 0
@@ -292,6 +292,10 @@ def create_purchase_bill(
                     fy_prior_taxable_paise=fy_prior,
                     is_company=is_company_pan(vendor.get("pan")),
                     fy=bill_fy,
+                    # IT Act §206AA: no real PAN on file floors the rate at
+                    # 20% (R3.10) — previously computed with zero PAN
+                    # awareness, silently under-deducting for no-PAN vendors.
+                    has_pan=has_pan(vendor.get("pan")),
                 )
             except ValueError as ve:
                 raise HTTPException(status_code=422, detail=str(ve))

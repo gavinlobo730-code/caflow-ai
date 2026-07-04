@@ -59,6 +59,11 @@ export interface ComputeITRRequest {
   is_very_senior_citizen?: boolean;
   s80c?: S80CInput;
   nps_80ccd1b_paise?: number;
+  /** Section 80CCD(2) — employer NPS contribution, available under BOTH
+   * regimes (unlike every other Chapter VI-A deduction here). */
+  employer_nps_80ccd2_paise?: number;
+  is_government_employee?: boolean;
+  salary_for_80ccd2_paise?: number;
   s80d?: S80DInput;
   donations_80g?: Donation80G[];
   savings_interest_80tta_paise?: number;
@@ -82,6 +87,7 @@ export interface ITRComputeResult {
   deductions: {
     s80c_paise: number;
     s80ccd_paise: number;
+    s80ccd2_paise: number;
     s80d_paise: number;
     s80g_paise: number;
     s80tta_paise: number;
