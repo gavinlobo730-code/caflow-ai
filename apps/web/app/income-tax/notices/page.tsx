@@ -16,6 +16,7 @@ import Link from "next/link";
 import { ChevronLeft, Plus, X, Upload, Download, Trash2, FileText, AlertTriangle, CheckCircle, Clock, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -391,7 +392,7 @@ export default function ITNoticesPage() {
       {/* Table */}
       <Card>
         {loading ? (
-          <div className="p-8 text-center text-[#94A3B8] text-sm animate-pulse">Loading…</div>
+          <TableSkeleton cols={9} bare />
         ) : filtered.length === 0 ? (
           <div className="p-10 text-center text-[#94A3B8] text-sm">
             <FileText className="w-10 h-10 text-gray-200 mx-auto mb-3" />

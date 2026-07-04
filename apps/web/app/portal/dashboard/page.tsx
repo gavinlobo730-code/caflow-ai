@@ -17,6 +17,7 @@ import {
 import { api, type ApiResp } from "@/lib/api";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
+import { PageLoader } from "@/components/ui/skeleton";
 
 interface Section { key: string; label: string; available: boolean }
 interface Dashboard { client_id: string; contact: { email: string | null; name: string | null }; sections: Section[] }
@@ -247,7 +248,7 @@ export default function PortalDashboardPage() {
           You have access to {memberships.length} clients. Choose one above to continue.
         </div>
       ) : !dash ? (
-        <div className="text-sm text-gray-500">Loading…</div>
+        <PageLoader />
       ) : (
         <>
           {/* Dues summary — the headline "what do I owe the firm" figure. */}
@@ -435,5 +436,5 @@ function Table({ head, children }: { head: string[]; children: React.ReactNode }
   );
 }
 
-function Loading() { return <div className="p-4 text-sm text-gray-400">Loading…</div>; }
+function Loading() { return <PageLoader className="min-h-[20vh]" />; }
 function Empty({ label }: { label: string }) { return <div className="p-4 text-sm text-gray-400">{label}</div>; }

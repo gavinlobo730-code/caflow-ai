@@ -28,6 +28,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { formatPaise } from "@/lib/services/formatting";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { TableSkeleton } from "@/components/ui/skeleton";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -517,7 +518,7 @@ export default function LoansAndFDPage() {
               <h2 className="text-sm font-semibold text-[#0F172A]">Loan Register</h2>
             </div>
             {loading ? (
-              <div className="px-5 py-12 text-center text-sm text-[#94A3B8] animate-pulse">Loading…</div>
+              <TableSkeleton cols={9} bare />
             ) : loans.length === 0 ? (
               <div className="px-5 py-12 text-center space-y-2">
                 <TrendingDown className="w-10 h-10 text-gray-200 mx-auto" />
@@ -720,7 +721,7 @@ export default function LoansAndFDPage() {
               </p>
             </div>
             {loading ? (
-              <div className="px-5 py-12 text-center text-sm text-[#94A3B8] animate-pulse">Loading…</div>
+              <TableSkeleton cols={11} bare />
             ) : fds.length === 0 ? (
               <div className="px-5 py-12 text-center space-y-2">
                 <Landmark className="w-10 h-10 text-gray-200 mx-auto" />
