@@ -16,6 +16,9 @@ class ComplianceRecordIn(BaseModel):
     client_id: str
     compliance_type: str
     financial_year: Optional[str] = None
+    period_label: Optional[str] = None
+    period_start: Optional[str] = None
+    period_end: Optional[str] = None
     due_date: Optional[str] = None
     status: str = "pending"
     notes: Optional[str] = None

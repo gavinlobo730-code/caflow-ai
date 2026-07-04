@@ -61,6 +61,8 @@ class ClientRepository(BaseRepository[dict]):
         # include_internal=True explicitly.
         if _USE_MOCK:
             clients = [c for c in MOCK_CLIENTS if not c.get("deleted_at")]
+            if firm_id:
+                clients = [c for c in clients if c.get("firm_id") == firm_id]
             if not include_internal:
                 clients = [c for c in clients if not c.get("is_internal", False)]
             if not include_archived:

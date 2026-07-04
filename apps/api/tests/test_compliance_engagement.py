@@ -17,8 +17,9 @@ import services.compliance_obligation_service as ob
 from domain.compliance_record_service import VALID_TRANSITIONS, compliance_record_service
 from repositories.compliance_records_repository import compliance_records_repo
 from repositories.engagement_repository import engagement_repo
+from repositories.client_repository import client_repo
 from routers.engagements import ENGAGEMENT_TRANSITIONS
-from mock_data import MOCK_COMPLIANCE_RECORDS, MOCK_ENGAGEMENTS, ENGAGEMENT_INDEX
+from mock_data import MOCK_COMPLIANCE_RECORDS, MOCK_ENGAGEMENTS, ENGAGEMENT_INDEX, MOCK_CLIENTS, CLIENT_INDEX
 from routers.sales_invoices import MOCK_SALES_INVOICES
 
 FIRM = "F1"
@@ -32,6 +33,7 @@ def _isolate(monkeypatch):
     MOCK_ENGAGEMENTS.clear()
     ENGAGEMENT_INDEX.clear()
     MOCK_SALES_INVOICES.clear()
+    clients_snapshot = list(MOCK_CLIENTS)
     # Capture audit; silence timeline (both imported lazily inside the service).
     audit: list = []
     import services.audit_service as au
@@ -43,6 +45,13 @@ def _isolate(monkeypatch):
     MOCK_ENGAGEMENTS.clear()
     ENGAGEMENT_INDEX.clear()
     MOCK_SALES_INVOICES.clear()
+    MOCK_CLIENTS[:] = clients_snapshot
+    CLIENT_INDEX.clear()
+    CLIENT_INDEX.update({c["id"]: c for c in MOCK_CLIENTS})
+
+
+def _client(client_id, firm=FIRM):
+    return client_repo.create({"id": client_id, "firm_id": firm, "client_name": f"Client {client_id}"})
 
 
 def _engagement(service_type, firm=FIRM, client="CL-1", assigned_to="prep-1",
@@ -169,6 +178,64 @@ def test_generation_has_no_accounting_side_effects():
     eng = _engagement("Income Tax Return")
     ob.generate_for_engagement(FIRM, eng, FY, actor=ACTOR)
     assert MOCK_SALES_INVOICES == []                                  # no invoices/journals created
+
+
+# ── No-engagement fallback ────────────────────────────────────────────────────
+# A client with zero ACTIVE engagements previously got nothing generated at all —
+# a regression risk once the frontend's unconditional seedComplianceCalendar()
+# (which needed no engagement concept) is repointed at this generator. These
+# prove the fallback restores that "every client gets baseline GST coverage"
+# behaviour without overriding a client whose active engagement already scoped
+# obligations deliberately (e.g. an ITR-only engagement should not also receive
+# GST obligations as an unrequested side effect).
+
+def test_generate_due_client_scoped_fallback_seeds_gst_only():
+    _client("CL-NOENG")
+    res = ob.generate_due(FIRM, client_id="CL-NOENG", financial_year=FY, actor=ACTOR)
+    assert res["generated"] == 25 and res["skipped"] == 0
+    recs = compliance_records_repo.find_all(firm_id=FIRM, client_id="CL-NOENG")
+    assert len(recs) == 25
+    assert {r["obligation_type"] for r in recs} == {"GSTR1", "GSTR3B", "GSTR9"}
+    assert all(r.get("engagement_id") is None for r in recs)
+    # idempotent re-run
+    again = ob.generate_due(FIRM, client_id="CL-NOENG", financial_year=FY, actor=ACTOR)
+    assert again["generated"] == 0 and again["skipped"] == 25
+
+
+def test_generate_due_active_engagement_client_excluded_from_fallback():
+    """An ITR-only active engagement must not gain GST obligations as a side
+    effect of the fallback — the fallback applies only to clients with zero
+    active engagements, never on top of a deliberately-scoped one."""
+    eng = _engagement("Income Tax Return", client="CL-ITR")
+    res = ob.generate_due(FIRM, client_id="CL-ITR", financial_year=FY, actor=ACTOR)
+    assert res["generated"] == 1                                     # ITR only, no GST fallback
+    recs = compliance_records_repo.find_all(firm_id=FIRM, client_id="CL-ITR")
+    assert {r["obligation_type"] for r in recs} == {"ITR"}
+    assert recs[0]["engagement_id"] == eng["id"]
+
+
+def test_generate_due_firm_wide_applies_fallback_to_uncovered_clients_only():
+    _engagement("GST Compliance", client="CL-WITH-ENG")   # active → covered, no fallback
+    _client("CL-WITH-ENG")
+    _client("CL-NO-ENG-A")
+    _client("CL-NO-ENG-B")
+    res = ob.generate_due(FIRM, financial_year=FY, actor=ACTOR)
+    assert res["generated"] == 75                                    # 25 x 3 clients
+    by_client = {}
+    for r in compliance_records_repo.find_all(firm_id=FIRM):
+        by_client.setdefault(r["client_id"], []).append(r)
+    assert set(by_client) == {"CL-WITH-ENG", "CL-NO-ENG-A", "CL-NO-ENG-B"}
+    assert all(r.get("engagement_id") for r in by_client["CL-WITH-ENG"])
+    assert all(r.get("engagement_id") is None for r in by_client["CL-NO-ENG-A"])
+    assert all(r.get("engagement_id") is None for r in by_client["CL-NO-ENG-B"])
+
+
+def test_generate_default_for_client_direct_call_is_pure_gst():
+    _client("CL-DIRECT")
+    res = ob.generate_default_for_client(FIRM, "CL-DIRECT", FY, actor=ACTOR)
+    assert res["generated"] == 25
+    recs = compliance_records_repo.find_all(firm_id=FIRM, client_id="CL-DIRECT")
+    assert all(r["compliance_type"] == "GST" for r in recs)
 
 
 # ── Assignment chain ─────────────────────────────────────────────────────────

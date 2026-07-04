@@ -273,21 +273,75 @@ def generate_for_engagement(firm_id: str, engagement: dict, financial_year: str,
     return {"generated": len(generated), "skipped": skipped, "generated_ids": generated}
 
 
+def generate_default_for_client(firm_id: str, client_id: str, financial_year: str,
+                                actor: Optional[dict] = None) -> dict:
+    """No-engagement fallback. A client with zero active fee_engagements rows still
+    gets baseline GST obligations (GSTR-1 + GSTR-3B monthly, GSTR-9 annual) generated
+    directly against the client, engagement_id left NULL. This matches the
+    pre-consolidation behaviour of the frontend's seedComplianceCalendar()/
+    generateGSTDeadlines() — which seeded every visited client unconditionally,
+    with no engagement concept at all — so client onboarding doesn't regress to
+    "silently generates nothing" once the frontend is repointed at this generator.
+    ITR/TDS/MCA/tax-audit obligations remain engagement-scoped (a client whose
+    engagement genuinely excludes GST should not receive it as a side effect of
+    this fallback; see generate_due, which only applies this to clients with no
+    ACTIVE engagement at all). Idempotent via the same dedup as generate_for_engagement."""
+    specs = _gst_obligations(financial_year)
+    existing = compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)
+    seen = {(r.get("obligation_type"), str(r.get("period_start"))[:10])
+            for r in existing if r.get("obligation_type")}
+    generated: list[str] = []
+    skipped = 0
+    for s in specs:
+        key = (s["obligation_type"], s["period_start"])
+        if key in seen:
+            skipped += 1
+            continue
+        payload = {
+            "firm_id": firm_id, "client_id": client_id, "engagement_id": None,
+            "compliance_type": s["compliance_type"], "obligation_type": s["obligation_type"],
+            "period_label": s["period_label"], "period_start": s["period_start"],
+            "period_end": s["period_end"], "due_date": s["due_date"],
+            "status": "Not Started", "priority": "medium",
+        }
+        rec = compliance_records_repo.create(payload)
+        seen.add(key)
+        generated.append(rec["id"])
+        _audit_timeline_generate(firm_id, rec, actor)
+    return {"generated": len(generated), "skipped": skipped, "generated_ids": generated}
+
+
 def generate_due(firm_id: str, client_id: Optional[str] = None, financial_year: Optional[str] = None,
                  actor: Optional[dict] = None) -> dict:
     """Generate obligations for every active engagement (optionally one client) for the
-    given FY (defaults to the current Indian FY). Idempotent."""
+    given FY (defaults to the current Indian FY), then apply the no-engagement
+    fallback to any in-scope client that has no ACTIVE engagement at all. Idempotent."""
     fy = financial_year or _current_fy()
     engagements = engagement_repo.find_all(firm_id=firm_id, client_id=client_id)
+    active = [e for e in engagements if e.get("status") in _ACTIVE_ENGAGEMENT_STATUSES]
     total_gen = total_skip = 0
     per_engagement = []
-    for e in engagements:
-        if e.get("status") not in _ACTIVE_ENGAGEMENT_STATUSES:
-            continue
+    covered_client_ids = set()
+    for e in active:
         res = generate_for_engagement(firm_id, e, fy, actor=actor)
         total_gen += res["generated"]
         total_skip += res["skipped"]
         per_engagement.append({"engagement_id": e["id"], **{k: res[k] for k in ("generated", "skipped")}})
+        covered_client_ids.add(e["client_id"])
+
+    if client_id is not None:
+        fallback_client_ids = [] if client_id in covered_client_ids else [client_id]
+    else:
+        from repositories.client_repository import client_repo
+        fallback_client_ids = [c["id"] for c in client_repo.find_all(firm_id=firm_id)
+                               if c["id"] not in covered_client_ids]
+    for cid in fallback_client_ids:
+        res = generate_default_for_client(firm_id, cid, fy, actor=actor)
+        total_gen += res["generated"]
+        total_skip += res["skipped"]
+        per_engagement.append({"engagement_id": None, "client_id": cid,
+                               **{k: res[k] for k in ("generated", "skipped")}})
+
     return {"financial_year": fy, "generated": total_gen, "skipped": total_skip,
             "engagements": per_engagement}
 

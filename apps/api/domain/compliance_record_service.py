@@ -116,13 +116,30 @@ class ComplianceRecordService:
         return {**r, "risk_score": _compute_risk_score(r)}
 
     def create_record(self, data: dict, firm_id: str) -> dict:
+        client_id = data["client_id"]
+        compliance_type = data["compliance_type"]
+        period_start = data.get("period_start") or ""
+        # App-level dedup for the manual-create path: the generator's
+        # (obligation_type, period_start) uniqueness (migration 108) doesn't
+        # apply here since manual records never set obligation_type — without
+        # this check a CA could freely create duplicate periods for the same
+        # client/compliance_type. Only enforced when a real period is supplied
+        # (an empty period carries no dedup meaning). DB-backed by migration
+        # 168's partial index.
+        if period_start:
+            existing = compliance_records_repo.find_all(
+                firm_id=firm_id, client_id=client_id, compliance_type=compliance_type)
+            if any(str(r.get("period_start") or "")[:10] == str(period_start)[:10] for r in existing):
+                raise ValidationError(
+                    "period_start",
+                    f"A {compliance_type} compliance record for this client and period already exists.")
         payload = {
             "firm_id": firm_id,  # Always from current_user, never from request body
-            "client_id": data["client_id"],
+            "client_id": client_id,
             "client_name": data.get("client_name"),
-            "compliance_type": data["compliance_type"],
+            "compliance_type": compliance_type,
             "period_label": data.get("period_label", ""),
-            "period_start": data.get("period_start", ""),
+            "period_start": period_start,
             "period_end": data.get("period_end", ""),
             "status": data.get("status", "Not Started"),
             "due_date": data["due_date"],
