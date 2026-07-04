@@ -3816,3 +3816,96 @@ is scoped precisely and executed last, after item 6.
 safe to do immediately), then proceeds through items 3-7 in the order
 above, pausing only for the four explicit product-decision flags in item 3.
 
+---
+
+## Milestone R3.3a — orphaned-route mechanical cleanup (DELIVERED)
+
+**What shipped:** deleted 13 files confirmed by exhaustive grep to have zero
+incoming references anywhere in the codebase: 6 retired
+`MovedToClientWorkspace` stubs under `/accounting` (bank-feed,
+bank-reconciliation, bank-statements, cash-flow, ledger, trial-balance), 3
+`logo-concepts` design-brainstorm dev artifacts, and 4 historical redirect
+shims (`/compliance`, `/assistant`, `/clients/pipeline`, `/clients/portal`)
+whose targets are all independently linked elsewhere. Also fixed
+`ClientNavContext.tsx`'s `CLIENT_SECTIONS` array, which was missing a
+`"fixed-assets"` entry despite the `ClientSection` type and
+`ClientContextPanel`'s `SECTION_ICONS` map already carrying it — a
+one-line gap that made the 801-line Fixed Asset Register completely
+unreachable from any client workspace.
+
+**Verified:** `tsc --noEmit` and `eslint` clean on every touched/adjacent
+file.
+
+**Next:** R3.3b (repoint the 4 linked-but-dead-end stubs), R3.3c-e (link
+the 15 statutory-suite + `/accounting` hub + 11 shipped-but-unlinked
+routes), R3.3f (the 4 product-decision flags).
+
+---
+
+## Milestone R3.9a — close two live unmediated-write paths into the general ledger (DELIVERED, critical)
+
+**Goal:** R3.9's re-scope ranked `journal_entry_lines`/`journal_entries` as
+the most severe unmediated-write finding. Investigating the reported write
+site (`accounting/recurring/page.tsx`'s "Post Now") surfaced a second,
+more significant one the original pass didn't catch: the main, actively
+linked per-client Accounting tab's own "New Journal Entry" form.
+
+**Findings, corrected from the original R3.9 pass after reading the
+schema directly:**
+- `accounting/recurring/page.tsx`'s insert targeted `total_debit_paise`/
+  `total_credit_paise` as literal `journal_entries` columns — these are
+  response-only fields `manual_journal_service` computes from the lines
+  sum, never real columns (confirmed against a real Postgres 16 instance:
+  `column "total_debit_paise" of relation "journal_entries" does not
+  exist`). Combined with `journal_entry_lines` being a read-only 3-way
+  JOIN view (migration 016), **this insert has always failed outright** —
+  the original R3.9 pass's "silent phantom posted journal" framing was
+  incorrect; in practice every "Post Now" click has always errored
+  visibly. No corrupted data exists from this path today.
+- `clients/[id]/accounting/page.tsx`'s "New Journal Entry" form — not
+  flagged by the original pass at all — did two separate, non-atomic
+  Supabase inserts (header, then lines), completely bypassing the
+  backend's single atomic posting kernel (`manual_journal_service` →
+  `phase2_journal_service._create_journal` → `post_journal_atomic`, R1.6).
+  This is the exact F2 "orphan posted entry" bug class R1.6 was meant to
+  have closed everywhere — this page was simply never migrated onto that
+  fix, so the live failure mode (a failed second insert leaves a posted
+  header with zero lines, then the immutability trigger makes it
+  permanently unrepairable) was still reachable in production. Its
+  client-side-only FY-lock check was also bypassable by any direct REST
+  call (not authoritative).
+
+**What shipped:** both forms now POST through
+`api.accounting.createJournalEntry` (`/api/accounting/journal`, already
+wired to the atomic kernel but previously called by zero frontend code).
+`recurring/page.tsx` gained a required client selector (`ClientLookup`,
+matching the sibling `msme-tracker`/`suppliers` hub pages' convention) —
+`journal_entries.client_id` is a required FK and recurring templates had
+no client association at all. Migration 171 closes the underlying tables
+now that both writers are fixed: `REVOKE INSERT, UPDATE, DELETE ... FROM
+authenticated` + `SELECT`-only policies on `journal_entries`/
+`journal_lines`, the same pattern as migrations 166/170.
+
+**Verified:** 9 new tests in `test_r3_9a_journal_rls_pg.py` against real
+Postgres 16 — own-firm SELECT still works, INSERT/UPDATE/DELETE all
+rejected with "permission denied," service_role (the kernel's own
+connection) unaffected, and a dedicated probe confirming the
+`journal_entries.client_id NOT NULL` / nonexistent-column failure mode
+described above. Full mock-mode suite: 2,485 passed, same 23 pre-existing
+unrelated failures. `tsc`/`eslint` clean.
+
+**Next:** R3.9b (`fee_receipts` partial-payment bug — a related but
+architecturally distinct finding: investigating it surfaced that
+`apps/web/app/billing/page.tsx` ("Fee Billing," linked from
+`AccountingPanel`) and `/practice/billing`+`/practice/revenue`+
+`/practice/ar`+`/practice/collections` appear to be two independently
+built, overlapping systems for the firm's own revenue/billing —
+`fee_engagements`/`fee_invoices`/`fee_receipts` vs. `billing_schedules`/
+`client_sales_invoices` via an "internal customer" link. Both are live and
+read by real reporting (`fee_invoices` feeds `analytics.py`'s
+`profitability_analytics`; the other feeds `ar_aging`/
+`collections_dashboard`). Fixing R3.9b's specific bug does not require
+resolving that duplication, so the bug fix proceeds on the existing
+`fee_invoices`/`fee_receipts` tables; the duplication itself is flagged as
+a product question, not resolved unilaterally).
+
