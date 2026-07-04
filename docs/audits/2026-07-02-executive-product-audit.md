@@ -248,7 +248,7 @@ Each item: **Problem · Evidence · Root cause · Business/Technical impact · P
 - **R3.0 — Harden `client_portal_users` RLS/grants. DELIVERED.** *(surfaced by the R2.5 regression review)*. Migration 109's `client_portal_users_own_firm` policy was `FOR ALL USING/WITH CHECK (firm_id = get_my_firm_id())` — any authenticated firm staff member could directly INSERT/UPDATE/DELETE a `client_portal_users` row from the browser, bypassing `invite_contact`'s token/TTL/audit trail entirely. Fixed via migration 163, mirroring the R2.5 `users`-table pattern exactly: `REVOKE INSERT, UPDATE, DELETE ... FROM authenticated`, then the old policy replaced with a SELECT-only "own firm" policy. Unlike `users`, no column-level UPDATE grant was needed — confirmed via a repo-wide check that `apps/web` has zero direct writes to this table (every frontend interaction already goes through the backend REST API), so there was no legitimate self-service feature to carve out. Proven on real Postgres 16: an authenticated firm-staff session can still `SELECT` its own firm's contacts (and a different firm's contact is invisible), but `INSERT`/`UPDATE`/`DELETE` all fail with `permission denied`; the `service_role`-backed backend path (the only real mutation path) is completely unaffected. *Effort:* S (as estimated). *Benefit:* closes the last raw-table write path in the portal invite flow.
 - **R3.1 — Statutory rules-as-data registry (FY-versioned). RE-SCOPED, DELIVERED (R3.1a + R3.1b).** R2.3 already delivered the core of this for income tax/vendor TDS. A full re-audit (see Implementation Log) found the remaining scope split into quick consolidation wins (R3.1a: capital-gains rate constants, GST/MCA due-date duplication, a genuine data-corrupting frozen-date bug in `mca/page.tsx`) and a much larger item, **R3.1b: a real capital-gains engine** — Cost Inflation Index table, Section 2(42A) holding-period classification, and the Section 111A/112A/112/115BBH/50AA tax-rate logic, none of which existed in the backend at all before this. Both delivered: `domain/income_tax/capital_gains_engine.py` is the new single source of truth; `routers/income_tax.py` gained `/capital-gains/compute` (stateless estimator) and full register CRUD (`GET`/`POST`/`DELETE /capital-gains`), all server-computed — `apps/web/app/income-tax/capital-gains/page.tsx`'s own duplicate engine (which computed AND persisted gain_type/tax_rate_percent/indexed_cost_paise client-side, with no server-side validation) is gone; migration 164 hardens the `capital_gains` table's RLS the same way R3.0 did for `client_portal_users`. A genuine inconsistency between the page's two independent implementations was found and fixed while unifying them: the calculator computed the real "12.5% without indexation OR 20% with indexation, whichever is lower" choice for property LTCG, but the register always hardcoded 20% and never computed the 12.5% alternative at all — the register now gets the calculator's more complete logic. Also surfaced, tracked below: Sections 206AA/206AB (hardcoded, unverified, needs Finance Act 2025 confirmation), an orphaned TCS/206C registry entry with no engine behind it, and at least 3 more frontend pages that compute-and-persist statutory calculations independently of any backend (R3.13). *Effort:* R3.1a at S; R3.1b at M (as estimated). *Benefit:* tax law becomes maintainable data; closes the most serious "business logic in the frontend" violation found this session, with a real financial-computation feature (CII indexation) added to the backend for the first time.
 - **R3.2 — Cross-client batch compliance cockpit** (generate/validate/mark-filed + ARN capture across clients). *Effort:* XL. *Benefit:* the #1 CA scale unlock.
-- **R3.3 — De-orphan or delete the ~40 unlinked routes and consolidate duplicate invoicing/fixed-asset/payroll stacks.** *Effort:* L. *Benefit:* coherence + lower maintenance.
+- **R3.3 — De-orphan or delete the ~46 unlinked routes and consolidate duplicate invoicing/fixed-asset/payroll stacks. PARTIALLY DELIVERED (the dangerous half).** A full re-scan (see Implementation Log) confirmed ~46 routes reachable only by typing the URL, clustering into: 15 real firm-level statutory-suite routes and 14 real shipped-but-unlinked features (recommend: link both into nav — no data risk), 13 routes behind the unlinked `/accounting` admin hub (recommend: link the hub), 8 already-retired 5-line redirect stubs plus 3 dev artifacts and 2 redirect shims (recommend: delete). The urgent finding, delivered now: `/accounting/invoices` and `/accounting/fixed-assets` were not harmless unlinked duplicates but active data-integrity hazards — `/accounting/invoices` wrote directly to a `sales_invoices` table (via raw browser Supabase, with a literal `CREATE TABLE` snippet in a code comment instructing the user to run it manually) that the real, linked invoicing flow never reads, so any invoice entered there was invisible to every report/GST return/dashboard; `/accounting/fixed-assets` wrote to the *same* `fixed_assets` table the real page uses but bypassed the backend's depreciation/journal-linkage logic, silently breaking GL tie-out. Both neutralized via the existing retired-page redirect pattern; RLS hardened (migration 166) so the underlying tables can no longer be written outside the backend either. The remaining ~44 lower-risk routes (link-or-delete, no data hazard) are tracked as a follow-up, not attempted in this pass. *Effort:* S (delivered); M–L remaining. *Benefit:* closes a live silent-data-loss/GL-corruption bug; the rest is coherence + lower maintenance.
 - **R3.4 — Automate document collection & reminders** (WhatsApp Business API + cadence). *Effort:* L. *Benefit:* removes the biggest daily admin sink.
 - **R3.5 — Performance: paginate/aggregate in SQL, add indexes, cache auth lookups.** *Effort:* M–L. *Benefit:* holds up at 100–500 clients.
 - **R3.6 — UX consistency:** one skeleton/empty/error system, real dialog semantics, dashboard load-error states, shared client context. *Effort:* M. *Benefit:* daily usability.
@@ -2694,4 +2694,173 @@ exceptions occur throughout.
 the rest of R3.13 and all of R3.2) remains the standing decision point;
 R2.6's production-drift reconciliation remains blocked on production
 credentials this session does not have.
+
+## Final Engineering Completion & Production Readiness Mission — fresh Tier 3 re-scope
+
+**Goal:** per a new mission directive, complete the remaining Tier 3 engineering
+work to genuine production-readiness (excluding R3.2's Compliance Cockpit and
+R3.4's WhatsApp integration, both explicitly deferred as separate future
+product initiatives, not engineering-foundation work). Before implementing,
+re-scoped every remaining item against current code — not the original
+roadmap text — via 7 parallel, independent investigations. Several findings
+substantially changed the priority order.
+
+**Findings, by item:**
+
+1. **R3.3 (orphaned routes).** Confirmed ~46 routes reachable only by typing
+   the URL. Most are harmless (real features just missing a nav link, or
+   already-retired 5-line stubs safe to delete). Two are not: `/accounting/
+   invoices` and `/accounting/fixed-assets` are active data-integrity hazards
+   — see the dedicated milestone below, delivered in this pass.
+2. **R3.9 (unused-table audit).** 53 of ~226 real tables have zero backend
+   Python reader (matching the roadmap's "~57" estimate). 34 are truly dead
+   schema (safe to ignore). 18 have unmediated frontend-direct WRITES — the
+   same defect class fixed for payroll (R2.10), `client_portal_users` (R3.0),
+   `capital_gains` (R3.1b), and `advance_tax_payments` (R3.13a) — spanning 7
+   financial-amount tables (including the `sales_invoices`/`invoice_lines`
+   pair R3.3 also flagged), 5 compliance/statutory tables (including
+   `compliance_calendar`, tied to the compliance consolidation below), 3
+   general-metadata tables (`client_health_scores` is the worst: it computes
+   real weighted health-score logic in the browser before writing, not just
+   an unmediated write), and 3 lower-urgency UI-state tables. Tracked as a
+   follow-up batch, not all fixed in this pass — see Remaining Limitations.
+3. **Compliance data-model consolidation** (blocking R3.13's remainder and
+   R3.2). Investigated all three systems' schemas, callers, and test
+   coverage. Clear answer: `compliance_records` (+
+   `compliance_obligation_service.py`/`compliance_ops.py`) is the correct
+   canonical system — richest status machine, the only cross-client
+   aggregation engine, ~30 dedicated tests, the only one covered by the
+   newer RLS-hardening pass, and the frontend API client already has a
+   comment calling it canonical. `compliance_tasks` and `compliance_calendar`
+   have no capability it lacks. Three gaps must close before the losers can
+   be retired: a no-engagement seeding fallback, reconciling
+   `health-score-compute.ts`'s client-side formula against the backend's, and
+   a `UNIQUE(client_id, obligation_type, period_start)` constraint. Not yet
+   implemented — tracked as a follow-up.
+4. **R3.5 (performance).** Confirmed a systemic unbounded-fetch-then-
+   aggregate-in-Python pattern, worst in `analytics.py`'s dashboard/report
+   endpoints and the compliance-calendar full-firm fetch+sort — real at
+   300-500 clients, not a distant concern. Separately, `core/auth.py`'s
+   `get_current_user()` does 2-3 serialized DB round-trips on every single
+   protected request with zero caching — a real latency/DB-load cost today,
+   compounding with concurrency well before any row-count wall. Indexes are
+   mostly present from prior hardening passes; a few composite gaps remain.
+   Tracked as a follow-up, not yet implemented.
+5. **R3.6 (UX consistency).** Both a loading-skeleton system and an empty/
+   error-state system (`EmptyState`/`ErrorState`/`AsyncBoundary`, wired into
+   `DataTable`) already exist and are well-designed — this is a ~20-25%
+   adoption gap, not a design-system build. The shared client-context
+   (`ClientNavContext`) covers only the `/clients/[id]/*` workspace; 30 other
+   global tool pages (capital-gains, advance-tax, GST, TDS, invoices,
+   payroll, etc.) each roll their own independent client-selector state —
+   real, separate, larger scope. Tracked as a follow-up.
+6. **R3.8 (year-end status-transition duplication).** More serious than the
+   original framing: neither `year_end.py`'s nor `year_end_reviews.py`'s
+   endpoints are reachable from the live frontend at all —
+   `lib/api/yearEnd.ts` calls a third, different URL scheme matching
+   neither router. The year-end review workflow is non-functional in
+   production today, not just architecturally duplicated. Tracked as a
+   follow-up (needs a merge of the two implementations' distinct
+   capabilities — one has the FY-lock side effect, the other has the richer
+   per-step audit/revision-request trail — plus fixing the frontend's paths).
+7. **R3.11 (debit_notes compensation).** Confirmed the header/lines
+   insert gap still exists exactly as described, with a direct, ready-to-
+   mirror precedent (`post_journal_atomic`/`settle_receipt_atomic`'s atomic-
+   RPC pattern). Tracked as a follow-up.
+8. **R3.10 (80CCD(2) + 206AA/206AB).** 80CCD(2) is cleanly implementable
+   following the existing per-section deduction-dataclass pattern, but needs
+   a new employer-type input and must be gated *outside* the new-regime
+   Chapter VI-A block (unlike the rest of Chapter VI-A, it survives both
+   regimes). 206AA is genuinely duplicated in two files, AND — the more
+   serious finding — its PAN-missing 20% floor is only ever surfaced as a
+   validation *warning*; the actual computed `tds_deducted_paise` never
+   applies it, a live compliance gap. 206AB is not actually duplicated (the
+   roadmap was wrong on that detail) and has no live enforcement either;
+   migrating it needs new `is_non_filer` domain modeling that doesn't exist
+   in the schema at all, and its rate is genuinely unverifiable from this
+   repo pending Finance Act 2025 confirmation. Tracked as a follow-up.
+9. **R2.11.1 (bank re-import).** Confirmed this cannot be safely automated:
+   the dedupe hash includes amounts, so a corrected re-upload already
+   imports as new rows (mechanically works) — but old, wrong rows are never
+   superseded, and the bug was conditional on Dr/Cr suffix casing, so a
+   blanket `created_at` cutoff would over-flag rows that were never wrong.
+   Genuinely needs a manual audit/product decision first, exactly as
+   originally scoped. Not implemented — documented as a standing limitation.
+10. **R3.12 (PT slabs), R2.6 (production drift), R3.7 (closing journal).**
+    Unchanged from prior scoping: R3.12 needs external statutory
+    verification this repository cannot provide; R2.6 needs production
+    database credentials this session does not have; R3.7 needs a business/
+    accounting decision (auto-post timing, reserves sub-account) that must
+    not be made unilaterally. All three remain documented, not guessed at.
+
+**Next:** execute the actionable items in priority order — starting with
+R3.3's dangerous-duplicate fix (below), then R3.8 (broken-in-production
+workflow), R3.9's highest-risk unmediated-write tables, R3.11, R3.10,
+the compliance consolidation, R3.5, and R3.6, in roughly that order of
+severity — followed by a fresh, assumption-free production-readiness
+review and the mission's final deliverables.
+
+## Milestone R3.3 (critical half) — neutralize dangerous orphaned duplicate pages (DELIVERED)
+
+**Goal:** two of the ~46 orphaned routes found by the fresh re-scope above
+were not merely unlinked — they were live, fully-functional pages a user
+could reach by typing the URL, silently corrupting or losing real financial
+data if they did.
+
+**What shipped:**
+- **`apps/web/app/accounting/invoices/page.tsx`** wrote directly to a
+  `sales_invoices` table via the browser's raw Supabase client — including a
+  code comment with a literal `CREATE TABLE IF NOT EXISTS sales_invoices...`
+  snippet instructing the user to run it manually, a clear tell this was
+  abandoned pre-consolidation scaffolding. The real, linked invoicing flow
+  (`clients/[id]/sales/page.tsx` → `routers/sales_invoices.py`) writes a
+  completely different table, `client_sales_invoices`, with RBAC, numbering,
+  period-lock validation, and audit logging. Any invoice entered through the
+  orphaned page was invisible to every report, GST return, and dashboard in
+  the app. (Its companion line-item write into `invoice_lines` already fails
+  outright today — migration 139 dropped that table years ago as verified
+  dead/empty schema, unrelated to this discovery — so only the orphaned
+  header row actually persisted.)
+- **`apps/web/app/accounting/fixed-assets/page.tsx`** wrote to the *same*
+  `fixed_assets` table the real, linked page (`clients/[id]/fixed-assets/
+  page.tsx` → `routers/fixed_assets.py`) uses, including its own independent
+  client-side depreciation calculation — but bypassed the backend's
+  depreciation/disposal logic entirely, so rows it inserted never got a
+  `journal_entry_id`, silently breaking depreciation/GL tie-out for any
+  asset entered that way.
+- Both pages replaced with the project's existing retired-duplicate redirect
+  stub (`MovedToClientWorkspace`, the same component already used for the 8
+  previously-retired journal/ledger/trial-balance/bank-* pages) — zero data
+  access, points the user at the real client-workspace equivalent. Removed
+  their cards from the `/accounting` admin hub's list (which had described
+  them as if they were legitimate standalone registers).
+- **Migration 166** hardens RLS on `sales_invoices` and `fixed_assets` the
+  same way as every prior R2.10/R3.0/R3.1b/R3.13a fix — `REVOKE INSERT,
+  UPDATE, DELETE ... FROM authenticated`, SELECT-only policy — so the
+  underlying tables can no longer be written outside the backend even via a
+  direct REST call, not just via the now-removed frontend page.
+
+**Not done — needs a human with production access:** this session cannot
+query production data. Before (or immediately after) this ships, someone
+with production database access should check `sales_invoices` for any
+non-test rows (a real user's stranded invoice, needing manual migration
+into `client_sales_invoices`) and `fixed_assets` for rows with a NULL
+`journal_entry_id` (an asset whose depreciation never posted to the GL,
+needing manual journal correction). This mirrors R2.6's existing "needs
+production access" treatment — flagged clearly, not guessed at or skipped
+silently.
+
+**Verified:** 5 new tests (`test_r3_3_legacy_invoice_fixed_asset_rls_pg.py`)
+against real Postgres 16 — SELECT still works for the owning firm,
+INSERT/UPDATE/DELETE all denied, service_role unaffected. Full mock-mode
+suite: 2,421 passed, same 23 pre-existing unrelated failures (90 skipped, up
+from 85 — the 5 new real-Postgres-only tests correctly skip without
+`HARNESS_PG`). `tsc --noEmit` clean, `eslint` clean, full `next build`
+clean — both retired pages now compile to 1.13 kB, matching every other
+already-retired stub (down from the original pages' 799 and 756 lines of
+now-deleted client-side business logic and raw-Supabase calls).
+
+**Next:** the remaining ~44 lower-risk orphaned routes (link-or-delete, no
+data hazard) are a follow-up, not attempted in this pass — proceeding to
+R3.8's broken-in-production year-end workflow next.
 
