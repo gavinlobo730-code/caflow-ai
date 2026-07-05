@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { formatDate } from "@/lib/services/formatting";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -104,7 +105,7 @@ function WorkflowCard({
             Client: <span className="font-mono text-[#182350]">{wf.client_id.slice(0, 8)}…</span>
           </p>
           <p className="text-xs text-[#64748B] mt-0.5">
-            {wf.entity_type} · Started {new Date(wf.started_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+            {wf.entity_type} · Started {formatDate(wf.started_at)}
           </p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">

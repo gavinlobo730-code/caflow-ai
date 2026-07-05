@@ -21,6 +21,7 @@ import { getClients } from "@/lib/data/clients";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
+import { todayLocalISO } from "@/lib/dateMath";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -153,7 +154,7 @@ function exportCsv(rows: RiskRegisterRow[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `risk-report-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `risk-report-${todayLocalISO()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

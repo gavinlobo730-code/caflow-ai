@@ -12,6 +12,7 @@
 import { useState, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
 import Link from "next/link";
+import { todayLocalISO } from "@/lib/dateMath";
 import {
   Upload,
   ArrowLeft,
@@ -307,7 +308,7 @@ export default function AISPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `AIS_Discrepancy_${clientName || "Client"}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `AIS_Discrepancy_${clientName || "Client"}_${todayLocalISO()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -329,7 +330,7 @@ export default function AISPage() {
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "AIS Discrepancy");
-    XLSX.writeFile(wb, `AIS_Discrepancy_${clientName || "Client"}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `AIS_Discrepancy_${clientName || "Client"}_${todayLocalISO()}.xlsx`);
   }
 
 

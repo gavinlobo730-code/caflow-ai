@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
+import { formatDate as formatDateShared } from "@/lib/services/formatting";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -121,11 +122,7 @@ function gradeBadge(grade: Grade): string {
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return "—";
   try {
-    return new Date(dateStr).toLocaleDateString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
+    return formatDateShared(dateStr);
   } catch {
     return dateStr;
   }

@@ -16,6 +16,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatPaise } from "@/lib/services/formatting";
+import { toLocalISO } from "@/lib/dateMath";
 
 const EMPLOYEE_IMPORT_COLUMNS = [
   { key: "name",                    label: "Employee Name",       required: true,  hint: "e.g. Ramesh Kumar" },
@@ -770,7 +771,7 @@ export default function PayrollPage() {
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
-  const [statMonth, setStatMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [statMonth, setStatMonth] = useState(() => toLocalISO(new Date()).slice(0, 7));
   const [statClientId, setStatClientId] = useState("");
   const [statSlips, setStatSlips] = useState<PayrollSlip[]>([]);
 

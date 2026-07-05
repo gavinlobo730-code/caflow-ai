@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { formatDateTime } from "@/lib/services/formatting";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -440,7 +441,7 @@ function WorkflowInstancesTab() {
                       {inst.status.replace("_"," ")}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-[#64748B] text-xs">{inst.started_at ? new Date(inst.started_at).toLocaleString("en-IN") : "—"}</td>
+                  <td className="px-4 py-3 text-[#64748B] text-xs">{formatDateTime(inst.started_at)}</td>
                   <td className="px-4 py-3 text-[#64748B] text-xs">
                     {inst.completed_at && inst.started_at
                       ? fmtDuration(new Date(inst.completed_at).getTime() - new Date(inst.started_at).getTime())
