@@ -23,7 +23,6 @@ export type ClientSection =
   | "tax"
   | "documents"
   | "tasks"
-  | "reports"
   | "portal"
   | "ai-insights"
   | "lifecycle"
@@ -38,6 +37,13 @@ export interface ClientSectionConfig {
   href: (clientId: string) => string;
 }
 
+// "reports" is intentionally omitted for Closed Beta (Beta-readiness Part
+// 1): app/clients/[id]/reports/page.tsx is a static "Coming in Phase 1"
+// placeholder with no data behind it — every client saw a permanent dead
+// nav link. The page itself is untouched (reachable by direct URL, not
+// deleted) so it can be re-added here once it has real reports; the
+// firm-wide /reports/ page is a separate, fully working feature and is
+// unaffected.
 export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   { id: "overview",     label: "Overview",      href: (id) => `/clients/${id}/overview/` },
   { id: "accounting",   label: "Accounting",    href: (id) => `/clients/${id}/accounting/` },
@@ -50,7 +56,6 @@ export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   { id: "tax",          label: "Tax",           href: (id) => `/clients/${id}/tax/` },
   { id: "documents",    label: "Documents",     href: (id) => `/clients/${id}/documents/` },
   { id: "tasks",        label: "Tasks",         href: (id) => `/clients/${id}/tasks/` },
-  { id: "reports",      label: "Reports",       href: (id) => `/clients/${id}/reports/` },
   { id: "portal",        label: "Portal",         href: (id) => `/clients/${id}/portal/` },
   { id: "ai-insights",  label: "AI Insights",    href: (id) => `/clients/${id}/ai-insights/` },
   { id: "lifecycle",    label: "Lifecycle",      href: (id) => `/clients/${id}/lifecycle/` },

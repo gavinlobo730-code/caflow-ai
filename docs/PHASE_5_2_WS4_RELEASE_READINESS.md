@@ -3,6 +3,16 @@
 **Deliverables 4 (Feature Completion), 5 (Open Defects), 6 (Launch Recommendation).**
 Date: 2026-06-21. Scope: PracticeSync AI — QuickBooks roadmap completion.
 
+> **Update (Beta-readiness batch):** this report's "No High defects" (§2) and
+> "feature-complete" verdict predate three later fix batches that found and
+> fixed real Critical/High-severity defects in modules marked complete
+> below — Fixed Asset disposal (atomicity crash + GL category mis-mapping),
+> vendor payment concurrency, tax-computation FY selector, Section 44AB
+> thresholds, filing-confirmation gating, and a GST-rate field mismatch
+> affecting Sales Invoices/Credit Notes/Purchase Bills. All are now fixed and
+> merged to `main`. Treat the per-module rows below as historical, not as
+> current evidence of zero defects.
+
 ---
 
 ## 1. Feature Completion Report

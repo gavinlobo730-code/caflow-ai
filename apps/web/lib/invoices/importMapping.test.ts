@@ -11,14 +11,14 @@ const CUSTOMERS: CustomerRef[] = [
 
 function row(o: Record<string, string>) { return o; }
 
-test("rupees → integer paise and GST percent → basis points", () => {
+test("rupees → integer paise and GST rate passed through as gst_rate_percent", () => {
   const { invoices, errors } = buildSalesInvoices(
     [row({ customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "Consulting", quantity: "1", rate: "1500.50", gst_rate: "18" })],
     "client-1", CUSTOMERS);
   assert.equal(errors.length, 0);
   assert.equal(invoices.length, 1);
-  assert.equal(invoices[0].lines[0].rate_paise, 150050);   // 1500.50 × 100
-  assert.equal(invoices[0].lines[0].gst_rate_bps, 1800);   // 18% → 1800 bps
+  assert.equal(invoices[0].lines[0].rate_paise, 150050);       // 1500.50 × 100
+  assert.equal(invoices[0].lines[0].gst_rate_percent, 18);     // matches InvoiceLineIn.gst_rate_percent
   assert.equal(invoices[0].customer_id, "cust-1");
   assert.equal(invoices[0].client_id, "client-1");
 });

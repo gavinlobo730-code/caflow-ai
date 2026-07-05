@@ -68,7 +68,7 @@ test("purchase bills: rows sharing bill_no group into one multi-line bill", () =
   assert.equal(bills[0].lines.length, 2);
   assert.equal(bills[0].vendor_id, "v1");
   assert.equal(bills[0].lines[1].rate_paise, 20025);
-  assert.equal(bills[0].lines[1].gst_rate_bps, 1800);
+  assert.equal(bills[0].lines[1].gst_rate_percent, 18);
 });
 
 test("purchase bills: unknown vendor and bill_no reused across vendors reported", () => {
