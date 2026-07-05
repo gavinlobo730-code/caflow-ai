@@ -62,6 +62,7 @@ export default function Form26ASPage() {
   const [reconError, setReconError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
     const [uploadRes, reconRes] = await Promise.all([
       apiFetch(`/api/form-26as/uploads?client_id=${clientId}&financial_year=${fy}`),
       apiFetch(`/api/form-26as/reconciliation?client_id=${clientId}&financial_year=${fy}`),
