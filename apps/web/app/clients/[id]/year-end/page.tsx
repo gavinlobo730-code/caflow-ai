@@ -53,6 +53,7 @@ export default function YearEndPage() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
     setError(null);
     try {

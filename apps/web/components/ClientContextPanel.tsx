@@ -84,6 +84,7 @@ function NavItems({
           <Link
             key={id}
             href={target}
+            prefetch={false}
             onClick={onLinkClick}
             title={collapsed ? label : undefined}
             className={cn(

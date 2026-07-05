@@ -98,6 +98,7 @@ export default function TaxComputationPage() {
   const [savingDisall, setSavingDisall] = useState(false);
 
   const load = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
     const [snapsRes, disallRes, lossRes] = await Promise.all([
       apiFetch(`/api/itr/snapshots?client_id=${clientId}&financial_year=${fy}`),
       apiFetch(`/api/itr/disallowances?client_id=${clientId}&financial_year=${fy}`),

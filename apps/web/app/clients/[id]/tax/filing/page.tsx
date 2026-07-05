@@ -79,6 +79,7 @@ export default function ITRFilingPage() {
   const [savingAck, setSavingAck] = useState(false);
 
   const load = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
     const res = await apiFetch(`/api/itr/filings?client_id=${clientId}`);
     setFilings(res.data ?? []);
