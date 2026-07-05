@@ -77,6 +77,13 @@ class CreateReturnRequest(BaseModel):
 class UpdateReturnStatusRequest(BaseModel):
     status: str
     ca_approved: bool = False
+    # Government proof-of-filing — required to actually transition to "filed"
+    # (migration 037: tds_returns.prn/ack_number/filed_at). Previously this
+    # endpoint only ever wrote `status`, so a CA could mark a return "filed"
+    # with no PRN/acknowledgement captured anywhere server-side.
+    prn: Optional[str] = None
+    ack_number: Optional[str] = None
+    filing_date: Optional[str] = None
 
 
 class CreateCertificateRequest(BaseModel):
@@ -340,15 +347,47 @@ def update_return_status(
         if body.status in ("ca_approved", "filed") and not body.ca_approved:
             return api_response(False, None,
                 "Explicit ca_approved=true required for ca_approved/filed status. CA must confirm.")
+        if body.status == "filed" and not (body.prn or "").strip():
+            return api_response(False, None,
+                "PRN (Provisional Receipt Number) is required to mark a return as filed.")
 
         if _USE_MOCK:
-            if return_id not in _MOCK_RETURNS:
+            current = _MOCK_RETURNS.get(return_id)
+            if current is None:
                 return api_response(False, None, "Not found")
-            _MOCK_RETURNS[return_id]["status"] = body.status
+            current_status = current.get("status")
+        else:
+            from core.supabase_client import get_supabase
+            existing = (
+                get_supabase().table("tds_returns").select("status")
+                .eq("id", return_id).eq("firm_id", firm_id).limit(1).execute().data
+            )
+            if not existing:
+                return api_response(False, None, "Not found")
+            current_status = existing[0].get("status")
+
+        # A return can only be filed once — a repeated/duplicate "mark filed"
+        # request (double-click, retry) must not silently overwrite the
+        # original PRN/acknowledgement with a second one.
+        if body.status == "filed" and current_status == "filed":
+            return api_response(False, None, "This return has already been filed.")
+
+        now_iso = datetime.utcnow().isoformat()
+        update_payload: dict = {"status": body.status}
+        if body.status == "ca_approved":
+            update_payload["ca_approved_by"] = current_user.get("id")
+            update_payload["ca_approved_at"] = now_iso
+        if body.status == "filed":
+            update_payload["prn"] = body.prn
+            update_payload["ack_number"] = body.ack_number
+            update_payload["filed_at"] = body.filing_date or now_iso
+
+        if _USE_MOCK:
+            _MOCK_RETURNS[return_id].update(update_payload)
             rec = _MOCK_RETURNS[return_id]
         else:
             from core.supabase_client import get_supabase
-            rows = get_supabase().table("tds_returns").update({"status": body.status}).eq("id", return_id).eq("firm_id", firm_id).execute().data
+            rows = get_supabase().table("tds_returns").update(update_payload).eq("id", return_id).eq("firm_id", firm_id).execute().data
             rec = rows[0] if rows else {}
 
         log_event(firm_id, "tds_return", return_id, "status_change",
@@ -359,6 +398,7 @@ def update_return_status(
                 financial_year=rec.get("financial_year", ""), category="tds",
                 event_type="tds_return_filed",
                 title=f"TDS Return {rec.get('return_type', '')} filed for {rec.get('quarter', '')} {rec.get('financial_year', '')}",
+                description=f"PRN: {body.prn}" + (f" | Ack: {body.ack_number}" if body.ack_number else ""),
             )
         return api_response(True, rec)
     except Exception as e:
