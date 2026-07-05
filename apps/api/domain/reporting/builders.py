@@ -8,9 +8,9 @@ frontend and existing consumers need no change. Integer paise throughout.
 """
 from __future__ import annotations
 
-from datetime import date
 from typing import Optional
 
+from core.ist_clock import ist_today
 from .model import Account, JournalEntry, ProjectedLine
 
 
@@ -130,7 +130,7 @@ def trial_balance(lines: list[ProjectedLine], accounts: dict[str, Account],
     tb_lines.sort(key=lambda x: x["account_code"])
     diff = grand_dr - grand_cr
     out = {
-        "as_of_date": as_of_date or date.today().isoformat(),
+        "as_of_date": as_of_date or ist_today().isoformat(),
         "lines": tb_lines,
         "total_debit_paise": grand_dr,
         "total_credit_paise": grand_cr,
@@ -462,7 +462,7 @@ def balance_sheet(lines: list[ProjectedLine], accounts: dict[str, Account],
 
     total_le = total_liab + total_equity
     out = {
-        "as_of_date": as_of_date or date.today().isoformat(),
+        "as_of_date": as_of_date or ist_today().isoformat(),
         "assets": assets,
         "liabilities": liabilities,
         "equity": equity,

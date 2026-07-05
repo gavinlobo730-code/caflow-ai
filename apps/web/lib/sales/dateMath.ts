@@ -3,6 +3,12 @@
  * payment-terms auto-fill (invoice date + credit days -> due date, and the
  * reverse gap when a due date is edited directly).
  *
+ * toLocalISO and diffDaysISO delegate to the platform-wide helpers in
+ * lib/dateMath.ts (Phase 3 consolidation — this module used to duplicate them
+ * verbatim; verified byte-for-byte identical, including leap-year/month/year
+ * boundary and malformed-input behavior, before merging). addDaysISO has no
+ * canonical counterpart there and stays here.
+ *
  * Dates are parsed AND formatted in LOCAL time throughout — never round-tripped
  * through UTC via Date#toISOString — so the calendar date arithmetic operates
  * on is exactly the calendar date the CA typed into the invoice date field,
@@ -11,15 +17,7 @@
  * PREVIOUS calendar day, and toISOString().slice(0, 10) would silently shift
  * every computed due date back by one day.
  */
-
-/** Format a Date using its LOCAL calendar components as YYYY-MM-DD (never via
- * toISOString, which converts through UTC and can shift the calendar day). */
-function toLocalISO(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+import { toLocalISO, daysBetweenLocalISO } from "../dateMath.ts";
 
 /** Add N calendar days to an ISO (YYYY-MM-DD) date; "" on bad input (including
  * a non-finite `days` or a shift landing outside the Date-representable range —
@@ -34,10 +32,4 @@ export function addDaysISO(dateStr: string, days: number): string {
 }
 
 /** Whole-day difference toStr − fromStr; null on bad input. */
-export function diffDaysISO(fromStr: string, toStr: string): number | null {
-  if (!fromStr || !toStr) return null;
-  const a = new Date(fromStr + "T00:00:00");
-  const b = new Date(toStr + "T00:00:00");
-  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
-  return Math.round((b.getTime() - a.getTime()) / 86_400_000);
-}
+export const diffDaysISO = daysBetweenLocalISO;
