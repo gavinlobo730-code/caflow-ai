@@ -55,6 +55,7 @@ export default function XBRLPage() {
   const [validating, setValidating] = useState(false);
 
   const load = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
     const res = await apiFetch(`/api/xbrl/packages?client_id=${clientId}`);
     setPackages(res.data ?? []);
