@@ -25,6 +25,11 @@ export interface HsnPick {
 const bpsToPct = (bps?: number | null) =>
   bps == null ? "" : `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 2)}% GST`;
 
+/** Lower-case, whitespace-collapsed, trimmed — a stable key for comparing two
+ * free-text descriptions regardless of incidental spacing/casing. */
+const normalizeDesc = (s: string | null | undefined): string =>
+  (s ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+
 /**
  * Smart HSN/SAC lookup — debounced server search over the canonical master
  * merged with the firm's own history (GET /api/hsn/search). Search by code OR
@@ -47,8 +52,30 @@ export function HsnLookup(props: {
   ariaLabel?: string;
   className?: string;
   placeholder?: string;
+  /**
+   * Optional: the sibling line-item description. When provided, edits to it
+   * (debounced ~300ms) trigger an automatic lookup via the same
+   * GET /api/hsn/search used by manual search, and silently fill the code
+   * when a HIGH-CONFIDENCE match exists — defined as the firm's own
+   * previously-used code (`source: "history"`) for the EXACT same
+   * description (normalized for case/whitespace only). A generic canonical-
+   * master hit never auto-fills, and neither does a history hit whose stored
+   * description merely CONTAINS the typed text as a substring (the backend
+   * matches that way) — e.g. pausing mid-sentence on a shared prefix like
+   * "Annual maintenance contract" must not silently borrow the HSN/rate from
+   * an unrelated past line that happened to start the same way. Restores the
+   * old description-driven HsnAutocomplete's productivity behavior on top of
+   * the newer merged master+history search, without a second endpoint.
+   *
+   * Never overwrites a code already present (typed, manually picked, or from
+   * an earlier auto-fill) — checked both when the debounce fires and again
+   * after the request resolves, so a pick made while the request was in
+   * flight is never clobbered. The result is applied exactly like a manual
+   * pick (same onChange/onPick), so it stays fully editable afterwards.
+   */
+  description?: string;
 }) {
-  const { value, onChange, onPick, clientId, type, ...rest } = props;
+  const { value, onChange, onPick, clientId, type, disabled, description, ...rest } = props;
 
   const fetchOptions = React.useCallback(
     async (q: string): Promise<HsnResult[]> => {
@@ -60,6 +87,66 @@ export function HsnLookup(props: {
 
   // The value is a bare code; show it in the trigger via a synthetic option.
   const selected: HsnResult | null = value ? { hsn_code: value } : null;
+
+  // Latest-value refs for the auto-suggest effect below: only an actual
+  // `description` change should reset its debounce timer, so `value` /
+  // `onChange` / `onPick` (new identities on every parent re-render, e.g.
+  // typing in an unrelated field on the same invoice line) are read via refs
+  // rather than being effect dependencies.
+  const valueRef = React.useRef(value);
+  const onChangeRef = React.useRef(onChange);
+  const onPickRef = React.useRef(onPick);
+  React.useEffect(() => { valueRef.current = value; }, [value]);
+  React.useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+  React.useEffect(() => { onPickRef.current = onPick; }, [onPick]);
+
+  const seqRef = React.useRef(0);
+
+  React.useEffect(() => {
+    // Claim a new sequence number on EVERY effect run, before any early
+    // return — otherwise a re-run that bails out early (description cleared/
+    // shortened, or disabled toggled on) never invalidates an already-in-
+    // flight lookup from the PRIOR run, and that stale response can still
+    // land (this was a confirmed race: clear/shorten mid-request and the
+    // earlier request's result still applies once it resolves).
+    const seq = ++seqRef.current;
+    if (!description || disabled) return;
+    const q = description.trim();
+    if (q.length < 2) return;
+
+    const timer = setTimeout(async () => {
+      if (seq !== seqRef.current) return; // a newer description edit superseded this lookup
+      if (valueRef.current) return; // CA (or an earlier auto-fill) already set a code
+
+      try {
+        const res = (await api.hsn.search(q, { client_id: clientId, type, limit: 1 })) as ApiResp<HsnResult[]>;
+        if (seq !== seqRef.current) return; // stale by the time the request resolved
+        if (valueRef.current) return; // re-check: the CA may have filled it in while we waited
+
+        const top = (res.data ?? [])[0];
+        // High confidence = an EXACT (normalized) repeat of a description the
+        // firm has billed before, not just a substring match — the backend's
+        // history search matches whenever the typed text is a substring of a
+        // stored description, so a shared prefix ("Annual maintenance
+        // contract") could otherwise silently borrow an unrelated line's HSN
+        // and GST rate. A non-exact history hit or any master-catalog hit is
+        // still fully available via manual search in this same field.
+        if (top && top.source === "history" && normalizeDesc(top.description) === normalizeDesc(q)) {
+          onChangeRef.current(top.hsn_code);
+          onPickRef.current?.({
+            hsn_code: top.hsn_code,
+            gst_rate_bps: top.gst_rate_bps,
+            description: top.description,
+            uqc: top.uqc,
+          });
+        }
+      } catch {
+        // Best-effort suggestion only — the CA can always search/type manually.
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [description, disabled, clientId, type]);
 
   return (
     <Combobox<HsnResult>
@@ -85,6 +172,7 @@ export function HsnLookup(props: {
       placeholder={props.placeholder ?? "HSN/SAC"}
       searchPlaceholder="Search code or description…"
       emptyText="Type a code or description"
+      disabled={disabled}
       {...rest}
     />
   );

@@ -24,6 +24,7 @@ import {
   termLabelForDays,
   daysForTermLabel,
 } from "@/lib/sales/paymentTerms";
+import { addDaysISO, diffDaysISO } from "@/lib/sales/dateMath";
 import { clearReports } from "@/lib/accounting/reportCache";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -1841,22 +1842,6 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
 
 // ── Invoice Create Form ────────────────────────────────────────────────────
 
-/** Add N calendar days to an ISO (YYYY-MM-DD) date; "" on bad input. */
-function addDaysISO(dateStr: string, days: number): string {
-  if (!dateStr) return "";
-  const d = new Date(dateStr + "T00:00:00");
-  if (Number.isNaN(d.getTime())) return "";
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-/** Whole-day difference toStr − fromStr; null on bad input. */
-function diffDaysISO(fromStr: string, toStr: string): number | null {
-  if (!fromStr || !toStr) return null;
-  const a = new Date(fromStr + "T00:00:00");
-  const b = new Date(toStr + "T00:00:00");
-  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
-  return Math.round((b.getTime() - a.getTime()) / 86_400_000);
-}
 /** A customer's GST state code: explicit state_code, else the GSTIN's first 2 digits. */
 function customerStateCode(c: Customer | undefined): string {
   if (!c) return "";
@@ -2193,6 +2178,7 @@ function InvoiceForm({
                       value={line.hsn_sac}
                       onChange={(v) => setLine(idx, { hsn_sac: v })}
                       onPick={(p) => { if (p.gst_rate_bps != null) setLine(idx, { gst_rate: Math.round(p.gst_rate_bps / 100) }); }}
+                      description={line.description}
                       size="sm"
                       ariaLabel="HSN or SAC code"
                     />
@@ -4290,6 +4276,7 @@ function CreditNoteForm({
                       value={line.hsn_sac}
                       onChange={(v) => setLine(idx, { hsn_sac: v })}
                       onPick={(p) => { if (p.gst_rate_bps != null) setLine(idx, { gst_rate: Math.round(p.gst_rate_bps / 100) }); }}
+                      description={line.description}
                       size="sm"
                       ariaLabel="HSN or SAC code"
                     />
