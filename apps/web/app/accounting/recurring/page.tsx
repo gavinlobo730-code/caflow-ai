@@ -10,6 +10,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getClients } from "@/lib/data/clients";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { api } from "@/lib/api";
+import { todayLocalISO } from "@/lib/dateMath";
 import type { Account, Client } from "@/lib/types";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -51,7 +52,7 @@ function saveTemplates(tpls: RecurringTemplate[]): void {
 }
 
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocalISO();
 }
 
 /** Compute next due date for a template from today's perspective */

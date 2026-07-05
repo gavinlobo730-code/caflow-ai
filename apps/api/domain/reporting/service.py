@@ -15,6 +15,8 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
+from core.ist_clock import ist_today
+
 from . import builders
 from . import schedule_iii as schedule_iii_builder
 from .model import ProjectedLine
@@ -24,7 +26,7 @@ from .sources import InMemoryLedgerSource, LedgerSource
 
 
 def _fy_start(today: date | None = None) -> str:
-    today = today or date.today()
+    today = today or ist_today()
     return date(today.year if today.month >= 4 else today.year - 1, 4, 1).isoformat()
 
 

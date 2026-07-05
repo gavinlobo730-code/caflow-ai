@@ -10,6 +10,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 from dateutil.relativedelta import relativedelta
 
+from core.ist_clock import ist_today
+
 # Standard credit period applied to all generated invoices
 CREDIT_PERIOD_DAYS = 30
 
@@ -58,7 +60,7 @@ def generate_invoice_from_engagement(
     engagement = engagement_repo.get_or_raise(engagement_id)
 
     if invoice_month is None:
-        invoice_month = datetime.now(timezone.utc).isoformat().split('T')[0]
+        invoice_month = ist_today().isoformat()
 
     amount_paise = engagement["fee_paise"]
 
@@ -126,7 +128,7 @@ def generate_invoice_from_time_entries(
     engagement = engagement_repo.get_or_raise(engagement_id)
 
     if invoice_month is None:
-        invoice_month = datetime.now(timezone.utc).isoformat().split('T')[0]
+        invoice_month = ist_today().isoformat()
 
     # Parse invoice_month to get year-month for querying
     month_start = datetime.fromisoformat(invoice_month).replace(day=1, tzinfo=timezone.utc)
@@ -212,7 +214,7 @@ def generate_recurring_invoice(
     engagement = engagement_repo.get_or_raise(engagement_id)
 
     if invoice_month is None:
-        invoice_month = datetime.now(timezone.utc).isoformat().split('T')[0]
+        invoice_month = ist_today().isoformat()
 
     invoice_date = datetime.fromisoformat(invoice_month).replace(tzinfo=timezone.utc)
 
