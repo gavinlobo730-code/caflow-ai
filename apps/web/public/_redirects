@@ -9,6 +9,12 @@
 # (most specific) paths first within each group, so a specific rule is
 # never shadowed by a shorter one sharing its prefix.
 
+/clients/:id/sales/invoices/:invoiceId/edit                /clients/_placeholder/sales/invoices/_placeholder/edit/  200
+/clients/:id/sales/invoices/:invoiceId/edit/               /clients/_placeholder/sales/invoices/_placeholder/edit/  200
+
+/clients/:id/sales/invoices/new                            /clients/_placeholder/sales/invoices/new/  200
+/clients/:id/sales/invoices/new/                           /clients/_placeholder/sales/invoices/new/  200
+
 /clients/:id/year-end/:engagementId/adjustments            /clients/_placeholder/year-end/_placeholder/adjustments/  200
 /clients/:id/year-end/:engagementId/adjustments/           /clients/_placeholder/year-end/_placeholder/adjustments/  200
 
