@@ -93,6 +93,7 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     ("5012", "Office Supplies & Stationery", "Expense", "Overhead"),
     ("5013", "Staff Welfare",                "Expense", "Personnel"),
     ("5014", "Interest on Loans",            "Expense", "Finance Cost"),
+    ("5015", "Round Off",                    "Expense", "Overhead"),           # %Round Off% (invoice round-off; migration 174)
     ("5901", "Loss on Asset Disposal",       "Expense", "Other Expense"),      # %Loss on Asset Disposal%
 ]
 

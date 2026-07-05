@@ -193,6 +193,7 @@ def _parse_invoices_for_gstr1(
             sgst_paise=int(r.get("sgst_paise", 0)),
             igst_paise=int(r.get("igst_paise", 0)),
             cess_paise=int(r.get("cess_paise", 0)),
+            round_off_paise=int(r.get("round_off_paise", 0) or 0),
             is_reverse_charge=bool(r.get("is_reverse_charge", False)),
             invoice_type=r.get("invoice_type", "Regular"),
             supply_type=r.get("supply_type", "taxable"),
