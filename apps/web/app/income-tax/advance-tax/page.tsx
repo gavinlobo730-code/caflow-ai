@@ -30,8 +30,8 @@ import {
   type AdvanceTaxComputeResult, type AdvanceTaxInstallmentInput,
 } from "@/lib/data/income-tax";
 import type { Client } from "@/lib/types";
+import { todayLocalISO } from "@/lib/dateMath";
 
-const TODAY = new Date().toISOString().slice(0, 10);
 const FY_OPTIONS = ["2026-27", "2025-26", "2024-25"];
 const INSTALLMENT_LABELS: Record<number, string> = {
   1: "1st Installment (15 Jun)",
@@ -42,7 +42,7 @@ const INSTALLMENT_LABELS: Record<number, string> = {
 
 function rowStatus(dueDate: string, requiredPaise: number, paidPaise: number): "paid" | "overdue" | "upcoming" {
   if (paidPaise >= requiredPaise) return "paid";
-  if (TODAY > dueDate) return "overdue";
+  if (todayLocalISO() > dueDate) return "overdue";
   return "upcoming";
 }
 

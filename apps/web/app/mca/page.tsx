@@ -24,6 +24,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { Column, FilterDef } from "@/lib/table/types";
+import { todayLocalISO, daysBetweenLocalISO, toLocalISO, computeOverdueStatus } from "@/lib/dateMath";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -96,7 +97,11 @@ const STATUS_STYLE: Record<FilingStatus, string> = {
 // both "today" and every deadline's year, so it silently went stale).
 function _nextOccurrence(month: number, day: number): Date {
   const thisYear = new Date(TODAY.getFullYear(), month - 1, day);
-  return thisYear >= TODAY ? thisYear : new Date(TODAY.getFullYear() + 1, month - 1, day);
+  // Compare calendar dates, not a midnight Date against a live instant — a
+  // direct `thisYear >= TODAY` comparison is false on the target day itself
+  // (any time after local midnight already exceeds thisYear's own midnight),
+  // which would wrongly skip straight to next year on the one day it's due.
+  return toLocalISO(thisYear) >= todayLocalISO() ? thisYear : new Date(TODAY.getFullYear() + 1, month - 1, day);
 }
 function _daysUntil(d: Date): number {
   return Math.ceil((d.getTime() - TODAY.getTime()) / 86400000);
@@ -127,9 +132,11 @@ const KEY_DEADLINES = [
 // MCA filings, companies, and directors are loaded from the firm's real data;
 // empty until recorded (no fictional seed records shown to users).
 
-function computeStatus(dueDate: string, filed: string | null): FilingStatus {
-  if (filed) return "Filed";
-  return TODAY > new Date(dueDate) ? "Overdue" : "Pending";
+const computeStatus = computeOverdueStatus;
+
+/** Days from today until a director's KYC due date (negative once overdue). */
+function daysUntilKyc(kycDueDate: string): number {
+  return daysBetweenLocalISO(todayLocalISO(), kycDueDate) ?? 0;
 }
 
 function fmtDate(iso: string) {
@@ -179,7 +186,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
         form_type: formType,
         period,
         due_date: dueDate,
-        filed_date: status === "Filed" ? TODAY.toISOString().slice(0, 10) : null,
+        filed_date: status === "Filed" ? todayLocalISO() : null,
         srn: srn.trim() || null,
         status: status === "Pending" ? "not_started" : status.toLowerCase(),  // DB: not_started|filed|overdue
         notes: notes.trim() || null,
@@ -330,11 +337,11 @@ export default function MCAPage() {
   }, []);
 
   async function handleMarkFiled(id: string) {
-    setFilings(prev => prev.map(f => f.id === id ? { ...f, status: "Filed" as FilingStatus, filed_date: TODAY.toISOString().slice(0, 10) } : f));
+    setFilings(prev => prev.map(f => f.id === id ? { ...f, status: "Filed" as FilingStatus, filed_date: todayLocalISO() } : f));
     if (!tableError && firmId) {
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
       const sb = getSupabaseClient();
-      await sb.from("mca_filings").update({ status: "filed", filed_date: TODAY.toISOString().slice(0, 10) }).eq("id", id);
+      await sb.from("mca_filings").update({ status: "filed", filed_date: todayLocalISO() }).eq("id", id);
     }
   }
 
@@ -342,7 +349,7 @@ export default function MCAPage() {
   const dueThisMonth = filings.filter(f => { const d = new Date(f.due_date); return d.getMonth() === TODAY.getMonth() && d.getFullYear() === TODAY.getFullYear() && f.status !== "Filed"; }).length;
   const overdueCount = filings.filter(f => f.status === "Overdue").length;
   const kycDueSoon = directors.filter(d => {
-    const diff = Math.ceil((new Date(d.kyc_due_date).getTime() - TODAY.getTime()) / 86400000);
+    const diff = daysUntilKyc(d.kyc_due_date);
     return diff >= 0 && diff <= 30;
   }).length;
 
@@ -467,14 +474,14 @@ export default function MCAPage() {
     {
       key: "kyc_status", header: "KYC Status", accessor: (d) => {
         // Sort/export by days-to-KYC so overdue (most negative) surfaces first.
-        return Math.ceil((new Date(d.kyc_due_date).getTime() - TODAY.getTime()) / 86400000);
+        return daysUntilKyc(d.kyc_due_date);
       }, sortable: true,
       exportValue: (d) => {
-        const days = Math.ceil((new Date(d.kyc_due_date).getTime() - TODAY.getTime()) / 86400000);
+        const days = daysUntilKyc(d.kyc_due_date);
         return days < 0 ? "Overdue" : days <= 30 ? `Due in ${days}d` : "Valid";
       },
       render: (d) => {
-        const daysToKyc = Math.ceil((new Date(d.kyc_due_date).getTime() - TODAY.getTime()) / 86400000);
+        const daysToKyc = daysUntilKyc(d.kyc_due_date);
         const kycStyle = daysToKyc < 0 ? "bg-red-100 text-red-700" : daysToKyc <= 30 ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700";
         const kycLabel = daysToKyc < 0 ? "Overdue" : daysToKyc <= 30 ? `Due in ${daysToKyc}d` : "Valid";
         return <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${kycStyle}`}>{kycLabel}</span>;
@@ -507,7 +514,7 @@ export default function MCAPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { icon: <Building2 className="w-4 h-4 text-blue-600" />,    bg: "bg-blue-50",   label: "Total Companies",       value: String(totalCompanies), sub: "Company clients" },
-          { icon: <Clock className="w-4 h-4 text-amber-600" />,       bg: "bg-amber-50",  label: "Filings Due This Month", value: loading ? "—" : String(dueThisMonth), sub: "Jun 2026" },
+          { icon: <Clock className="w-4 h-4 text-amber-600" />,       bg: "bg-amber-50",  label: "Filings Due This Month", value: loading ? "—" : String(dueThisMonth), sub: TODAY.toLocaleDateString("en-IN", { month: "short", year: "numeric" }) },
           { icon: <AlertTriangle className="w-4 h-4 text-red-600" />, bg: "bg-red-50",    label: "Overdue Filings",       value: loading ? "—" : String(overdueCount), sub: "Past due date" },
           { icon: <Users className="w-4 h-4 text-purple-600" />,      bg: "bg-purple-50", label: "Directors KYC Due",     value: String(kycDueSoon), sub: "Within 30 days" },
         ].map(c => (

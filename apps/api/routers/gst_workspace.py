@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import uuid
 import logging
-from datetime import date, datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from models.common import api_response
 from core.permissions import rbac
+from core.ist_clock import ist_today
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
@@ -100,7 +101,7 @@ def gst_dashboard(
     """GST filing dashboard with upcoming due dates."""
     try:
         firm_id = current_user["firm_id"]
-        today = date.today()
+        today = ist_today()
         current_period = f"{today.month:02d}{today.year}"
 
         if _USE_MOCK:
@@ -505,7 +506,7 @@ def save_gstr9(
         fy        = data.financial_year  # e.g. "2025-26"
 
         # CGST Act §44 — GSTR-9 is annual; use April 1 of the FY for period validation
-        fy_start_year = int(fy.split("-")[0]) if fy else datetime.now(timezone.utc).year
+        fy_start_year = int(fy.split("-")[0]) if fy else ist_today().year
         period_validation_service.validate_posting_date(firm_id or "", f"{fy_start_year}-04-01")
 
         payload = {

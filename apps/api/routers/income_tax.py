@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
+from core.ist_clock import ist_today
 from domain.income_tax.itr_engine import (
     ITREngine, ITRComputeRequest, Deductions80C, Deductions80D, Donation80G, HRADetails, itr_engine,
 )
@@ -407,7 +408,7 @@ class AdvanceTaxInstallmentInput(BaseModel):
     @field_validator("paid_date")
     @classmethod
     def paid_date_not_in_future(cls, v: Optional[date]) -> Optional[date]:
-        if v and v > date.today():
+        if v and v > ist_today():
             raise ValueError("paid_date cannot be in the future")
         return v
 

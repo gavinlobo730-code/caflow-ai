@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { Client } from "@/lib/types";
+import { todayLocalISO } from "@/lib/dateMath";
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -311,7 +312,10 @@ function DeadlineChip({ deadline, clientMap, compact = false, onToggle }: Deadli
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
-  const today = new Date();
+  // Anchored at local midnight (not a live instant) so a same-day deadline
+  // isn't excluded the moment any time has passed since midnight — see
+  // upcomingDeadlines below.
+  const today = new Date(todayLocalISO() + "T00:00:00");
 
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
