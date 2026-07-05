@@ -707,12 +707,14 @@ class Phase2JournalService:
 
             category = asset.get("asset_category", "Plant & Machinery")
             cat_map = {
-                "Plant & Machinery": "%Plant & Machinery%",
-                "Furniture": "%Furniture & Fixtures%",
-                "Computer": "%Computers & Software%",
-                "Vehicle": "%Vehicles%",
-                "Building": "%Land & Building%",
-                "Intangible": "%Intangible Assets%",
+                "Plant & Machinery":        "%Plant & Machinery%",
+                "Furniture & Fixtures":     "%Furniture & Fixtures%",
+                "Computer & IT Equipment":  "%Computers & Software%",
+                "Office Equipment":         "%Office Equipment%",
+                "Vehicles":                 "%Vehicles%",
+                "Building":                 "%Land & Building%",
+                "Land":                     "%Land & Building%",
+                "Intangibles":              "%Intangible Assets%",
             }
             asset_acct = self._find_account(db, firm_id, client_id, cat_map.get(category, "%Plant & Machinery%"))
             bank_id    = self._find_account(db, firm_id, client_id, "%Bank%", system_key="bank")
@@ -787,12 +789,14 @@ class Phase2JournalService:
 
             category = asset.get("asset_category", "Plant & Machinery")
             cat_map = {
-                "Plant & Machinery": "%Plant & Machinery%",
-                "Furniture": "%Furniture & Fixtures%",
-                "Computer": "%Computers & Software%",
-                "Vehicle": "%Vehicles%",
-                "Building": "%Land & Building%",
-                "Intangible": "%Intangible Assets%",
+                "Plant & Machinery":        "%Plant & Machinery%",
+                "Furniture & Fixtures":     "%Furniture & Fixtures%",
+                "Computer & IT Equipment":  "%Computers & Software%",
+                "Office Equipment":         "%Office Equipment%",
+                "Vehicles":                 "%Vehicles%",
+                "Building":                 "%Land & Building%",
+                "Land":                     "%Land & Building%",
+                "Intangibles":              "%Intangible Assets%",
             }
             asset_acct    = self._find_account(db, firm_id, client_id, cat_map.get(category, "%Plant & Machinery%"))
             accum_dep_id  = self._find_account(db, firm_id, client_id, "%Accumulated Depreciation%")
