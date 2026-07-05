@@ -349,6 +349,10 @@ export default function GSTPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [filedModal, setFiledModal] = useState<{ filing: GSTFiling } | null>(null);
+  const [filedForm, setFiledForm] = useState({ arn: "", filed_date: "" });
+  const [filedLoading, setFiledLoading] = useState(false);
+  const [filedError, setFiledError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -423,22 +427,50 @@ export default function GSTPage() {
   }, []);
 
   // ── Mark as Filed ──────────────────────────────────────────────────────────
-  async function handleMarkFiled(id: string) {
-    const sb = getSupabaseClient();
-    // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-    const { error: dbErr } = await sb
-      .from("compliance_calendar")
-      .update({ filing_status: "filed", filed_date: todayLocalISO() })
-      .eq("id", id);
+  function openMarkFiledModal(f: GSTFiling) {
+    setFiledModal({ filing: f });
+    setFiledForm({ arn: "", filed_date: todayLocalISO() });
+    setFiledError(null);
+  }
 
-    if (!dbErr) {
+  async function handleMarkFiled() {
+    if (!filedModal) return;
+    if (!filedForm.arn.trim()) {
+      setFiledError("Acknowledgement number is required");
+      return;
+    }
+    if (!filedForm.filed_date) {
+      setFiledError("Filing date is required");
+      return;
+    }
+    const id = filedModal.filing.id;
+    setFiledLoading(true);
+    setFiledError(null);
+    try {
+      const sb = getSupabaseClient();
+      // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+      const { error: dbErr } = await sb
+        .from("compliance_calendar")
+        .update({
+          filing_status: "filed",
+          filed_date: filedForm.filed_date,
+          arn_number: filedForm.arn.trim(),
+        })
+        .eq("id", id);
+      if (dbErr) throw new Error(dbErr.message);
+
       setFilings((prev) =>
         prev.map((f) =>
           f.id === id
-            ? { ...f, status: "Filed", filed_date: todayLocalISO() }
+            ? { ...f, status: "Filed", filed_date: filedForm.filed_date }
             : f
         )
       );
+      setFiledModal(null);
+    } catch (err) {
+      setFiledError(err instanceof Error ? err.message : "Failed to update status");
+    } finally {
+      setFiledLoading(false);
     }
   }
 
@@ -676,7 +708,7 @@ export default function GSTPage() {
           rowActions={(f) =>
             f.status !== "Filed" ? (
               <button
-                onClick={() => handleMarkFiled(f.id)}
+                onClick={() => openMarkFiledModal(f)}
                 className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
               >
                 Mark as Filed
@@ -722,6 +754,85 @@ export default function GSTPage() {
             >
               Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================== */}
+      {/* MODAL: Mark GST Return as Filed                                     */}
+      {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT                            */}
+      {/* ================================================================== */}
+      {filedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-[#F1F5F9]">
+              <h3 className="text-base font-semibold text-[#0F172A]">Mark {filedModal.filing.return_type} as Filed</h3>
+              <button onClick={() => setFiledModal(null)} className="text-[#94A3B8] hover:text-[#475569] transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">CA Confirmation Required</p>
+                <p className="text-xs text-amber-700 mt-1">
+                  This records an already-filed return. PracticeSync does NOT auto-submit to the GST Portal.
+                  Verify the acknowledgement number before saving.
+                </p>
+              </div>
+
+              <div className="text-sm text-[#334155] bg-[#F8FAFC] rounded-lg px-4 py-3">
+                <p className="font-medium">{filedModal.filing.client_name}</p>
+                <p className="text-xs text-[#94A3B8] mt-0.5 font-mono">
+                  {filedModal.filing.gstin ?? ""} · {filedModal.filing.period}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-[#334155] mb-1.5">
+                  Acknowledgement Number (ARN) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. AA270125001234A"
+                  value={filedForm.arn}
+                  onChange={(e) => setFiledForm((p) => ({ ...p, arn: e.target.value }))}
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-[#334155] mb-1.5">
+                  Date of Filing <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={filedForm.filed_date}
+                  onChange={(e) => setFiledForm((p) => ({ ...p, filed_date: e.target.value }))}
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {filedError && (
+                <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{filedError}</p>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-[#F1F5F9] flex gap-3 justify-end">
+              <button
+                onClick={() => setFiledModal(null)}
+                className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-[#F8FAFC] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleMarkFiled}
+                disabled={filedLoading}
+                className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+              >
+                {filedLoading ? "Saving…" : "Confirm Filing"}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -116,6 +116,87 @@ def _insert_payment_or_compensate(db, firm_id: str, payload: dict, journal_entry
         raise
 
 
+def _claim_bill_outstanding(
+    db, firm_id: str, client_id: str, bill_id: str, amount_paise: int, net_payable_paise: int,
+    max_retries: int = 5,
+) -> None:
+    """H4: atomically reserve amount_paise against a purchase bill's outstanding
+    balance via compare-and-swap on paid_paise, BEFORE any journal/payment is
+    created. A plain "read outstanding, then check, then insert" let two
+    concurrent payments both read the same stale paid_paise, both pass the
+    outstanding check, and both post — overpaying the vendor. The CAS's WHERE
+    clause (eq paid_paise=<value just read>) makes the increment atomic: a
+    concurrent winner's committed update makes our WHERE clause match zero
+    rows, so we re-read the fresh state and re-check outstanding on retry.
+    """
+    for _ in range(max_retries):
+        cur_paid = (
+            db.table("purchase_bills").select("paid_paise")
+            .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
+            .limit(1).execute().data
+        ) or []
+        if not cur_paid:
+            raise HTTPException(status_code=422, detail="Purchase bill is not part of this client's books.")
+        raw_paid = cur_paid[0].get("paid_paise")  # CAS guard must match this exact stored value
+        paid_paise = int(raw_paid or 0)
+        outstanding = net_payable_paise - paid_paise
+        if amount_paise > outstanding:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Payment (₹{amount_paise/100:,.2f}) exceeds the bill's outstanding "
+                       f"(₹{outstanding/100:,.2f}).")
+        new_paid = paid_paise + amount_paise
+        new_status = "paid" if new_paid >= net_payable_paise else "partially_paid"
+        result = (
+            db.table("purchase_bills").update({"paid_paise": new_paid, "status": new_status})
+            .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("paid_paise", raw_paid)
+            .execute()
+        )
+        if result.data:
+            return
+        # Lost the race to a concurrent payment on this same bill — retry against
+        # the now-current paid_paise rather than accept or silently drop it.
+    raise HTTPException(status_code=409, detail="This bill is being paid concurrently; please retry.")
+
+
+def _rollback_bill_claim(
+    db, firm_id: str, client_id: str, bill_id: str, amount_paise: int, net_payable_paise: int,
+    max_retries: int = 5,
+) -> None:
+    """Undo a successful _claim_bill_outstanding reservation after a downstream
+    failure (journal/payment insert). Decrements paid_paise by exactly our own
+    amount_paise via the same CAS-retry technique — never resets to a captured
+    snapshot, since another payment may have claimed on top of ours since."""
+    for _ in range(max_retries):
+        cur = (
+            db.table("purchase_bills").select("paid_paise")
+            .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
+            .limit(1).execute().data
+        ) or []
+        if not cur:
+            return
+        raw_paid = cur[0].get("paid_paise")
+        paid_paise = int(raw_paid or 0)
+        reverted = paid_paise - amount_paise
+        reverted_status = (
+            "paid" if reverted >= net_payable_paise else "partially_paid" if reverted > 0 else "received"
+        )
+        result = (
+            db.table("purchase_bills").update({"paid_paise": reverted, "status": reverted_status})
+            .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("paid_paise", raw_paid)
+            .execute()
+        )
+        if result.data:
+            return
+    _logger.error(
+        "H4 compensation FAILED for bill=%s (firm=%s) after a purchase payment failure — "
+        "manual reconciliation required, paid_paise may be overstated by %d.",
+        bill_id, firm_id, amount_paise,
+    )
+
+
 def _next_payment_seq(db, firm_id: str, fy: str) -> int:
     try:
         resp = (
@@ -290,59 +371,64 @@ def create_purchase_payment(
             return api_response(True, _create_foreign_payment(db, firm_id, client_id, data, current_user))
         # OOS-1 fix: a linked bill must belong to THIS payment's firm+client, validated
         # before any payment/journal is created (mirrors the receipt-allocation guard).
+        net_payable_paise = 0
         if purchase_bill_id:
             _bill = (db.table("purchase_bills")
-                     .select("id, status, net_payable_paise, paid_paise")
+                     .select("id, status, net_payable_paise")
                      .eq("id", purchase_bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
                      .limit(1).execute().data) or []
             if not _bill:
                 raise HTTPException(status_code=422, detail="Purchase bill is not part of this client's books.")
             # M6: never pay a cancelled bill, and never overpay one (payables can't go
             # negative). Outstanding = net_payable − already-paid.
-            _b = _bill[0]
-            if (_b.get("status") or "") == "cancelled":
+            if (_bill[0].get("status") or "") == "cancelled":
                 raise HTTPException(status_code=409, detail="This bill is cancelled and cannot be paid.")
-            _outstanding = int(_b.get("net_payable_paise") or 0) - int(_b.get("paid_paise") or 0)
-            if amount_paise > _outstanding:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Payment (₹{amount_paise/100:,.2f}) exceeds the bill's outstanding "
-                           f"(₹{_outstanding/100:,.2f}).")
+            net_payable_paise = int(_bill[0].get("net_payable_paise") or 0)
+            # H4: reserve amount_paise of outstanding atomically BEFORE any journal or
+            # payment row is created — see _claim_bill_outstanding for why the previous
+            # read-then-check-then-insert let concurrent payments overpay the same bill.
+            _claim_bill_outstanding(db, firm_id, client_id, purchase_bill_id, amount_paise, net_payable_paise)
+
         fy = _current_fy()
         seq = _next_payment_seq(db, firm_id, fy)
         payment_no = f"VPMT-{fy}-{seq:04d}"
 
-        # Auto-journal
-        from services.phase2_journal_service import phase2_journal_service
-        payment_dict = {
-            "payment_no": payment_no,
-            "payment_date": payment_date,
-            "amount_paise": amount_paise,
-        }
-        journal_entry_id = phase2_journal_service.journal_for_purchase_payment(
-            payment_dict, firm_id, client_id
-        )
+        try:
+            # Auto-journal
+            from services.phase2_journal_service import phase2_journal_service
+            payment_dict = {
+                "payment_no": payment_no,
+                "payment_date": payment_date,
+                "amount_paise": amount_paise,
+            }
+            journal_entry_id = phase2_journal_service.journal_for_purchase_payment(
+                payment_dict, firm_id, client_id
+            )
 
-        payload = {
-            "firm_id": firm_id,
-            "client_id": client_id,
-            "vendor_id": vendor_id,
-            "purchase_bill_id": purchase_bill_id,
-            "payment_no": payment_no,
-            "payment_date": payment_date,
-            "amount_paise": amount_paise,
-            "payment_mode": payment_mode,
-            "reference_no": data.get("reference_no"),
-            "notes": data.get("notes"),
-            "journal_entry_id": journal_entry_id,
-            "created_at": _now_iso(),
-            "updated_at": _now_iso(),
-        }
-        payment = _insert_payment_or_compensate(
-            db, firm_id, payload, journal_entry_id, current_user.get("id"),
-        )
+            payload = {
+                "firm_id": firm_id,
+                "client_id": client_id,
+                "vendor_id": vendor_id,
+                "purchase_bill_id": purchase_bill_id,
+                "payment_no": payment_no,
+                "payment_date": payment_date,
+                "amount_paise": amount_paise,
+                "payment_mode": payment_mode,
+                "reference_no": data.get("reference_no"),
+                "notes": data.get("notes"),
+                "journal_entry_id": journal_entry_id,
+                "created_at": _now_iso(),
+                "updated_at": _now_iso(),
+            }
+            payment = _insert_payment_or_compensate(
+                db, firm_id, payload, journal_entry_id, current_user.get("id"),
+            )
+        except Exception:
+            if purchase_bill_id:
+                _rollback_bill_claim(db, firm_id, client_id, purchase_bill_id, amount_paise, net_payable_paise)
+            raise
 
-        # Update purchase bill status if linked
+        # Reconcile paid_paise/status from the ledger of actual payment rows if linked
         if purchase_bill_id:
             _update_bill_payment_status(db, firm_id, client_id, purchase_bill_id, amount_paise)
 

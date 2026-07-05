@@ -283,6 +283,11 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ form_type: "", financial_year: "", due_date: "", description: "" });
+  const [confirmFiling, setConfirmFiling] = useState<Record<string, unknown> | null>(null);
+  const [srn, setSrn] = useState("");
+  const [filingDate, setFilingDate] = useState("");
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   const annualForms = ["AOC-4", "MGT-7", "ADT-1"];
   const eventForms = ["DIR-12", "INC-22", "SH-7", "CHG-1", "CHG-4"];
@@ -315,6 +320,43 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
       body: JSON.stringify({ status, ca_approved: true }),
     });
     load();
+  }
+
+  // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: marking a filing as "filed" requires
+  // an explicit SRN and confirmation, mirroring the Mark-as-Filed workflow used
+  // by the GSTR-1/GSTR-3B/TDS/ITR filing pages.
+  function openConfirmFiling(row: Record<string, unknown>) {
+    setConfirmFiling(row);
+    setSrn("");
+    setFilingDate(new Date().toISOString().slice(0, 10));
+    setConfirmError(null);
+  }
+
+  async function confirmMarkFiled() {
+    if (!confirmFiling) return;
+    if (!srn.trim()) {
+      setConfirmError("SRN is required");
+      return;
+    }
+    if (!filingDate) {
+      setConfirmError("Filing date is required");
+      return;
+    }
+    setConfirming(true);
+    setConfirmError(null);
+    try {
+      const res = await apiFetch(`/api/mca-workspace/filings/${confirmFiling.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "filed", ca_approved: true, srn: srn.trim(), filing_date: filingDate }),
+      });
+      if (!res.success) throw new Error(res.error ?? "Failed to update status");
+      setConfirmFiling(null);
+      load();
+    } catch (err) {
+      setConfirmError(err instanceof Error ? err.message : "Failed to update status");
+    } finally {
+      setConfirming(false);
+    }
   }
 
   return (
@@ -382,7 +424,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
                       className="text-xs px-2 py-0.5 border rounded hover:bg-[#F1F5F9]">Start</button>
                   )}
                   {r.status === "in_progress" && (
-                    <button onClick={() => updateStatus(r.id as string, "filed")}
+                    <button onClick={() => openConfirmFiling(r)}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700">
                       Mark Filed (CA)
                     </button>
@@ -395,6 +437,34 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
             )}
           </tbody>
         </table>
+      )}
+
+      {confirmFiling && (
+        <div className="border rounded p-4 bg-amber-50 border-amber-200 space-y-3">
+          <div>
+            <p className="text-sm font-medium">Confirm Filing — {confirmFiling.form_type as string}</p>
+            <p className="text-xs text-amber-700 mt-1">
+              This records an already-filed ROC form. PracticeSync does NOT auto-submit to the MCA21
+              portal. Verify the SRN before confirming.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <input placeholder="SRN (required)" value={srn}
+              onChange={(e) => setSrn(e.target.value)}
+              className="border rounded px-3 py-1.5 text-sm font-mono" />
+            <input type="date" value={filingDate}
+              onChange={(e) => setFilingDate(e.target.value)}
+              className="border rounded px-3 py-1.5 text-sm" />
+          </div>
+          {confirmError && <p className="text-xs text-red-600">{confirmError}</p>}
+          <div className="flex gap-2">
+            <button onClick={confirmMarkFiled} disabled={confirming}
+              className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
+              {confirming ? "Saving…" : "Confirm Filing"}
+            </button>
+            <button onClick={() => setConfirmFiling(null)} className="px-3 py-1 border rounded text-sm">Cancel</button>
+          </div>
+        </div>
       )}
     </div>
   );

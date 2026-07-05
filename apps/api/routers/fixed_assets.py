@@ -208,6 +208,18 @@ def dispose_asset(
     Dispose of an asset (sale, scrapped, written off).
     Creates disposal journal with gain/loss on disposal.
     CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+
+    Atomicity (C1 fix): the asset is claimed FIRST via a conditional update
+    (WHERE is_disposed = false) before any journal is posted. A second/retry
+    request that loses the race — or arrives after a prior successful
+    disposal — affects zero rows and 409s before ever touching the ledger,
+    so a duplicate disposal journal can never be created. `_journal_svc`
+    methods swallow their own exceptions and return None on failure (an
+    existing, intentional contract shared by every journal_for_* method in
+    Phase2JournalService — not something this fix changes); a None return is
+    therefore treated as a failed post here, and either that or a genuinely
+    raised exception rolls the claim back so the asset is never left
+    "disposed" with no corresponding journal.
     """
     db = _db()
     if not db:
@@ -216,24 +228,48 @@ def dispose_asset(
     asset = db.table("fixed_assets").select("*").eq("id", asset_id).eq("firm_id", current_user["firm_id"]).single().execute().data
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
-    if asset["is_disposed"]:
-        raise HTTPException(status_code=409, detail="Asset already disposed")
 
     disposal_type   = data.disposal_type
     sale_proceeds   = data.sale_proceeds_paise
     disposal_date   = data.disposal_date or str(datetime.now(timezone.utc).date())
+    disposal_notes  = data.notes if data.notes is not None else asset.get("notes")
+
+    # Capture pre-disposal values for rollback before any mutation.
+    prior_disposal_date  = asset.get("disposal_date")
+    prior_disposal_value = asset.get("disposal_value_paise")
+    prior_notes           = asset.get("notes")
+
+    def _rollback_claim():
+        db.table("fixed_assets").update({
+            "is_disposed":          False,
+            "disposal_date":        prior_disposal_date,
+            "disposal_value_paise": prior_disposal_value,
+            "notes":                prior_notes,
+        }).eq("id", asset_id).eq("firm_id", current_user["firm_id"]).execute()
+
+    # Claim the disposal atomically: only succeeds if still not disposed.
+    claim = db.table("fixed_assets").update({
+        "is_disposed":          True,
+        "disposal_date":        disposal_date,
+        "disposal_value_paise": sale_proceeds,
+        "notes":                disposal_notes,
+    }).eq("id", asset_id).eq("firm_id", current_user["firm_id"]).eq("is_disposed", False).execute()
+    if not claim.data:
+        raise HTTPException(status_code=409, detail="Asset already disposed")
 
     asset["disposal_date"] = disposal_date
 
-    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-    journal_id = _journal_svc.journal_for_asset_disposal(asset, sale_proceeds, current_user["firm_id"], asset["client_id"])
-
-    db.table("fixed_assets").update({
-        "is_disposed":        True,
-        "disposal_date":      disposal_date,
-        "disposal_value_paise": sale_proceeds,
-        "notes":              data.get("notes", asset.get("notes")),
-    }).eq("id", asset_id).execute()
+    try:
+        # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+        journal_id = _journal_svc.journal_for_asset_disposal(asset, sale_proceeds, current_user["firm_id"], asset["client_id"])
+    except Exception:
+        # Compensate: the claim above must never be left standing without a
+        # journal behind it — undo it so a retry can cleanly start over.
+        _rollback_claim()
+        raise
+    if journal_id is None:
+        _rollback_claim()
+        raise HTTPException(status_code=502, detail="Failed to post the disposal journal. The asset has not been disposed — please retry.")
 
     wdv = asset["purchase_cost_paise"] - asset.get("accumulated_depreciation_paise", 0)
     gain_loss = sale_proceeds - wdv
