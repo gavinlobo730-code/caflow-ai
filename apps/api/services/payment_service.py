@@ -14,11 +14,12 @@ Boundaries (hard rules):
 db-driven (tests pass a fake db; prod passes the Supabase client). Integer paise.
 """
 import logging
-from datetime import datetime, timezone, date, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import HTTPException
 
+from core.ist_clock import ist_today
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services import email_service
@@ -256,7 +257,7 @@ def _settle(db, payment: dict, event) -> dict:
         firm_id=firm_id,
         data={
             "client_id": payment["client_id"], "customer_id": payment["customer_id"],
-            "receipt_date": date.today().isoformat(), "amount_paise": amount,
+            "receipt_date": ist_today().isoformat(), "amount_paise": amount,
             "payment_mode": "online", "reference_no": payment.get("provider_payment_id") or str(payment["id"]),
             "notes": f"Online payment via {payment['provider']}",
             "allocations": ([{"sales_invoice_id": payment["invoice_id"], "allocated_paise": alloc}] if alloc > 0 else []),

@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
+import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import type { Client } from "@/lib/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -364,12 +365,11 @@ export default function BillingPage() {
       setReceipts(recs);
 
       // Build aged outstanding from unpaid invoices
-      const today = new Date();
+      const today = todayLocalISO();
       const unpaidInvs = invs.filter(i => i.status !== "Paid");
       const outMap = new Map<string, OutstandingRow>();
       for (const inv of unpaidInvs) {
-        const invDate = new Date(inv.invoice_date);
-        const days = Math.floor((today.getTime() - invDate.getTime()) / 86400000);
+        const days = daysBetweenLocalISO(inv.invoice_date, today) ?? 0;
         const existing = outMap.get(inv.client_id);
         const row: OutstandingRow = existing ?? {
           client_id: inv.client_id,

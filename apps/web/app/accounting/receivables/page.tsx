@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,10 +46,6 @@ interface AgingRow {
 
 function fmtRs(paise: number): string {
   return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
-}
-
-function daysBetween(a: Date, b: Date): number {
-  return Math.floor((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 function getBucket(daysOverdue: number): AgingRow["bucket"] {
@@ -109,7 +106,7 @@ export default function ReceivablesAgingPage() {
     setLoading(true);
     setError(null);
     const sb = getSupabaseClient();
-    const today = new Date();
+    const today = todayLocalISO();
 
     let query = sb.from("fee_invoices").select("id, invoice_no, invoice_date, due_date, client_id, total_paise, status").eq("firm_id", firmId).neq("status", "Paid").neq("status", "paid");
     if (selectedClientId !== "all") query = query.eq("client_id", selectedClientId);
@@ -123,8 +120,8 @@ export default function ReceivablesAgingPage() {
     clients.forEach(c => { clientMap[c.id] = c.client_name; });
 
     const result: AgingRow[] = invoices.map(inv => {
-      const dueDate = inv.due_date ? new Date(inv.due_date) : new Date(inv.invoice_date);
-      const daysOverdue = daysBetween(dueDate, today);
+      const dueDateStr = inv.due_date ?? inv.invoice_date;
+      const daysOverdue = daysBetweenLocalISO(dueDateStr, today) ?? 0;
       const bucket = getBucket(daysOverdue);
       return {
         invoice: inv,
