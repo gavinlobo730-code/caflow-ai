@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { usePathname } from "next/navigation";
 import { recordLastClientSection } from "./clientSectionHistory";
+import { currentFinancialYearLabel } from "@/lib/dateMath";
 
 export type ClientSection =
   | "overview"
@@ -63,12 +64,7 @@ export const CLIENT_SECTIONS: ClientSectionConfig[] = [
 const FY_STORAGE_KEY = "caflow.financialYear";
 
 export function getCurrentFinancialYear(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1; // 1-indexed
-  const fyStart = month >= 4 ? year : year - 1;
-  const fyEnd = (fyStart + 1).toString().slice(-2);
-  return `${fyStart}-${fyEnd}`;
+  return currentFinancialYearLabel();
 }
 
 export function getSectionForPathname(pathname: string): ClientSection {

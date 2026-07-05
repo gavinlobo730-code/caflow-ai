@@ -9,7 +9,13 @@
 //   node --experimental-strip-types --test lib/dateMath.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { toLocalISO, todayLocalISO, daysBetweenLocalISO, computeOverdueStatus } from "./dateMath.ts";
+import {
+  toLocalISO,
+  todayLocalISO,
+  daysBetweenLocalISO,
+  computeOverdueStatus,
+  currentFinancialYearLabel,
+} from "./dateMath.ts";
 
 const ORIGINAL_TZ = process.env.TZ;
 
@@ -113,6 +119,39 @@ test("daysBetweenLocalISO: null on empty/malformed input", () => {
   assert.equal(daysBetweenLocalISO("nonsense", "2026-07-05"), null);
 });
 
+// ── daysBetweenLocalISO vs the pre-consolidation loans-page formula ────────
+// app/accounting/loans/page.tsx::daysToDate() (FD/loan maturity countdown)
+// now delegates its arithmetic to daysBetweenLocalISO (Phase 3). Its old body
+// parsed both operands as bare `new Date(isoString)` (UTC midnight, since
+// neither string carries a time component) and used Math.ceil; this proves
+// that formula and daysBetweenLocalISO agree on every whole-day diff, because
+// a fixed (non-DST) offset cancels identically in a subtraction regardless of
+// whether both sides are anchored to UTC midnight or local midnight, and a
+// midnight-to-midnight diff is always an exact multiple of a day (so
+// Math.ceil and daysBetweenLocalISO's Math.round always agree).
+function oldLoansPageDaysToDate(fromISO: string, toISO: string): number {
+  const target = new Date(toISO).getTime();
+  const now = new Date(fromISO).getTime();
+  return Math.ceil((target - now) / (24 * 60 * 60 * 1000));
+}
+
+test("daysBetweenLocalISO: matches the pre-consolidation loans-page formula across leap years and month/year boundaries", () => {
+  withTZ("Asia/Kolkata", () => {
+    const pairs: [string, string][] = [
+      ["2026-07-05", "2026-07-05"],   // same day
+      ["2026-07-05", "2026-08-04"],   // ordinary month gap
+      ["2026-02-01", "2026-03-01"],   // Feb (non-leap, 2026) -> Mar
+      ["2024-02-01", "2024-03-01"],   // Feb (leap, 2024) -> Mar, one extra day
+      ["2023-12-15", "2024-01-15"],   // year boundary
+      ["2026-03-31", "2026-04-01"],   // FY boundary, 1 day
+      ["2026-08-04", "2026-07-05"],   // past (negative)
+    ];
+    for (const [from, to] of pairs) {
+      assert.equal(daysBetweenLocalISO(from, to), oldLoansPageDaysToDate(from, to));
+    }
+  });
+});
+
 // ── computeOverdueStatus — shared GST/MCA filing-tracker status ─────────────
 // (Phase 2 — Compliance & Statutory Date Correctness). GST's and MCA's filing
 // trackers each independently compared a live `new Date()`/module-frozen
@@ -162,4 +201,57 @@ test("computeOverdueStatus: default third argument uses todayLocalISO() (wiring 
     const farFuture = "2099-01-01";
     assert.equal(computeOverdueStatus(farFuture, null), "Pending");
   });
+});
+
+// ── currentFinancialYearLabel — shared FY-label helper (Phase 3) ───────────
+// Previously three independent, identical implementations in
+// lib/workspace/ClientNavContext.tsx::getCurrentFinancialYear(),
+// lib/data/income-tax.ts::currentFinancialYear() and
+// lib/data/tds.ts::currentFinancialYear() — all now thin delegates to this
+// one function. These pin the exact label each produced before the
+// consolidation, including the `.slice(2)` vs `.slice(-2)` variant the two
+// implementations used (equivalent for any 4-digit year, verified below).
+
+/** The formula all three call sites independently implemented before Phase 3
+ * — kept here (not imported) so this test proves the shared helper still
+ * matches it, rather than trivially checking the helper against itself. */
+function oldFormulaSliceNegative2(d: Date): string {
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  const fyStart = month >= 4 ? year : year - 1;
+  const fyEnd = (fyStart + 1).toString().slice(-2);
+  return `${fyStart}-${fyEnd}`;
+}
+
+function oldFormulaSlice2(d: Date): string {
+  const yr = d.getFullYear();
+  const mo = d.getMonth() + 1;
+  return mo >= 4 ? `${yr}-${String(yr + 1).slice(2)}` : `${yr - 1}-${String(yr).slice(2)}`;
+}
+
+test("currentFinancialYearLabel: matches both pre-consolidation formulas across every month", () => {
+  for (const year of [2023, 2024, 2025, 2026]) {
+    for (let month = 0; month < 12; month++) {
+      const d = new Date(year, month, 15);
+      const got = currentFinancialYearLabel(d);
+      assert.equal(got, oldFormulaSliceNegative2(d));
+      assert.equal(got, oldFormulaSlice2(d));
+    }
+  }
+});
+
+test("currentFinancialYearLabel: FY boundary — 31 Mar is the outgoing FY", () => {
+  assert.equal(currentFinancialYearLabel(new Date(2026, 2, 31)), "2025-26");
+});
+
+test("currentFinancialYearLabel: FY boundary — 1 Apr is the new FY", () => {
+  assert.equal(currentFinancialYearLabel(new Date(2026, 3, 1)), "2026-27");
+});
+
+test("currentFinancialYearLabel: leap day (29 Feb 2024) falls in FY 2023-24", () => {
+  assert.equal(currentFinancialYearLabel(new Date(2024, 1, 29)), "2023-24");
+});
+
+test("currentFinancialYearLabel: default argument uses `new Date()` (wiring check)", () => {
+  assert.equal(currentFinancialYearLabel(), currentFinancialYearLabel(new Date()));
 });

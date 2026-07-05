@@ -10,6 +10,7 @@
  */
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "./getFirmId";
+import { currentFinancialYearLabel } from "@/lib/dateMath";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -265,10 +266,7 @@ function computeDueDate(quarter: string, fy: string): string {
 }
 
 export function currentFinancialYear(): string {
-  const now = new Date();
-  const yr = now.getFullYear();
-  const mo = now.getMonth() + 1;
-  return mo >= 4 ? `${yr}-${String(yr + 1).slice(2)}` : `${yr - 1}-${String(yr).slice(2)}`;
+  return currentFinancialYearLabel();
 }
 
 export function currentQuarter(): TDSQuarter {

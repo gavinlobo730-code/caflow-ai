@@ -60,3 +60,15 @@ export function computeOverdueStatus(
   const daysPastDue = daysBetweenLocalISO(dueDate, todayISO) ?? 0;
   return daysPastDue > 0 ? "Overdue" : "Pending";
 }
+
+/** Indian FY label ("YYYY-YY") for the given date's LOCAL calendar day,
+ * defaulting to today. FY runs 1 April - 31 March. Consolidates what were
+ * previously independent, identical implementations in
+ * lib/workspace/ClientNavContext.tsx, lib/data/income-tax.ts and
+ * lib/data/tds.ts. */
+export function currentFinancialYearLabel(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1; // 1-indexed
+  const fyStart = month >= 4 ? year : year - 1;
+  return `${fyStart}-${String(fyStart + 1).slice(-2)}`;
+}
