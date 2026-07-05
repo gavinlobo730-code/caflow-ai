@@ -14,6 +14,7 @@ import { getTeamWorkload } from "@/lib/data/analytics";
 import { getUserProfile } from "@/lib/data/getFirmId";
 import type { Task, TaskStatus, TeamWorkload } from "@/lib/types";
 import type { TaskCounts } from "@/lib/data/tasks";
+import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   todo: "bg-[#F1F5F9] text-[#475569]",
@@ -47,21 +48,18 @@ function fmt(date?: string) {
 
 function isToday(dateStr?: string) {
   if (!dateStr) return false;
-  return dateStr === new Date().toISOString().split("T")[0];
+  return dateStr === todayLocalISO();
 }
 
 function isThisWeek(dateStr?: string) {
   if (!dateStr) return false;
-  const d = new Date(dateStr);
-  const now = new Date();
-  const weekEnd = new Date(now);
-  weekEnd.setDate(weekEnd.getDate() + 7);
-  return d >= now && d <= weekEnd;
+  const diff = daysBetweenLocalISO(todayLocalISO(), dateStr);
+  return diff !== null && diff >= 0 && diff <= 7;
 }
 
 function isOverdue(dateStr?: string) {
   if (!dateStr) return false;
-  return dateStr < new Date().toISOString().split("T")[0];
+  return dateStr < todayLocalISO();
 }
 
 function TaskRow({ task }: { task: Task }) {

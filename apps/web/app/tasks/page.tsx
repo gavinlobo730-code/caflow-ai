@@ -14,6 +14,8 @@ import { api } from "@/lib/api";
 import { getClients } from "@/lib/data/clients";
 import { DataTable } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
+import { todayLocalISO } from "@/lib/dateMath";
+import { formatDate } from "@/lib/services/formatting";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -46,14 +48,12 @@ const PRIORITY_ORDER: Record<TaskPriority, number> = { critical: 4, high: 3, med
 
 function isOverdue(due?: string, status?: string) {
   if (!due || status === "completed") return false;
-  return due < new Date().toISOString().split("T")[0];
+  return due < todayLocalISO();
 }
 
 function fmt(date?: string) {
   if (!date) return "—";
-  const [y, m, d] = date.split("-");
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  return `${d} ${months[parseInt(m) - 1]} ${y}`;
+  return formatDate(date);
 }
 
 // ── Summary Card ──────────────────────────────────────────────────────────
@@ -375,7 +375,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                 <Row label="Client" value={clientName} />
                 <Row label="Assignee" value={assignee ? (assignee.full_name ?? assignee.email ?? "—") : "Unassigned"} />
                 <Row label="Due Date" value={fmt(task.due_date)} highlight={overdue} />
-                <Row label="Created" value={fmt(task.created_at.split("T")[0])} />
+                <Row label="Created" value={fmt(task.created_at)} />
               </div>
 
               <DependenciesSection taskId={task.id} allTasks={allTasks} />
@@ -444,13 +444,12 @@ export default function TasksPage() {
 
   // Summary stats
   const stats = useMemo(() => {
-    const today = new Date().toISOString().split("T")[0];
     return {
       total: tasks.length,
       pending: tasks.filter(t => t.status === "todo").length,
       in_progress: tasks.filter(t => t.status === "in_progress").length,
       completed: tasks.filter(t => t.status === "completed").length,
-      overdue: tasks.filter(t => t.due_date && t.due_date < today && t.status !== "completed").length,
+      overdue: tasks.filter(t => isOverdue(t.due_date, t.status)).length,
     };
   }, [tasks]);
 
@@ -566,7 +565,7 @@ export default function TasksPage() {
     {
       key: "created_at", header: "Created", accessor: (t) => t.created_at, sortable: true, defaultHidden: true,
       exportValue: (t) => t.created_at,
-      render: (t) => <span className="whitespace-nowrap text-xs text-[#64748B]">{fmt(t.created_at.split("T")[0])}</span>,
+      render: (t) => <span className="whitespace-nowrap text-xs text-[#64748B]">{fmt(t.created_at)}</span>,
     },
   ], []);
 

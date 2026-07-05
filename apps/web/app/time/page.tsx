@@ -21,11 +21,7 @@ import {
 } from "@/lib/data/timeTracking";
 import { getClients } from "@/lib/data/clients";
 import type { TimeEntry, Client } from "@/lib/types";
-
-function fmt(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-}
+import { formatDate as fmt } from "@/lib/services/formatting";
 
 function fmtTime(iso: string) {
   const d = new Date(iso);

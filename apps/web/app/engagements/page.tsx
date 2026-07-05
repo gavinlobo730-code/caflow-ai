@@ -23,6 +23,7 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { DataTable } from "@/components/ui/data-table";
+import { formatDate as formatDateShared } from "@/lib/services/formatting";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatPaise as formatPaiseINR } from "@/lib/services/formatting";
 
@@ -100,11 +101,7 @@ function formatPaise(paise: number): string {
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  return formatDateShared(iso);
 }
 
 function formatDateTime(iso: string | null): string {

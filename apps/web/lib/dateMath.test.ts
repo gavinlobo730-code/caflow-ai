@@ -255,3 +255,63 @@ test("currentFinancialYearLabel: leap day (29 Feb 2024) falls in FY 2023-24", ()
 test("currentFinancialYearLabel: default argument uses `new Date()` (wiring check)", () => {
   assert.equal(currentFinancialYearLabel(), currentFinancialYearLabel(new Date()));
 });
+
+// ── Phase 4 — page-local date-logic compositions ───────────────────────────
+// These pages keep their own small, non-exported helpers rather than importing
+// dateMath.ts functions under new names, so the compositions are replicated
+// here (not imported) to pin the exact behaviour each was fixed/consolidated to.
+
+// app/work/page.tsx::isThisWeek() previously mixed a UTC-midnight-parsed due
+// date against a live `now`/`weekEnd` instant; now composed from
+// daysBetweenLocalISO/todayLocalISO. Pin the 0- and 7-day inclusive boundary.
+function isThisWeekComposition(dateStr: string, todayISO: string): boolean {
+  const diff = daysBetweenLocalISO(todayISO, dateStr);
+  return diff !== null && diff >= 0 && diff <= 7;
+}
+
+test("isThisWeek composition: due today (0 days) is within the week", () => {
+  assert.equal(isThisWeekComposition("2026-07-05", "2026-07-05"), true);
+});
+
+test("isThisWeek composition: due in exactly 7 days is within the week (inclusive)", () => {
+  assert.equal(isThisWeekComposition("2026-07-12", "2026-07-05"), true);
+});
+
+test("isThisWeek composition: due in 8 days is NOT within the week", () => {
+  assert.equal(isThisWeekComposition("2026-07-13", "2026-07-05"), false);
+});
+
+test("isThisWeek composition: already overdue (yesterday) is NOT within the week", () => {
+  assert.equal(isThisWeekComposition("2026-07-04", "2026-07-05"), false);
+});
+
+// lib/data/tasks.ts::getTaskCounts()'s `sevenDaysAgo` previously read
+// `new Date(Date.now() - 7*24*60*60*1000).toISOString().split("T")[0]` (a UTC
+// round-trip); now `toLocalISO(new Date(Date.now() - 7*24*60*60*1000))`. Prove
+// the two disagree exactly across the IST lag window, and that the fixed
+// version reads the correct IST calendar date.
+test("getTaskCounts sevenDaysAgo composition: old UTC-slice formula reads the wrong day inside the IST lag window", () => {
+  withTZ("Asia/Kolkata", () => {
+    // 2026-07-05 02:00 IST = 2026-07-04 20:30 UTC — subtracting 7 days in UTC
+    // still lands on 27 June UTC, one day before the correct IST-local 28 June.
+    const now = new Date(2026, 6, 5, 2, 0); // local 2026-07-05T02:00 IST
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const oldFormula = sevenDaysAgo.toISOString().split("T")[0];
+    const fixed = toLocalISO(sevenDaysAgo);
+    assert.equal(fixed, "2026-06-28");
+    assert.notEqual(oldFormula, fixed);
+  });
+});
+
+// app/DashboardContent.tsx::getUpcomingDeadlines()'s `date` string previously
+// read `d.date.toISOString().split("T")[0]` on a local-midnight-constructed
+// Date (always one day early under IST); now `toLocalISO(d.date)`.
+test("getUpcomingDeadlines date-string composition: toLocalISO fixes the off-by-one the old toISOString formula had", () => {
+  withTZ("Asia/Kolkata", () => {
+    const gstr1Due = new Date(2026, 6, 11); // local midnight, 11 July 2026
+    const oldFormula = gstr1Due.toISOString().split("T")[0];
+    const fixed = toLocalISO(gstr1Due);
+    assert.equal(fixed, "2026-07-11");
+    assert.notEqual(oldFormula, fixed); // old formula reads "2026-07-10"
+  });
+});

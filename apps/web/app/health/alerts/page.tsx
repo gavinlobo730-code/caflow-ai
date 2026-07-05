@@ -5,6 +5,7 @@ import { Bell, CheckCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { formatDate as formatDateShared } from "@/lib/services/formatting";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -26,7 +27,7 @@ const SEVERITY_COLORS: Record<string, string> = {
   high: "bg-orange-100 text-orange-700",
   critical: "bg-red-100 text-red-700",
 };
-function formatDate(d: string) { try { return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); } catch { return d; } }
+function formatDate(d: string) { try { return formatDateShared(d); } catch { return d; } }
 
 export default function HealthAlertsPage() {
   const [alerts, setAlerts] = useState<HealthAlert[]>([]);
