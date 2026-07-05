@@ -32,6 +32,7 @@ import { formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
+import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -204,7 +205,7 @@ export default function IncomeTaxPage() {
   // Derived stats
   // ---------------------------------------------------------------------------
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
   const currentAY = "2025-26";
 
   const totalDue = entries.length;
@@ -704,7 +705,7 @@ export default function IncomeTaxPage() {
                   return `${y}-${months[m]}-${d.padStart(2, "0")}`;
                 });
                 const isPast = dueDate < today;
-                const isUpcoming = !isPast && dueDate <= new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
+                const isUpcoming = !isPast && (daysBetweenLocalISO(today, dueDate) ?? 999) <= 30;
 
                 return (
                   <div

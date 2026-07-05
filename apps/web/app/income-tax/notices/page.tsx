@@ -22,6 +22,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
+import { todayLocalISO } from "@/lib/dateMath";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,9 +58,8 @@ function statusBadge(status: NoticeStatus) {
   }
 }
 
-const TODAY = new Date().toISOString().slice(0, 10);
 function isOverdue(notice: ITNotice) {
-  return notice.status === "pending" && notice.response_due_date && notice.response_due_date < TODAY;
+  return notice.status === "pending" && notice.response_due_date && notice.response_due_date < todayLocalISO();
 }
 
 // ─── Add Notice Modal ─────────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ const BLANK: AddFormState = {
   clientId: "",
   noticeType: "143(1)",
   assessmentYear: "2025-26",
-  dateReceived: TODAY,
+  dateReceived: todayLocalISO(),
   responseDueDate: "",
   amountDemandedRs: "",
   status: "pending",

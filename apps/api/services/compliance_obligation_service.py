@@ -21,6 +21,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from core.ist_clock import ist_today, ist_now
 from services import compliance_engine as ce
 from repositories.compliance_records_repository import compliance_records_repo
 from repositories.engagement_repository import engagement_repo
@@ -167,7 +168,7 @@ def escalation_tier(days_to_due: int) -> Optional[str]:
 
 def aggregate_dashboard(records: list[dict], today: Optional[date] = None) -> dict:
     """Pure aggregation for the Practice → Compliance dashboard."""
-    today = today or date.today()
+    today = today or ist_today()
     week_end = (today + timedelta(days=7)).isoformat()
     month_end = ce.last_day_of_month(today.year, today.month).isoformat()
     today_s = today.isoformat()
@@ -437,7 +438,7 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) 
 def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] = None) -> dict:
     """Escalate open obligations on the 7/3/1-day + overdue cadence to the internal
     team. Idempotent per (record, tier, day) via last_escalated_tier/on. Internal only."""
-    today = today or date.today()
+    today = today or ist_today()
     today_s = today.isoformat()
     counts = {"due_7": 0, "due_3": 0, "due_1": 0, "overdue": 0}
     # Pushed server-side: escalate() only ever acts on open obligations, so
@@ -467,7 +468,7 @@ def dashboard(firm_id: str, today: Optional[date] = None) -> dict:
 def calendar(firm_id: str, client_id: Optional[str] = None, today: Optional[date] = None) -> dict:
     """Calendar projection over the canonical obligations (compliance_records).
     compliance_calendar remains; this is the read view, not a second source of truth."""
-    today = today or date.today()
+    today = today or ist_today()
     today_s = today.isoformat()
     records = _records_for(firm_id, client_id)
     upcoming, overdue, completed = [], [], []
@@ -485,6 +486,6 @@ def calendar(firm_id: str, client_id: Optional[str] = None, today: Optional[date
 
 
 def _current_fy() -> str:
-    now = datetime.now(timezone.utc)
+    now = ist_now()
     start = now.year if now.month >= 4 else now.year - 1
     return f"{start}-{str(start + 1)[2:]}"

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { ShieldCheck, RefreshCw, Bell, PlayCircle, AlertTriangle, CalendarClock } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
+import { todayLocalISO } from "@/lib/dateMath";
 
 // Compliance lifecycle (mirrors the server-side VALID_TRANSITIONS — presentation
 // only; the backend is the source of truth and rejects invalid transitions).
@@ -73,7 +74,7 @@ function ComplianceDashboard() {
       () => `${o.obligation_type ?? o.compliance_type} → ${status}`);
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocalISO();
   const queue = useMemo(() => {
     const rows = dash?.queue ?? [];
     return rows.filter((o) => {

@@ -12,6 +12,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { todayLocalISO } from "@/lib/dateMath";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -165,7 +166,7 @@ export default function CompliancePage() {
   const [markFiled, setMarkFiled] = useState<MarkFiledForm | null>(null);
   const [filingLoading, setFilingLoading] = useState(false);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
 
   useEffect(() => {
     if (!clientId || clientId === "_placeholder") return;

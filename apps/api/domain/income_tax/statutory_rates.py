@@ -35,6 +35,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
+from core.ist_clock import ist_today
+
 
 # ── Data model ────────────────────────────────────────────────────────────────
 
@@ -194,7 +196,7 @@ LATEST_VERIFIED_FY = "2025-26"
 
 def current_fy(today: date | None = None) -> str:
     """Indian FY runs April 1 – March 31."""
-    d = today or date.today()
+    d = today or ist_today()
     start_year = d.year if d.month >= 4 else d.year - 1
     return f"{start_year}-{str(start_year + 1)[2:]}"
 
