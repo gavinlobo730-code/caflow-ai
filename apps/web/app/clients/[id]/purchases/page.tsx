@@ -700,7 +700,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
                   <div className="col-span-2 flex flex-col justify-end pb-1.5">
                     <span className="text-xs font-medium text-[#475569] mb-1">Estimated INR total</span>
                     <span className="font-mono text-sm text-[#0F172A]">
-                      {rateNum > 0 ? `≈ ${fmt(estBaseTotal)}` : "— enter a rate to preview —"}
+                      {rateNum > 0 && totals.total > 0 ? `≈ ${fmt(estBaseTotal)}` : "— enter a rate to preview —"}
                     </span>
                     <p className="mt-1 text-[10px] text-[#94A3B8]">Estimate only — the exact INR total is confirmed on save.</p>
                   </div>
@@ -804,7 +804,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
                   <td className="pt-1 text-right font-mono text-[#0F172A] px-1">{fmtAmt(net_payable)}</td>
                   <td />
                 </tr>
-                {isForeign && rateNum > 0 && (
+                {isForeign && rateNum > 0 && totals.total > 0 && (
                   <tr className="text-xs">
                     <td colSpan={6} className="text-right text-[#94A3B8] pr-2">≈ Estimated INR total</td>
                     <td className="text-right font-mono text-[#94A3B8] px-1">{fmt(estBaseTotal)}</td>

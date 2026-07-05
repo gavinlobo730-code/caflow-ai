@@ -1968,7 +1968,7 @@ function InvoiceForm({
   // HALF_UP) and sums those, so it will not always equal this single
   // multiply-the-total shortcut to the last paisa; the real total comes back
   // in the save response.
-  const estimatedBasePaise = isForeign && !Number.isNaN(rateNum) && rateNum > 0
+  const estimatedBasePaise = isForeign && !Number.isNaN(rateNum) && rateNum > 0 && gst.total_paise > 0
     ? estimateBaseMinor(gst.total_paise, rateNum)
     : null;
 
