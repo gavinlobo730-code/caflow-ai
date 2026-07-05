@@ -14,6 +14,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { api } from "@/lib/api";
 import { cachedReport, reportKey, clearReports } from "@/lib/accounting/reportCache";
 import { writeTimelineEvent } from "@/lib/services/timeline";
+import { todayLocalISO } from "@/lib/dateMath";
 import {
   parseCSV,
   importBankStatement,
@@ -537,7 +538,7 @@ function JournalEntryForm({
 }: {
   accounts: Account[]; clientId: string; financialYear: string; onPosted: () => void;
 }) {
-  const [entryDate, setEntryDate] = useState(new Date().toISOString().split("T")[0]);
+  const [entryDate, setEntryDate] = useState(todayLocalISO());
   const [entryType, setEntryType] = useState<string>("Journal");
   const [narration, setNarration] = useState("");
   const [referenceNo, setReferenceNo] = useState("");
