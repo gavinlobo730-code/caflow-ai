@@ -17,6 +17,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Combobox } from "@/components/ui/combobox";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { listTdsSections, computeTdsAmount, type TDSSection, type TDSAmountResult } from "@/lib/data/tds";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,17 +41,19 @@ interface Supplier {
   created_at: string;
 }
 
-// TDS sections with default rates — IT Act sections
-const TDS_SECTIONS = [
-  { value: "",     label: "None (No TDS)",           defaultRate: 0 },
-  { value: "194C", label: "194C — Contractor (1%/2%)",  defaultRate: 2 },
-  { value: "194I", label: "194I — Rent (10%)",           defaultRate: 10 },
-  { value: "194J", label: "194J — Professional (10%)",   defaultRate: 10 },
-  { value: "194H", label: "194H — Commission (5%)",      defaultRate: 5 },
-  { value: "194A", label: "194A — Interest (10%)",       defaultRate: 10 },
-  { value: "194B", label: "194B — Lottery (30%)",        defaultRate: 30 },
-  { value: "other", label: "Other",                      defaultRate: 0 },
-];
+// Cosmetic section names only — no rates/thresholds here. Those are always
+// resolved from GET /api/tds/sections (the authoritative TDSComputer table),
+// never hardcoded, so a Finance Act rate/threshold change never has to be
+// re-applied in two places.
+const SECTION_LABELS: Record<string, string> = {
+  "193": "Interest on Securities", "194": "Dividends", "194A": "Interest (other than securities)",
+  "194B": "Lottery/Game Winnings", "194C": "Contractor", "194D": "Insurance Commission",
+  "194G": "Lottery Commission", "194H": "Commission/Brokerage", "194I": "Rent",
+  "194J": "Professional/Technical Fees", "194K": "Mutual Fund Income",
+  "194LA": "Compensation on Land Acquisition", "194Q": "Purchase of Goods",
+};
+const NONE_OPTION = { value: "", label: "None (No TDS)" };
+const OTHER_OPTION = { value: "other", label: "Other (manual rate)" };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -87,14 +90,15 @@ export default function SuppliersPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // TDS section list — thresholds/rates always come from the authoritative
+  // TDSComputer via GET /api/tds/sections, never hardcoded here.
+  const [tdsSections, setTdsSections] = useState<TDSSection[]>([]);
+
   // TDS calculator
   const [billRs, setBillRs] = useState("");
   const billPaise = rsToP(billRs);
-  const calcTdsSection = TDS_SECTIONS.find(s => s.value === form.tds_section);
-  const calcTdsRate = parseFloat(form.tds_rate_percent || "0");
-  // TDS deduction per IT Act sections 194C, 194I, 194J etc.
-  // Deduct at source before payment to supplier
-  const tdsAmount = Math.round(billPaise * calcTdsRate / 100); // integer paise
+  const [tdsCalc, setTdsCalc] = useState<TDSAmountResult | null>(null);
+  const [tdsCalcError, setTdsCalcError] = useState<string | null>(null);
 
   useEffect(() => {
     const sb = getSupabaseClient();
@@ -111,6 +115,26 @@ export default function SuppliersPage() {
     loadSuppliers();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClientId, firmId]);
+
+  useEffect(() => {
+    listTdsSections().then(r => setTdsSections(r.sections)).catch(() => setTdsSections([]));
+  }, []);
+
+  // Recompute the calculator via the authoritative TDSComputer whenever the
+  // bill amount, section, or supplier PAN changes — never re-derive rates
+  // or the individual/company/§206AA rules locally.
+  useEffect(() => {
+    if (!(billPaise > 0) || !form.tds_section || form.tds_section === "other") {
+      setTdsCalc(null);
+      setTdsCalcError(null);
+      return;
+    }
+    let cancelled = false;
+    computeTdsAmount({ section: form.tds_section, payment_amount_paise: billPaise, pan: form.pan || null })
+      .then(result => { if (!cancelled) { setTdsCalc(result); setTdsCalcError(null); } })
+      .catch(err => { if (!cancelled) { setTdsCalc(null); setTdsCalcError(err instanceof Error ? err.message : "TDS calculation failed"); } });
+    return () => { cancelled = true; };
+  }, [billPaise, form.tds_section, form.pan]);
 
   async function loadSuppliers() {
     if (!selectedClientId || !firmId) return;
@@ -143,9 +167,18 @@ export default function SuppliersPage() {
   }
 
   function onSectionChange(val: string) {
-    const sec = TDS_SECTIONS.find(s => s.value === val);
-    setForm(f => ({ ...f, tds_section: val, tds_rate_percent: sec && sec.defaultRate > 0 ? String(sec.defaultRate) : "" }));
+    const sec = tdsSections.find(s => s.section === val);
+    setForm(f => ({ ...f, tds_section: val, tds_rate_percent: sec ? String(sec.rate_individual_pct) : "" }));
   }
+
+  const sectionOptions = [
+    NONE_OPTION,
+    ...tdsSections.map(s => ({
+      value: s.section,
+      label: SECTION_LABELS[s.section] ? `${s.section} — ${SECTION_LABELS[s.section]}` : s.section,
+    })),
+    OTHER_OPTION,
+  ];
 
   async function handleSave() {
     if (!firmId || !selectedClientId) return;
@@ -316,8 +349,8 @@ export default function SuppliersPage() {
               <div>
                 <label className="text-xs font-medium text-[#334155] block mb-1">TDS Section</label>
                 <Combobox
-                  options={TDS_SECTIONS}
-                  value={TDS_SECTIONS.find(s => s.value === form.tds_section) ?? null}
+                  options={sectionOptions}
+                  value={sectionOptions.find(s => s.value === form.tds_section) ?? null}
                   onChange={(v) => { const s = v && !Array.isArray(v) ? v : null; onSectionChange(s ? s.value : ""); }}
                   getOptionId={(s) => s.value || "__none__"}
                   getLabel={(s) => s.label}
@@ -363,19 +396,47 @@ export default function SuppliersPage() {
                     <label className="text-xs font-medium text-[#334155] block mb-1">Bill Amount (₹)</label>
                     <input type="number" min="0" className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" value={billRs} onChange={e => setBillRs(e.target.value)} placeholder="0" />
                   </div>
-                  {billPaise > 0 && calcTdsRate > 0 && (
+                  {billPaise > 0 && form.tds_section === "other" && parseFloat(form.tds_rate_percent || "0") > 0 && (() => {
+                    const manualRate = parseFloat(form.tds_rate_percent || "0");
+                    const manualTds = Math.round(billPaise * manualRate / 100);
+                    return (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs text-[#475569]">
+                          <span>Bill Amount</span>
+                          <span className="font-medium">{fmtRs(billPaise)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs text-[#475569]">
+                          <span>TDS @ {manualRate}% (manual rate)</span>
+                          <span className="font-medium text-red-600">- {fmtRs(manualTds)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs font-semibold text-[#0F172A] border-t border-amber-200 pt-1">
+                          <span>Net Payment to Supplier</span>
+                          <span className="text-green-700">{fmtRs(billPaise - manualTds)}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {billPaise > 0 && form.tds_section !== "other" && tdsCalcError && (
+                    <p className="text-xs text-red-600">{tdsCalcError}</p>
+                  )}
+                  {billPaise > 0 && form.tds_section !== "other" && tdsCalc && !tdsCalc.tds_applicable && (
+                    <p className="text-xs text-[#475569]">
+                      Below the ₹{(tdsCalc.threshold_paise / 100).toLocaleString("en-IN")} threshold for Section {tdsCalc.section} — no TDS applicable.
+                    </p>
+                  )}
+                  {billPaise > 0 && form.tds_section !== "other" && tdsCalc && tdsCalc.tds_applicable && (
                     <div className="space-y-1">
                       <div className="flex justify-between text-xs text-[#475569]">
                         <span>Bill Amount</span>
                         <span className="font-medium">{fmtRs(billPaise)}</span>
                       </div>
                       <div className="flex justify-between text-xs text-[#475569]">
-                        <span>TDS @ {calcTdsRate}% ({calcTdsSection?.label ?? form.tds_section})</span>
-                        <span className="font-medium text-red-600">- {fmtRs(tdsAmount)}</span>
+                        <span>TDS @ {tdsCalc.applicable_rate_pct}% (Section {tdsCalc.section}, FY {tdsCalc.fy})</span>
+                        <span className="font-medium text-red-600">- {fmtRs(tdsCalc.tds_paise)}</span>
                       </div>
                       <div className="flex justify-between text-xs font-semibold text-[#0F172A] border-t border-amber-200 pt-1">
                         <span>Net Payment to Supplier</span>
-                        <span className="text-green-700">{fmtRs(billPaise - tdsAmount)}</span>
+                        <span className="text-green-700">{fmtRs(billPaise - tdsCalc.tds_paise)}</span>
                       </div>
                     </div>
                   )}

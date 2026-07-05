@@ -135,6 +135,70 @@ export async function compute24Q(req: Compute24QRequest): Promise<TDSReturnPaylo
   return json.data as TDSReturnPayload;
 }
 
+/** Authenticated fetch to the TDS API — used by listTdsSections/computeTdsAmount
+ * below so the single-payment TDS calculator delegates to the authoritative
+ * TDSComputer rather than re-implementing section rates/thresholds itself. */
+async function authedFetch<T>(path: string, init?: RequestInit): Promise<{ success: boolean; data: T; error: string | null }> {
+  const { data: { session } } = await getSupabaseClient().auth.getSession();
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      ...(init?.headers ?? {}),
+    },
+  });
+  return res.json();
+}
+
+export interface TDSSection {
+  section: string;
+  threshold_paise: number;
+  aggregate_threshold_paise: number | null;
+  rate_individual_pct: number;
+  rate_company_pct: number;
+}
+
+export interface TDSAmountResult {
+  section: string;
+  fy: string;
+  rates_verified: boolean;
+  payment_amount_paise: number;
+  threshold_paise: number;
+  aggregate_threshold_paise: number | null;
+  tds_applicable: boolean;
+  applicable_rate_pct: number;
+  tds_paise: number;
+}
+
+/** IT Act Chapter XVII-B section list with current thresholds/rates — the
+ * authoritative replacement for a hardcoded section dropdown. */
+export async function listTdsSections(fy?: string): Promise<{ fy: string; rates_verified: boolean; sections: TDSSection[] }> {
+  const resp = await authedFetch<{ fy: string; rates_verified: boolean; sections: TDSSection[] }>(
+    `/api/tds/sections${fy ? `?fy=${encodeURIComponent(fy)}` : ""}`
+  );
+  if (!resp.success) throw new Error(resp.error ?? "Failed to load TDS sections");
+  return resp.data;
+}
+
+/** Single-payment TDS calculation via the authoritative TDSComputer.resolve_tds().
+ * Pass `pan` when known so is_company/§206AA are derived server-side the same
+ * way the real purchase-bill TDS deduction already does — never re-derive
+ * individual-vs-company or no-PAN rules on the frontend. */
+export async function computeTdsAmount(params: {
+  section: string;
+  payment_amount_paise: number;
+  pan?: string | null;
+  fy?: string;
+}): Promise<TDSAmountResult> {
+  const resp = await authedFetch<TDSAmountResult>("/api/tds/compute-amount", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+  if (!resp.success) throw new Error(resp.error ?? "TDS calculation failed");
+  return resp.data;
+}
+
 // ── Supabase Queries ───────────────────────────────────────────────────────
 
 export async function getTDSReturns(clientId: string): Promise<TDSReturn[]> {
@@ -183,27 +247,25 @@ export async function getTDSChallans(clientId: string, quarter?: string): Promis
   return (data ?? []) as unknown as Record<string, unknown>[];
 }
 
+/** Status transitions go through the backend (PATCH /returns/{id}/status)
+ * rather than writing tds_returns directly from the browser — the backend
+ * enforces the explicit CA-confirmation gate, requires a PRN before "filed",
+ * and records an audit-log entry + timeline event that a direct Supabase
+ * write from here would silently skip. */
 export async function approveTDSReturn(returnId: string): Promise<void> {
-  const sb = getSupabaseClient();
-  const { error } = await sb
-    .from("tds_returns")
-    .update({ status: "ca_approved", ca_approved_at: new Date().toISOString() })
-    .eq("id", returnId);
-  if (error) throw new Error(error.message);
+  const resp = await authedFetch(`/api/tds-workspace/returns/${returnId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "ca_approved", ca_approved: true }),
+  });
+  if (!resp.success) throw new Error(resp.error ?? "Approval failed");
 }
 
 export async function markTDSFiled(returnId: string, prn: string, ackNumber: string): Promise<void> {
-  const sb = getSupabaseClient();
-  const { error } = await sb
-    .from("tds_returns")
-    .update({
-      status: "filed",
-      prn,
-      ack_number: ackNumber,
-      filed_at: new Date().toISOString(),
-    })
-    .eq("id", returnId);
-  if (error) throw new Error(error.message);
+  const resp = await authedFetch(`/api/tds-workspace/returns/${returnId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "filed", ca_approved: true, prn, ack_number: ackNumber }),
+  });
+  if (!resp.success) throw new Error(resp.error ?? "Failed to mark as filed");
 }
 
 export async function saveTDSReturn(
