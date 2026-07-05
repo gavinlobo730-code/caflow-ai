@@ -12,6 +12,7 @@ from typing import Optional
 from core.permissions import rbac
 from domain.tds import TDSComputer, TDSDeducteeRecord
 from domain.tds.section_rates import tds_rates_for
+from domain.tds.tds_computer import is_company_pan, has_pan as pan_on_file
 from repositories.tds_repository import tds_repo
 
 router = APIRouter(prefix="/api/tds", tags=["tds"])
@@ -84,6 +85,12 @@ class TDSAmountRequest(BaseModel):
     # floors at the registry's section_206aa_floor_rate_bps). Defaults to
     # True (has a PAN) so existing callers' behaviour is unchanged.
     has_pan: bool = True
+    # Optional: when supplied, is_company/has_pan above are IGNORED and
+    # instead derived from the PAN itself via is_company_pan()/has_pan() —
+    # the same authoritative derivation the real purchase-bill TDS deduction
+    # already uses (routers/purchase_bills.py), so a caller with a payee's
+    # PAN on file never has to duplicate that rule itself.
+    pan: Optional[str] = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -246,10 +253,12 @@ def compute_tds_amount(req: TDSAmountRequest, user: dict = Depends(rbac("tds", "
     requested FY (defaults to the current FY).
     IT Act Chapter XVII-B.
     """
+    is_company = is_company_pan(req.pan) if req.pan is not None else req.is_company
+    has_pan_on_file = pan_on_file(req.pan) if req.pan is not None else req.has_pan
     try:
         resolution = computer.resolve_tds(
-            req.section, req.payment_amount_paise, is_company=req.is_company, fy=req.fy,
-            has_pan=req.has_pan)
+            req.section, req.payment_amount_paise, is_company=is_company, fy=req.fy,
+            has_pan=has_pan_on_file)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Unknown TDS section: {req.section}")
 

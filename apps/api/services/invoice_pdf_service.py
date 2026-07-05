@@ -199,15 +199,26 @@ def build_invoice_pdf(invoice: dict, firm: dict, client: dict, engagement: Optio
         invoice, firm, client
     )
 
-    description = "Professional Services — Chartered Accountancy"
-    if engagement and engagement.get("service_type"):
-        description = f"Professional Services — {engagement['service_type']}"
+    lines = invoice.get("lines") or []
 
-    rows = [
-        ["#", "Description", "SAC", "Taxable Value (₹)"],
-        ["1", Paragraph(description, styles["Normal"]), SAC_CODE, _paise_to_rupee_str(amount_paise)],
-        ["", "Taxable Value", "", _paise_to_rupee_str(amount_paise)],
-    ]
+    rows = [["#", "Description", "SAC", "Taxable Value (₹)"]]
+    if lines:
+        for i, line in enumerate(lines, start=1):
+            rows.append([
+                str(i),
+                Paragraph(line.get("description") or "", styles["Normal"]),
+                line.get("hsn_sac") or SAC_CODE,
+                _paise_to_rupee_str(line.get("taxable_amount_paise", 0)),
+            ])
+    else:
+        # Legacy engagement-based invoices carry no line-items concept — a
+        # single synthetic row describing the engagement is all there is.
+        description = "Professional Services — Chartered Accountancy"
+        if engagement and engagement.get("service_type"):
+            description = f"Professional Services — {engagement['service_type']}"
+        rows.append(["1", Paragraph(description, styles["Normal"]), SAC_CODE, _paise_to_rupee_str(amount_paise)])
+
+    rows.append(["", "Taxable Value", "", _paise_to_rupee_str(amount_paise)])
     if cgst_paise or sgst_paise:
         rows.append(["", f"CGST @ {GST_RATE_PCT // 2}%", "", _paise_to_rupee_str(cgst_paise)])
         rows.append(["", f"SGST @ {GST_RATE_PCT // 2}%", "", _paise_to_rupee_str(sgst_paise)])
@@ -311,6 +322,13 @@ def get_sales_invoice_pdf(invoice_id: str, firm_id: str) -> tuple[bytes, str]:
         raise ValueError(f"Invoice {invoice_id} not found for firm {firm_id}")
     data = row.data
     customer = data.get("customers") or {}
+    lines_resp = (
+        db.table("client_sales_invoice_lines")
+        .select("*")
+        .eq("sales_invoice_id", invoice_id)
+        .order("sort_order")
+        .execute()
+    )
     invoice_dict = {
         "invoice_no":   data["invoice_no"],
         "invoice_date": data["invoice_date"],
@@ -323,6 +341,7 @@ def get_sales_invoice_pdf(invoice_id: str, firm_id: str) -> tuple[bytes, str]:
         "sgst_paise":   data.get("sgst_paise", 0),
         "igst_paise":   data.get("igst_paise", 0),
         "total_paise":  data.get("total_paise", 0),
+        "lines":        lines_resp.data or [],
     }
     firm = _load_firm(firm_id)
     pdf = build_invoice_pdf(invoice_dict, firm, customer)
