@@ -13,6 +13,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { cn } from "@/lib/utils";
 import { toLocalISO } from "@/lib/dateMath";
+import { api } from "@/lib/api";
+import { mapComplianceKpis } from "@/lib/dashboard/complianceKpis";
 
 // ─── Welcome next-steps shown after onboarding completes ─────────────────────
 const NEXT_STEPS = [
@@ -222,34 +224,37 @@ export default function DashboardContent() {
         const { data: firmMeta } = await supabase.from("firms").select("name").eq("id", firmId).maybeSingle();
         if (!firmMeta?.name) { router.replace("/onboarding"); return; }
 
-        const todayStr = today.toISOString().split("T")[0];
-        const monthStart = todayStr.slice(0, 7) + "-01";
-        const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split("T")[0];
-
         const [
           { count: totalClients },
           { count: pendingCount },
-          { count: filingsDue },
-          { count: overdueCount },
           { count: demoCount },
           { data: clientsData },
           { data: tasksRaw },
+          complianceResp,
         ] = await Promise.all([
           supabase.from("clients").select("id", { count: "exact", head: true }).eq("firm_id", firmId).eq("is_internal", false),
           supabase.from("tasks").select("id", { count: "exact", head: true }).eq("firm_id", firmId).neq("status", "completed"),
-          supabase.from("compliance_entries").select("id", { count: "exact", head: true }).eq("firm_id", firmId).gte("due_date", monthStart).lte("due_date", monthEnd).neq("status", "filed"),
-          supabase.from("compliance_entries").select("id", { count: "exact", head: true }).eq("firm_id", firmId).lt("due_date", todayStr).neq("status", "filed"),
           // DEMO MODE filing simulations (separate from real compliance status).
           supabase.from("demo_filings").select("id", { count: "exact", head: true }).eq("firm_id", firmId),
           supabase.from("clients").select("id, client_name, gstin, entity_type").eq("firm_id", firmId).eq("is_internal", false).order("created_at", { ascending: false }).limit(5),
           supabase.from("tasks").select("id, title, due_date, status, clients(client_name)").eq("firm_id", firmId).order("created_at", { ascending: false }).limit(6),
+          // H13: pulls from the SAME authoritative aggregation the Compliance
+          // workspace uses (compliance_obligation_service.aggregate_dashboard,
+          // IST-aware, canonical compliance_records) — previously this queried
+          // the legacy `compliance_entries` view directly with UTC dates, which
+          // silently disagreed with the workspace's counts.
+          api.complianceOps.dashboard(),
         ]);
+
+        const { filingsDueThisMonth, overdueFilings } = mapComplianceKpis(
+          complianceResp as Parameters<typeof mapComplianceKpis>[0]
+        );
 
         setKpis({
           totalClients: totalClients ?? 0,
           pendingTasks: pendingCount ?? 0,
-          filingsDueThisMonth: filingsDue ?? 0,
-          overdueFilings: overdueCount ?? 0,
+          filingsDueThisMonth,
+          overdueFilings,
           demoFilings: demoCount ?? 0,
         });
         setRecentClients((clientsData as RecentClient[]) ?? []);
