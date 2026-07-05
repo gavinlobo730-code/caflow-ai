@@ -74,5 +74,7 @@ cross-year reports, and a large-client (10k+ entries) report timing.
 
 ## 7. Do NOT enable in Beta
 
-Multi-currency (design frozen, not implemented), e-invoice/e-way bill,
+Multi-currency (implemented across Phases 1-5 and wired into posting/reports,
+but kept OFF by default via `MULTI_CURRENCY_ENABLED` plus firm/client
+entitlement gates — leave disabled for Beta), e-invoice/e-way bill,
 GST return **submission** to the portal (always CA-review-gated; never auto-submit).

@@ -376,8 +376,11 @@ audit log (Partner), branding & invoice/email templates (Partner), timeline.
   - **Lock FY (Partner, PIN):** lock a year → posting into that year is rejected with a clear
     message; unlock requires the correct PIN.
   - CoA import (Tally/Busy/Zoho/QB/Excel CSV): validates type enum, dedupes by code; CoA export
-    downloads CSV; Trial-Balance import parses ₹/commas/negatives into integer paise and shows a
-    Dr=Cr balance check.
+    downloads CSV. Trial-Balance import is **intentionally gated off** — no migration adds the
+    `chart_of_accounts.opening_balance_dr_paise`/`opening_balance_cr_paise` columns it needs, and
+    the reporting engine doesn't consume them either, so the wizard checks availability on load and
+    shows a clear "not available yet" message with a link to Chart of Accounts instead of running a
+    wizard that would fail every row (verify the disabled-state message renders, not the wizard).
 - **Edge cases:** posting needs Partner approval (no auto-post); locked-period and unbalanced
   attempts must fail with friendly messages; very large amounts (crores → paise) must not lose
   precision; some firm-level `/accounting/*` pages **redirect into the client workspace** (verify
