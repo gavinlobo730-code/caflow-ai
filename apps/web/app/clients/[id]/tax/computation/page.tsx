@@ -120,6 +120,7 @@ export default function TaxComputationPage() {
       const computeRes = await apiFetch("/api/income-tax/compute", {
         method: "POST",
         body: JSON.stringify({
+          fy,
           gross_salary_paise: toP(salary),
           business_income_paise: toP(businessIncome),
           other_income_paise: toP(otherIncome),
