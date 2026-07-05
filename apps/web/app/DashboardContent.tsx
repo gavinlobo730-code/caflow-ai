@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { cn } from "@/lib/utils";
+import { toLocalISO } from "@/lib/dateMath";
 
 // ─── Welcome next-steps shown after onboarding completes ─────────────────────
 const NEXT_STEPS = [
@@ -122,7 +123,7 @@ function getUpcomingDeadlines(today: Date): UpcomingDeadline[] {
   return deadlines
     .map((d) => ({
       name: d.name,
-      date: d.date.toISOString().split("T")[0],
+      date: toLocalISO(d.date),
       daysLeft: Math.ceil((d.date.getTime() - todayMs) / 86400000),
     }))
     .filter((d) => d.daysLeft >= 0)

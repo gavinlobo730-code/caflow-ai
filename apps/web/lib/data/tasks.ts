@@ -1,6 +1,7 @@
 import { getFirmId } from "./getFirmId";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { Task, KanbanBoard, FirmUser } from "@/lib/types";
+import { todayLocalISO, toLocalISO } from "@/lib/dateMath";
 
 // ---------------------------------------------------------------------------
 // Dev-mode query timing — logs to console in development, silent in production.
@@ -77,8 +78,8 @@ export async function getTaskCounts(assignedTo?: string, assigneeId?: string): P
   const t0 = Date.now();
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
-  const today = new Date().toISOString().split("T")[0];
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const today = todayLocalISO();
+  const sevenDaysAgo = toLocalISO(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
 
   // Factory: base query with firm isolation and optional assignee filter.
   // Returns a fresh builder each call so each COUNT is independent.

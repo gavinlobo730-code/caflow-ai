@@ -6,6 +6,7 @@ import { ChevronLeft, Download, ShieldCheck, RefreshCw } from "lucide-react";
 import { api, type AuditEntry } from "@/lib/api";
 import { RoleGuard } from "@/components/RoleGuard";
 import { formatDate } from "@/lib/services/formatting";
+import { todayLocalISO } from "@/lib/dateMath";
 
 // ── Formatting helpers ─────────────────────────────────────────────────────────
 // The audit_log table stores backend vocabulary: entity_type is snake_case
@@ -259,7 +260,7 @@ function AuditLogContent() {
 
   function handleExport() {
     const csv = toCSV(filtered);
-    const now = new Date().toISOString().slice(0, 10);
+    const now = todayLocalISO();
     downloadCSV(csv, `audit-log-${now}.csv`);
   }
 

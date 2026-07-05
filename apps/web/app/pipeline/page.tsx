@@ -20,6 +20,7 @@ import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+import { formatDate as formatDateShared } from "@/lib/services/formatting";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -297,11 +298,7 @@ function nextStage(stage: Stage): Stage | null {
 function formatDate(dateStr: string): string {
   if (!dateStr) return "—";
   try {
-    return new Date(dateStr).toLocaleDateString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
+    return formatDateShared(dateStr);
   } catch {
     return dateStr;
   }

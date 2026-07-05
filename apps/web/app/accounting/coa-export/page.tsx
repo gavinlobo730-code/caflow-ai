@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, Download, FileText } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { todayLocalISO } from "@/lib/dateMath";
 
 interface CoaRow {
   account_code: string;
@@ -77,7 +78,7 @@ export default function CoaExportPage() {
       if (err) throw new Error(err.message);
       const rows = (data ?? []) as CoaRow[];
       setCount(rows.length);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayLocalISO();
       if (format === "csv") {
         downloadFile(toCSV(rows), `chart-of-accounts-${today}.csv`, "text/csv");
       }
