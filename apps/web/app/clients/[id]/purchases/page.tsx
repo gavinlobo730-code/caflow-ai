@@ -16,6 +16,7 @@ import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { Combobox } from "@/components/ui/combobox";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS, type NameRef } from "@/lib/imports/mappers";
+import { dnLineGst } from "@/lib/purchases/debitNoteGst";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -1618,19 +1619,6 @@ interface OpenBillOption {
   net_payable_paise: number;
   paid_paise: number;
   debited_paise: number;
-}
-
-function dnLineGst(line: DebitNoteLine, isInterstate: boolean) {
-  const taxable = Math.round(line.quantity * line.rate * 100); // paise
-  let cgst = 0, sgst = 0, igst = 0;
-  if (isInterstate) {
-    igst = Math.floor((taxable * line.gst_rate_bps) / 10000);
-  } else {
-    const half = Math.floor(line.gst_rate_bps / 2);
-    cgst = Math.floor((taxable * half) / 10000);
-    sgst = Math.floor((taxable * half) / 10000);
-  }
-  return { taxable_paise: taxable, cgst_paise: cgst, sgst_paise: sgst, igst_paise: igst, line_total: taxable + cgst + sgst + igst };
 }
 
 function DebitNoteForm({
