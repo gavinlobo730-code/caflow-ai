@@ -480,13 +480,19 @@ function GSTR9Tab() {
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 
+// GSTR-9 is intentionally hidden for Closed Beta (Beta-readiness Part 1):
+// GSTR9Tab() below has no computation logic behind it (no gstr9_builder in
+// apps/api/domain/gst, unlike GSTR-1/GSTR-3B) — it only ever rendered a
+// static "not available yet" message. GSTR-9's own due-date obligation is
+// still tracked correctly via the Compliance workspace/dashboard; only this
+// decorative preparation tab is hidden. Component kept, not deleted, so it
+// can be wired to a real builder and re-added to TABS later.
 const TABS: { id: GSTTab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "gstr1", label: "GSTR-1" },
   { id: "gstr3b", label: "GSTR-3B" },
   { id: "gstr2b", label: "GSTR-2B Recon" },
   { id: "history", label: "Filing History" },
-  { id: "gstr9", label: "GSTR-9" },
 ];
 
 export default function GSTWorkspacePage() {

@@ -37,13 +37,12 @@ Callers reference accounts by intent, not id. `_find_account(db, firm_id, client
 | Customer receipt | `journal_for_receipt` (via `receipt_service`) |
 | Vendor payment | `journal_for_purchase_payment` |
 | Credit note (on issue) | `journal_for_credit_note` |
+| Debit note (on issue) | `journal_for_debit_note` |
 | Bank transaction | `journal_for_bank_transaction` / `bank_posting_service` (draft) |
 | Payroll / Fixed assets | `journal_for_payroll` / `journal_for_asset_*` |
 | Opening balances | `opening_balance_service.post_opening_balances` → `_create_journal` |
 | **Manual journal** | `manual_journal_service.create` → `_create_journal` |
 | **Reversal** | `routers/accounting.reverse_journal_entry` → `_create_journal` |
-
-Debit notes: not implemented as a document (out of scope).
 
 ## Draft → Approve → Post lifecycle
 

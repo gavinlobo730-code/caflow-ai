@@ -18,6 +18,7 @@ import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { StateLookup } from "@/components/lookups/StateLookup";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
+import { toInvoiceLinePayload } from "@/lib/invoices/lineItemPayload";
 import { buildCustomers, CUSTOMER_IMPORT_COLUMNS, buildReceipts, RECEIPT_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import {
   PAYMENT_TERM_PRESETS,
@@ -2065,13 +2066,7 @@ function InvoiceForm({
       return;
     }
 
-    const linePayload = validLines.map((l) => ({
-      description: l.description.trim(),
-      hsn_sac: l.hsn_sac.trim() || undefined,
-      quantity: parseFloat(l.qty),
-      rate_paise: Math.round(parseFloat(l.rate) * 100),
-      gst_rate_bps: l.gst_rate * 100,
-    }));
+    const linePayload = validLines.map(toInvoiceLinePayload);
 
     setSaving(true); setError(null);
     try {
@@ -4393,13 +4388,7 @@ function CreditNoteForm({
           credit_note_date: cnDate,
           reason: reason.trim(),
           sales_invoice_id: originalInvoiceId || undefined,
-          lines: validLines.map((l) => ({
-            description: l.description.trim(),
-            hsn_sac: l.hsn_sac.trim() || undefined,
-            quantity: parseFloat(l.qty),
-            rate_paise: Math.round(parseFloat(l.rate) * 100),
-            gst_rate_bps: l.gst_rate * 100,
-          })),
+          lines: validLines.map(toInvoiceLinePayload),
         },
         token
       );

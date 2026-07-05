@@ -32,12 +32,14 @@ The live GL is **`journal_entries` + `journal_lines` only** (migration `003_phas
 **Every** accounting workflow posts through one function — `phase2_journal_service._create_journal` — which validates double-entry balance and writes the entry + lines. There are no alternative posting paths (enforced as of Phase 0.5; see `02-posting-kernel.md`).
 
 ```
-Sales · Purchases · Receipts · Payments · Credit Notes ┐
-Banking (import/settlement) · Payroll · Fixed Assets   ├─▶ _create_journal ─▶ journal_entries
-Opening Balances · Manual Journals · Reversals         ┘        + journal_lines ─▶ Reporting
+Sales · Purchases · Receipts · Payments             ┐
+Credit Notes · Debit Notes · Banking (import/       ├─▶ _create_journal ─▶ journal_entries
+settlement) · Payroll · Fixed Assets · Opening       │        + journal_lines ─▶ Reporting
+Balances · Manual Journals · Reversals               ┘
 ```
 
-*(Debit notes do not exist yet as a document — only a GST classification string.)*
+*(Debit notes: full document + GL posting, `apps/api/routers/debit_notes.py`, migration `145`;
+frontend UI on the Purchases page.)*
 
 ## Core invariants
 
