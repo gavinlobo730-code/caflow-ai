@@ -27,6 +27,7 @@ import type { Client } from "@/lib/types";
 import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { Column, FilterDef } from "@/lib/table/types";
+import { todayLocalISO, computeOverdueStatus } from "@/lib/dateMath";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,8 +50,6 @@ interface GSTFiling {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TODAY = new Date("2026-06-01");
-
 const RETURN_TYPES: ReturnType[] = ["GSTR-1", "GSTR-3B", "GSTR-9"];
 
 const MONTH_NAMES = [
@@ -63,9 +62,10 @@ const MONTH_NAMES = [
  * Financial year runs April–March (CGST Act).
  */
 function buildMonthOptions(): { value: string; label: string }[] {
+  const today = new Date(todayLocalISO() + "T00:00:00");
   const options: { value: string; label: string }[] = [];
   for (let i = 11; i >= 0; i--) {
-    const d = new Date(TODAY.getFullYear(), TODAY.getMonth() - i, 1);
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
     const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
     options.push({ value: label, label });
   }
@@ -106,17 +106,14 @@ function fmtDate(iso: string): string {
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-/** Determine status — Overdue if past due_date and not Filed */
-function computeStatus(dueDate: string, filedDate: string | null): FilingStatus {
-  if (filedDate) return "Filed";
-  const due = new Date(dueDate + "T00:00:00");
-  return TODAY > due ? "Overdue" : "Pending";
-}
+/** Determine status — Overdue only once a full calendar day has passed the due date */
+const computeStatus = computeOverdueStatus;
 
 // ─── Key deadlines banner ─────────────────────────────────────────────────────
 
-const currentMonth = MONTH_NAMES[TODAY.getMonth()];
-const currentYear = TODAY.getFullYear();
+const _today = new Date(todayLocalISO() + "T00:00:00");
+const currentMonth = MONTH_NAMES[_today.getMonth()];
+const currentYear = _today.getFullYear();
 
 /** CGST Act Section 37: GSTR-1 due 11th of this month (for prior month) */
 const KEY_DEADLINES = [
@@ -181,7 +178,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
     try {
       const sb = getSupabaseClient();
       const selectedClient = clients.find((c) => c.id === clientId);
-      const filedDate = status === "Filed" ? TODAY.toISOString().slice(0, 10) : null;
+      const filedDate = status === "Filed" ? todayLocalISO() : null;
 
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
       // Map ReturnType to compliance_calendar compliance_type values
@@ -431,14 +428,14 @@ export default function GSTPage() {
     // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     const { error: dbErr } = await sb
       .from("compliance_calendar")
-      .update({ filing_status: "filed", filed_date: TODAY.toISOString().slice(0, 10) })
+      .update({ filing_status: "filed", filed_date: todayLocalISO() })
       .eq("id", id);
 
     if (!dbErr) {
       setFilings((prev) =>
         prev.map((f) =>
           f.id === id
-            ? { ...f, status: "Filed", filed_date: TODAY.toISOString().slice(0, 10) }
+            ? { ...f, status: "Filed", filed_date: todayLocalISO() }
             : f
         )
       );
@@ -446,7 +443,7 @@ export default function GSTPage() {
   }
 
   // ── Summary counts (current month) ────────────────────────────────────────
-  const currentPeriod = `${MONTH_NAMES[TODAY.getMonth()]} ${TODAY.getFullYear()}`;
+  const currentPeriod = `${currentMonth} ${currentYear}`;
 
   const totalClients = new Set(filings.map((f) => f.client_id)).size;
 

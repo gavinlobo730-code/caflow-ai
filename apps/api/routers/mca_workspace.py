@@ -15,6 +15,7 @@ import os
 import uuid
 import logging
 from datetime import datetime, date
+from core.ist_clock import ist_today
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -444,7 +445,7 @@ def complete_filing(
         status="filed",
         ca_approved=body.ca_approved,
         srn=body.srn,
-        filing_date=body.filing_date or date.today().isoformat(),
+        filing_date=body.filing_date or ist_today().isoformat(),
         acknowledgement_url=body.acknowledgement_url,
     )
     return update_filing_status(filing_id, body_with_filed, current_user)
@@ -472,7 +473,7 @@ def mca_calendar(
         except ValueError:
             return api_response(False, None, "Invalid agm_date format. Use YYYY-MM-DD.")
 
-        today = date.today()
+        today = ist_today()
 
         # Companies Act §92/137/139 — deadline computation from AGM date.
         # R3.1: offsets sourced from compliance_engine.MCA_AGM_OFFSET_DAYS,
