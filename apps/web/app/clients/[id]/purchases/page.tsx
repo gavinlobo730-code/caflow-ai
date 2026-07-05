@@ -473,7 +473,11 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
             hsn_sac: l.hsn_sac || undefined,
             quantity: l.quantity,
             rate_paise: Math.round(l.rate * 100),
-            gst_rate_bps: l.gst_rate_bps,
+            // PurchaseBillLineIn (apps/api/models/invoices.py) declares
+            // gst_rate_percent, not gst_rate_bps — the latter is silently
+            // dropped by Pydantic and every line falls back to the model's
+            // 18% default regardless of the rate picked here (Part 4, Beta batch).
+            gst_rate_percent: l.gst_rate_bps / 100,
             expense_account_id: l.expense_account_id || undefined,
           })),
           currency: isForeign ? currency : undefined,

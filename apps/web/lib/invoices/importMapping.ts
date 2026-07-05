@@ -3,8 +3,11 @@
  *
  * Groups flat line-rows into invoices and maps them onto the EXISTING
  * /api/sales-invoices/ create payload (no parallel invoice logic). All money is
- * converted to integer paise here; GST rate is expressed in basis points to match
- * the backend (gst_rate_bps = percent × 100). Kept pure so it is unit-tested.
+ * converted to integer paise here; GST rate is sent as gst_rate_percent, the
+ * field InvoiceLineIn (apps/api/models/invoices.py) actually declares — a
+ * previous gst_rate_bps field here was silently dropped by Pydantic and every
+ * imported line fell back to the model's 18% default (Beta-readiness Part 4).
+ * Kept pure so it is unit-tested.
  */
 
 export interface CustomerRef { id: string; name: string; }
@@ -13,8 +16,8 @@ export interface BuiltLine {
   description: string;
   hsn_sac?: string;
   quantity: number;
-  rate_paise: number;     // integer paise (rupees × 100)
-  gst_rate_bps: number;   // basis points (percent × 100)
+  rate_paise: number;        // integer paise (rupees × 100)
+  gst_rate_percent: number;  // e.g. 18 for 18%
 }
 
 export interface BuiltInvoice {
@@ -94,8 +97,8 @@ export function buildSalesInvoices(
       description,
       hsn_sac: (r.hsn_sac ?? "").trim() || undefined,
       quantity: qty,
-      rate_paise: Math.round(rate * 100),     // integer paise — never float
-      gst_rate_bps: Math.round(gst * 100),    // basis points
+      rate_paise: Math.round(rate * 100),   // integer paise — never float
+      gst_rate_percent: gst,
     };
 
     const existing = groups.get(ref);

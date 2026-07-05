@@ -193,7 +193,10 @@ export interface BuiltBillLine {
   hsn_sac?: string;
   quantity: number;
   rate_paise: number;
-  gst_rate_bps: number;
+  // PurchaseBillLineIn (apps/api/models/invoices.py) declares gst_rate_percent,
+  // not gst_rate_bps — the latter used to be silently dropped by Pydantic,
+  // defaulting every imported line to 18% GST (Beta-readiness Part 4).
+  gst_rate_percent: number;
 }
 
 export interface BuiltBill {
@@ -254,7 +257,7 @@ export function buildPurchaseBills(
       hsn_sac: str(r.hsn_sac) || undefined,
       quantity: qty,
       rate_paise: toPaise(r.rate),
-      gst_rate_bps: toBps(r.gst_rate),
+      gst_rate_percent: gst,
     };
 
     const existing = groups.get(ref);
