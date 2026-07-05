@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { formatDate } from "@/lib/services/formatting";
+import { todayLocalISO } from "@/lib/dateMath";
 import { getComplianceCalendar, markFiled as markObligationFiled } from "@/lib/data/compliance";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { getClients } from "@/lib/data/clients";
@@ -149,6 +150,10 @@ function DeadlinesContent() {
 
   const today = new Date().toISOString().split("T")[0];
   const in7Days = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
+  // Deliberately separate from `today` above (left as-is — it feeds the Overdue /
+  // Due This Week KPI counts, a business classification out of Phase 4's cosmetic
+  // scope): this is only for the Due Date cell's text color below.
+  const todayForDueDateColor = todayLocalISO();
 
   // Apply URL type filter first (drives the stats cards AND the table dataset)
   const typeRecords = useMemo(
@@ -208,7 +213,7 @@ function DeadlinesContent() {
     {
       key: "due_date", header: "Due Date", sortable: true, accessor: (r) => r.due_date,
       render: (r) => (
-        <span className={`text-xs whitespace-nowrap ${r.due_date < today && r.filing_status !== "filed" ? "text-red-600 font-medium" : "text-[#475569]"}`}>
+        <span className={`text-xs whitespace-nowrap ${r.due_date < todayForDueDateColor && r.filing_status !== "filed" ? "text-red-600 font-medium" : "text-[#475569]"}`}>
           {formatDate(r.due_date)}
         </span>
       ),
@@ -239,7 +244,7 @@ function DeadlinesContent() {
         </span>
       ),
     },
-  ], [clientMap, clientGstinMap, demoFilings, today]);
+  ], [clientMap, clientGstinMap, demoFilings, todayForDueDateColor]);
 
   // ── DataTable filters — status always; type only when URL doesn't set it ────
   // (Matching the original: the Type dropdown is hidden — and not applied — when

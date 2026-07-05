@@ -223,7 +223,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
 }) {
   const unpaid = invoices.filter(i => i.status !== "Paid");
   const [invoiceId, setInvoiceId] = useState(unpaid[0]?.id ?? "");
-  const [receiptDate, setReceiptDate] = useState(new Date().toISOString().split("T")[0]);
+  const [receiptDate, setReceiptDate] = useState(todayLocalISO());
   const [amountRs, setAmountRs] = useState("");
   const [paymentMode, setPaymentMode] = useState<PaymentMode>("NEFT");
   const [referenceNo, setReferenceNo] = useState("");

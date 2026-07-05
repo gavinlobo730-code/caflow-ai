@@ -159,7 +159,7 @@ export default function ReceivablesAgingPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `receivables-aging-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `receivables-aging-${todayLocalISO()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
