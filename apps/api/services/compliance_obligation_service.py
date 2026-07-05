@@ -21,7 +21,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
-from core.ist_clock import ist_today, ist_now
+from core.ist_clock import ist_today, ist_fy_label
 from services import compliance_engine as ce
 from repositories.compliance_records_repository import compliance_records_repo
 from repositories.engagement_repository import engagement_repo
@@ -486,6 +486,4 @@ def calendar(firm_id: str, client_id: Optional[str] = None, today: Optional[date
 
 
 def _current_fy() -> str:
-    now = ist_now()
-    start = now.year if now.month >= 4 else now.year - 1
-    return f"{start}-{str(start + 1)[2:]}"
+    return ist_fy_label()

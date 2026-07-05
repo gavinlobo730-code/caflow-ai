@@ -31,3 +31,14 @@ def ist_today() -> date:
     date.today() / datetime.now(timezone.utc).date() wherever the result
     represents a CA's "today", not a server log timestamp."""
     return ist_now().date()
+
+
+def ist_fy_label(d: date | None = None) -> str:
+    """Indian FY label ('YYYY-YY') for the given date, defaulting to the
+    current IST calendar date. FY runs 1 April - 31 March. Consolidates what
+    were previously independent, identical implementations in
+    services/compliance_obligation_service.py and
+    domain/income_tax/statutory_rates.py."""
+    d = d or ist_today()
+    start = d.year if d.month >= 4 else d.year - 1
+    return f"{start}-{str(start + 1)[2:]}"

@@ -146,3 +146,34 @@ def test_past_scheduled_hour_matches_manual_ist_calculation():
     now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
     expected = now_ist.hour >= sched._SCHEDULED_HOUR_IST
     assert sched._past_scheduled_hour() == expected
+
+
+# ── Phase 3: _past_scheduled_hour now delegates to core.ist_clock.ist_now() ───
+# instead of re-resolving ZoneInfo("Asia/Kolkata") locally. These freeze the
+# shared clock (same technique as test_ist_clock.py) to pin the 06:00 IST
+# boundary deterministically, rather than relying only on the live-clock
+# comparison above.
+
+def _freeze_ist_clock(monkeypatch, utc_iso: str):
+    import datetime as _datetime_module
+    from datetime import datetime, timezone
+    import core.ist_clock as ist_clock
+
+    fixed = datetime.fromisoformat(utc_iso).replace(tzinfo=timezone.utc)
+
+    class _FrozenDateTime(_datetime_module.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed.astimezone(tz) if tz is not None else fixed
+
+    monkeypatch.setattr(ist_clock, "datetime", _FrozenDateTime)
+
+
+def test_past_scheduled_hour_false_just_before_6am_ist(monkeypatch):
+    _freeze_ist_clock(monkeypatch, "2026-04-01T00:29:00")  # 05:59 IST
+    assert sched._past_scheduled_hour() is False
+
+
+def test_past_scheduled_hour_true_at_6am_ist(monkeypatch):
+    _freeze_ist_clock(monkeypatch, "2026-04-01T00:30:00")  # 06:00 IST
+    assert sched._past_scheduled_hour() is True

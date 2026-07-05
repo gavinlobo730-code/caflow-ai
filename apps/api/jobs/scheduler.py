@@ -369,13 +369,16 @@ def _past_scheduled_hour() -> bool:
     """True if the current IST time is at/after the scheduled run hour (06:00 IST).
     Falls back to True (so staleness can still be flagged) if tz lookup fails.
 
-    Uses stdlib zoneinfo, not pytz — pytz was never in requirements.txt (same
-    class of bug as _compute_next_run's missing croniter/pytz, R2.7
-    adversarial-review finding), so this always hit the except branch."""
+    Delegates to ist_now() (core/ist_clock.py) instead of re-resolving
+    ZoneInfo("Asia/Kolkata") locally — identical computation (ist_now() is
+    datetime.now(ZoneInfo("Asia/Kolkata"))), single source of truth (Phase 3
+    consolidation). Previously used stdlib zoneinfo directly, not pytz — pytz
+    was never in requirements.txt (same class of bug as _compute_next_run's
+    missing croniter/pytz, R2.7 adversarial-review finding), so this always
+    hit the except branch."""
     try:
-        from zoneinfo import ZoneInfo
-        now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
-        return now_ist.hour >= _SCHEDULED_HOUR_IST
+        from core.ist_clock import ist_now
+        return ist_now().hour >= _SCHEDULED_HOUR_IST
     except Exception:  # pragma: no cover - defensive
         return True
 
