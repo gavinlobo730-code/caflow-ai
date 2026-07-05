@@ -5,7 +5,8 @@ import { Plus, Upload, AlertCircle, CheckCircle, X } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
-import { formatPaise } from "@/lib/services/formatting";
+import { formatPaise, formatMoney } from "@/lib/services/formatting";
+import { estimateBaseMinor, estimateForeignTds, convertBaseToForeignMinor } from "@/lib/services/currencyPreview";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { VendorLookup } from "@/components/lookups/VendorLookup";
@@ -62,6 +63,24 @@ async function apiCall(
       }
     }
     return { success: false, data: null, error: errorMsg };
+  }
+  return res.json();
+}
+
+async function apiGet(
+  endpoint: string,
+  token?: string
+): Promise<{ success: boolean; data: unknown; error: string | null }> {
+  const res = await fetch(`${API}${endpoint}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "Request failed");
+    return { success: false, data: null, error: text };
   }
   return res.json();
 }
@@ -198,9 +217,16 @@ interface BillLine {
   description: string;
   hsn_sac: string;
   quantity: number;
-  rate: number; // rupees
+  rate: number; // rupees, or txn-currency major units when foreign
   gst_rate_bps: number;
   expense_account_id: string;
+}
+
+interface CurrencyOption {
+  code: string;
+  symbol: string | null;
+  display_name: string | null;
+  minor_unit: number;
 }
 
 interface Vendor {
@@ -250,6 +276,40 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   const [lines, setLines] = useState<BillLine[]>([
     { description: "", hsn_sac: "", quantity: 1, rate: 0, gst_rate_bps: 1800, expense_account_id: "" },
   ]);
+
+  // Multi-Currency (Phase 3 backend already ships this; UI wired up here).
+  // Purchase bills have no edit/PATCH flow — this form is create-only, so
+  // there's no "locked after posting" state to show; currency just resets
+  // manually after each save (see handleSave), since this form never unmounts.
+  const [currency, setCurrency] = useState("");
+  const [exchangeRate, setExchangeRate] = useState("");
+  const [mcActive, setMcActive] = useState(false);
+  const [currencies, setCurrencies] = useState<CurrencyOption[]>([]);
+
+  useEffect(() => {
+    if (!clientId) return;
+    let cancelled = false;
+    (async () => {
+      const token = await getAuthToken();
+      const pol = await apiGet(`/api/currencies/policy?client_id=${clientId}`, token);
+      if (cancelled) return;
+      const active = Boolean(pol.success && (pol.data as { active?: boolean } | null)?.active);
+      setMcActive(active);
+      if (!active) return;
+      const list = await apiGet(`/api/currencies?active_only=true`, token);
+      if (!cancelled && list.success) setCurrencies((list.data as CurrencyOption[]) ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [clientId]);
+
+  const isForeign = currency !== "" && currency !== "INR";
+  const rateNum = parseFloat(exchangeRate);
+
+  // Rough client-side preview only — the backend recomputes everything from
+  // `lines` + `vendor_id` on save (this form's POST body never sends totals).
+  function fmtAmt(paise: number): string {
+    return isForeign ? formatMoney(paise, currency) : fmt(paise);
+  }
 
   const selectedVendor = vendors.find((v) => v.id === vendorId);
 
@@ -313,12 +373,25 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
     { taxable: 0, gst: 0, total: 0 }
   );
 
-  const tds_paise =
+  // TDS is a purely domestic, INR-only concept (IT Act §194) — the backend
+  // always computes it off the INR-equivalent taxable value, converting a
+  // foreign bill's txn-currency taxable to base BEFORE applying the TDS rate
+  // (never off the raw foreign figure). Mirror that same order here so the
+  // preview doesn't understate/overstate TDS by the exchange-rate factor.
+  // See lib/services/currencyPreview.ts (unit-tested) for the exact math.
+  const estBaseTaxable = isForeign && rateNum > 0 ? estimateBaseMinor(totals.taxable, rateNum) : totals.taxable;
+  const estBaseTotal = isForeign && rateNum > 0 ? estimateBaseMinor(totals.total, rateNum) : totals.total;
+
+  const tds_paise = // always INR paise — never formatted via fmtAmt()
     selectedVendor?.tds_applicable && selectedVendor.tds_rate_bps > 0
-      ? Math.floor((totals.taxable * selectedVendor.tds_rate_bps) / 10000)
+      ? estimateForeignTds(estBaseTaxable, selectedVendor.tds_rate_bps)
       : 0;
 
-  const net_payable = totals.total - tds_paise;
+  // Net payable to a foreign vendor is actionable in their own currency — the
+  // amount actually wired — so convert the INR TDS back at the entered rate.
+  const net_payable = isForeign
+    ? totals.total - convertBaseToForeignMinor(tds_paise, rateNum)
+    : totals.total - tds_paise;
 
   function setLine(idx: number, patch: Partial<BillLine>) {
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
@@ -374,6 +447,10 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   async function handleSave() {
     if (!vendorId) { setMsg({ type: "err", text: "Select a vendor" }); return; }
     if (lines.some((l) => !l.description)) { setMsg({ type: "err", text: "All lines need a description" }); return; }
+    if (isForeign && (!exchangeRate.trim() || !(rateNum > 0))) {
+      setMsg({ type: "err", text: `Enter a valid exchange rate for ${currency} → INR` });
+      return;
+    }
     setSaving(true);
     setMsg(null);
     try {
@@ -395,6 +472,8 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
             gst_rate_bps: l.gst_rate_bps,
             expense_account_id: l.expense_account_id || undefined,
           })),
+          currency: isForeign ? currency : undefined,
+          exchange_rate: isForeign ? exchangeRate : undefined,
         },
         token
       );
@@ -404,6 +483,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
       setShowForm(false);
       setLines([{ description: "", hsn_sac: "", quantity: 1, rate: 0, gst_rate_bps: 1800, expense_account_id: "" }]);
       setBillNo(""); setVendorId(""); setBillDate(toDate()); setDueDate(""); setAiExtracted(null);
+      setCurrency(""); setExchangeRate("");
       load();
     } catch (e) {
       setMsg({ type: "err", text: e instanceof Error ? e.message : "Save failed" });
@@ -582,11 +662,58 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
             </div>
           </div>
 
+          {/* Multi-Currency (Phase 3 backend, UI added here) — mirrors the
+              Sales Invoice selector. Purchase bills have no edit flow, so
+              there's no locked/read-only variant to show. */}
+          {mcActive && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-[#475569] mb-1">Currency</label>
+                <select
+                  value={currency}
+                  onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); }}
+                  className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">INR (default)</option>
+                  {currencies.filter((c) => c.code !== "INR").map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.code}{c.display_name ? ` — ${c.display_name}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {isForeign && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">Exchange Rate *</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                      value={exchangeRate}
+                      onChange={(e) => setExchangeRate(e.target.value)}
+                      placeholder={`1 ${currency} = ? INR`}
+                      className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
+                    />
+                    <p className="mt-1 text-[10px] text-[#94A3B8]">Today&apos;s rate — recorded as a manual booking rate, frozen on save.</p>
+                  </div>
+                  <div className="col-span-2 flex flex-col justify-end pb-1.5">
+                    <span className="text-xs font-medium text-[#475569] mb-1">Estimated INR total</span>
+                    <span className="font-mono text-sm text-[#0F172A]">
+                      {rateNum > 0 && totals.total > 0 ? `≈ ${fmt(estBaseTotal)}` : "— enter a rate to preview —"}
+                    </span>
+                    <p className="mt-1 text-[10px] text-[#94A3B8]">Estimate only — the exact INR total is confirmed on save.</p>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {/* TDS info banner */}
           {selectedVendor?.tds_applicable && (
             <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs text-blue-700">
               TDS applicable — §{selectedVendor.tds_section} @ {(selectedVendor.tds_rate_bps / 100).toFixed(1)}%
-              {totals.taxable > 0 && ` | TDS: ${fmt(tds_paise)} | Net payable: ${fmt(net_payable)}`}
+              {totals.taxable > 0 && ` | TDS: ${fmt(tds_paise)}${isForeign ? " (₹ — always deducted in INR, per IT Act)" : ""} | Net payable: ${fmtAmt(net_payable)}`}
             </div>
           )}
 
@@ -599,9 +726,9 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
                   <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
                   <th className="pb-2 text-left font-semibold w-28">Expense Account</th>
                   <th className="pb-2 text-right font-semibold w-16">Qty</th>
-                  <th className="pb-2 text-right font-semibold w-28">Rate (₹)</th>
+                  <th className="pb-2 text-right font-semibold w-28">Rate ({isForeign ? currency : "₹"})</th>
                   <th className="pb-2 text-right font-semibold w-20">GST %</th>
-                  <th className="pb-2 text-right font-semibold w-28">Amount</th>
+                  <th className="pb-2 text-right font-semibold w-28">Amount{isForeign ? ` (${currency})` : ""}</th>
                   <th className="pb-2 w-6" />
                 </tr>
               </thead>
@@ -645,7 +772,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
                         </select>
                       </td>
                       <td className="py-1.5 px-1 text-right font-mono text-[#334155]">
-                        {g.taxable_paise > 0 ? fmt(g.line_total) : "—"}
+                        {g.taxable_paise > 0 ? fmtAmt(g.line_total) : "—"}
                       </td>
                       <td className="py-1.5 pl-1">
                         {lines.length > 1 && <button onClick={() => setLines((prev) => prev.filter((_, i) => i !== idx))} className="text-[#CBD5E1] hover:text-red-600 font-bold">×</button>}
@@ -656,27 +783,34 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
               </tbody>
               <tfoot>
                 <tr className="border-t border-[#F1F5F9] text-xs font-semibold">
-                  <td colSpan={6} className="pt-2 text-right text-[#64748B] pr-2">Taxable</td>
-                  <td className="pt-2 text-right font-mono text-[#334155] px-1">{fmt(totals.taxable)}</td>
+                  <td colSpan={6} className="pt-2 text-right text-[#64748B] pr-2">Taxable{isForeign ? ` (${currency})` : ""}</td>
+                  <td className="pt-2 text-right font-mono text-[#334155] px-1">{fmtAmt(totals.taxable)}</td>
                   <td />
                 </tr>
                 <tr className="text-xs">
                   <td colSpan={6} className="text-right text-[#94A3B8] pr-2">Total GST</td>
-                  <td className="text-right font-mono text-[#64748B] px-1">{fmt(totals.gst)}</td>
+                  <td className="text-right font-mono text-[#64748B] px-1">{fmtAmt(totals.gst)}</td>
                   <td />
                 </tr>
                 {tds_paise > 0 && (
                   <tr className="text-xs">
-                    <td colSpan={6} className="text-right text-blue-600 pr-2">Less: TDS</td>
+                    <td colSpan={6} className="text-right text-blue-600 pr-2">Less: TDS{isForeign ? " (₹)" : ""}</td>
                     <td className="text-right font-mono text-blue-600 px-1">({fmt(tds_paise)})</td>
                     <td />
                   </tr>
                 )}
                 <tr className="text-xs font-bold border-t border-[#E2E8F0]">
-                  <td colSpan={6} className="pt-1 text-right text-[#1E293B] pr-2">Net Payable</td>
-                  <td className="pt-1 text-right font-mono text-[#0F172A] px-1">{fmt(net_payable)}</td>
+                  <td colSpan={6} className="pt-1 text-right text-[#1E293B] pr-2">Net Payable{isForeign ? ` (${currency})` : ""}</td>
+                  <td className="pt-1 text-right font-mono text-[#0F172A] px-1">{fmtAmt(net_payable)}</td>
                   <td />
                 </tr>
+                {isForeign && rateNum > 0 && totals.total > 0 && (
+                  <tr className="text-xs">
+                    <td colSpan={6} className="text-right text-[#94A3B8] pr-2">≈ Estimated INR total</td>
+                    <td className="text-right font-mono text-[#94A3B8] px-1">{fmt(estBaseTotal)}</td>
+                    <td />
+                  </tr>
+                )}
               </tfoot>
             </table>
           </div>
@@ -1000,7 +1134,10 @@ interface PaymentRow {
 function Payments({ clientId, financialYear }: { clientId: string; financialYear: string }) {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
-  const [openBills, setOpenBills] = useState<{ id: string; our_reference: string; bill_no: string | null; net_payable_paise: number }[]>([]);
+  const [openBills, setOpenBills] = useState<{
+    id: string; our_reference: string; bill_no: string | null; net_payable_paise: number;
+    txn_currency?: string | null; exchange_rate?: string | null; txn_net_payable?: number | null;
+  }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1012,6 +1149,47 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
   const [amount, setAmount] = useState("");
   const [mode, setMode] = useState("bank");
   const [refNo, setRefNo] = useState("");
+
+  // Multi-Currency (Phase 3 backend, UI added here). Unlike a receipt, a
+  // foreign vendor payment MUST be linked to the bill it settles (the
+  // backend has no "foreign advance" concept for payments) — so the Against
+  // Bill field becomes required, not optional, once a foreign currency is
+  // selected.
+  const [currency, setCurrency] = useState("");
+  const [exchangeRate, setExchangeRate] = useState("");
+  const [mcActive, setMcActive] = useState(false);
+  const [currencies, setCurrencies] = useState<CurrencyOption[]>([]);
+
+  useEffect(() => {
+    if (!clientId) return;
+    let cancelled = false;
+    (async () => {
+      const token = await getAuthToken();
+      const pol = await apiGet(`/api/currencies/policy?client_id=${clientId}`, token);
+      if (cancelled) return;
+      const active = Boolean(pol.success && (pol.data as { active?: boolean } | null)?.active);
+      setMcActive(active);
+      if (!active) return;
+      const list = await apiGet(`/api/currencies?active_only=true`, token);
+      if (!cancelled && list.success) setCurrencies((list.data as CurrencyOption[]) ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [clientId]);
+
+  const isForeign = currency !== "" && currency !== "INR";
+  const rateNum = parseFloat(exchangeRate);
+
+  function fmtAmt(paise: number): string {
+    return isForeign ? formatMoney(paise, currency) : fmt(paise);
+  }
+
+  const visibleBills = openBills.filter(
+    (b) => (b.txn_currency || "INR").toUpperCase() === (currency || "INR").toUpperCase()
+  );
+
+  function billDisplayAmt(b: { net_payable_paise: number; txn_net_payable?: number | null }): number {
+    return isForeign ? (b.txn_net_payable ?? 0) : b.net_payable_paise;
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1039,7 +1217,7 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
     const supabase = getSupabaseClient();
     const { data } = await selectAll(() => supabase
       .from("purchase_bills")
-      .select("id, our_reference, bill_no, net_payable_paise")
+      .select("id, our_reference, bill_no, net_payable_paise, txn_currency, exchange_rate, txn_net_payable")
       .eq("client_id", clientId)
       .eq("vendor_id", vId)
       .in("status", ["received", "partially_paid"])
@@ -1053,6 +1231,11 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
     if (!vendorId) { setMsg({ type: "err", text: "Select a vendor" }); return; }
     const amtPaise = Math.round(parseFloat(amount || "0") * 100);
     if (amtPaise <= 0) { setMsg({ type: "err", text: "Amount must be positive" }); return; }
+    if (isForeign && !billId) { setMsg({ type: "err", text: "Select the bill this foreign payment settles" }); return; }
+    if (isForeign && (!exchangeRate.trim() || !(rateNum > 0))) {
+      setMsg({ type: "err", text: `Enter a valid exchange rate for ${currency} → INR` });
+      return;
+    }
     setSaving(true); setMsg(null);
     try {
       const token = await getAuthToken();
@@ -1067,6 +1250,8 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
           payment_mode: mode,
           reference_no: refNo || undefined,
           purchase_bill_id: billId || undefined,
+          currency: isForeign ? currency : undefined,
+          exchange_rate: isForeign ? exchangeRate : undefined,
         },
         token
       );
@@ -1075,6 +1260,7 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
       setMsg({ type: "ok", text: "Payment recorded." });
       setShowForm(false);
       setVendorId(""); setBillId(""); setAmount(""); setRefNo(""); setMode("bank");
+      setCurrency(""); setExchangeRate("");
       load();
     } catch (e) {
       setMsg({ type: "err", text: e instanceof Error ? e.message : "Save failed" });
@@ -1149,27 +1335,63 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
                 ariaLabel="Vendor"
               />
             </div>
+            {mcActive && (
+              <div>
+                <label className="block text-xs font-medium text-[#475569] mb-1">Currency</label>
+                <select
+                  value={currency}
+                  onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); setBillId(""); }}
+                  className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">INR (default)</option>
+                  {currencies.filter((c) => c.code !== "INR").map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.code}{c.display_name ? ` — ${c.display_name}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {isForeign && (
+              <div>
+                <label className="block text-xs font-medium text-[#475569] mb-1">Cash Exchange Rate *</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  value={exchangeRate}
+                  onChange={(e) => setExchangeRate(e.target.value)}
+                  placeholder={`1 ${currency} = ? INR`}
+                  className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
+                />
+              </div>
+            )}
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Against Bill (optional)</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">
+                Against Bill {isForeign ? "*" : "(optional)"}
+              </label>
               <EntityLookup
-                items={openBills}
+                items={visibleBills}
                 value={billId}
                 onChange={setBillId}
                 getId={(b) => b.id}
                 getLabel={(b) => b.our_reference ?? b.bill_no ?? "—"}
-                getSecondary={(b) => fmt(b.net_payable_paise)}
+                getSecondary={(b) => fmtAmt(billDisplayAmt(b))}
                 getSearchFields={(b) => [b.our_reference ?? "", b.bill_no ?? ""]}
-                clearable
-                placeholder="— Advance / Select bill —"
+                clearable={!isForeign}
+                placeholder={isForeign ? "— Select the bill this settles —" : "— Advance / Select bill —"}
                 ariaLabel="Against bill"
               />
+              {isForeign && (
+                <p className="mt-1 text-[10px] text-[#94A3B8]">A foreign payment must be linked to the bill it settles — no unlinked foreign advance.</p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Date *</label>
               <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Amount (₹) *</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Amount ({isForeign ? currency : "₹"}) *</label>
               <input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
