@@ -77,7 +77,7 @@ expansion, not a rebuild.
 | Live bank feed | ❌ manual import | L |
 | Receipt capture / OCR | ❌ | L |
 | Inventory | ❌ **Removed permanently** | — |
-| Multi-currency | ❌ | L |
+| Multi-currency | ✅ Built (Phases 1-5), feature-flagged OFF by default | `domain/currency/`, migrations `146`-`150` |
 
 S = ~days · M = ~1–2 weeks · L = larger.
 
@@ -188,7 +188,8 @@ All Phase 4 business modules are shipped and merged to `main`. **Do not start ne
 
 ### Deferred / unscheduled (not in Phase 4)
 - **Draft Journal Workflow refinement** — incremental polish on the existing Draft → Approve → Post flow (Phase 3.5); not a major phase.
-- Auto-apply bank-rules engine (table exists), live bank feeds (Account Aggregator), receipt OCR, cost centers, multi-currency.
+- Auto-apply bank-rules engine (table exists), live bank feeds (Account Aggregator), receipt OCR, cost centers.
+- Multi-currency has since shipped (Phases 1-5, `domain/currency/`) but stays feature-flagged OFF by default — see `BETA_OPERATIONS.md` §7; do not enable in Beta.
 
 ---
 

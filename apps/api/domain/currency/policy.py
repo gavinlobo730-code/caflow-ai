@@ -9,10 +9,11 @@ Three gates (docs/architecture/06-multi-currency-phase0.md):
 active = L1 AND L2 AND L3 AND functional == INR (Capability A only — a non-INR
 functional currency is Capability B, which is not implemented, so it fails safe).
 
-Fail-safe: anything off / ambiguous / missing ⇒ inactive, INR-only. This is
-Phase-1 infrastructure — it is NOT yet wired into the posting kernel (this phase
-makes no posting or journal changes); it becomes the kernel's authoritative guard
-when foreign transactions arrive in Phase 2.
+Fail-safe: anything off / ambiguous / missing ⇒ inactive, INR-only. This
+Phase-1 gate is now the posting kernel's authoritative guard for foreign
+transactions — wired into phase2_journal_service, receipt_service,
+purchase_payments, sales_invoices and purchase_bills across Phases 2-5 (all
+merged to main, kept OFF by default via MULTI_CURRENCY_ENABLED for Beta).
 """
 from __future__ import annotations
 

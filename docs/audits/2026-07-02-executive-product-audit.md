@@ -7,6 +7,17 @@
 
 > **This is a review deliverable. No production code was modified. Implementation awaits your approval and will proceed in the priority order set out in the roadmap.**
 
+> **Update (Closed Beta readiness):** the Critical tier this audit called for has since
+> closed. Verified Critical/High findings from this audit and its follow-on runtime
+> verification pass (Fixed Asset disposal crash, GL category mapping, vendor payment
+> concurrency, tax-computation FY selector, Section 44AB thresholds, filing-confirmation
+> gating, mock ledger data in production, bank-posting FK bug, tenant-isolation backstop,
+> Debit Notes UI, Trial Balance Import, Dashboard compliance tiles, and a GST-rate field
+> mismatch affecting Sales Invoices/Credit Notes/Purchase Bills) are fixed, tested, and
+> merged to `main` across R0-R2 and the P0 Batch 1-3 + Beta-readiness batches. The 38/100
+> score and "do not GA" verdict below reflect the state on 2026-07-02, not current `main` —
+> see the Beta-readiness batch's final report for the up-to-date release recommendation.
+
 ---
 
 ## 1. Overall assessment & the launch verdict
