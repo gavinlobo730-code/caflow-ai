@@ -20,6 +20,10 @@ import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
+import {
+  THRESHOLD_BUSINESS_PAISE as THRESHOLD_BUSINESS,
+  THRESHOLD_PROFESSION_PAISE as THRESHOLD_PROFESSION,
+} from "@/lib/income-tax/taxAuditThresholds";
 import type { Client } from "@/lib/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -45,10 +49,6 @@ interface TaxAudit {
 
 const STATUS_OPTIONS: AuditStatus[] = ["not_started", "in_progress", "completed", "filed"];
 const FY_OPTIONS = ["2025-26", "2024-25", "2023-24"];
-
-// IT Act Section 44AB thresholds (in paise)
-const THRESHOLD_BUSINESS = 100_00_00_00; // ₹1 crore = 10,000,000 paise
-const THRESHOLD_PROFESSION = 50_00_00_00; // ₹50 lakh = 5,000,000 paise
 
 function statusBadge(status: AuditStatus) {
   switch (status) {
