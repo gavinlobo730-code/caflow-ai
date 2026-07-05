@@ -5,79 +5,18 @@
  * Parses CSV client-side (no external library). All balances in integer paise.
  */
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Upload, ChevronRight, CheckCircle, AlertCircle, Link as LinkIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
-
-// ── CSV parser (no external library) ─────────────────────────────────────
-
-function parseCSV(text: string): string[][] {
-  const rows: string[][] = [];
-  let i = 0;
-  while (i < text.length) {
-    const row: string[] = [];
-    while (i < text.length && text[i] !== "\n" && text[i] !== "\r") {
-      let field = "";
-      if (text[i] === '"') {
-        i++; // skip opening quote
-        while (i < text.length) {
-          if (text[i] === '"' && text[i + 1] === '"') { field += '"'; i += 2; }
-          else if (text[i] === '"') { i++; break; }
-          else { field += text[i++]; }
-        }
-      } else {
-        while (i < text.length && text[i] !== "," && text[i] !== "\n" && text[i] !== "\r") {
-          field += text[i++];
-        }
-      }
-      row.push(field.trim());
-      if (i < text.length && text[i] === ",") i++;
-    }
-    if (text[i] === "\r") i++;
-    if (text[i] === "\n") i++;
-    if (row.length > 0 && !(row.length === 1 && row[0] === "")) rows.push(row);
-  }
-  return rows;
-}
-
-// ── Account type auto-detection ───────────────────────────────────────────
-
-function detectType(name: string): string {
-  const n = name.toLowerCase();
-  if (/sales|revenue|income|turnover/.test(n)) return "revenue";
-  if (/purchase|cogs|cost of/.test(n)) return "expense";
-  if (/expense|depreciation|salary|rent|utilities/.test(n)) return "expense";
-  if (/cash|bank|receivable|debtor|advances paid/.test(n)) return "asset";
-  if (/fixed asset|plant|machinery|building|vehicle|furniture/.test(n)) return "asset";
-  if (/payable|creditor|loan payable|advances received/.test(n)) return "liability";
-  if (/capital|reserve|retained earnings|equity/.test(n)) return "equity";
-  return "asset";
-}
-
-// ── Types ──────────────────────────────────────────────────────────────────
-
-type ParsedAccount = {
-  account_name: string;
-  account_code: string;
-  account_type: string;
-  dr_balance: string; // raw string from CSV
-  cr_balance: string;
-  dr_paise: number;
-  cr_paise: number;
-  typeOverride?: string;
-};
-
-type ColumnMap = {
-  nameCol: number;
-  codeCol: number;
-  drCol: number;
-  crCol: number;
-  typeCol: number;
-};
+import { parseCSV, buildParsedAccounts, type ParsedAccount, type ColumnMap } from "@/lib/accounting/trialBalanceParser";
+import {
+  checkTrialBalanceImportCapability,
+  type TrialBalanceImportCapability,
+} from "@/lib/accounting/trialBalanceImportCapability";
 
 const SAMPLE_CSV = `Account Name,Account Code,Debit Balance,Credit Balance,Account Type
 Cash in Hand,1001,50000,0,Asset
@@ -87,12 +26,8 @@ Capital Account,3001,0,500000,Equity
 Sales Account,4001,0,450000,Revenue
 Purchase Account,5001,300000,0,Expense`;
 
-const MIGRATION_SQL = `-- Add opening balance columns if not present:
-ALTER TABLE chart_of_accounts
-  ADD COLUMN IF NOT EXISTS opening_balance_dr_paise BIGINT DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS opening_balance_cr_paise BIGINT DEFAULT 0;`;
-
 export default function TrialBalanceImportPage() {
+  const [capability, setCapability] = useState<TrialBalanceImportCapability | null>(null);
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [rawRows, setRawRows] = useState<string[][]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -100,9 +35,18 @@ export default function TrialBalanceImportPage() {
   const [accounts, setAccounts] = useState<ParsedAccount[]>([]);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ success: number; errors: number } | null>(null);
-  const [migrationNeeded, setMigrationNeeded] = useState(false);
   const [err, setErr] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // C4: gate the entire wizard on whether the required schema exists, rather
+  // than letting every row's write silently fail before telling the user.
+  useEffect(() => {
+    const sb = getSupabaseClient();
+    checkTrialBalanceImportCapability(async () => {
+      const { error } = await sb.from("chart_of_accounts").select("opening_balance_dr_paise").limit(1);
+      return { error: error ? { message: error.message } : null };
+    }).then(setCapability);
+  }, []);
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -138,31 +82,8 @@ export default function TrialBalanceImportPage() {
     reader.readAsText(file);
   }
 
-  function parseAmount(s: string): number {
-    // Remove commas, Rs, spaces, handle negative in parens
-    const clean = s.replace(/[,\s₹Rs]/g, "").replace(/\((.+)\)/, "-$1");
-    const n = parseFloat(clean) || 0;
-    return Math.round(Math.abs(n) * 100); // paise, always positive
-  }
-
   function buildPreview() {
-    const parsed: ParsedAccount[] = rawRows.map(row => {
-      const name = row[colMap.nameCol] ?? "";
-      const code = colMap.codeCol >= 0 ? (row[colMap.codeCol] ?? "") : "";
-      const drRaw = colMap.drCol >= 0 ? (row[colMap.drCol] ?? "0") : "0";
-      const crRaw = colMap.crCol >= 0 ? (row[colMap.crCol] ?? "0") : "0";
-      const typeRaw = colMap.typeCol >= 0 ? (row[colMap.typeCol] ?? "") : "";
-      return {
-        account_name: name,
-        account_code: code,
-        account_type: typeRaw ? typeRaw.toLowerCase() : detectType(name),
-        dr_balance: drRaw,
-        cr_balance: crRaw,
-        dr_paise: parseAmount(drRaw),
-        cr_paise: parseAmount(crRaw),
-      };
-    }).filter(a => a.account_name.trim() !== "");
-    setAccounts(parsed);
+    setAccounts(buildParsedAccounts(rawRows, colMap));
     setStep(3);
   }
 
@@ -194,9 +115,6 @@ export default function TrialBalanceImportPage() {
         }, { onConflict: "firm_id,account_name" });
 
         if (error) {
-          if (error.message.includes("opening_balance_dr_paise")) {
-            setMigrationNeeded(true);
-          }
           errors++;
         } else {
           success++;
@@ -217,6 +135,32 @@ export default function TrialBalanceImportPage() {
         <h1 className="text-2xl font-bold text-[#0F172A] mb-2">Trial Balance Import</h1>
         <p className="text-sm text-[#64748B] mb-6">Universal importer — Tally, Busy, QuickBooks, Zoho, Excel (export as CSV)</p>
 
+        {capability === null && (
+          <Card>
+            <CardContent className="pt-8 pb-8 text-center text-sm text-[#64748B]">
+              Checking feature availability…
+            </CardContent>
+          </Card>
+        )}
+
+        {capability && !capability.available && (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardContent className="pt-8 pb-8 text-center">
+              <AlertCircle size={40} className="mx-auto mb-4 text-amber-600" />
+              <h2 className="text-lg font-bold text-[#0F172A] mb-2">Trial Balance Import isn&apos;t available yet</h2>
+              <p className="text-sm text-amber-800 max-w-md mx-auto">{capability.reason}</p>
+              <p className="text-xs text-[#94A3B8] mt-4">You can still add opening balances manually via the Chart of Accounts.</p>
+              <Link href="/accounting/account-groups">
+                <Button variant="outline" className="mt-6 flex items-center gap-1.5 mx-auto">
+                  <LinkIcon size={14} />View Chart of Accounts
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {capability?.available && (
+        <>
         {/* Step indicator */}
         <div className="flex items-center gap-2 mb-8 text-sm">
           {["Upload", "Map Columns", "Review", "Import"].map((s, i) => (
@@ -434,25 +378,9 @@ export default function TrialBalanceImportPage() {
                 </Link>
               </CardContent>
             </Card>
-
-            {migrationNeeded && (
-              <Card className="border-amber-200 bg-amber-50">
-                <CardHeader>
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <AlertCircle size={16} className="text-amber-600" />
-                    Migration Required
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-amber-800 mb-3">
-                    The <code>opening_balance_dr_paise</code> and <code>opening_balance_cr_paise</code> columns
-                    are missing from <code>chart_of_accounts</code>. Run this SQL to add them:
-                  </p>
-                  <pre className="bg-gray-900 text-green-400 p-3 rounded text-xs overflow-auto">{MIGRATION_SQL}</pre>
-                </CardContent>
-              </Card>
-            )}
           </div>
+        )}
+        </>
         )}
       </div>
     </div>
