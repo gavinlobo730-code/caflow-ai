@@ -27,6 +27,7 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { formatPaise } from "@/lib/services/formatting";
+import { daysBetweenLocalISO } from "@/lib/dateMath";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
@@ -143,9 +144,11 @@ function calculateFDMaturityPaise(
 }
 
 function daysToDate(isoDate: string): number {
-  const target = new Date(isoDate).getTime();
-  const now = new Date(TODAY_ISO).getTime();
-  return Math.ceil((target - now) / (24 * 60 * 60 * 1000));
+  // Delegates the day-diff arithmetic to the shared helper (Phase 3
+  // consolidation) — mathematically identical result, since a fixed
+  // UTC offset (no Indian DST) cancels the same way whether both sides
+  // are parsed as UTC midnight (the old inline version) or local midnight.
+  return daysBetweenLocalISO(TODAY_ISO, isoDate) ?? 0;
 }
 
 function formatDate(isoDate: string): string {

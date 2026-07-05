@@ -6,6 +6,7 @@
  */
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "./getFirmId";
+import { currentFinancialYearLabel } from "@/lib/dateMath";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -434,10 +435,7 @@ export async function getITNotices(clientId: string): Promise<Record<string, unk
 
 /** Current financial year string e.g. "2025-26" */
 export function currentFinancialYear(): string {
-  const now = new Date();
-  const yr = now.getFullYear();
-  const mo = now.getMonth() + 1;
-  return mo >= 4 ? `${yr}-${String(yr + 1).slice(2)}` : `${yr - 1}-${String(yr).slice(2)}`;
+  return currentFinancialYearLabel();
 }
 
 /** Format paise as ₹ display string */
