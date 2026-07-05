@@ -28,6 +28,7 @@ import * as XLSX from "xlsx";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { todayLocalISO } from "@/lib/dateMath";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -90,8 +91,8 @@ const MONTHS = [
   { value: "12", label: "December" },
 ];
 
-const TODAY = new Date("2026-06-03");
-const CURRENT_YEAR = TODAY.getFullYear();
+const _today = new Date(todayLocalISO() + "T00:00:00");
+const CURRENT_YEAR = _today.getFullYear();
 const YEAR_OPTIONS: number[] = [];
 for (let y = CURRENT_YEAR; y >= CURRENT_YEAR - 4; y--) {
   YEAR_OPTIONS.push(y);
@@ -499,7 +500,7 @@ export default function GstReconciliationPage() {
   const [loadingClients, setLoadingClients] = useState(true);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(
-    String(TODAY.getMonth() + 1).padStart(2, "0") // current month as MM
+    String(_today.getMonth() + 1).padStart(2, "0") // current month as MM
   );
   const [selectedYear, setSelectedYear] = useState(String(CURRENT_YEAR));
   const [paramsLoaded, setParamsLoaded] = useState(false);

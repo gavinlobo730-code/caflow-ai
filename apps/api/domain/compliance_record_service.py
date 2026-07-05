@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 from core.exceptions import ValidationError, NotFoundError
+from core.ist_clock import ist_today
 from repositories.compliance_records_repository import compliance_records_repo
 from repositories.client_repository import client_repo
 
@@ -35,7 +36,7 @@ def _compute_risk_score(record: dict) -> int:
     if status == "Ready To File":
         return 20
 
-    today_d = date.today()
+    today_d = ist_today()
     due_d = date.fromisoformat(due[:10])
     days_until_due = (due_d - today_d).days
 
@@ -169,9 +170,9 @@ class ComplianceRecordService:
                 )
             updates["status"] = new_status
             if new_status == "Filed" and not record.get("filed_date"):
-                updates["filed_date"] = date.today().isoformat()
+                updates["filed_date"] = ist_today().isoformat()
             if new_status == "Completed" and not record.get("completed_at"):
-                updates["completed_at"] = date.today().isoformat()
+                updates["completed_at"] = ist_today().isoformat()
 
         for field in ("notes", "assigned_to", "priority", "acknowledgement_no"):
             if field in data:
@@ -277,7 +278,7 @@ class ComplianceRecordService:
         all_records = self.list_records(firm_id=firm_id)
         if allowed_client_ids is not None:
             all_records = [r for r in all_records if str(r.get("client_id")) in allowed_client_ids]
-        today_d = date.today()
+        today_d = ist_today()
         week_end = (today_d + timedelta(days=7)).isoformat()
         today_str = today_d.isoformat()
         this_month_start = today_d.replace(day=1).isoformat()

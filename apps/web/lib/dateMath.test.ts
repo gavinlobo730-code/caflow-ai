@@ -9,7 +9,7 @@
 //   node --experimental-strip-types --test lib/dateMath.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { toLocalISO, todayLocalISO, daysBetweenLocalISO } from "./dateMath.ts";
+import { toLocalISO, todayLocalISO, daysBetweenLocalISO, computeOverdueStatus } from "./dateMath.ts";
 
 const ORIGINAL_TZ = process.env.TZ;
 
@@ -111,4 +111,55 @@ test("daysBetweenLocalISO: null on empty/malformed input", () => {
   assert.equal(daysBetweenLocalISO("", "2026-07-05"), null);
   assert.equal(daysBetweenLocalISO("2026-07-05", ""), null);
   assert.equal(daysBetweenLocalISO("nonsense", "2026-07-05"), null);
+});
+
+// ── computeOverdueStatus — shared GST/MCA filing-tracker status ─────────────
+// (Phase 2 — Compliance & Statutory Date Correctness). GST's and MCA's filing
+// trackers each independently compared a live `new Date()`/module-frozen
+// instant against a due date; both are now this one function so the fix is
+// tested once instead of twice.
+
+test("computeOverdueStatus: due today is Pending, NOT Overdue (the exact bug this closes)", () => {
+  // The old `TODAY > new Date(dueDate)` shape flips to Overdue the instant any
+  // time has passed since the due date's midnight — i.e. on the due date
+  // itself, up to a full day early.
+  assert.equal(computeOverdueStatus("2026-07-05", null, "2026-07-05"), "Pending");
+});
+
+test("computeOverdueStatus: 1 day past due is Overdue", () => {
+  assert.equal(computeOverdueStatus("2026-07-04", null, "2026-07-05"), "Overdue");
+});
+
+test("computeOverdueStatus: due in the future is Pending (upcoming)", () => {
+  assert.equal(computeOverdueStatus("2026-07-10", null, "2026-07-05"), "Pending");
+});
+
+test("computeOverdueStatus: Filed wins even when the due date is long past", () => {
+  assert.equal(computeOverdueStatus("2026-01-01", "2026-01-15", "2026-07-05"), "Filed");
+});
+
+test("computeOverdueStatus: month boundary — due last day of month, checked 1st of next month", () => {
+  assert.equal(computeOverdueStatus("2026-06-30", null, "2026-07-01"), "Overdue");
+  assert.equal(computeOverdueStatus("2026-06-30", null, "2026-06-30"), "Pending"); // due today
+});
+
+test("computeOverdueStatus: FY boundary — due 31 Mar, checked 1 Apr (new FY) is Overdue", () => {
+  assert.equal(computeOverdueStatus("2026-03-31", null, "2026-04-01"), "Overdue");
+});
+
+test("computeOverdueStatus: IST boundary — due 31 Mar, 'today' resolved via toLocalISO at 1 Apr 00:01 IST", () => {
+  withTZ("Asia/Kolkata", () => {
+    // Mirrors how a page actually derives its `today` argument: toLocalISO of
+    // a live Date, not a raw toISOString() (which would still read 31 Mar
+    // here and wrongly report Pending for an invoice that's already overdue).
+    const today = toLocalISO(new Date(2026, 3, 1, 0, 1));
+    assert.equal(computeOverdueStatus("2026-03-31", null, today), "Overdue");
+  });
+});
+
+test("computeOverdueStatus: default third argument uses todayLocalISO() (wiring check)", () => {
+  withTZ("Asia/Kolkata", () => {
+    const farFuture = "2099-01-01";
+    assert.equal(computeOverdueStatus(farFuture, null), "Pending");
+  });
 });

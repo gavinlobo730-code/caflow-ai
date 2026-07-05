@@ -44,3 +44,19 @@ export function daysBetweenLocalISO(fromStr: string, toStr: string): number | nu
   if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
   return Math.round((b.getTime() - a.getTime()) / 86_400_000);
 }
+
+export type FilingOverdueStatus = "Pending" | "Filed" | "Overdue";
+
+/** Shared GST/MCA filing-tracker status: Overdue only once a full calendar
+ * day has passed the due date (never on the due date itself — a direct
+ * `todayInstant > dueDate` comparison flips to Overdue the moment any time
+ * has passed since the due date's local midnight, up to a day early). */
+export function computeOverdueStatus(
+  dueDate: string,
+  filedDate: string | null,
+  todayISO: string = todayLocalISO(),
+): FilingOverdueStatus {
+  if (filedDate) return "Filed";
+  const daysPastDue = daysBetweenLocalISO(dueDate, todayISO) ?? 0;
+  return daysPastDue > 0 ? "Overdue" : "Pending";
+}
