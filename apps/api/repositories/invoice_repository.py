@@ -1,8 +1,9 @@
 import os
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime
 from repositories.base import BaseRepository
 from core.exceptions import NotFoundError
+from core.ist_clock import ist_today
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -136,7 +137,7 @@ class InvoiceRepository(BaseRepository[dict]):
         duplicate invoice numbers under concurrent requests.
         """
         if current_date is None:
-            current_date = datetime.now(timezone.utc).isoformat()
+            current_date = ist_today().isoformat()
 
         date_obj = datetime.fromisoformat(current_date.replace('Z', '+00:00'))
         fiscal_year = date_obj.year - 1 if date_obj.month < 4 else date_obj.year
