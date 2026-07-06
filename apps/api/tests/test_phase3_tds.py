@@ -65,11 +65,26 @@ def test_tds_return_status_transitions(client):
                       json={"status": "filed", "ca_approved": False}, headers=_HEADERS)
     assert r3.json()["success"] is False
 
-    # filed with flag — should succeed
+    # filed with flag — still needs a PRN (TRACES proof-of-filing captured
+    # server-side, migration 037). With the flag AND a PRN it should succeed.
     r4 = client.patch(f"/api/tds-workspace/returns/{return_id}/status",
-                      json={"status": "filed", "ca_approved": True}, headers=_HEADERS)
+                      json={"status": "filed", "ca_approved": True,
+                            "prn": "PRN2526Q1000001", "ack_number": "ACK123456789"},
+                      headers=_HEADERS)
     assert r4.json()["success"] is True
     assert r4.json()["data"]["status"] == "filed"
+    assert r4.json()["data"]["prn"] == "PRN2526Q1000001"
+
+    # filed WITHOUT a PRN must be rejected (a return can't be "filed" with no
+    # acknowledgement) — guards the migration-037 requirement.
+    resp2 = client.post("/api/tds-workspace/returns", json={
+        "client_id": _CLIENT_ID, "return_type": "26Q", "quarter": "Q2",
+        "financial_year": "2025-26",
+    }, headers=_HEADERS)
+    rid2 = resp2.json()["data"]["id"]
+    r5 = client.patch(f"/api/tds-workspace/returns/{rid2}/status",
+                      json={"status": "filed", "ca_approved": True}, headers=_HEADERS)
+    assert r5.json()["success"] is False
 
 
 def test_certificate_generation_draft_only(client):
