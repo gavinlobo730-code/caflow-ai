@@ -8,6 +8,7 @@ import { WorkspaceProvider } from "@/lib/workspace/WorkspaceContext";
 import { ActivityRail } from "@/components/ActivityRail";
 import { ContextPanel } from "@/components/ContextPanel";
 import { SearchModal } from "@/components/SearchModal";
+import { isClientWorkspacePath } from "@/lib/workspace/clientPath";
 
 const NO_SHELL_PREFIXES = [
   "/login",
@@ -19,10 +20,6 @@ const NO_SHELL_PREFIXES = [
   "/sign",
 ];
 
-// Matches /clients/[UUID] and any sub-path — client layout owns its own rails
-const CLIENT_UUID_RE =
-  /^\/clients\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(\/|$)/i;
-
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -31,7 +28,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const showShell = !NO_SHELL_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(prefix + "/")
   );
-  const isClientWorkspace = CLIENT_UUID_RE.test(pathname);
+  const isClientWorkspace = isClientWorkspacePath(pathname);
 
   // Global ⌘K / Ctrl+K listener — opens the command palette from anywhere
   useEffect(() => {

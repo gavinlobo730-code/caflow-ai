@@ -6,7 +6,7 @@
  * Loading/empty/error render inside the same workspace shell for continuity.
  */
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { InvoiceEditor } from "@/components/invoices/InvoiceEditor";
 import { EmptyState, ErrorState } from "@/components/ui/states";
@@ -14,7 +14,14 @@ import { FormSkeleton } from "@/components/ui/skeleton";
 import { loadInvoiceEditorContext, type InvoiceEditorContext } from "@/lib/invoices/editorContext";
 import { salesListHref, salesListFlashHref, invoiceBreadcrumbs } from "@/lib/invoices/workspaceNav";
 
-export default function NewInvoicePage({ params }: { params: { id: string } }) {
+export default function NewInvoicePage() {
+  // Read the client id from the live route (useParams), NOT a build-time `params`
+  // prop: under `output: export` the prop is the generateStaticParams placeholder
+  // ("_placeholder"), which would load the wrong client's customers and emit
+  // "_placeholder" breadcrumb hrefs (breaking AppShell's client-workspace
+  // detection → two sidebars). Mirrors the sibling Edit route and every other
+  // client page.
+  const params = useParams<{ id: string }>();
   const clientId = params.id;
   const router = useRouter();
   const [ctx, setCtx] = useState<InvoiceEditorContext | null>(null);
@@ -22,6 +29,8 @@ export default function NewInvoicePage({ params }: { params: { id: string } }) {
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    // Guard against the static-export placeholder ever reaching a data query.
+    if (!clientId || clientId === "_placeholder") return;
     let cancelled = false;
     setCtx(null); setError(false);
     loadInvoiceEditorContext(clientId)

@@ -29,6 +29,8 @@ export default function EditInvoicePageClient() {
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    // Never query the static-export placeholder ids.
+    if (!clientId || clientId === "_placeholder" || !invoiceId || invoiceId === "_placeholder") return;
     let cancelled = false;
     setCtx(null); setInvoice(null); setError(null);
     Promise.all([loadInvoiceEditorContext(clientId), loadInvoiceDetail(invoiceId)])
