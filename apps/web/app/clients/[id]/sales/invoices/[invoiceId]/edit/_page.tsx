@@ -1,13 +1,19 @@
 "use client";
 
 /**
- * Edit Draft Invoice — client view (Batch 3). Params come from useParams() because
- * the route uses the repo's static-export pattern: a server page.tsx with
- * generateStaticParams renders this client component. Only drafts are editable —
+ * Edit Draft Invoice — client view (Batch 3). Only drafts are editable —
  * anything else redirects to the Sales list.
+ *
+ * Ids come from window.location.pathname, NOT useParams(): under `output:
+ * export` + Cloudflare's rewrite-to-_placeholder hosting, the App Router's
+ * FlightRouterState is permanently anchored to the "_placeholder" build
+ * param, so useParams() never resolves to the real ids (see
+ * ClientNavContext.tsx's doc comment) — the client id comes from the shared
+ * useClientNav() hook (window.location-derived), and invoiceId is read the
+ * same way locally since there's no shared context for it.
  */
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { InvoiceEditor } from "@/components/invoices/InvoiceEditor";
 import { ErrorState } from "@/components/ui/states";
@@ -19,11 +25,22 @@ import {
 } from "@/lib/invoices/editorContext";
 import { salesListHref, salesListFlashHref, invoiceBreadcrumbs } from "@/lib/invoices/workspaceNav";
 import { type InvoiceDetail } from "@/lib/invoices/shared";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
+
+function getInvoiceIdFromLocation(): string {
+  if (typeof window === "undefined") return "";
+  const m = window.location.pathname.match(/\/sales\/invoices\/([^/]+)\/edit/);
+  return m ? decodeURIComponent(m[1]) : "";
+}
 
 export default function EditInvoicePageClient() {
-  const params = useParams<{ id: string; invoiceId: string }>();
-  const clientId = params.id;
-  const invoiceId = params.invoiceId;
+  const { clientId } = useClientNav();
+  // usePathname() is only a re-run trigger (its own value is the build-time
+  // placeholder segment) — the real id always comes from window.location,
+  // mirroring ClientNavContext's clientId pattern.
+  const pathname = usePathname();
+  const [invoiceId, setInvoiceId] = useState<string>(() => getInvoiceIdFromLocation());
+  useEffect(() => { setInvoiceId(getInvoiceIdFromLocation()); }, [pathname]);
   const router = useRouter();
   const [ctx, setCtx] = useState<InvoiceEditorContext | null>(null);
   const [invoice, setInvoice] = useState<InvoiceDetail | null>(null);

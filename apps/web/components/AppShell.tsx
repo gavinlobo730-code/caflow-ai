@@ -10,6 +10,21 @@ import { ContextPanel } from "@/components/ContextPanel";
 import { SearchModal } from "@/components/SearchModal";
 import { isClientWorkspacePath } from "@/lib/workspace/clientPath";
 
+// usePathname() reflects the App Router's FlightRouterState, which under
+// `output: export` + Cloudflare's rewrite-to-_placeholder hosting is
+// permanently anchored to the "_placeholder" build param for any dynamic
+// segment — never the real browser URL (see ClientNavContext.tsx's doc
+// comment for the same failure mode). Reading it directly here is exactly
+// the bug clientPath.ts's own doc comment warns about: a "_placeholder" path
+// makes isClientWorkspacePath() return false, so this shell's global rails
+// render ALONGSIDE the client workspace's own rails ("two sidebars"). Mirror
+// ClientNavContext's fix: use usePathname() only as a re-run trigger and
+// always read the real path from window.location.
+function getRealPathname(): string {
+  if (typeof window === "undefined") return "";
+  return window.location.pathname;
+}
+
 const NO_SHELL_PREFIXES = [
   "/login",
   "/signup",
@@ -21,14 +36,18 @@ const NO_SHELL_PREFIXES = [
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  // usePathname() is only a re-run trigger below — the real path always
+  // comes from window.location (see the comment on getRealPathname above).
   const pathname = usePathname();
+  const [realPathname, setRealPathname] = useState<string>(() => getRealPathname());
+  useEffect(() => { setRealPathname(getRealPathname()); }, [pathname]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const showShell = !NO_SHELL_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(prefix + "/")
+    (prefix) => realPathname === prefix || realPathname.startsWith(prefix + "/")
   );
-  const isClientWorkspace = isClientWorkspacePath(pathname);
+  const isClientWorkspace = isClientWorkspacePath(realPathname);
 
   // Global ⌘K / Ctrl+K listener — opens the command palette from anywhere
   useEffect(() => {

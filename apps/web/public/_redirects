@@ -9,119 +9,197 @@
 # (most specific) paths first within each group, so a specific rule is
 # never shadowed by a shorter one sharing its prefix.
 
-/clients/:id/sales/invoices/:invoiceId/edit                /clients/_placeholder/sales/invoices/_placeholder/edit/  200
-/clients/:id/sales/invoices/:invoiceId/edit/               /clients/_placeholder/sales/invoices/_placeholder/edit/  200
+/clients/:id/sales/invoices/:invoiceId/edit                          /clients/_placeholder/sales/invoices/_placeholder/edit/  200
+/clients/:id/sales/invoices/:invoiceId/edit/                         /clients/_placeholder/sales/invoices/_placeholder/edit/  200
+/clients/:id/sales/invoices/:invoiceId/edit/index.txt                /clients/_placeholder/sales/invoices/_placeholder/edit/index.txt  200
+/clients/:id/sales/invoices/:invoiceId/edit.txt                      /clients/_placeholder/sales/invoices/_placeholder/edit/index.txt  200
 
-/clients/:id/sales/invoices/new                            /clients/_placeholder/sales/invoices/new/  200
-/clients/:id/sales/invoices/new/                           /clients/_placeholder/sales/invoices/new/  200
+/clients/:id/sales/invoices/new                                      /clients/_placeholder/sales/invoices/new/  200
+/clients/:id/sales/invoices/new/                                     /clients/_placeholder/sales/invoices/new/  200
+/clients/:id/sales/invoices/new/index.txt                            /clients/_placeholder/sales/invoices/new/index.txt  200
+/clients/:id/sales/invoices/new.txt                                  /clients/_placeholder/sales/invoices/new/index.txt  200
 
-/clients/:id/year-end/:engagementId/adjustments            /clients/_placeholder/year-end/_placeholder/adjustments/  200
-/clients/:id/year-end/:engagementId/adjustments/           /clients/_placeholder/year-end/_placeholder/adjustments/  200
+/clients/:id/year-end/:engagementId/adjustments                      /clients/_placeholder/year-end/_placeholder/adjustments/  200
+/clients/:id/year-end/:engagementId/adjustments/                     /clients/_placeholder/year-end/_placeholder/adjustments/  200
+/clients/:id/year-end/:engagementId/adjustments/index.txt            /clients/_placeholder/year-end/_placeholder/adjustments/index.txt  200
+/clients/:id/year-end/:engagementId/adjustments.txt                  /clients/_placeholder/year-end/_placeholder/adjustments/index.txt  200
 
-/clients/:id/year-end/:engagementId/checklist              /clients/_placeholder/year-end/_placeholder/checklist/  200
-/clients/:id/year-end/:engagementId/checklist/             /clients/_placeholder/year-end/_placeholder/checklist/  200
+/clients/:id/year-end/:engagementId/checklist                        /clients/_placeholder/year-end/_placeholder/checklist/  200
+/clients/:id/year-end/:engagementId/checklist/                       /clients/_placeholder/year-end/_placeholder/checklist/  200
+/clients/:id/year-end/:engagementId/checklist/index.txt              /clients/_placeholder/year-end/_placeholder/checklist/index.txt  200
+/clients/:id/year-end/:engagementId/checklist.txt                    /clients/_placeholder/year-end/_placeholder/checklist/index.txt  200
 
-/clients/:id/year-end/:engagementId/dashboard              /clients/_placeholder/year-end/_placeholder/dashboard/  200
-/clients/:id/year-end/:engagementId/dashboard/             /clients/_placeholder/year-end/_placeholder/dashboard/  200
+/clients/:id/year-end/:engagementId/dashboard                        /clients/_placeholder/year-end/_placeholder/dashboard/  200
+/clients/:id/year-end/:engagementId/dashboard/                       /clients/_placeholder/year-end/_placeholder/dashboard/  200
+/clients/:id/year-end/:engagementId/dashboard/index.txt              /clients/_placeholder/year-end/_placeholder/dashboard/index.txt  200
+/clients/:id/year-end/:engagementId/dashboard.txt                    /clients/_placeholder/year-end/_placeholder/dashboard/index.txt  200
 
-/clients/:id/year-end/:engagementId/exports                /clients/_placeholder/year-end/_placeholder/exports/  200
-/clients/:id/year-end/:engagementId/exports/               /clients/_placeholder/year-end/_placeholder/exports/  200
+/clients/:id/year-end/:engagementId/exports                          /clients/_placeholder/year-end/_placeholder/exports/  200
+/clients/:id/year-end/:engagementId/exports/                         /clients/_placeholder/year-end/_placeholder/exports/  200
+/clients/:id/year-end/:engagementId/exports/index.txt                /clients/_placeholder/year-end/_placeholder/exports/index.txt  200
+/clients/:id/year-end/:engagementId/exports.txt                      /clients/_placeholder/year-end/_placeholder/exports/index.txt  200
 
-/clients/:id/year-end/:engagementId/financial-statements   /clients/_placeholder/year-end/_placeholder/financial-statements/  200
-/clients/:id/year-end/:engagementId/financial-statements/  /clients/_placeholder/year-end/_placeholder/financial-statements/  200
+/clients/:id/year-end/:engagementId/financial-statements             /clients/_placeholder/year-end/_placeholder/financial-statements/  200
+/clients/:id/year-end/:engagementId/financial-statements/            /clients/_placeholder/year-end/_placeholder/financial-statements/  200
+/clients/:id/year-end/:engagementId/financial-statements/index.txt   /clients/_placeholder/year-end/_placeholder/financial-statements/index.txt  200
+/clients/:id/year-end/:engagementId/financial-statements.txt         /clients/_placeholder/year-end/_placeholder/financial-statements/index.txt  200
 
-/clients/:id/year-end/:engagementId/notes                  /clients/_placeholder/year-end/_placeholder/notes/  200
-/clients/:id/year-end/:engagementId/notes/                 /clients/_placeholder/year-end/_placeholder/notes/  200
+/clients/:id/year-end/:engagementId/notes                            /clients/_placeholder/year-end/_placeholder/notes/  200
+/clients/:id/year-end/:engagementId/notes/                           /clients/_placeholder/year-end/_placeholder/notes/  200
+/clients/:id/year-end/:engagementId/notes/index.txt                  /clients/_placeholder/year-end/_placeholder/notes/index.txt  200
+/clients/:id/year-end/:engagementId/notes.txt                        /clients/_placeholder/year-end/_placeholder/notes/index.txt  200
 
-/clients/:id/year-end/:engagementId/review                 /clients/_placeholder/year-end/_placeholder/review/  200
-/clients/:id/year-end/:engagementId/review/                /clients/_placeholder/year-end/_placeholder/review/  200
+/clients/:id/year-end/:engagementId/review                           /clients/_placeholder/year-end/_placeholder/review/  200
+/clients/:id/year-end/:engagementId/review/                          /clients/_placeholder/year-end/_placeholder/review/  200
+/clients/:id/year-end/:engagementId/review/index.txt                 /clients/_placeholder/year-end/_placeholder/review/index.txt  200
+/clients/:id/year-end/:engagementId/review.txt                       /clients/_placeholder/year-end/_placeholder/review/index.txt  200
 
-/clients/:id/year-end/:engagementId/schedules              /clients/_placeholder/year-end/_placeholder/schedules/  200
-/clients/:id/year-end/:engagementId/schedules/             /clients/_placeholder/year-end/_placeholder/schedules/  200
+/clients/:id/year-end/:engagementId/schedules                        /clients/_placeholder/year-end/_placeholder/schedules/  200
+/clients/:id/year-end/:engagementId/schedules/                       /clients/_placeholder/year-end/_placeholder/schedules/  200
+/clients/:id/year-end/:engagementId/schedules/index.txt              /clients/_placeholder/year-end/_placeholder/schedules/index.txt  200
+/clients/:id/year-end/:engagementId/schedules.txt                    /clients/_placeholder/year-end/_placeholder/schedules/index.txt  200
 
-/clients/:id/compliance/gst                                /clients/_placeholder/compliance/gst/  200
-/clients/:id/compliance/gst/                               /clients/_placeholder/compliance/gst/  200
+/clients/:id/compliance/gst                                          /clients/_placeholder/compliance/gst/  200
+/clients/:id/compliance/gst/                                         /clients/_placeholder/compliance/gst/  200
+/clients/:id/compliance/gst/index.txt                                /clients/_placeholder/compliance/gst/index.txt  200
+/clients/:id/compliance/gst.txt                                      /clients/_placeholder/compliance/gst/index.txt  200
 
-/clients/:id/compliance/mca                                /clients/_placeholder/compliance/mca/  200
-/clients/:id/compliance/mca/                               /clients/_placeholder/compliance/mca/  200
+/clients/:id/compliance/mca                                          /clients/_placeholder/compliance/mca/  200
+/clients/:id/compliance/mca/                                         /clients/_placeholder/compliance/mca/  200
+/clients/:id/compliance/mca/index.txt                                /clients/_placeholder/compliance/mca/index.txt  200
+/clients/:id/compliance/mca.txt                                      /clients/_placeholder/compliance/mca/index.txt  200
 
-/clients/:id/compliance/tds                                /clients/_placeholder/compliance/tds/  200
-/clients/:id/compliance/tds/                               /clients/_placeholder/compliance/tds/  200
+/clients/:id/compliance/tds                                          /clients/_placeholder/compliance/tds/  200
+/clients/:id/compliance/tds/                                         /clients/_placeholder/compliance/tds/  200
+/clients/:id/compliance/tds/index.txt                                /clients/_placeholder/compliance/tds/index.txt  200
+/clients/:id/compliance/tds.txt                                      /clients/_placeholder/compliance/tds/index.txt  200
 
-/clients/:id/tax/26as                                      /clients/_placeholder/tax/26as/  200
-/clients/:id/tax/26as/                                     /clients/_placeholder/tax/26as/  200
+/clients/:id/tax/26as                                                /clients/_placeholder/tax/26as/  200
+/clients/:id/tax/26as/                                               /clients/_placeholder/tax/26as/  200
+/clients/:id/tax/26as/index.txt                                      /clients/_placeholder/tax/26as/index.txt  200
+/clients/:id/tax/26as.txt                                            /clients/_placeholder/tax/26as/index.txt  200
 
-/clients/:id/tax/computation                               /clients/_placeholder/tax/computation/  200
-/clients/:id/tax/computation/                              /clients/_placeholder/tax/computation/  200
+/clients/:id/tax/computation                                         /clients/_placeholder/tax/computation/  200
+/clients/:id/tax/computation/                                        /clients/_placeholder/tax/computation/  200
+/clients/:id/tax/computation/index.txt                               /clients/_placeholder/tax/computation/index.txt  200
+/clients/:id/tax/computation.txt                                     /clients/_placeholder/tax/computation/index.txt  200
 
-/clients/:id/tax/filing                                    /clients/_placeholder/tax/filing/  200
-/clients/:id/tax/filing/                                   /clients/_placeholder/tax/filing/  200
+/clients/:id/tax/filing                                              /clients/_placeholder/tax/filing/  200
+/clients/:id/tax/filing/                                             /clients/_placeholder/tax/filing/  200
+/clients/:id/tax/filing/index.txt                                    /clients/_placeholder/tax/filing/index.txt  200
+/clients/:id/tax/filing.txt                                          /clients/_placeholder/tax/filing/index.txt  200
 
-/clients/:id/year-end/xbrl                                 /clients/_placeholder/year-end/xbrl/  200
-/clients/:id/year-end/xbrl/                                /clients/_placeholder/year-end/xbrl/  200
+/clients/:id/year-end/xbrl                                           /clients/_placeholder/year-end/xbrl/  200
+/clients/:id/year-end/xbrl/                                          /clients/_placeholder/year-end/xbrl/  200
+/clients/:id/year-end/xbrl/index.txt                                 /clients/_placeholder/year-end/xbrl/index.txt  200
+/clients/:id/year-end/xbrl.txt                                       /clients/_placeholder/year-end/xbrl/index.txt  200
 
-/clients/:id/accounting                                    /clients/_placeholder/accounting/  200
-/clients/:id/accounting/                                   /clients/_placeholder/accounting/  200
+/clients/:id/accounting                                              /clients/_placeholder/accounting/  200
+/clients/:id/accounting/                                             /clients/_placeholder/accounting/  200
+/clients/:id/accounting/index.txt                                    /clients/_placeholder/accounting/index.txt  200
+/clients/:id/accounting.txt                                          /clients/_placeholder/accounting/index.txt  200
 
-/clients/:id/ai-insights                                   /clients/_placeholder/ai-insights/  200
-/clients/:id/ai-insights/                                  /clients/_placeholder/ai-insights/  200
+/clients/:id/ai-insights                                             /clients/_placeholder/ai-insights/  200
+/clients/:id/ai-insights/                                            /clients/_placeholder/ai-insights/  200
+/clients/:id/ai-insights/index.txt                                   /clients/_placeholder/ai-insights/index.txt  200
+/clients/:id/ai-insights.txt                                         /clients/_placeholder/ai-insights/index.txt  200
 
-/clients/:id/compliance                                    /clients/_placeholder/compliance/  200
-/clients/:id/compliance/                                   /clients/_placeholder/compliance/  200
+/clients/:id/compliance                                              /clients/_placeholder/compliance/  200
+/clients/:id/compliance/                                             /clients/_placeholder/compliance/  200
+/clients/:id/compliance/index.txt                                    /clients/_placeholder/compliance/index.txt  200
+/clients/:id/compliance.txt                                          /clients/_placeholder/compliance/index.txt  200
 
-/clients/:id/documents                                     /clients/_placeholder/documents/  200
-/clients/:id/documents/                                    /clients/_placeholder/documents/  200
+/clients/:id/documents                                               /clients/_placeholder/documents/  200
+/clients/:id/documents/                                              /clients/_placeholder/documents/  200
+/clients/:id/documents/index.txt                                     /clients/_placeholder/documents/index.txt  200
+/clients/:id/documents.txt                                           /clients/_placeholder/documents/index.txt  200
 
-/clients/:id/fixed-assets                                  /clients/_placeholder/fixed-assets/  200
-/clients/:id/fixed-assets/                                 /clients/_placeholder/fixed-assets/  200
+/clients/:id/fixed-assets                                            /clients/_placeholder/fixed-assets/  200
+/clients/:id/fixed-assets/                                           /clients/_placeholder/fixed-assets/  200
+/clients/:id/fixed-assets/index.txt                                  /clients/_placeholder/fixed-assets/index.txt  200
+/clients/:id/fixed-assets.txt                                        /clients/_placeholder/fixed-assets/index.txt  200
 
-/clients/:id/health                                        /clients/_placeholder/health/  200
-/clients/:id/health/                                       /clients/_placeholder/health/  200
+/clients/:id/health                                                  /clients/_placeholder/health/  200
+/clients/:id/health/                                                 /clients/_placeholder/health/  200
+/clients/:id/health/index.txt                                        /clients/_placeholder/health/index.txt  200
+/clients/:id/health.txt                                              /clients/_placeholder/health/index.txt  200
 
-/clients/:id/instructions                                  /clients/_placeholder/instructions/  200
-/clients/:id/instructions/                                 /clients/_placeholder/instructions/  200
+/clients/:id/instructions                                            /clients/_placeholder/instructions/  200
+/clients/:id/instructions/                                           /clients/_placeholder/instructions/  200
+/clients/:id/instructions/index.txt                                  /clients/_placeholder/instructions/index.txt  200
+/clients/:id/instructions.txt                                        /clients/_placeholder/instructions/index.txt  200
 
-/clients/:id/knowledge                                     /clients/_placeholder/knowledge/  200
-/clients/:id/knowledge/                                    /clients/_placeholder/knowledge/  200
+/clients/:id/knowledge                                               /clients/_placeholder/knowledge/  200
+/clients/:id/knowledge/                                              /clients/_placeholder/knowledge/  200
+/clients/:id/knowledge/index.txt                                     /clients/_placeholder/knowledge/index.txt  200
+/clients/:id/knowledge.txt                                           /clients/_placeholder/knowledge/index.txt  200
 
-/clients/:id/lifecycle                                     /clients/_placeholder/lifecycle/  200
-/clients/:id/lifecycle/                                    /clients/_placeholder/lifecycle/  200
+/clients/:id/lifecycle                                               /clients/_placeholder/lifecycle/  200
+/clients/:id/lifecycle/                                              /clients/_placeholder/lifecycle/  200
+/clients/:id/lifecycle/index.txt                                     /clients/_placeholder/lifecycle/index.txt  200
+/clients/:id/lifecycle.txt                                           /clients/_placeholder/lifecycle/index.txt  200
 
-/clients/:id/overview                                      /clients/_placeholder/overview/  200
-/clients/:id/overview/                                     /clients/_placeholder/overview/  200
+/clients/:id/overview                                                /clients/_placeholder/overview/  200
+/clients/:id/overview/                                               /clients/_placeholder/overview/  200
+/clients/:id/overview/index.txt                                      /clients/_placeholder/overview/index.txt  200
+/clients/:id/overview.txt                                            /clients/_placeholder/overview/index.txt  200
 
-/clients/:id/payroll                                       /clients/_placeholder/payroll/  200
-/clients/:id/payroll/                                      /clients/_placeholder/payroll/  200
+/clients/:id/payroll                                                 /clients/_placeholder/payroll/  200
+/clients/:id/payroll/                                                /clients/_placeholder/payroll/  200
+/clients/:id/payroll/index.txt                                       /clients/_placeholder/payroll/index.txt  200
+/clients/:id/payroll.txt                                             /clients/_placeholder/payroll/index.txt  200
 
-/clients/:id/portal                                        /clients/_placeholder/portal/  200
-/clients/:id/portal/                                       /clients/_placeholder/portal/  200
+/clients/:id/portal                                                  /clients/_placeholder/portal/  200
+/clients/:id/portal/                                                 /clients/_placeholder/portal/  200
+/clients/:id/portal/index.txt                                        /clients/_placeholder/portal/index.txt  200
+/clients/:id/portal.txt                                              /clients/_placeholder/portal/index.txt  200
 
-/clients/:id/purchases                                     /clients/_placeholder/purchases/  200
-/clients/:id/purchases/                                    /clients/_placeholder/purchases/  200
+/clients/:id/purchases                                               /clients/_placeholder/purchases/  200
+/clients/:id/purchases/                                              /clients/_placeholder/purchases/  200
+/clients/:id/purchases/index.txt                                     /clients/_placeholder/purchases/index.txt  200
+/clients/:id/purchases.txt                                           /clients/_placeholder/purchases/index.txt  200
 
-/clients/:id/relationships                                 /clients/_placeholder/relationships/  200
-/clients/:id/relationships/                                /clients/_placeholder/relationships/  200
+/clients/:id/relationships                                           /clients/_placeholder/relationships/  200
+/clients/:id/relationships/                                          /clients/_placeholder/relationships/  200
+/clients/:id/relationships/index.txt                                 /clients/_placeholder/relationships/index.txt  200
+/clients/:id/relationships.txt                                       /clients/_placeholder/relationships/index.txt  200
 
-/clients/:id/reports                                       /clients/_placeholder/reports/  200
-/clients/:id/reports/                                      /clients/_placeholder/reports/  200
+/clients/:id/reports                                                 /clients/_placeholder/reports/  200
+/clients/:id/reports/                                                /clients/_placeholder/reports/  200
+/clients/:id/reports/index.txt                                       /clients/_placeholder/reports/index.txt  200
+/clients/:id/reports.txt                                             /clients/_placeholder/reports/index.txt  200
 
-/clients/:id/sales                                         /clients/_placeholder/sales/  200
-/clients/:id/sales/                                        /clients/_placeholder/sales/  200
+/clients/:id/sales                                                   /clients/_placeholder/sales/  200
+/clients/:id/sales/                                                  /clients/_placeholder/sales/  200
+/clients/:id/sales/index.txt                                         /clients/_placeholder/sales/index.txt  200
+/clients/:id/sales.txt                                               /clients/_placeholder/sales/index.txt  200
 
-/clients/:id/tasks                                         /clients/_placeholder/tasks/  200
-/clients/:id/tasks/                                        /clients/_placeholder/tasks/  200
+/clients/:id/tasks                                                   /clients/_placeholder/tasks/  200
+/clients/:id/tasks/                                                  /clients/_placeholder/tasks/  200
+/clients/:id/tasks/index.txt                                         /clients/_placeholder/tasks/index.txt  200
+/clients/:id/tasks.txt                                               /clients/_placeholder/tasks/index.txt  200
 
-/clients/:id/tax                                           /clients/_placeholder/tax/  200
-/clients/:id/tax/                                          /clients/_placeholder/tax/  200
+/clients/:id/tax                                                     /clients/_placeholder/tax/  200
+/clients/:id/tax/                                                    /clients/_placeholder/tax/  200
+/clients/:id/tax/index.txt                                           /clients/_placeholder/tax/index.txt  200
+/clients/:id/tax.txt                                                 /clients/_placeholder/tax/index.txt  200
 
-/clients/:id/year-end                                      /clients/_placeholder/year-end/  200
-/clients/:id/year-end/                                     /clients/_placeholder/year-end/  200
+/clients/:id/year-end                                                /clients/_placeholder/year-end/  200
+/clients/:id/year-end/                                               /clients/_placeholder/year-end/  200
+/clients/:id/year-end/index.txt                                      /clients/_placeholder/year-end/index.txt  200
+/clients/:id/year-end.txt                                            /clients/_placeholder/year-end/index.txt  200
 
-/clients/:id                                               /clients/_placeholder/  200
-/clients/:id/                                              /clients/_placeholder/  200
+/clients/:id                                                         /clients/_placeholder/  200
+/clients/:id/                                                        /clients/_placeholder/  200
+/clients/:id/index.txt                                               /clients/_placeholder/index.txt  200
+/clients/:id.txt                                                     /clients/_placeholder/index.txt  200
 
-/health/:client_id                                         /health/_placeholder/  200
-/health/:client_id/                                        /health/_placeholder/  200
+/health/:client_id                                                   /health/_placeholder/  200
+/health/:client_id/                                                  /health/_placeholder/  200
+/health/:client_id/index.txt                                         /health/_placeholder/index.txt  200
+/health/:client_id.txt                                               /health/_placeholder/index.txt  200
 
-/relationships/:entity_id                                  /relationships/_placeholder/  200
-/relationships/:entity_id/                                 /relationships/_placeholder/  200
+/relationships/:entity_id                                            /relationships/_placeholder/  200
+/relationships/:entity_id/                                           /relationships/_placeholder/  200
+/relationships/:entity_id/index.txt                                  /relationships/_placeholder/index.txt  200
+/relationships/:entity_id.txt                                        /relationships/_placeholder/index.txt  200

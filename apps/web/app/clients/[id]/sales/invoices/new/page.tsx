@@ -6,7 +6,7 @@
  * Loading/empty/error render inside the same workspace shell for continuity.
  */
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { InvoiceEditor } from "@/components/invoices/InvoiceEditor";
 import { EmptyState, ErrorState } from "@/components/ui/states";
@@ -15,16 +15,19 @@ import {
 } from "@/components/invoices/InvoiceEditorSkeleton";
 import { loadInvoiceEditorContext, type InvoiceEditorContext } from "@/lib/invoices/editorContext";
 import { salesListHref, salesListFlashHref, invoiceBreadcrumbs } from "@/lib/invoices/workspaceNav";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
 export default function NewInvoicePage() {
-  // Read the client id from the live route (useParams), NOT a build-time `params`
-  // prop: under `output: export` the prop is the generateStaticParams placeholder
-  // ("_placeholder"), which would load the wrong client's customers and emit
-  // "_placeholder" breadcrumb hrefs (breaking AppShell's client-workspace
-  // detection → two sidebars). Mirrors the sibling Edit route and every other
-  // client page.
-  const params = useParams<{ id: string }>();
-  const clientId = params.id;
+  // Read the client id from ClientNavContext (window.location-derived), NOT
+  // useParams(): under `output: export` + Cloudflare's rewrite-to-_placeholder
+  // hosting, the App Router's FlightRouterState is permanently anchored to the
+  // "_placeholder" build param — useParams() never resolves to the real id, on
+  // first load OR after a client-side navigation (see ClientNavContext.tsx's
+  // doc comment). A prior fix swapped a build-time `params` prop for
+  // useParams(), which looked right but has the identical failure mode: both
+  // are "_placeholder" forever, so this page's loader effect silently no-ops
+  // and the workspace hangs on its loading skeleton permanently in production.
+  const { clientId } = useClientNav();
   const router = useRouter();
   const [ctx, setCtx] = useState<InvoiceEditorContext | null>(null);
   const [error, setError] = useState(false);

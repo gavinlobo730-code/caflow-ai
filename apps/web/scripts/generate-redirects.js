@@ -91,10 +91,28 @@ export function buildRedirectsFile(appDir) {
 
   // Column-align "from" against the longest one in the whole file (purely
   // cosmetic — Cloudflare only needs whitespace between columns).
-  const fromWidth = Math.max(...rules.map((r) => r.from.length + 1), 0) + 2;
+  const fromWidth = Math.max(...rules.map((r) => r.from.length + ".index.txt".length + 1), 0) + 2;
   const pad = (s) => s + " ".repeat(Math.max(1, fromWidth - s.length));
-  const formatPair = (from, to) =>
-    [`${pad(from)}${to}  200`, `${pad(from + "/")}${to}  200`].join("\n");
+  const formatPair = (from, to) => {
+    const htmlRules = [`${pad(from)}${to}  200`, `${pad(from + "/")}${to}  200`];
+    // Next's client-side <Link> soft-navigation (App Router) does NOT re-request
+    // the HTML page — it fetches a separate RSC "flight payload" at
+    // `<path>/index.txt` (trailing-slash form, matching this app's
+    // trailingSlash:true) or `<path>.txt` (bare form), e.g. via
+    // fetch(`${pathname}/index.txt?_rsc=...`). `next export` emits that exact
+    // `index.txt` file alongside every page's HTML (confirmed under
+    // out/clients/_placeholder/**). Without a matching rule here, every
+    // client-side navigation between two pages that both live under a
+    // dynamic segment (e.g. clicking a sidebar link while already inside a
+    // real client's workspace) 404s on this fetch — Next then falls back to
+    // whatever stale route state it has, which is how "_placeholder" was
+    // observed leaking into the address bar (the "two sidebars" regression).
+    const rscRules = [
+      `${pad(from + "/index.txt")}${to}index.txt  200`,
+      `${pad(from + ".txt")}${to}index.txt  200`,
+    ];
+    return [...htmlRules, ...rscRules].join("\n");
+  };
 
   const body = rules.map((r) => formatPair(r.from, r.to)).join("\n\n");
   return `${HEADER}\n${body}\n`;
