@@ -22,10 +22,24 @@ export interface HsnPick {
 const normalizeDesc = (s: string | null | undefined): string =>
   (s ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 
+const BADGE_CLASS: Record<"SAC" | "HSN", string> = {
+  SAC: "bg-violet-50 text-violet-700",
+  HSN: "bg-sky-50 text-sky-700",
+};
+
 /**
- * Smart HSN/SAC lookup — debounced server search over the canonical master
- * merged with the firm's own history (GET /api/hsn/search). Search by code OR
- * description; on select the caller may auto-fill GST rate / description / unit.
+ * HSN/SAC lookup — debounced server search over the canonical master merged
+ * with the firm's own history (GET /api/hsn/search). Search by code OR
+ * description; on select the caller may auto-fill GST rate / description /
+ * unit. This is the SECONDARY, manual-override path: the primary way a line
+ * gets its code is the Sales Invoice's description-driven LineItemAutocomplete
+ * (which searches this same endpoint alongside the Service Catalogue and
+ * shows results inline as the CA types). Once a code is set, the trigger
+ * renders as a compact "SAC 998222 · Change" chip instead of a full search
+ * field — click it to search/replace the code directly, e.g. when the CA
+ * knows the exact code and wants to skip the description-driven suggestions.
+ * Other callers (Purchases, Credit Notes) still drive this directly off a
+ * plain description field via the optional `description` prop below.
  *
  * The controlled `value` is the HSN code string itself (free-text is always
  * allowed via the "Use …" row) so an unlisted/edge code never blocks invoicing.
@@ -55,9 +69,7 @@ export function HsnLookup(props: {
    * description merely CONTAINS the typed text as a substring (the backend
    * matches that way) — e.g. pausing mid-sentence on a shared prefix like
    * "Annual maintenance contract" must not silently borrow the HSN/rate from
-   * an unrelated past line that happened to start the same way. Restores the
-   * old description-driven HsnAutocomplete's productivity behavior on top of
-   * the newer merged master+history search, without a second endpoint.
+   * an unrelated past line that happened to start the same way.
    *
    * Never overwrites a code already present (typed, manually picked, or from
    * an earlier auto-fill) — checked both when the debounce fires and again
@@ -175,16 +187,26 @@ export function HsnLookup(props: {
       getOptionId={(h) => h.hsn_code}
       getLabel={(h) => h.hsn_code}
       getSecondary={(h) => hsnSecondaryLine(h) || undefined}
+      renderTrigger={(h) => {
+        const badge = hsnTypeBadge(h);
+        return (
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            {badge && (
+              <span className={`flex-shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold ${BADGE_CLASS[badge]}`}>
+                {badge}
+              </span>
+            )}
+            <span className="truncate font-mono text-[11px] text-[#334155]">{h.hsn_code}</span>
+            <span className="flex-shrink-0 text-[10px] font-medium text-blue-600">Change</span>
+          </span>
+        );
+      }}
       renderOption={(h) => {
         const badge = hsnTypeBadge(h);
         return (
           <span className="flex min-w-0 items-center gap-2">
             {badge && (
-              <span
-                className={`flex-shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold ${
-                  badge === "SAC" ? "bg-violet-50 text-violet-700" : "bg-sky-50 text-sky-700"
-                }`}
-              >
+              <span className={`flex-shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold ${BADGE_CLASS[badge]}`}>
                 {badge}
               </span>
             )}
@@ -200,6 +222,7 @@ export function HsnLookup(props: {
       onCreate={(label) => onChange(label)}
       createLabel={(q) => `Use “${q}”`}
       minChars={2}
+      panelDensity="spacious"
       placeholder={props.placeholder ?? "HSN/SAC"}
       searchPlaceholder="Search code or description…"
       emptyText="Type a code or description"

@@ -45,6 +45,22 @@ export interface ComboboxProps<T> extends ComboboxCore<T> {
   emptyText?: string;
   /** Custom row renderer (defaults to label + secondary). */
   renderOption?: (o: T, ctx: { selected: boolean }) => React.ReactNode;
+  /**
+   * Custom trigger content when a single value is selected (e.g. a compact
+   * colored chip instead of the plain label). Ignored while nothing is
+   * selected or in multi-select mode — the default label/placeholder always
+   * renders then. The trigger button itself (click/keyboard/ARIA) is
+   * unchanged; only the content inside it is swapped.
+   */
+  renderTrigger?: (o: T) => React.ReactNode;
+  /**
+   * "spacious" widens the popup and gives rows more room (taller max-height,
+   * more padding, full-text wrapping instead of truncation) for a lookup
+   * meant to be scanned like a command palette rather than a short <select>
+   * replacement. Defaults to the original compact sizing everywhere it isn't
+   * passed, so existing callers (CustomerLookup, StateLookup, …) are unaffected.
+   */
+  panelDensity?: "compact" | "spacious";
 }
 
 const SIZE = {
@@ -74,6 +90,8 @@ export function Combobox<T>(props: ComboboxProps<T>) {
     clearable = false,
     emptyText = "No matches",
     renderOption,
+    renderTrigger,
+    panelDensity = "compact",
     getOptionId,
     getLabel,
     getSecondary,
@@ -250,7 +268,9 @@ export function Combobox<T>(props: ComboboxProps<T>) {
         )}
       >
         <span className={cn("truncate", !triggerLabel && "text-[#94A3B8]")}>
-          {triggerLabel || placeholder}
+          {!multiple && selectedArr[0] && renderTrigger
+            ? renderTrigger(selectedArr[0])
+            : triggerLabel || placeholder}
         </span>
         <span className="flex flex-shrink-0 items-center gap-1">
           {clearable && !multiple && selectedArr.length > 0 && !disabled && (
@@ -270,7 +290,10 @@ export function Combobox<T>(props: ComboboxProps<T>) {
 
       {open && (
         <div
-          className="absolute z-40 mt-1 w-full min-w-[16rem] overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-lg"
+          className={cn(
+            "absolute z-40 mt-1 w-full overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-lg",
+            panelDensity === "spacious" ? "min-w-[26rem]" : "min-w-[16rem]",
+          )}
         >
           {/* Search box */}
           <div className="flex items-center gap-2 border-b border-[#F1F5F9] px-2.5 py-2">
@@ -305,7 +328,7 @@ export function Combobox<T>(props: ComboboxProps<T>) {
             id={listboxId}
             role="listbox"
             aria-label={ariaLabel}
-            className="max-h-64 overflow-y-auto py-1"
+            className={cn("overflow-y-auto py-1", panelDensity === "spacious" ? "max-h-[28rem]" : "max-h-64")}
           >
             {error ? (
               <div className="px-3 py-3 text-center text-[11px] text-red-600">
@@ -334,7 +357,8 @@ export function Combobox<T>(props: ComboboxProps<T>) {
                       onMouseEnter={() => setHighlighted(i)}
                       onClick={() => commit(o)}
                       className={cn(
-                        "flex cursor-pointer items-center justify-between gap-2 px-3 py-1.5",
+                        "flex cursor-pointer items-center justify-between gap-2",
+                        panelDensity === "spacious" ? "px-3.5 py-2.5" : "px-3 py-1.5",
                         active ? "bg-[#EFF6FF]" : "hover:bg-[#F8FAFC]",
                       )}
                     >
