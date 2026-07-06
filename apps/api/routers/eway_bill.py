@@ -107,13 +107,18 @@ def record_ewb_generated(
             ewb_valid_upto=req.ewb_valid_upto,
             provider_response=req.provider_response,
         )
+        # Bug fix (Batch 7): timeline_service.log takes title/entity_*, not
+        # action/metadata (the old call raised TypeError → 500). entity_* scoping
+        # surfaces the event in the invoice Hub timeline.
         timeline_service.log(
             client_id=result.get("client_id", ""),
+            firm_id=current_user["firm_id"],
             category="tax",
-            action="eway_bill_generated",
-            description=f"E-Way Bill generated: {req.ewb_number}",
+            title="E-Way Bill generated",
+            description=f"E-Way Bill {req.ewb_number} (valid to {req.ewb_valid_upto})",
             severity="success",
-            metadata={"record_id": record_id, "ewb_number": req.ewb_number},
+            entity_type="sales_invoice",
+            entity_id=result.get("sales_invoice_id"),
         )
         return api_response(True, result)
     except Exception as e:
@@ -150,11 +155,13 @@ def cancel_ewb(
         )
         timeline_service.log(
             client_id=result.get("client_id", ""),
+            firm_id=current_user["firm_id"],
             category="tax",
-            action="eway_bill_cancelled",
+            title="E-Way Bill cancelled",
             description=f"E-Way Bill cancelled: {req.cancellation_reason}",
             severity="warning",
-            metadata={"record_id": record_id},
+            entity_type="sales_invoice",
+            entity_id=result.get("sales_invoice_id"),
         )
         return api_response(True, result)
     except Exception as e:

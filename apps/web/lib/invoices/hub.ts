@@ -97,7 +97,7 @@ export interface TimelineItem {
   at: string;            // ISO timestamp
   title: string;
   detail?: string;
-  kind: "lifecycle" | "delivery";
+  kind: "lifecycle" | "delivery" | "compliance";
 }
 
 interface RawTimelineEvent {
@@ -117,6 +117,7 @@ export function buildActivity(
   invoiceId: string,
   events: RawTimelineEvent[],
   deliveries: InvoiceDelivery[],
+  extra: TimelineItem[] = [],
 ): TimelineItem[] {
   const lifecycle: TimelineItem[] = events
     .filter((e) => e.entity_type === "sales_invoice" && e.entity_id === invoiceId)
@@ -134,7 +135,9 @@ export function buildActivity(
     kind: "delivery" as const,
   }));
 
-  return [...lifecycle, ...delivery]
+  // `extra` carries pre-built items from other sources (e.g. compliance records
+  // derived by lib/invoices/compliance) so the Hub feed is one merged stream.
+  return [...lifecycle, ...delivery, ...extra]
     .filter((i) => i.at)
     .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)); // newest first
 }

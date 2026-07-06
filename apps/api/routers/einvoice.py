@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from core.permissions import rbac
 from models.common import api_response
 from services.timeline_service import timeline_service
@@ -17,12 +17,29 @@ router = APIRouter(prefix="/api/einvoice", tags=["einvoice"])
 _logger = logging.getLogger("caflow.einvoice.router")
 
 
+_GST_TREATMENTS = {
+    "regular", "export_with_payment", "export_without_payment",
+    "sez_with_payment", "sez_without_payment", "deemed_export",
+}
+
+
 class CreateEInvoiceRequest(BaseModel):
     client_id: str
     invoice_number: str
     invoice_date: str  # YYYY-MM-DD
     sales_invoice_id: Optional[str] = None
     provider: str = "manual"
+    # Compliance treatment captured for the IRN (metadata only — never used in
+    # any tax/journal computation). LUT/Bond ref applies to without-payment.
+    gst_treatment: Optional[str] = None
+    lut_number: Optional[str] = None
+
+    @field_validator("gst_treatment")
+    @classmethod
+    def _valid_treatment(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in _GST_TREATMENTS:
+            raise ValueError(f"Invalid gst_treatment '{v}'.")
+        return v
 
 
 class RecordIRNRequest(BaseModel):
@@ -53,6 +70,8 @@ def create_record(
             created_by=current_user["id"],
             sales_invoice_id=req.sales_invoice_id,
             provider=req.provider,
+            gst_treatment=req.gst_treatment,
+            lut_number=req.lut_number,
         )
         return api_response(True, {**rec, "ca_review_required": True})
     except Exception as e:
@@ -90,13 +109,18 @@ def record_irn_generated(
             qr_data=req.qr_data,
             provider_response=req.provider_response,
         )
+        # Bug fix (Batch 7): timeline_service.log takes title/entity_*, not
+        # action/metadata — the old call raised TypeError → 500. Scoping to the
+        # sales invoice also surfaces the event in the invoice Hub timeline.
         timeline_service.log(
             client_id=result.get("client_id", ""),
+            firm_id=current_user["firm_id"],
             category="tax",
-            action="einvoice_generated",
-            description=f"E-Invoice IRN generated: {req.irn}",
+            title="E-Invoice IRN generated",
+            description=f"IRN {req.irn} (ACK {req.ack_number})",
             severity="success",
-            metadata={"record_id": record_id, "irn": req.irn, "ack": req.ack_number},
+            entity_type="sales_invoice",
+            entity_id=result.get("sales_invoice_id"),
         )
         return api_response(True, result)
     except Exception as e:
@@ -122,11 +146,13 @@ def cancel_irn(
         )
         timeline_service.log(
             client_id=result.get("client_id", ""),
+            firm_id=current_user["firm_id"],
             category="tax",
-            action="einvoice_cancelled",
-            description=f"E-Invoice cancelled: {req.cancellation_reason}",
+            title="E-Invoice cancelled",
+            description=f"IRN cancelled: {req.cancellation_reason}",
             severity="warning",
-            metadata={"record_id": record_id, "reason": req.cancellation_reason},
+            entity_type="sales_invoice",
+            entity_id=result.get("sales_invoice_id"),
         )
         return api_response(True, result)
     except Exception as e:
