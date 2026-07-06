@@ -17,7 +17,6 @@ import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { LineItemAutocomplete } from "@/components/lookups/LineItemAutocomplete";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
 import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
-import { api } from "@/lib/api";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { StateLookup } from "@/components/lookups/StateLookup";
 import { formatMoney } from "@/lib/services/formatting";
@@ -573,10 +572,7 @@ export function InvoiceEditor({
                       <td className="py-1.5 pr-2">
                         <LineItemAutocomplete ref={(el) => { descRefs.current[idx] = el; }}
                           value={line.description} onChange={(v) => setLine(idx, { description: v })}
-                          onPick={(patch, meta) => {
-                            setLine(idx, patch);
-                            if (meta.catalogueId) api.serviceCatalogue.recordUsed(meta.catalogueId).catch(() => {});
-                          }}
+                          onPick={(patch) => setLine(idx, patch)}
                           onKeyDownFallback={(e) => onLineKeyDown(e, idx)}
                           clientId={clientId} placeholder="Item / service description"
                           ariaLabel={`Line ${idx + 1} description`} />

@@ -4,7 +4,6 @@ import { createPortal } from "react-dom";
 import { Loader2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCombobox } from "@/lib/combobox/useCombobox";
-import { api, type ApiResp } from "@/lib/api";
 import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { formatServicePrice } from "@/lib/catalogue/service";
 import type { HsnRow } from "@/lib/lookups/hsn";
@@ -12,6 +11,9 @@ import { formatHsnRate } from "@/lib/lookups/hsn";
 import {
   mergeLineItemSuggestions, suggestionToLinePatch, type LineItemSuggestion,
 } from "@/lib/invoices/lineItemSuggestions";
+import {
+  getCachedCatalogue, getCachedHsnRecent, getCachedHsnSearch, recordCatalogueUsed,
+} from "@/lib/invoices/lineItemSuggestionCache";
 import type { InvoiceLine } from "@/lib/invoices/gst";
 
 const BADGE_CLASS: Record<string, string> = {
@@ -51,7 +53,7 @@ export const LineItemAutocomplete = React.forwardRef<
   {
     value: string;
     onChange: (v: string) => void;
-    onPick: (patch: Partial<InvoiceLine>, meta: { catalogueId: string | null }) => void;
+    onPick: (patch: Partial<InvoiceLine>) => void;
     clientId?: string;
     disabled?: boolean;
     placeholder?: string;
@@ -89,46 +91,64 @@ export const LineItemAutocomplete = React.forwardRef<
     [forwardedRef],
   );
 
-  const fetchOptions = React.useCallback(
-    async (q: string): Promise<LineItemSuggestion[]> => {
-      const [svcRes, hsnRes] = await Promise.all([
-        api.serviceCatalogue.list({ q, limit: 6 }) as Promise<ApiResp<ServiceCatalogueItem[]>>,
-        api.hsn.search(q, { client_id: clientId, limit: 8 }) as Promise<ApiResp<HsnRow[]>>,
-      ]);
-      return mergeLineItemSuggestions(svcRes.data ?? [], hsnRes.data ?? []);
-    },
-    [clientId],
-  );
+  // Service Catalogue: a firm's own presets are few (tens, not thousands) and
+  // fetched ONCE — cached and shared across every line on the page (see
+  // lineItemSuggestionCache) — then matched entirely CLIENT-SIDE via the same
+  // sync engine every other Combobox uses (lib/combobox/match.ts). That means
+  // catalogue matches, which mergeLineItemSuggestions always ranks first,
+  // appear the instant a key is pressed: no debounce, no network round trip.
+  const [catalogue, setCatalogue] = React.useState<ServiceCatalogueItem[]>([]);
+  const [catalogueReady, setCatalogueReady] = React.useState(false);
+  const loadCatalogue = React.useCallback(() => {
+    getCachedCatalogue().then((rows) => { setCatalogue(rows); setCatalogueReady(true); });
+  }, []);
+  React.useEffect(() => { loadCatalogue(); }, [loadCatalogue]);
+  const catalogueCombo = useCombobox<ServiceCatalogueItem>({
+    options: catalogue,
+    getOptionId: (s) => s.id,
+    getLabel: (s) => s.name,
+    getSearchFields: (s) => [s.name, s.description ?? "", s.hsn_sac ?? ""],
+  });
 
-  // Recent-first (empty query): the firm's recent catalogue presets + recently
-  // used HSN/SAC codes for this client, merged the same way. Best-effort — an
-  // empty/failed fetch just means no suggestions until the CA types.
-  const [recent, setRecent] = React.useState<LineItemSuggestion[]>([]);
+  // HSN/SAC: the master is too large to ship client-side, so this stays a
+  // debounced server search — but every result is cached by exact query
+  // string and the "recent" list is deduped across every row on the page, so
+  // a repeat/backspace-retyped query, or a second line on the same invoice,
+  // never re-hits the network for data already fetched this session.
+  const [hsnRecent, setHsnRecent] = React.useState<HsnRow[]>([]);
   React.useEffect(() => {
+    if (!clientId) { setHsnRecent([]); return; }
     let alive = true;
-    (async () => {
-      try {
-        const [svcRes, hsnRes] = await Promise.all([
-          api.serviceCatalogue.list({ limit: 6 }) as Promise<ApiResp<ServiceCatalogueItem[]>>,
-          clientId
-            ? (api.hsn.search("", { client_id: clientId, limit: 6 }) as Promise<ApiResp<HsnRow[]>>)
-            : Promise.resolve({ success: true, error: null, data: [] } as ApiResp<HsnRow[]>),
-        ]);
-        if (alive) setRecent(mergeLineItemSuggestions(svcRes.data ?? [], hsnRes.data ?? []));
-      } catch { /* best-effort recent list */ }
-    })();
+    getCachedHsnRecent(clientId).then((rows) => { if (alive) setHsnRecent(rows); });
     return () => { alive = false; };
   }, [clientId]);
-
-  const combo = useCombobox<LineItemSuggestion>({
-    fetchOptions,
-    recent,
-    getOptionId: (s) => s.id,
-    getLabel: (s) => s.description,
+  const hsnFetch = React.useCallback((q: string) => getCachedHsnSearch(q, clientId), [clientId]);
+  const hsnCombo = useCombobox<HsnRow>({
+    fetchOptions: hsnFetch,
+    recent: hsnRecent,
+    getOptionId: (h) => h.hsn_code,
+    getLabel: (h) => h.hsn_code,
     minChars: 2,
-    debounceMs: 250,
+    debounceMs: 120,
   });
-  const { query, setQuery, results, loading, error, highlighted, setHighlighted, retry } = combo;
+
+  const query = catalogueCombo.query;
+  const setQuery = React.useCallback(
+    (v: string) => { catalogueCombo.setQuery(v); hsnCombo.setQuery(v); },
+    [catalogueCombo, hsnCombo],
+  );
+  const results = React.useMemo(
+    () => mergeLineItemSuggestions(catalogueCombo.results, hsnCombo.results),
+    [catalogueCombo.results, hsnCombo.results],
+  );
+  // A single highlighted index over the MERGED list — each sub-combobox keeps
+  // its own (unused) highlighted state, but the panel only ever renders one
+  // list, so only one index makes sense here.
+  const [highlighted, setHighlighted] = React.useState(0);
+  React.useEffect(() => { setHighlighted(0); }, [results]);
+  const loading = hsnCombo.loading || !catalogueReady;
+  const error = hsnCombo.error;
+  const retry = React.useCallback(() => { loadCatalogue(); hsnCombo.retry(); }, [loadCatalogue, hsnCombo]);
 
   // The description input is the query input — keep them driven by the same
   // onChange so no separate "search box" is ever needed.
@@ -140,7 +160,8 @@ export const LineItemAutocomplete = React.forwardRef<
 
   const commit = React.useCallback(
     (s: LineItemSuggestion) => {
-      onPick(suggestionToLinePatch(s), { catalogueId: s.catalogueId });
+      onPick(suggestionToLinePatch(s));
+      if (s.catalogueId) recordCatalogueUsed(s.catalogueId);
       setOpen(false);
       setQuery("");
     },
