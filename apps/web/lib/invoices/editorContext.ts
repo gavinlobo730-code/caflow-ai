@@ -14,6 +14,8 @@ export interface InvoiceEditorContext {
   customers: Customer[];
   /** The selling client's own GST state code (drives IGST vs CGST+SGST). */
   clientStateCode: string;
+  /** The client's display name (for the workspace breadcrumb). */
+  clientName: string;
 }
 
 export async function loadInvoiceEditorContext(clientId: string): Promise<InvoiceEditorContext> {
@@ -26,11 +28,11 @@ export async function loadInvoiceEditorContext(clientId: string): Promise<Invoic
       .eq("is_active", true)
       .order("name")
       .order("id")),
-    supabase.from("clients").select("gstin, state_code").eq("id", clientId).maybeSingle(),
+    supabase.from("clients").select("name, gstin, state_code").eq("id", clientId).maybeSingle(),
   ]);
-  const c = clientData as { gstin: string | null; state_code: string | null } | null;
+  const c = clientData as { name: string | null; gstin: string | null; state_code: string | null } | null;
   const clientStateCode = (c?.state_code || (c?.gstin ? c.gstin.slice(0, 2) : "")) ?? "";
-  return { customers: (custData as Customer[]) ?? [], clientStateCode };
+  return { customers: (custData as Customer[]) ?? [], clientStateCode, clientName: c?.name ?? "" };
 }
 
 /** Load a single invoice's full detail (Edit route). Returns null when not found. */
