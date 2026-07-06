@@ -14,8 +14,10 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { Plus, Trash2, CheckCircle, Send, Loader2, AlertCircle } from "lucide-react";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
+import { LineItemAutocomplete } from "@/components/lookups/LineItemAutocomplete";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
 import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
+import { api } from "@/lib/api";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { StateLookup } from "@/components/lookups/StateLookup";
 import { formatMoney } from "@/lib/services/formatting";
@@ -569,11 +571,15 @@ export function InvoiceEditor({
                   return (
                     <tr key={line._k} className={invalid ? "bg-red-50/40" : undefined}>
                       <td className="py-1.5 pr-2">
-                        <input ref={(el) => { descRefs.current[idx] = el; }}
-                          value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })}
-                          onKeyDown={(e) => onLineKeyDown(e, idx)} placeholder="Item / service description"
-                          aria-label={`Line ${idx + 1} description`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
+                        <LineItemAutocomplete ref={(el) => { descRefs.current[idx] = el; }}
+                          value={line.description} onChange={(v) => setLine(idx, { description: v })}
+                          onPick={(patch, meta) => {
+                            setLine(idx, patch);
+                            if (meta.catalogueId) api.serviceCatalogue.recordUsed(meta.catalogueId).catch(() => {});
+                          }}
+                          onKeyDownFallback={(e) => onLineKeyDown(e, idx)}
+                          clientId={clientId} placeholder="Item / service description"
+                          ariaLabel={`Line ${idx + 1} description`} />
                       </td>
                       <td className="py-1.5 pr-2">
                         <HsnLookup clientId={clientId} value={line.hsn_sac} onChange={(v) => setLine(idx, { hsn_sac: v })}
@@ -583,7 +589,7 @@ export function InvoiceEditor({
                             if (p.uqc) patch.unit = p.uqc;
                             setLine(idx, patch);
                           }}
-                          description={line.description} size="sm" ariaLabel="HSN or SAC code" />
+                          size="sm" ariaLabel="HSN or SAC code" />
                       </td>
                       <td className="py-1.5 pr-2">
                         <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })}
