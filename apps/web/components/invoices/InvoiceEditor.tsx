@@ -14,6 +14,8 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { Plus, Trash2, CheckCircle, Send, Loader2, AlertCircle } from "lucide-react";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
+import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
+import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { StateLookup } from "@/components/lookups/StateLookup";
 import { formatMoney } from "@/lib/services/formatting";
@@ -231,6 +233,19 @@ export function InvoiceEditor({
   function removeLine(idx: number) {
     if (lines.length <= 1) return;
     setLines((prev) => prev.filter((_, i) => i !== idx));
+  }
+  // Drop a fully pre-priced line from a catalogue preset. Fills the first blank
+  // line (so the initial empty row is used before appending), else appends. The
+  // values are copied and remain fully editable — journal posting is untouched.
+  function addFromService(item: ServiceCatalogueItem) {
+    const patch = serviceToLine(item);
+    setLines((prev) => {
+      const emptyIdx = prev.findIndex(
+        (l) => !l.description.trim() && !l.hsn_sac.trim() && !l.rate.trim(),
+      );
+      if (emptyIdx >= 0) return prev.map((l, i) => (i === emptyIdx ? { ...l, ...patch } : l));
+      return [...prev, { ...EMPTY_LINE, ...patch }];
+    });
   }
   function onLineKeyDown(e: React.KeyboardEvent, idx: number) {
     if (e.key !== "Enter" || e.shiftKey) return;
@@ -497,9 +512,14 @@ export function InvoiceEditor({
 
         {/* Line items */}
         <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-xs font-semibold text-[#334155]">Line items</h2>
-            <span className="text-[10px] text-[#94A3B8]">Enter adds a row</span>
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <h2 className="text-xs font-semibold text-[#334155] flex-shrink-0">Line items</h2>
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] text-[#94A3B8] hidden sm:inline">Enter adds a row</span>
+              <div className="w-48">
+                <ServiceCataloguePicker onPick={addFromService} ariaLabel="Add a line from the service catalogue" />
+              </div>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[640px]">
