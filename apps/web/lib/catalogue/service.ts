@@ -44,10 +44,15 @@ export function formatServiceRate(bps?: number | null): string {
   return `${Number.isInteger(pct) ? pct : pct.toFixed(2)}% GST`;
 }
 
-/** "₹50,000" from integer paise (whole rupees; Indian grouping). */
+/** "₹50,000" / "₹123.45" from integer paise (Indian grouping; shows paise only
+ * when the amount isn't a whole rupee, so a stored ₹123.45 is never truncated). */
 export function formatServicePrice(paise?: number | null): string {
   if (!paise) return "";
-  return `₹${Math.round(paise / 100).toLocaleString("en-IN")}`;
+  const hasPaise = paise % 100 !== 0;
+  return `₹${(paise / 100).toLocaleString("en-IN", {
+    minimumFractionDigits: hasPaise ? 2 : 0,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 /** The muted secondary line for a picker/list row. */

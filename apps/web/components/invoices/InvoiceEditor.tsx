@@ -47,6 +47,12 @@ function stateNameForCode(code: string): string {
 
 const EMPTY_LINE: InvoiceLine = { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18 };
 
+// A stable per-row key so React reconciles line rows by identity, not array
+// index — otherwise a mid-list delete would reuse a row's DOM/caret/ref for a
+// different logical line. `_k` is presentational only (ignored by the payload
+// mapper and all totals/validation, which read the InvoiceLine fields).
+type EditorLine = InvoiceLine & { _k: number };
+
 export function InvoiceEditor({
   clientId,
   clientName,
@@ -69,15 +75,16 @@ export function InvoiceEditor({
   const today = new Date().toISOString().split("T")[0];
   const isEdit = !!existing;
 
-  const initialLines: InvoiceLine[] = existing && existing.lines.length > 0
-    ? existing.lines.map((l) => ({
+  const initialLines: EditorLine[] = existing && existing.lines.length > 0
+    ? existing.lines.map((l, i) => ({
         description: l.description ?? "",
         hsn_sac: l.hsn_sac ?? "",
         qty: String(l.quantity ?? 1),
         rate: String((l.rate_paise ?? 0) / 100),
         gst_rate: Math.round((l.gst_rate_bps ?? 0) / 100),
+        _k: i,
       }))
-    : [{ ...EMPTY_LINE }];
+    : [{ ...EMPTY_LINE, _k: 0 }];
 
   const [customerId, setCustomerId] = useState(existing?.customer_id ?? "");
   const [invoiceDate, setInvoiceDate] = useState(existing?.invoice_date ?? today);
@@ -97,7 +104,9 @@ export function InvoiceEditor({
     return termLabelForDays(Number.isNaN(n) ? null : n) === CUSTOM_TERM;
   });
   const [notes, setNotes] = useState(existing?.notes ?? "");
-  const [lines, setLines] = useState<InvoiceLine[]>(initialLines);
+  const [lines, setLines] = useState<EditorLine[]>(initialLines);
+  const keyRef = useRef(initialLines.length); // next stable row key
+  const nextKey = () => keyRef.current++;
   const [saving, setSaving] = useState<SaveAction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
@@ -116,14 +125,18 @@ export function InvoiceEditor({
     if (isEdit || !clientId) return;
     let cancelled = false;
     (async () => {
-      const token = await getAuthToken();
-      const pol = await apiGet(`/api/currencies/policy?client_id=${clientId}`, token);
-      if (cancelled) return;
-      const active = Boolean(pol.success && (pol.data as { active?: boolean } | null)?.active);
-      setMcActive(active);
-      if (!active) return;
-      const list = await apiGet(`/api/currencies?active_only=true`, token);
-      if (!cancelled && list.success) setCurrencies((list.data as CurrencyOption[]) ?? []);
+      try {
+        const token = await getAuthToken();
+        const pol = await apiGet(`/api/currencies/policy?client_id=${clientId}`, token);
+        if (cancelled) return;
+        const active = Boolean(pol.success && (pol.data as { active?: boolean } | null)?.active);
+        setMcActive(active);
+        if (!active) return;
+        const list = await apiGet(`/api/currencies?active_only=true`, token);
+        if (!cancelled && list.success) setCurrencies((list.data as CurrencyOption[]) ?? []);
+      } catch {
+        // Best-effort: multi-currency is optional; on failure the editor stays INR-only.
+      }
     })();
     return () => { cancelled = true; };
   }, [clientId, isEdit]);
@@ -163,7 +176,10 @@ export function InvoiceEditor({
     ? CUSTOM_TERM
     : (creditDays === "" ? "" : termLabelForDays(Number.isNaN(parseInt(creditDays, 10)) ? null : parseInt(creditDays, 10)));
   const gstAuto = !!(clientStateCode && supplyStateCode);
-  const firstRate = lines[0]?.gst_rate ?? 0;
+  // Only show a "@ x%" on the GST head rows when every posted line shares one
+  // rate — otherwise the summed amount is a blend and a single % would mislead.
+  const rateSet = Array.from(new Set(lines.filter(isValidLine).map((l) => l.gst_rate)));
+  const uniformRate: number | null = rateSet.length === 1 ? rateSet[0] : null;
 
   function deriveInterstate(supplyState: string, fallback: boolean): boolean {
     if (clientStateCode && supplyState) return clientStateCode !== supplyState;
@@ -227,7 +243,7 @@ export function InvoiceEditor({
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
   }
   function addLine() {
-    setLines((prev) => [...prev, { ...EMPTY_LINE }]);
+    setLines((prev) => [...prev, { ...EMPTY_LINE, _k: nextKey() }]);
     setFocusRow(lines.length);
   }
   function removeLine(idx: number) {
@@ -244,7 +260,7 @@ export function InvoiceEditor({
         (l) => !l.description.trim() && !l.hsn_sac.trim() && !l.rate.trim(),
       );
       if (emptyIdx >= 0) return prev.map((l, i) => (i === emptyIdx ? { ...l, ...patch } : l));
-      return [...prev, { ...EMPTY_LINE, ...patch }];
+      return [...prev, { ...EMPTY_LINE, ...patch, _k: nextKey() }];
     });
   }
   function onLineKeyDown(e: React.KeyboardEvent, idx: number) {
@@ -384,11 +400,11 @@ export function InvoiceEditor({
       <p className="font-semibold text-[#334155]">Summary{isForeign ? ` (${currency})` : ""}</p>
       <Row label="Taxable value" value={fmtAmt(totals.taxable_paise)} />
       {isInterstate ? (
-        <Row label={`IGST @ ${firstRate}%`} value={fmtAmt(totals.igst_paise)} />
+        <Row label={uniformRate != null ? `IGST @ ${uniformRate}%` : "IGST"} value={fmtAmt(totals.igst_paise)} />
       ) : (
         <>
-          <Row label={`CGST @ ${firstRate / 2}%`} value={fmtAmt(totals.cgst_paise)} />
-          <Row label={`SGST @ ${firstRate / 2}%`} value={fmtAmt(totals.sgst_paise)} />
+          <Row label={uniformRate != null ? `CGST @ ${uniformRate / 2}%` : "CGST"} value={fmtAmt(totals.cgst_paise)} />
+          <Row label={uniformRate != null ? `SGST @ ${uniformRate / 2}%` : "SGST"} value={fmtAmt(totals.sgst_paise)} />
         </>
       )}
       {!isForeign && totals.round_off_paise !== 0 && (
@@ -540,11 +556,12 @@ export function InvoiceEditor({
                   const lineTotal = lineTaxable + Math.round((lineTaxable * line.gst_rate) / 100);
                   const invalid = attempted && !isValidLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
                   return (
-                    <tr key={idx} className={invalid ? "bg-red-50/40" : undefined}>
+                    <tr key={line._k} className={invalid ? "bg-red-50/40" : undefined}>
                       <td className="py-1.5 pr-2">
                         <input ref={(el) => { descRefs.current[idx] = el; }}
                           value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })}
                           onKeyDown={(e) => onLineKeyDown(e, idx)} placeholder="Item / service description"
+                          aria-label={`Line ${idx + 1} description`}
                           className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
                       </td>
                       <td className="py-1.5 pr-2">
@@ -554,16 +571,17 @@ export function InvoiceEditor({
                       </td>
                       <td className="py-1.5 pr-2">
                         <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })}
-                          onKeyDown={(e) => onLineKeyDown(e, idx)}
+                          onKeyDown={(e) => onLineKeyDown(e, idx)} aria-label={`Line ${idx + 1} quantity`}
                           className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
                       </td>
                       <td className="py-1.5 pr-2">
                         <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })}
-                          onKeyDown={(e) => onLineKeyDown(e, idx)} placeholder="0.00"
+                          onKeyDown={(e) => onLineKeyDown(e, idx)} placeholder="0.00" aria-label={`Line ${idx + 1} rate`}
                           className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
                       </td>
                       <td className="py-1.5 pr-2">
                         <select value={line.gst_rate} onChange={(e) => setLine(idx, { gst_rate: parseInt(e.target.value) })}
+                          aria-label={`Line ${idx + 1} GST rate`}
                           className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs">
                           {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
                         </select>

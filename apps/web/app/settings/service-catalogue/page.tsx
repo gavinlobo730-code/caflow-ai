@@ -8,8 +8,9 @@
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { ChevronLeft, Plus, Pencil, Archive, RotateCcw, Search, Loader2, BookMarked, X } from "lucide-react";
+import { ChevronLeft, Plus, Pencil, Archive, RotateCcw, Search, Loader2, BookMarked } from "lucide-react";
 import { RoleGuard } from "@/components/RoleGuard";
+import { Modal } from "@/components/ui/modal";
 import { api, type ApiResp } from "@/lib/api/index";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { GST_RATES } from "@/lib/invoices/shared";
@@ -239,14 +240,7 @@ function ServiceFormModal({ existing, onClose, onSaved, onError }: {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40" />
-      <div className="relative w-full max-w-md bg-white rounded-xl shadow-xl p-5 space-y-3 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A]">{existing ? "Edit service" : "New service"}</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
-        </div>
-
+    <Modal title={existing ? "Edit service" : "New service"} onClose={onClose} maxWidthClass="max-w-md">
         <Field label="Service name" error={attempted ? v.errors.name : undefined}>
           <input autoFocus value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Statutory Audit" className={inputCls} />
         </Field>
@@ -283,8 +277,7 @@ function ServiceFormModal({ existing, onClose, onSaved, onError }: {
             {saving && <Loader2 size={14} className="animate-spin" />} {existing ? "Save changes" : "Create service"}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

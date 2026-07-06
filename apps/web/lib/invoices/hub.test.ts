@@ -57,7 +57,7 @@ test("cancelled: read-only-ish (duplicate + pdf + journal), no payment/credit/se
 });
 
 test("deliverySummary reflects sent state (viewed not tracked)", () => {
-  assert.deepEqual(deliverySummary([]), { sent: false, viewed: false, lastSentTo: null, lastSentAt: null, attempts: 0 });
+  assert.deepEqual(deliverySummary([]), { sent: false, viewed: false, lastSentTo: null, lastSentAt: null, lastStatus: null, attempts: 0 });
   const s = deliverySummary([delivery(), delivery({ id: "d2", status: "failed" })]);
   assert.equal(s.sent, true);
   assert.equal(s.viewed, false);

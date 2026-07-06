@@ -48,6 +48,9 @@ export interface DeliverySummary {
   viewed: boolean;
   lastSentTo: string | null;
   lastSentAt: string | null;
+  /** Status of the delivery the summary reports on (keeps the Hub's
+   * "Email status" consistent with its "Sent to / at" rows). */
+  lastStatus: string | null;
   attempts: number;
 }
 
@@ -64,6 +67,7 @@ export function deliverySummary(deliveries: InvoiceDelivery[]): DeliverySummary 
     viewed: false,
     lastSentTo: last?.sent_to ?? null,
     lastSentAt: last ? (last.sent_at ?? last.created_at) : null,
+    lastStatus: last?.status ?? null,
     attempts: deliveries.length,
   };
 }

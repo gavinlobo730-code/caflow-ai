@@ -32,6 +32,7 @@ test("formatting helpers", () => {
   assert.equal(formatServiceRate(1800), "18% GST");
   assert.equal(formatServiceRate(null), "");
   assert.equal(formatServicePrice(5000000), "₹50,000");
+  assert.equal(formatServicePrice(12345), "₹123.45"); // paise never truncated
   assert.equal(formatServicePrice(0), "");
   assert.equal(serviceSecondaryLine(item()), "SAC 998221 · 18% GST · ₹50,000");
   assert.equal(serviceSecondaryLine(item({ hsn_sac: null, gst_rate_bps: null })), "₹50,000");
