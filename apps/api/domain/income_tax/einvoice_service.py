@@ -76,8 +76,15 @@ def create_einvoice_record(
     created_by: str,
     sales_invoice_id: str | None = None,
     provider: str = "manual",
+    gst_treatment: str | None = None,
+    lut_number: str | None = None,
 ) -> dict:
-    """Create e-invoice record in draft state."""
+    """Create e-invoice record in draft state.
+
+    gst_treatment / lut_number capture the supply's compliance treatment
+    (Export / SEZ / Deemed export, with/without payment; LUT/Bond reference).
+    They are metadata on this record only — never fed into tax/journal math.
+    """
     if _USE_MOCK:
         row = {
             "id": str(uuid4()),
@@ -93,6 +100,8 @@ def create_einvoice_record(
             "status": "draft",
             "provider": provider,
             "provider_response": {},
+            "gst_treatment": gst_treatment,
+            "lut_number": lut_number,
             "ca_review_required": True,
             "created_by": created_by,
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -109,6 +118,8 @@ def create_einvoice_record(
         "invoice_date": invoice_date,
         "status": "draft",
         "provider": provider,
+        "gst_treatment": gst_treatment,
+        "lut_number": lut_number,
         "ca_review_required": True,
         "created_by": created_by,
     }

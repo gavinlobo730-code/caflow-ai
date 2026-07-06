@@ -83,3 +83,15 @@ test("buildActivity merges invoice lifecycle + deliveries, newest first", () => 
   assert.equal(items[0].title, "Emailed to customer"); // 10:00 newest
   assert.equal(items[1].title, "Issued");               // 09:00
 });
+
+test("buildActivity merges extra (compliance) items newest-first", () => {
+  const items = buildActivity(
+    "INV-1",
+    [{ entity_type: "sales_invoice", entity_id: "INV-1", title: "Issued", created_at: "2026-07-06T09:00:00Z" }],
+    [],
+    [{ at: "2026-07-06T12:00:00Z", title: "IRN generated", detail: "IRN9", kind: "compliance" }],
+  );
+  assert.equal(items.length, 2);
+  assert.equal(items[0].title, "IRN generated"); // 12:00 newest
+  assert.equal(items[1].title, "Issued");        // 09:00
+});

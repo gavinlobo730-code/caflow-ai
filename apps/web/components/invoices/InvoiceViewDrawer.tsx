@@ -27,8 +27,12 @@ import {
 } from "@/lib/invoices/shared";
 import {
   availableActions, deliverySummary, complianceSummary, buildActivity,
-  type ComplianceRecord, type TimelineItem,
+  type TimelineItem,
 } from "@/lib/invoices/hub";
+import { CompliancePanel } from "@/components/invoices/CompliancePanel";
+import {
+  complianceTimelineItems, type EInvoiceRecord, type EWayRecord,
+} from "@/lib/invoices/compliance";
 
 const fmtDateTime = formatDateTime;
 
@@ -84,8 +88,8 @@ export function InvoiceViewDrawer({
 }) {
   const [inv, setInv] = useState<InvoiceDetail | null>(null);
   const [deliveries, setDeliveries] = useState<InvoiceDelivery[]>([]);
-  const [einvoiceRecords, setEinvoiceRecords] = useState<ComplianceRecord[]>([]);
-  const [ewayRecords, setEwayRecords] = useState<ComplianceRecord[]>([]);
+  const [einvoiceRecords, setEinvoiceRecords] = useState<EInvoiceRecord[]>([]);
+  const [ewayRecords, setEwayRecords] = useState<EWayRecord[]>([]);
   const [activity, setActivity] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -111,17 +115,26 @@ export function InvoiceViewDrawer({
       const dels = (del.data as InvoiceDelivery[]) ?? [];
       setInv(detail);
       setDeliveries(dels);
-      setActivity(buildActivity(invoiceId, (tl.data as Parameters<typeof buildActivity>[1]) ?? [], dels));
 
       // Compliance records only matter once a document exists (issued+).
+      let eiRecs: EInvoiceRecord[] = [];
+      let ewRecs: EWayRecord[] = [];
       if (detail.status !== "draft") {
         const [ei, ew] = await Promise.all([
           apiGet(`/api/einvoice/records?client_id=${clientId}`, token),
           apiGet(`/api/eway-bill/records?client_id=${clientId}`, token),
         ]);
-        setEinvoiceRecords((ei.data as ComplianceRecord[]) ?? []);
-        setEwayRecords((ew.data as ComplianceRecord[]) ?? []);
+        eiRecs = (ei.data as EInvoiceRecord[]) ?? [];
+        ewRecs = (ew.data as EWayRecord[]) ?? [];
+        setEinvoiceRecords(eiRecs);
+        setEwayRecords(ewRecs);
       }
+
+      // One merged, newest-first activity feed: lifecycle + deliveries + the
+      // invoice's own compliance events (IRN / E-Way generated / cancelled).
+      const compItems: TimelineItem[] = complianceTimelineItems(invoiceId, eiRecs, ewRecs)
+        .map((c) => ({ at: c.at, title: c.title, detail: c.detail, kind: "compliance" as const }));
+      setActivity(buildActivity(invoiceId, (tl.data as Parameters<typeof buildActivity>[1]) ?? [], dels, compItems));
     } catch {
       setError(true);
     } finally {
@@ -319,6 +332,18 @@ export function InvoiceViewDrawer({
               <DetailRow label="Sent at" value={fmtDateTime(del.lastSentAt)} />
               {del.attempts > 1 && <p className="text-[10px] text-[#94A3B8]">{del.attempts} delivery attempts</p>}
             </section>
+          )}
+
+          {/* ── GST compliance (IRN / E-Way workflows) ──────────────────── */}
+          {inv.status !== "draft" && (
+            <CompliancePanel
+              invoice={inv}
+              clientId={clientId}
+              einvoiceRecords={einvoiceRecords}
+              ewayRecords={ewayRecords}
+              onChanged={load}
+              onToast={onToast}
+            />
           )}
 
           {/* ── Activity timeline ───────────────────────────────────────── */}
