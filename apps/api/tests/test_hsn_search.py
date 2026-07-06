@@ -51,8 +51,14 @@ def test_safe_query_strips_filter_breaking_chars():
 # ── Relevance ranking (pure) ─────────────────────────────────────────────────
 
 def _rows(*specs):
-    """specs: (hsn_code, description, keywords) → master-shaped dicts."""
-    return [{"hsn_code": c, "description": d, "keywords": k} for c, d, k in specs]
+    """specs: (hsn_code, description, keywords) or, to also exercise the
+    has-a-rate tie-break, (hsn_code, description, keywords, gst_rate_pct) →
+    master-shaped dicts. Rate defaults to None (a chapter/group-level row)."""
+    out = []
+    for spec in specs:
+        c, d, k, *rest = spec
+        out.append({"hsn_code": c, "description": d, "keywords": k, "gst_rate_pct": rest[0] if rest else None})
+    return out
 
 
 def test_rank_exact_code_wins():
@@ -87,6 +93,48 @@ def test_rank_description_search_matches_words_and_keywords():
     assert ranked[0]["hsn_code"] == "8471"
     # "office" hits the description prefix on 9401.
     assert _rank_master_rows("office", rows)[0]["hsn_code"] == "9401"
+
+
+def test_rank_description_match_beats_keyword_only_match():
+    # Regression pin for a real bug found via manual audit: searching "Audit"
+    # ranked the broad "9982 Legal and accounting services" group (which only
+    # matches via its KEYWORDS) above "998221 Financial auditing services"
+    # (which matches in its own DESCRIPTION) — purely because the old bucket
+    # scheme merged description- and keyword-only substring hits into one tier
+    # and then tie-broke by shorter code. A real description match must always
+    # outrank a keyword-only one.
+    rows = _rows(
+        ("9982", "Legal and accounting services", "legal accounting audit tax lawyer ca", None),
+        ("998221", "Financial auditing services", "audit statutory auditor ca", 18.00),
+    )
+    assert _rank_master_rows("audit", rows)[0]["hsn_code"] == "998221"
+
+
+def test_rank_prefers_a_rated_leaf_over_a_rateless_group_on_a_tie():
+    # Two rows in the SAME bucket (both match only via description substring)
+    # — the specific, billable 6-digit leaf (has a GST rate hint) must rank
+    # above the broad 2-digit chapter (rate is NULL on purpose — migration 175
+    # — because it spans many different rates and is never itself billable).
+    rows = _rows(
+        ("49", "Printed books, newspapers, pictures and printed products", "book newspaper printed", None),
+        ("998222", "Accounting and bookkeeping services", "accounting bookkeeping ledger", 18.00),
+    )
+    ranked = _rank_master_rows("book", rows)
+    assert ranked[0]["hsn_code"] == "998222"
+
+
+def test_rank_gst_keyword_surfaces_tax_filing_codes():
+    # Regression pin for the "GST" dataset gap found via manual audit (fixed by
+    # migration 178, which appends "gst" to these two SAC codes' keywords) — a
+    # CA typing "GST" for GST return/registration work must find the tax
+    # SAC codes, not just an unrelated code whose keyword happens to contain
+    # the substring "gst" (e.g. "tungsten").
+    rows = _rows(
+        ("81", "Other base metals; cermets; articles thereof", "base metal tungsten", None),
+        ("998231", "Corporate tax consulting and preparation services", "tax consulting corporate return filing gst return filing", 18.00),
+    )
+    ranked = _rank_master_rows("gst", rows)
+    assert ranked[0]["hsn_code"] == "998231"
 
 
 def test_rank_no_result_is_stable_passthrough():

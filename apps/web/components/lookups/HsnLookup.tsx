@@ -5,6 +5,7 @@ import { api, type ApiResp } from "@/lib/api";
 import {
   orderHsnResults, hsnTypeBadge, hsnSecondaryLine, type HsnRow,
 } from "@/lib/lookups/hsn";
+import { getCachedHsnRecent } from "@/lib/invoices/lineItemSuggestionCache";
 
 /** A row from GET /api/hsn/search (master + firm history). */
 export type HsnResult = HsnRow;
@@ -92,18 +93,18 @@ export function HsnLookup(props: {
   );
 
   // Recently-used codes for this client, shown before the CA types anything
-  // (reuses the same endpoint with an empty query → firm history). Best-effort:
-  // an empty/failed fetch simply shows the normal "type to search" hint.
+  // (reuses the same endpoint with an empty query → firm history). Cached and
+  // shared across every row that wants it (LineItemAutocomplete's own recent
+  // list included) so an N-line invoice fires this fetch once, not N times.
+  // Best-effort: an empty/failed fetch simply shows the normal "type to
+  // search" hint.
   const [recent, setRecent] = React.useState<HsnResult[]>([]);
   React.useEffect(() => {
     if (!clientId) { setRecent([]); return; }
     let alive = true;
-    (async () => {
-      try {
-        const res = (await api.hsn.search("", { client_id: clientId, type, limit: 8 })) as ApiResp<HsnResult[]>;
-        if (alive) setRecent(orderHsnResults(res.data ?? []));
-      } catch { /* best-effort recent list */ }
-    })();
+    getCachedHsnRecent(clientId, type).then((rows) => {
+      if (alive) setRecent(orderHsnResults(rows));
+    });
     return () => { alive = false; };
   }, [clientId, type]);
 
