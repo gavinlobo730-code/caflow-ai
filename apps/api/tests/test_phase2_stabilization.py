@@ -25,6 +25,17 @@ def _get_fy_for_date(date_str: str) -> str:
     return f"{start_year}-{str(start_year + 1)[2:]}"
 
 
+def tearDownModule():
+    """Restore phase2_journal_service after the forced-non-mock reload in
+    TestAccountResolutionRaisesOnMissing (which sets SUPABASE_URL and reloads the
+    module, leaking _USE_MOCK=False into later test modules). Reloading under the
+    ambient (mock) environment restores _USE_MOCK to its true value so the shared
+    mock-mode posting path does not attempt a real DB connection downstream."""
+    import importlib
+    import services.phase2_journal_service as mod
+    importlib.reload(mod)
+
+
 def _current_fy_long_from_date(year: int, month: int) -> str:
     start = year if month >= 4 else year - 1
     return f"{start}-{str(start + 1)[2:]}"

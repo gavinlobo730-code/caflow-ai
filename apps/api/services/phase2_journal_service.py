@@ -112,6 +112,32 @@ class Phase2JournalService:
                     "narration": "IGST output tax payable",
                 })
 
+            # Invoice-level round-off — post the nearest-₹1 adjustment to the
+            # 'Round Off' ledger so Dr Trade Receivables (the rounded total) balances
+            # Cr Revenue + Cr GST. CGST Act §15: taxable value & GST are unchanged;
+            # this line only carries the rounding of the invoice total.
+            round_off_paise = int(invoice.get("round_off_paise", 0) or 0)
+            if round_off_paise != 0:
+                round_off_id = self._find_account(
+                    db, firm_id, client_id, "%Round Off%", system_key="round_off"
+                )
+                if round_off_paise > 0:
+                    # Rounded up: extra credit (rounding gain) balances the higher AR.
+                    lines.append({
+                        "account_id": round_off_id,
+                        "debit_paise": 0,
+                        "credit_paise": round_off_paise,
+                        "narration": "Invoice round-off",
+                    })
+                else:
+                    # Rounded down: debit (rounding expense) balances the lower AR.
+                    lines.append({
+                        "account_id": round_off_id,
+                        "debit_paise": -round_off_paise,
+                        "credit_paise": 0,
+                        "narration": "Invoice round-off",
+                    })
+
             _ccy = self._currency_kwargs(db, invoice, firm_id, client_id, lines)
             return self._create_journal(
                 db=db,
@@ -128,8 +154,13 @@ class Phase2JournalService:
             # Re-raise account resolution and balance errors so the router returns 422
             raise
         except Exception as e:
-            _logger.error("journal_for_sales_invoice error: %s", e)
-            return None
+            # Align with journal_for_receipt / journal_for_purchase_payment (F7/R2.9):
+            # do NOT swallow unexpected errors into a None "silent failure" — re-raise
+            # so the caller surfaces a real error (and logs the traceback) instead of a
+            # misleading generic "journal posting failed". Validation errors keep their
+            # existing actionable behaviour via the ValueError branch above.
+            _logger.error("journal_for_sales_invoice error: %s", e, exc_info=True)
+            raise
 
     def receipt_journal_lines(self, db, receipt: dict, firm_id: str, client_id: str) -> list[dict]:
         """Build (but do not post) the double-entry lines for a receipt:

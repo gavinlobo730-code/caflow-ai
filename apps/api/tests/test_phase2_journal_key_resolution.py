@@ -22,6 +22,22 @@ if _API_ROOT not in sys.path:
     sys.path.insert(0, _API_ROOT)
 
 
+def tearDownModule():
+    """Restore phase2_journal_service after _make_svc()'s forced-non-mock reload.
+
+    _make_svc() reloads the module with SUPABASE_URL set so _USE_MOCK becomes
+    False; patch.dict restores os.environ but NOT the reloaded module, so
+    _USE_MOCK would leak False into later test modules. That made the shared
+    mock-mode posting path attempt a real DB connection (and, now that
+    journal_for_sales_invoice re-raises unexpected errors instead of swallowing
+    them, surfaced as a failure in an unrelated downstream test). Reloading here
+    under the ambient (mock) environment restores _USE_MOCK to its true value.
+    """
+    import importlib
+    import services.phase2_journal_service as mod
+    importlib.reload(mod)
+
+
 def _make_svc():
     """Return a Phase2JournalService instance forced into non-mock mode."""
     with patch.dict(os.environ, {"SUPABASE_URL": "https://mock.supabase.co"}):

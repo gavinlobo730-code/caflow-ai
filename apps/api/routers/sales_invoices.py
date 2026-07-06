@@ -93,10 +93,38 @@ def _compute_line_gst(
         igst_paise = (taxable_paise * gst_rate_bps) // 10000
         return 0, 0, igst_paise
     else:
-        half_rate = gst_rate_bps // 2
-        cgst_paise = (taxable_paise * half_rate) // 10000
-        sgst_paise = (taxable_paise * half_rate) // 10000
+        # Compute the FULL tax first, then split it into CGST + SGST so their sum
+        # equals the full tax — i.e. the *same* amount an inter-state supply of the
+        # same taxable value and rate would attract as IGST. Splitting the rate
+        # first and flooring each half independently (the previous approach) lost
+        # up to 1 paise for odd tax amounts (e.g. 0.25%/0.10% rates, or any taxable
+        # whose full tax is odd), understating the GST liability and leaving
+        # CGST+SGST ≠ IGST-equivalent. SGST carries any odd paise. Journal stays
+        # balanced because total_paise is derived from these components.
+        full_gst_paise = (taxable_paise * gst_rate_bps) // 10000
+        cgst_paise = full_gst_paise // 2
+        sgst_paise = full_gst_paise - cgst_paise
         return cgst_paise, sgst_paise, 0
+
+
+def _round_off_paise(amount_paise: int) -> int:
+    """Invoice-level round-off delta (integer paise) to the nearest rupee, half-up.
+
+    Returns the adjustment to ADD to ``amount_paise`` so the payable total becomes
+    a whole rupee: negative when rounding down (remainder < 50), positive when
+    rounding up (remainder >= 50), and 0 when already whole. Range: [-49, +50].
+
+    Commercial round-off (nearest ₹1). It is posted to the 'Round Off' ledger so
+    the general ledger stays balanced. CGST Act §15: the value of supply and the
+    GST thereon are NOT changed — round-off adjusts only the invoice total, and
+    the tax heads (CGST/SGST/IGST) remain exactly as computed at source.
+    """
+    remainder = amount_paise % 100
+    if remainder == 0:
+        return 0
+    if remainder < 50:
+        return -remainder
+    return 100 - remainder
 
 
 def _get_state_code_from_gstin(gstin: Optional[str]) -> Optional[str]:
@@ -565,13 +593,18 @@ def create_invoice(
         base_igst     = dc.to_base(total_igst_paise)
         base_total_gst = base_cgst + base_sgst + base_igst
         base_total     = base_taxable + base_total_gst
+        # Invoice-level round-off (nearest ₹1) — INR invoices only. Absorbs the
+        # sub-rupee GST remainder so the payable total is a clean rupee; the delta
+        # is posted to the 'Round Off' ledger by journal_for_sales_invoice so the
+        # journal stays balanced. Foreign-currency invoices are not rupee-rounded.
+        round_off_paise = _round_off_paise(base_total) if dc.currency == "INR" else 0
         # Base is authoritative for the header/GL/reports; the *_paise names below now
         # carry base INR. (For INR these equal the txn values — byte-for-byte.)
         total_taxable_paise = base_taxable
         total_cgst_paise    = base_cgst
         total_sgst_paise    = base_sgst
         total_igst_paise    = base_igst
-        total_paise         = base_total
+        total_paise         = base_total + round_off_paise
 
         # Currency columns written to the invoice (INR identity leaves them inert).
         _ccy_cols = {
@@ -579,7 +612,9 @@ def create_invoice(
             "exchange_rate":    str(dc.rate),
             "txn_taxable":      txn_taxable,
             "txn_total_gst":    txn_total_gst,
-            "txn_total":        txn_total,
+            # For INR, dc is identity so txn == base; keep txn_total consistent with
+            # the rounded base total. round_off_paise is 0 for foreign currency.
+            "txn_total":        txn_total + round_off_paise,
             "rate_source":      dc.rate_source,
             "rate_type":        dc.rate_type,
             "rate_date":        dc.rate_date,
@@ -621,6 +656,7 @@ def create_invoice(
                 "igst_paise":            total_igst_paise,
                 "total_paise":           total_paise,
                 "total_gst_paise":       total_cgst_paise + total_sgst_paise + total_igst_paise,
+                "round_off_paise":       round_off_paise,
                 "paid_paise":            0,
                 "status":                "draft",
                 "notes":                 data.get("notes", ""),
@@ -653,6 +689,7 @@ def create_invoice(
             "igst_paise":            total_igst_paise,
             "total_paise":           total_paise,
             "total_gst_paise":       total_cgst_paise + total_sgst_paise + total_igst_paise,
+            "round_off_paise":       round_off_paise,
             "paid_paise":            0,
             "status":                "draft",
             "notes":                 data.get("notes", ""),
@@ -876,11 +913,19 @@ def update_invoice(
 
             # Update aggregate totals in invoice
             data.pop("lines")
+            # Invoice-level round-off (nearest ₹1), mirroring the create path. INR
+            # only — a foreign-currency draft (txn_currency != INR) is not rounded.
+            base_total_edit = total_taxable + total_cgst + total_sgst + total_igst
+            round_off_edit = (
+                _round_off_paise(base_total_edit)
+                if (inv.get("txn_currency") or "INR") == "INR" else 0
+            )
             data["taxable_amount_paise"] = total_taxable
             data["cgst_paise"]           = total_cgst
             data["sgst_paise"]           = total_sgst
             data["igst_paise"]           = total_igst
-            data["total_paise"]          = total_taxable + total_cgst + total_sgst + total_igst
+            data["round_off_paise"]      = round_off_edit
+            data["total_paise"]          = base_total_edit + round_off_edit
 
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
         upd_resp = db.table("client_sales_invoices").update(data).eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).execute()
@@ -998,7 +1043,10 @@ def issue_invoice(
     except HTTPException:
         raise
     except Exception as e:
-        _logger.error("issue_invoice: %s", e)
+        # journal_for_sales_invoice now re-raises unexpected errors (Batch 1) — log
+        # the full traceback so an operator can diagnose, while the CA sees a safe
+        # generic message and the invoice remains a re-tryable draft (nothing posted).
+        _logger.error("issue_invoice: %s", e, exc_info=True)
         return api_response(False, None, "Unable to complete invoice operation. Please try again.")
 
 

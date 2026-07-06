@@ -224,6 +224,14 @@ def build_invoice_pdf(invoice: dict, firm: dict, client: dict, engagement: Optio
         rows.append(["", f"SGST @ {GST_RATE_PCT // 2}%", "", _paise_to_rupee_str(sgst_paise)])
     if igst_paise:
         rows.append(["", f"IGST @ {GST_RATE_PCT}%", "", _paise_to_rupee_str(igst_paise)])
+    # Invoice-level round-off line (nearest ₹1) — shown only when non-zero so the
+    # taxable + GST rows still reconcile to the printed Total. CGST Act §15.
+    round_off_paise = int(invoice.get("round_off_paise", 0) or 0)
+    if round_off_paise:
+        # _paise_to_rupee_str uses floor division, so format the sign explicitly
+        # (a −30 paise round-off must render "-0.30", not "-1.70").
+        _sign = "-" if round_off_paise < 0 else ""
+        rows.append(["", "Round Off", "", f"{_sign}{_paise_to_rupee_str(abs(round_off_paise))}"])
     rows.append(["", "Total", "", _paise_to_rupee_str(total_paise)])
 
     table = Table(rows, colWidths=[10 * mm, 95 * mm, 25 * mm, 50 * mm])
@@ -340,6 +348,7 @@ def get_sales_invoice_pdf(invoice_id: str, firm_id: str) -> tuple[bytes, str]:
         "cgst_paise":   data.get("cgst_paise", 0),
         "sgst_paise":   data.get("sgst_paise", 0),
         "igst_paise":   data.get("igst_paise", 0),
+        "round_off_paise": data.get("round_off_paise", 0),
         "total_paise":  data.get("total_paise", 0),
         "lines":        lines_resp.data or [],
     }

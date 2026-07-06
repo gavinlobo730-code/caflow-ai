@@ -63,6 +63,11 @@ class InvoiceForGSTR1:
     original_invoice_ref: str | None  # for CDNR/CDNUR
     original_invoice_date: str | None
     lines: list[InvoiceLine]
+    # Invoice-level round-off (nearest ₹1), integer paise. DEFAULT 0 so existing
+    # callers/invoices are unchanged; included in the GSTN invoice "val" so the
+    # reported invoice value reconciles to the invoice's printed total. Does not
+    # affect taxable value or tax (CGST Act §15).
+    round_off_paise: int = 0
 
 
 # GSTR-1 permits paise, so its GSTN JSON uses 2-decimal rupees. Canonical
@@ -212,7 +217,7 @@ def _build_b2b(invoices: list[InvoiceForGSTR1]) -> list[dict]:
             invoice_list.append({
                 "inum": inv.reference_no,
                 "idt": _format_date_gstn(inv.transaction_date),
-                "val": _paise_to_rupees(inv.taxable_amount_paise + inv.cgst_paise + inv.sgst_paise + inv.igst_paise + inv.cess_paise),
+                "val": _paise_to_rupees(inv.taxable_amount_paise + inv.cgst_paise + inv.sgst_paise + inv.igst_paise + inv.cess_paise + inv.round_off_paise),
                 "pos": inv.place_of_supply or "",
                 "rchrg": "Y" if inv.is_reverse_charge else "N",
                 "inv_typ": inv.invoice_type if inv.invoice_type != "Regular" else "R",
@@ -334,7 +339,7 @@ def _build_b2cl(invoices: list[InvoiceForGSTR1]) -> list[dict]:
                 {
                     "inum": inv.reference_no,
                     "idt": _format_date_gstn(inv.transaction_date),
-                    "val": _paise_to_rupees(inv.taxable_amount_paise + inv.igst_paise + inv.cess_paise),
+                    "val": _paise_to_rupees(inv.taxable_amount_paise + inv.igst_paise + inv.cess_paise + inv.round_off_paise),
                     "itms": _build_invoice_items(inv),
                 }
                 for inv in invs
@@ -364,7 +369,7 @@ def _build_cdnr(invoices: list[InvoiceForGSTR1]) -> list[dict]:
                     "ntty": "C" if inv.transaction_type == "credit_note" else "D",
                     "nt_num": inv.reference_no,
                     "nt_dt": _format_date_gstn(inv.transaction_date),
-                    "val": _paise_to_rupees(inv.taxable_amount_paise + inv.cgst_paise + inv.sgst_paise + inv.igst_paise + inv.cess_paise),
+                    "val": _paise_to_rupees(inv.taxable_amount_paise + inv.cgst_paise + inv.sgst_paise + inv.igst_paise + inv.cess_paise + inv.round_off_paise),
                     "pos": inv.place_of_supply or "",
                     "rchrg": "Y" if inv.is_reverse_charge else "N",
                     "itms": _build_invoice_items(inv),
@@ -384,7 +389,7 @@ def _build_cdnur(invoices: list[InvoiceForGSTR1]) -> list[dict]:
             "nt_num": inv.reference_no,
             "nt_dt": _format_date_gstn(inv.transaction_date),
             "typ": "B2CL" if inv.is_interstate else "B2CS",
-            "val": _paise_to_rupees(inv.taxable_amount_paise + inv.igst_paise + inv.cess_paise),
+            "val": _paise_to_rupees(inv.taxable_amount_paise + inv.igst_paise + inv.cess_paise + inv.round_off_paise),
             "pos": inv.place_of_supply or "",
             "itms": _build_invoice_items(inv),
         }
@@ -408,7 +413,7 @@ def _build_exp(invoices: list[InvoiceForGSTR1]) -> list[dict]:
                 {
                     "inum": inv.reference_no,
                     "idt": _format_date_gstn(inv.transaction_date),
-                    "val": _paise_to_rupees(inv.taxable_amount_paise + inv.igst_paise + inv.cess_paise),
+                    "val": _paise_to_rupees(inv.taxable_amount_paise + inv.igst_paise + inv.cess_paise + inv.round_off_paise),
                     "sbpcode": "",
                     "sbnum": "",
                     "sbdt": "",
