@@ -109,9 +109,11 @@ def record_irn_generated(
             qr_data=req.qr_data,
             provider_response=req.provider_response,
         )
-        # Bug fix (Batch 7): timeline_service.log takes title/entity_*, not
-        # action/metadata — the old call raised TypeError → 500. Scoping to the
-        # sales invoice also surfaces the event in the invoice Hub timeline.
+        # Bug fix (Batch 7): timeline_service.log takes title/…, not action/
+        # metadata — the old call raised TypeError → 500. Logged at client level;
+        # the invoice Hub derives compliance activity from the records themselves
+        # (compliance.complianceTimelineItems) so we do NOT entity-scope here —
+        # that would double-list the event in the Hub timeline (Batch 8 fix).
         timeline_service.log(
             client_id=result.get("client_id", ""),
             firm_id=current_user["firm_id"],
@@ -119,8 +121,6 @@ def record_irn_generated(
             title="E-Invoice IRN generated",
             description=f"IRN {req.irn} (ACK {req.ack_number})",
             severity="success",
-            entity_type="sales_invoice",
-            entity_id=result.get("sales_invoice_id"),
         )
         return api_response(True, result)
     except Exception as e:
@@ -151,8 +151,6 @@ def cancel_irn(
             title="E-Invoice cancelled",
             description=f"IRN cancelled: {req.cancellation_reason}",
             severity="warning",
-            entity_type="sales_invoice",
-            entity_id=result.get("sales_invoice_id"),
         )
         return api_response(True, result)
     except Exception as e:

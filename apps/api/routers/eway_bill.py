@@ -107,9 +107,10 @@ def record_ewb_generated(
             ewb_valid_upto=req.ewb_valid_upto,
             provider_response=req.provider_response,
         )
-        # Bug fix (Batch 7): timeline_service.log takes title/entity_*, not
-        # action/metadata (the old call raised TypeError → 500). entity_* scoping
-        # surfaces the event in the invoice Hub timeline.
+        # Bug fix (Batch 7): timeline_service.log takes title/…, not action/
+        # metadata (the old call raised TypeError → 500). Logged at client level;
+        # the invoice Hub derives compliance activity from the records to avoid a
+        # duplicate entry, so we do NOT entity-scope here (Batch 8 fix).
         timeline_service.log(
             client_id=result.get("client_id", ""),
             firm_id=current_user["firm_id"],
@@ -117,8 +118,6 @@ def record_ewb_generated(
             title="E-Way Bill generated",
             description=f"E-Way Bill {req.ewb_number} (valid to {req.ewb_valid_upto})",
             severity="success",
-            entity_type="sales_invoice",
-            entity_id=result.get("sales_invoice_id"),
         )
         return api_response(True, result)
     except Exception as e:
@@ -160,8 +159,6 @@ def cancel_ewb(
             title="E-Way Bill cancelled",
             description=f"E-Way Bill cancelled: {req.cancellation_reason}",
             severity="warning",
-            entity_type="sales_invoice",
-            entity_id=result.get("sales_invoice_id"),
         )
         return api_response(True, result)
     except Exception as e:

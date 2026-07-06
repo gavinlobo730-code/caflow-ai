@@ -14,6 +14,7 @@ import {
   BookOpen, Clock, Loader2, ChevronDown, ChevronUp, AlertCircle, Mail,
 } from "lucide-react";
 import { Drawer } from "@/components/ui/drawer";
+import { Modal as ModalShell } from "@/components/ui/modal";
 import { formatDateTime } from "@/lib/services/formatting";
 import { diffDaysISO } from "@/lib/sales/dateMath";
 import { termLabelForDays } from "@/lib/sales/paymentTerms";
@@ -327,7 +328,7 @@ export function InvoiceViewDrawer({
           {del.sent && (
             <section className="space-y-2">
               <h4 className="text-xs font-semibold text-[#334155]">Delivery</h4>
-              <DetailRow label="Email status" value={DELIVERY_STATUS_LABEL[deliveries[0]?.status] ?? deliveries[0]?.status ?? "—"} />
+              <DetailRow label="Email status" value={(del.lastStatus ? DELIVERY_STATUS_LABEL[del.lastStatus] ?? del.lastStatus : "—")} />
               <DetailRow label="Sent to" value={del.lastSentTo ?? "—"} />
               <DetailRow label="Sent at" value={fmtDateTime(del.lastSentAt)} />
               {del.attempts > 1 && <p className="text-[10px] text-[#94A3B8]">{del.attempts} delivery attempts</p>}
@@ -521,17 +522,6 @@ function CreateCreditNoteModal({ invoice, clientId, onClose, onDone, onError }: 
 const inputCls = "w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block space-y-1"><span className="block text-xs font-medium text-[#475569]">{label}</span>{children}</label>;
-}
-function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40" />
-      <div className="relative w-full max-w-sm bg-white rounded-xl shadow-xl p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-sm font-semibold text-[#0F172A]">{title}</h3>
-        {children}
-      </div>
-    </div>
-  );
 }
 function ModalActions({ onClose, onSubmit, saving, label }: { onClose: () => void; onSubmit: () => void; saving: boolean; label: string }) {
   return (

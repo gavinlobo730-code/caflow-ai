@@ -1512,10 +1512,14 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
   const [msg, setMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   const load = useCallback(async () => {
-    const token = await getAuthToken();
-    const res = await apiGet(`/api/payments?invoice_id=${invoice.id}`, token);
-    if (res.success) setHist(res.data as PaymentHistory);
-    else setMsg({ text: res.error ?? "Could not load payments", type: "error" });
+    try {
+      const token = await getAuthToken();
+      const res = await apiGet(`/api/payments?invoice_id=${invoice.id}`, token);
+      if (res.success) setHist(res.data as PaymentHistory);
+      else setMsg({ text: res.error ?? "Could not load payments", type: "error" });
+    } catch {
+      setMsg({ text: "Could not load payments", type: "error" });
+    }
   }, [invoice.id]);
   useEffect(() => { load(); }, [load]);
 

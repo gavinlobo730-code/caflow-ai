@@ -12,7 +12,8 @@ import { useMemo, useState } from "react";
 import {
   ShieldCheck, FileCheck2, Truck, AlertTriangle, Loader2, QrCode, XCircle,
 } from "lucide-react";
-import { apiCall, fmt, type InvoiceDetail } from "@/lib/invoices/shared";
+import { Modal as ModalShell } from "@/components/ui/modal";
+import { apiCall, getAuthToken, fmt, type InvoiceDetail } from "@/lib/invoices/shared";
 import {
   gstTreatment, treatmentLabel, validatePlaceOfSupply,
   irnEligibility, ewayEligibility, irnStatus, ewayStatus,
@@ -57,67 +58,75 @@ export function CompliancePanel({
   const irnElig = irnEligibility(compInv, irn.state === "generated");
   const ewayElig = ewayEligibility(compInv, eway.state === "generated");
 
-  async function run(fn: () => Promise<void>, okMsg: string) {
+  // Every compliance mutation is authenticated: run() fetches the bearer token
+  // once and threads it into the apiCall (omitting it would 401 at the backend).
+  async function run(fn: (token: string) => Promise<void>, okMsg: string) {
     setBusy(true);
-    try { await fn(); onToast(okMsg, "success"); setModal(null); onChanged(); }
+    try {
+      const token = await getAuthToken();
+      await fn(token);
+      onToast(okMsg, "success");
+      setModal(null);
+      onChanged();
+    }
     catch (e) { onToast(e instanceof Error ? e.message : "Action failed", "error"); }
     finally { setBusy(false); }
   }
 
   async function prepareIrn(t: GstTreatment, lut: string) {
-    await run(async () => {
+    await run(async (token) => {
       const r = await apiCall("/api/einvoice/records", "POST", {
         client_id: clientId, invoice_number: invoice.invoice_no, invoice_date: invoice.invoice_date,
         sales_invoice_id: invoice.id, gst_treatment: t, lut_number: lut.trim() || undefined,
-      });
+      }, token);
       if (!r.success) throw new Error(r.error ?? "Could not prepare the IRN record");
     }, "IRN record prepared — generate it on the IRP portal, then record it");
   }
   async function recordIrn(f: { irn: string; ack_number: string; ack_date: string; qr_data: string }) {
     const id = irn.record?.id;
     if (!id) return;
-    await run(async () => {
+    await run(async (token) => {
       const r = await apiCall(`/api/einvoice/records/${id}/irn-generated`, "POST", {
         irn: f.irn.trim(), ack_number: f.ack_number.trim(), ack_date: f.ack_date, qr_data: f.qr_data.trim() || undefined,
-      });
+      }, token);
       if (!r.success) throw new Error(r.error ?? "Could not record the IRN");
     }, `IRN ${f.irn.trim()} recorded`);
   }
   async function cancelIrn(reason: string) {
     const id = irn.record?.id;
     if (!id) return;
-    await run(async () => {
-      const r = await apiCall(`/api/einvoice/records/${id}/cancel`, "POST", { cancellation_reason: reason });
+    await run(async (token) => {
+      const r = await apiCall(`/api/einvoice/records/${id}/cancel`, "POST", { cancellation_reason: reason }, token);
       if (!r.success) throw new Error(r.error ?? "Could not cancel the IRN");
     }, "IRN cancellation recorded");
   }
 
   async function prepareEway(f: { dispatch_from: string; ship_to: string; goods_description: string; hsn_code: string }) {
-    await run(async () => {
+    await run(async (token) => {
       const r = await apiCall("/api/eway-bill/records", "POST", {
         client_id: clientId, invoice_number: invoice.invoice_no, sales_invoice_id: invoice.id,
         dispatch_from: f.dispatch_from.trim(), ship_to: f.ship_to.trim(),
         goods_description: f.goods_description.trim() || "Goods per invoice",
         taxable_value_paise: invoice.taxable_amount_paise, hsn_code: f.hsn_code.trim() || undefined,
-      });
+      }, token);
       if (!r.success) throw new Error(r.error ?? "Could not prepare the E-Way Bill record");
     }, "E-Way Bill record prepared — generate it on the NIC portal, then record it");
   }
   async function recordEway(f: { ewb_number: string; ewb_date: string; ewb_valid_upto: string }) {
     const id = eway.record?.id;
     if (!id) return;
-    await run(async () => {
+    await run(async (token) => {
       const r = await apiCall(`/api/eway-bill/records/${id}/generated`, "POST", {
         ewb_number: f.ewb_number.trim(), ewb_date: f.ewb_date, ewb_valid_upto: f.ewb_valid_upto,
-      });
+      }, token);
       if (!r.success) throw new Error(r.error ?? "Could not record the E-Way Bill");
     }, `E-Way Bill ${f.ewb_number.trim()} recorded`);
   }
   async function cancelEway(reason: string) {
     const id = eway.record?.id;
     if (!id) return;
-    await run(async () => {
-      const r = await apiCall(`/api/eway-bill/records/${id}/cancel`, "POST", { cancellation_reason: reason });
+    await run(async (token) => {
+      const r = await apiCall(`/api/eway-bill/records/${id}/cancel`, "POST", { cancellation_reason: reason }, token);
       if (!r.success) throw new Error(r.error ?? "Could not cancel the E-Way Bill");
     }, "E-Way Bill cancellation recorded");
   }
@@ -261,23 +270,11 @@ function PrimaryBtn({ children, onClick, disabled }: { children: React.ReactNode
 // ── Modals ────────────────────────────────────────────────────────────────────
 const inputCls = "w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
 
-function ModalShell({ title, note, onClose, children }: { title: string; note?: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40" />
-      <div className="relative w-full max-w-sm bg-white rounded-xl shadow-xl p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-sm font-semibold text-[#0F172A]">{title}</h3>
-        {note && <p className="text-[11px] text-[#64748B]">{note}</p>}
-        {children}
-      </div>
-    </div>
-  );
-}
-function Actions({ onClose, onSubmit, busy, label }: { onClose: () => void; onSubmit: () => void; busy: boolean; label: string }) {
+function Actions({ onClose, onSubmit, busy, label, disabled }: { onClose: () => void; onSubmit: () => void; busy: boolean; label: string; disabled?: boolean }) {
   return (
     <div className="flex justify-end gap-2 pt-1">
       <button onClick={onClose} disabled={busy} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50">Cancel</button>
-      <button onClick={onSubmit} disabled={busy} className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+      <button onClick={onSubmit} disabled={busy || disabled} className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
         {busy && <Loader2 size={12} className="animate-spin" />} {label}
       </button>
     </div>
@@ -315,7 +312,7 @@ function RecordIrnModal({ busy, onClose, onSubmit }: { busy: boolean; onClose: (
       <L label="Acknowledgement no."><input value={ack} onChange={(e) => setAck(e.target.value)} className={inputCls} /></L>
       <L label="Acknowledgement date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></L>
       <L label="Signed QR payload (optional)"><textarea value={qr} onChange={(e) => setQr(e.target.value)} rows={2} className={inputCls} /></L>
-      <Actions onClose={onClose} onSubmit={() => ok && onSubmit({ irn, ack_number: ack, ack_date: date, qr_data: qr })} busy={busy} label="Record IRN" />
+      <Actions onClose={onClose} onSubmit={() => ok && onSubmit({ irn, ack_number: ack, ack_date: date, qr_data: qr })} busy={busy} disabled={!ok} label="Record IRN" />
     </ModalShell>
   );
 }
@@ -334,7 +331,7 @@ function PrepareEwayModal({ busy, invoice, onClose, onSubmit }: { busy: boolean;
       </div>
       <L label="Goods description"><input value={goods} onChange={(e) => setGoods(e.target.value)} placeholder="Goods per invoice" className={inputCls} /></L>
       <L label="HSN (optional)"><input value={hsn} onChange={(e) => setHsn(e.target.value)} className={inputCls} /></L>
-      <Actions onClose={onClose} onSubmit={() => ok && onSubmit({ dispatch_from: from, ship_to: to, goods_description: goods, hsn_code: hsn })} busy={busy} label="Prepare record" />
+      <Actions onClose={onClose} onSubmit={() => ok && onSubmit({ dispatch_from: from, ship_to: to, goods_description: goods, hsn_code: hsn })} busy={busy} disabled={!ok} label="Prepare record" />
     </ModalShell>
   );
 }
@@ -349,7 +346,7 @@ function RecordEwayModal({ busy, onClose, onSubmit }: { busy: boolean; onClose: 
         <L label="EWB date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></L>
         <L label="Valid upto"><input type="date" value={valid} onChange={(e) => setValid(e.target.value)} className={inputCls} /></L>
       </div>
-      <Actions onClose={onClose} onSubmit={() => num.trim() && onSubmit({ ewb_number: num, ewb_date: date, ewb_valid_upto: valid })} busy={busy} label="Record E-Way Bill" />
+      <Actions onClose={onClose} onSubmit={() => num.trim() && onSubmit({ ewb_number: num, ewb_date: date, ewb_valid_upto: valid })} busy={busy} disabled={!num.trim()} label="Record E-Way Bill" />
     </ModalShell>
   );
 }
@@ -359,7 +356,7 @@ function CancelModal({ title, note, busy, onClose, onSubmit }: { title: string; 
   return (
     <ModalShell title={title} note={note} onClose={onClose}>
       <L label="Cancellation reason"><input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" className={inputCls} /></L>
-      <Actions onClose={onClose} onSubmit={() => reason.trim() && onSubmit(reason)} busy={busy} label={title} />
+      <Actions onClose={onClose} onSubmit={() => reason.trim() && onSubmit(reason)} busy={busy} disabled={!reason.trim()} label={title} />
     </ModalShell>
   );
 }
