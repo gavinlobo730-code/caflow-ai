@@ -10,7 +10,7 @@ without a live DB. The pure helpers cover the merge/rate logic.
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from routers.hsn import router as hsn_router, _pct_to_bps, _SAFE_Q
+from routers.hsn import router as hsn_router, _pct_to_bps, _SAFE_Q, _rank_master_rows
 from core.auth import get_current_user
 
 USER = {"id": "u-hsn-1", "firm_id": "firm-hsn-0001", "role": "Partner"}
@@ -48,6 +48,56 @@ def test_safe_query_strips_filter_breaking_chars():
     assert "(" not in _SAFE_Q.sub(" ", "leasing (other)")
 
 
+# ── Relevance ranking (pure) ─────────────────────────────────────────────────
+
+def _rows(*specs):
+    """specs: (hsn_code, description, keywords) → master-shaped dicts."""
+    return [{"hsn_code": c, "description": d, "keywords": k} for c, d, k in specs]
+
+
+def test_rank_exact_code_wins():
+    # Typing a full code surfaces that exact code above a prefix sibling.
+    rows = _rows(
+        ("998221", "Financial auditing services", None),
+        ("9982",   "Legal and accounting services", None),
+    )
+    ranked = _rank_master_rows("998221", rows)
+    assert ranked[0]["hsn_code"] == "998221"
+
+
+def test_rank_code_prefix_before_description_match():
+    # "9982" is a code prefix for 998221 but only a description match for the
+    # goods row — the code-prefix hit ranks first.
+    rows = _rows(
+        ("8471", "Computers — data processing 9982 not really", "laptop"),
+        ("998221", "Financial auditing services", None),
+    )
+    ranked = _rank_master_rows("9982", rows)
+    assert ranked[0]["hsn_code"] == "998221"
+
+
+def test_rank_description_search_matches_words_and_keywords():
+    # A non-code term ranks description-prefix, then description/keyword substring.
+    rows = _rows(
+        ("9401", "Office chairs and furniture", "seating"),
+        ("8471", "Computers, laptops and peripherals", "laptop notebook"),
+    )
+    # "laptop" hits only via keywords on 8471.
+    ranked = _rank_master_rows("laptop", rows)
+    assert ranked[0]["hsn_code"] == "8471"
+    # "office" hits the description prefix on 9401.
+    assert _rank_master_rows("office", rows)[0]["hsn_code"] == "9401"
+
+
+def test_rank_no_result_is_stable_passthrough():
+    # A term matching nothing keeps every row (endpoint's DB filter already
+    # narrowed) in a deterministic order — never raises, never drops rows.
+    rows = _rows(("8471", "Computers", None), ("9401", "Chairs", None))
+    ranked = _rank_master_rows("zzz-nomatch", rows)
+    assert {r["hsn_code"] for r in ranked} == {"8471", "9401"}
+    assert _rank_master_rows("anything", []) == []
+
+
 # ── Endpoint contract (mock mode) ────────────────────────────────────────────
 
 def test_search_returns_envelope_and_empty_in_mock():
@@ -70,3 +120,20 @@ def test_type_filter_accepted():
     r = _client().get("/api/hsn/search?q=chair&type=goods")
     assert r.status_code == 200
     assert r.json()["success"] is True
+
+
+def test_type_filter_services_accepted():
+    r = _client().get("/api/hsn/search?q=audit&type=services")
+    assert r.status_code == 200
+    assert r.json()["success"] is True
+
+
+def test_empty_query_with_client_scope_returns_envelope():
+    # Empty q + client_id is the "recent codes" affordance — must stay a valid
+    # envelope (empty in mock mode, recent history against a live DB).
+    r = _client().get("/api/hsn/search?q=&client_id=client-xyz")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["success"] is True
+    assert body["data"] == []
+    assert body["error"] is None

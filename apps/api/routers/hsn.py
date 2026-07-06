@@ -38,6 +38,48 @@ def _pct_to_bps(pct) -> Optional[int]:
         return None
 
 
+def _rank_master_rows(term: str, rows: list[dict]) -> list[dict]:
+    """Relevance-rank canonical master rows for a search term.
+
+    PostgREST can only order by a column, so a query like "audit" returns
+    master hits in bare hsn_code order — burying the obvious match. We re-rank
+    in Python (the candidate set is already capped at limit*2) so the best
+    match surfaces first, mirroring how a CA scans a code list:
+
+      0 exact code           (typed "998212" → that code)
+      1 code prefix          (typed "9982"  → codes starting 9982)
+      2 code substring
+      3 description prefix    (typed "audit" → "Auditing …")
+      4 description / keyword substring
+
+    Ties break by shorter code then code text, so a 2-digit chapter (broad)
+    sorts before a 6-digit leaf only when equally relevant — keeping results
+    stable and predictable. Pure + deterministic so it is unit-testable
+    without a database.
+    """
+    t = (term or "").strip().lower()
+
+    def rank(r: dict) -> tuple:
+        code = (r.get("hsn_code") or "").lower()
+        desc = (r.get("description") or "").lower()
+        kw = (r.get("keywords") or "").lower()
+        if code == t:
+            bucket = 0
+        elif t and code.startswith(t):
+            bucket = 1
+        elif t and t in code:
+            bucket = 2
+        elif t and desc.startswith(t):
+            bucket = 3
+        elif t and (t in desc or t in kw):
+            bucket = 4
+        else:
+            bucket = 5
+        return (bucket, len(code), code)
+
+    return sorted(rows, key=rank)
+
+
 @router.get("/search")
 def search_hsn(
     q: str = Query("", description="HSN/SAC code or description fragment"),
@@ -52,7 +94,14 @@ def search_hsn(
     rate (bps) and unit (UQC)."""
     try:
         term = _SAFE_Q.sub(" ", (q or "").strip()).strip()
-        if _USE_MOCK or not term:
+        if _USE_MOCK:
+            return api_response(True, [])
+
+        # Empty query with a client scope = "recent codes" affordance: show the
+        # firm's most recently used codes for this client so the picker is useful
+        # before the CA types anything. Without a client scope there is nothing to
+        # recommend, so stay empty (never full-load the master).
+        if not term and not client_id:
             return api_response(True, [])
 
         from core.supabase_client import get_supabase
@@ -62,19 +111,21 @@ def search_hsn(
         out: list[dict] = []
         seen: set[str] = set()
 
-        # 1) Firm history first — these are codes the CA actually picked (with the
-        #    rate they used), ranked recency-then-frequency. Only when client scoped.
+        # 1) Firm history first — codes the CA actually picked (with the rate they
+        #    used), ranked recency-then-frequency. On an empty query this is the
+        #    whole result (recent list); with a term it is the matching history.
         if client_id:
             hq = (
                 db.table("hsn_sac_preferences")
                 .select("hsn_sac,sample_description,gst_rate_bps,use_count,last_used_at")
                 .eq("firm_id", firm_id)
                 .eq("client_id", client_id)
-                .or_(f"hsn_sac.ilike.{term}*,description_key.ilike.*{term}*")
                 .order("last_used_at", desc=True)
                 .order("use_count", desc=True)
                 .limit(limit * 2)
             )
+            if term:
+                hq = hq.or_(f"hsn_sac.ilike.{term}*,description_key.ilike.*{term}*")
             for r in (hq.execute().data or []):
                 code = (r.get("hsn_sac") or "").strip()
                 if not code or code in seen:
@@ -88,23 +139,30 @@ def search_hsn(
                     "uqc":         None,
                     "hsn_type":    None,
                     "source":      "history",
-                    "reason":      f"Used {n} time" + ("s" if n != 1 else ""),
+                    "reason":      ("Recently used" if not term
+                                    else f"Used {n} time" + ("s" if n != 1 else "")),
                 })
                 if len(out) >= limit:
                     return api_response(True, out)
 
-        # 2) Canonical master — search code prefix OR description substring.
+        # An empty query never reads the master — recent history is the whole set.
+        if not term:
+            return api_response(True, out)
+
+        # 2) Canonical master — code prefix OR description/keyword substring, then
+        #    relevance-ranked (exact code > prefix > description) since PostgREST
+        #    can only pre-sort by hsn_code.
         mq = (
             db.table("hsn_master")
-            .select("hsn_code,description,gst_rate_pct,hsn_type,uqc")
+            .select("hsn_code,description,gst_rate_pct,hsn_type,uqc,keywords")
             .eq("is_active", True)
-            .or_(f"hsn_code.ilike.{term}*,description.ilike.*{term}*")
+            .or_(f"hsn_code.ilike.{term}*,description.ilike.*{term}*,keywords.ilike.*{term}*")
             .order("hsn_code")
-            .limit(limit * 2)
+            .limit(limit * 3)
         )
         if type in ("goods", "services"):
             mq = mq.eq("hsn_type", type)
-        for r in (mq.execute().data or []):
+        for r in _rank_master_rows(term, mq.execute().data or []):
             code = (r.get("hsn_code") or "").strip()
             if not code or code in seen:
                 continue
