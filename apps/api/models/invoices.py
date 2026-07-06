@@ -14,6 +14,12 @@ class InvoiceLineIn(BaseModel):
     description: str
     hsn_sac: Optional[str] = None
     quantity: float = 1.0
+    # Unit of measure (UQC), e.g. "NOS", "KGS", "HRS" — CGST Rule 46(h). The
+    # client_sales_invoice_lines column and the create/update insert path
+    # (routers/sales_invoices.py: `ln.get("unit", "NOS")`) already existed;
+    # this field was the missing link — without it Pydantic silently dropped
+    # any `unit` the frontend sent, so every line fell back to "NOS".
+    unit: Optional[str] = None
     rate_paise: int
     gst_rate_percent: float = 18.0
     is_service: bool = False

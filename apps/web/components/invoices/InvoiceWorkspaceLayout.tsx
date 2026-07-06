@@ -44,7 +44,7 @@ export function InvoiceWorkspaceLayout({
   children,
 }: InvoiceWorkspaceLayoutProps) {
   return (
-    <div className="max-w-screen-2xl mx-auto pb-24 lg:pb-6">
+    <div className="max-w-screen-2xl mx-auto px-6 pt-4 pb-24 lg:pt-5 lg:pb-6">
       {/* Breadcrumbs */}
       <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-xs text-[#94A3B8] mb-2 flex-wrap">
         {breadcrumbs.map((c, i) => (

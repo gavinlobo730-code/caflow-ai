@@ -570,7 +570,11 @@ def create_invoice(
                 "description":    ln.get("description", ""),
                 "hsn_sac":        ln.get("hsn_sac", ""),
                 "quantity":       qty,
-                "unit":           ln.get("unit", "NOS"),
+                # `.get(k, default)` only falls back when the key is ABSENT, but
+                # InvoiceLineIn.model_dump() always includes "unit" (as None when
+                # the caller omits it) — so `or "NOS"` is required to catch both
+                # "missing" and "explicitly None/blank".
+                "unit":           ln.get("unit") or "NOS",
                 "rate_paise":     rate_paise,
                 "gst_rate_bps":   gst_rate_bps,
                 "taxable_amount_paise": taxable_paise,
@@ -650,6 +654,7 @@ def create_invoice(
                 "credit_days":           eff_credit_days,
                 "supply_state_code":     effective_supply_state,
                 "is_interstate":         is_interstate,
+                "reference_no":          data.get("reference_no"),
                 "taxable_amount_paise":  total_taxable_paise,
                 "cgst_paise":            total_cgst_paise,
                 "sgst_paise":            total_sgst_paise,
@@ -683,6 +688,7 @@ def create_invoice(
             "credit_days":           eff_credit_days,
             "supply_state_code":     effective_supply_state,
             "is_interstate":         is_interstate,
+            "reference_no":          data.get("reference_no"),
             "taxable_amount_paise":  total_taxable_paise,
             "cgst_paise":            total_cgst_paise,
             "sgst_paise":            total_sgst_paise,
@@ -892,7 +898,10 @@ def update_invoice(
                     "description":          ln.get("description", ""),
                     "hsn_sac":              ln.get("hsn_sac", ""),
                     "quantity":             qty,
-                    "unit":                 ln.get("unit", "NOS"),
+                    # See the analogous comment in create_invoice: model_dump()
+                    # always includes "unit" (None when omitted), so `.get(k,
+                    # default)` alone wouldn't fall back — `or "NOS"` is required.
+                    "unit":                 ln.get("unit") or "NOS",
                     "rate_paise":           rate_paise,
                     "gst_rate_bps":         gst_rate_bps,
                     "taxable_amount_paise": taxable,

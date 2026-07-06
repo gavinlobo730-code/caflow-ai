@@ -244,6 +244,57 @@ class TestCreateInvoice:
         assert len(header_deletes) == 1, "header must be rolled back on line failure"
         assert header_deletes[0]["filters"].get("id") == "INV-TEST-1"
 
+    def test_line_unit_defaults_to_nos_when_omitted(self, fake_db):
+        """InvoiceLineIn.model_dump() always includes "unit" (None when the
+        caller omits it), so a plain `ln.get("unit", "NOS")` would return None,
+        not "NOS" — the fallback must be `ln.get("unit") or "NOS"`."""
+        recorder, holder = fake_db
+        holder["controller"] = _interstate_create_controller
+
+        resp = sales_invoices.create_invoice(self._payload(), _USER)
+
+        assert resp["data"]["lines"][0]["unit"] == "NOS"
+        line_inserts = [e for e in recorder
+                        if e["table"] == "client_sales_invoice_lines" and e["op"] == "insert"]
+        assert line_inserts[0]["payload"][0]["unit"] == "NOS"
+
+    def test_line_unit_round_trips_when_provided(self, fake_db):
+        recorder, holder = fake_db
+        holder["controller"] = _interstate_create_controller
+
+        payload = SalesInvoiceIn(
+            client_id="C1", customer_id="CUST1", invoice_date="2026-06-19",
+            lines=[InvoiceLineIn(
+                description="Gold sale", hsn_sac="7108", rate_paise=100000,
+                quantity=2, unit="GMS", gst_rate_percent=3.0,
+            )],
+        )
+        resp = sales_invoices.create_invoice(payload, _USER)
+
+        assert resp["data"]["lines"][0]["unit"] == "GMS"
+        line_inserts = [e for e in recorder
+                        if e["table"] == "client_sales_invoice_lines" and e["op"] == "insert"]
+        assert line_inserts[0]["payload"][0]["unit"] == "GMS"
+
+    def test_reference_no_round_trips(self, fake_db):
+        """SalesInvoiceIn already declared reference_no, and the DB column
+        exists (migration 050), but the header payload dict was built
+        field-by-field without it — so a PO/reference number the CA typed was
+        silently dropped on create. Blueprint §3.1 wireframe requires it."""
+        recorder, holder = fake_db
+        holder["controller"] = _interstate_create_controller
+
+        payload = SalesInvoiceIn(
+            client_id="C1", customer_id="CUST1", invoice_date="2026-06-19",
+            reference_no="PO-8891",
+            lines=[InvoiceLineIn(description="Consulting", hsn_sac="998311", rate_paise=5100, quantity=1, gst_rate_percent=18.0)],
+        )
+        resp = sales_invoices.create_invoice(payload, _USER)
+
+        assert resp["data"]["reference_no"] == "PO-8891"
+        header_inserts = [e for e in recorder if e["table"] == "client_sales_invoices" and e["op"] == "insert"]
+        assert header_inserts[0]["payload"]["reference_no"] == "PO-8891"
+
 
 # ---------------------------------------------------------------------------
 # Get Invoice
@@ -311,6 +362,33 @@ class TestUpdateInvoice:
         for row in line_inserts[0]["payload"]:
             assert row["sales_invoice_id"] == "INV-1"
             assert "invoice_id" not in row
+
+    def test_update_line_unit_defaults_to_nos_and_round_trips(self, fake_db):
+        recorder, holder = fake_db
+
+        def _controller(event):
+            t, op = event["table"], event["op"]
+            if t == "client_sales_invoices" and op == "select":
+                return _Resp(data=[{"id": "INV-1", "status": "draft", "is_interstate": True}])
+            if t == "client_sales_invoice_lines" and op == "insert":
+                return _Resp(data=event["payload"])
+            if t == "client_sales_invoices" and op == "update":
+                return _Resp(data=[{**event["payload"], "id": "INV-1"}])
+            return _Resp(data=[])
+
+        holder["controller"] = _controller
+        upd = SalesInvoiceUpdateIn(lines=[
+            InvoiceLineIn(description="No unit given", rate_paise=10000, quantity=1, gst_rate_percent=18.0),
+            InvoiceLineIn(description="Explicit unit", rate_paise=10000, quantity=1, gst_rate_percent=18.0, unit="HRS"),
+        ])
+        resp = sales_invoices.update_invoice("INV-1", upd, _USER)
+
+        assert resp["success"] is True
+        line_inserts = [e for e in recorder
+                        if e["table"] == "client_sales_invoice_lines" and e["op"] == "insert"]
+        rows = line_inserts[0]["payload"]
+        assert rows[0]["unit"] == "NOS"
+        assert rows[1]["unit"] == "HRS"
 
     def test_edit_remaps_interstate_flag_and_recomputes_intrastate(self, fake_db):
         """Editing a draft may flip the IGST checkbox. The request field
