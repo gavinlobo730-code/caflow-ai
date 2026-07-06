@@ -8,6 +8,29 @@ export function salesListHref(clientId: string): string {
   return `/clients/${clientId}/sales`;
 }
 
+/** Client home. */
+export function clientHref(clientId: string): string {
+  return `/clients/${clientId}`;
+}
+
+/** Breadcrumbs for an invoice editor page: Client › Sales › <leaf>. */
+export function invoiceBreadcrumbs(
+  clientId: string,
+  clientName: string | undefined,
+  leaf: string,
+): { label: string; href?: string }[] {
+  return [
+    { label: clientName || "Client", href: clientHref(clientId) },
+    { label: "Sales", href: salesListHref(clientId) },
+    { label: leaf },
+  ];
+}
+
+/** Return to the Sales list with a one-shot flash message (?flash=…) for a toast. */
+export function salesListFlashHref(clientId: string, message: string): string {
+  return `${salesListHref(clientId)}?flash=${encodeURIComponent(message)}`;
+}
+
 /** Create a new invoice. */
 export function newInvoiceHref(clientId: string): string {
   return `/clients/${clientId}/sales/invoices/new`;

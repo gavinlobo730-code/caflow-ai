@@ -962,6 +962,15 @@ function SalesInvoices({
     if (p.get("to")) setCustomTo(p.get("to")!);
     // Deep-link: ?invoice=<id> opens the View drawer directly (refresh-safe).
     if (p.get("invoice")) setDetailId(p.get("invoice"));
+    // One-shot success feedback after the editor saves/issues/sends (Batch 3):
+    // ?flash=<msg> → toast, then strip the param so a refresh doesn't repeat it.
+    const flash = p.get("flash");
+    if (flash) {
+      showToast(flash, "success");
+      p.delete("flash");
+      const qs = p.toString();
+      window.history.replaceState(null, "", qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+    }
   }, []);
 
   useEffect(() => {
