@@ -31,7 +31,7 @@ import { useRouter } from "next/navigation";
 import { newInvoiceHref, editInvoiceHref } from "@/lib/invoices/workspaceNav";
 import {
   API, apiCall, apiGet, getAuthToken, fmt, computeGst, INDIAN_STATES, GST_RATES, STATUS_BADGE, DELIVERY_STATUS_LABEL,
-  type InvoiceDelivery,
+  type InvoiceDelivery, type InvoiceDetail,
   type Customer, type SalesInvoice, type InvoiceLine,
   type CurrencyOption, type InvoiceStatus,
 } from "@/lib/invoices/shared";
@@ -1090,6 +1090,41 @@ function SalesInvoices({
     router.push(editInvoiceHref(clientId, inv.id));
   }
 
+  // Duplicate an existing invoice into a fresh DRAFT by re-posting its header +
+  // lines through the SAME create endpoint the editor uses (no parallel logic),
+  // then opening the new draft in the editor for review. Copies the supply
+  // context and line items but never the number, dates or payment state.
+  async function handleDuplicate(inv: InvoiceDetail) {
+    try {
+      const token = await getAuthToken();
+      const today = new Date().toISOString().split("T")[0];
+      const lines = inv.lines.map((l) => ({
+        description: l.description,
+        hsn_sac: l.hsn_sac ?? undefined,
+        quantity: l.quantity,
+        rate_paise: l.rate_paise,
+        gst_rate_percent: (l.gst_rate_bps ?? 0) / 100,
+      }));
+      const created = await apiCall("/api/sales-invoices/", "POST", {
+        client_id: clientId,
+        customer_id: inv.customer_id,
+        invoice_date: today,
+        supply_state_code: inv.supply_state_code || undefined,
+        is_inter_state: inv.is_interstate,
+        notes: inv.notes || undefined,
+        lines,
+      }, token);
+      if (!created.success) throw new Error(created.error ?? "Failed to duplicate invoice");
+      const draft = created.data as { id: string; invoice_no: string } | null;
+      setDetailId(null);
+      showToast(`Draft ${draft?.invoice_no ?? ""} created from ${inv.invoice_no}`, "success");
+      if (draft?.id) router.push(editInvoiceHref(clientId, draft.id));
+      else load();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to duplicate invoice", "error");
+    }
+  }
+
   async function deleteInvoice(inv: SalesInvoice) {
     const token = await getAuthToken();
     const result = await apiCall(`/api/sales-invoices/${inv.id}`, "DELETE", undefined, token);
@@ -1266,10 +1301,15 @@ function SalesInvoices({
       {detailId && (
         <InvoiceViewDrawer
           invoiceId={detailId}
+          clientId={clientId}
           onClose={() => setDetailId(null)}
           onEdit={(inv) => openEdit(inv)}
           onIssue={(id) => { setDetailId(null); issueInvoice(id); }}
           onSend={(inv) => { setDetailId(null); openSend(inv); }}
+          onDelete={(inv) => { setDetailId(null); setDeleteTarget(inv); }}
+          onDuplicate={(inv) => handleDuplicate(inv)}
+          onPaymentLink={(inv) => setPaymentModal(inv)}
+          onChanged={load}
           onToast={showToast}
         />
       )}
