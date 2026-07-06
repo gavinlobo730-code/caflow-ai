@@ -23,7 +23,10 @@ ALTER TABLE public.client_sales_invoices
 INSERT INTO public.chart_of_accounts
   (firm_id, client_id, account_code, account_name, account_type, account_subtype,
    is_active, system_account_key)
-SELECT DISTINCT c.firm_id, NULL, '5015', 'Round Off', 'Expense', 'Overhead',
+-- NULL is cast to uuid explicitly: a bare NULL in a SELECT list is typed as text,
+-- which mismatches the uuid client_id column ("column client_id is of type uuid
+-- but expression is of type text").
+SELECT DISTINCT c.firm_id, NULL::uuid, '5015', 'Round Off', 'Expense', 'Overhead',
        TRUE, 'round_off'
 FROM public.chart_of_accounts c
 WHERE c.client_id IS NULL
