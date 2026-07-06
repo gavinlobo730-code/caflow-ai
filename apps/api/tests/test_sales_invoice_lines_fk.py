@@ -206,13 +206,23 @@ class TestCreateInvoice:
         resp = sales_invoices.create_invoice(self._payload(), _USER)
 
         inv = resp["data"]
-        # Inter-state: IGST only (CGST Act §8). ₹51.00 taxable + ₹9.18 IGST = ₹60.18.
+        # Inter-state: IGST only (CGST Act §8). ₹51.00 taxable + ₹9.18 IGST = ₹60.18
+        # before round-off. Batch 1 adds invoice-level round-off (nearest ₹1): the
+        # taxable value and GST are UNCHANGED (CGST Act §15); only the payable total
+        # is rounded — ₹60.18 → ₹60.00 with a −18 paise round-off posted to the
+        # 'Round Off' ledger so the journal stays balanced.
         assert inv["is_interstate"] is True
-        assert inv["taxable_amount_paise"] == 5100
-        assert inv["igst_paise"] == 918
+        assert inv["taxable_amount_paise"] == 5100   # unchanged by round-off
+        assert inv["igst_paise"] == 918              # unchanged by round-off
         assert inv["cgst_paise"] == 0
         assert inv["sgst_paise"] == 0
-        assert inv["total_paise"] == 6018  # ₹60.18 — matches the orphaned production rows
+        assert inv["round_off_paise"] == -18         # 6018 → 6000 (round down)
+        assert inv["total_paise"] == 6000            # ₹60.00 payable (rounded)
+        # Round-off never changes the value of supply / GST — total reconciles to
+        # taxable + GST + round-off.
+        assert inv["total_paise"] == (
+            inv["taxable_amount_paise"] + inv["igst_paise"] + inv["round_off_paise"]
+        )
 
     def test_header_rolled_back_on_line_insert_failure(self, fake_db):
         """If the line insert fails, the just-created header must be deleted —
