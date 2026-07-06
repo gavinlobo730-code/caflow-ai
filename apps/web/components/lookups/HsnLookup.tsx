@@ -2,17 +2,12 @@
 import * as React from "react";
 import { Combobox } from "@/components/ui/combobox";
 import { api, type ApiResp } from "@/lib/api";
+import {
+  orderHsnResults, hsnTypeBadge, hsnSecondaryLine, type HsnRow,
+} from "@/lib/lookups/hsn";
 
 /** A row from GET /api/hsn/search (master + firm history). */
-export interface HsnResult {
-  hsn_code: string;
-  description?: string | null;
-  gst_rate_bps?: number | null;
-  uqc?: string | null;
-  hsn_type?: string | null;
-  source?: "history" | "master" | null;
-  reason?: string | null;
-}
+export type HsnResult = HsnRow;
 
 /** Auto-fill payload handed to the caller on selection (all CA-overridable). */
 export interface HsnPick {
@@ -21,9 +16,6 @@ export interface HsnPick {
   description?: string | null;
   uqc?: string | null;
 }
-
-const bpsToPct = (bps?: number | null) =>
-  bps == null ? "" : `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 2)}% GST`;
 
 /** Lower-case, whitespace-collapsed, trimmed — a stable key for comparing two
  * free-text descriptions regardless of incidental spacing/casing. */
@@ -80,10 +72,28 @@ export function HsnLookup(props: {
   const fetchOptions = React.useCallback(
     async (q: string): Promise<HsnResult[]> => {
       const res = (await api.hsn.search(q, { client_id: clientId, type })) as ApiResp<HsnResult[]>;
-      return res.data ?? [];
+      // Group history → Services (SAC) → Goods (HSN) while keeping the server's
+      // within-group relevance order (one unified lookup, distinguished visually).
+      return orderHsnResults(res.data ?? []);
     },
     [clientId, type],
   );
+
+  // Recently-used codes for this client, shown before the CA types anything
+  // (reuses the same endpoint with an empty query → firm history). Best-effort:
+  // an empty/failed fetch simply shows the normal "type to search" hint.
+  const [recent, setRecent] = React.useState<HsnResult[]>([]);
+  React.useEffect(() => {
+    if (!clientId) { setRecent([]); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const res = (await api.hsn.search("", { client_id: clientId, type, limit: 8 })) as ApiResp<HsnResult[]>;
+        if (alive) setRecent(orderHsnResults(res.data ?? []));
+      } catch { /* best-effort recent list */ }
+    })();
+    return () => { alive = false; };
+  }, [clientId, type]);
 
   // The value is a bare code; show it in the trigger via a synthetic option.
   const selected: HsnResult | null = value ? { hsn_code: value } : null;
@@ -161,11 +171,32 @@ export function HsnLookup(props: {
         onPick?.({ hsn_code: o.hsn_code, gst_rate_bps: o.gst_rate_bps, description: o.description, uqc: o.uqc });
       }}
       fetchOptions={fetchOptions}
+      recent={recent}
       getOptionId={(h) => h.hsn_code}
       getLabel={(h) => h.hsn_code}
-      getSecondary={(h) =>
-        [h.description, bpsToPct(h.gst_rate_bps), h.uqc].filter(Boolean).join(" · ") || undefined
-      }
+      getSecondary={(h) => hsnSecondaryLine(h) || undefined}
+      renderOption={(h) => {
+        const badge = hsnTypeBadge(h);
+        return (
+          <span className="flex min-w-0 items-center gap-2">
+            {badge && (
+              <span
+                className={`flex-shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold ${
+                  badge === "SAC" ? "bg-violet-50 text-violet-700" : "bg-sky-50 text-sky-700"
+                }`}
+              >
+                {badge}
+              </span>
+            )}
+            <span className="min-w-0">
+              <span className="block truncate text-xs text-[#1E293B]">{h.hsn_code}</span>
+              <span className="block truncate text-[10px] text-[#94A3B8]">
+                {h.reason ? `${h.reason} · ` : ""}{hsnSecondaryLine(h)}
+              </span>
+            </span>
+          </span>
+        );
+      }}
       onCreate={(label) => onChange(label)}
       createLabel={(q) => `Use “${q}”`}
       minChars={2}
