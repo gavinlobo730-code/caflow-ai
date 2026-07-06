@@ -266,6 +266,7 @@ export function InvoiceViewDrawer({
                     <th className="px-2 py-1.5 text-left font-semibold">Description</th>
                     <th className="px-2 py-1.5 text-left font-semibold">HSN/SAC</th>
                     <th className="px-2 py-1.5 text-right font-semibold">Qty</th>
+                    <th className="px-2 py-1.5 text-left font-semibold">Unit</th>
                     <th className="px-2 py-1.5 text-right font-semibold">Rate</th>
                     <th className="px-2 py-1.5 text-right font-semibold">GST%</th>
                     <th className="px-2 py-1.5 text-right font-semibold">Amount</th>
@@ -277,6 +278,7 @@ export function InvoiceViewDrawer({
                       <td className="px-2 py-1.5 text-[#334155]">{l.description}</td>
                       <td className="px-2 py-1.5 font-mono text-[#64748B]">{l.hsn_sac || "—"}</td>
                       <td className="px-2 py-1.5 text-right text-[#334155]">{l.quantity}</td>
+                      <td className="px-2 py-1.5 text-[#64748B]">{l.unit || "NOS"}</td>
                       <td className="px-2 py-1.5 text-right font-mono text-[#334155]">{fmt(l.rate_paise)}</td>
                       <td className="px-2 py-1.5 text-right text-[#334155]">{l.gst_rate_bps / 100}%</td>
                       <td className="px-2 py-1.5 text-right font-mono text-[#0F172A]">{fmt(l.line_total_paise)}</td>
@@ -486,6 +488,7 @@ function CreateCreditNoteModal({ invoice, clientId, onClose, onDone, onError }: 
         description: l.description,
         hsn_sac: l.hsn_sac ?? "",
         quantity: l.quantity,
+        unit: l.unit ?? undefined,
         rate_paise: l.rate_paise,
         gst_rate_percent: (l.gst_rate_bps ?? 0) / 100,
       }));

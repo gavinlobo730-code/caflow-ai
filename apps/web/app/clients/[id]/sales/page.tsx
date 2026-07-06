@@ -1102,6 +1102,7 @@ function SalesInvoices({
         description: l.description,
         hsn_sac: l.hsn_sac ?? undefined,
         quantity: l.quantity,
+        unit: l.unit ?? undefined,
         rate_paise: l.rate_paise,
         gst_rate_percent: (l.gst_rate_bps ?? 0) / 100,
       }));
@@ -3347,7 +3348,7 @@ function CreditNoteForm({
   const [isInterstate, setIsInterstate] = useState(false);
   const [customerInvoices, setCustomerInvoices] = useState<SalesInvoice[]>([]);
   const [lines, setLines] = useState<InvoiceLine[]>([
-    { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18 },
+    { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "" },
   ]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -3375,7 +3376,7 @@ function CreditNoteForm({
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
   }
   function addLine() {
-    setLines((prev) => [...prev, { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18 }]);
+    setLines((prev) => [...prev, { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "" }]);
   }
   function removeLine(idx: number) {
     if (lines.length <= 1) return;

@@ -21,7 +21,7 @@ const form = (over: Partial<ServiceFormInput> = {}): ServiceFormInput => ({
 
 test("serviceToLine drops a fully pre-priced line (description falls back to name)", () => {
   assert.deepEqual(serviceToLine(item()), {
-    description: "Statutory audit FY 2025-26", hsn_sac: "998221", rate: "50000", gst_rate: 18,
+    description: "Statutory audit FY 2025-26", hsn_sac: "998221", rate: "50000", gst_rate: 18, unit: "OTH",
   });
   assert.equal(serviceToLine(item({ description: "  " })).description, "Statutory Audit");
   assert.equal(serviceToLine(item({ default_rate_paise: 0 })).rate, "");

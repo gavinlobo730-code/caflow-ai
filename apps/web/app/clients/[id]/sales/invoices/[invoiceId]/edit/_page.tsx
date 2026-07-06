@@ -11,7 +11,9 @@ import { useParams, useRouter } from "next/navigation";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { InvoiceEditor } from "@/components/invoices/InvoiceEditor";
 import { ErrorState } from "@/components/ui/states";
-import { FormSkeleton } from "@/components/ui/skeleton";
+import {
+  InvoiceEditorSkeleton, SummaryPanelSkeleton, InvoiceToolbarSkeleton,
+} from "@/components/invoices/InvoiceEditorSkeleton";
 import {
   loadInvoiceEditorContext, loadInvoiceDetail, type InvoiceEditorContext,
 } from "@/lib/invoices/editorContext";
@@ -58,16 +60,20 @@ export default function EditInvoicePageClient() {
     );
   }
 
+  // See NewInvoicePage: keep the toolbar + summary rail present (as disabled
+  // skeletons) while loading so the two-column shell never collapses.
   return (
     <InvoiceWorkspaceLayout
       breadcrumbs={invoiceBreadcrumbs(clientId, ctx?.clientName, invoice ? `Edit ${invoice.invoice_no}` : "Edit Invoice")}
       title={invoice ? `Edit ${invoice.invoice_no}` : "Edit Draft Invoice"}
       statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">Draft</span>}
+      toolbar={!error ? <InvoiceToolbarSkeleton /> : undefined}
+      summary={!error ? <SummaryPanelSkeleton /> : undefined}
     >
       {error ? (
         <ErrorState message={error} onRetry={() => setReloadKey((k) => k + 1)} />
       ) : (
-        <FormSkeleton fields={6} />
+        <InvoiceEditorSkeleton />
       )}
     </InvoiceWorkspaceLayout>
   );

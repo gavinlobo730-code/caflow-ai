@@ -10,7 +10,9 @@ import { useParams, useRouter } from "next/navigation";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { InvoiceEditor } from "@/components/invoices/InvoiceEditor";
 import { EmptyState, ErrorState } from "@/components/ui/states";
-import { FormSkeleton } from "@/components/ui/skeleton";
+import {
+  InvoiceEditorSkeleton, SummaryPanelSkeleton, InvoiceToolbarSkeleton,
+} from "@/components/invoices/InvoiceEditorSkeleton";
 import { loadInvoiceEditorContext, type InvoiceEditorContext } from "@/lib/invoices/editorContext";
 import { salesListHref, salesListFlashHref, invoiceBreadcrumbs } from "@/lib/invoices/workspaceNav";
 
@@ -53,16 +55,22 @@ export default function NewInvoicePage() {
     );
   }
 
+  // While context is loading, keep the toolbar + summary rail present (as
+  // disabled skeletons) so the two-column workspace shell never collapses to a
+  // single bare column — only the error/empty branches drop them, since those
+  // are terminal states with their own centered treatment, not a "loading" beat.
   return (
     <InvoiceWorkspaceLayout
       breadcrumbs={invoiceBreadcrumbs(clientId, ctx?.clientName, "New Invoice")}
       title="New Sales Invoice"
       statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">Draft</span>}
+      toolbar={!error && !ctx ? <InvoiceToolbarSkeleton /> : undefined}
+      summary={!error && !ctx ? <SummaryPanelSkeleton /> : undefined}
     >
       {error ? (
         <ErrorState message="Couldn't load customers for this client." onRetry={() => setReloadKey((k) => k + 1)} />
       ) : !ctx ? (
-        <FormSkeleton fields={6} />
+        <InvoiceEditorSkeleton />
       ) : (
         <EmptyState
           title="No customers yet"

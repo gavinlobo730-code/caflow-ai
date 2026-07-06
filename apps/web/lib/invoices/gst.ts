@@ -60,6 +60,8 @@ export interface InvoiceLine {
   qty: string;
   rate: string; // in rupees
   gst_rate: number; // 0,5,12,18,28
+  /** Unit of measure (UQC), e.g. "NOS", "KGS", "HRS". Blank = server default "NOS". */
+  unit: string;
 }
 
 /** Server line shape (from GET /api/sales-invoices/{id}). */
@@ -68,6 +70,7 @@ export interface ServerInvoiceLine {
   description: string;
   hsn_sac: string | null;
   quantity: number;
+  unit?: string | null;
   rate_paise: number;
   gst_rate_bps: number;
   taxable_amount_paise: number;
@@ -85,6 +88,7 @@ export interface InvoiceDetail {
   due_date: string | null;
   credit_days?: number | null;
   customer_id: string;
+  reference_no?: string | null;
   supply_state_code: string | null;
   is_interstate: boolean;
   notes: string | null;

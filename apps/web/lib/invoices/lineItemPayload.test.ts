@@ -28,3 +28,12 @@ test("description and hsn_sac are trimmed; blank hsn_sac becomes undefined", () 
   assert.equal(payload.description, "Padded");
   assert.equal(payload.hsn_sac, undefined);
 });
+
+test("unit is trimmed; blank/omitted unit becomes undefined (server defaults to NOS)", () => {
+  const withUnit = toInvoiceLinePayload({ description: "Item", hsn_sac: "", qty: "1", rate: "10", gst_rate: 18, unit: "  KGS  " });
+  assert.equal(withUnit.unit, "KGS");
+  const noUnit = toInvoiceLinePayload({ description: "Item", hsn_sac: "", qty: "1", rate: "10", gst_rate: 18 });
+  assert.equal(noUnit.unit, undefined);
+  const blankUnit = toInvoiceLinePayload({ description: "Item", hsn_sac: "", qty: "1", rate: "10", gst_rate: 18, unit: "   " });
+  assert.equal(blankUnit.unit, undefined);
+});

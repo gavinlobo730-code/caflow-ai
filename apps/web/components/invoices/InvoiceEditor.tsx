@@ -45,7 +45,7 @@ function stateNameForCode(code: string): string {
   return INDIAN_STATES.find((s) => s.code === code)?.name ?? code;
 }
 
-const EMPTY_LINE: InvoiceLine = { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18 };
+const EMPTY_LINE: InvoiceLine = { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "" };
 
 // A stable per-row key so React reconciles line rows by identity, not array
 // index — otherwise a mid-list delete would reuse a row's DOM/caret/ref for a
@@ -82,6 +82,7 @@ export function InvoiceEditor({
         qty: String(l.quantity ?? 1),
         rate: String((l.rate_paise ?? 0) / 100),
         gst_rate: Math.round((l.gst_rate_bps ?? 0) / 100),
+        unit: l.unit ?? "",
         _k: i,
       }))
     : [{ ...EMPTY_LINE, _k: 0 }];
@@ -89,6 +90,7 @@ export function InvoiceEditor({
   const [customerId, setCustomerId] = useState(existing?.customer_id ?? "");
   const [invoiceDate, setInvoiceDate] = useState(existing?.invoice_date ?? today);
   const [dueDate, setDueDate] = useState(existing?.due_date ?? "");
+  const [referenceNo, setReferenceNo] = useState(existing?.reference_no ?? "");
   const [creditDays, setCreditDays] = useState<string>(
     existing
       ? (existing.credit_days != null
@@ -149,12 +151,13 @@ export function InvoiceEditor({
     customerId: existing?.customer_id ?? "",
     invoiceDate: existing?.invoice_date ?? today,
     dueDate: existing?.due_date ?? "",
+    referenceNo: existing?.reference_no ?? "",
     creditDays, supplyStateCode: existing?.supply_state_code ?? "",
     isInterstate: existing?.is_interstate ?? false,
     notes: existing?.notes ?? "",
     lines: initialLines, currency, exchangeRate,
   });
-  const currentSnapshot = { customerId, invoiceDate, dueDate, creditDays, supplyStateCode, isInterstate, notes, lines, currency, exchangeRate };
+  const currentSnapshot = { customerId, invoiceDate, dueDate, referenceNo, creditDays, supplyStateCode, isInterstate, notes, lines, currency, exchangeRate };
   const dirty = hasChanges(initialSnapshot.current, currentSnapshot);
   const { confirmLeave } = useUnsavedChanges(dirty && saving === null);
 
@@ -296,6 +299,7 @@ export function InvoiceEditor({
           customer_id: customerId,
           invoice_date: invoiceDate,
           due_date: dueDate || undefined,
+          reference_no: referenceNo.trim() || undefined,
           credit_days: creditDays !== "" ? parseInt(creditDays, 10) : undefined,
           supply_state_code: supplyStateCode || undefined,
           notes: notes.trim() || undefined,
@@ -309,6 +313,7 @@ export function InvoiceEditor({
           customer_id: customerId,
           invoice_date: invoiceDate,
           due_date: dueDate || undefined,
+          reference_no: referenceNo.trim() || undefined,
           credit_days: creditDays !== "" ? parseInt(creditDays, 10) : undefined,
           supply_state_code: supplyStateCode || undefined,
           is_inter_state: isInterstate,
@@ -482,6 +487,11 @@ export function InvoiceEditor({
               <StateLookup states={INDIAN_STATES} value={supplyStateCode ?? ""} onChange={onSupplyStateChange}
                 placeholder="— Select —" ariaLabel="Supply state" />
             </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Reference</label>
+              <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="PO number, ref…"
+                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
             <div className="flex flex-col justify-end pb-1.5">
               <label className="flex items-center gap-2 text-xs text-[#475569] cursor-pointer">
                 <input type="checkbox" checked={isInterstate} onChange={(e) => setIsInterstate(e.target.checked)} className="rounded" />
@@ -544,6 +554,7 @@ export function InvoiceEditor({
                   <th className="pb-2 text-left font-semibold">Description</th>
                   <th className="pb-2 text-left font-semibold w-32">HSN/SAC</th>
                   <th className="pb-2 text-right font-semibold w-16">Qty</th>
+                  <th className="pb-2 text-left font-semibold w-16">Unit</th>
                   <th className="pb-2 text-right font-semibold w-24">Rate ({isForeign ? currency : "₹"})</th>
                   <th className="pb-2 text-right font-semibold w-20">GST %</th>
                   <th className="pb-2 text-right font-semibold w-24">Amount</th>
@@ -566,13 +577,23 @@ export function InvoiceEditor({
                       </td>
                       <td className="py-1.5 pr-2">
                         <HsnLookup clientId={clientId} value={line.hsn_sac} onChange={(v) => setLine(idx, { hsn_sac: v })}
-                          onPick={(p) => { if (p.gst_rate_bps != null) setLine(idx, { gst_rate: Math.round(p.gst_rate_bps / 100) }); }}
+                          onPick={(p) => {
+                            const patch: Partial<InvoiceLine> = {};
+                            if (p.gst_rate_bps != null) patch.gst_rate = Math.round(p.gst_rate_bps / 100);
+                            if (p.uqc) patch.unit = p.uqc;
+                            setLine(idx, patch);
+                          }}
                           description={line.description} size="sm" ariaLabel="HSN or SAC code" />
                       </td>
                       <td className="py-1.5 pr-2">
                         <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })}
                           onKeyDown={(e) => onLineKeyDown(e, idx)} aria-label={`Line ${idx + 1} quantity`}
                           className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                      </td>
+                      <td className="py-1.5 pr-2">
+                        <input value={line.unit} onChange={(e) => setLine(idx, { unit: e.target.value })}
+                          onKeyDown={(e) => onLineKeyDown(e, idx)} placeholder="NOS" aria-label={`Line ${idx + 1} unit`}
+                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
                       </td>
                       <td className="py-1.5 pr-2">
                         <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })}

@@ -28,12 +28,13 @@ export interface ServiceCatalogueItem {
 }
 
 /** Map a preset to the editor line fields it pre-fills (qty is left to the caller). */
-export function serviceToLine(item: ServiceCatalogueItem): Pick<InvoiceLine, "description" | "hsn_sac" | "rate" | "gst_rate"> {
+export function serviceToLine(item: ServiceCatalogueItem): Pick<InvoiceLine, "description" | "hsn_sac" | "rate" | "gst_rate" | "unit"> {
   return {
     description: (item.description?.trim() || item.name).trim(),
     hsn_sac: item.hsn_sac ?? "",
     rate: item.default_rate_paise ? String(item.default_rate_paise / 100) : "",
     gst_rate: item.gst_rate_bps == null ? 0 : item.gst_rate_bps / 100,
+    unit: item.unit ?? "",
   };
 }
 

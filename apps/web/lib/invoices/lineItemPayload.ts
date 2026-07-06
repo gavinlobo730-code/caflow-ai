@@ -16,6 +16,7 @@ export interface InvoiceLineInput {
   qty: string;
   rate: string; // rupees
   gst_rate: number; // percentage, e.g. 18
+  unit?: string; // UQC, e.g. "NOS", "KGS"; blank -> server default "NOS"
 }
 
 export interface InvoiceLinePayload {
@@ -24,6 +25,7 @@ export interface InvoiceLinePayload {
   quantity: number;
   rate_paise: number;
   gst_rate_percent: number;
+  unit: string | undefined;
 }
 
 export function toInvoiceLinePayload(line: InvoiceLineInput): InvoiceLinePayload {
@@ -33,5 +35,6 @@ export function toInvoiceLinePayload(line: InvoiceLineInput): InvoiceLinePayload
     quantity: parseFloat(line.qty),
     rate_paise: Math.round(parseFloat(line.rate) * 100),
     gst_rate_percent: line.gst_rate,
+    unit: line.unit?.trim() || undefined,
   };
 }
