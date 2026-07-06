@@ -678,6 +678,23 @@ export const api = {
       return request(`/api/hsn/search?${params.toString()}`);
     },
   },
+  serviceCatalogue: {
+    // Services-only billing presets — search/CRUD/archive. See routers/service_catalogue.py.
+    list: (opts?: { q?: string; include_archived?: boolean; limit?: number }) => {
+      const p = new URLSearchParams();
+      if (opts?.q) p.set("q", opts.q);
+      if (opts?.include_archived) p.set("include_archived", "true");
+      if (opts?.limit) p.set("limit", String(opts.limit));
+      const qs = p.toString();
+      return request(`/api/service-catalogue/${qs ? `?${qs}` : ""}`);
+    },
+    create: (body: unknown) =>
+      request("/api/service-catalogue/", { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, body: unknown) =>
+      request(`/api/service-catalogue/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    recordUsed: (id: string) =>
+      request(`/api/service-catalogue/${id}/used`, { method: "POST" }),
+  },
   receipts: {
     create: (body: unknown) =>
       request("/api/receipts/", { method: "POST", body: JSON.stringify(body) }),
