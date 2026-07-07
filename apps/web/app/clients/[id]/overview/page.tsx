@@ -33,30 +33,41 @@ export default function OverviewPage() {
       setLoading(true);
       setError(null);
       try {
-        const [c, t, firmId] = await Promise.all([
+        // Every one of these is independent of the others — firing them
+        // together instead of as a waterfall matters a lot here: the health
+        // score fetch/calculate is the single heaviest call in the app (a
+        // full 7-dimension server-side aggregation when nothing is cached
+        // yet, e.g. a client's first visit), and it used to run dead LAST,
+        // paying for its own latency on top of everything before it. Same
+        // for the compliance calendar's first-visit seed step. Running them
+        // concurrently drops the critical path from "sum of every step" to
+        // roughly "the slowest single step".
+        const [c, t, firmId, comp0, health] = await Promise.all([
           getClient(clientId),
           getTasks({ clientId, limit: 50 }).catch(() => [] as Task[]),
           getFirmId().catch(() => null),
+          getComplianceCalendar(clientId).catch(() => [] as ComplianceEntry[]),
+          getOrCalculateClientHealth(clientId).catch(() => null),
         ]);
         if (cancelled) return;
         setClient(c);
         setTasks(t);
+        if (health) {
+          setHealth(health);
+          setAlerts(deriveHealthAlerts(health));
+        }
 
-        // Load compliance calendar, seed if empty
-        let comp = await getComplianceCalendar(clientId).catch(() => [] as ComplianceEntry[]);
+        // Seed the compliance calendar only if this really is a first visit
+        // (still empty after the concurrent fetch above) — this write-then-
+        // refetch pair genuinely must be sequential (it needs to know the
+        // calendar was empty, and firmId, before deciding to seed at all).
+        let comp = comp0;
         if (comp.length === 0 && firmId) {
           await seedComplianceCalendar(clientId).catch(() => undefined);
           comp = await getComplianceCalendar(clientId).catch(() => [] as ComplianceEntry[]);
         }
         if (cancelled) return;
         setCompliance(comp);
-
-        // Load (or calculate, on first visit) the canonical health score.
-        const snap = await getOrCalculateClientHealth(clientId).catch(() => null);
-        if (!cancelled && snap) {
-          setHealth(snap);
-          setAlerts(deriveHealthAlerts(snap));
-        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load client");
       } finally {
