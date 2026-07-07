@@ -48,6 +48,56 @@ test("a deleted route's stale rule does not linger", () => {
   assert.ok(!/\/accounting\/bank-statements/.test(generated));
 });
 
+test("the total dynamic-rule count stays under Cloudflare Pages' 100-dynamic-redirect cap", () => {
+  // Regression pin for the "whole client workspace 404s" incident: 39
+  // dynamic pages x 4 enumerated shapes each produced 156 rules, and
+  // anything past position 100 in the file was silently ignored by
+  // Cloudflare in production — a failure mode this repo's own local
+  // verification harness didn't catch (it doesn't enforce the cap). Keep
+  // real headroom, not just "under 100", so normal route growth doesn't
+  // immediately re-trip this.
+  const generated = buildRedirectsFile(APP_DIR);
+  const ruleCount = generated.split("\n").filter((l) => l.trim().endsWith("200")).length;
+  assert.ok(
+    ruleCount <= 90,
+    `_redirects has ${ruleCount} dynamic rules — Cloudflare Pages caps dynamic ` +
+      "redirects at 100; this is too close to that limit. See generate-redirects.js's " +
+      "module doc for the splat-consolidation strategy that keeps this down."
+  );
+});
+
+test("a static sibling of a dynamic segment is never shadowed by that segment's splat", () => {
+  // Regression pin for a real bug found while fixing the rule-count-cap
+  // incident: a naive `/clients/:id/sales/invoices/:invoiceId/*` splat also
+  // matches /clients/:id/sales/invoices/new/... (":invoiceId" matches the
+  // literal segment "new" just as readily as a real id), so a request for
+  // the static "new" page's trailing-slash/RSC shapes would be silently
+  // rewritten to the WRONG target (as if "new" were an invoice id). Both
+  // known instances of this in the current route tree (new vs :invoiceId
+  // under sales/invoices; xbrl vs :engagementId under year-end) must always
+  // have every shape enumerated rather than relying on the deeper splat —
+  // while their DYNAMIC siblings (edit, checklist, ...) keep relying on it.
+  const generated = buildRedirectsFile(APP_DIR);
+  for (const shape of [
+    "/clients/:id/sales/invoices/new  ",
+    "/clients/:id/sales/invoices/new/ ",
+    "/clients/:id/sales/invoices/new.txt",
+    "/clients/:id/sales/invoices/new/index.txt",
+    "/clients/:id/year-end/xbrl ",
+    "/clients/:id/year-end/xbrl/",
+    "/clients/:id/year-end/xbrl.txt",
+    "/clients/:id/year-end/xbrl/index.txt",
+  ]) {
+    assert.ok(generated.includes(shape.trimEnd()), `missing rule for ${shape.trim()}`);
+  }
+  // The deeper splats themselves must still exist — they're safe for every
+  // OTHER route sharing that group (e.g. "edit", "checklist"), which is why
+  // this fix enumerates just the shadowed sibling rather than dropping the
+  // whole group.
+  assert.ok(generated.includes("/clients/:id/sales/invoices/:invoiceId/*"));
+  assert.ok(generated.includes("/clients/:id/year-end/:engagementId/*"));
+});
+
 test("a catch-all route segment is rejected rather than silently mishandled", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "redirects-test-"));
   try {
