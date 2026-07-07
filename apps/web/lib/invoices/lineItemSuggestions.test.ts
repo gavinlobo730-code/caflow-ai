@@ -22,10 +22,11 @@ function hsnRow(overrides: Partial<HsnSuggestionRow> = {}): HsnSuggestionRow {
   };
 }
 
-test("catalogue items map with a Service badge, price and use-count reason", () => {
+test("catalogue items map with a Catalogue source badge, SAC code type, price and use-count reason", () => {
   const [s] = mergeLineItemSuggestions([catalogueItem()], []);
   assert.equal(s.id, "catalogue:svc-1");
-  assert.equal(s.badge, "Service");
+  assert.equal(s.source, "Catalogue");
+  assert.equal(s.codeType, "SAC");
   assert.equal(s.description, "Accounting & Bookkeeping Services");
   assert.equal(s.hsn_sac, "998222");
   assert.equal(s.gst_rate_bps, 1800);
@@ -52,19 +53,32 @@ test("singular vs plural use-count phrasing", () => {
   assert.equal(s.reason, "Used 1 time");
 });
 
-test("HSN rows map with the SAC/HSN badge and no price", () => {
+test("HSN rows map with the SAC code type, an HSN Master source badge, and no price", () => {
   const [s] = mergeLineItemSuggestions([], [hsnRow()]);
   assert.equal(s.id, "hsn:998222");
-  assert.equal(s.badge, "SAC");
+  assert.equal(s.codeType, "SAC");
+  assert.equal(s.source, "HSN Master");
   assert.equal(s.rate_paise, null);
   assert.equal(s.catalogueId, null);
 });
 
-test("a goods HSN code gets the HSN badge, a bare 99-prefixed code falls back to SAC", () => {
+test("a goods HSN code gets the HSN code type, a bare 99-prefixed code falls back to SAC", () => {
   const [goods] = mergeLineItemSuggestions([], [hsnRow({ hsn_code: "847130", hsn_type: "goods" })]);
-  assert.equal(goods.badge, "HSN");
+  assert.equal(goods.codeType, "HSN");
   const [bare] = mergeLineItemSuggestions([], [hsnRow({ hsn_code: "998221", hsn_type: null })]);
-  assert.equal(bare.badge, "SAC");
+  assert.equal(bare.codeType, "SAC");
+});
+
+test("source badge distinguishes firm history (Recent) from the canonical master (HSN Master)", () => {
+  const [recent] = mergeLineItemSuggestions([], [hsnRow({ source: "history", reason: "Used 4 times" })]);
+  assert.equal(recent.source, "Recent");
+  const [master] = mergeLineItemSuggestions([], [hsnRow({ source: "master" })]);
+  assert.equal(master.source, "HSN Master");
+});
+
+test("a catalogue item with no code at all gets no code type", () => {
+  const [s] = mergeLineItemSuggestions([catalogueItem({ hsn_sac: null })], []);
+  assert.equal(s.codeType, null);
 });
 
 test("catalogue results always come first, in their given order, ahead of HSN rows", () => {
