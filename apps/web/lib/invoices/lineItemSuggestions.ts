@@ -30,32 +30,50 @@ export interface HsnSuggestionRow {
   reason?: string | null;
 }
 
-export type SuggestionBadge = "Service" | "SAC" | "HSN" | null;
+/** Where a suggestion came from — rendered as the card's source badge.
+ * "Recent" and "HSN Master" both come from GET /api/hsn/search (the server
+ * already merges firm history with the canonical master); "Catalogue" always
+ * ranks first regardless of source, per the merge order below. Recent items
+ * are never a separate FILTER — they're the same master search, just with the
+ * firm's own history rows surfaced first (see routers/hsn.py). */
+export type SourceBadge = "Catalogue" | "Recent" | "HSN Master";
+
+/** Whether the code is a service (SAC) or goods (HSN) code — shown inline
+ * next to the code itself, independent of the source badge above. */
+export type CodeType = "SAC" | "HSN" | null;
 
 export interface LineItemSuggestion {
   /** Stable id for keying/selection: `catalogue:<id>` or `hsn:<code>`. */
   id: string;
-  badge: SuggestionBadge;
+  source: SourceBadge;
+  codeType: CodeType;
   description: string;
   hsn_sac: string;
   gst_rate_bps: number | null;
   unit: string | null;
   /** Default unit price in paise, when the source carries one (catalogue only). */
   rate_paise: number | null;
-  /** "Used 3 times" / "Recently used" / null — shown as a small badge. */
+  /** "Used 3 times" / "Recently used" / null — a frequency detail shown
+   * alongside the source badge. */
   reason: string | null;
   /** The catalogue item id, so a pick can bump its usage counter. Null for HSN rows. */
   catalogueId: string | null;
 }
 
-/** Same 6-digit-SAC-prefix fallback as lib/lookups/hsn.ts's hsnTypeBadge — kept
- * in sync deliberately (see the HsnSuggestionRow comment above for why this
- * isn't a shared import). */
-function hsnBadge(row: HsnSuggestionRow): SuggestionBadge {
+/** A 6-digit code starting with 99 is always a SAC (service) code under the
+ * GST scheme; anything else with a code is treated as goods (HSN). Same
+ * fallback shape as lib/lookups/hsn.ts's hsnTypeBadge — kept in sync
+ * deliberately (see the HsnSuggestionRow comment above for why this isn't a
+ * shared import). Used for catalogue rows too, which don't carry hsn_type. */
+function codeTypeOfCode(code: string | null | undefined): CodeType {
+  if (!code) return null;
+  return /^99\d{4}$/.test(code) ? "SAC" : "HSN";
+}
+
+function hsnCodeType(row: HsnSuggestionRow): CodeType {
   if (row.hsn_type === "services") return "SAC";
   if (row.hsn_type === "goods") return "HSN";
-  if (!row.hsn_type && /^99\d{4}$/.test(row.hsn_code)) return "SAC";
-  return null;
+  return codeTypeOfCode(row.hsn_code);
 }
 
 function catalogueReason(item: ServiceCatalogueItem): string | null {
@@ -67,7 +85,8 @@ function catalogueReason(item: ServiceCatalogueItem): string | null {
 function fromCatalogue(item: ServiceCatalogueItem): LineItemSuggestion {
   return {
     id: `catalogue:${item.id}`,
-    badge: "Service",
+    source: "Catalogue",
+    codeType: codeTypeOfCode(item.hsn_sac),
     description: (item.description?.trim() || item.name).trim(),
     hsn_sac: item.hsn_sac ?? "",
     gst_rate_bps: item.gst_rate_bps ?? null,
@@ -81,7 +100,8 @@ function fromCatalogue(item: ServiceCatalogueItem): LineItemSuggestion {
 function fromHsn(row: HsnSuggestionRow): LineItemSuggestion {
   return {
     id: `hsn:${row.hsn_code}`,
-    badge: hsnBadge(row),
+    source: row.source === "history" ? "Recent" : "HSN Master",
+    codeType: hsnCodeType(row),
     description: (row.description ?? "").trim() || row.hsn_code,
     hsn_sac: row.hsn_code,
     gst_rate_bps: row.gst_rate_bps ?? null,

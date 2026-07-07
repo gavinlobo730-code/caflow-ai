@@ -16,18 +16,20 @@ import {
 } from "@/lib/invoices/lineItemSuggestionCache";
 import type { InvoiceLine } from "@/lib/invoices/gst";
 
-const BADGE_CLASS: Record<string, string> = {
-  Service: "bg-emerald-50 text-emerald-700",
-  SAC: "bg-violet-50 text-violet-700",
-  HSN: "bg-sky-50 text-sky-700",
+/** The "where this came from" pill shown on the right of each card. */
+const SOURCE_BADGE_CLASS: Record<string, string> = {
+  Catalogue: "bg-emerald-50 text-emerald-700",
+  Recent: "bg-amber-50 text-amber-700",
+  "HSN Master": "bg-violet-50 text-violet-700",
 };
 
-/** The muted detail line for a suggestion row: "SAC 998222 · 18% GST · ₹5,000". */
+/** The muted detail line for a suggestion row: "SAC 998222 · 18% GST · NOS · ₹5,000". */
 function detailLine(s: LineItemSuggestion): string {
-  const codeLabel = s.badge === "Service" ? "SAC/HSN" : s.badge ?? "Code";
+  const codeLabel = s.codeType ?? "Code";
   return [
     s.hsn_sac ? `${codeLabel} ${s.hsn_sac}` : "",
     s.gst_rate_bps != null ? formatHsnRate(s.gst_rate_bps) : "",
+    s.unit ?? "",
     s.rate_paise ? formatServicePrice(s.rate_paise) : "",
   ].filter(Boolean).join(" · ");
 }
@@ -128,7 +130,10 @@ export const LineItemAutocomplete = React.forwardRef<
     recent: hsnRecent,
     getOptionId: (h) => h.hsn_code,
     getLabel: (h) => h.hsn_code,
-    minChars: 2,
+    // Search starts from the FIRST character — no artificial minimum. The
+    // debounce + per-query cache (lineItemSuggestionCache) keep this cheap
+    // even though it now fires on "a" alone.
+    minChars: 1,
     debounceMs: 120,
   });
 
@@ -231,14 +236,21 @@ export const LineItemAutocomplete = React.forwardRef<
   };
 
   const showPanel = open && !disabled;
+  const isEmptyQuery = query.trim().length === 0;
   // Flip the panel above the input when there isn't room below (a low row in
   // a long line-items table) so it's never squeezed to a sliver.
   const spaceBelow = rect ? window.innerHeight - rect.bottom - 12 : 0;
   const spaceAbove = rect ? rect.top - 12 : 0;
-  const flipUp = rect ? spaceBelow < 160 && spaceAbove > spaceBelow : false;
-  const panelWidth = rect ? Math.max(rect.width, 420) : 420;
+  const flipUp = rect ? spaceBelow < 200 && spaceAbove > spaceBelow : false;
+  // Width based on content, floored at a comfortable command-palette size and
+  // capped so it never runs off the viewport on a narrow row.
+  const panelWidth = rect ? Math.min(Math.max(rect.width, 460), window.innerWidth - 16) : 460;
   const panelLeft = rect ? Math.min(rect.left, window.innerWidth - panelWidth - 8) : 0;
-  const panelMaxHeight = rect ? Math.max(160, Math.min(420, flipUp ? spaceAbove : spaceBelow)) : 320;
+  // Use as much of the available viewport space as there is — a firm's
+  // catalogue plus master matches can easily run past a small fixed cap, and
+  // "no tiny internal scrolling unless absolutely necessary" means the cap
+  // should be the viewport, not an arbitrary pixel count.
+  const panelMaxHeight = rect ? Math.max(200, (flipUp ? spaceAbove : spaceBelow)) : 360;
 
   return (
     <div ref={wrapRef} className="relative">
@@ -271,14 +283,15 @@ export const LineItemAutocomplete = React.forwardRef<
             position: "fixed",
             left: panelLeft,
             width: panelWidth,
-            ...(flipUp ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+            maxHeight: panelMaxHeight,
+            ...(flipUp ? { bottom: window.innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }),
           }}
-          className="z-50 overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-xl"
+          className="z-50 flex flex-col overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-2xl ring-1 ring-black/5"
         >
-          <div className="flex items-center gap-2 border-b border-[#F1F5F9] px-3 py-2 bg-[#F8FAFC]">
+          <div className="flex flex-shrink-0 items-center gap-2 border-b border-[#F1F5F9] px-4 py-2.5 bg-[#F8FAFC]">
             <Search size={13} className="flex-shrink-0 text-[#94A3B8]" />
-            <span className="text-[10px] font-medium text-[#64748B]">
-              {query.trim().length < 2 ? "Recent items" : "Matches from your catalogue & HSN/SAC master"}
+            <span className="text-[10.5px] font-medium tracking-wide text-[#64748B]">
+              {isEmptyQuery ? "Recent & frequently used" : "Searching your catalogue & the full HSN/SAC master"}
             </span>
             {loading && <Loader2 size={13} className="ml-auto flex-shrink-0 animate-spin text-[#94A3B8]" />}
           </div>
@@ -287,22 +300,21 @@ export const LineItemAutocomplete = React.forwardRef<
             id={listboxId}
             role="listbox"
             aria-label="Item suggestions"
-            className="overflow-y-auto py-1"
-            style={{ maxHeight: panelMaxHeight }}
+            className="min-h-0 flex-1 overflow-y-auto py-1.5"
           >
             {error ? (
-              <div className="px-3 py-3 text-center text-[11px] text-red-600">
+              <div className="px-4 py-5 text-center text-[12px] text-red-600">
                 {error}.{" "}
                 <button type="button" onClick={retry} className="underline hover:text-red-700">
                   Retry
                 </button>
               </div>
             ) : results.length === 0 ? (
-              <div className="px-3 py-4 text-center text-[11px] text-[#94A3B8]">
+              <div className="px-4 py-6 text-center text-[12px] text-[#94A3B8]">
                 {loading
                   ? "Searching…"
-                  : query.trim().length < 2
-                    ? "Type at least 2 characters to search your catalogue and HSN/SAC master."
+                  : isEmptyQuery
+                    ? "Start typing to search your Service Catalogue and the complete HSN/SAC master."
                     : "No matches — keep typing your own description; HSN/SAC stays editable below."}
               </div>
             ) : (
@@ -319,24 +331,26 @@ export const LineItemAutocomplete = React.forwardRef<
                     onMouseEnter={() => setHighlighted(i)}
                     onClick={() => commit(s)}
                     className={cn(
-                      "flex cursor-pointer items-start gap-2.5 px-3.5 py-2.5",
+                      "flex cursor-pointer items-start gap-3 px-4 py-3",
                       active ? "bg-[#EFF6FF]" : "hover:bg-[#F8FAFC]",
                     )}
                   >
-                    {s.badge && (
-                      <span className={cn("mt-0.5 flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold", BADGE_CLASS[s.badge])}>
-                        {s.badge}
-                      </span>
-                    )}
                     <span className="min-w-0 flex-1">
-                      <span className="block text-xs font-medium text-[#1E293B]">{s.description}</span>
-                      <span className="block text-[10px] text-[#94A3B8] mt-0.5">{detailLine(s)}</span>
-                    </span>
-                    {s.reason && (
-                      <span className="flex-shrink-0 rounded-full bg-[#F1F5F9] px-2 py-0.5 text-[9px] font-medium text-[#64748B]">
-                        {s.reason}
+                      <span className="block text-[13px] font-medium leading-snug text-[#1E293B]">
+                        {s.description}
                       </span>
-                    )}
+                      <span className="mt-1 block text-[11px] leading-snug text-[#94A3B8]">
+                        {detailLine(s) || "No SAC/HSN on file — pick to use as a free-text line"}
+                      </span>
+                    </span>
+                    <span className="flex flex-shrink-0 flex-col items-end gap-1">
+                      <span className={cn("rounded-full px-2 py-0.5 text-[9px] font-semibold", SOURCE_BADGE_CLASS[s.source])}>
+                        {s.source}
+                      </span>
+                      {s.reason && (
+                        <span className="text-[9px] font-medium text-[#94A3B8]">{s.reason}</span>
+                      )}
+                    </span>
                   </div>
                 );
               })
