@@ -20,7 +20,7 @@ import type { InvoiceLine } from "@/lib/invoices/gst";
 const SOURCE_BADGE_CLASS: Record<string, string> = {
   Catalogue: "bg-emerald-50 text-emerald-700",
   Recent: "bg-amber-50 text-amber-700",
-  "HSN Master": "bg-violet-50 text-violet-700",
+  "Your Library": "bg-violet-50 text-violet-700",
 };
 
 /** The muted detail line for a suggestion row: "SAC 998222 · 18% GST · NOS · ₹5,000". */
@@ -36,9 +36,10 @@ function detailLine(s: LineItemSuggestion): string {
 
 /**
  * The primary, description-driven line-item entry field (HSN/SAC UX redesign).
- * Typing here searches the firm's Service Catalogue AND the HSN/SAC
- * master+history in parallel (one search, not two) and shows a floating
- * "command palette" of matches — each with its full description, code, GST %,
+ * Typing here searches the firm's Product & Service master AND the firm's
+ * own HSN/SAC library+history in parallel (one search, not two — Caflow
+ * ships no shared master here) and shows a floating "command palette" of
+ * matches — each with its full description, code, GST %,
  * a recency badge and (for catalogue presets) a default price. Picking one
  * fills description, HSN/SAC, GST % and unit in a single action; a catalogue
  * pick also fills the rate. Nothing here is locked afterwards — every field
@@ -93,17 +94,19 @@ export const LineItemAutocomplete = React.forwardRef<
     [forwardedRef],
   );
 
-  // Service Catalogue: a firm's own presets are few (tens, not thousands) and
-  // fetched ONCE — cached and shared across every line on the page (see
-  // lineItemSuggestionCache) — then matched entirely CLIENT-SIDE via the same
-  // sync engine every other Combobox uses (lib/combobox/match.ts). That means
-  // catalogue matches, which mergeLineItemSuggestions always ranks first,
-  // appear the instant a key is pressed: no debounce, no network round trip.
+  // Service Catalogue: one CLIENT's own presets are few (tens, not
+  // thousands) and fetched ONCE per client — cached and shared across every
+  // line on the page for that client (see lineItemSuggestionCache) — then
+  // matched entirely CLIENT-SIDE via the same sync engine every other
+  // Combobox uses (lib/combobox/match.ts). That means catalogue matches,
+  // which mergeLineItemSuggestions always ranks first, appear the instant a
+  // key is pressed: no debounce, no network round trip.
   const [catalogue, setCatalogue] = React.useState<ServiceCatalogueItem[]>([]);
   const [catalogueReady, setCatalogueReady] = React.useState(false);
   const loadCatalogue = React.useCallback(() => {
-    getCachedCatalogue().then((rows) => { setCatalogue(rows); setCatalogueReady(true); });
-  }, []);
+    if (!clientId) { setCatalogue([]); setCatalogueReady(true); return; }
+    getCachedCatalogue(clientId).then((rows) => { setCatalogue(rows); setCatalogueReady(true); });
+  }, [clientId]);
   React.useEffect(() => { loadCatalogue(); }, [loadCatalogue]);
   const catalogueCombo = useCombobox<ServiceCatalogueItem>({
     options: catalogue,
@@ -166,11 +169,11 @@ export const LineItemAutocomplete = React.forwardRef<
   const commit = React.useCallback(
     (s: LineItemSuggestion) => {
       onPick(suggestionToLinePatch(s));
-      if (s.catalogueId) recordCatalogueUsed(s.catalogueId);
+      if (s.catalogueId && clientId) recordCatalogueUsed(s.catalogueId, clientId);
       setOpen(false);
       setQuery("");
     },
-    [onPick, setQuery],
+    [onPick, setQuery, clientId],
   );
 
   // Click-away closes the panel without discarding the typed description.
@@ -291,7 +294,7 @@ export const LineItemAutocomplete = React.forwardRef<
           <div className="flex flex-shrink-0 items-center gap-2 border-b border-[#F1F5F9] px-4 py-2.5 bg-[#F8FAFC]">
             <Search size={13} className="flex-shrink-0 text-[#94A3B8]" />
             <span className="text-[10.5px] font-medium tracking-wide text-[#64748B]">
-              {isEmptyQuery ? "Recent & frequently used" : "Searching your catalogue & the full HSN/SAC master"}
+              {isEmptyQuery ? "Recent & frequently used" : "Searching your catalogue & your HSN/SAC library"}
             </span>
             {loading && <Loader2 size={13} className="ml-auto flex-shrink-0 animate-spin text-[#94A3B8]" />}
           </div>
@@ -314,7 +317,7 @@ export const LineItemAutocomplete = React.forwardRef<
                 {loading
                   ? "Searching…"
                   : isEmptyQuery
-                    ? "Start typing to search your Service Catalogue and the complete HSN/SAC master."
+                    ? "Start typing to search your Products & Services and your HSN/SAC library."
                     : "No matches — keep typing your own description; HSN/SAC stays editable below."}
               </div>
             ) : (

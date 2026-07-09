@@ -1,11 +1,22 @@
 # HSN/SAC Master — Maintenance Guide
 
-How the `hsn_master` lookup table is kept current, and why updating it never
+How the `hsn_master` table is kept current, and why updating it never
 disturbs invoices that have already been raised.
 
-_Scope: the code/description/rate **lookup** that powers the invoice line
-picker. It is a convenience layer only — see "Why historical invoices are
-safe" below._
+> **Architecture note (HSN/SAC redesign):** `hsn_master` is retained
+> UNCHANGED but is no longer read by any user-facing endpoint. Caflow does
+> not expose a shared HSN/SAC master to users — the invoice-line picker,
+> the Product/Service form, and every other user-facing surface now source
+> from each firm's own `firm_hsn_library` instead. See
+> [`FIRM_HSN_LIBRARY.md`](./FIRM_HSN_LIBRARY.md) for the current
+> architecture. This document is kept for historical/internal reference —
+> the table and its provenance discipline below still apply if `hsn_master`
+> is ever reactivated for internal tooling (e.g. import plausibility
+> checks), but nothing in this codebase currently reads it that way.
+
+_Scope: the code/description/rate table that historically powered the
+invoice line picker and is now an internal-only implementation detail. It
+is a convenience layer only — see "Why historical invoices are safe" below._
 
 ---
 

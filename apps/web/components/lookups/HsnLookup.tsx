@@ -6,8 +6,9 @@ import {
   orderHsnResults, hsnTypeBadge, hsnSecondaryLine, type HsnRow,
 } from "@/lib/lookups/hsn";
 import { getCachedHsnRecent } from "@/lib/invoices/lineItemSuggestionCache";
+import { FirmHsnLibraryQuickAddModal } from "@/components/lookups/FirmHsnLibraryQuickAddModal";
 
-/** A row from GET /api/hsn/search (master + firm history). */
+/** A row from GET /api/hsn/search (the firm's own library + firm history). */
 export type HsnResult = HsnRow;
 
 /** Auto-fill payload handed to the caller on selection (all CA-overridable). */
@@ -29,12 +30,13 @@ const BADGE_CLASS: Record<"SAC" | "HSN", string> = {
 };
 
 /**
- * HSN/SAC lookup — debounced server search over the canonical master merged
- * with the firm's own history (GET /api/hsn/search). Search by code OR
- * description; on select the caller may auto-fill GST rate / description /
- * unit. This is the SECONDARY, manual-override path: the primary way a line
- * gets its code is the Sales Invoice's description-driven LineItemAutocomplete
- * (which searches this same endpoint alongside the Service Catalogue and
+ * HSN/SAC lookup — debounced server search over the firm's OWN HSN/SAC
+ * library merged with its own history (GET /api/hsn/search; Caflow ships no
+ * shared master here — HSN/SAC redesign). Search by code OR description; on
+ * select the caller may auto-fill GST rate / description / unit. This is the
+ * SECONDARY, manual-override path: the primary way a line gets its code is
+ * the Sales Invoice's description-driven LineItemAutocomplete (which
+ * searches this same endpoint alongside the Product & Service master and
  * shows results inline as the CA types). Once a code is set, the trigger
  * renders as a compact "SAC 998222 · Change" chip instead of a full search
  * field — click it to search/replace the code directly, e.g. when the CA
@@ -42,10 +44,14 @@ const BADGE_CLASS: Record<"SAC" | "HSN", string> = {
  * Other callers (Purchases, Credit Notes) still drive this directly off a
  * plain description field via the optional `description` prop below.
  *
- * The controlled `value` is the HSN code string itself (free-text is always
- * allowed via the "Use …" row) so an unlisted/edge code never blocks invoicing.
- * CGST Rule 46(g): the suggested rate is a hint only — never auto-applied to any
- * tax/journal computation without the existing CA-review path.
+ * The controlled `value` is the HSN code string itself. There is no
+ * free-text escape hatch: master data is never created directly inside a
+ * transaction (Decision C). When nothing matches, the "+" row opens
+ * FirmHsnLibraryQuickAddModal — the code is added to the firm's own library
+ * first, then handed back exactly like a normal pick, so every code a
+ * transaction ever carries traces back to the library. CGST Rule 46(g): the
+ * suggested rate is a hint only — never auto-applied to any tax/journal
+ * computation without the existing CA-review path.
  */
 export function HsnLookup(props: {
   value: string;
@@ -81,6 +87,12 @@ export function HsnLookup(props: {
   description?: string;
 }) {
   const { value, onChange, onPick, clientId, type, disabled, description, ...rest } = props;
+
+  // Decision C: no free-text creation. The "+" row opens the quick-add
+  // modal instead of setting an arbitrary code directly; `query` is
+  // remembered as the modal's seed so the CA doesn't retype what they
+  // already typed here.
+  const [quickAdd, setQuickAdd] = React.useState<string | null>(null);
 
   const fetchOptions = React.useCallback(
     async (q: string): Promise<HsnResult[]> => {
@@ -172,6 +184,7 @@ export function HsnLookup(props: {
   }, [description, disabled, clientId, type]);
 
   return (
+    <>
     <Combobox<HsnResult>
       value={selected}
       onChange={(v) => {
@@ -220,8 +233,8 @@ export function HsnLookup(props: {
           </span>
         );
       }}
-      onCreate={(label) => onChange(label)}
-      createLabel={(q) => `Use “${q}”`}
+      onCreate={(label) => setQuickAdd(label)}
+      createLabel={(q) => `Add “${q}” to your library…`}
       minChars={2}
       panelDensity="spacious"
       placeholder={props.placeholder ?? "HSN/SAC"}
@@ -230,5 +243,24 @@ export function HsnLookup(props: {
       disabled={disabled}
       {...rest}
     />
+    {quickAdd !== null && (
+      <FirmHsnLibraryQuickAddModal
+        seedCode={/^\d+$/.test(quickAdd) ? quickAdd : undefined}
+        seedDescription={/^\d+$/.test(quickAdd) ? undefined : quickAdd}
+        defaultType={type === "goods" ? "goods" : "services"}
+        onClose={() => setQuickAdd(null)}
+        onAdded={(row) => {
+          setQuickAdd(null);
+          onChange(row.hsn_code);
+          onPick?.({
+            hsn_code: row.hsn_code,
+            gst_rate_bps: row.gst_rate_pct != null ? Math.round(row.gst_rate_pct * 100) : null,
+            description: row.description,
+            uqc: row.uqc,
+          });
+        }}
+      />
+    )}
+    </>
   );
 }

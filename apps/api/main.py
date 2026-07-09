@@ -57,8 +57,10 @@ from routers import assignments
 from routers import approvals
 from routers import identity
 from routers import customers, vendors, sales_invoices, receipts, credit_notes, customer_statements, debit_notes
-from routers import hsn  # HSN/SAC smart lookup (search hsn_master merged with firm history)
-from routers import service_catalogue  # Services-only billing presets (Batch 6)
+from routers import hsn  # HSN/SAC smart lookup (search firm_hsn_library merged with firm history)
+from routers import service_catalogue  # Product & Service master (Batch 6; goods+services)
+from routers import firm_hsn_library  # Firm-owned, CA-curated HSN/SAC library (HSN/SAC redesign)
+from routers import firm_hsn_rate_history  # Per-firm rate history, mechanism only (Decision D)
 from routers import recurring_invoices
 from routers import compliance_ops
 from routers import purchase_bills, purchase_payments, document_intelligence_v1
@@ -238,6 +240,8 @@ app.include_router(vendors.router, dependencies=_CLIENT_GUARD)
 app.include_router(sales_invoices.router, dependencies=_CLIENT_GUARD)
 app.include_router(hsn.router, dependencies=_CLIENT_GUARD)
 app.include_router(service_catalogue.router, dependencies=_CLIENT_GUARD)
+app.include_router(firm_hsn_library.router, dependencies=_CLIENT_GUARD)
+app.include_router(firm_hsn_rate_history.router, dependencies=_CLIENT_GUARD)
 app.include_router(receipts.router, dependencies=_CLIENT_GUARD)
 app.include_router(credit_notes.router, dependencies=_CLIENT_GUARD)
 app.include_router(debit_notes.router, dependencies=_CLIENT_GUARD)

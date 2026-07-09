@@ -1,17 +1,21 @@
 "use client";
 
 /**
- * Service Catalogue management (Batch 6) — create/edit/archive/restore/search the
- * firm's reusable, SERVICES-ONLY billing presets. Not an inventory master: the
- * form captures billing defaults only (SAC, GST, unit price) — no stock, no
- * valuation, no quantity. Reuses the shared api client, HsnLookup and GST slabs.
+ * Products & Services management (HSN/SAC workflow alignment, migration
+ * 182) — create/edit/archive/restore/search a CLIENT's reusable goods and
+ * services billing presets. Client-owned: "Client B must never inherit
+ * Client A's products." Not an inventory master: the form captures billing
+ * defaults only (kind, HSN/SAC, GST, price, unit, category) — no stock, no
+ * valuation, no quantity. HSN/SAC is picked from the firm's shared
+ * firm_hsn_library (the library stays firm-wide even though this table is
+ * client-owned).
  */
 import { useState, useEffect, useCallback, useRef } from "react";
-import Link from "next/link";
-import { ChevronLeft, Plus, Pencil, Archive, RotateCcw, Search, Loader2, BookMarked } from "lucide-react";
+import { Plus, Pencil, Archive, RotateCcw, Search, Loader2, BookMarked } from "lucide-react";
 import { RoleGuard } from "@/components/RoleGuard";
 import { Modal } from "@/components/ui/modal";
 import { api, type ApiResp } from "@/lib/api/index";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { GST_RATES } from "@/lib/invoices/shared";
 import {
@@ -23,10 +27,12 @@ import {
 type Filter = "active" | "archived";
 
 const EMPTY_FORM: ServiceFormInput = {
-  name: "", description: "", hsn_sac: "", gstRate: 18, rate: "", unit: "", notes: "",
+  name: "", description: "", kind: "service", hsn_sac: "", gstRate: 18,
+  rate: "", purchasePrice: "", unit: "", category: "", notes: "",
 };
 
-export default function ServiceCataloguePage() {
+export default function ProductsServicesPage() {
+  const { clientId } = useClientNav();
   const [items, setItems] = useState<ServiceCatalogueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -43,10 +49,11 @@ export default function ServiceCataloguePage() {
   }
 
   const load = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
     setError(false);
     try {
-      const res = (await api.serviceCatalogue.list({
+      const res = (await api.serviceCatalogue.list(clientId, {
         q: q.trim() || undefined,
         include_archived: filter === "archived",
         limit: 100,
@@ -60,7 +67,7 @@ export default function ServiceCataloguePage() {
     } finally {
       setLoading(false);
     }
-  }, [q, filter]);
+  }, [clientId, q, filter]);
 
   useEffect(() => {
     const t = setTimeout(load, 200); // debounce search
@@ -78,6 +85,10 @@ export default function ServiceCataloguePage() {
     }
   }
 
+  if (!clientId || clientId === "_placeholder") {
+    return <div className="p-6 max-w-4xl mx-auto text-sm text-[#94A3B8]">Loading…</div>;
+  }
+
   return (
     <RoleGuard allowed={["Partner", "Manager"]}>
       <div className="p-6 max-w-4xl mx-auto space-y-5">
@@ -87,22 +98,17 @@ export default function ServiceCataloguePage() {
           </div>
         )}
 
-        <div>
-          <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-[#94A3B8] hover:text-[#475569] transition-colors mb-1">
-            <ChevronLeft size={13} /> Settings
-          </Link>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h1 className="text-xl font-semibold text-[#0F172A] flex items-center gap-2"><BookMarked size={18} className="text-emerald-600" /> Service Catalogue</h1>
-              <p className="text-sm text-[#64748B] mt-0.5">Reusable service presets that pre-fill an invoice line. No stock or inventory — billing defaults only.</p>
-            </div>
-            <button
-              onClick={() => setEditing("new")}
-              className="flex items-center gap-1.5 text-sm bg-emerald-600 text-white px-3.5 py-2 rounded-lg hover:bg-emerald-700 whitespace-nowrap"
-            >
-              <Plus size={15} /> New Service
-            </button>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold text-[#0F172A] flex items-center gap-2"><BookMarked size={18} className="text-emerald-600" /> Products &amp; Services</h1>
+            <p className="text-sm text-[#64748B] mt-0.5">Reusable billing presets for this client. No stock or inventory — billing defaults only.</p>
           </div>
+          <button
+            onClick={() => setEditing("new")}
+            className="flex items-center gap-1.5 text-sm bg-emerald-600 text-white px-3.5 py-2 rounded-lg hover:bg-emerald-700 whitespace-nowrap"
+          >
+            <Plus size={15} /> New Product/Service
+          </button>
         </div>
 
         {/* Search + filter */}
@@ -112,7 +118,7 @@ export default function ServiceCataloguePage() {
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search by name, SAC or description…"
+              placeholder="Search by name, SAC/HSN or description…"
               className="w-full pl-8 pr-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
@@ -137,18 +143,18 @@ export default function ServiceCataloguePage() {
             </div>
           ) : error ? (
             <div className="p-8 text-center text-sm">
-              <p className="text-[#334155] font-medium">Couldn&apos;t load the catalogue</p>
+              <p className="text-[#334155] font-medium">Couldn&apos;t load Products &amp; Services</p>
               <button onClick={load} className="mt-2 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Retry</button>
             </div>
           ) : items.length === 0 ? (
             <div className="p-10 text-center">
               <BookMarked size={26} className="mx-auto mb-2 text-[#CBD5E1]" />
               <p className="text-sm font-medium text-[#334155]">
-                {q ? "No services match your search" : filter === "archived" ? "No archived services" : "No services yet"}
+                {q ? "No products or services match your search" : filter === "archived" ? "No archived items" : "No products or services yet"}
               </p>
               {!q && filter === "active" && (
                 <button onClick={() => setEditing("new")} className="mt-3 text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
-                  Create your first service
+                  Create the first one
                 </button>
               )}
             </div>
@@ -157,10 +163,10 @@ export default function ServiceCataloguePage() {
               <table className="w-full text-sm min-w-[640px]">
                 <thead>
                   <tr className="text-[11px] text-[#94A3B8] border-b border-[#F1F5F9]">
-                    <th className="px-4 py-2 text-left font-semibold">Service</th>
+                    <th className="px-4 py-2 text-left font-semibold">Name</th>
                     <th className="px-4 py-2 text-left font-semibold">SAC/HSN</th>
                     <th className="px-4 py-2 text-right font-semibold">GST</th>
-                    <th className="px-4 py-2 text-right font-semibold">Default price</th>
+                    <th className="px-4 py-2 text-right font-semibold">Selling price</th>
                     <th className="px-4 py-2 text-right font-semibold w-24"></th>
                   </tr>
                 </thead>
@@ -168,7 +174,11 @@ export default function ServiceCataloguePage() {
                   {items.map((s) => (
                     <tr key={s.id} className={s.is_active ? "" : "bg-[#FAFAFA] text-[#94A3B8]"}>
                       <td className="px-4 py-2.5">
-                        <p className="font-medium text-[#1E293B]">{s.name}{!s.is_active && <span className="ml-2 text-[10px] uppercase tracking-wide text-[#94A3B8]">archived</span>}</p>
+                        <p className="font-medium text-[#1E293B]">
+                          {s.name}
+                          <span className="ml-2 text-[9px] uppercase tracking-wide text-[#94A3B8]">{s.kind ?? "service"}</span>
+                          {!s.is_active && <span className="ml-2 text-[10px] uppercase tracking-wide text-[#94A3B8]">archived</span>}
+                        </p>
                         {s.description && <p className="text-[11px] text-[#94A3B8] truncate max-w-[280px]">{s.description}</p>}
                       </td>
                       <td className="px-4 py-2.5 font-mono text-[#64748B]">{s.hsn_sac || "—"}</td>
@@ -194,7 +204,8 @@ export default function ServiceCataloguePage() {
       </div>
 
       {editing && (
-        <ServiceFormModal
+        <ProductServiceFormModal
+          clientId={clientId}
           existing={editing === "new" ? null : editing}
           onClose={() => setEditing(null)}
           onSaved={(msg) => { setEditing(null); showToast(msg, "success"); load(); }}
@@ -205,7 +216,8 @@ export default function ServiceCataloguePage() {
   );
 }
 
-function ServiceFormModal({ existing, onClose, onSaved, onError }: {
+function ProductServiceFormModal({ clientId, existing, onClose, onSaved, onError }: {
+  clientId: string;
   existing: ServiceCatalogueItem | null;
   onClose: () => void;
   onSaved: (msg: string) => void;
@@ -225,12 +237,12 @@ function ServiceFormModal({ existing, onClose, onSaved, onError }: {
     if (!v.ok) return;
     setSaving(true);
     try {
-      const payload = serviceFormToPayload(form);
+      const payload = serviceFormToPayload(form, clientId);
       const res = existing
         ? ((await api.serviceCatalogue.update(existing.id, payload)) as ApiResp<ServiceCatalogueItem>)
         : ((await api.serviceCatalogue.create(payload)) as ApiResp<ServiceCatalogueItem>);
       if (!res.success) throw new Error(res.error ?? "Save failed");
-      if (res.data?.duplicate) { onError(`A service named “${form.name.trim()}” already exists.`); return; }
+      if (res.data?.duplicate) { onError(`“${form.name.trim()}” already exists for this client.`); return; }
       onSaved(existing ? `${form.name.trim()} updated` : `${form.name.trim()} created`);
     } catch (e) {
       onError(e instanceof Error ? e.message : "Save failed");
@@ -240,18 +252,29 @@ function ServiceFormModal({ existing, onClose, onSaved, onError }: {
   }
 
   return (
-    <Modal title={existing ? "Edit service" : "New service"} onClose={onClose} maxWidthClass="max-w-md">
-        <Field label="Service name" error={attempted ? v.errors.name : undefined}>
-          <input autoFocus value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Statutory Audit" className={inputCls} />
+    <Modal title={existing ? "Edit Product/Service" : "New Product/Service"} onClose={onClose} maxWidthClass="max-w-md">
+        <Field label="Name" error={attempted ? v.errors.name : undefined}>
+          <input autoFocus value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Statutory Audit, Steel Rod" className={inputCls} />
         </Field>
         <Field label="Description (optional)">
           <input value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Line description (defaults to the name)" className={inputCls} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Default SAC/HSN (optional)">
+          <Field label="Kind">
+            <select value={form.kind} onChange={(e) => set("kind", e.target.value as "good" | "service")} className={inputCls}>
+              <option value="service">Service</option>
+              <option value="good">Good</option>
+            </select>
+          </Field>
+          <Field label="Category (optional)">
+            <input value={form.category} onChange={(e) => set("category", e.target.value)} placeholder="e.g. Compliance" className={inputCls} />
+          </Field>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="HSN/SAC (optional)">
             <HsnLookup value={form.hsn_sac} onChange={(val) => set("hsn_sac", val)}
               onPick={(p) => { if (p.gst_rate_bps != null) set("gstRate", Math.round(p.gst_rate_bps / 100)); }}
-              type="services" size="sm" ariaLabel="Default SAC or HSN" />
+              type={form.kind === "good" ? "goods" : "services"} size="sm" ariaLabel="HSN or SAC code" />
           </Field>
           <Field label="Default GST rate">
             <select value={form.gstRate} onChange={(e) => set("gstRate", parseFloat(e.target.value))} className={inputCls}>
@@ -260,13 +283,16 @@ function ServiceFormModal({ existing, onClose, onSaved, onError }: {
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Default price (₹, optional)" error={attempted ? v.errors.rate : undefined}>
+          <Field label="Selling price (₹, optional)" error={attempted ? v.errors.rate : undefined}>
             <input type="number" min="0" step="0.01" value={form.rate} onChange={(e) => set("rate", e.target.value)} placeholder="0.00" className={inputCls} />
           </Field>
-          <Field label="Unit (optional)">
-            <input value={form.unit} onChange={(e) => set("unit", e.target.value)} placeholder="e.g. OTH, HRS" className={inputCls} />
+          <Field label="Purchase price (₹, optional)" error={attempted ? v.errors.purchasePrice : undefined}>
+            <input type="number" min="0" step="0.01" value={form.purchasePrice} onChange={(e) => set("purchasePrice", e.target.value)} placeholder="0.00" className={inputCls} />
           </Field>
         </div>
+        <Field label="Unit (optional)">
+          <input value={form.unit} onChange={(e) => set("unit", e.target.value)} placeholder="e.g. OTH, HRS, NOS" className={inputCls} />
+        </Field>
         <Field label="Notes (optional)">
           <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Internal note" className={inputCls} />
         </Field>
@@ -274,7 +300,7 @@ function ServiceFormModal({ existing, onClose, onSaved, onError }: {
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50">Cancel</button>
           <button onClick={submit} disabled={saving} className="text-sm px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 inline-flex items-center gap-1.5">
-            {saving && <Loader2 size={14} className="animate-spin" />} {existing ? "Save changes" : "Create service"}
+            {saving && <Loader2 size={14} className="animate-spin" />} {existing ? "Save changes" : "Create"}
           </button>
         </div>
     </Modal>
