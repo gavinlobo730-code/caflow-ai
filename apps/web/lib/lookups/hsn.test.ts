@@ -9,14 +9,14 @@ import {
 
 const row = (over: Partial<HsnRow> = {}): HsnRow => ({
   hsn_code: "998212", description: "Financial auditing services",
-  gst_rate_bps: 1800, uqc: "OTH", hsn_type: "services", source: "master", ...over,
+  gst_rate_bps: 1800, uqc: "OTH", hsn_type: "services", source: "library", ...over,
 });
 
 test("hsnGroupOf: history leads, then services/goods, else other", () => {
   assert.equal(hsnGroupOf(row({ source: "history", hsn_type: null })), "history");
   assert.equal(hsnGroupOf(row({ hsn_type: "services" })), "services");
   assert.equal(hsnGroupOf(row({ hsn_type: "goods" })), "goods");
-  assert.equal(hsnGroupOf(row({ hsn_type: null, source: "master" })), "other");
+  assert.equal(hsnGroupOf(row({ hsn_type: null, source: "library" })), "other");
 });
 
 test("hsnTypeBadge distinguishes SAC vs HSN, incl. code-shape fallback", () => {
@@ -29,11 +29,11 @@ test("hsnTypeBadge distinguishes SAC vs HSN, incl. code-shape fallback", () => {
 
 test("orderHsnResults groups history→services→goods, stable within group", () => {
   const rows: HsnRow[] = [
-    row({ hsn_code: "8471", hsn_type: "goods", source: "master" }),
-    row({ hsn_code: "998212", hsn_type: "services", source: "master" }),
+    row({ hsn_code: "8471", hsn_type: "goods", source: "library" }),
+    row({ hsn_code: "998212", hsn_type: "services", source: "library" }),
     row({ hsn_code: "998311", hsn_type: null, source: "history" }),
-    row({ hsn_code: "9401", hsn_type: "goods", source: "master" }),
-    row({ hsn_code: "998213", hsn_type: "services", source: "master" }),
+    row({ hsn_code: "9401", hsn_type: "goods", source: "library" }),
+    row({ hsn_code: "998213", hsn_type: "services", source: "library" }),
   ];
   const ordered = orderHsnResults(rows).map((r) => r.hsn_code);
   assert.deepEqual(ordered, ["998311", "998212", "998213", "8471", "9401"]);

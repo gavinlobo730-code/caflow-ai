@@ -669,7 +669,8 @@ export const api = {
     deliveries: (id: string) => request(`/api/sales-invoices/${id}/deliveries`),
   },
   hsn: {
-    // Smart HSN/SAC lookup — master + firm history. See routers/hsn.py.
+    // Smart HSN/SAC lookup — the firm's own library + firm history. Never
+    // reads a Caflow-shipped master (HSN/SAC redesign). See routers/hsn.py.
     search: (q: string, opts?: { client_id?: string; type?: string; limit?: number }) => {
       const params = new URLSearchParams({ q });
       if (opts?.client_id) params.set("client_id", opts.client_id);
@@ -679,7 +680,8 @@ export const api = {
     },
   },
   serviceCatalogue: {
-    // Services-only billing presets — search/CRUD/archive. See routers/service_catalogue.py.
+    // Product & Service master (goods + services) — search/CRUD/archive.
+    // hsn_sac must be a code from firmHsnLibrary. See routers/service_catalogue.py.
     list: (opts?: { q?: string; include_archived?: boolean; limit?: number }) => {
       const p = new URLSearchParams();
       if (opts?.q) p.set("q", opts.q);
@@ -694,6 +696,41 @@ export const api = {
       request(`/api/service-catalogue/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     recordUsed: (id: string) =>
       request(`/api/service-catalogue/${id}/used`, { method: "POST" }),
+  },
+  firmHsnLibrary: {
+    // The firm's own CA-owned, CA-curated HSN/SAC codes — the only source
+    // Products/Services and invoice lines select from. Caflow ships no
+    // shared master here. See routers/firm_hsn_library.py.
+    list: (opts?: { q?: string; hsn_type?: string; include_archived?: boolean; limit?: number }) => {
+      const p = new URLSearchParams();
+      if (opts?.q) p.set("q", opts.q);
+      if (opts?.hsn_type) p.set("hsn_type", opts.hsn_type);
+      if (opts?.include_archived) p.set("include_archived", "true");
+      if (opts?.limit) p.set("limit", String(opts.limit));
+      const qs = p.toString();
+      return request(`/api/firm-hsn-library/${qs ? `?${qs}` : ""}`);
+    },
+    add: (body: unknown) =>
+      request("/api/firm-hsn-library/", { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, body: unknown) =>
+      request(`/api/firm-hsn-library/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    retire: (id: string) =>
+      request(`/api/firm-hsn-library/${id}`, { method: "DELETE" }),
+  },
+  firmHsnRateHistory: {
+    // CA-entered, validity-dated GST rate versions per library code
+    // (Decision D: mechanism only, never a Caflow-authoritative rate).
+    // See routers/firm_hsn_rate_history.py.
+    list: (firmHsnLibraryId: string) =>
+      request(`/api/firm-hsn-rate-history/?firm_hsn_library_id=${encodeURIComponent(firmHsnLibraryId)}`),
+    resolve: (firmHsnLibraryId: string, asOf: string) =>
+      request(
+        `/api/firm-hsn-rate-history/resolve?firm_hsn_library_id=${encodeURIComponent(firmHsnLibraryId)}&as_of=${encodeURIComponent(asOf)}`,
+      ),
+    add: (body: unknown) =>
+      request("/api/firm-hsn-rate-history/", { method: "POST", body: JSON.stringify(body) }),
+    remove: (id: string) =>
+      request(`/api/firm-hsn-rate-history/${id}`, { method: "DELETE" }),
   },
   receipts: {
     create: (body: unknown) =>

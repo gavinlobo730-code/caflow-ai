@@ -130,6 +130,7 @@ export const KNOWN_ROUTE_SHAPES: string[][] = [
   ["settings","branding"],
   ["settings","dsc-tracker"],
   ["settings","email-templates"],
+  ["settings","firm-hsn-library"],
   ["settings","invoice-settings"],
   ["settings","invoice-templates"],
   ["settings","scheduled-reports"],

@@ -1,0 +1,300 @@
+"use client";
+
+/**
+ * Firm HSN/SAC Library management (HSN/SAC architecture redesign, Phase 2).
+ *
+ * The CA-owned, CA-curated source of HSN/SAC codes. Add manually, edit,
+ * retire (never hard-deleted), search. Caflow does not ship or suggest a
+ * classification here — only structural validation (digits, non-blank
+ * description). Every Product/Service and invoice line selects its code
+ * from THIS list; see FirmHsnLibraryQuickAddModal for the same add flow
+ * reachable inline from an invoice/product form.
+ */
+import { useState, useEffect, useCallback, useRef } from "react";
+import Link from "next/link";
+import { ChevronLeft, Plus, Pencil, Archive, RotateCcw, Search, Hash } from "lucide-react";
+import { RoleGuard } from "@/components/RoleGuard";
+import { api, type ApiResp } from "@/lib/api/index";
+import {
+  FirmHsnLibraryQuickAddModal, type FirmHsnLibraryRow,
+} from "@/components/lookups/FirmHsnLibraryQuickAddModal";
+
+type Filter = "active" | "archived";
+type TypeFilter = "all" | "goods" | "services";
+
+export default function FirmHsnLibraryPage() {
+  const [items, setItems] = useState<FirmHsnLibraryRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [q, setQ] = useState("");
+  const [filter, setFilter] = useState<Filter>("active");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<FirmHsnLibraryRow | null>(null);
+  const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showToast(msg: string, kind: "success" | "error") {
+    setToast({ msg, kind });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3500);
+  }
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const res = (await api.firmHsnLibrary.list({
+        q: q.trim() || undefined,
+        hsn_type: typeFilter === "all" ? undefined : typeFilter,
+        include_archived: filter === "archived",
+        limit: 200,
+      })) as ApiResp<FirmHsnLibraryRow[]>;
+      if (!res.success) { setError(true); return; }
+      const rows = res.data ?? [];
+      // include_archived returns both; the "archived" tab shows only archived.
+      setItems(filter === "archived" ? rows.filter((r) => r.is_active === false) : rows);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [q, filter, typeFilter]);
+
+  useEffect(() => {
+    const t = setTimeout(load, 200);
+    return () => clearTimeout(t);
+  }, [load]);
+
+  async function retire(row: FirmHsnLibraryRow) {
+    try {
+      const res = (await api.firmHsnLibrary.retire(row.id)) as ApiResp<unknown>;
+      if (!res.success) throw new Error(res.error ?? "Could not retire this code.");
+      showToast(`${row.hsn_code} retired`, "success");
+      load();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Could not retire this code.", "error");
+    }
+  }
+
+  async function restore(row: FirmHsnLibraryRow) {
+    try {
+      const res = (await api.firmHsnLibrary.update(row.id, { is_active: true })) as ApiResp<unknown>;
+      if (!res.success) throw new Error(res.error ?? "Could not restore this code.");
+      showToast(`${row.hsn_code} restored`, "success");
+      load();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Could not restore this code.", "error");
+    }
+  }
+
+  return (
+    <RoleGuard allowed={["Partner", "Manager"]}>
+      <div className="p-6 max-w-4xl mx-auto space-y-5">
+        {toast && (
+          <div className={`fixed top-4 right-4 z-[70] px-4 py-2 rounded-lg text-sm shadow-lg ${toast.kind === "success" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}>
+            {toast.msg}
+          </div>
+        )}
+
+        <div>
+          <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-[#94A3B8] hover:text-[#475569] transition-colors mb-1">
+            <ChevronLeft size={13} /> Settings
+          </Link>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h1 className="text-xl font-semibold text-[#0F172A] flex items-center gap-2"><Hash size={18} className="text-violet-600" /> Firm HSN/SAC Library</h1>
+              <p className="text-sm text-[#64748B] mt-0.5">
+                The HSN/SAC codes your firm bills against. You add and curate every code here — Caflow does not ship a shared list or suggest a classification; every Product/Service and invoice line picks from this library.
+              </p>
+            </div>
+            <button
+              onClick={() => setAdding(true)}
+              className="flex items-center gap-1.5 text-sm bg-violet-600 text-white px-3.5 py-2 rounded-lg hover:bg-violet-700 whitespace-nowrap"
+            >
+              <Plus size={15} /> Add Code
+            </button>
+          </div>
+        </div>
+
+        {/* Search + filters */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search by code or description…"
+              className="w-full pl-8 pr-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+            />
+          </div>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
+            className="px-3 py-2 text-xs border border-[#E2E8F0] rounded-lg"
+          >
+            <option value="all">All types</option>
+            <option value="services">Services (SAC)</option>
+            <option value="goods">Goods (HSN)</option>
+          </select>
+          <div className="flex rounded-lg border border-[#E2E8F0] overflow-hidden text-xs">
+            {(["active", "archived"] as Filter[]).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-3 py-2 capitalize ${filter === f ? "bg-violet-600 text-white" : "bg-white text-[#475569] hover:bg-[#F8FAFC]"}`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* List */}
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          {loading ? (
+            <div className="p-4 space-y-2">
+              {[...Array(4)].map((_, i) => <div key={i} className="h-11 rounded bg-[#F8FAFC] animate-pulse" />)}
+            </div>
+          ) : error ? (
+            <div className="p-8 text-center text-sm">
+              <p className="text-[#334155] font-medium">Couldn&apos;t load your library</p>
+              <button onClick={load} className="mt-2 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Retry</button>
+            </div>
+          ) : items.length === 0 ? (
+            <div className="p-10 text-center">
+              <Hash size={26} className="mx-auto mb-2 text-[#CBD5E1]" />
+              <p className="text-sm font-medium text-[#334155]">
+                {q ? "No codes match your search" : filter === "archived" ? "No retired codes" : "Your library is empty"}
+              </p>
+              {!q && filter === "active" && (
+                <button onClick={() => setAdding(true)} className="mt-3 text-xs px-3 py-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700">
+                  Add your first code
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[640px]">
+                <thead>
+                  <tr className="text-[11px] text-[#94A3B8] border-b border-[#F1F5F9]">
+                    <th className="px-4 py-2 text-left font-semibold">Code</th>
+                    <th className="px-4 py-2 text-left font-semibold">Description</th>
+                    <th className="px-4 py-2 text-left font-semibold">Type</th>
+                    <th className="px-4 py-2 text-right font-semibold">GST rate</th>
+                    <th className="px-4 py-2 text-right font-semibold w-24"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F8FAFC]">
+                  {items.map((r) => {
+                    const active = filter === "active";
+                    return (
+                      <tr key={r.id} className={active ? "" : "bg-[#FAFAFA] text-[#94A3B8]"}>
+                        <td className="px-4 py-2.5 font-mono text-[#1E293B]">{r.hsn_code}</td>
+                        <td className="px-4 py-2.5">
+                          <p className="text-[#1E293B] truncate max-w-[280px]">{r.description}</p>
+                        </td>
+                        <td className="px-4 py-2.5 text-[#64748B] capitalize">{r.hsn_type}</td>
+                        <td className="px-4 py-2.5 text-right text-[#334155]">
+                          {r.gst_rate_pct != null ? `${r.gst_rate_pct}%` : "—"}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => setEditing(r)} className="p-1.5 text-[#64748B] hover:text-violet-600 hover:bg-violet-50 rounded" aria-label="Edit"><Pencil size={14} /></button>
+                            {active ? (
+                              <button onClick={() => retire(r)} className="p-1.5 text-[#64748B] hover:text-amber-600 hover:bg-amber-50 rounded" aria-label="Retire"><Archive size={14} /></button>
+                            ) : (
+                              <button onClick={() => restore(r)} className="p-1.5 text-[#64748B] hover:text-violet-600 hover:bg-violet-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {adding && (
+        <FirmHsnLibraryQuickAddModal
+          onClose={() => setAdding(false)}
+          onAdded={() => { setAdding(false); showToast("Code added to your library", "success"); load(); }}
+        />
+      )}
+
+      {editing && (
+        <EditCodeModal
+          row={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); showToast(`${editing.hsn_code} updated`, "success"); load(); }}
+          onError={(msg) => showToast(msg, "error")}
+        />
+      )}
+    </RoleGuard>
+  );
+}
+
+function EditCodeModal({ row, onClose, onSaved, onError }: {
+  row: FirmHsnLibraryRow;
+  onClose: () => void;
+  onSaved: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [description, setDescription] = useState(row.description);
+  const [gstRate, setGstRate] = useState<number | "">(row.gst_rate_pct ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    if (!description.trim()) { onError("Description cannot be blank."); return; }
+    setSaving(true);
+    try {
+      const res = (await api.firmHsnLibrary.update(row.id, {
+        description: description.trim(),
+        gst_rate_pct: gstRate === "" ? null : gstRate,
+      })) as ApiResp<unknown>;
+      if (!res.success) throw new Error(res.error ?? "Save failed");
+      onSaved();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
+      <div className="relative w-full max-w-md bg-white rounded-xl shadow-xl p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-[#0F172A]">Edit {row.hsn_code}</h3>
+        <label className="block space-y-1">
+          <span className="block text-xs font-medium text-[#475569]">Description</span>
+          <input
+            autoFocus
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+          />
+        </label>
+        <label className="block space-y-1">
+          <span className="block text-xs font-medium text-[#475569]">GST rate (optional)</span>
+          <input
+            type="number" min="0" max="100" step="0.01"
+            value={gstRate}
+            onChange={(e) => setGstRate(e.target.value === "" ? "" : parseFloat(e.target.value))}
+            placeholder="Varies / not set"
+            className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+          />
+        </label>
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50">Cancel</button>
+          <button onClick={submit} disabled={saving} className="text-sm px-4 py-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50">
+            Save changes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

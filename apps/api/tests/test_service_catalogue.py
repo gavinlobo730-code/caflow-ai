@@ -1,16 +1,24 @@
-"""Service Catalogue — CRUD, archive/restore, duplicate prevention, search,
-ranking, validation. Runs in mock mode (no SUPABASE_URL): the router keeps an
-in-memory store so the full lifecycle is exercised without a live DB, mirroring
-test_customers-style coverage. Pure ranking is asserted directly.
+"""Product & Service master — CRUD, archive/restore, duplicate prevention,
+search, ranking, validation. Runs in mock mode (no SUPABASE_URL): the router
+keeps an in-memory store so the full lifecycle is exercised without a live
+DB, mirroring test_customers-style coverage. Pure ranking is asserted
+directly.
 
-Batch 6 guardrail: the catalogue is a services-only preset system — these tests
-also assert that no stock/inventory concept exists on a service row.
+Batch 6 guardrail, still enforced after the HSN/SAC redesign broadened this
+from services-only to goods+services: these tests assert that no
+stock/inventory concept exists on a row.
+
+HSN/SAC redesign (Decision C): `hsn_sac` must be a code already in the
+firm's own `firm_hsn_library` — `_seed_hsn` below seeds that library in mock
+mode so existing tests keep working, and a dedicated section tests the
+rejection path.
 """
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
 
 from routers.service_catalogue import router as sc_router, _rank_services, MOCK_SERVICES
+from routers.firm_hsn_library import MOCK_LIBRARY
 from core.auth import get_current_user
 
 USER = {"id": "u-1", "firm_id": "firm-sc-1", "role": "Partner"}
@@ -27,11 +35,27 @@ def client():
 @pytest.fixture(autouse=True)
 def clear_store():
     MOCK_SERVICES.clear()
+    MOCK_LIBRARY.clear()
     yield
     MOCK_SERVICES.clear()
+    MOCK_LIBRARY.clear()
+
+
+def _seed_hsn(hsn_code: str, hsn_type: str = "services", firm_id: str = USER["firm_id"]):
+    """Seed an active firm_hsn_library row so a product/service test can
+    legally reference `hsn_code` (Decision C: HSN/SAC only from the firm's
+    own library)."""
+    MOCK_LIBRARY.append({
+        "id": f"lib-{hsn_code}", "firm_id": firm_id, "hsn_code": hsn_code,
+        "description": "seeded for test", "hsn_type": hsn_type,
+        "gst_rate_pct": 18.0, "is_active": True, "source": "manual",
+    })
 
 
 def _create(client, **over):
+    hsn = over.get("hsn_sac", "998221")
+    if hsn:
+        _seed_hsn(hsn)
     body = {
         "name": "Statutory Audit", "description": "Statutory audit FY 2025-26",
         "hsn_sac": "998221", "gst_rate_bps": 1800, "default_rate_paise": 5000000,
@@ -145,3 +169,83 @@ def test_used_bump_ranks_recent_first(client):
     names = [s["name"] for s in client.get("/api/service-catalogue/").json()["data"]]
     assert names[0] == "Service B"
     assert client.post(f"/api/service-catalogue/{a}/used").json()["data"]["use_count"] == 1
+
+
+# ── Product & Service master fields (HSN/SAC redesign, Decision B) ────────────
+
+def test_defaults_to_service_kind(client):
+    assert _create(client).json()["data"]["kind"] == "service"
+
+
+def test_kind_accepts_good(client):
+    _seed_hsn("2202", hsn_type="goods")
+    r = _create(client, name="Bottled Water", kind="good", hsn_sac="2202")
+    assert r.json()["data"]["kind"] == "good"
+
+
+def test_kind_rejects_invalid_value(client):
+    assert _create(client, kind="widget").status_code == 422
+
+
+def test_purchase_price_and_category_are_optional_and_stored(client):
+    r = _create(client, purchase_price_paise=250000, category="Compliance")
+    data = r.json()["data"]
+    assert data["purchase_price_paise"] == 250000
+    assert data["category"] == "Compliance"
+
+
+def test_purchase_price_negative_rejected(client):
+    assert _create(client, purchase_price_paise=-1).status_code == 422
+
+
+def test_still_no_inventory_fields_with_goods_kind(client):
+    _seed_hsn("2202", hsn_type="goods")
+    data = _create(client, name="Bottled Water", kind="good", hsn_sac="2202").json()["data"]
+    for banned in ("sku", "barcode", "stock", "quantity_on_hand", "valuation", "warehouse"):
+        assert banned not in data
+
+
+# ── HSN/SAC must come from the firm's library (Decision C) ────────────────────
+
+def test_hsn_not_in_library_is_rejected(client):
+    # No _seed_hsn call — "997199" was never added to this firm's library.
+    r = client.post("/api/service-catalogue/", json={
+        "name": "Unlisted Service", "hsn_sac": "997199",
+        "gst_rate_bps": 1800, "default_rate_paise": 1000,
+    })
+    body = r.json()
+    assert body["success"] is False
+    assert "library" in body["error"].lower()
+    assert client.get("/api/service-catalogue/").json()["data"] == []
+
+
+def test_hsn_in_library_is_accepted(client):
+    _seed_hsn("998231")
+    r = client.post("/api/service-catalogue/", json={
+        "name": "GST Return Filing", "hsn_sac": "998231",
+        "gst_rate_bps": 1800, "default_rate_paise": 500000,
+    })
+    assert r.json()["data"]["hsn_sac"] == "998231"
+
+
+def test_retired_library_code_is_rejected_on_new_create(client):
+    _seed_hsn("998231")
+    MOCK_LIBRARY[0]["is_active"] = False
+    r = client.post("/api/service-catalogue/", json={
+        "name": "GST Return Filing", "hsn_sac": "998231",
+        "gst_rate_bps": 1800, "default_rate_paise": 500000,
+    })
+    assert r.json()["success"] is False
+
+
+def test_editing_hsn_sac_also_validated_against_library(client):
+    sid = _create(client).json()["data"]["id"]  # seeded with 998221
+    r = client.patch(f"/api/service-catalogue/{sid}", json={"hsn_sac": "999999"})
+    assert r.json()["success"] is False
+    # Unchanged on rejection.
+    assert client.get("/api/service-catalogue/").json()["data"][0]["hsn_sac"] == "998221"
+
+
+def test_blank_hsn_sac_always_allowed(client):
+    r = _create(client, hsn_sac="")
+    assert r.json()["data"]["hsn_sac"] == ""
