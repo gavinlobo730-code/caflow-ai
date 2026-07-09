@@ -30,6 +30,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from models.invoices import SalesInvoiceIn, InvoiceLineIn
+from services.numbering import draft_placeholder_invoice_no
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.recurring")
@@ -440,6 +441,10 @@ def _generate_one(firm_id: str, template: dict, actor: dict, occurrence_iso: str
     inv_in = SalesInvoiceIn(
         client_id=template["client_id"],
         customer_id=template["customer_id"],
+        # Sales invoice numbering is fully manual (no CA present in an
+        # unattended recurring run) — a placeholder the CA must replace with
+        # the real invoice number before Issue. See draft_placeholder_invoice_no.
+        invoice_no=draft_placeholder_invoice_no(),
         invoice_date=occurrence_iso,                     # Decision 4: invoice_date == occurrence
         due_date=due_date_for(occurrence_iso, customer),  # Decision 4: + credit_days (firm default fallback)
         lines=lines,
@@ -449,7 +454,7 @@ def _generate_one(firm_id: str, template: dict, actor: dict, occurrence_iso: str
     )
 
     # REUSE the existing invoice engine — identical to a manually created invoice
-    # (GST, numbering, FY-lock). It creates the invoice as a DRAFT; we never issue.
+    # (GST, FY-lock). It creates the invoice as a DRAFT; we never issue.
     from routers.sales_invoices import create_invoice
     resp = create_invoice(inv_in, actor)
     if not resp.get("success"):

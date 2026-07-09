@@ -29,7 +29,7 @@ def _setup(monkeypatch, credit_days=15):
 
 
 def _inv(**over):
-    kw = dict(client_id="CLI", customer_id="CUST", invoice_date="2026-04-10",
+    kw = dict(client_id="CLI", customer_id="CUST", invoice_date="2026-04-10", invoice_no="CD-001",
               lines=[InvoiceLineIn(description="X", hsn_sac="9982", quantity=1,
                                    rate_paise=1_000_000, gst_rate_percent=18.0)])
     kw.update(over)
@@ -115,6 +115,6 @@ def test_existing_invoice_unaffected_by_customer_credit_days_change(monkeypatch)
     assert stored["credit_days"] == 15
 
     # A NEW invoice picks up the new default (Apr 10 + 60 = Jun 9).
-    second = si.create_invoice(_inv(), CALLER)["data"]
+    second = si.create_invoice(_inv(invoice_no="CD-002"), CALLER)["data"]
     assert second["credit_days"] == 60
     assert second["due_date"] == "2026-06-09"

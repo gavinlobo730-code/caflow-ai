@@ -30,6 +30,7 @@ from fastapi import HTTPException
 
 from models.invoices import SalesInvoiceIn, InvoiceLineIn
 from services.internal_client_service import get_internal_client_id
+from services.numbering import draft_placeholder_invoice_no
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.billing")
@@ -209,12 +210,17 @@ def generate_for_schedule(firm_id: str, schedule: dict, current_user: dict,
         is_service=True,
     )
     inv_in = SalesInvoiceIn(
-        client_id=internal_id, customer_id=customer_id, invoice_date=_today_iso(),
+        client_id=internal_id, customer_id=customer_id,
+        # Sales invoice numbering is fully manual (no CA present in an
+        # unattended billing run) — a placeholder the CA must replace with
+        # the real invoice number before Issue. See draft_placeholder_invoice_no.
+        invoice_no=draft_placeholder_invoice_no(),
+        invoice_date=_today_iso(),
         due_date=schedule.get("due_date"), lines=[line],
         notes=f"Auto-generated from billing schedule {schedule['id']} for {period}",
     )
 
-    # REUSE the Sales engine (GST + numbering + insert + timeline + mock/DB paths).
+    # REUSE the Sales engine (GST + insert + timeline + mock/DB paths).
     from routers.sales_invoices import create_invoice
     resp = create_invoice(inv_in, current_user)
     if not resp.get("success"):

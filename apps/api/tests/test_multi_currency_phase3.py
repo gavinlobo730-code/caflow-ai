@@ -51,7 +51,7 @@ def test_foreign_sales_cycle_gl_balances_in_base(monkeypatch):
 
     # USD 1000.00 taxable @ 18% intra-state, rate 83.5 (INR per USD).
     inv = si.create_invoice(SalesInvoiceIn(
-        client_id="CLI", customer_id=cust["id"], invoice_date="2025-06-01",
+        client_id="CLI", customer_id=cust["id"], invoice_no="MC3-001", invoice_date="2025-06-01",
         currency="USD", exchange_rate="83.5",
         lines=[InvoiceLineIn(description="Export consulting", hsn_sac="9982",
                              quantity=1, rate_paise=100000, gst_rate_percent=18.0)]), CALLER)["data"]
@@ -121,7 +121,7 @@ def test_foreign_invoice_rejected_when_policy_off(monkeypatch):
     cust = cu.create_customer(CustomerIn(client_id="CLI", name="B", state_code="27"), CALLER)["data"]
     with pytest.raises(HTTPException) as ex:
         si.create_invoice(SalesInvoiceIn(
-            client_id="CLI", customer_id=cust["id"], invoice_date="2025-06-01",
+            client_id="CLI", customer_id=cust["id"], invoice_no="MC3-002", invoice_date="2025-06-01",
             currency="USD", exchange_rate="83.5",
             lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)
     assert ex.value.status_code == 422 and "multi-currency" in ex.value.detail.lower()
@@ -132,7 +132,7 @@ def test_unsupported_currency_rejected(monkeypatch):
     cust = cu.create_customer(CustomerIn(client_id="CLI", name="B", state_code="27"), CALLER)["data"]
     with pytest.raises(HTTPException) as ex:
         si.create_invoice(SalesInvoiceIn(
-            client_id="CLI", customer_id=cust["id"], invoice_date="2025-06-01",
+            client_id="CLI", customer_id=cust["id"], invoice_no="MC3-003", invoice_date="2025-06-01",
             currency="ZZZ", exchange_rate="1.0",
             lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)
     assert ex.value.status_code == 422 and "unsupported currency" in ex.value.detail.lower()
@@ -143,7 +143,7 @@ def test_zero_rate_rejected(monkeypatch):
     cust = cu.create_customer(CustomerIn(client_id="CLI", name="B", state_code="27"), CALLER)["data"]
     with pytest.raises(HTTPException) as ex:
         si.create_invoice(SalesInvoiceIn(
-            client_id="CLI", customer_id=cust["id"], invoice_date="2025-06-01",
+            client_id="CLI", customer_id=cust["id"], invoice_no="MC3-004", invoice_date="2025-06-01",
             currency="USD", exchange_rate="0",
             lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)
     assert ex.value.status_code == 422
@@ -154,7 +154,7 @@ def test_receipt_currency_mismatch_rejected(monkeypatch):
     cust = cu.create_customer(CustomerIn(client_id="CLI", name="B", state_code="27"), CALLER)["data"]
     # An INR invoice cannot be settled by a USD receipt.
     inv = si.create_invoice(SalesInvoiceIn(
-        client_id="CLI", customer_id=cust["id"], invoice_date="2025-06-01",
+        client_id="CLI", customer_id=cust["id"], invoice_no="MC3-005", invoice_date="2025-06-01",
         lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=0.0)]), CALLER)["data"]
     si.issue_invoice(inv["id"], CALLER)
     with pytest.raises(HTTPException) as ex:

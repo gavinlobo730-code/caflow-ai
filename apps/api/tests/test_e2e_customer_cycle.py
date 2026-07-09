@@ -53,6 +53,7 @@ def test_customer_cycle_end_to_end(monkeypatch):
     # 2-3) Invoice → Issue (overdue, past-dated). Journal posts; AR = total.
     inv = si.create_invoice(SalesInvoiceIn(
         client_id="CLI", customer_id=cust_id, invoice_date="2020-01-10", due_date="2020-01-25",
+        invoice_no="CC-E2E-001",
         lines=[InvoiceLineIn(description="Consulting", hsn_sac="9982", quantity=1,
                              rate_paise=1_000_000, gst_rate_percent=18.0)]), CALLER)["data"]
     inv_id = inv["id"]
@@ -99,6 +100,7 @@ def test_f7_journal_failure_does_not_settle_ar(monkeypatch):
     cust = cu.create_customer(CustomerIn(client_id="CLI", name="B", email="b@x.test"), CALLER)["data"]
     inv = si.create_invoice(SalesInvoiceIn(
         client_id="CLI", customer_id=cust["id"], invoice_date="2020-01-10", due_date="2020-01-25",
+        invoice_no="CC-E2E-002",
         lines=[InvoiceLineIn(description="x", hsn_sac="9982", quantity=1,
                              rate_paise=1_000_000, gst_rate_percent=18.0)]), CALLER)["data"]
     si.issue_invoice(inv["id"], CALLER)
@@ -140,6 +142,7 @@ def test_f7_over_allocated_receipt_posts_no_phantom_journal(monkeypatch):
     cust = cu.create_customer(CustomerIn(client_id="CLI", name="C", email="c@x.test"), CALLER)["data"]
     inv = si.create_invoice(SalesInvoiceIn(
         client_id="CLI", customer_id=cust["id"], invoice_date="2020-01-10", due_date="2020-01-25",
+        invoice_no="CC-E2E-003",
         lines=[InvoiceLineIn(description="x", hsn_sac="9982", quantity=1,
                              rate_paise=1_000_000, gst_rate_percent=18.0)]), CALLER)["data"]
     si.issue_invoice(inv["id"], CALLER)
@@ -167,6 +170,7 @@ def test_customer_cycle_reminder_only_when_overdue(monkeypatch):
     cust = cu.create_customer(CustomerIn(client_id="CLI", name="A", email="a@x.test"), CALLER)["data"]
     inv = si.create_invoice(SalesInvoiceIn(
         client_id="CLI", customer_id=cust["id"], invoice_date="2099-01-01", due_date="2099-02-01",
+        invoice_no="CC-E2E-004",
         lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=18.0)]), CALLER)["data"]
     si.issue_invoice(inv["id"], CALLER)
     with pytest.raises(HTTPException) as ei:               # not yet due
@@ -179,6 +183,7 @@ def test_customer_cycle_cross_firm_isolation(monkeypatch):
     cust = cu.create_customer(CustomerIn(client_id="CLI", name="A", email="a@x.test"), CALLER)["data"]
     inv = si.create_invoice(SalesInvoiceIn(
         client_id="CLI", customer_id=cust["id"], invoice_date="2020-01-10", due_date="2020-01-25",
+        invoice_no="CC-E2E-005",
         lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=18.0)]), CALLER)["data"]
     si.issue_invoice(inv["id"], CALLER)
 

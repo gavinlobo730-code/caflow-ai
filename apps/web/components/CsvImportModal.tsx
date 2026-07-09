@@ -10,7 +10,7 @@
  */
 
 import { useState, useRef } from "react";
-import { X, Download, Upload, AlertCircle, CheckCircle, Loader } from "lucide-react";
+import { X, Download, Upload, AlertCircle, CheckCircle, Loader, Plus } from "lucide-react";
 import * as XLSX from "xlsx";
 
 export interface CsvColumn {
@@ -41,6 +41,36 @@ export interface ImportResult {
   skippedDetail?: string[];
 }
 
+/**
+ * Optional "resolve missing references" step (Sales Invoice Import
+ * Alignment): before Preview, surface every DISTINCT value in `column`
+ * across the parsed file that doesn't yet exist (per `isKnown`), grouped
+ * under `label`, each with a "+ Add" action that opens the SAME creation
+ * dialog the app uses everywhere else (ProductServiceFormModal,
+ * CustomerFormModal — one creation workflow, not a separate import-only
+ * path). Nothing is imported during this step; it only lets the CA create
+ * missing master data up front instead of discovering it row-by-row in
+ * Preview's error list (which remains the backstop for anything left
+ * unresolved — this step is a courtesy staging area, not a hard gate).
+ */
+export interface ReferenceResolver {
+  /** Row column (matches a CsvColumn.key, case-insensitive) naming this entity. */
+  column: string;
+  /** Group heading, e.g. "Customers", "Products & Services". */
+  label: string;
+  /** True when `name` already exists — no action needed. Re-evaluated on
+   * every render, so it should close over the caller's live entity list
+   * (e.g. `customers.some(c => c.name === name)`) rather than a snapshot —
+   * that's what makes a newly-created entity disappear from "missing"
+   * immediately, without CsvImportModal tracking resolution itself. */
+  isKnown: (name: string) => boolean;
+  /** Renders the creation dialog seeded with `name`. Call `onDone()` when it
+   * closes, whether saved or cancelled — wire BOTH the dialog's onSaved and
+   * onClose/onCancel to it. A save should update whatever `isKnown` closes
+   * over; CsvImportModal never inspects the created record itself. */
+  renderCreate: (name: string, onDone: () => void) => React.ReactNode;
+}
+
 interface Props {
   title: string;
   columns: CsvColumn[];
@@ -49,6 +79,29 @@ interface Props {
   onClose: () => void;
   /** Optional extra validation per row, returns error strings */
   validateRow?: (row: ImportRow) => string[];
+  /** Optional "resolve missing references" step — see ReferenceResolver. */
+  resolvers?: ReferenceResolver[];
+}
+
+/** Distinct, non-blank values per resolver's column that fail isKnown, in
+ * first-seen order. Recomputed on every call (cheap for typical import
+ * sizes) so it reflects entities created during the resolve step. */
+function computeMissing(
+  rows: ParsedRow[], resolvers: ReferenceResolver[],
+): { resolver: ReferenceResolver; missing: string[] }[] {
+  return resolvers
+    .map((resolver) => {
+      const seen = new Set<string>();
+      const missing: string[] = [];
+      for (const row of rows) {
+        const name = (row.data[resolver.column.toLowerCase()] ?? "").trim();
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        if (!resolver.isKnown(name)) missing.push(name);
+      }
+      return { resolver, missing };
+    })
+    .filter((g) => g.missing.length > 0);
 }
 
 function parseCsvLine(line: string): string[] {
@@ -100,11 +153,12 @@ function parseCsv(text: string, columns: CsvColumn[]): ParsedRow[] {
   return rows;
 }
 
-export default function CsvImportModal({ title, columns, templateFilename, onImport, onClose, validateRow }: Props) {
-  const [step, setStep] = useState<"upload" | "preview" | "importing" | "done">("upload");
+export default function CsvImportModal({ title, columns, templateFilename, onImport, onClose, validateRow, resolvers }: Props) {
+  const [step, setStep] = useState<"upload" | "resolve" | "preview" | "importing" | "done">("upload");
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [resolveTarget, setResolveTarget] = useState<{ resolver: ReferenceResolver; name: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   function downloadCsvTemplate() {
@@ -181,7 +235,8 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
       return;
     }
     setRows(parsed);
-    setStep("preview");
+    const hasMissing = resolvers && computeMissing(parsed, resolvers).length > 0;
+    setStep(hasMissing ? "resolve" : "preview");
   }
 
   function handleFile(file: File) {
@@ -320,6 +375,43 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
             </div>
           )}
 
+          {/* Resolve — missing customers / products / etc. found in the file */}
+          {step === "resolve" && resolvers && (() => {
+            const groups = computeMissing(rows, resolvers);
+            return (
+              <div className="space-y-4">
+                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+                  <p className="text-sm font-medium text-amber-900">Some rows reference records that don&apos;t exist yet</p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    Add them now, or continue — rows referencing anything still unresolved will be skipped and listed in the import report.
+                  </p>
+                </div>
+                {groups.map(({ resolver, missing }) => (
+                  <div key={resolver.label} className="rounded-xl border border-[#F1F5F9] overflow-hidden">
+                    <div className="px-4 py-2 border-b border-[#F1F5F9] bg-[#F8FAFC]">
+                      <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">
+                        {resolver.label} ({missing.length} missing)
+                      </p>
+                    </div>
+                    <ul className="divide-y divide-[#F1F5F9]">
+                      {missing.map((name) => (
+                        <li key={name} className="flex items-center justify-between gap-3 px-4 py-2">
+                          <span className="text-xs text-[#334155] truncate">{name}</span>
+                          <button
+                            onClick={() => setResolveTarget({ resolver, name })}
+                            className="flex-shrink-0 flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+                          >
+                            <Plus className="w-3 h-3" /> Add
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
           {/* Step 2 — Preview */}
           {step === "preview" && (
             <div className="space-y-4">
@@ -441,6 +533,14 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
           <button onClick={onClose} className="text-sm text-[#64748B] hover:text-[#334155]">
             {step === "done" ? "Close" : "Cancel"}
           </button>
+          {step === "resolve" && (
+            <button
+              onClick={() => setStep("preview")}
+              className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+            >
+              Continue to preview
+            </button>
+          )}
           {step === "preview" && validCount > 0 && (
             <button
               onClick={handleImport}
@@ -451,6 +551,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
           )}
         </div>
       </div>
+      {resolveTarget && resolveTarget.resolver.renderCreate(resolveTarget.name, () => setResolveTarget(null))}
     </div>
   );
 }

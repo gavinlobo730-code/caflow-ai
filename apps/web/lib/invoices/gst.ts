@@ -255,6 +255,7 @@ export function previewTotals(
 // calling the API. The server remains authoritative.
 export interface EditorValidationInput {
   customerId: string;
+  invoiceNo: string;
   invoiceDate: string;
   lines: InvoiceLine[];
   isForeign: boolean;
@@ -264,6 +265,7 @@ export interface EditorValidationInput {
 export interface EditorValidation {
   errors: {
     customer?: string;
+    invoiceNo?: string;
     invoiceDate?: string;
     lines?: string;
     exchangeRate?: string;
@@ -271,6 +273,23 @@ export interface EditorValidation {
   /** Number of lines that carry a description + positive qty + positive rate. */
   validLineCount: number;
   ok: boolean;
+}
+
+/** CGST Rule 46(b): a tax invoice's serial number must be a consecutive serial
+ * number not exceeding sixteen characters, using only alphabets, numerals,
+ * and the special characters '-' and '/'. Numbering itself is fully manual
+ * (the CA types it) — this only enforces the structural shape the law
+ * requires; per-client uniqueness is checked server-side (the client can't
+ * see every other draft/issued number to check itself). */
+const INVOICE_NO_RE = /^[A-Za-z0-9\-/]{1,16}$/;
+
+export function validateInvoiceNo(invoiceNo: string): string | undefined {
+  const v = invoiceNo.trim();
+  if (!v) return "Invoice number is required.";
+  if (!INVOICE_NO_RE.test(v)) {
+    return "Only letters, digits, '-' and '/' are allowed, up to 16 characters (CGST Rule 46(b)).";
+  }
+  return undefined;
 }
 
 /** A line is "valid" (postable) when it has a description and positive qty & rate. */
@@ -285,6 +304,8 @@ export function isValidLine(l: InvoiceLine): boolean {
 export function validateInvoiceEditor(input: EditorValidationInput): EditorValidation {
   const errors: EditorValidation["errors"] = {};
   if (!input.customerId) errors.customer = "Select a customer.";
+  errors.invoiceNo = validateInvoiceNo(input.invoiceNo);
+  if (!errors.invoiceNo) delete errors.invoiceNo;
   if (!input.invoiceDate) errors.invoiceDate = "Invoice date is required.";
 
   const validLineCount = input.lines.filter(isValidLine).length;
