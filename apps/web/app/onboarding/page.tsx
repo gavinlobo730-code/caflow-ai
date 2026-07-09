@@ -3,7 +3,7 @@ import { LogoIcon } from "@/components/LogoIcon";
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, CheckCircle, ChevronRight, ChevronLeft, KeyRound, Eye, EyeOff, Hash, Plus, Upload } from "lucide-react";
+import { Building2, CheckCircle, ChevronRight, ChevronLeft, KeyRound, Eye, EyeOff, Hash, Plus, Upload, ExternalLink } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
@@ -116,6 +116,13 @@ const STEPS = [
 // portal file, Tally export, or manual knowledge) and it becomes THEIR
 // library. Import reuses the exact same POST /api/firm-hsn-library/ endpoint
 // manual add uses (Sales-Invoice-import pattern) — one create path.
+//
+// This plain outbound link is not a redistribution of government data — it
+// sends the CA to the GST portal's own official HSN search/download page
+// (verified official source, see docs/FIRM_HSN_LIBRARY.md's research
+// citation). Caflow hosts none of that content itself.
+const GST_PORTAL_HSN_SEARCH_URL = "https://services.gst.gov.in/services/searchhsnsac";
+
 const HSN_LIBRARY_IMPORT_COLUMNS = [
   { key: "hsn_code", label: "HSN/SAC Code", required: true, hint: "2-8 digits, e.g. 998221" },
   { key: "description", label: "Description", required: true, hint: "e.g. Financial auditing services" },
@@ -863,6 +870,15 @@ export default function OnboardingPage() {
                 </span>
               </button>
             </div>
+
+            <a
+              href={GST_PORTAL_HSN_SEARCH_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-flex items-center gap-1.5 text-xs text-[#64748B] hover:text-violet-700 transition-colors"
+            >
+              <ExternalLink size={12} /> Get the official HSN/SAC list from the GST portal
+            </a>
 
             <div className="flex items-center justify-between mt-8 pt-5 border-t border-gray-50">
               <button

@@ -1,24 +1,31 @@
 /**
- * Service Catalogue — pure domain helpers (Batch 6). No framework/browser deps,
- * so this is unit-testable under `node --test` and shared by the picker, the
- * management page and the editor integration.
+ * Product & Service master — pure domain helpers (Batch 6; broadened to
+ * goods in the HSN/SAC redesign; made client-owned in migration 182). No
+ * framework/browser deps, so this is unit-testable under `node --test` and
+ * shared by the picker, the client-workspace management page and the editor
+ * integration.
  *
- * A catalogue item is a SERVICES-ONLY billing preset (name + default SAC/HSN,
- * GST rate, unit price). Picking one drops a fully pre-priced invoice line; the
- * values are a starting point the CA can edit, and are copied onto the line
- * (never linked), so a later edit/archive of the preset can't change a past
- * invoice. There is deliberately no stock/quantity/valuation concept here.
+ * A catalogue item is a billing preset for goods OR services (name +
+ * default HSN/SAC, GST rate, price). Picking one drops a fully pre-priced
+ * invoice line; the values are a starting point the CA can edit, and are
+ * copied onto the line (never linked), so a later edit/archive of the
+ * preset can't change a past invoice. There is deliberately no
+ * stock/quantity/valuation/SKU/barcode/warehouse concept here.
  */
 import type { InvoiceLine } from "../invoices/gst";
 
 export interface ServiceCatalogueItem {
   id: string;
+  client_id: string;
   name: string;
   description?: string | null;
+  kind?: "good" | "service";
   hsn_sac?: string | null;
   gst_rate_bps?: number | null;
   default_rate_paise: number;
+  purchase_price_paise?: number | null;
   unit?: string | null;
+  category?: string | null;
   notes?: string | null;
   is_active: boolean;
   use_count?: number | null;
@@ -69,24 +76,31 @@ export function serviceSecondaryLine(item: ServiceCatalogueItem): string {
 export interface ServiceFormInput {
   name: string;
   description: string;
+  kind: "good" | "service";
   hsn_sac: string;
   gstRate: number;      // percent, e.g. 18
-  rate: string;         // rupees (free text)
+  rate: string;         // selling price, rupees (free text)
+  purchasePrice: string; // rupees (free text), optional
   unit: string;
+  category: string;
   notes: string;
 }
 
 export interface ServiceFormValidation {
-  errors: { name?: string; rate?: string; gstRate?: string };
+  errors: { name?: string; rate?: string; gstRate?: string; purchasePrice?: string };
   ok: boolean;
 }
 
 export function validateServiceForm(input: ServiceFormInput): ServiceFormValidation {
   const errors: ServiceFormValidation["errors"] = {};
-  if (!input.name.trim()) errors.name = "Service name is required.";
+  if (!input.name.trim()) errors.name = "Name is required.";
   const rate = parseFloat(input.rate);
   if (input.rate.trim() !== "" && (!Number.isFinite(rate) || rate < 0)) {
     errors.rate = "Enter a valid non-negative price.";
+  }
+  const purchasePrice = parseFloat(input.purchasePrice);
+  if (input.purchasePrice.trim() !== "" && (!Number.isFinite(purchasePrice) || purchasePrice < 0)) {
+    errors.purchasePrice = "Enter a valid non-negative price.";
   }
   if (!Number.isFinite(input.gstRate) || input.gstRate < 0 || input.gstRate > 100) {
     errors.gstRate = "GST rate must be between 0 and 100.";
@@ -95,25 +109,34 @@ export function validateServiceForm(input: ServiceFormInput): ServiceFormValidat
 }
 
 export interface ServicePayload {
+  client_id: string;
   name: string;
   description?: string;
+  kind: "good" | "service";
   hsn_sac?: string;
   gst_rate_bps: number;
   default_rate_paise: number;
+  purchase_price_paise?: number;
   unit?: string;
+  category?: string;
   notes?: string;
 }
 
 /** Map a validated form to the API create/update body (rupees → integer paise). */
-export function serviceFormToPayload(input: ServiceFormInput): ServicePayload {
+export function serviceFormToPayload(input: ServiceFormInput, clientId: string): ServicePayload {
   const rupees = parseFloat(input.rate);
+  const purchaseRupees = parseFloat(input.purchasePrice);
   return {
+    client_id: clientId,
     name: input.name.trim(),
     description: input.description.trim() || undefined,
+    kind: input.kind,
     hsn_sac: input.hsn_sac.trim() || undefined,
     gst_rate_bps: Math.round((input.gstRate || 0) * 100),
     default_rate_paise: Number.isFinite(rupees) && rupees > 0 ? Math.round(rupees * 100) : 0,
+    purchase_price_paise: Number.isFinite(purchaseRupees) && purchaseRupees > 0 ? Math.round(purchaseRupees * 100) : undefined,
     unit: input.unit.trim() || undefined,
+    category: input.category.trim() || undefined,
     notes: input.notes.trim() || undefined,
   };
 }
@@ -123,10 +146,13 @@ export function serviceToForm(item: ServiceCatalogueItem): ServiceFormInput {
   return {
     name: item.name,
     description: item.description ?? "",
+    kind: item.kind ?? "service",
     hsn_sac: item.hsn_sac ?? "",
     gstRate: item.gst_rate_bps == null ? 18 : item.gst_rate_bps / 100,
     rate: item.default_rate_paise ? String(item.default_rate_paise / 100) : "",
+    purchasePrice: item.purchase_price_paise ? String(item.purchase_price_paise / 100) : "",
     unit: item.unit ?? "",
+    category: item.category ?? "",
     notes: item.notes ?? "",
   };
 }

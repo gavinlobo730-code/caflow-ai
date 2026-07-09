@@ -16,6 +16,7 @@ export type ClientSection =
   | "accounting"
   | "sales"
   | "purchases"
+  | "products-services"
   | "compliance"
   | "payroll"
   | "fixed-assets"
@@ -49,6 +50,7 @@ export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   { id: "accounting",   label: "Accounting",    href: (id) => `/clients/${id}/accounting/` },
   { id: "sales",        label: "Sales",         href: (id) => `/clients/${id}/sales/` },
   { id: "purchases",    label: "Purchases",     href: (id) => `/clients/${id}/purchases/` },
+  { id: "products-services", label: "Products & Services", href: (id) => `/clients/${id}/products-services/` },
   { id: "compliance",   label: "Compliance",    href: (id) => `/clients/${id}/compliance/` },
   { id: "payroll",      label: "Payroll",       href: (id) => `/clients/${id}/payroll/` },
   { id: "fixed-assets", label: "Fixed Assets",  href: (id) => `/clients/${id}/fixed-assets/` },

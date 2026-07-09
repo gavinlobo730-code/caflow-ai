@@ -1,19 +1,24 @@
 """
 Pydantic request models for the Product & Service master (Sales-Invoice Batch
-6; broadened to goods in the HSN/SAC architecture redesign, migration 180).
+6; broadened to goods in the HSN/SAC architecture redesign, migration 180;
+made client-owned in migration 182 — "Client B must never inherit Client A's
+products").
 
 A billing preset for goods AND services — NOT an inventory item. There are
 deliberately no stock/valuation/quantity/SKU/barcode/warehouse fields; the
 catalogue only stores the defaults the invoice editor drops onto a line (all
 still CA-editable afterwards). `hsn_sac`, when provided, must be a code from
-the firm's own `firm_hsn_library` — checked by the router (not here), since
-that check needs a DB read.
+the firm's own `firm_hsn_library` (the firm-wide shared library — a Product/
+Service is client-owned, but the HSN/SAC it references still comes from the
+one library shared across the firm's clients) — checked by the router (not
+here), since that check needs a DB read.
 """
 from pydantic import BaseModel, field_validator
 from typing import Optional
 
 
 class ServiceCatalogueIn(BaseModel):
+    client_id: str
     name: str
     description: Optional[str] = None
     kind: str = "service"                       # 'good' | 'service'

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Building2, AlertTriangle, Calendar, LogOut, ShieldCheck, ChevronLeft, User, Palette, Hash, FileText, Mail, BookMarked } from "lucide-react";
+import { Building2, AlertTriangle, Calendar, LogOut, ShieldCheck, ChevronLeft, User, Palette, Hash, FileText, Mail } from "lucide-react";
 import { FormSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -674,22 +674,6 @@ export default function SettingsPage() {
               <Link
                 href="/settings/firm-hsn-library"
                 className="px-4 py-1.5 border border-violet-200 text-violet-700 text-sm font-medium rounded-lg hover:bg-violet-50 transition-colors whitespace-nowrap"
-              >
-                Manage →
-              </Link>
-            </div>
-
-            <div className="px-5 py-4 flex items-center justify-between">
-              <div className="flex items-start gap-3">
-                <BookMarked size={15} className="text-emerald-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-[#0F172A]">Products &amp; Services</p>
-                  <p className="text-xs text-[#94A3B8] mt-0.5">Reusable products and services (HSN/SAC from your library, GST rate, price) to speed up invoicing.</p>
-                </div>
-              </div>
-              <Link
-                href="/settings/service-catalogue"
-                className="px-4 py-1.5 border border-emerald-200 text-emerald-700 text-sm font-medium rounded-lg hover:bg-emerald-50 transition-colors whitespace-nowrap"
               >
                 Manage →
               </Link>

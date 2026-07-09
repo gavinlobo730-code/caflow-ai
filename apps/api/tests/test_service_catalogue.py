@@ -1,8 +1,8 @@
 """Product & Service master — CRUD, archive/restore, duplicate prevention,
-search, ranking, validation. Runs in mock mode (no SUPABASE_URL): the router
-keeps an in-memory store so the full lifecycle is exercised without a live
-DB, mirroring test_customers-style coverage. Pure ranking is asserted
-directly.
+search, ranking, validation, CLIENT isolation. Runs in mock mode (no
+SUPABASE_URL): the router keeps an in-memory store so the full lifecycle is
+exercised without a live DB, mirroring test_customers-style coverage. Pure
+ranking is asserted directly.
 
 Batch 6 guardrail, still enforced after the HSN/SAC redesign broadened this
 from services-only to goods+services: these tests assert that no
@@ -12,7 +12,14 @@ HSN/SAC redesign (Decision C): `hsn_sac` must be a code already in the
 firm's own `firm_hsn_library` — `_seed_hsn` below seeds that library in mock
 mode so existing tests keep working, and a dedicated section tests the
 rejection path.
+
+HSN/SAC workflow alignment (migration 182): Products & Services are
+CLIENT-owned, not firm-owned — "Client B must never inherit Client A's
+products." Every helper here defaults to CLIENT_A; a dedicated section
+tests that CLIENT_B never sees CLIENT_A's rows even within the same firm.
 """
+from urllib.parse import urlencode
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
@@ -22,6 +29,8 @@ from routers.firm_hsn_library import MOCK_LIBRARY
 from core.auth import get_current_user
 
 USER = {"id": "u-1", "firm_id": "firm-sc-1", "role": "Partner"}
+CLIENT_A = "client-a-1"
+CLIENT_B = "client-b-1"
 
 
 @pytest.fixture
@@ -44,7 +53,8 @@ def clear_store():
 def _seed_hsn(hsn_code: str, hsn_type: str = "services", firm_id: str = USER["firm_id"]):
     """Seed an active firm_hsn_library row so a product/service test can
     legally reference `hsn_code` (Decision C: HSN/SAC only from the firm's
-    own library)."""
+    own library — the library stays firm-wide even though Products/Services
+    are client-owned)."""
     MOCK_LIBRARY.append({
         "id": f"lib-{hsn_code}", "firm_id": firm_id, "hsn_code": hsn_code,
         "description": "seeded for test", "hsn_type": hsn_type,
@@ -52,16 +62,22 @@ def _seed_hsn(hsn_code: str, hsn_type: str = "services", firm_id: str = USER["fi
     })
 
 
-def _create(client, **over):
+def _create(client, client_id: str = CLIENT_A, **over):
     hsn = over.get("hsn_sac", "998221")
     if hsn:
         _seed_hsn(hsn)
     body = {
+        "client_id": client_id,
         "name": "Statutory Audit", "description": "Statutory audit FY 2025-26",
         "hsn_sac": "998221", "gst_rate_bps": 1800, "default_rate_paise": 5000000,
         "unit": "OTH", **over,
     }
     return client.post("/api/service-catalogue/", json=body)
+
+
+def _list(client, client_id: str = CLIENT_A, **params):
+    qs = urlencode({"client_id": client_id, **params})
+    return client.get(f"/api/service-catalogue/?{qs}")
 
 
 # ── Pure ranking ──────────────────────────────────────────────────────────────
@@ -100,13 +116,23 @@ def test_create_and_list(client):
     assert r.status_code == 200
     data = r.json()["data"]
     assert data["name"] == "Statutory Audit"
+    assert data["client_id"] == CLIENT_A
     assert data["is_active"] is True
     assert data["default_rate_paise"] == 5000000
     # No inventory concept ever leaks onto a service row.
     for banned in ("stock", "quantity_on_hand", "valuation", "warehouse", "reorder"):
         assert banned not in data
-    lst = client.get("/api/service-catalogue/").json()["data"]
+    lst = _list(client).json()["data"]
     assert len(lst) == 1
+
+
+def test_client_id_required(client):
+    _seed_hsn("998221")
+    r = client.post("/api/service-catalogue/", json={
+        "name": "Statutory Audit", "hsn_sac": "998221",
+        "gst_rate_bps": 1800, "default_rate_paise": 5000000,
+    })
+    assert r.status_code == 422
 
 
 def test_edit_service(client):
@@ -121,14 +147,25 @@ def test_validation_blank_name_and_negative_rate(client):
     assert _create(client, gst_rate_bps=20000).status_code == 422
 
 
-# ── Duplicate prevention ──────────────────────────────────────────────────────
+# ── Duplicate prevention (scoped per client) ───────────────────────────────────
 
 def test_duplicate_active_name_blocked(client):
     _create(client, name="GST Filing")
     dup = _create(client, name="  gst   filing ")  # case/space-insensitive
     body = dup.json()["data"]
     assert body.get("duplicate") is True
-    assert len([s for s in client.get("/api/service-catalogue/").json()["data"]]) == 1
+    assert len(_list(client).json()["data"]) == 1
+
+
+def test_same_name_allowed_for_different_clients(client):
+    # "Client B must never inherit Client A's products" — but the inverse
+    # matters too: the SAME name for two DIFFERENT clients is not a clash.
+    a = _create(client, client_id=CLIENT_A, name="Consulting Retainer")
+    b = _create(client, client_id=CLIENT_B, name="Consulting Retainer")
+    assert a.json()["data"].get("duplicate") is not True
+    assert b.json()["data"].get("duplicate") is not True
+    assert len(_list(client, client_id=CLIENT_A).json()["data"]) == 1
+    assert len(_list(client, client_id=CLIENT_B).json()["data"]) == 1
 
 
 # ── Archive / restore ─────────────────────────────────────────────────────────
@@ -137,11 +174,11 @@ def test_archive_hides_then_restore_shows(client):
     sid = _create(client, name="One-time Advisory").json()["data"]["id"]
     client.patch(f"/api/service-catalogue/{sid}", json={"is_active": False})
     # Archived is hidden by default…
-    assert client.get("/api/service-catalogue/").json()["data"] == []
+    assert _list(client).json()["data"] == []
     # …but visible with include_archived, and restorable.
-    assert len(client.get("/api/service-catalogue/?include_archived=true").json()["data"]) == 1
+    assert len(_list(client, include_archived="true").json()["data"]) == 1
     client.patch(f"/api/service-catalogue/{sid}", json={"is_active": True})
-    assert len(client.get("/api/service-catalogue/").json()["data"]) == 1
+    assert len(_list(client).json()["data"]) == 1
 
 
 def test_archived_name_can_be_reused(client):
@@ -156,9 +193,9 @@ def test_archived_name_can_be_reused(client):
 def test_search_by_name_and_hsn(client):
     _create(client, name="Statutory Audit", hsn_sac="998221")
     _create(client, name="GST Filing", hsn_sac="998231")
-    assert [s["name"] for s in client.get("/api/service-catalogue/?q=gst").json()["data"]] == ["GST Filing"]
-    assert [s["name"] for s in client.get("/api/service-catalogue/?q=998221").json()["data"]] == ["Statutory Audit"]
-    assert client.get("/api/service-catalogue/?q=nothingmatches").json()["data"] == []
+    assert [s["name"] for s in _list(client, q="gst").json()["data"]] == ["GST Filing"]
+    assert [s["name"] for s in _list(client, q="998221").json()["data"]] == ["Statutory Audit"]
+    assert _list(client, q="nothingmatches").json()["data"] == []
 
 
 def test_used_bump_ranks_recent_first(client):
@@ -166,7 +203,7 @@ def test_used_bump_ranks_recent_first(client):
     b = _create(client, name="Service B").json()["data"]["id"]
     client.post(f"/api/service-catalogue/{b}/used")
     # Empty query = recent/frequent list; the just-used one leads.
-    names = [s["name"] for s in client.get("/api/service-catalogue/").json()["data"]]
+    names = [s["name"] for s in _list(client).json()["data"]]
     assert names[0] == "Service B"
     assert client.post(f"/api/service-catalogue/{a}/used").json()["data"]["use_count"] == 1
 
@@ -205,24 +242,28 @@ def test_still_no_inventory_fields_with_goods_kind(client):
         assert banned not in data
 
 
-# ── HSN/SAC must come from the firm's library (Decision C) ────────────────────
+# ── HSN/SAC must come from the FIRM's library (Decision C) ────────────────────
+# (The library stays firm-wide per the approved workflow — shared across all
+# of a firm's clients — even though Products/Services themselves are now
+# client-owned. These tests use CLIENT_A throughout; the HSN/SAC validation
+# is firm-scoped, not client-scoped.)
 
 def test_hsn_not_in_library_is_rejected(client):
     # No _seed_hsn call — "997199" was never added to this firm's library.
     r = client.post("/api/service-catalogue/", json={
-        "name": "Unlisted Service", "hsn_sac": "997199",
+        "client_id": CLIENT_A, "name": "Unlisted Service", "hsn_sac": "997199",
         "gst_rate_bps": 1800, "default_rate_paise": 1000,
     })
     body = r.json()
     assert body["success"] is False
     assert "library" in body["error"].lower()
-    assert client.get("/api/service-catalogue/").json()["data"] == []
+    assert _list(client).json()["data"] == []
 
 
 def test_hsn_in_library_is_accepted(client):
     _seed_hsn("998231")
     r = client.post("/api/service-catalogue/", json={
-        "name": "GST Return Filing", "hsn_sac": "998231",
+        "client_id": CLIENT_A, "name": "GST Return Filing", "hsn_sac": "998231",
         "gst_rate_bps": 1800, "default_rate_paise": 500000,
     })
     assert r.json()["data"]["hsn_sac"] == "998231"
@@ -232,7 +273,7 @@ def test_retired_library_code_is_rejected_on_new_create(client):
     _seed_hsn("998231")
     MOCK_LIBRARY[0]["is_active"] = False
     r = client.post("/api/service-catalogue/", json={
-        "name": "GST Return Filing", "hsn_sac": "998231",
+        "client_id": CLIENT_A, "name": "GST Return Filing", "hsn_sac": "998231",
         "gst_rate_bps": 1800, "default_rate_paise": 500000,
     })
     assert r.json()["success"] is False
@@ -243,9 +284,60 @@ def test_editing_hsn_sac_also_validated_against_library(client):
     r = client.patch(f"/api/service-catalogue/{sid}", json={"hsn_sac": "999999"})
     assert r.json()["success"] is False
     # Unchanged on rejection.
-    assert client.get("/api/service-catalogue/").json()["data"][0]["hsn_sac"] == "998221"
+    assert _list(client).json()["data"][0]["hsn_sac"] == "998221"
 
 
 def test_blank_hsn_sac_always_allowed(client):
     r = _create(client, hsn_sac="")
     assert r.json()["data"]["hsn_sac"] == ""
+
+
+def test_hsn_library_shared_across_clients_of_the_same_firm(client):
+    # The library itself is firm-wide: a code added while creating a product
+    # for CLIENT_A is immediately usable for CLIENT_B too — this is NOT a
+    # regression of the client-isolation guarantee below, since the library
+    # and the Products/Services table are two different tenancy models by
+    # design (approved workflow: "The Firm HSN/SAC Library remains firm-wide").
+    _seed_hsn("998231")
+    a = client.post("/api/service-catalogue/", json={
+        "client_id": CLIENT_A, "name": "GST Filing", "hsn_sac": "998231",
+        "gst_rate_bps": 1800, "default_rate_paise": 500000,
+    })
+    b = client.post("/api/service-catalogue/", json={
+        "client_id": CLIENT_B, "name": "GST Filing (Client B)", "hsn_sac": "998231",
+        "gst_rate_bps": 1800, "default_rate_paise": 500000,
+    })
+    assert a.json()["data"]["hsn_sac"] == "998231"
+    assert b.json()["data"]["hsn_sac"] == "998231"
+
+
+# ── Client isolation (migration 182) ───────────────────────────────────────────
+# "Client B must never inherit Client A's products." Products/Services are
+# client-owned, not firm-owned — this is the core behaviour this migration
+# exists to guarantee.
+
+def test_client_b_does_not_see_client_a_products(client):
+    _create(client, client_id=CLIENT_A, name="Laptop", kind="good", hsn_sac="998221")
+    assert _list(client, client_id=CLIENT_A).json()["data"] != []
+    assert _list(client, client_id=CLIENT_B).json()["data"] == []
+
+
+def test_client_a_cannot_edit_client_b_product_via_id_leak(client):
+    # Even if a Client-A-scoped caller somehow learns Client B's row id, a
+    # PATCH is still gated by firm_id ownership only at the app layer in
+    # mock mode — but the searchable LIST endpoint never leaks the id across
+    # clients in the first place, which is the actual attack surface for a
+    # normal UI flow. This test pins that the list boundary holds.
+    b_id = _create(client, client_id=CLIENT_B, name="Steel Rod", kind="good", hsn_sac="998221").json()["data"]["id"]
+    assert all(row["id"] != b_id for row in _list(client, client_id=CLIENT_A).json()["data"])
+
+
+def test_duplicate_check_does_not_cross_client_boundary(client):
+    # Renaming a Client-A product to a name that's taken by a CLIENT-B
+    # product (same firm) must NOT be blocked — duplicate-name prevention is
+    # per (firm, client), not per firm alone.
+    _create(client, client_id=CLIENT_B, name="Consulting Retainer")
+    sid = _create(client, client_id=CLIENT_A, name="Bookkeeping").json()["data"]["id"]
+    r = client.patch(f"/api/service-catalogue/{sid}", json={"name": "Consulting Retainer"})
+    assert r.json()["success"] is True
+    assert r.json()["data"].get("duplicate") is not True

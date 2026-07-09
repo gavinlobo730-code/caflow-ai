@@ -63,9 +63,15 @@ firm_hsn_rate_history    Per-firm-owned, validity-dated rate versions keyed
                          "Rate history" below.
 
 service_catalogue        Product & Service master (goods + services since
-(aka "Products &          migration 180). Name mandatory; hsn_sac must be a
- Services")               code from the SAME firm's firm_hsn_library
-                         (app-enforced, no DB FK — see service_catalogue.py's
+(aka "Products &          migration 180). CLIENT-owned since migration 182
+ Services")               ("Client B must never inherit Client A's
+                         products") — every row belongs to exactly one
+                         client, not the firm as a whole; see "Products &
+                         Services are client-owned" below. Name mandatory;
+                         hsn_sac must be a code from the FIRM's firm_hsn_library
+                         (the library itself stays firm-wide even though the
+                         product/service row referencing it is client-owned
+                         — app-enforced, no DB FK, see service_catalogue.py's
                          _hsn_in_library). Still explicitly NOT an inventory
                          master: no stock/valuation/quantity/SKU/barcode/
                          warehouse (migration 176's lock stands; see
@@ -88,8 +94,10 @@ credit_notes, debit_notes     firm_hsn_library or hsn_master. Editing or
   `HsnLookup`, and the Product/Service form.
 - **`HsnLookup.tsx`** — the shared combobox component used on Sales Invoice
   lines, Purchase Bill lines, Debit Note lines, and the Product/Service
-  form's default-HSN field. Fixing it once (rather than each call site)
-  is what makes "avoid duplicate HSN logic" hold across every module.
+  form's default-HSN field (now at `/clients/[id]/products-services/`, a
+  client-workspace page — see "Products & Services are client-owned"
+  below). Fixing it once (rather than each call site) is what makes "avoid
+  duplicate HSN logic" hold across every module.
 - **No free-text escape hatch.** `HsnLookup` used to let a CA type an
   arbitrary code directly onto a line ("Use…"). That has been replaced with
   `FirmHsnLibraryQuickAddModal`: the "+" row now adds the code to the firm's
@@ -123,6 +131,38 @@ that date." It is deliberately **not** a tax-determination engine:
   compute which one applies to a given transaction.
 - Because the shared master is gone, this history is necessarily per-firm.
   That is an accepted duplication cost, same as the code data itself.
+
+## Products & Services are client-owned (migration 182)
+
+The HSN/SAC workflow alignment (approved product vision) drew a sharp line
+between two tenancy models that this codebase previously conflated:
+
+- **Firm HSN/SAC Library** — one per CA workspace, shared across every
+  client that firm manages. "Configure once, reuse everywhere."
+- **Products & Services** — always client-specific. "Client B must never
+  inherit Client A's products." A firm serving a laptop retailer and a
+  cement supplier must never show one client's items to the other.
+
+`service_catalogue` was firm-scoped only until migration 182 added a
+required `client_id` and the matching RLS (`can_access_client`, mirroring
+`hsn_sac_preferences`'s three-policy stack). The management UI moved from a
+firm-level Settings page (`/settings/service-catalogue`, now removed) to a
+client-workspace page (`/clients/[id]/products-services/`), alongside Sales
+and Purchases in `ClientNavContext.tsx`.
+
+`service_catalogue` had no production data at the time of this change
+(MVP Phase 1, pre-launch), so the migration clears existing rows rather than
+backfilling a client onto them — see migration 182's own comment.
+
+**Future enhancement (not implemented):** invoices should offer a "New
+Product/Service" action that opens the Product/Service creation dialog
+inline, without leaving the invoice — the same pattern
+`FirmHsnLibraryQuickAddModal` already uses for HSN/SAC codes ("open/manage
+the library instead of entering arbitrary values"). This keeps master-data
+creation in the correct place (the client's own Products & Services list)
+while giving a smooth workflow when the CA is drafting a line for an item
+that doesn't exist yet. Noted here as a backlog item; not built in this
+pass.
 
 ## What was deliberately deferred
 
