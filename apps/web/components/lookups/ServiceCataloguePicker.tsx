@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Combobox } from "@/components/ui/combobox";
+import { Combobox, type ComboboxHandle } from "@/components/ui/combobox";
 import { api, type ApiResp } from "@/lib/api";
 import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFormModal";
 import {
@@ -8,11 +8,11 @@ import {
 } from "@/lib/catalogue/service";
 
 /**
- * ServiceCataloguePicker — the "+ Add Product/Service" primary action (Final
- * Invoice Workflow Alignment). This is the ONLY way a Sales Invoice line
- * gets created: search the client's Product/Service catalogue; picking a
- * result drops a fully pre-priced line (description, HSN/SAC, GST, unit,
- * rate — description stays editable afterwards). Reuses the shared
+ * ServiceCataloguePicker — the FIRST CELL of every Sales Invoice line
+ * (Final Invoice Workflow Alignment; refined so the picker lives per-row
+ * instead of a single header-level "+ Add Product/Service" control).
+ * Picking a result auto-fills that same row's description, HSN/SAC, GST,
+ * unit and rate — description stays editable afterwards. Reuses the shared
  * Combobox (debounced server search, keyboard nav, loading/empty/error
  * states, ARIA) exactly like HsnLookup, so there is no bespoke lookup chrome.
  *
@@ -25,26 +25,32 @@ import {
  * path). On save, the new item is handed straight to `onPick`, exactly like
  * a normal search result — auto-select + auto-fill, no extra step.
  *
- * It holds no persistent value — selecting/creating a preset fires `onPick`
- * (the caller fills a line) and records a usage bump so recent/frequent
- * presets rank first. The preset's values are copied onto the line, never
- * linked, so a later edit or archive of the preset can't change a past
- * invoice.
+ * It is a controlled display, not a controlled input: `value` is the
+ * caller's current pick for THIS row (shown in the trigger instead of the
+ * placeholder), but selecting/creating a preset only ever fires `onPick` —
+ * the caller owns the line state. The preset's values are copied onto the
+ * line, never linked, so a later edit or archive of the preset can't change
+ * a past invoice. Ref-forwards a `{ focus() }` handle so the invoice editor
+ * can move focus here after adding a line or spreadsheet-style Tab.
  */
-export function ServiceCataloguePicker({
-  clientId, onPick, disabled, ariaLabel, className, size = "sm", onError,
-}: {
+export const ServiceCataloguePicker = React.forwardRef<ComboboxHandle, {
   clientId: string;
+  /** This row's current pick, if any — shown in the trigger. */
+  value?: ServiceCatalogueItem | null;
   onPick: (item: ServiceCatalogueItem) => void;
   disabled?: boolean;
   ariaLabel?: string;
   className?: string;
   size?: "sm" | "md";
+  placeholder?: string;
   /** Forwarded create-dialog errors (e.g. duplicate name). If omitted, the
    * picker shows a small inline message of its own so a failure is never
    * silent. */
   onError?: (msg: string) => void;
-}) {
+}>(function ServiceCataloguePicker(
+  { clientId, value, onPick, disabled, ariaLabel, className, size = "sm", placeholder, onError },
+  ref,
+) {
   const [quickCreateSeed, setQuickCreateSeed] = React.useState<string | null>(null);
   const [localError, setLocalError] = React.useState<string | null>(null);
 
@@ -71,7 +77,8 @@ export function ServiceCataloguePicker({
   return (
     <>
       <Combobox<ServiceCatalogueItem>
-        value={null}
+        ref={ref}
+        value={value ?? null}
         onChange={(v) => {
           const item = (Array.isArray(v) ? v[0] : v) ?? null;
           if (!item) return;
@@ -90,8 +97,8 @@ export function ServiceCataloguePicker({
         size={size}
         disabled={disabled}
         className={className}
-        ariaLabel={ariaLabel ?? "Add Product/Service"}
-        placeholder="＋ Add Product/Service"
+        ariaLabel={ariaLabel ?? "Product or service"}
+        placeholder={placeholder ?? "＋ Add Product/Service"}
         searchPlaceholder="Search products & services…"
         emptyText="No Product/Service Found"
       />
@@ -114,4 +121,4 @@ export function ServiceCataloguePicker({
       )}
     </>
   );
-}
+});

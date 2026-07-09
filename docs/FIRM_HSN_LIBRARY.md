@@ -173,31 +173,39 @@ history results on every blank line. That is not "select a Product/Service"
 — it's a general-purpose search that happens to include the catalogue among
 several sources. `LineItemAutocomplete` has been **removed**.
 
-The approved model:
+A second round of manual testing then refined the row-level UX (still no
+architecture change — the picker-driven, one-workflow-only model above
+stands):
 
-- **`ServiceCataloguePicker`** (in the Line Items section header, labelled
-  "+ Add Product/Service") is the *only* way a line is created. It searches
-  strictly the client's own Product/Service catalogue — no history mixed
-  in — and picking a result auto-fills description, HSN/SAC, GST, unit and
-  rate onto a line.
+- **`ServiceCataloguePicker` is the FIRST CELL of every line**, not a single
+  picker in the Line Items section header. Each row owns its own picker
+  (`ref`-forwarding a `{ focus() }` handle, and a `value` prop so the cell
+  displays the row's current pick); picking a result auto-fills that same
+  row's description, HSN/SAC, GST, unit and rate.
 - **No match → "+ Create Product/Service"** opens `ProductServiceFormModal`
-  (the same dialog the `/clients/[id]/products-services/` management page
-  uses — one creation workflow, not a separate "custom line" path, per
-  "Everything billed should exist as a Product or Service"). On save, the
-  new item is handed straight to the picker's `onPick`, exactly like a
-  normal search result.
-- **The Description cell is a plain, editable `<input>`** — not a search
-  box, not a history browser, not an autocomplete. It starts empty/blank
-  only in the sense that a picked line's description can be freely edited
-  afterward.
-- **`HsnLookup`'s "Change" chip is unchanged** — still the invoice-level
-  override for the HSN/SAC on a specific line. It never writes back to
-  `service_catalogue`, so an override on one invoice can never alter what a
-  future Product/Service pick auto-fills.
-- **There is no longer a standalone "+ Add line" button or an Enter-adds-a-
-  blank-row shortcut.** Both silently created a line with no Product/Service
-  origin, which is exactly the "custom line" workflow the alignment
-  document forbids. Enter now only moves focus to the next existing row.
+  per row, unchanged in spirit from the header-picker version — one
+  creation workflow, not a separate "custom line" path.
+- **The Description cell is a plain, editable `<input>`**, now the second
+  column — not a search box, not a history browser, not an autocomplete.
+- **The HSN/SAC cell renders as static text + a "Change" action, not an
+  always-visible dropdown.** `HsnLookup` gained a `chrome="plain"` variant
+  (an additive, opt-in prop on the shared `Combobox` primitive — every other
+  caller is unaffected) that strips the field border/background/chevron: a
+  set code shows as the code plus a "Change" chip, an unset one shows as a
+  blue "Set HSN/SAC" link. Clicking either opens the same search popup as
+  before — which already only ever searches the firm's own
+  `firm_hsn_library` + history, i.e. "opens the Firm HSN/SAC Library" in
+  place, without leaving the invoice draft (the same reasoning
+  `FirmHsnLibraryQuickAddModal` already established). It remains an
+  invoice-level override only and never writes back to `service_catalogue`.
+- **"Add line" is restored** (QuickBooks-style, below the rows), but unlike
+  the pre-alignment version it does **not** reintroduce the blank-Description
+  entry point: the new row's first field is the Product/Service selector
+  (focus lands there), consistent with every other row.
+- **Spreadsheet-style Tab navigation**: GST% is a line's last editable
+  column. Tabbing off it always lands on the *next* row's Product/Service
+  cell — creating that row first if this is the last one — instead of the
+  browser's native tab order (which would otherwise hit the delete button).
 
 Purchase Bills, Credit Notes and Debit Notes never used `LineItemAutocomplete`
 (only the Sales Invoice did) and are unaffected by this change.

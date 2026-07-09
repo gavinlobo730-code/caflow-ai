@@ -67,6 +67,11 @@ export function HsnLookup(props: {
   ariaLabel?: string;
   className?: string;
   placeholder?: string;
+  /** "plain" renders the trigger as inline text + "Change" instead of a
+   * field-styled dropdown — used on the Sales Invoice line cell, where the
+   * value is normally auto-filled from the Product/Service pick and this is
+   * only an override action. Defaults to the original field chrome. */
+  chrome?: "field" | "plain";
   /**
    * Optional: the sibling line-item description. When provided, edits to it
    * (debounced ~300ms) trigger an automatic lookup via the same
