@@ -1,13 +1,26 @@
-"""Service Catalogue — reusable, SERVICES-ONLY billing presets (Batch 6).
+"""Product & Service master — billing presets for goods AND services (Batch 6;
+broadened from services-only in the HSN/SAC architecture redesign).
 
-A CA firm's repeatable services (name + default SAC/HSN, GST rate, unit price)
-so the invoice editor can drop a fully pre-priced line in one pick. NOT an
-inventory master: no stock, valuation, or quantity — only billing defaults.
+A client's repeatable products/services (name + default HSN/SAC, GST rate,
+unit price) so the invoice editor can drop a fully pre-priced line in one
+pick. NOT an inventory master: no stock, valuation, quantity, SKU, barcode or
+warehouse — only billing defaults.
 
-Firm-scoped. A preset is a snapshot SOURCE: picking one copies its values onto
-the invoice line (invoice lines store their own free-text HSN/rate/amount, no FK
-here), so editing/archiving a preset never changes a past invoice. The stored
+CLIENT-owned (migration 182): "Client B must never inherit Client A's
+products." Every row belongs to exactly one client; RLS (can_access_client)
+enforces this in addition to the app-level firm_id checks below. A preset is
+a snapshot SOURCE: picking one copies its values onto the invoice line
+(invoice lines store their own free-text HSN/rate/amount, no FK here), so
+editing/archiving a preset never changes a past invoice. The stored
 rate/price are pre-fill hints (CGST Rule 46(g)) — never used in tax/journal math.
+
+`hsn_sac`, when set, must be a code already in the FIRM's own
+`firm_hsn_library` (Decision C: HSN/SAC is selected only from the firm's
+library, never authored ad hoc here) — the library itself stays firm-wide,
+shared across all of the firm's clients, even though the Product/Service
+referencing a code is client-owned. Enforced by `_hsn_in_library` below, an
+application-layer check rather than a DB foreign key, so retiring a library
+code can never break an existing product/service row.
 """
 import os
 import re
@@ -30,6 +43,28 @@ router = APIRouter(prefix="/api/service-catalogue", tags=["service_catalogue"])
 MOCK_SERVICES: list[dict] = []
 
 _SAFE_Q = re.compile(r"[^A-Za-z0-9 ]+")
+
+
+def _hsn_in_library(firm_id: str, hsn_code: str) -> bool:
+    """True if `hsn_code` is an ACTIVE row in this firm's own HSN/SAC
+    library. A blank hsn_code is always allowed (HSN/SAC stays optional)."""
+    if not hsn_code:
+        return True
+    if _USE_MOCK:
+        from routers.firm_hsn_library import MOCK_LIBRARY
+        return any(
+            r for r in MOCK_LIBRARY
+            if r.get("firm_id") == firm_id and r.get("hsn_code") == hsn_code
+            and r.get("is_active", True)
+        )
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    rows = (
+        db.table("firm_hsn_library").select("id")
+        .eq("firm_id", firm_id).eq("hsn_code", hsn_code).eq("is_active", True)
+        .execute().data or []
+    )
+    return bool(rows)
 
 
 def _norm_name(v: Optional[str]) -> str:
@@ -88,12 +123,13 @@ def _sort_recent_first(rows: list[dict]) -> list[dict]:
 
 @router.get("/")
 def list_services(
+    client_id: str = Query(..., description="CA client ID — required, Products & Services are client-owned"),
     q: str = Query("", description="Search by name, description or SAC/HSN"),
     include_archived: bool = Query(False),
     limit: int = Query(20, ge=1, le=100),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
-    """List/search the firm's presets. Active-only by default; ranked by
+    """List/search one client's presets. Active-only by default; ranked by
     relevance then recency/frequency. Empty query returns the recent/frequent
     presets (the picker's before-you-type list)."""
     try:
@@ -101,7 +137,7 @@ def list_services(
         firm_id = current_user.get("firm_id")
 
         if _USE_MOCK:
-            rows = [s for s in MOCK_SERVICES if s.get("firm_id") == firm_id]
+            rows = [s for s in MOCK_SERVICES if s.get("firm_id") == firm_id and s.get("client_id") == client_id]
             if not include_archived:
                 rows = [s for s in rows if s.get("is_active", True)]
             rows = _sort_recent_first(rows)
@@ -111,7 +147,7 @@ def list_services(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        query = db.table("service_catalogue").select("*").eq("firm_id", firm_id)
+        query = db.table("service_catalogue").select("*").eq("firm_id", firm_id).eq("client_id", client_id)
         if not include_archived:
             query = query.eq("is_active", True)
         if term:
@@ -155,6 +191,12 @@ def create_service(
     try:
         firm_id = current_user.get("firm_id")
         payload = data.model_dump()
+        client_id = payload["client_id"]
+        if payload.get("hsn_sac") and not _hsn_in_library(firm_id, payload["hsn_sac"]):
+            return api_response(
+                False, None,
+                "That HSN/SAC code is not in your firm's library. Add it there first.",
+            )
         payload["firm_id"] = firm_id
         payload["is_active"] = True
         now = datetime.now(timezone.utc).isoformat()
@@ -165,8 +207,8 @@ def create_service(
         if _USE_MOCK:
             existing = next(
                 (s for s in MOCK_SERVICES
-                 if s.get("firm_id") == firm_id and s.get("is_active", True)
-                 and _norm_name(s.get("name")) == key),
+                 if s.get("firm_id") == firm_id and s.get("client_id") == client_id
+                 and s.get("is_active", True) and _norm_name(s.get("name")) == key),
                 None,
             )
             if existing:
@@ -181,7 +223,8 @@ def create_service(
         db = get_supabase()
         existing_rows = (
             db.table("service_catalogue").select("*")
-            .eq("firm_id", firm_id).eq("is_active", True).execute().data or []
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("is_active", True)
+            .execute().data or []
         )
         existing = next((s for s in existing_rows if _norm_name(s.get("name")) == key), None)
         if existing:
@@ -206,6 +249,11 @@ def update_service(
         patch = {k: v for k, v in data.model_dump().items() if v is not None}
         if not patch:
             raise HTTPException(status_code=422, detail="No fields to update.")
+        if "hsn_sac" in patch and not _hsn_in_library(firm_id, patch["hsn_sac"]):
+            return api_response(
+                False, None,
+                "That HSN/SAC code is not in your firm's library. Add it there first.",
+            )
         patch["updated_at"] = datetime.now(timezone.utc).isoformat()
 
         if _USE_MOCK:
@@ -218,6 +266,7 @@ def update_service(
                 clash = any(
                     s for s in MOCK_SERVICES
                     if s.get("id") != service_id and s.get("firm_id") == firm_id
+                    and s.get("client_id") == row.get("client_id")
                     and s.get("is_active", True) and _norm_name(s.get("name")) == key
                 )
                 if clash:
@@ -234,7 +283,8 @@ def update_service(
         if "name" in patch:
             key = _norm_name(patch["name"])
             others = (db.table("service_catalogue").select("id,name,is_active")
-                      .eq("firm_id", firm_id).eq("is_active", True).execute().data or [])
+                      .eq("firm_id", firm_id).eq("client_id", owned[0]["client_id"]).eq("is_active", True)
+                      .execute().data or [])
             if any(o for o in others if o["id"] != service_id and _norm_name(o.get("name")) == key):
                 return api_response(False, None, "Another active service already uses that name.")
         resp = (db.table("service_catalogue").update(patch)

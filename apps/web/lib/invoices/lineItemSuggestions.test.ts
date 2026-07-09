@@ -17,7 +17,7 @@ function catalogueItem(overrides: Partial<ServiceCatalogueItem> = {}): ServiceCa
 function hsnRow(overrides: Partial<HsnSuggestionRow> = {}): HsnSuggestionRow {
   return {
     hsn_code: "998222", description: "Accounting and bookkeeping services",
-    gst_rate_bps: 1800, uqc: "NOS", hsn_type: "services", source: "master", reason: null,
+    gst_rate_bps: 1800, uqc: "NOS", hsn_type: "services", source: "library", reason: null,
     ...overrides,
   };
 }
@@ -53,11 +53,11 @@ test("singular vs plural use-count phrasing", () => {
   assert.equal(s.reason, "Used 1 time");
 });
 
-test("HSN rows map with the SAC code type, an HSN Master source badge, and no price", () => {
+test("HSN rows map with the SAC code type, a Your Library source badge, and no price", () => {
   const [s] = mergeLineItemSuggestions([], [hsnRow()]);
   assert.equal(s.id, "hsn:998222");
   assert.equal(s.codeType, "SAC");
-  assert.equal(s.source, "HSN Master");
+  assert.equal(s.source, "Your Library");
   assert.equal(s.rate_paise, null);
   assert.equal(s.catalogueId, null);
 });
@@ -69,11 +69,11 @@ test("a goods HSN code gets the HSN code type, a bare 99-prefixed code falls bac
   assert.equal(bare.codeType, "SAC");
 });
 
-test("source badge distinguishes firm history (Recent) from the canonical master (HSN Master)", () => {
+test("source badge distinguishes firm history (Recent) from the firm's own library (Your Library)", () => {
   const [recent] = mergeLineItemSuggestions([], [hsnRow({ source: "history", reason: "Used 4 times" })]);
   assert.equal(recent.source, "Recent");
-  const [master] = mergeLineItemSuggestions([], [hsnRow({ source: "master" })]);
-  assert.equal(master.source, "HSN Master");
+  const [library] = mergeLineItemSuggestions([], [hsnRow({ source: "library" })]);
+  assert.equal(library.source, "Your Library");
 });
 
 test("a catalogue item with no code at all gets no code type", () => {

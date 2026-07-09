@@ -1,4 +1,5 @@
-// Batch 6 — Service Catalogue pure helpers. Run with:
+// Batch 6 — Product & Service pure helpers (client-owned since migration
+// 182). Run with:
 //   node --experimental-strip-types --test lib/catalogue/service.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -8,15 +9,17 @@ import {
   type ServiceCatalogueItem, type ServiceFormInput,
 } from "./service.ts";
 
+const CLIENT_ID = "client-a-1";
+
 const item = (over: Partial<ServiceCatalogueItem> = {}): ServiceCatalogueItem => ({
-  id: "s1", name: "Statutory Audit", description: "Statutory audit FY 2025-26",
-  hsn_sac: "998221", gst_rate_bps: 1800, default_rate_paise: 5000000,
-  unit: "OTH", notes: null, is_active: true, ...over,
+  id: "s1", client_id: CLIENT_ID, name: "Statutory Audit", description: "Statutory audit FY 2025-26",
+  kind: "service", hsn_sac: "998221", gst_rate_bps: 1800, default_rate_paise: 5000000,
+  purchase_price_paise: null, unit: "OTH", category: null, notes: null, is_active: true, ...over,
 });
 
 const form = (over: Partial<ServiceFormInput> = {}): ServiceFormInput => ({
-  name: "Statutory Audit", description: "", hsn_sac: "998221",
-  gstRate: 18, rate: "50000", unit: "OTH", notes: "", ...over,
+  name: "Statutory Audit", description: "", kind: "service", hsn_sac: "998221",
+  gstRate: 18, rate: "50000", purchasePrice: "", unit: "OTH", category: "", notes: "", ...over,
 });
 
 test("serviceToLine drops a fully pre-priced line (description falls back to name)", () => {
@@ -38,27 +41,41 @@ test("formatting helpers", () => {
   assert.equal(serviceSecondaryLine(item({ hsn_sac: null, gst_rate_bps: null })), "₹50,000");
 });
 
-test("validateServiceForm: name required, non-negative price, gst range", () => {
+test("validateServiceForm: name required, non-negative prices, gst range", () => {
   assert.equal(validateServiceForm(form()).ok, true);
   assert.equal(validateServiceForm(form({ name: "  " })).errors.name !== undefined, true);
   assert.equal(validateServiceForm(form({ rate: "-5" })).errors.rate !== undefined, true);
   assert.equal(validateServiceForm(form({ rate: "" })).ok, true); // price optional
+  assert.equal(validateServiceForm(form({ purchasePrice: "-1" })).errors.purchasePrice !== undefined, true);
+  assert.equal(validateServiceForm(form({ purchasePrice: "" })).ok, true); // optional
   assert.equal(validateServiceForm(form({ gstRate: 120 })).errors.gstRate !== undefined, true);
 });
 
-test("serviceFormToPayload maps rupees → integer paise, blanks → undefined", () => {
-  const p = serviceFormToPayload(form({ rate: "50000.50", description: " audit ", unit: "" }));
+test("serviceFormToPayload maps rupees → integer paise, blanks → undefined, carries client_id + kind", () => {
+  const p = serviceFormToPayload(
+    form({ rate: "50000.50", purchasePrice: "30000", description: " audit ", unit: "", category: " Compliance " }),
+    CLIENT_ID,
+  );
+  assert.equal(p.client_id, CLIENT_ID);
+  assert.equal(p.kind, "service");
   assert.equal(p.default_rate_paise, 5000050);
+  assert.equal(p.purchase_price_paise, 3000000);
   assert.equal(p.gst_rate_bps, 1800);
   assert.equal(p.description, "audit");
+  assert.equal(p.category, "Compliance");
   assert.equal(p.unit, undefined);
-  assert.equal(serviceFormToPayload(form({ rate: "" })).default_rate_paise, 0);
+  assert.equal(serviceFormToPayload(form({ rate: "" }), CLIENT_ID).default_rate_paise, 0);
+  assert.equal(serviceFormToPayload(form({ purchasePrice: "" }), CLIENT_ID).purchase_price_paise, undefined);
 });
 
 test("serviceToForm round-trips an item into editable strings", () => {
-  const f = serviceToForm(item());
+  const f = serviceToForm(item({ purchase_price_paise: 3000000, category: "Compliance" }));
   assert.equal(f.rate, "50000");
+  assert.equal(f.purchasePrice, "30000");
+  assert.equal(f.category, "Compliance");
   assert.equal(f.gstRate, 18);
   assert.equal(f.hsn_sac, "998221");
+  assert.equal(f.kind, "service");
   assert.equal(serviceToForm(item({ gst_rate_bps: null })).gstRate, 18); // sensible default
+  assert.equal(serviceToForm(item({ purchase_price_paise: null })).purchasePrice, "");
 });
