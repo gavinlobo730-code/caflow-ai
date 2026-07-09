@@ -93,6 +93,7 @@ export const ServiceCataloguePicker = React.forwardRef<ComboboxHandle, {
         getSecondary={(s) => serviceSecondaryLine(s) || undefined}
         onCreate={(label) => setQuickCreateSeed(label)}
         createLabel={(q) => `No Product/Service Found — + Create "${q}"`}
+        emptyCreateLabel="+ Add Product/Service"
         minChars={2}
         size={size}
         disabled={disabled}
