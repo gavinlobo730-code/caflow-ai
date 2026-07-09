@@ -1,8 +1,8 @@
 /**
  * Pure HSN/SAC lookup presentation helpers (Batch 5). No framework/browser deps,
  * so this module is unit-testable under `node --test` and shared by the
- * LineItemAutocomplete component. The backend (GET /api/hsn/search) owns
- * relevance ranking and the data — the firm's own HSN/SAC library, never a
+ * HsnLookup component. The backend (GET /api/hsn/search) owns relevance
+ * ranking and the data — the firm's own HSN/SAC library, never a
  * Caflow-shipped master (HSN/SAC redesign) — these helpers only shape how
  * results are grouped and labelled in the picker; the returned GST rate stays
  * a pre-fill hint (CGST Rule 46(g)), never used in any tax computation.

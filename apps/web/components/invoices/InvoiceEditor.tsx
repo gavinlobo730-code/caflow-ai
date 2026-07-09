@@ -11,10 +11,9 @@
  * authoritative), and Save & Issue / Save & Send chain the existing endpoints.
  */
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Plus, Trash2, CheckCircle, Send, Loader2, AlertCircle } from "lucide-react";
+import { Trash2, CheckCircle, Send, Loader2, AlertCircle } from "lucide-react";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
-import { LineItemAutocomplete } from "@/components/lookups/LineItemAutocomplete";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
 import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
@@ -246,10 +245,6 @@ export function InvoiceEditor({
   function setLine(idx: number, patch: Partial<InvoiceLine>) {
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
   }
-  function addLine() {
-    setLines((prev) => [...prev, { ...EMPTY_LINE, _k: nextKey() }]);
-    setFocusRow(lines.length);
-  }
   function removeLine(idx: number) {
     if (lines.length <= 1) return;
     setLines((prev) => prev.filter((_, i) => i !== idx));
@@ -270,8 +265,11 @@ export function InvoiceEditor({
   function onLineKeyDown(e: React.KeyboardEvent, idx: number) {
     if (e.key !== "Enter" || e.shiftKey) return;
     e.preventDefault();
-    if (idx === lines.length - 1) addLine();
-    else setFocusRow(idx + 1);
+    // Enter moves to the next row's description if one exists. It no longer
+    // adds a new blank row on the last row — the "+ Add Product/Service"
+    // picker above the table is the only way a line is created (Final
+    // Invoice Workflow Alignment: one workflow, no separate custom-line path).
+    if (idx < lines.length - 1) setFocusRow(idx + 1);
   }
 
   // ── Save flow: create/PATCH → (issue) → (send), reusing existing endpoints ─────
@@ -537,15 +535,16 @@ export function InvoiceEditor({
           )}
         </section>
 
-        {/* Line items */}
+        {/* Line items — Product/Service-driven (Final Invoice Workflow
+            Alignment): the picker below is the ONLY way a line is added.
+            There is no separate "custom line" path — every line traces back
+            to a Product/Service, existing or newly created inline. */}
         <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
           <div className="flex items-center justify-between gap-3 mb-2">
             <h2 className="text-xs font-semibold text-[#334155] flex-shrink-0">Line items</h2>
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] text-[#94A3B8] hidden sm:inline">Enter adds a row</span>
-              <div className="w-48">
-                <ServiceCataloguePicker clientId={clientId} onPick={addFromService} ariaLabel="Add a line from the service catalogue" />
-              </div>
+            <div className="w-64">
+              <ServiceCataloguePicker clientId={clientId} onPick={addFromService} onError={setError}
+                size="md" ariaLabel="Add Product/Service" />
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -570,12 +569,15 @@ export function InvoiceEditor({
                   return (
                     <tr key={line._k} className={invalid ? "bg-red-50/40" : undefined}>
                       <td className="py-1.5 pr-2">
-                        <LineItemAutocomplete ref={(el) => { descRefs.current[idx] = el; }}
-                          value={line.description} onChange={(v) => setLine(idx, { description: v })}
-                          onPick={(patch) => setLine(idx, patch)}
-                          onKeyDownFallback={(e) => onLineKeyDown(e, idx)}
-                          clientId={clientId} placeholder="Item / service description"
-                          ariaLabel={`Line ${idx + 1} description`} />
+                        {/* Plain, editable — NOT a search box (Final Invoice
+                            Workflow Alignment). Description is filled by
+                            picking a Product/Service above and stays freely
+                            editable afterwards; it never searches history. */}
+                        <input ref={(el) => { descRefs.current[idx] = el; }}
+                          value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })}
+                          onKeyDown={(e) => onLineKeyDown(e, idx)}
+                          placeholder="Description" aria-label={`Line ${idx + 1} description`}
+                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
                       </td>
                       <td className="py-1.5 pr-2">
                         <HsnLookup clientId={clientId} value={line.hsn_sac} onChange={(v) => setLine(idx, { hsn_sac: v })}
@@ -623,9 +625,6 @@ export function InvoiceEditor({
               </tbody>
             </table>
           </div>
-          <button onClick={addLine} className="mt-2 text-xs text-blue-600 hover:underline flex items-center gap-1">
-            <Plus size={12} /> Add line
-          </button>
           {fieldErr(validation.errors.lines)}
         </section>
 
