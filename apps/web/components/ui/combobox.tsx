@@ -31,6 +31,14 @@ export interface ComboboxProps<T> extends ComboboxCore<T> {
   /** Enable the "+ Create …" row; receives the current query. */
   onCreate?: (label: string) => void | Promise<void>;
   createLabel?: (q: string) => string;
+  /**
+   * When set, the "+ Create …" action is also offered in the empty-results
+   * panel BEFORE the user types anything (e.g. a brand-new client with no
+   * Product/Service catalogue yet) — not just after a no-match search.
+   * Without this, `onCreate` only surfaces once the query is non-empty, so
+   * an entirely empty list would otherwise show no way in at all.
+   */
+  emptyCreateLabel?: string;
   placeholder?: string;
   searchPlaceholder?: string;
   disabled?: boolean;
@@ -85,6 +93,10 @@ const SIZE = {
   md: "px-3 py-1.5 text-xs",
 } as const;
 
+// Matches the popup's former min-w-[16rem]/[26rem] Tailwind classes, now
+// applied in JS alongside the trigger's own width (see updateCoords below).
+const DENSITY_MIN_WIDTH_PX = { compact: 256, spacious: 416 } as const;
+
 function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<ComboboxHandle>) {
   const {
     value,
@@ -97,6 +109,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
     minChars,
     onCreate,
     createLabel,
+    emptyCreateLabel,
     placeholder = "Select…",
     searchPlaceholder = "Search…",
     disabled,
@@ -188,6 +201,36 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
     const el = listRef.current?.querySelector<HTMLElement>(`[data-idx="${highlighted}"]`);
     el?.scrollIntoView({ block: "nearest" });
   }, [highlighted, open, results]);
+
+  // The popup is positioned via fixed coordinates computed from the trigger's
+  // own bounding rect, NOT CSS `absolute` relative to the trigger's DOM
+  // parent — a plain `absolute` popup gets clipped (and forces a stray
+  // scrollbar) by any scrollable ancestor, e.g. the invoice line-items
+  // table's own `overflow-x-auto` wrapper. `position: fixed` escapes that
+  // clipping entirely (its containing block is the viewport, not the
+  // scrolling ancestor) as long as no ancestor sets transform/filter/
+  // perspective, which none here do.
+  const [coords, setCoords] = React.useState<{ top: number; left: number; width: number } | null>(null);
+  const updateCoords = React.useCallback(() => {
+    const r = wrapRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const width = Math.max(r.width, DENSITY_MIN_WIDTH_PX[panelDensity]);
+    const left = Math.min(r.left, Math.max(8, window.innerWidth - width - 8));
+    setCoords({ top: r.bottom + 4, left, width });
+  }, [panelDensity]);
+  React.useLayoutEffect(() => {
+    if (!open) { setCoords(null); return; }
+    updateCoords();
+    // Reposition on resize and on scroll of ANY ancestor (capture:true —
+    // scroll doesn't bubble), so the popup tracks the trigger instead of
+    // drifting out of place while it's open.
+    window.addEventListener("resize", updateCoords);
+    document.addEventListener("scroll", updateCoords, true);
+    return () => {
+      window.removeEventListener("resize", updateCoords);
+      document.removeEventListener("scroll", updateCoords, true);
+    };
+  }, [open, updateCoords]);
 
   const commit = React.useCallback(
     (o: T) => {
@@ -323,12 +366,10 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
         )}
       </button>
 
-      {open && (
+      {open && coords && (
         <div
-          className={cn(
-            "absolute z-40 mt-1 w-full overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-lg",
-            panelDensity === "spacious" ? "min-w-[26rem]" : "min-w-[16rem]",
-          )}
+          style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width }}
+          className="z-40 overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-lg"
         >
           {/* Search box */}
           <div className="flex items-center gap-2 border-b border-[#F1F5F9] px-2.5 py-2">
@@ -374,7 +415,23 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
               </div>
             ) : results.length === 0 && !showCreate ? (
               <div className="px-3 py-3 text-center text-[11px] text-[#94A3B8]">
-                {loading ? "Searching…" : emptyText}
+                <p>{loading ? "Searching…" : emptyText}</p>
+                {/* Offered before typing when emptyCreateLabel is set (an
+                    entirely empty list, e.g. a new client's catalogue), or
+                    once a query exists even below minChars — either way,
+                    onCreate must never be reachable ONLY via a 2+ character
+                    search with no visible entry point. */}
+                {!loading && onCreate && (emptyCreateLabel != null || query.trim().length > 0) && (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => void doCreate()}
+                    className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+                  >
+                    <Plus size={13} className="flex-shrink-0" />
+                    {emptyCreateLabel ?? (createLabel ?? defaultCreateLabel)(query.trim())}
+                  </button>
+                )}
               </div>
             ) : (
               <>
