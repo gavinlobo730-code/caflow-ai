@@ -18,39 +18,46 @@
  *     repeat is instant; failures are NOT cached, so retry() genuinely
  *     retries instead of replaying the same rejection forever.
  *
- * The Service Catalogue itself is small (a firm's own billing presets, not
- * the HSN master) and firm-scoped, not client-scoped, so ONE fetch (up to
- * 100 items, the API's own cap) covers every line on every invoice for the
- * rest of the session — letting the description field filter it entirely
- * client-side (lib/combobox/match.ts's existing sync engine), with zero
- * network latency per keystroke.
+ * The Service Catalogue itself is small (a CLIENT's own billing presets —
+ * client-owned since migration 182, not the HSN master, not shared with a
+ * firm's other clients) so ONE fetch per client (up to 100 items, the API's
+ * own cap) covers every line on that client's invoices for the rest of the
+ * session — letting the description field filter it entirely client-side
+ * (lib/combobox/match.ts's existing sync engine), with zero network latency
+ * per keystroke.
  */
 import { api, type ApiResp } from "@/lib/api";
 import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
 import type { HsnRow } from "@/lib/lookups/hsn";
 
-let catalogueCache: Promise<ServiceCatalogueItem[]> | null = null;
+const catalogueCache = new Map<string, Promise<ServiceCatalogueItem[]>>();
 
-/** The firm's full active catalogue (recent/frequent-first, per the API's own
- * default ordering), fetched once and shared by every line on the page. */
-export function getCachedCatalogue(): Promise<ServiceCatalogueItem[]> {
-  if (!catalogueCache) {
-    catalogueCache = (api.serviceCatalogue.list({ limit: 100 }) as Promise<ApiResp<ServiceCatalogueItem[]>>)
-      .then((res) => res.data ?? [])
-      .catch(() => {
-        catalogueCache = null; // allow a later mount to retry instead of caching a permanent failure
-        return [];
-      });
+/** One client's full active catalogue (recent/frequent-first, per the API's
+ * own default ordering), fetched once per client and shared by every line
+ * on that client's invoices for the rest of the session. */
+export function getCachedCatalogue(clientId: string): Promise<ServiceCatalogueItem[]> {
+  if (!clientId) return Promise.resolve([]);
+  if (!catalogueCache.has(clientId)) {
+    catalogueCache.set(
+      clientId,
+      (api.serviceCatalogue.list(clientId, { limit: 100 }) as Promise<ApiResp<ServiceCatalogueItem[]>>)
+        .then((res) => res.data ?? [])
+        .catch(() => {
+          catalogueCache.delete(clientId); // allow a later mount to retry instead of caching a permanent failure
+          return [];
+        }),
+    );
   }
-  return catalogueCache;
+  return catalogueCache.get(clientId)!;
 }
 
-/** Bump a catalogue item's usage AND drop the cached list, so the next fetch
- * (e.g. the next line added, or the next invoice opened this session) picks
- * up its updated recency/use-count instead of serving stale ordering. */
-export function recordCatalogueUsed(id: string): void {
+/** Bump a catalogue item's usage AND drop that client's cached list, so the
+ * next fetch (e.g. the next line added, or the next invoice opened this
+ * session) picks up its updated recency/use-count instead of serving stale
+ * ordering. */
+export function recordCatalogueUsed(id: string, clientId: string): void {
   api.serviceCatalogue.recordUsed(id).catch(() => {});
-  catalogueCache = null;
+  catalogueCache.delete(clientId);
 }
 
 const hsnRecentCache = new Map<string, Promise<HsnRow[]>>();

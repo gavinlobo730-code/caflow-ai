@@ -680,15 +680,16 @@ export const api = {
     },
   },
   serviceCatalogue: {
-    // Product & Service master (goods + services) — search/CRUD/archive.
-    // hsn_sac must be a code from firmHsnLibrary. See routers/service_catalogue.py.
-    list: (opts?: { q?: string; include_archived?: boolean; limit?: number }) => {
-      const p = new URLSearchParams();
+    // Product & Service master (goods + services) — client-owned
+    // (migration 182: "Client B must never inherit Client A's products").
+    // hsn_sac must be a code from the firm-wide firmHsnLibrary. See
+    // routers/service_catalogue.py.
+    list: (clientId: string, opts?: { q?: string; include_archived?: boolean; limit?: number }) => {
+      const p = new URLSearchParams({ client_id: clientId });
       if (opts?.q) p.set("q", opts.q);
       if (opts?.include_archived) p.set("include_archived", "true");
       if (opts?.limit) p.set("limit", String(opts.limit));
-      const qs = p.toString();
-      return request(`/api/service-catalogue/${qs ? `?${qs}` : ""}`);
+      return request(`/api/service-catalogue/?${p.toString()}`);
     },
     create: (body: unknown) =>
       request("/api/service-catalogue/", { method: "POST", body: JSON.stringify(body) }),

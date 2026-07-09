@@ -7,10 +7,13 @@ import {
 } from "@/lib/catalogue/service";
 
 /**
- * ServiceCataloguePicker — pick a services-only billing preset and drop a fully
+ * ServiceCataloguePicker — pick a client's billing preset and drop a fully
  * pre-priced invoice line (Batch 6). Reuses the shared Combobox (debounced
  * server search, keyboard nav, loading/empty/error states, ARIA) exactly like
  * HsnLookup, so there is no bespoke lookup chrome.
+ *
+ * Products/Services are client-owned (migration 182), so every fetch here is
+ * scoped to `clientId` — a firm's other clients' presets never appear.
  *
  * It holds no persistent value — selecting a preset fires `onPick` (the caller
  * fills a line) and records a usage bump so recent/frequent presets rank first.
@@ -18,8 +21,9 @@ import {
  * archive of the preset can't change a past invoice.
  */
 export function ServiceCataloguePicker({
-  onPick, disabled, ariaLabel, className, size = "sm",
+  clientId, onPick, disabled, ariaLabel, className, size = "sm",
 }: {
+  clientId: string;
   onPick: (item: ServiceCatalogueItem) => void;
   disabled?: boolean;
   ariaLabel?: string;
@@ -27,22 +31,24 @@ export function ServiceCataloguePicker({
   size?: "sm" | "md";
 }) {
   const fetchOptions = React.useCallback(async (q: string): Promise<ServiceCatalogueItem[]> => {
-    const res = (await api.serviceCatalogue.list({ q, limit: 15 })) as ApiResp<ServiceCatalogueItem[]>;
+    if (!clientId) return [];
+    const res = (await api.serviceCatalogue.list(clientId, { q, limit: 15 })) as ApiResp<ServiceCatalogueItem[]>;
     return res.data ?? [];
-  }, []);
+  }, [clientId]);
 
   // Recent/frequent presets shown before the CA types (empty query → recent).
   const [recent, setRecent] = React.useState<ServiceCatalogueItem[]>([]);
   React.useEffect(() => {
+    if (!clientId) { setRecent([]); return; }
     let alive = true;
     (async () => {
       try {
-        const res = (await api.serviceCatalogue.list({ limit: 8 })) as ApiResp<ServiceCatalogueItem[]>;
+        const res = (await api.serviceCatalogue.list(clientId, { limit: 8 })) as ApiResp<ServiceCatalogueItem[]>;
         if (alive) setRecent(res.data ?? []);
       } catch { /* best-effort */ }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [clientId]);
 
   return (
     <Combobox<ServiceCatalogueItem>

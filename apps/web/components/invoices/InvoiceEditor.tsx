@@ -544,7 +544,7 @@ export function InvoiceEditor({
             <div className="flex items-center gap-3">
               <span className="text-[10px] text-[#94A3B8] hidden sm:inline">Enter adds a row</span>
               <div className="w-48">
-                <ServiceCataloguePicker onPick={addFromService} ariaLabel="Add a line from the service catalogue" />
+                <ServiceCataloguePicker clientId={clientId} onPick={addFromService} ariaLabel="Add a line from the service catalogue" />
               </div>
             </div>
           </div>

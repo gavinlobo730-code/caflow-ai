@@ -94,17 +94,19 @@ export const LineItemAutocomplete = React.forwardRef<
     [forwardedRef],
   );
 
-  // Service Catalogue: a firm's own presets are few (tens, not thousands) and
-  // fetched ONCE — cached and shared across every line on the page (see
-  // lineItemSuggestionCache) — then matched entirely CLIENT-SIDE via the same
-  // sync engine every other Combobox uses (lib/combobox/match.ts). That means
-  // catalogue matches, which mergeLineItemSuggestions always ranks first,
-  // appear the instant a key is pressed: no debounce, no network round trip.
+  // Service Catalogue: one CLIENT's own presets are few (tens, not
+  // thousands) and fetched ONCE per client — cached and shared across every
+  // line on the page for that client (see lineItemSuggestionCache) — then
+  // matched entirely CLIENT-SIDE via the same sync engine every other
+  // Combobox uses (lib/combobox/match.ts). That means catalogue matches,
+  // which mergeLineItemSuggestions always ranks first, appear the instant a
+  // key is pressed: no debounce, no network round trip.
   const [catalogue, setCatalogue] = React.useState<ServiceCatalogueItem[]>([]);
   const [catalogueReady, setCatalogueReady] = React.useState(false);
   const loadCatalogue = React.useCallback(() => {
-    getCachedCatalogue().then((rows) => { setCatalogue(rows); setCatalogueReady(true); });
-  }, []);
+    if (!clientId) { setCatalogue([]); setCatalogueReady(true); return; }
+    getCachedCatalogue(clientId).then((rows) => { setCatalogue(rows); setCatalogueReady(true); });
+  }, [clientId]);
   React.useEffect(() => { loadCatalogue(); }, [loadCatalogue]);
   const catalogueCombo = useCombobox<ServiceCatalogueItem>({
     options: catalogue,
@@ -167,11 +169,11 @@ export const LineItemAutocomplete = React.forwardRef<
   const commit = React.useCallback(
     (s: LineItemSuggestion) => {
       onPick(suggestionToLinePatch(s));
-      if (s.catalogueId) recordCatalogueUsed(s.catalogueId);
+      if (s.catalogueId && clientId) recordCatalogueUsed(s.catalogueId, clientId);
       setOpen(false);
       setQuery("");
     },
-    [onPick, setQuery],
+    [onPick, setQuery, clientId],
   );
 
   // Click-away closes the panel without discarding the typed description.
