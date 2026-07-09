@@ -3,11 +3,13 @@ import { LogoIcon } from "@/components/LogoIcon";
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, CheckCircle, ChevronRight, ChevronLeft, KeyRound, Eye, EyeOff } from "lucide-react";
+import { Building2, CheckCircle, ChevronRight, ChevronLeft, KeyRound, Eye, EyeOff, Hash, Plus, Upload } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
 import { api, type ApiResp } from "@/lib/api";
+import CsvImportModal, { type ImportRow, type ImportResult } from "@/components/CsvImportModal";
+import { FirmHsnLibraryQuickAddModal } from "@/components/lookups/FirmHsnLibraryQuickAddModal";
 
 interface SignupStash { firmName?: string; fullName?: string }
 function readSignupStash(): SignupStash {
@@ -103,7 +105,59 @@ const EMPTY_FIRM: FirmForm = {
 const STEPS = [
   { label: "Create Password", icon: KeyRound },
   { label: "Firm Profile", icon: Building2 },
+  { label: "HSN/SAC Library", icon: Hash },
 ];
+
+// ─── Step 3: Import Firm HSN/SAC Library ───────────────────────────────────
+// Caflow ships no HSN/SAC data of its own (see docs/HSN_SAC_REDESIGN.md).
+// The template below has Caflow-authored COLUMN HEADERS only — no code
+// content — so there is nothing here to redistribute or license: the CA
+// fills it in from whatever source they choose (their own downloaded GST
+// portal file, Tally export, or manual knowledge) and it becomes THEIR
+// library. Import reuses the exact same POST /api/firm-hsn-library/ endpoint
+// manual add uses (Sales-Invoice-import pattern) — one create path.
+const HSN_LIBRARY_IMPORT_COLUMNS = [
+  { key: "hsn_code", label: "HSN/SAC Code", required: true, hint: "2-8 digits, e.g. 998221" },
+  { key: "description", label: "Description", required: true, hint: "e.g. Financial auditing services" },
+  { key: "hsn_type", label: "Type", required: true, hint: "goods or services" },
+  { key: "gst_rate_pct", label: "GST Rate %", required: false, hint: "e.g. 18 (leave blank if it varies)" },
+  { key: "uqc", label: "Unit", required: false, hint: "e.g. NOS, OTH" },
+];
+
+function validateHsnLibraryImportRow(row: ImportRow): string[] {
+  const errors: string[] = [];
+  if (row.hsn_code && !/^\d{2,8}$/.test(row.hsn_code.trim())) errors.push("Code must be 2-8 digits");
+  const type = (row.hsn_type || "").trim().toLowerCase();
+  if (type && type !== "goods" && type !== "services") errors.push('Type must be "goods" or "services"');
+  if (row.gst_rate_pct) {
+    const n = parseFloat(row.gst_rate_pct);
+    if (!Number.isFinite(n) || n < 0 || n > 100) errors.push("GST Rate % must be between 0 and 100");
+  }
+  return errors;
+}
+
+async function importHsnLibraryRows(rows: ImportRow[]): Promise<ImportResult> {
+  let imported = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+  for (const row of rows) {
+    try {
+      const res = (await api.firmHsnLibrary.add({
+        hsn_code: row.hsn_code.trim(),
+        description: row.description.trim(),
+        hsn_type: (row.hsn_type || "services").trim().toLowerCase(),
+        gst_rate_pct: row.gst_rate_pct ? parseFloat(row.gst_rate_pct) : null,
+        uqc: row.uqc?.trim() || undefined,
+        source: "import",
+      })) as ApiResp<{ duplicate?: boolean }>;
+      if (!res.success) { errors.push(`${row.hsn_code}: ${res.error ?? "import failed"}`); continue; }
+      if (res.data?.duplicate) skipped++; else imported++;
+    } catch (e) {
+      errors.push(`${row.hsn_code}: ${e instanceof Error ? e.message : "import failed"}`);
+    }
+  }
+  return { imported, skipped, errors };
+}
 
 // ─── Reusable field component ──────────────────────────────────────────────
 // MUST live at module scope (not inside the page component): a component defined
@@ -219,6 +273,11 @@ export default function OnboardingPage() {
   // surfaced instead of being silently swallowed.
   const [provisionNote, setProvisionNote] = useState<string | null>(null);
 
+  // Step 3 — Import Firm HSN/SAC Library
+  const [hsnImportOpen, setHsnImportOpen] = useState(false);
+  const [hsnQuickAddOpen, setHsnQuickAddOpen] = useState(false);
+  const [hsnAddedCount, setHsnAddedCount] = useState(0);
+
   // Step 1 — password
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
@@ -281,8 +340,15 @@ export default function OnboardingPage() {
   }, [loadFirmId]);
 
   // ─── Redirect away if onboarding not needed ────────────────────────────
+  // Only applies to a FRESH page load sitting at Step 1 (e.g. an already-
+  // onboarded user who navigated back to /onboarding by URL). Once the user
+  // has progressed past Step 1 in this session, `firmId` legitimately
+  // changes as a side effect of THEIR OWN step-2 submit (a new firm is
+  // created with a name already set) — without the `step === 1` guard this
+  // effect would fire on that firmId change and bounce them to "/" via
+  // router.replace before they ever see Step 3 (Import Firm HSN/SAC Library).
   useEffect(() => {
-    if (!user || !firmId) return;
+    if (!user || !firmId || step !== 1) return;
     async function checkAlreadyOnboarded() {
       const { data: firmData } = await supabase
         .from("firms")
@@ -467,7 +533,7 @@ export default function OnboardingPage() {
           state: firmForm.state || undefined,
         });
         if (!id) { setError("Could not create your firm. Please check the firm name and try again."); return; }
-        await finish();
+        setStep(3);
         return;
       }
       // Firm exists — update its profile fields (permitted by RLS for the firm owner).
@@ -502,7 +568,7 @@ export default function OnboardingPage() {
           setProvisionNote("Your practice books will be set up later — you can trigger it from the Practice section.");
         }
       }
-      await finish();
+      setStep(3);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save firm profile");
     } finally {
@@ -748,14 +814,105 @@ export default function OnboardingPage() {
                 disabled={saving}
                 className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
-                {saving ? "Setting up your workspace…" : "Complete Setup"}
+                {saving ? "Setting up your workspace…" : "Continue"}
                 {!saving && <ChevronRight size={16} />}
               </button>
             </div>
           </div>
         )}
 
+        {/* ── Step 3: Import Firm HSN/SAC Library ─────────────────────────── */}
+        {step === 3 && (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Hash size={18} className="text-violet-600" />
+              <h2 className="text-base font-semibold text-[#0F172A]">Import your HSN/SAC library</h2>
+            </div>
+            <p className="text-sm text-[#64748B] mb-5">
+              Caflow does not ship or suggest HSN/SAC classifications — you own and curate the codes your
+              firm bills against. Add a few now, import a list, or skip and add codes as you invoice.
+            </p>
+
+            {hsnAddedCount > 0 && (
+              <div className="mb-4 flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2 text-sm text-emerald-700">
+                <CheckCircle size={15} /> {hsnAddedCount} code{hsnAddedCount === 1 ? "" : "s"} in your library so far.
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setHsnQuickAddOpen(true)}
+                className="flex items-start gap-3 rounded-xl border border-[#E2E8F0] p-4 text-left hover:border-violet-300 hover:bg-violet-50/30 transition-colors"
+              >
+                <Plus size={18} className="text-violet-600 shrink-0 mt-0.5" />
+                <span>
+                  <span className="block text-sm font-medium text-[#0F172A]">Add codes one at a time</span>
+                  <span className="block text-xs text-[#94A3B8] mt-0.5">Quick for a handful of codes you already know.</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setHsnImportOpen(true)}
+                className="flex items-start gap-3 rounded-xl border border-[#E2E8F0] p-4 text-left hover:border-violet-300 hover:bg-violet-50/30 transition-colors"
+              >
+                <Upload size={18} className="text-violet-600 shrink-0 mt-0.5" />
+                <span>
+                  <span className="block text-sm font-medium text-[#0F172A]">Import a list</span>
+                  <span className="block text-xs text-[#94A3B8] mt-0.5">Download a blank template, fill it from your own records, upload it back.</span>
+                </span>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between mt-8 pt-5 border-t border-gray-50">
+              <button
+                onClick={() => setStep(2)}
+                className="flex items-center gap-1 text-sm text-[#64748B] hover:text-[#334155] transition-colors"
+              >
+                <ChevronLeft size={16} /> Back
+              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={finish}
+                  className="text-sm text-[#64748B] hover:text-[#334155] transition-colors"
+                >
+                  Skip for now
+                </button>
+                <button
+                  onClick={finish}
+                  className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  {hsnAddedCount > 0 ? "Finish setup" : "Continue"}
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
+
+      {hsnQuickAddOpen && (
+        <FirmHsnLibraryQuickAddModal
+          onClose={() => setHsnQuickAddOpen(false)}
+          onAdded={() => { setHsnQuickAddOpen(false); setHsnAddedCount((n) => n + 1); }}
+        />
+      )}
+
+      {hsnImportOpen && (
+        <CsvImportModal
+          title="Import your HSN/SAC library"
+          columns={HSN_LIBRARY_IMPORT_COLUMNS}
+          templateFilename="hsn-sac-library-template.csv"
+          validateRow={validateHsnLibraryImportRow}
+          onImport={async (rows) => {
+            const res = await importHsnLibraryRows(rows);
+            setHsnAddedCount((n) => n + res.imported);
+            return res;
+          }}
+          onClose={() => setHsnImportOpen(false)}
+        />
+      )}
     </div>
   );
 }

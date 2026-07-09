@@ -26,17 +26,18 @@ export interface HsnSuggestionRow {
   gst_rate_bps?: number | null;
   uqc?: string | null;
   hsn_type?: string | null;
-  source?: "history" | "master" | null;
+  source?: "history" | "library" | null;
   reason?: string | null;
 }
 
 /** Where a suggestion came from — rendered as the card's source badge.
- * "Recent" and "HSN Master" both come from GET /api/hsn/search (the server
- * already merges firm history with the canonical master); "Catalogue" always
- * ranks first regardless of source, per the merge order below. Recent items
- * are never a separate FILTER — they're the same master search, just with the
+ * "Recent" and "Your Library" both come from GET /api/hsn/search (the server
+ * already merges firm history with the firm's own HSN/SAC library — never a
+ * Caflow-shipped master, per the HSN/SAC redesign); "Catalogue" always ranks
+ * first regardless of source, per the merge order below. Recent items are
+ * never a separate FILTER — they're the same library search, just with the
  * firm's own history rows surfaced first (see routers/hsn.py). */
-export type SourceBadge = "Catalogue" | "Recent" | "HSN Master";
+export type SourceBadge = "Catalogue" | "Recent" | "Your Library";
 
 /** Whether the code is a service (SAC) or goods (HSN) code — shown inline
  * next to the code itself, independent of the source badge above. */
@@ -100,7 +101,7 @@ function fromCatalogue(item: ServiceCatalogueItem): LineItemSuggestion {
 function fromHsn(row: HsnSuggestionRow): LineItemSuggestion {
   return {
     id: `hsn:${row.hsn_code}`,
-    source: row.source === "history" ? "Recent" : "HSN Master",
+    source: row.source === "history" ? "Recent" : "Your Library",
     codeType: hsnCodeType(row),
     description: (row.description ?? "").trim() || row.hsn_code,
     hsn_sac: row.hsn_code,
