@@ -33,16 +33,18 @@ const BADGE_CLASS: Record<"SAC" | "HSN", string> = {
  * HSN/SAC lookup — debounced server search over the firm's OWN HSN/SAC
  * library merged with its own history (GET /api/hsn/search; Caflow ships no
  * shared master here — HSN/SAC redesign). Search by code OR description; on
- * select the caller may auto-fill GST rate / description / unit. This is the
- * SECONDARY, manual-override path: the primary way a line gets its code is
- * the Sales Invoice's description-driven LineItemAutocomplete (which
- * searches this same endpoint alongside the Product & Service master and
- * shows results inline as the CA types). Once a code is set, the trigger
- * renders as a compact "SAC 998222 · Change" chip instead of a full search
- * field — click it to search/replace the code directly, e.g. when the CA
- * knows the exact code and wants to skip the description-driven suggestions.
- * Other callers (Purchases, Credit Notes) still drive this directly off a
- * plain description field via the optional `description` prop below.
+ * select the caller may auto-fill GST rate / description / unit.
+ *
+ * On the Sales Invoice this is an INVOICE-LEVEL OVERRIDE ONLY (Final Invoice
+ * Workflow Alignment): the primary way a line gets its HSN/SAC is picking a
+ * Product/Service via ServiceCataloguePicker, which auto-fills it. This
+ * component is the "Change" action for adjusting that value on a specific
+ * line afterward — it never writes back to the Product/Service master, so
+ * an invoice-level override can never alter what a future pick auto-fills.
+ * Once a code is set, the trigger renders as a compact "SAC 998222 ·
+ * Change" chip instead of a full search field. Other callers (Purchases,
+ * Credit Notes) still drive this directly off a plain description field via
+ * the optional `description` prop below.
  *
  * The controlled `value` is the HSN code string itself. There is no
  * free-text escape hatch: master data is never created directly inside a
@@ -106,10 +108,9 @@ export function HsnLookup(props: {
 
   // Recently-used codes for this client, shown before the CA types anything
   // (reuses the same endpoint with an empty query → firm history). Cached and
-  // shared across every row that wants it (LineItemAutocomplete's own recent
-  // list included) so an N-line invoice fires this fetch once, not N times.
-  // Best-effort: an empty/failed fetch simply shows the normal "type to
-  // search" hint.
+  // shared across every HsnLookup "Change" chip on the page so an N-line
+  // invoice fires this fetch once, not N times. Best-effort: an empty/failed
+  // fetch simply shows the normal "type to search" hint.
   const [recent, setRecent] = React.useState<HsnResult[]>([]);
   React.useEffect(() => {
     if (!clientId) { setRecent([]); return; }

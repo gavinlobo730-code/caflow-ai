@@ -90,14 +90,16 @@ credit_notes, debit_notes     firm_hsn_library or hsn_master. Editing or
 - **`GET /api/hsn/search`** (`routers/hsn.py`) — the shared search endpoint
   behind every HSN/SAC picker. Merges the firm's own `hsn_sac_preferences`
   history with `firm_hsn_library` (never `hsn_master`). One endpoint, one
-  ranking function (`_rank_library_rows`), reused by `LineItemAutocomplete`,
-  `HsnLookup`, and the Product/Service form.
+  ranking function (`_rank_library_rows`), reused by `HsnLookup` and the
+  Product/Service form.
 - **`HsnLookup.tsx`** — the shared combobox component used on Sales Invoice
-  lines, Purchase Bill lines, Debit Note lines, and the Product/Service
-  form's default-HSN field (now at `/clients/[id]/products-services/`, a
-  client-workspace page — see "Products & Services are client-owned"
-  below). Fixing it once (rather than each call site) is what makes "avoid
-  duplicate HSN logic" hold across every module.
+  lines (as an invoice-level "Change" override only — see "The Sales
+  Invoice is Product/Service-driven" below), Purchase Bill lines, Debit Note
+  lines, and the Product/Service form's default-HSN field (now at
+  `/clients/[id]/products-services/`, a client-workspace page — see
+  "Products & Services are client-owned" below). Fixing it once (rather than
+  each call site) is what makes "avoid duplicate HSN logic" hold across
+  every module.
 - **No free-text escape hatch.** `HsnLookup` used to let a CA type an
   arbitrary code directly onto a line ("Use…"). That has been replaced with
   `FirmHsnLibraryQuickAddModal`: the "+" row now adds the code to the firm's
@@ -154,15 +156,51 @@ and Purchases in `ClientNavContext.tsx`.
 (MVP Phase 1, pre-launch), so the migration clears existing rows rather than
 backfilling a client onto them — see migration 182's own comment.
 
-**Future enhancement (not implemented):** invoices should offer a "New
-Product/Service" action that opens the Product/Service creation dialog
-inline, without leaving the invoice — the same pattern
-`FirmHsnLibraryQuickAddModal` already uses for HSN/SAC codes ("open/manage
-the library instead of entering arbitrary values"). This keeps master-data
-creation in the correct place (the client's own Products & Services list)
-while giving a smooth workflow when the CA is drafting a line for an item
-that doesn't exist yet. Noted here as a backlog item; not built in this
-pass.
+**Implemented (was a future-enhancement note, now built):** the invoice
+offers an inline "+ Create Product/Service" action when a search finds no
+match, opening the Product/Service creation dialog without leaving the
+invoice — the same pattern `FirmHsnLibraryQuickAddModal` already uses for
+HSN/SAC codes ("open/manage the library instead of entering arbitrary
+values"). See "The Sales Invoice is Product/Service-driven" below.
+
+## The Sales Invoice is Product/Service-driven (Final Invoice Workflow Alignment)
+
+Manual testing surfaced a real gap this document's prior revision missed:
+Products & Services became client-owned, but the invoice line-item entry
+point was still `LineItemAutocomplete` — a type-ahead merging the catalogue
+with raw description *history* ("Recent & Frequently Used"), defaulting to
+history results on every blank line. That is not "select a Product/Service"
+— it's a general-purpose search that happens to include the catalogue among
+several sources. `LineItemAutocomplete` has been **removed**.
+
+The approved model:
+
+- **`ServiceCataloguePicker`** (in the Line Items section header, labelled
+  "+ Add Product/Service") is the *only* way a line is created. It searches
+  strictly the client's own Product/Service catalogue — no history mixed
+  in — and picking a result auto-fills description, HSN/SAC, GST, unit and
+  rate onto a line.
+- **No match → "+ Create Product/Service"** opens `ProductServiceFormModal`
+  (the same dialog the `/clients/[id]/products-services/` management page
+  uses — one creation workflow, not a separate "custom line" path, per
+  "Everything billed should exist as a Product or Service"). On save, the
+  new item is handed straight to the picker's `onPick`, exactly like a
+  normal search result.
+- **The Description cell is a plain, editable `<input>`** — not a search
+  box, not a history browser, not an autocomplete. It starts empty/blank
+  only in the sense that a picked line's description can be freely edited
+  afterward.
+- **`HsnLookup`'s "Change" chip is unchanged** — still the invoice-level
+  override for the HSN/SAC on a specific line. It never writes back to
+  `service_catalogue`, so an override on one invoice can never alter what a
+  future Product/Service pick auto-fills.
+- **There is no longer a standalone "+ Add line" button or an Enter-adds-a-
+  blank-row shortcut.** Both silently created a line with no Product/Service
+  origin, which is exactly the "custom line" workflow the alignment
+  document forbids. Enter now only moves focus to the next existing row.
+
+Purchase Bills, Credit Notes and Debit Notes never used `LineItemAutocomplete`
+(only the Sales Invoice did) and are unaffected by this change.
 
 ## What was deliberately deferred
 
