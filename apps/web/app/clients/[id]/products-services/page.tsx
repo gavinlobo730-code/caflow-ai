@@ -9,27 +9,22 @@
  * valuation, no quantity. HSN/SAC is picked from the firm's shared
  * firm_hsn_library (the library stays firm-wide even though this table is
  * client-owned).
+ *
+ * The create/edit form itself lives in ProductServiceFormModal (shared with
+ * the Sales Invoice's inline "+ Create Product/Service" flow — Final
+ * Invoice Workflow Alignment: ONE creation workflow, not one per caller).
  */
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Pencil, Archive, RotateCcw, Search, Loader2, BookMarked } from "lucide-react";
+import { Plus, Pencil, Archive, RotateCcw, Search, BookMarked } from "lucide-react";
 import { RoleGuard } from "@/components/RoleGuard";
-import { Modal } from "@/components/ui/modal";
 import { api, type ApiResp } from "@/lib/api/index";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
-import { HsnLookup } from "@/components/lookups/HsnLookup";
-import { GST_RATES } from "@/lib/invoices/shared";
+import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFormModal";
 import {
-  validateServiceForm, serviceFormToPayload, serviceToForm,
-  formatServiceRate, formatServicePrice,
-  type ServiceCatalogueItem, type ServiceFormInput,
+  formatServiceRate, formatServicePrice, type ServiceCatalogueItem,
 } from "@/lib/catalogue/service";
 
 type Filter = "active" | "archived";
-
-const EMPTY_FORM: ServiceFormInput = {
-  name: "", description: "", kind: "service", hsn_sac: "", gstRate: 18,
-  rate: "", purchasePrice: "", unit: "", category: "", notes: "",
-};
 
 export default function ProductsServicesPage() {
   const { clientId } = useClientNav();
@@ -208,113 +203,10 @@ export default function ProductsServicesPage() {
           clientId={clientId}
           existing={editing === "new" ? null : editing}
           onClose={() => setEditing(null)}
-          onSaved={(msg) => { setEditing(null); showToast(msg, "success"); load(); }}
+          onSaved={(item) => { setEditing(null); showToast(`${item.name} ${editing === "new" ? "created" : "updated"}`, "success"); load(); }}
           onError={(msg) => showToast(msg, "error")}
         />
       )}
     </RoleGuard>
-  );
-}
-
-function ProductServiceFormModal({ clientId, existing, onClose, onSaved, onError }: {
-  clientId: string;
-  existing: ServiceCatalogueItem | null;
-  onClose: () => void;
-  onSaved: (msg: string) => void;
-  onError: (msg: string) => void;
-}) {
-  const [form, setForm] = useState<ServiceFormInput>(existing ? serviceToForm(existing) : EMPTY_FORM);
-  const [attempted, setAttempted] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const v = validateServiceForm(form);
-
-  function set<K extends keyof ServiceFormInput>(k: K, val: ServiceFormInput[K]) {
-    setForm((p) => ({ ...p, [k]: val }));
-  }
-
-  async function submit() {
-    setAttempted(true);
-    if (!v.ok) return;
-    setSaving(true);
-    try {
-      const payload = serviceFormToPayload(form, clientId);
-      const res = existing
-        ? ((await api.serviceCatalogue.update(existing.id, payload)) as ApiResp<ServiceCatalogueItem>)
-        : ((await api.serviceCatalogue.create(payload)) as ApiResp<ServiceCatalogueItem>);
-      if (!res.success) throw new Error(res.error ?? "Save failed");
-      if (res.data?.duplicate) { onError(`“${form.name.trim()}” already exists for this client.`); return; }
-      onSaved(existing ? `${form.name.trim()} updated` : `${form.name.trim()} created`);
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Modal title={existing ? "Edit Product/Service" : "New Product/Service"} onClose={onClose} maxWidthClass="max-w-md">
-        <Field label="Name" error={attempted ? v.errors.name : undefined}>
-          <input autoFocus value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Statutory Audit, Steel Rod" className={inputCls} />
-        </Field>
-        <Field label="Description (optional)">
-          <input value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Line description (defaults to the name)" className={inputCls} />
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Kind">
-            <select value={form.kind} onChange={(e) => set("kind", e.target.value as "good" | "service")} className={inputCls}>
-              <option value="service">Service</option>
-              <option value="good">Good</option>
-            </select>
-          </Field>
-          <Field label="Category (optional)">
-            <input value={form.category} onChange={(e) => set("category", e.target.value)} placeholder="e.g. Compliance" className={inputCls} />
-          </Field>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="HSN/SAC (optional)">
-            <HsnLookup value={form.hsn_sac} onChange={(val) => set("hsn_sac", val)}
-              onPick={(p) => { if (p.gst_rate_bps != null) set("gstRate", Math.round(p.gst_rate_bps / 100)); }}
-              type={form.kind === "good" ? "goods" : "services"} size="sm" ariaLabel="HSN or SAC code" />
-          </Field>
-          <Field label="Default GST rate">
-            <select value={form.gstRate} onChange={(e) => set("gstRate", parseFloat(e.target.value))} className={inputCls}>
-              {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
-            </select>
-          </Field>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Selling price (₹, optional)" error={attempted ? v.errors.rate : undefined}>
-            <input type="number" min="0" step="0.01" value={form.rate} onChange={(e) => set("rate", e.target.value)} placeholder="0.00" className={inputCls} />
-          </Field>
-          <Field label="Purchase price (₹, optional)" error={attempted ? v.errors.purchasePrice : undefined}>
-            <input type="number" min="0" step="0.01" value={form.purchasePrice} onChange={(e) => set("purchasePrice", e.target.value)} placeholder="0.00" className={inputCls} />
-          </Field>
-        </div>
-        <Field label="Unit (optional)">
-          <input value={form.unit} onChange={(e) => set("unit", e.target.value)} placeholder="e.g. OTH, HRS, NOS" className={inputCls} />
-        </Field>
-        <Field label="Notes (optional)">
-          <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Internal note" className={inputCls} />
-        </Field>
-
-        <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50">Cancel</button>
-          <button onClick={submit} disabled={saving} className="text-sm px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 inline-flex items-center gap-1.5">
-            {saving && <Loader2 size={14} className="animate-spin" />} {existing ? "Save changes" : "Create"}
-          </button>
-        </div>
-    </Modal>
-  );
-}
-
-const inputCls = "w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500";
-
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
-  return (
-    <label className="block space-y-1">
-      <span className="block text-xs font-medium text-[#475569]">{label}</span>
-      {children}
-      {error && <span className="block text-[11px] text-red-600">{error}</span>}
-    </label>
   );
 }
