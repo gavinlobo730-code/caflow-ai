@@ -38,16 +38,6 @@ MOCK_SALES_INVOICE_LINES: list[dict] = []
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _current_fy() -> str:
-    """Return financial year string like '2526' for FY 2025-26 (used in invoice numbering).
-    Indian FY runs April 1 – March 31.
-    """
-    now = datetime.now(timezone.utc)
-    if now.month >= 4:
-        return f"{str(now.year)[2:]}{str(now.year + 1)[2:]}"
-    return f"{str(now.year - 1)[2:]}{str(now.year)[2:]}"
-
-
 def _current_fy_long() -> str:
     """Return full financial year string like '2025-26' for display/timeline use.
     Indian FY runs April 1 – March 31.
@@ -61,20 +51,32 @@ def _current_fy_long() -> str:
     return f"{start}-{end_short}"
 
 
-def _next_invoice_seq(db, firm_id: str, client_id: str, fy: str) -> int:
-    """Query the count of sales invoices for this firm+client in the current FY."""
-    try:
-        resp = (
-            db.table("client_sales_invoices")
-            .select("id", count="exact")
-            .eq("firm_id", firm_id)
-            .eq("client_id", client_id)
-            .like("invoice_no", f"SINV-{fy}-%")
-            .execute()
-        )
-        return (resp.count or 0) + 1
-    except Exception:
-        return 1
+def _assert_invoice_no_available(
+    db, firm_id: str, client_id: str, invoice_no: str, exclude_id: Optional[str] = None,
+) -> None:
+    """Reject a duplicate invoice number for this client. Numbering is fully
+    manual (the CA types it — no Caflow-generated scheme), so a collision is a
+    genuine user mistake, not a numbering race: fail fast with a clear message
+    rather than the graceful-retry-with-a-different-number pattern
+    services/numbering.py uses for auto-generated document numbers.
+    CGST Rule 46(b) requires uniqueness only within a financial year; Caflow
+    enforces the stricter "unique for this client, full stop" (migration 151's
+    UNIQUE(firm_id, client_id, invoice_no), unaffected by this change).
+    """
+    if _USE_MOCK:
+        for inv in MOCK_SALES_INVOICES:
+            if (inv.get("firm_id") == firm_id and inv.get("client_id") == client_id
+                    and inv.get("invoice_no") == invoice_no and inv.get("id") != exclude_id):
+                raise HTTPException(status_code=409, detail=f"Invoice number '{invoice_no}' already exists for this client.")
+        return
+    q = (
+        db.table("client_sales_invoices").select("id")
+        .eq("firm_id", firm_id).eq("client_id", client_id).eq("invoice_no", invoice_no)
+    )
+    if exclude_id:
+        q = q.neq("id", exclude_id)
+    if q.limit(1).execute().data:
+        raise HTTPException(status_code=409, detail=f"Invoice number '{invoice_no}' already exists for this client.")
 
 
 def _compute_line_gst(
@@ -476,8 +478,9 @@ def create_invoice(
         if not lines_data:
             raise HTTPException(status_code=422, detail="At least one line item is required")
 
-        firm_id   = current_user.get("firm_id")
-        client_id = data["client_id"]
+        firm_id    = current_user.get("firm_id")
+        client_id  = data["client_id"]
+        invoice_no = data["invoice_no"]  # shape already validated by SalesInvoiceIn
         supply_state_code = data.get("supply_state_code", "")
 
         customer: dict = {}
@@ -515,6 +518,8 @@ def create_invoice(
             )
             client_rec = client_resp.data[0] if client_resp.data else {}
             client_state_code = _get_state_code_from_gstin(client_rec.get("gstin")) or ""
+
+        _assert_invoice_no_available(None if _USE_MOCK else db, firm_id, client_id, invoice_no)  # type: ignore[possibly-undefined]
 
         # Effective place of supply
         effective_supply_state = supply_state_code or customer.get("state_code") or ""  # type: ignore[possibly-undefined]
@@ -639,9 +644,6 @@ def create_invoice(
         period_validation_service.validate_posting_date(firm_id or "", data["invoice_date"])
 
         if _USE_MOCK:
-            fy = _current_fy()
-            seq = len([i for i in MOCK_SALES_INVOICES if i["client_id"] == client_id]) + 1
-            invoice_no = f"SINV-{fy}-{seq:04d}"
             invoice_id = str(uuid.uuid4())
             invoice = {
                 "id":                    invoice_id,
@@ -677,12 +679,11 @@ def create_invoice(
                 MOCK_SALES_INVOICE_LINES.append(ln)
             return api_response(True, invoice)
 
-        # Invoice number is generated with a graceful retry on numbering races (Phase B).
-        fy = _current_fy()
         invoice_payload = {
             "firm_id":               firm_id,
             "client_id":             client_id,
             "customer_id":           data["customer_id"],
+            "invoice_no":            invoice_no,
             "invoice_date":          data["invoice_date"],
             "due_date":              eff_due_date,
             "credit_days":           eff_credit_days,
@@ -704,11 +705,22 @@ def create_invoice(
             **_ccy_cols,
         }
 
-        from services.numbering import insert_with_number
-        invoice = insert_with_number(
-            db, "client_sales_invoices", invoice_payload, "invoice_no",
-            lambda s: f"SINV-{fy}-{s:04d}",
-            lambda: _next_invoice_seq(db, firm_id, client_id, fy))
+        # invoice_no is manual (CA-typed) and already duplicate-checked above;
+        # the UNIQUE(firm_id, client_id, invoice_no) constraint (migration 151)
+        # is still the final backstop for a genuine concurrent race — translate
+        # that into the same friendly message rather than a raw 500. Unlike
+        # auto-generated document numbers (services.numbering.insert_with_number),
+        # retrying with a DIFFERENT number would silently override what the CA typed.
+        from services.numbering import is_unique_violation
+        try:
+            ins_resp = db.table("client_sales_invoices").insert(invoice_payload).execute()
+            invoice = (ins_resp.data or [invoice_payload])[0]
+        except HTTPException:
+            raise
+        except Exception as e:
+            if is_unique_violation(e):
+                raise HTTPException(status_code=409, detail=f"Invoice number '{invoice_no}' already exists for this client.")
+            raise
         invoice_id = invoice.get("id", str(uuid.uuid4()))
 
         # Insert lines
@@ -831,6 +843,11 @@ def update_invoice(
                 if inv["id"] == invoice_id:
                     if inv.get("status") != "draft":
                         raise HTTPException(status_code=422, detail="Only draft invoices can be updated")
+                    if "invoice_no" in data:
+                        _assert_invoice_no_available(
+                            None, current_user.get("firm_id"), inv.get("client_id"),
+                            data["invoice_no"], exclude_id=invoice_id,
+                        )
                     _apply_credit_days_due_date(data, data.get("invoice_date") or inv.get("invoice_date"))
                     MOCK_SALES_INVOICES[i] = {**inv, **data, "updated_at": datetime.now(timezone.utc).isoformat()}
                     return api_response(True, MOCK_SALES_INVOICES[i])
@@ -838,16 +855,20 @@ def update_invoice(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
+        firm_id = current_user.get("firm_id") or ""
 
         # Check current status
-        resp = db.table("client_sales_invoices").select("status, invoice_date").eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
+        resp = db.table("client_sales_invoices").select("status, invoice_date, client_id").eq("id", invoice_id).eq("firm_id", firm_id).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
         if resp.data[0]["status"] != "draft":
             raise HTTPException(status_code=422, detail="Only draft invoices can be updated")
+        if "invoice_no" in data:
+            _assert_invoice_no_available(
+                db, firm_id, resp.data[0]["client_id"], data["invoice_no"], exclude_id=invoice_id,
+            )
         # FY-lock: block editing an invoice dated in a locked year, and block moving
         # it INTO a locked year. (Create already validates; edits were the gap.)
-        firm_id = current_user.get("firm_id") or ""
         existing_date = resp.data[0].get("invoice_date")
         if existing_date:
             period_validation_service.validate_posting_date(firm_id, existing_date)

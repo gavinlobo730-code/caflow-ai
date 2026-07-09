@@ -42,7 +42,7 @@ def _setup(monkeypatch):
 
 def _issued_invoice(si):
     inv = si.create_invoice(SalesInvoiceIn(
-        client_id="CLI", customer_id="CUST", invoice_date="2026-04-10",
+        client_id="CLI", customer_id="CUST", invoice_date="2026-04-10", invoice_no="PAY-001",
         lines=[InvoiceLineIn(description="Svc", hsn_sac="9982", quantity=1,
                              rate_paise=1_000_000, gst_rate_percent=18.0)],
     ), CALLER)["data"]

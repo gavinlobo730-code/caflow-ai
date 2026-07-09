@@ -43,10 +43,10 @@ def _setup(monkeypatch):
     return si, rc, rs, db
 
 
-def _invoice_in(qty=1, rate_paise=1_000_000, gst=18.0):
+def _invoice_in(qty=1, rate_paise=1_000_000, gst=18.0, invoice_no="SC-001"):
     return SalesInvoiceIn(
         client_id="CLI", customer_id="CUST", invoice_date="2026-04-10",
-        due_date="2026-05-10",
+        due_date="2026-05-10", invoice_no=invoice_no,
         lines=[InvoiceLineIn(description="Consulting", hsn_sac="9982",
                              quantity=qty, rate_paise=rate_paise, gst_rate_percent=gst)],
     )

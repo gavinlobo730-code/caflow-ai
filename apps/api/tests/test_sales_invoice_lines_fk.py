@@ -160,6 +160,7 @@ class TestCreateInvoice:
         return SalesInvoiceIn(
             client_id="C1",
             customer_id="CUST1",
+            invoice_no="TEST-0001",
             invoice_date="2026-06-19",
             lines=[InvoiceLineIn(
                 description="Consulting services",
@@ -263,7 +264,8 @@ class TestCreateInvoice:
         holder["controller"] = _interstate_create_controller
 
         payload = SalesInvoiceIn(
-            client_id="C1", customer_id="CUST1", invoice_date="2026-06-19",
+            client_id="C1", customer_id="CUST1", invoice_no="TEST-0002",
+            invoice_date="2026-06-19",
             lines=[InvoiceLineIn(
                 description="Gold sale", hsn_sac="7108", rate_paise=100000,
                 quantity=2, unit="GMS", gst_rate_percent=3.0,
@@ -285,7 +287,8 @@ class TestCreateInvoice:
         holder["controller"] = _interstate_create_controller
 
         payload = SalesInvoiceIn(
-            client_id="C1", customer_id="CUST1", invoice_date="2026-06-19",
+            client_id="C1", customer_id="CUST1", invoice_no="TEST-0003",
+            invoice_date="2026-06-19",
             reference_no="PO-8891",
             lines=[InvoiceLineIn(description="Consulting", hsn_sac="998311", rate_paise=5100, quantity=1, gst_rate_percent=18.0)],
         )

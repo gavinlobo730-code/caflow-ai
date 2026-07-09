@@ -43,9 +43,10 @@ def _setup(monkeypatch):
     return cu, si, rc, pb, pp, ve, db
 
 
-def _usd_invoice(si, cust_id, rate, *, date="2025-06-01", cents=100000):
+def _usd_invoice(si, cust_id, rate, *, date="2025-06-01", cents=100000, invoice_no="USD-001"):
     inv = si.create_invoice(SalesInvoiceIn(
         client_id="CLI", customer_id=cust_id, invoice_date=date,
+        invoice_no=invoice_no,
         currency="USD", exchange_rate=str(rate),
         lines=[InvoiceLineIn(description="Export", hsn_sac="9982", quantity=1,
                              rate_paise=cents, gst_rate_percent=0.0)]), CALLER)["data"]

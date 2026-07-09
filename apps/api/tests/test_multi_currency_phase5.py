@@ -503,12 +503,13 @@ def _caller(firm):
     return {"firm_id": firm, "id": "u1", "auth_user_id": "u1", "email": "ca@f.test", "role": "Partner"}
 
 
-def _invoice(si, caller, cust_id, *, date="2025-06-01", currency=None, rate=None, cents=100000):
+def _invoice(si, caller, cust_id, *, date="2025-06-01", currency=None, rate=None, cents=100000,
+             invoice_no="INV-001"):
     kw = {}
     if currency:
         kw = {"currency": currency, "exchange_rate": str(rate)}
     inv = si.create_invoice(SalesInvoiceIn(
-        client_id="CLI", customer_id=cust_id, invoice_date=date,
+        client_id="CLI", customer_id=cust_id, invoice_date=date, invoice_no=invoice_no,
         lines=[InvoiceLineIn(description="x", hsn_sac="9982", quantity=1, rate_paise=cents, gst_rate_percent=0.0)],
         **kw), caller)["data"]
     si.issue_invoice(inv["id"], caller)
@@ -524,8 +525,8 @@ def test_mixed_inr_and_foreign_client_reconciles(monkeypatch):
     caller = _caller(FIRM)
     inr_cust = cu.create_customer(CustomerIn(client_id="CLI", name="INR Buyer", state_code="27"), caller)["data"]
     usd_cust = cu.create_customer(CustomerIn(client_id="CLI", name="US Buyer", state_code="27"), caller)["data"]
-    _invoice(si, caller, inr_cust["id"], cents=100000)                       # ₹1,000 INR
-    _invoice(si, caller, usd_cust["id"], currency="USD", rate="83", cents=100000)   # $1,000 @83 = ₹83,000
+    _invoice(si, caller, inr_cust["id"], cents=100000, invoice_no="INV-INR-1")                       # ₹1,000 INR
+    _invoice(si, caller, usd_cust["id"], currency="USD", rate="83", cents=100000, invoice_no="INV-USD-1")   # $1,000 @83 = ₹83,000
 
     # GL balances entirely in base.
     tb = trial_balance(db, FIRM, "CLI")
@@ -553,8 +554,8 @@ def test_multiple_currencies_realized_fx(monkeypatch):
     caller = _caller(FIRM)
     usd_c = cu.create_customer(CustomerIn(client_id="CLI", name="US", state_code="27"), caller)["data"]
     eur_c = cu.create_customer(CustomerIn(client_id="CLI", name="EU", state_code="27"), caller)["data"]
-    usd_inv = _invoice(si, caller, usd_c["id"], currency="USD", rate="80", cents=100000)   # $1,000 @80
-    eur_inv = _invoice(si, caller, eur_c["id"], currency="EUR", rate="90", cents=100000)   # €1,000 @90
+    usd_inv = _invoice(si, caller, usd_c["id"], currency="USD", rate="80", cents=100000, invoice_no="INV-USD-1")   # $1,000 @80
+    eur_inv = _invoice(si, caller, eur_c["id"], currency="EUR", rate="90", cents=100000, invoice_no="INV-EUR-1")   # €1,000 @90
 
     # Settle in FOREIGN minor units (foreign receipts settle in the txn currency):
     # USD @83 (gain ₹3,000) and EUR @88 (loss ₹2,000).

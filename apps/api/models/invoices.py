@@ -4,9 +4,30 @@ CGST Act §31: Tax invoice mandatory fields.
 CGST §8: CGST+SGST (intra-state), IGST (inter-state).
 All monetary values in integer paise.
 """
+import re
 from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional, Any
 from decimal import Decimal
+
+# CGST Rule 46(b): a tax invoice's serial number must be a consecutive serial
+# number not exceeding sixteen characters, using only alphabets, numerals, and
+# the special characters '-' and '/'. Caflow leaves the numbering SCHEME
+# entirely to the CA (Decision: sales invoice numbers are fully manual, never
+# auto-generated) — this only enforces the structural shape the law requires.
+# Per-client uniqueness is checked separately in routers/sales_invoices.py,
+# which needs DB access this pure model layer doesn't have.
+_INVOICE_NO_RE = re.compile(r"^[A-Za-z0-9\-/]{1,16}$")
+
+
+def _validate_invoice_no_shape(v: str) -> str:
+    v = (v or "").strip()
+    if not v:
+        raise ValueError("Invoice number is required.")
+    if not _INVOICE_NO_RE.match(v):
+        raise ValueError(
+            "Invoice number must be 1-16 characters using only letters, digits, '-' or '/' (CGST Rule 46(b))."
+        )
+    return v
 
 
 class InvoiceLineIn(BaseModel):
@@ -36,6 +57,10 @@ class SalesInvoiceIn(BaseModel):
     """Create a new sales invoice. CGST Act §31."""
     client_id: str
     customer_id: str
+    # Fully manual (Decision: no Caflow-generated numbering scheme) — the CA
+    # types it, Caflow only enforces the CGST Rule 46(b) shape here and
+    # per-client uniqueness in the router.
+    invoice_no: str
     invoice_date: str  # YYYY-MM-DD
     due_date: Optional[str] = None
     # Optional override of the credit period (days). When neither due_date nor
@@ -57,6 +82,11 @@ class SalesInvoiceIn(BaseModel):
     currency: Optional[str] = None
     exchange_rate: Optional[Decimal] = None
 
+    @field_validator("invoice_no")
+    @classmethod
+    def _invoice_no_shape(cls, v: str) -> str:
+        return _validate_invoice_no_shape(v)
+
     @field_validator("lines")
     @classmethod
     def at_least_one_line(cls, v: list) -> list:
@@ -68,6 +98,10 @@ class SalesInvoiceIn(BaseModel):
 class SalesInvoiceUpdateIn(BaseModel):
     """Partial update of a draft sales invoice."""
     customer_id: Optional[str] = None
+    # Editable only while the invoice is a draft (enforced by the router,
+    # which already blocks any update once issued) — same manual, CA-owned
+    # numbering as SalesInvoiceIn.invoice_no.
+    invoice_no: Optional[str] = None
     invoice_date: Optional[str] = None
     due_date: Optional[str] = None
     credit_days: Optional[int] = None
@@ -76,6 +110,11 @@ class SalesInvoiceUpdateIn(BaseModel):
     reference_no: Optional[str] = None
     notes: Optional[str] = None
     is_inter_state: Optional[bool] = None
+
+    @field_validator("invoice_no")
+    @classmethod
+    def _invoice_no_shape(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None else _validate_invoice_no_shape(v)
 
 
 class PurchaseBillLineIn(BaseModel):

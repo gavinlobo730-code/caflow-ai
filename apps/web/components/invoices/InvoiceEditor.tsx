@@ -92,6 +92,11 @@ export function InvoiceEditor({
     : [{ ...EMPTY_LINE, _k: 0 }];
 
   const [customerId, setCustomerId] = useState(existing?.customer_id ?? "");
+  // Fully manual (Decision: no Caflow-generated numbering scheme) — the CA
+  // types it; validateInvoiceEditor checks the CGST Rule 46(b) shape and the
+  // server checks per-client uniqueness (the client can't see every other
+  // draft/issued number to check itself).
+  const [invoiceNo, setInvoiceNo] = useState(existing?.invoice_no ?? "");
   const [invoiceDate, setInvoiceDate] = useState(existing?.invoice_date ?? today);
   const [dueDate, setDueDate] = useState(existing?.due_date ?? "");
   const [referenceNo, setReferenceNo] = useState(existing?.reference_no ?? "");
@@ -153,6 +158,7 @@ export function InvoiceEditor({
   // ── Dirty detection (Batch 2 carry-forward: real "Unsaved changes" indicator) ──
   const initialSnapshot = useRef({
     customerId: existing?.customer_id ?? "",
+    invoiceNo: existing?.invoice_no ?? "",
     invoiceDate: existing?.invoice_date ?? today,
     dueDate: existing?.due_date ?? "",
     referenceNo: existing?.reference_no ?? "",
@@ -161,15 +167,15 @@ export function InvoiceEditor({
     notes: existing?.notes ?? "",
     lines: initialLines, currency, exchangeRate,
   });
-  const currentSnapshot = { customerId, invoiceDate, dueDate, referenceNo, creditDays, supplyStateCode, isInterstate, notes, lines, currency, exchangeRate };
+  const currentSnapshot = { customerId, invoiceNo, invoiceDate, dueDate, referenceNo, creditDays, supplyStateCode, isInterstate, notes, lines, currency, exchangeRate };
   const dirty = hasChanges(initialSnapshot.current, currentSnapshot);
   const { confirmLeave } = useUnsavedChanges(dirty && saving === null);
 
   // ── Live preview totals + validation ────────────────────────────────────────
   const totals = useMemo(() => previewTotals(lines, isInterstate, !isForeign), [lines, isInterstate, isForeign]);
   const validation = useMemo(
-    () => validateInvoiceEditor({ customerId, invoiceDate, lines, isForeign, exchangeRate }),
-    [customerId, invoiceDate, lines, isForeign, exchangeRate],
+    () => validateInvoiceEditor({ customerId, invoiceNo, invoiceDate, lines, isForeign, exchangeRate }),
+    [customerId, invoiceNo, invoiceDate, lines, isForeign, exchangeRate],
   );
   const estimatedBasePaise = isForeign && !Number.isNaN(rateNum) && rateNum > 0 && totals.grand_total_paise > 0
     ? estimateBaseMinor(totals.grand_total_paise, rateNum)
@@ -302,7 +308,7 @@ export function InvoiceEditor({
   async function save(action: SaveAction) {
     setAttempted(true);
     if (!validation.ok) {
-      setError(validation.errors.customer ?? validation.errors.invoiceDate ?? validation.errors.lines ?? validation.errors.exchangeRate ?? "Fix the highlighted fields.");
+      setError(validation.errors.customer ?? validation.errors.invoiceNo ?? validation.errors.invoiceDate ?? validation.errors.lines ?? validation.errors.exchangeRate ?? "Fix the highlighted fields.");
       return;
     }
     // Pre-check email for Save & Send so we never issue and then fail to deliver.
@@ -317,11 +323,12 @@ export function InvoiceEditor({
     try {
       const token = await getAuthToken();
       let invoiceId = existing?.id ?? "";
-      let invoiceNo = existing?.invoice_no ?? "";
+      const trimmedInvoiceNo = invoiceNo.trim();
 
       if (isEdit && existing) {
         const upd = await apiCall(`/api/sales-invoices/${existing.id}`, "PATCH", {
           customer_id: customerId,
+          invoice_no: trimmedInvoiceNo,
           invoice_date: invoiceDate,
           due_date: dueDate || undefined,
           reference_no: referenceNo.trim() || undefined,
@@ -336,6 +343,7 @@ export function InvoiceEditor({
         const created = await apiCall("/api/sales-invoices/", "POST", {
           client_id: clientId,
           customer_id: customerId,
+          invoice_no: trimmedInvoiceNo,
           invoice_date: invoiceDate,
           due_date: dueDate || undefined,
           reference_no: referenceNo.trim() || undefined,
@@ -350,7 +358,6 @@ export function InvoiceEditor({
         if (!created.success) throw new Error(created.error ?? "Failed to create invoice");
         const inv = created.data as { id: string; invoice_no: string };
         invoiceId = inv?.id ?? "";
-        invoiceNo = inv?.invoice_no ?? "";
       }
 
       if (action === "issue" || action === "send") {
@@ -364,12 +371,12 @@ export function InvoiceEditor({
         if (!snd.success) {
           // The invoice IS issued — only delivery failed. Return to the list with a
           // warning rather than stranding the user on an already-issued invoice.
-          onDone(`${invoiceNo || "Invoice"} issued — email failed to send; use Send from the invoice.`);
+          onDone(`${trimmedInvoiceNo || "Invoice"} issued — email failed to send; use Send from the invoice.`);
           return;
         }
       }
 
-      const label = invoiceNo || "Invoice";
+      const label = trimmedInvoiceNo || "Invoice";
       onDone(
         action === "draft" ? `${label} saved as draft`
         : action === "send" ? `${label} issued and emailed`
@@ -457,7 +464,7 @@ export function InvoiceEditor({
       {attempted && !validation.ok && (
         <div className="flex items-start gap-1.5 text-[10px] text-red-600 bg-red-50 rounded px-2 py-1.5">
           <AlertCircle size={12} className="mt-px flex-shrink-0" />
-          <span>{validation.errors.customer ?? validation.errors.invoiceDate ?? validation.errors.lines ?? validation.errors.exchangeRate}</span>
+          <span>{validation.errors.customer ?? validation.errors.invoiceNo ?? validation.errors.invoiceDate ?? validation.errors.lines ?? validation.errors.exchangeRate}</span>
         </div>
       )}
     </div>
@@ -480,6 +487,17 @@ export function InvoiceEditor({
               <label className="block text-xs font-medium text-[#475569] mb-1">Customer *</label>
               <CustomerLookup customers={customers} value={customerId} onChange={onCustomerChange} ariaLabel="Customer" />
               {fieldErr(validation.errors.customer)}
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Invoice Number *</label>
+              <input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)}
+                disabled={isEdit && existing?.status !== "draft"}
+                placeholder="e.g. INV-0001" aria-label="Invoice number" maxLength={16}
+                className="w-full px-3 py-1.5 text-xs font-mono border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
+              {fieldErr(validation.errors.invoiceNo)}
+              {isEdit && existing?.status !== "draft" && (
+                <p className="mt-1 text-[10px] text-[#94A3B8]">Frozen once issued.</p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Invoice Date *</label>

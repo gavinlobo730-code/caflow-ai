@@ -38,9 +38,9 @@ def _setup(monkeypatch):
     return si, rc, cs, db
 
 
-def _make_invoice(si, rate_paise, date):
+def _make_invoice(si, rate_paise, date, invoice_no="STMT-001"):
     inv = si.create_invoice(SalesInvoiceIn(
-        client_id="CLI", customer_id="CUST", invoice_date=date,
+        client_id="CLI", customer_id="CUST", invoice_date=date, invoice_no=invoice_no,
         lines=[InvoiceLineIn(description="Svc", hsn_sac="9982", quantity=1,
                              rate_paise=rate_paise, gst_rate_percent=18.0)],
     ), CALLER)["data"]
@@ -50,8 +50,8 @@ def _make_invoice(si, rate_paise, date):
 
 def _seed_setup_with_activity(monkeypatch):
     si, rc, cs, db = _setup(monkeypatch)
-    inv1 = _make_invoice(si, 1_000_000, "2026-04-10")   # total 1,180,000
-    inv2 = _make_invoice(si, 500_000, "2026-04-15")     # total   590,000
+    inv1 = _make_invoice(si, 1_000_000, "2026-04-10", "STMT-001")   # total 1,180,000
+    inv2 = _make_invoice(si, 500_000, "2026-04-15", "STMT-002")     # total   590,000
     rc.create_receipt(ReceiptIn(
         client_id="CLI", customer_id="CUST", receipt_date="2026-04-20",
         amount_paise=1_180_000,
@@ -94,7 +94,7 @@ def test_statement_excludes_draft_invoices(monkeypatch):
     si, rc, cs, db = _setup(monkeypatch)
     # A draft (un-issued) invoice must NOT appear on the statement.
     si.create_invoice(SalesInvoiceIn(
-        client_id="CLI", customer_id="CUST", invoice_date="2026-04-10",
+        client_id="CLI", customer_id="CUST", invoice_date="2026-04-10", invoice_no="STMT-DRAFT",
         lines=[InvoiceLineIn(description="Draft", hsn_sac="9982", quantity=1,
                              rate_paise=1_000_000, gst_rate_percent=18.0)],
     ), CALLER)

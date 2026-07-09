@@ -14,23 +14,20 @@ import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
-import { StateLookup } from "@/components/lookups/StateLookup";
-import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import CsvImportModal, { type ImportRow, type ReferenceResolver } from "@/components/CsvImportModal";
 import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
 import { toInvoiceLinePayload } from "@/lib/invoices/lineItemPayload";
 import { buildCustomers, CUSTOMER_IMPORT_COLUMNS, buildReceipts, RECEIPT_IMPORT_COLUMNS } from "@/lib/imports/mappers";
-import {
-  PAYMENT_TERM_PRESETS,
-  CUSTOM_TERM,
-  termLabelForDays,
-  daysForTermLabel,
-} from "@/lib/sales/paymentTerms";
 import { clearReports } from "@/lib/accounting/reportCache";
 import { InvoiceViewDrawer } from "@/components/invoices/InvoiceViewDrawer";
+import { CustomerFormModal } from "@/components/customers/CustomerFormModal";
+import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFormModal";
+import { api, type ApiResp } from "@/lib/api";
+import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { useRouter } from "next/navigation";
 import { newInvoiceHref, editInvoiceHref } from "@/lib/invoices/workspaceNav";
 import {
-  API, apiCall, apiGet, getAuthToken, fmt, computeGst, INDIAN_STATES, GST_RATES, STATUS_BADGE, DELIVERY_STATUS_LABEL,
+  API, apiCall, apiGet, getAuthToken, fmt, computeGst, GST_RATES, STATUS_BADGE, DELIVERY_STATUS_LABEL,
   type InvoiceDelivery, type InvoiceDetail,
   type Customer, type SalesInvoice, type InvoiceLine,
   type CurrencyOption, type InvoiceStatus,
@@ -124,16 +121,6 @@ function isOverdueForUi(inv: SalesInvoice): boolean {
  * token, so we fetch with auth and open a blob URL (a plain window.open would
  * drop the Authorization header). Backend-generated PDF — no logic here.
  */
-
-/** Validate GSTIN format: 2-digit state + PAN(10) + entity# + Z + check (CGST Act §25) */
-function isValidGstin(gstin: string): boolean {
-  return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(gstin);
-}
-
-/** Validate PAN format: AAAAA9999A (IT Act §139A) */
-function isValidPan(pan: string): boolean {
-  return /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan);
-}
 
 /**
  * Compute GST on invoice lines (paise arithmetic only — never floating point).
@@ -926,6 +913,10 @@ function SalesInvoices({
 }) {
   const [invoices, setInvoices] = useState<SalesInvoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  // Client's own Product/Service catalogue — only needed for the CSV import's
+  // "resolve missing references" step (product_service column). The manual
+  // editor loads this itself via ServiceCataloguePicker.
+  const [services, setServices] = useState<ServiceCatalogueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const [showImport, setShowImport] = useState(false);
@@ -999,7 +990,7 @@ function SalesInvoices({
     setLoading(true);
     const supabase = getSupabaseClient();
 
-    const [{ data: invData }, { data: custData }] = await Promise.all([
+    const [{ data: invData }, { data: custData }, servicesRes] = await Promise.all([
       selectAll(() => supabase
         .from("client_sales_invoices")
         .select(
@@ -1018,7 +1009,9 @@ function SalesInvoices({
         .eq("is_active", true)
         .order("name")
         .order("id")),
+      api.serviceCatalogue.list(clientId, { limit: 1000 }) as Promise<ApiResp<ServiceCatalogueItem[]>>,
     ]);
+    setServices(servicesRes.data ?? []);
 
     const mapped: SalesInvoice[] = ((invData ?? []) as unknown as Array<
       { id: string; invoice_no: string; invoice_date: string; due_date: string | null;
@@ -1192,25 +1185,63 @@ function SalesInvoices({
    * there is no parallel invoice logic. Returns a per-invoice success/error report.
    */
   async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
-    const { invoices: built, errors } = buildSalesInvoices(rows, clientId, customers);
+    const { invoices: built, errors } = buildSalesInvoices(rows, clientId, customers, services);
     const token = await getAuthToken();
     let imported = 0;
 
     for (const inv of built) {
-      const { ref, ...payload } = inv; // drop the internal grouping key
-      void ref;
-      const result = await apiCall("/api/sales-invoices/", "POST", payload, token);
+      // inv.invoice_no is the real, CA/import-supplied number now (no internal
+      // grouping key to strip) — the server validates its shape and rejects a
+      // duplicate for this client exactly as a manually typed one would.
+      const result = await apiCall("/api/sales-invoices/", "POST", inv, token);
       if (result.success) {
         imported += inv.lines.length; // count line-rows so the totals match the upload
       } else {
-        const label = inv.ref || `${inv.customer_id} / ${inv.invoice_date}`;
-        errors.push(`Invoice "${label}": ${result.error ?? "failed to create"}`);
+        errors.push(`Invoice "${inv.invoice_no}": ${result.error ?? "failed to create"}`);
       }
     }
 
     if (imported > 0) load();
     return { imported, errors };
   }
+
+  // "Resolve missing references" step (Sales Invoice Import Alignment) — a row
+  // naming a customer or product/service that doesn't exist yet for this
+  // client gets a "+ Add" action opening the SAME creation dialog the rest of
+  // the app uses, right inside the import modal. Fresh closures over
+  // customers/services every render, so a newly-created record immediately
+  // drops out of the "missing" list — see ReferenceResolver's contract.
+  const importResolvers: ReferenceResolver[] = [
+    {
+      column: "customer",
+      label: "Customers",
+      isKnown: (name) => customers.some((c) => c.name.trim().toLowerCase() === name.trim().toLowerCase()),
+      renderCreate: (name, onDone) => (
+        <CustomerFormModal
+          clientId={clientId}
+          existing={null}
+          seedName={name}
+          onClose={onDone}
+          onSaved={(customer) => { setCustomers((prev) => [...prev, customer]); onDone(); }}
+        />
+      ),
+    },
+    {
+      column: "product_service",
+      label: "Products & Services",
+      isKnown: (name) => services.some((s) => s.name.trim().toLowerCase() === name.trim().toLowerCase()),
+      renderCreate: (name, onDone) => (
+        <ProductServiceFormModal
+          clientId={clientId}
+          existing={null}
+          seedName={name}
+          onClose={onDone}
+          onSaved={(item) => { setServices((prev) => [...prev, item]); onDone(); }}
+          onError={(msg) => showToast(msg, "error")}
+        />
+      ),
+    },
+  ];
 
   // ── DataTable columns / filters (client-side over the loaded FY window) ────
   const columns: Column<SalesInvoice>[] = useMemo(() => [
@@ -1351,6 +1382,7 @@ function SalesInvoices({
           templateFilename="sales-invoices-template.csv"
           onImport={handleImport}
           onClose={() => setShowImport(false)}
+          resolvers={importResolvers}
         />
       )}
 
@@ -2218,7 +2250,7 @@ function Customers({
       )}
 
       {showForm && (
-        <CustomerForm
+        <CustomerFormModal
           clientId={clientId}
           existing={editCustomer}
           onSaved={() => {
@@ -2227,7 +2259,7 @@ function Customers({
             load();
             showToast(editCustomer ? "Customer updated" : "Customer added", "success");
           }}
-          onCancel={() => { setShowForm(false); setEditCustomer(null); }}
+          onClose={() => { setShowForm(false); setEditCustomer(null); }}
         />
       )}
 
@@ -2430,272 +2462,6 @@ function Customers({
           </button>
         )}
       />
-    </div>
-  );
-}
-
-// ── Customer Form ──────────────────────────────────────────────────────────
-
-function CustomerForm({
-  clientId,
-  existing,
-  onSaved,
-  onCancel,
-}: {
-  clientId: string;
-  existing: Customer | null;
-  onSaved: () => void;
-  onCancel: () => void;
-}) {
-  const [name, setName] = useState(existing?.name ?? "");
-  const [gstin, setGstin] = useState(existing?.gstin ?? "");
-  const [stateCode, setStateCode] = useState(existing?.state_code ?? "");
-  const [pan, setPan] = useState(existing?.pan ?? "");
-  const [email, setEmail] = useState(existing?.email ?? "");
-  const [phone, setPhone] = useState(existing?.phone ?? "");
-  const [city, setCity] = useState(existing?.city ?? "");
-  const [state, setState] = useState(existing?.state ?? "");
-  const [openingBalance, setOpeningBalance] = useState(
-    existing ? (existing.opening_balance_paise / 100).toFixed(2) : ""
-  );
-  const [creditDays, setCreditDays] = useState(String(existing?.credit_days ?? 30));
-  // Payment Terms = a label over credit days (the default for this customer's
-  // future invoices). "Custom" reveals a free credit-days input.
-  const [termCustom, setTermCustom] = useState<boolean>(
-    () => termLabelForDays(existing?.credit_days ?? 30) === CUSTOM_TERM
-  );
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const termValue = termCustom
-    ? CUSTOM_TERM
-    : termLabelForDays(parseInt(creditDays, 10));
-  function onTermChange(label: string) {
-    if (label === CUSTOM_TERM) { setTermCustom(true); return; }
-    const d = daysForTermLabel(label);
-    if (d == null) return;
-    setTermCustom(false);
-    setCreditDays(String(d));
-  }
-
-  // Auto-fill state code from GSTIN (first 2 digits)
-  function handleGstinChange(val: string) {
-    const upper = val.toUpperCase();
-    setGstin(upper);
-    if (upper.length >= 2) {
-      setStateCode(upper.slice(0, 2));
-    }
-  }
-
-  async function handleSave() {
-    if (!name.trim()) { setError("Name is required"); return; }
-    if (gstin && !isValidGstin(gstin)) { setError("Invalid GSTIN format (e.g. 27AABCU9603R1ZX)"); return; }
-    if (pan && !isValidPan(pan)) { setError("Invalid PAN format (e.g. ABCDE1234F)"); return; }
-
-    setSaving(true); setError(null);
-    try {
-      // All amounts in integer paise — user enters rupees, multiply by 100
-      const openingBalancePaise = Math.round(parseFloat(openingBalance || "0") * 100);
-      const token = await getAuthToken();
-
-      if (existing) {
-        // UPDATE via the backend PATCH so an opening-balance change auto-posts to
-        // the General Ledger (the backend regenerates the opening journal). No
-        // direct Supabase write, no manual "post" step.
-        const result = await apiCall(
-          `/api/customers/${existing.id}`,
-          "PATCH",
-          {
-            name: name.trim(),
-            gstin: gstin.trim(),
-            state_code: stateCode,
-            pan: pan.trim(),
-            email: email.trim(),
-            phone: phone.trim(),
-            city: city.trim(),
-            state: state.trim(),
-            opening_balance_paise: openingBalancePaise,
-            credit_days: parseInt(creditDays) || 30,
-            is_active: true,
-          },
-          token
-        );
-        if (!result.success) throw new Error(result.error ?? "Failed to save customer");
-      } else {
-        const result = await apiCall(
-          "/api/customers/",
-          "POST",
-          {
-            client_id: clientId,
-            name: name.trim(),
-            gstin: gstin.trim() || undefined,
-            state_code: stateCode || undefined,
-            pan: pan.trim() || undefined,
-            email: email.trim() || undefined,
-            phone: phone.trim() || undefined,
-            city: city.trim() || undefined,
-            state: state.trim() || undefined,
-            opening_balance_paise: openingBalancePaise,
-            credit_days: parseInt(creditDays) || 30,
-          },
-          token
-        );
-        if (!result.success) throw new Error(result.error ?? "Failed to save customer");
-      }
-      // The backend may have auto-posted/updated the opening-balance journal, so
-      // invalidate cached accounting reports for this client.
-      clearReports(clientId);
-      onSaved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save customer");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[#0F172A]">
-          {existing ? "Edit Customer" : "Add Customer"}
-        </h3>
-        <button onClick={onCancel} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <div className="col-span-2 lg:col-span-1">
-          <label className="block text-xs font-medium text-[#475569] mb-1">Name *</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="ABC Pvt Ltd"
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">GSTIN</label>
-          <input
-            value={gstin}
-            onChange={(e) => handleGstinChange(e.target.value)}
-            placeholder="27AABCU9603R1ZX"
-            maxLength={15}
-            className={`w-full px-3 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono ${
-              gstin && !isValidGstin(gstin) ? "border-red-300" : "border-[#E2E8F0]"
-            }`}
-          />
-          {gstin && !isValidGstin(gstin) && (
-            <p className="text-[10px] text-red-500 mt-0.5">Invalid GSTIN</p>
-          )}
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">State Code</label>
-          <StateLookup
-            states={INDIAN_STATES}
-            value={stateCode}
-            onChange={setStateCode}
-            placeholder="— Select —"
-            ariaLabel="State code"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">PAN</label>
-          <input
-            value={pan}
-            onChange={(e) => setPan(e.target.value.toUpperCase())}
-            placeholder="ABCDE1234F"
-            maxLength={10}
-            className={`w-full px-3 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono ${
-              pan && !isValidPan(pan) ? "border-red-300" : "border-[#E2E8F0]"
-            }`}
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Email</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="billing@abc.com"
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Phone</label>
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+91 98765 43210"
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">City</label>
-          <input
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            placeholder="Mumbai"
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">State</label>
-          <input
-            value={state}
-            onChange={(e) => setState(e.target.value)}
-            placeholder="Maharashtra"
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Opening Balance (₹)</label>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={openingBalance}
-            onChange={(e) => setOpeningBalance(e.target.value)}
-            placeholder="0.00"
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Payment Terms</label>
-          <select
-            value={termValue}
-            onChange={(e) => onTermChange(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {PAYMENT_TERM_PRESETS.map((t) => (
-              <option key={t.label} value={t.label}>{t.label}</option>
-            ))}
-            <option value={CUSTOM_TERM}>Custom</option>
-          </select>
-          {termCustom && (
-            <input
-              type="number"
-              min="0"
-              value={creditDays}
-              onChange={(e) => setCreditDays(e.target.value)}
-              placeholder="Credit days"
-              aria-label="Custom credit days"
-              className="mt-1 w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          )}
-          <p className="mt-1 text-[10px] text-[#94A3B8]">Default terms for this customer&apos;s new invoices.</p>
-        </div>
-      </div>
-
-      {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
-      <div className="flex gap-3 justify-end">
-        <button onClick={onCancel} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-        >
-          {saving ? "Saving…" : existing ? "Update Customer" : "Add Customer"}
-        </button>
-      </div>
     </div>
   );
 }
