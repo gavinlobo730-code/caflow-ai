@@ -61,6 +61,23 @@ export interface ComboboxProps<T> extends ComboboxCore<T> {
    * passed, so existing callers (CustomerLookup, StateLookup, …) are unaffected.
    */
   panelDensity?: "compact" | "spacious";
+  /**
+   * "plain" strips the field-style chrome (border, background, chevron) so
+   * the trigger reads as inline text plus an action (e.g. a "Change" chip
+   * via `renderTrigger`) rather than a <select>-like control — used for the
+   * Sales Invoice HSN/SAC cell, which auto-fills from the Product/Service
+   * pick and should not look like an always-open dropdown. Defaults to
+   * "field", the original styling, everywhere it isn't passed.
+   */
+  chrome?: "field" | "plain";
+}
+
+/** Imperative handle for callers that need to move focus onto a Combobox
+ * from outside (e.g. spreadsheet-style Tab navigation creating a new invoice
+ * row and focusing its Product/Service picker). Ref-forwarding only — no
+ * other imperative surface is exposed. */
+export interface ComboboxHandle {
+  focus: () => void;
 }
 
 const SIZE = {
@@ -68,7 +85,7 @@ const SIZE = {
   md: "px-3 py-1.5 text-xs",
 } as const;
 
-export function Combobox<T>(props: ComboboxProps<T>) {
+function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<ComboboxHandle>) {
   const {
     value,
     onChange,
@@ -92,11 +109,13 @@ export function Combobox<T>(props: ComboboxProps<T>) {
     renderOption,
     renderTrigger,
     panelDensity = "compact",
+    chrome = "field",
     getOptionId,
     getLabel,
     getSecondary,
     getSearchFields,
   } = props;
+  const plain = chrome === "plain";
 
   const reactId = React.useId();
   const baseId = id ?? reactId;
@@ -105,8 +124,13 @@ export function Combobox<T>(props: ComboboxProps<T>) {
 
   const [open, setOpen] = React.useState(false);
   const wrapRef = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
+
+  React.useImperativeHandle(ref, () => ({
+    focus: () => triggerRef.current?.focus(),
+  }), []);
 
   const combo = useCombobox<T>({
     options,
@@ -246,9 +270,11 @@ export function Combobox<T>(props: ComboboxProps<T>) {
 
   return (
     <div ref={wrapRef} className="relative">
-      {/* Trigger — looks like the app's <select> field. */}
+      {/* Trigger — looks like the app's <select> field, unless chrome="plain"
+          (the invoice HSN cell), where it reads as inline text + an action. */}
       <button
         type="button"
+        ref={triggerRef}
         id={baseId}
         disabled={disabled}
         aria-haspopup="listbox"
@@ -262,30 +288,39 @@ export function Combobox<T>(props: ComboboxProps<T>) {
           }
         }}
         className={cn(
-          "flex w-full items-center justify-between gap-2 rounded-lg border border-[#E2E8F0] bg-white text-left text-[#334155] transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]",
-          SIZE[size],
+          "items-center gap-2 text-left text-[#334155] transition-colors focus:outline-none disabled:cursor-not-allowed disabled:text-[#94A3B8]",
+          plain
+            ? "inline-flex rounded focus:ring-1 focus:ring-blue-500"
+            : cn("flex w-full justify-between rounded-lg border border-[#E2E8F0] bg-white focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC]", SIZE[size]),
           className,
         )}
       >
-        <span className={cn("truncate", !triggerLabel && "text-[#94A3B8]")}>
+        <span
+          className={cn(
+            "truncate",
+            !triggerLabel && (plain ? "text-[10px] font-medium text-blue-600" : "text-[#94A3B8]"),
+          )}
+        >
           {!multiple && selectedArr[0] && renderTrigger
             ? renderTrigger(selectedArr[0])
             : triggerLabel || placeholder}
         </span>
-        <span className="flex flex-shrink-0 items-center gap-1">
-          {clearable && !multiple && selectedArr.length > 0 && !disabled && (
-            <span
-              role="button"
-              tabIndex={-1}
-              aria-label="Clear"
-              onClick={clear}
-              className="rounded p-0.5 text-[#CBD5E1] hover:text-red-500"
-            >
-              <X size={13} />
-            </span>
-          )}
-          <ChevronsUpDown size={13} className="text-[#94A3B8]" />
-        </span>
+        {!plain && (
+          <span className="flex flex-shrink-0 items-center gap-1">
+            {clearable && !multiple && selectedArr.length > 0 && !disabled && (
+              <span
+                role="button"
+                tabIndex={-1}
+                aria-label="Clear"
+                onClick={clear}
+                className="rounded p-0.5 text-[#CBD5E1] hover:text-red-500"
+              >
+                <X size={13} />
+              </span>
+            )}
+            <ChevronsUpDown size={13} className="text-[#94A3B8]" />
+          </span>
+        )}
       </button>
 
       {open && (
@@ -405,3 +440,10 @@ export function Combobox<T>(props: ComboboxProps<T>) {
     </div>
   );
 }
+
+// React.forwardRef erases the generic <T> on a plain assignment; cast back to
+// a generic call signature so existing `<Combobox<Foo> .../>` call sites
+// (with or without a ref) keep their per-caller type inference.
+export const Combobox = React.forwardRef(ComboboxInner) as <T>(
+  props: ComboboxProps<T> & { ref?: React.ForwardedRef<ComboboxHandle> },
+) => React.ReactElement | null;

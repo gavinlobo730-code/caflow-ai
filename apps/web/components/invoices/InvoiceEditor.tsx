@@ -11,10 +11,11 @@
  * authoritative), and Save & Issue / Save & Send chain the existing endpoints.
  */
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Trash2, CheckCircle, Send, Loader2, AlertCircle } from "lucide-react";
+import { Trash2, CheckCircle, Send, Loader2, AlertCircle, Plus } from "lucide-react";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
+import type { ComboboxHandle } from "@/components/ui/combobox";
 import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { StateLookup } from "@/components/lookups/StateLookup";
@@ -51,7 +52,10 @@ const EMPTY_LINE: InvoiceLine = { description: "", hsn_sac: "", qty: "1", rate: 
 // index — otherwise a mid-list delete would reuse a row's DOM/caret/ref for a
 // different logical line. `_k` is presentational only (ignored by the payload
 // mapper and all totals/validation, which read the InvoiceLine fields).
-type EditorLine = InvoiceLine & { _k: number };
+// `product` is likewise presentational only — it just lets the row's
+// Product/Service cell display the current pick; toInvoiceLinePayload
+// explicitly picks fields rather than spreading, so it never reaches the API.
+type EditorLine = InvoiceLine & { _k: number; product?: ServiceCatalogueItem | null };
 
 export function InvoiceEditor({
   clientId,
@@ -235,41 +239,63 @@ export function InvoiceEditor({
     setIsInterstate((prev) => deriveInterstate(code, prev));
   }
 
-  // ── Line ops + keyboard (Enter adds/advances a row) ───────────────────────────
+  // ── Line ops + keyboard (spreadsheet-style navigation) ────────────────────────
   const descRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [focusRow, setFocusRow] = useState<number | null>(null);
   useEffect(() => {
     if (focusRow != null) { descRefs.current[focusRow]?.focus(); setFocusRow(null); }
   }, [focusRow]);
 
-  function setLine(idx: number, patch: Partial<InvoiceLine>) {
+  // Product/Service is the first cell of every line (UX refinement to the
+  // Final Invoice Workflow Alignment): "Add line" and Tab-off-the-last-column
+  // both land here, mirroring descRefs/focusRow above.
+  const productRefs = useRef<(ComboboxHandle | null)[]>([]);
+  const [focusProductRow, setFocusProductRow] = useState<number | null>(null);
+  useEffect(() => {
+    if (focusProductRow != null) { productRefs.current[focusProductRow]?.focus(); setFocusProductRow(null); }
+  }, [focusProductRow]);
+
+  function setLine(idx: number, patch: Partial<EditorLine>) {
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
   }
   function removeLine(idx: number) {
     if (lines.length <= 1) return;
     setLines((prev) => prev.filter((_, i) => i !== idx));
   }
-  // Drop a fully pre-priced line from a catalogue preset. Fills the first blank
-  // line (so the initial empty row is used before appending), else appends. The
-  // values are copied and remain fully editable — journal posting is untouched.
-  function addFromService(item: ServiceCatalogueItem) {
-    const patch = serviceToLine(item);
-    setLines((prev) => {
-      const emptyIdx = prev.findIndex(
-        (l) => !l.description.trim() && !l.hsn_sac.trim() && !l.rate.trim(),
-      );
-      if (emptyIdx >= 0) return prev.map((l, i) => (i === emptyIdx ? { ...l, ...patch } : l));
-      return [...prev, { ...EMPTY_LINE, ...patch, _k: nextKey() }];
-    });
+  // A Product/Service picked on THIS row fully pre-prices it (description,
+  // HSN/SAC, GST, unit, rate — description stays editable afterwards). The
+  // values are copied, not linked, so a later edit/archive of the preset
+  // can't change a past invoice.
+  function onPickProduct(idx: number, item: ServiceCatalogueItem) {
+    setLine(idx, { ...serviceToLine(item), product: item });
+  }
+  // QuickBooks-style "Add line": appends a blank row whose FIRST field is the
+  // Product/Service selector (not a free-text description) — the previous
+  // "blank line" workflow (Description as the entry point) does not return.
+  function addLine() {
+    const newIdx = lines.length;
+    setLines((prev) => [...prev, { ...EMPTY_LINE, _k: nextKey() }]);
+    setFocusProductRow(newIdx);
   }
   function onLineKeyDown(e: React.KeyboardEvent, idx: number) {
     if (e.key !== "Enter" || e.shiftKey) return;
     e.preventDefault();
-    // Enter moves to the next row's description if one exists. It no longer
-    // adds a new blank row on the last row — the "+ Add Product/Service"
-    // picker above the table is the only way a line is created (Final
-    // Invoice Workflow Alignment: one workflow, no separate custom-line path).
+    // Enter moves to the next row's description if one exists. It never
+    // creates a row — only "Add line" and end-of-row Tab do (see onGstKeyDown).
     if (idx < lines.length - 1) setFocusRow(idx + 1);
+  }
+  // Spreadsheet-style Tab: GST% is the last editable column. Tabbing off it
+  // always lands on the NEXT row's Product/Service cell — creating that row
+  // first if this is the last one — instead of the browser's native tab
+  // order, which would otherwise hit the delete button first.
+  function onGstKeyDown(e: React.KeyboardEvent, idx: number) {
+    if (e.key !== "Tab" || e.shiftKey) return;
+    e.preventDefault();
+    const nextIdx = idx + 1;
+    if (idx === lines.length - 1) {
+      setLines((prev) => [...prev, { ...EMPTY_LINE, _k: nextKey() }]);
+    }
+    setFocusProductRow(nextIdx);
   }
 
   // ── Save flow: create/PATCH → (issue) → (send), reusing existing endpoints ─────
@@ -536,23 +562,23 @@ export function InvoiceEditor({
         </section>
 
         {/* Line items — Product/Service-driven (Final Invoice Workflow
-            Alignment): the picker below is the ONLY way a line is added.
-            There is no separate "custom line" path — every line traces back
-            to a Product/Service, existing or newly created inline. */}
+            Alignment, refined). Product/Service is the FIRST cell of every
+            line — there is no separate header-level "+ Add Product/Service"
+            control and no separate "custom line" path: every line traces
+            back to a Product/Service, existing or newly created inline, or
+            is left to plain manual entry via the still-editable Description
+            cell. "Add line" and end-of-row Tab both create a new row whose
+            first field is the Product/Service selector, never a blank
+            Description box. */}
         <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-          <div className="flex items-center justify-between gap-3 mb-2">
-            <h2 className="text-xs font-semibold text-[#334155] flex-shrink-0">Line items</h2>
-            <div className="w-64">
-              <ServiceCataloguePicker clientId={clientId} onPick={addFromService} onError={setError}
-                size="md" ariaLabel="Add Product/Service" />
-            </div>
-          </div>
+          <h2 className="text-xs font-semibold text-[#334155] mb-2">Line items</h2>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs min-w-[640px]">
+            <table className="w-full text-xs min-w-[760px]">
               <thead>
                 <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                  <th className="pb-2 text-left font-semibold w-40">Product/Service</th>
                   <th className="pb-2 text-left font-semibold">Description</th>
-                  <th className="pb-2 text-left font-semibold w-32">HSN/SAC</th>
+                  <th className="pb-2 text-left font-semibold w-28">HSN/SAC</th>
                   <th className="pb-2 text-right font-semibold w-16">Qty</th>
                   <th className="pb-2 text-left font-semibold w-16">Unit</th>
                   <th className="pb-2 text-right font-semibold w-24">Rate ({isForeign ? currency : "₹"})</th>
@@ -569,10 +595,22 @@ export function InvoiceEditor({
                   return (
                     <tr key={line._k} className={invalid ? "bg-red-50/40" : undefined}>
                       <td className="py-1.5 pr-2">
+                        <ServiceCataloguePicker
+                          ref={(el) => { productRefs.current[idx] = el; }}
+                          clientId={clientId}
+                          value={line.product}
+                          onPick={(item) => onPickProduct(idx, item)}
+                          onError={setError}
+                          size="sm"
+                          ariaLabel={`Line ${idx + 1} product or service`}
+                        />
+                      </td>
+                      <td className="py-1.5 pr-2">
                         {/* Plain, editable — NOT a search box (Final Invoice
                             Workflow Alignment). Description is filled by
-                            picking a Product/Service above and stays freely
-                            editable afterwards; it never searches history. */}
+                            picking a Product/Service on this row and stays
+                            freely editable afterwards; it never searches
+                            history. */}
                         <input ref={(el) => { descRefs.current[idx] = el; }}
                           value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })}
                           onKeyDown={(e) => onLineKeyDown(e, idx)}
@@ -580,6 +618,12 @@ export function InvoiceEditor({
                           className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
                       </td>
                       <td className="py-1.5 pr-2">
+                        {/* Auto-filled from the Product/Service pick; renders
+                            as static text + "Change" (chrome="plain"), not
+                            an always-visible dropdown — the invoice-level
+                            override for this line, searching the firm's own
+                            HSN/SAC Library (never writes back to the
+                            Product/Service master). */}
                         <HsnLookup clientId={clientId} value={line.hsn_sac} onChange={(v) => setLine(idx, { hsn_sac: v })}
                           onPick={(p) => {
                             const patch: Partial<InvoiceLine> = {};
@@ -587,7 +631,7 @@ export function InvoiceEditor({
                             if (p.uqc) patch.unit = p.uqc;
                             setLine(idx, patch);
                           }}
-                          size="sm" ariaLabel="HSN or SAC code" />
+                          size="sm" chrome="plain" placeholder="Set HSN/SAC" ariaLabel="HSN or SAC code" />
                       </td>
                       <td className="py-1.5 pr-2">
                         <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })}
@@ -605,7 +649,12 @@ export function InvoiceEditor({
                           className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
                       </td>
                       <td className="py-1.5 pr-2">
+                        {/* Last editable column: spreadsheet-style Tab here
+                            always lands on the NEXT row's Product/Service
+                            cell, creating that row first if this is the last
+                            one (see onGstKeyDown). */}
                         <select value={line.gst_rate} onChange={(e) => setLine(idx, { gst_rate: parseInt(e.target.value) })}
+                          onKeyDown={(e) => onGstKeyDown(e, idx)}
                           aria-label={`Line ${idx + 1} GST rate`}
                           className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs">
                           {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
@@ -625,6 +674,13 @@ export function InvoiceEditor({
               </tbody>
             </table>
           </div>
+          <button
+            type="button"
+            onClick={addLine}
+            className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+          >
+            <Plus size={13} /> Add line
+          </button>
           {fieldErr(validation.errors.lines)}
         </section>
 
