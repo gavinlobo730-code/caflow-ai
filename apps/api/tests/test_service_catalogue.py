@@ -188,6 +188,39 @@ def test_archived_name_can_be_reused(client):
     assert again.json()["data"].get("duplicate") is not True
 
 
+# ── Hard delete — only when never used ────────────────────────────────────────
+
+def test_delete_unused_service_succeeds(client):
+    sid = _create(client, name="Never Picked").json()["data"]["id"]
+    resp = client.delete(f"/api/service-catalogue/{sid}")
+    assert resp.json()["success"] is True
+    assert _list(client, include_archived="true").json()["data"] == []
+
+
+def test_delete_blocked_once_used(client):
+    sid = _create(client, name="Picked Once").json()["data"]["id"]
+    client.post(f"/api/service-catalogue/{sid}/used")
+    resp = client.delete(f"/api/service-catalogue/{sid}")
+    body = resp.json()
+    assert body["success"] is False
+    assert "archive" in body["error"].lower()
+    # Still there — a rejected delete must not remove the row.
+    assert len(_list(client, include_archived="true").json()["data"]) == 1
+
+
+def test_delete_blocked_even_when_archived_if_used(client):
+    sid = _create(client, name="Archived But Used").json()["data"]["id"]
+    client.post(f"/api/service-catalogue/{sid}/used")
+    client.patch(f"/api/service-catalogue/{sid}", json={"is_active": False})
+    resp = client.delete(f"/api/service-catalogue/{sid}")
+    assert resp.json()["success"] is False
+
+
+def test_delete_unknown_id_is_404(client):
+    resp = client.delete("/api/service-catalogue/does-not-exist")
+    assert resp.status_code == 404
+
+
 # ── Search + ranking + usage bump ─────────────────────────────────────────────
 
 def test_search_by_name_and_hsn(client):

@@ -447,6 +447,65 @@ def update_service(
         return api_response(False, None, "Unable to update the service. Please try again.")
 
 
+@router.delete("/{service_id}")
+def delete_service(
+    service_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Permanently delete a preset — only when it has never been used.
+
+    There is no foreign key from any transaction line-item table (sales
+    invoice, purchase bill, credit note, debit note) back to
+    service_catalogue: picking a preset COPIES its values onto the line as
+    free text, it never stores a reference (see module docstring). So a
+    literal "is this on any invoice" join is not possible with today's
+    schema. use_count is the closest honest signal available: it is bumped
+    by POST /{id}/used, called the instant a preset is picked in
+    ServiceCataloguePicker — the ONLY path by which a preset's data ever
+    reaches a transaction line. use_count == 0 is therefore a hard guarantee
+    this row was never used anywhere. use_count > 0 conservatively blocks
+    deletion even though that pick might only have been into a draft that
+    was later discarded (never actually saved) — there's no way to tell
+    that apart from a real saved transaction today, so the safe assumption
+    wins. Archive (is_active=false via PATCH) remains the only removal path
+    once a preset has ever been used.
+    """
+    try:
+        firm_id = current_user.get("firm_id")
+
+        if _USE_MOCK:
+            row = next((s for s in MOCK_SERVICES
+                        if s.get("id") == service_id and s.get("firm_id") == firm_id), None)
+            if not row:
+                raise HTTPException(status_code=404, detail="Service not found.")
+            if (row.get("use_count") or 0) > 0:
+                return api_response(
+                    False, None,
+                    "This product/service has been used before and can't be permanently deleted. Archive it instead.",
+                )
+            MOCK_SERVICES.remove(row)
+            return api_response(True, {"id": service_id})
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        owned = (db.table("service_catalogue").select("id,use_count")
+                 .eq("id", service_id).eq("firm_id", firm_id).execute().data or [])
+        if not owned:
+            raise HTTPException(status_code=404, detail="Service not found.")
+        if (owned[0].get("use_count") or 0) > 0:
+            return api_response(
+                False, None,
+                "This product/service has been used before and can't be permanently deleted. Archive it instead.",
+            )
+        db.table("service_catalogue").delete().eq("id", service_id).eq("firm_id", firm_id).execute()
+        return api_response(True, {"id": service_id})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("delete_service: %s", e)
+        return api_response(False, None, "Unable to delete the service. Please try again.")
+
+
 @router.post("/{service_id}/used")
 def record_service_used(
     service_id: str,
