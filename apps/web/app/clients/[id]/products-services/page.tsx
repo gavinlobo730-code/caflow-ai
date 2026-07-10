@@ -15,9 +15,10 @@
  * Invoice Workflow Alignment: ONE creation workflow, not one per caller).
  */
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Pencil, Archive, RotateCcw, Search, BookMarked, Upload } from "lucide-react";
+import { Plus, Pencil, Archive, RotateCcw, Trash2, Search, BookMarked, Upload } from "lucide-react";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFormModal";
 import {
@@ -80,6 +81,26 @@ export default function ProductsServicesPage() {
       load();
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Update failed", "error");
+    }
+  }
+
+  // Permanent delete — the backend only allows this when the item has never
+  // been picked into a transaction line (use_count === 0); otherwise it
+  // rejects with success:false and a message pointing at Archive instead,
+  // which we surface via the same error toast rather than a generic failure.
+  async function deleteItem(item: ServiceCatalogueItem) {
+    const ok = await confirmDialog({
+      message: `Permanently delete "${item.name}"? This cannot be undone.`,
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const res = (await api.serviceCatalogue.delete(item.id)) as ApiResp<unknown>;
+      if (!res.success) throw new Error(res.error ?? "Delete failed");
+      showToast(`${item.name} deleted`, "success");
+      load();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Delete failed", "error");
     }
   }
 
@@ -233,6 +254,7 @@ export default function ProductsServicesPage() {
                           ) : (
                             <button onClick={() => setActive(s, true)} className="p-1.5 text-[#64748B] hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
                           )}
+                          <button onClick={() => deleteItem(s)} className="p-1.5 text-[#64748B] hover:text-red-600 hover:bg-red-50 rounded" aria-label="Delete"><Trash2 size={14} /></button>
                         </div>
                       </td>
                     </tr>

@@ -698,6 +698,11 @@ export const api = {
       request("/api/service-catalogue/bulk", { method: "POST", body: JSON.stringify({ services }) }),
     update: (id: string, body: unknown) =>
       request(`/api/service-catalogue/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    // Only succeeds when the item has never been picked into a transaction
+    // line (use_count === 0) — the backend rejects (success:false) otherwise
+    // with a message pointing at Archive instead. See routers/service_catalogue.py.
+    delete: (id: string) =>
+      request(`/api/service-catalogue/${id}`, { method: "DELETE" }),
     recordUsed: (id: string) =>
       request(`/api/service-catalogue/${id}/used`, { method: "POST" }),
   },
