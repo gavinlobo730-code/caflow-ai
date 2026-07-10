@@ -693,6 +693,9 @@ export const api = {
     },
     create: (body: unknown) =>
       request("/api/service-catalogue/", { method: "POST", body: JSON.stringify(body) }),
+    // One request for a whole CSV import instead of one POST per row.
+    bulkCreate: (services: unknown[]) =>
+      request("/api/service-catalogue/bulk", { method: "POST", body: JSON.stringify({ services }) }),
     update: (id: string, body: unknown) =>
       request(`/api/service-catalogue/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     recordUsed: (id: string) =>

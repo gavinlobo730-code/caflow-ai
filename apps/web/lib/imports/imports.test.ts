@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import {
   buildCustomers,
   buildVendors,
+  buildServices,
   buildPurchaseBills,
   buildReceipts,
   buildEmployees,
@@ -53,6 +54,50 @@ test("vendors: TDS applicable without valid section is rejected", () => {
   ], "c1");
   assert.equal(records.length, 0);
   assert.match(errors[0], /tds_section/i);
+});
+
+// ── Products & Services ──────────────────────────────────────────────────────
+test("services: only name required, rest defaults sensibly", () => {
+  const { records, errors } = buildServices([row({ name: "Bare Minimum" })], "c1");
+  assert.equal(errors.length, 0);
+  assert.equal(records[0].name, "Bare Minimum");
+  assert.equal(records[0].kind, "service");
+  assert.equal(records[0].gst_rate_bps, 1800); // defaults to 18%
+  assert.equal(records[0].default_rate_paise, 0);
+  assert.equal(records[0].purchase_price_paise, undefined);
+  assert.equal(records[0].hsn_sac, undefined);
+  assert.equal(records[0].client_id, "c1");
+  // Unit was removed from the Product/Service form/import entirely (matches
+  // the earlier decision to hide Unit from the Sales Invoice UI).
+  assert.equal("unit" in records[0], false);
+});
+
+test("services: rupees → paise, percent → bps, kind validated", () => {
+  const { records, errors } = buildServices([
+    row({ name: "Steel Rod", kind: "good", gst_rate: "18", selling_price: "1500.50", purchase_price: "1000" }),
+  ], "c1");
+  assert.equal(errors.length, 0);
+  assert.equal(records[0].kind, "good");
+  assert.equal(records[0].gst_rate_bps, 1800);
+  assert.equal(records[0].default_rate_paise, 150050);
+  assert.equal(records[0].purchase_price_paise, 100000);
+});
+
+test("services: invalid kind and duplicate name reported", () => {
+  const { records, errors } = buildServices([
+    row({ name: "Bad Kind", kind: "widget" }),
+    row({ name: "Dup" }),
+    row({ name: "dup" }),
+  ], "c1");
+  assert.equal(records.length, 1); // only "Dup" survives
+  assert.match(errors.join(" "), /kind must be/i);
+  assert.match(errors.join(" "), /duplicate name/i);
+});
+
+test("services: blank name is rejected", () => {
+  const { records, errors } = buildServices([row({ name: "  " })], "c1");
+  assert.equal(records.length, 0);
+  assert.match(errors[0], /name is required/i);
 });
 
 // ── Purchase bills ─────────────────────────────────────────────────────────

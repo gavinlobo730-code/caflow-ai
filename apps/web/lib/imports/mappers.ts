@@ -186,6 +186,86 @@ export function buildVendors(rows: Record<string, string>[], clientId: string): 
   return { records, errors };
 }
 
+// ── Products & Services → POST /api/service-catalogue/ ──────────────────────
+
+export interface BuiltService {
+  client_id: string;
+  name: string;
+  description?: string;
+  kind: "good" | "service";
+  category?: string;
+  hsn_sac?: string;
+  gst_rate_bps?: number;
+  default_rate_paise: number;
+  purchase_price_paise?: number;
+  notes?: string;
+}
+
+export const SERVICE_IMPORT_COLUMNS: ImportColumn[] = [
+  { key: "name", label: "Name", required: true, hint: "Product / service name" },
+  { key: "description", label: "Description", required: false, hint: "Line description (defaults to the name)" },
+  { key: "kind", label: "Kind", required: false, hint: "good / service (defaults to service)" },
+  { key: "category", label: "Category", required: false, hint: "e.g. Compliance (optional)" },
+  { key: "hsn_sac", label: "HSN/SAC", required: false, hint: "Must already be in the firm's HSN/SAC library (optional)" },
+  { key: "gst_rate", label: "GST %", required: false, hint: "e.g. 18 (defaults to 18%)" },
+  { key: "selling_price", label: "Selling Price (₹)", required: false, hint: "Default selling price in rupees (optional)" },
+  { key: "purchase_price", label: "Purchase Price (₹)", required: false, hint: "Default purchase price in rupees (optional)" },
+  { key: "notes", label: "Notes", required: false, hint: "Internal note (optional)" },
+];
+
+export function buildServices(rows: Record<string, string>[], clientId: string): { records: BuiltService[]; errors: string[] } {
+  const records: BuiltService[] = [];
+  const errors: string[] = [];
+  const seen = new Set<string>();
+
+  rows.forEach((r, i) => {
+    const rowNo = i + 1;
+    const name = str(r.name);
+    if (!name) { errors.push(`Row ${rowNo}: name is required`); return; }
+    const nameKey = name.toLowerCase().replace(/\s+/g, " ");
+    if (seen.has(nameKey)) { errors.push(`Row ${rowNo}: duplicate name "${name}" in this file`); return; }
+
+    const kindRaw = str(r.kind).toLowerCase();
+    const kind: "good" | "service" = kindRaw === "good" ? "good" : "service";
+    if (kindRaw && kindRaw !== "good" && kindRaw !== "service") {
+      errors.push(`Row ${rowNo}: kind must be "good" or "service"`); return;
+    }
+
+    const gstRaw = str(r.gst_rate);
+    const gstRateBps = gstRaw ? toBps(r.gst_rate) : 1800;
+    if (gstRaw && (!Number.isFinite(gstRateBps) || gstRateBps < 0 || gstRateBps > 10000)) {
+      errors.push(`Row ${rowNo}: GST % must be between 0 and 100`); return;
+    }
+
+    const sellingRaw = str(r.selling_price);
+    const sellingPaise = sellingRaw ? toPaise(r.selling_price) : 0;
+    if (sellingRaw && (!Number.isFinite(sellingPaise) || sellingPaise < 0)) {
+      errors.push(`Row ${rowNo}: selling price must be a non-negative number`); return;
+    }
+    const purchaseRaw = str(r.purchase_price);
+    const purchasePaise = purchaseRaw ? toPaise(r.purchase_price) : undefined;
+    if (purchaseRaw && (purchasePaise === undefined || !Number.isFinite(purchasePaise) || purchasePaise < 0)) {
+      errors.push(`Row ${rowNo}: purchase price must be a non-negative number`); return;
+    }
+
+    seen.add(nameKey);
+    records.push({
+      client_id: clientId,
+      name,
+      description: str(r.description) || undefined,
+      kind,
+      category: str(r.category) || undefined,
+      hsn_sac: str(r.hsn_sac) || undefined,
+      gst_rate_bps: gstRateBps,
+      default_rate_paise: sellingPaise,
+      purchase_price_paise: purchasePaise,
+      notes: str(r.notes) || undefined,
+    });
+  });
+
+  return { records, errors };
+}
+
 // ── Purchase bills → POST /api/purchase-bills/ ──────────────────────────────
 
 export interface BuiltBillLine {
