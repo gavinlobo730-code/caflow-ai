@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { AsyncBoundary, EmptyState } from "@/components/ui/states";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { useDataTable } from "@/lib/table/useDataTable";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { toCsv } from "@/lib/table/process";
 import type { BulkAction, Column, FilterDef, SortState } from "@/lib/table/types";
 
@@ -191,7 +192,7 @@ export function DataTable<T>({
                 key={a.id}
                 disabled={runningActionId !== null}
                 onClick={async () => {
-                  if (a.confirm && !window.confirm(a.confirm)) return;
+                  if (a.confirm && !(await confirmDialog({ message: a.confirm, danger: a.variant === "danger" }))) return;
                   setRunningActionId(a.id);
                   try {
                     // A thrown error, same as an explicit `return false`, leaves

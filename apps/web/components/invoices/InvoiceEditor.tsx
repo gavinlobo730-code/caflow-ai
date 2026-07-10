@@ -27,6 +27,7 @@ import {
 } from "@/lib/sales/paymentTerms";
 import { addDaysISO, diffDaysISO } from "@/lib/sales/dateMath";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { invoiceBreadcrumbs } from "@/lib/invoices/workspaceNav";
 import {
   apiCall, apiGet, getAuthToken, fmt,
@@ -169,7 +170,7 @@ export function InvoiceEditor({
   });
   const currentSnapshot = { customerId, invoiceNo, invoiceDate, dueDate, referenceNo, creditDays, supplyStateCode, isInterstate, notes, lines, currency, exchangeRate };
   const dirty = hasChanges(initialSnapshot.current, currentSnapshot);
-  const { confirmLeave } = useUnsavedChanges(dirty && saving === null);
+  const { confirmLeave } = useUnsavedChanges(dirty && saving === null, undefined, confirmDialog);
 
   // ── Live preview totals + validation ────────────────────────────────────────
   const totals = useMemo(() => previewTotals(lines, isInterstate, !isForeign), [lines, isInterstate, isForeign]);
@@ -389,8 +390,8 @@ export function InvoiceEditor({
     }
   }
 
-  function handleCancel() {
-    if (confirmLeave()) onCancel();
+  async function handleCancel() {
+    if (await confirmLeave()) onCancel();
   }
 
   const busy = saving !== null;

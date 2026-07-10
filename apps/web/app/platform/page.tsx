@@ -14,6 +14,7 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
 import { DataTable } from "@/components/ui/data-table";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatDate } from "@/lib/services/formatting";
 
@@ -192,7 +193,7 @@ export default function PlatformAdminPage() {
   }
   async function unsuspend(f: FirmRow) { await act(() => api.platform.unsuspend(f.id), `Reactivated ${f.name}`); }
   async function softDelete(f: FirmRow) {
-    if (!window.confirm(`Soft-delete "${f.name}"? Records are preserved but all access is blocked.`)) return;
+    if (!(await confirmDialog({ message: `Soft-delete "${f.name}"? Records are preserved but all access is blocked.`, danger: true }))) return;
     await act(() => api.platform.softDelete(f.id), `Deleted ${f.name}`);
   }
   async function view(f: FirmRow) {

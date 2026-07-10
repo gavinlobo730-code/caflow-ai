@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
@@ -564,7 +565,10 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
 
   async function doDelete() {
     if (!letter) return;
-    if (!window.confirm("Delete this engagement letter? The linked lead returns to the pipeline so you can draft a new one. This can't be undone.")) {
+    if (!(await confirmDialog({
+      message: "Delete this engagement letter? The linked lead returns to the pipeline so you can draft a new one. This can't be undone.",
+      danger: true,
+    }))) {
       return;
     }
     setActionLoading(true);
@@ -594,7 +598,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
       if (!json.success) {
         if (json.data?.needs_confirmation && !force) {
           const when = json.data?.expiry_date ? ` on ${formatDate(json.data.expiry_date)}` : "";
-          if (window.confirm(`This engagement letter expired${when}. Resend anyway?`)) {
+          if (await confirmDialog(`This engagement letter expired${when}. Resend anyway?`)) {
             await doResend(true);
           }
           return;
@@ -647,7 +651,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
         body: JSON.stringify({ recipient_email: email, resend, force }),
       });
       if (json.success && json.data?.needs_confirmation && resend && !force) {
-        if (window.confirm("This engagement letter has expired. Send to the new address anyway?")) {
+        if (await confirmDialog("This engagement letter has expired. Send to the new address anyway?")) {
           await doChangeRecipient(true, true);
         } else {
           onUpdated((json.data as { engagement: EngagementLetter }).engagement);
@@ -680,7 +684,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
         body: JSON.stringify({ resend: alsoSend }),
       });
       if (json.success && json.data?.needs_confirmation && alsoSend) {
-        if (window.confirm("This engagement letter has expired. Email the new link anyway?")) {
+        if (await confirmDialog("This engagement letter has expired. Email the new link anyway?")) {
           json = await apiFetch(`/api/engagement-letters/${letter.id}/regenerate-link`, {
             method: "POST",
             body: JSON.stringify({ resend: true, force: true }),
