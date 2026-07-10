@@ -562,20 +562,34 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
 
   /**
    * Bulk-import handler. Maps flat rows → grouped bills via buildPurchaseBills, then
-   * creates each through the EXISTING /api/purchase-bills/ endpoint (no parallel logic).
-   * Bills land as drafts. Vendors must already exist (referenced by name).
+   * creates them all in ONE request via /api/purchase-bills/bulk (same
+   * _create_purchase_bill_core logic the manual form's single-create endpoint uses —
+   * no parallel logic, just no per-row network round-trip). Bills land as drafts.
+   * Vendors must already exist (referenced by name).
    */
   async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
     const vendorRefs: NameRef[] = vendors.map((v) => ({ id: v.id, name: v.name }));
     const { bills: built, errors } = buildPurchaseBills(rows, clientId, vendorRefs);
+    if (built.length === 0) return { imported: 0, errors };
     const token = await getAuthToken();
+
+    const payloads = built.map(({ ref, ...payload }) => { void ref; return payload; }); // drop the internal grouping key
     let imported = 0;
-    for (const bill of built) {
-      const { ref, ...payload } = bill; // drop the internal grouping key
-      void ref;
-      const result = await apiCall("/api/purchase-bills/", "POST", payload, token);
-      if (result.success) imported += bill.lines.length;
-      else errors.push(`Bill "${bill.bill_no ?? bill.ref}": ${result.error ?? "failed to create"}`);
+    const result = await apiCall("/api/purchase-bills/bulk", "POST", { bills: payloads }, token);
+    if (result.success) {
+      const data = result.data as {
+        created: { lines?: unknown[] }[];
+        errors: { index: number; bill_no?: string; error: string }[];
+      };
+      for (const bill of data.created) {
+        imported += Array.isArray(bill.lines) ? bill.lines.length : 0;
+      }
+      for (const e of data.errors) {
+        const label = e.bill_no || built[e.index]?.ref || "?";
+        errors.push(`Bill "${label}": ${e.error}`);
+      }
+    } else {
+      errors.push(result.error ?? "Bulk import failed");
     }
     if (imported > 0) load();
     return { imported, errors };
@@ -991,15 +1005,28 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
 
   useEffect(() => { load(); }, [load]);
 
-  /** Bulk-import vendors through the EXISTING /api/vendors/ endpoint. */
+  /** Bulk-import vendors through /api/vendors/bulk — one request for the whole
+   *  file instead of one POST per row. */
   async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
     const { records, errors } = buildVendors(rows, clientId);
+    if (records.length === 0) return { imported: 0, errors };
     const token = await getAuthToken();
+
     let imported = 0;
-    for (const v of records) {
-      const result = await apiCall("/api/vendors/", "POST", v, token);
-      if (result.success) imported++;
-      else errors.push(`Vendor "${v.name}": ${result.error ?? "failed to create"}`);
+    const result = await apiCall("/api/vendors/bulk", "POST", { vendors: records }, token);
+    if (result.success) {
+      const data = result.data as {
+        created: unknown[];
+        duplicates: { name?: string; error: string }[];
+        errors: { name?: string; error: string }[];
+      };
+      imported = data.created.length;
+      // Duplicates were reported as plain errors by the old single-row loop
+      // (this tab has no separate "skipped" count) — keep that shape.
+      for (const d of data.duplicates) errors.push(`Vendor "${d.name ?? "?"}": ${d.error}`);
+      for (const e of data.errors) errors.push(`Vendor "${e.name ?? "?"}": ${e.error}`);
+    } else {
+      errors.push(result.error ?? "Bulk import failed");
     }
     if (imported > 0) load();
     return { imported, errors };
