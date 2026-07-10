@@ -8,7 +8,6 @@ import React, {
   useState,
 } from "react";
 import { usePathname } from "next/navigation";
-import { recordLastClientSection } from "./clientSectionHistory";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 
 export type ClientSection =
@@ -110,15 +109,6 @@ export function ClientNavProvider({ children }: ClientNavProviderProps) {
     const m = window.location.pathname.match(/^\/clients\/([^/]+)/);
     const id = m ? decodeURIComponent(m[1]) : "";
     setClientId(id);
-    // Only record a real section (never the bare-root/"_placeholder" cases,
-    // which would otherwise transiently overwrite the real last section
-    // while app/clients/[id]/page.tsx's redirect is still in flight).
-    if (id && id !== "_placeholder") {
-      const section = window.location.pathname.split("/")[3] as ClientSection | undefined;
-      if (section && CLIENT_SECTIONS.some((s) => s.id === section)) {
-        recordLastClientSection(id, section);
-      }
-    }
   }, [pathname]);
   // Persist the selected FY so it survives a page refresh / direct link, instead
   // of silently resetting to the current FY on every mount. Priority on init:
