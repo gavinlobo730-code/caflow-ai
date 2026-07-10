@@ -63,6 +63,18 @@ export interface ComboboxProps<T> extends ComboboxCore<T> {
    * an entirely empty list would otherwise show no way in at all.
    */
   emptyCreateLabel?: string;
+  /**
+   * QuickBooks-style create placement: when true (and `onCreate` is set),
+   * the "+ Create" row is ALWAYS the first selectable row in the list —
+   * pinned above every result, regardless of query state, loading, or
+   * error — instead of only appearing after a query with no exact match
+   * (the default everywhere this isn't set). Uses the same label priority
+   * as the empty-state affordance: `emptyCreateLabel` if set, else
+   * `createLabel(query)`. Not meant for a lookup whose create action needs
+   * a typed seed (e.g. HsnLookup's "add this code to your library") —
+   * pinning it before anything is typed wouldn't make sense there.
+   */
+  pinCreateAtTop?: boolean;
   placeholder?: string;
   searchPlaceholder?: string;
   disabled?: boolean;
@@ -137,6 +149,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
     onCreate,
     createLabel,
     emptyCreateLabel,
+    pinCreateAtTop = false,
     placeholder = "Select…",
     searchPlaceholder = "Search…",
     disabled,
@@ -202,6 +215,17 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
   const displayError = error ?? (showingRecent ? recentError : null);
   const doRetry = showingRecent && recentError ? onRetryRecent : retry;
 
+  // QuickBooks-style: when pinCreateAtTop, "+ Create" is ALWAYS the first
+  // selectable row, with results listed below it, instead of only
+  // surfacing after a query with no exact match (the legacy bottom-row
+  // behaviour, kept as-is for every other caller).
+  const createPinned = pinCreateAtTop && !!onCreate;
+  const bottomCreateVisible = !createPinned && showCreate;
+  const hasCreateRow = createPinned || bottomCreateVisible;
+  const resultOffset = createPinned ? 1 : 0;
+  const createIdx = createPinned ? 0 : results.length;
+  const navigableResultsCount = displayError ? 0 : results.length;
+
   // Selection helpers (works for single value or an array).
   const selectedArr: T[] = React.useMemo(
     () =>
@@ -221,6 +245,15 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
     }
     return selectedArr[0] ? getLabel(selectedArr[0]) : "";
   }, [multiple, selectedArr, getLabel]);
+
+  // useCombobox resets `highlighted` to 0 whenever `results` changes — for a
+  // pinned create row that's index 0, the create row itself, so pressing
+  // Enter right after typing a match would open the create flow instead of
+  // picking the obvious top result. Override to the first REAL result once
+  // any exist; leave it on the pinned row (0) when there are none.
+  React.useEffect(() => {
+    if (createPinned && results.length > 0) setHighlighted(resultOffset);
+  }, [createPinned, results, resultOffset, setHighlighted]);
 
   // ── open / close / focus / click-away ──────────────────────────────────────
   const close = React.useCallback(() => {
@@ -301,10 +334,8 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
     else setQuery("");
   }, [onCreate, query, multiple, close, setQuery]);
 
-  const createIdx = results.length; // create row sits after the last option
-
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    const last = results.length - 1 + (showCreate ? 1 : 0);
+    const last = (createPinned ? resultOffset + navigableResultsCount : navigableResultsCount + (bottomCreateVisible ? 1 : 0)) - 1;
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
@@ -324,8 +355,8 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
         break;
       case "Enter":
         e.preventDefault();
-        if (showCreate && highlighted === createIdx) void doCreate();
-        else if (results[highlighted]) commit(results[highlighted]);
+        if (hasCreateRow && highlighted === createIdx) void doCreate();
+        else if (results[highlighted - resultOffset]) commit(results[highlighted - resultOffset]);
         break;
       case "Escape":
         e.preventDefault();
@@ -333,8 +364,8 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
         break;
       case "Tab":
         // Commit the highlighted option, then let focus move on.
-        if (results[highlighted] && !multiple) {
-          commit(results[highlighted]);
+        if (results[highlighted - resultOffset] && !multiple) {
+          commit(results[highlighted - resultOffset]);
         } else {
           close();
         }
@@ -356,10 +387,13 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
 
   // Shared aria-activedescendant target for whichever input is currently on
   // screen (the inline field-mode input, or the plain-mode panel's own).
-  const activeDescendant = results[highlighted]
-    ? `${baseId}-opt-${highlighted}`
-    : showCreate && highlighted === createIdx
-      ? `${baseId}-create`
+  // Checked create-row-first (not results-first): for a pinned row, index 0
+  // IS the create row, and `results[0 - resultOffset]` would otherwise
+  // wrongly try `results[-1]` before this branch ever got a chance.
+  const activeDescendant = hasCreateRow && highlighted === createIdx
+    ? `${baseId}-create`
+    : results[highlighted - resultOffset]
+      ? `${baseId}-opt-${highlighted - resultOffset}`
       : undefined;
 
   // field-mode + open: the trigger IS the search box (see the JSX below), so
@@ -496,6 +530,29 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
             aria-label={ariaLabel}
             className={cn("overflow-y-auto py-1", panelDensity === "spacious" ? "max-h-[28rem]" : "max-h-64")}
           >
+            {/* Pinned "+ Create" row (QuickBooks-style): always the first
+                row, above everything else — unaffected by loading/error/
+                empty state, so there's always something actionable on
+                screen even while results are still loading. */}
+            {createPinned && (
+              <div
+                id={`${baseId}-create`}
+                data-idx={createIdx}
+                role="option"
+                aria-selected={false}
+                onMouseDown={(e) => e.preventDefault()}
+                onMouseEnter={() => setHighlighted(createIdx)}
+                onClick={() => void doCreate()}
+                className={cn(
+                  "flex cursor-pointer items-center gap-1.5 border-b border-[#F1F5F9] px-3 py-1.5 text-xs text-blue-600",
+                  highlighted === createIdx ? "bg-[#EFF6FF]" : "hover:bg-[#F8FAFC]",
+                )}
+              >
+                <Plus size={13} className="flex-shrink-0" />
+                <span className="truncate">{emptyCreateLabel ?? (createLabel ?? defaultCreateLabel)(query.trim())}</span>
+              </div>
+            )}
+
             {displayError ? (
               <div className="px-3 py-3 text-center text-[11px] text-red-600">
                 {displayError}.{" "}
@@ -503,7 +560,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                   Retry
                 </button>
               </div>
-            ) : results.length === 0 && (busy || !showCreate) ? (
+            ) : results.length === 0 && (busy || !bottomCreateVisible) ? (
               <div className="px-3 py-3 text-center text-[11px] text-[#94A3B8]">
                 <p>{busy ? "Loading…" : emptyText}</p>
                 {/* Offered before typing when emptyCreateLabel is set (an
@@ -519,8 +576,10 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                     STALE/empty `asyncResults` from before this keystroke),
                     so without this gate the create row renders every time,
                     on every search, for the entire round-trip, regardless of
-                    whether the real match is about to arrive. */}
-                {!busy && onCreate && (emptyCreateLabel != null || query.trim().length > 0) && (
+                    whether the real match is about to arrive. Also skipped
+                    entirely when createPinned — the pinned row above already
+                    covers it, so this would just be a duplicate. */}
+                {!createPinned && !busy && onCreate && (emptyCreateLabel != null || query.trim().length > 0) && (
                   <button
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
@@ -535,17 +594,18 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
             ) : (
               <>
                 {results.map((o, i) => {
+                  const idx = i + resultOffset;
                   const selected = isSel(o);
-                  const active = i === highlighted;
+                  const active = idx === highlighted;
                   return (
                     <div
                       key={getOptionId(o)}
                       id={`${baseId}-opt-${i}`}
-                      data-idx={i}
+                      data-idx={idx}
                       role="option"
                       aria-selected={selected}
                       onMouseDown={(e) => e.preventDefault()}
-                      onMouseEnter={() => setHighlighted(i)}
+                      onMouseEnter={() => setHighlighted(idx)}
                       onClick={() => commit(o)}
                       className={cn(
                         "flex cursor-pointer items-center justify-between gap-2",
@@ -570,7 +630,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                   );
                 })}
 
-                {showCreate && (
+                {bottomCreateVisible && (
                   <div
                     id={`${baseId}-create`}
                     data-idx={createIdx}
