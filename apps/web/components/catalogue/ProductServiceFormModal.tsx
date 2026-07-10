@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * Product/Service create/edit dialog — shared by the client-workspace
- * management page (/clients/[id]/products-services/) and the Sales
- * Invoice's inline "+ Create Product/Service" flow (Final Invoice Workflow
- * Alignment: "Everything billed should exist as a Product or Service" —
- * there is ONE creation workflow, not a separate path per caller).
+ * Product/Service create/edit dialog — shared by ProductServiceManagerPanel
+ * (opened from a Sales Invoice line's "+ Add Product/Service" overlay) and
+ * the Sales Invoice's inline "+ Create Product/Service" flow (Final Invoice
+ * Workflow Alignment: "Everything billed should exist as a Product or
+ * Service" — there is ONE creation workflow, not a separate path per caller).
  *
  * Only Name is mandatory; everything else (description, kind, HSN/SAC, GST,
  * selling/purchase price, unit, category) is optional. HSN/SAC is browsed

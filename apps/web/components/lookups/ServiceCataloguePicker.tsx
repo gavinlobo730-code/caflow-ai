@@ -20,12 +20,12 @@ import {
  * scoped to `clientId` — a firm's other clients' presets never appear.
  *
  * The pinned "+ Add Product/Service" row opens ProductServiceManagerPanel as
- * a slide-over — the SAME full management screen (browse/search/create/
- * edit/archive/delete/bulk-actions) the client workspace's Products &
- * Services page embeds, not a separate "quick create" dialog — so a CA who
- * wants to fix a typo on an existing preset, or just look at what's already
- * there, never has to leave the invoice. Picking (or freshly creating) a row
- * there is handed straight to `onPick`, exactly like a normal search result.
+ * a slide-over — the full management screen (browse/search/create/edit/
+ * archive/delete/bulk-actions), not a separate "quick create" dialog — so a
+ * CA who wants to fix a typo on an existing preset, or just look at what's
+ * already there, never has to leave the invoice. Picking (or freshly
+ * creating) a row there is handed straight to `onPick`, exactly like a
+ * normal search result.
  *
  * It is a controlled display, not a controlled input: `value` is the
  * caller's current pick for THIS row (shown in the trigger instead of the
@@ -149,7 +149,6 @@ export const ServiceCataloguePicker = React.forwardRef<ComboboxHandle, {
       {showManager && (
         <ProductServiceManagerPanel
           clientId={clientId}
-          mode="overlay"
           onClose={() => setShowManager(false)}
           onPick={onPick}
         />

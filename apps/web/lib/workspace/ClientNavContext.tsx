@@ -15,7 +15,6 @@ export type ClientSection =
   | "accounting"
   | "sales"
   | "purchases"
-  | "products-services"
   | "compliance"
   | "payroll"
   | "fixed-assets"
@@ -44,12 +43,16 @@ export interface ClientSectionConfig {
 // deleted) so it can be re-added here once it has real reports; the
 // firm-wide /reports/ page is a separate, fully working feature and is
 // unaffected.
+//
+// "products-services" is likewise omitted: Products & Services management
+// lives entirely inside ServiceCataloguePicker's "+ Add Product/Service"
+// overlay (ProductServiceManagerPanel, mode="overlay") on a Sales Invoice
+// line — there is no standalone sidebar destination for it.
 export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   { id: "overview",     label: "Overview",      href: (id) => `/clients/${id}/overview/` },
   { id: "accounting",   label: "Accounting",    href: (id) => `/clients/${id}/accounting/` },
   { id: "sales",        label: "Sales",         href: (id) => `/clients/${id}/sales/` },
   { id: "purchases",    label: "Purchases",     href: (id) => `/clients/${id}/purchases/` },
-  { id: "products-services", label: "Products & Services", href: (id) => `/clients/${id}/products-services/` },
   { id: "compliance",   label: "Compliance",    href: (id) => `/clients/${id}/compliance/` },
   { id: "payroll",      label: "Payroll",       href: (id) => `/clients/${id}/payroll/` },
   { id: "fixed-assets", label: "Fixed Assets",  href: (id) => `/clients/${id}/fixed-assets/` },
