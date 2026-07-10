@@ -29,3 +29,6 @@ Code rules — always follow:
 - All API responses must follow: { success: bool, data: any, error: string | null }
 
 Current phase: MVP Phase 1 only. Do not build anything outside this scope.
+
+Bug fixing:
+- When the user reports a bug, don't just patch the one instance. Identify the underlying pattern (wrong column name, missing null check, stale label, unapplied migration, etc.) and grep/search the rest of the codebase for the same pattern before calling the fix done. Report what else was found, even if you decide not to touch it.
