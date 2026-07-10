@@ -13,9 +13,14 @@
  * The create/edit form itself lives in ProductServiceFormModal (shared with
  * the Sales Invoice's inline "+ Create Product/Service" flow — Final
  * Invoice Workflow Alignment: ONE creation workflow, not one per caller).
+ *
+ * The list is the shared DataTable (search/sort/filter/pagination/export/
+ * bulk-select, matching every other roster in the app) instead of a
+ * hand-rolled <table> — the whole catalogue loads once per client and
+ * search/active-archived filtering run client-side, same as Customers.
  */
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Pencil, Archive, RotateCcw, Trash2, Search, BookMarked, Upload } from "lucide-react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { Plus, Pencil, Archive, RotateCcw, Trash2, BookMarked, Upload } from "lucide-react";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -26,16 +31,14 @@ import {
 } from "@/lib/catalogue/service";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildServices, SERVICE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
-
-type Filter = "active" | "archived";
+import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
+import type { Column, FilterDef } from "@/lib/table/types";
 
 export default function ProductsServicesPage() {
   const { clientId } = useClientNav();
   const [items, setItems] = useState<ServiceCatalogueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<Filter>("active");
   const [editing, setEditing] = useState<ServiceCatalogueItem | "new" | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" } | null>(null);
@@ -47,31 +50,27 @@ export default function ProductsServicesPage() {
     toastTimer.current = setTimeout(() => setToast(null), 3500);
   }
 
+  // Whole catalogue, once per client — DataTable owns search/sort/filter/
+  // pagination over it client-side (SMB scale; matches every other roster).
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
     setError(false);
     try {
       const res = (await api.serviceCatalogue.list(clientId, {
-        q: q.trim() || undefined,
-        include_archived: filter === "archived",
-        limit: 100,
+        include_archived: true,
+        limit: 500,
       })) as ApiResp<ServiceCatalogueItem[]>;
       if (!res.success) { setError(true); return; }
-      const rows = res.data ?? [];
-      // include_archived returns both; the "archived" tab shows only archived.
-      setItems(filter === "archived" ? rows.filter((r) => !r.is_active) : rows);
+      setItems(res.data ?? []);
     } catch {
       setError(true);
     } finally {
       setLoading(false);
     }
-  }, [clientId, q, filter]);
+  }, [clientId]);
 
-  useEffect(() => {
-    const t = setTimeout(load, 200); // debounce search
-    return () => clearTimeout(t);
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   async function setActive(item: ServiceCatalogueItem, is_active: boolean) {
     try {
@@ -85,9 +84,9 @@ export default function ProductsServicesPage() {
   }
 
   // Permanent delete — the backend only allows this when the item has never
-  // been picked into a transaction line (use_count === 0); otherwise it
-  // rejects with success:false and a message pointing at Archive instead,
-  // which we surface via the same error toast rather than a generic failure.
+  // been linked to a real sales invoice line; otherwise it rejects with
+  // success:false and a message pointing at Archive instead, which we
+  // surface via the same error toast rather than a generic failure.
   async function deleteItem(item: ServiceCatalogueItem) {
     const ok = await confirmDialog({
       message: `Permanently delete "${item.name}"? This cannot be undone.`,
@@ -102,6 +101,77 @@ export default function ProductsServicesPage() {
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Delete failed", "error");
     }
+  }
+
+  // Bulk actions mirror the Customers tab's pattern (sales/page.tsx): no
+  // pre-check GET — the backend re-validates on every call, so a blocked row
+  // is just reported as a failure rather than fetched twice. Skips rows
+  // already in the target state (e.g. archiving an already-archived row)
+  // rather than erroring on them.
+  async function bulkArchive(selected: ServiceCatalogueItem[]): Promise<boolean> {
+    const targets = selected.filter((s) => s.is_active);
+    let archived = 0;
+    const failures: string[] = [];
+    await Promise.all(targets.map(async (s) => {
+      try {
+        const res = (await api.serviceCatalogue.update(s.id, { is_active: false })) as ApiResp<unknown>;
+        if (!res.success) throw new Error(res.error ?? "failed");
+        archived++;
+      } catch (e) {
+        failures.push(`${s.name}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+    }));
+    const skipped = selected.length - targets.length;
+    const parts: string[] = [];
+    if (archived) parts.push(`${archived} archived`);
+    if (skipped) parts.push(`${skipped} already archived`);
+    if (failures.length) parts.push(`${failures.length} failed (${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""})`);
+    showToast(parts.join(", ") || "Nothing to do", failures.length ? "error" : "success");
+    if (archived) load();
+    return failures.length === 0;
+  }
+
+  async function bulkRestore(selected: ServiceCatalogueItem[]): Promise<boolean> {
+    const targets = selected.filter((s) => !s.is_active);
+    let restored = 0;
+    const failures: string[] = [];
+    await Promise.all(targets.map(async (s) => {
+      try {
+        const res = (await api.serviceCatalogue.update(s.id, { is_active: true })) as ApiResp<unknown>;
+        if (!res.success) throw new Error(res.error ?? "failed");
+        restored++;
+      } catch (e) {
+        failures.push(`${s.name}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+    }));
+    const skipped = selected.length - targets.length;
+    const parts: string[] = [];
+    if (restored) parts.push(`${restored} restored`);
+    if (skipped) parts.push(`${skipped} already active`);
+    if (failures.length) parts.push(`${failures.length} failed (${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""})`);
+    showToast(parts.join(", ") || "Nothing to do", failures.length ? "error" : "success");
+    if (restored) load();
+    return failures.length === 0;
+  }
+
+  async function bulkDelete(selected: ServiceCatalogueItem[]): Promise<boolean> {
+    let deleted = 0;
+    const failures: string[] = [];
+    await Promise.all(selected.map(async (s) => {
+      try {
+        const res = (await api.serviceCatalogue.delete(s.id)) as ApiResp<unknown>;
+        if (!res.success) throw new Error(res.error ?? "failed");
+        deleted++;
+      } catch (e) {
+        failures.push(`${s.name}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+    }));
+    const summary = failures.length
+      ? `${deleted} deleted, ${failures.length} failed (${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""})`
+      : `${deleted} item${deleted !== 1 ? "s" : ""} deleted`;
+    showToast(summary, failures.length ? "error" : "success");
+    if (deleted) load();
+    return failures.length === 0;
   }
 
   /** Bulk-import products/services through /api/service-catalogue/bulk — one
@@ -139,13 +209,41 @@ export default function ProductsServicesPage() {
     return { imported, errors, skipped, skippedDetail };
   }
 
+  // ── DataTable columns / filters ───────────────────────────────────────────
+  const columns: Column<ServiceCatalogueItem>[] = useMemo(() => [
+    { key: "name", header: "Name", accessor: (s) => s.name, searchable: true, sortable: true, sticky: true, hideable: false,
+      render: (s) => (
+        <div>
+          <p className="font-medium text-[#1E293B]">
+            {s.name}
+            <span className="ml-2 text-[9px] uppercase tracking-wide text-[#94A3B8]">{formatServiceKind(s.kind)}</span>
+            {!s.is_active && <span className="ml-2 text-[10px] uppercase tracking-wide text-[#94A3B8]">archived</span>}
+          </p>
+          {s.description && <p className="text-[11px] text-[#94A3B8] truncate max-w-[280px]">{s.description}</p>}
+        </div>
+      ) },
+    { key: "hsn_sac", header: "SAC/HSN", accessor: (s) => s.hsn_sac ?? "", searchable: true,
+      render: (s) => <span className="font-mono text-[#64748B]">{s.hsn_sac || "—"}</span> },
+    { key: "gst_rate_bps", header: "GST", accessor: (s) => s.gst_rate_bps ?? 0, sortable: true, align: "right",
+      render: (s) => <span className="text-[#334155]">{formatServiceRate(s.gst_rate_bps) || "—"}</span> },
+    { key: "default_rate_paise", header: "Selling price", accessor: (s) => s.default_rate_paise ?? 0, sortable: true, align: "right",
+      render: (s) => <span className="font-mono text-[#334155]">{formatServicePrice(s.default_rate_paise) || "—"}</span> },
+  ], []);
+
+  const filters: FilterDef<ServiceCatalogueItem>[] = useMemo(() => [
+    { key: "is_active", label: "Status", type: "select", accessor: (s) => (s.is_active ? "active" : "inactive"), options: [
+      { value: "active", label: "Active" },
+      { value: "inactive", label: "Archived" },
+    ] },
+  ], []);
+
   if (!clientId || clientId === "_placeholder") {
     return <div className="p-6 max-w-4xl mx-auto text-sm text-[#94A3B8]">Loading…</div>;
   }
 
   return (
     <RoleGuard allowed={["Partner", "Manager"]}>
-      <div className="p-6 max-w-4xl mx-auto space-y-5">
+      <div className="p-6 max-w-5xl mx-auto space-y-5">
         {toast && (
           <div className={`fixed top-4 right-4 z-[70] px-4 py-2 rounded-lg text-sm shadow-lg ${toast.kind === "success" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}>
             {toast.msg}
@@ -173,97 +271,63 @@ export default function ProductsServicesPage() {
           </div>
         </div>
 
-        {/* Search + filter */}
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search by name, SAC/HSN or description…"
-              className="w-full pl-8 pr-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
-          <div className="flex rounded-lg border border-[#E2E8F0] overflow-hidden text-xs">
-            {(["active", "archived"] as Filter[]).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`px-3 py-2 capitalize ${filter === f ? "bg-emerald-600 text-white" : "bg-white text-[#475569] hover:bg-[#F8FAFC]"}`}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* List */}
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          {loading ? (
-            <div className="p-4 space-y-2">
-              {[...Array(4)].map((_, i) => <div key={i} className="h-11 rounded bg-[#F8FAFC] animate-pulse" />)}
-            </div>
-          ) : error ? (
-            <div className="p-8 text-center text-sm">
-              <p className="text-[#334155] font-medium">Couldn&apos;t load Products &amp; Services</p>
-              <button onClick={load} className="mt-2 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Retry</button>
-            </div>
-          ) : items.length === 0 ? (
-            <div className="p-10 text-center">
-              <BookMarked size={26} className="mx-auto mb-2 text-[#CBD5E1]" />
-              <p className="text-sm font-medium text-[#334155]">
-                {q ? "No products or services match your search" : filter === "archived" ? "No archived items" : "No products or services yet"}
-              </p>
-              {!q && filter === "active" && (
-                <button onClick={() => setEditing("new")} className="mt-3 text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
-                  Create the first one
-                </button>
+        {/* Table — shared DataTable (search, sort, filters, pagination, export, bulk-select) */}
+        <DataTable
+          data={items}
+          columns={columns}
+          filters={filters}
+          getRowId={(s) => s.id}
+          loading={loading}
+          error={error ? "Couldn't load Products & Services" : null}
+          onRetry={load}
+          onRefresh={load}
+          searchPlaceholder="Search by name, SAC/HSN or description…"
+          initialSort={{ key: "name", dir: "asc" }}
+          initialFilters={{ is_active: "active" }}
+          exportFilename="products-services"
+          persistKey="products-services"
+          emptyTitle="No products or services yet"
+          emptyAction={
+            <button onClick={() => setEditing("new")} className="mt-3 text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
+              Create the first one
+            </button>
+          }
+          bulkActions={[
+            {
+              id: "archive",
+              label: "Archive",
+              icon: <Archive size={13} />,
+              confirm: "Archive the selected products/services? They will no longer appear in the invoice picker. Existing invoices are unaffected and this can be undone.",
+              run: bulkArchive,
+            },
+            {
+              id: "restore",
+              label: "Restore",
+              icon: <RotateCcw size={13} />,
+              run: bulkRestore,
+            },
+            {
+              id: "delete-permanent",
+              label: "Delete permanently",
+              icon: <Trash2 size={13} />,
+              variant: "danger",
+              confirm: "Permanently delete the selected products/services? Any item used on a sales invoice will be skipped. This cannot be undone.",
+              run: bulkDelete,
+            },
+            exportSelectedAction("products-services-selected.csv", columns),
+          ]}
+          rowActions={(s) => (
+            <div className="flex items-center justify-end gap-1">
+              <button onClick={() => setEditing(s)} className="p-1.5 text-[#64748B] hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Edit"><Pencil size={14} /></button>
+              {s.is_active ? (
+                <button onClick={() => setActive(s, false)} className="p-1.5 text-[#64748B] hover:text-amber-600 hover:bg-amber-50 rounded" aria-label="Archive"><Archive size={14} /></button>
+              ) : (
+                <button onClick={() => setActive(s, true)} className="p-1.5 text-[#64748B] hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
               )}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[640px]">
-                <thead>
-                  <tr className="text-[11px] text-[#94A3B8] border-b border-[#F1F5F9]">
-                    <th className="px-4 py-2 text-left font-semibold">Name</th>
-                    <th className="px-4 py-2 text-left font-semibold">SAC/HSN</th>
-                    <th className="px-4 py-2 text-right font-semibold">GST</th>
-                    <th className="px-4 py-2 text-right font-semibold">Selling price</th>
-                    <th className="px-4 py-2 text-right font-semibold w-24"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
-                  {items.map((s) => (
-                    <tr key={s.id} className={s.is_active ? "" : "bg-[#FAFAFA] text-[#94A3B8]"}>
-                      <td className="px-4 py-2.5">
-                        <p className="font-medium text-[#1E293B]">
-                          {s.name}
-                          <span className="ml-2 text-[9px] uppercase tracking-wide text-[#94A3B8]">{formatServiceKind(s.kind)}</span>
-                          {!s.is_active && <span className="ml-2 text-[10px] uppercase tracking-wide text-[#94A3B8]">archived</span>}
-                        </p>
-                        {s.description && <p className="text-[11px] text-[#94A3B8] truncate max-w-[280px]">{s.description}</p>}
-                      </td>
-                      <td className="px-4 py-2.5 font-mono text-[#64748B]">{s.hsn_sac || "—"}</td>
-                      <td className="px-4 py-2.5 text-right text-[#334155]">{formatServiceRate(s.gst_rate_bps) || "—"}</td>
-                      <td className="px-4 py-2.5 text-right font-mono text-[#334155]">{formatServicePrice(s.default_rate_paise) || "—"}</td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => setEditing(s)} className="p-1.5 text-[#64748B] hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Edit"><Pencil size={14} /></button>
-                          {s.is_active ? (
-                            <button onClick={() => setActive(s, false)} className="p-1.5 text-[#64748B] hover:text-amber-600 hover:bg-amber-50 rounded" aria-label="Archive"><Archive size={14} /></button>
-                          ) : (
-                            <button onClick={() => setActive(s, true)} className="p-1.5 text-[#64748B] hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
-                          )}
-                          <button onClick={() => deleteItem(s)} className="p-1.5 text-[#64748B] hover:text-red-600 hover:bg-red-50 rounded" aria-label="Delete"><Trash2 size={14} /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <button onClick={() => deleteItem(s)} className="p-1.5 text-[#64748B] hover:text-red-600 hover:bg-red-50 rounded" aria-label="Delete"><Trash2 size={14} /></button>
             </div>
           )}
-        </div>
+        />
       </div>
 
       {editing && (
