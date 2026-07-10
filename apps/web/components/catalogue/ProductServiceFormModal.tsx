@@ -49,26 +49,39 @@ export function ProductServiceFormModal({
   );
   const [attempted, setAttempted] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Shown INSIDE the modal, next to Create/Save — a save failure must never be
+  // visible only via onError, since a caller may surface that somewhere the CA
+  // isn't looking (e.g. a page-level banner behind this very modal on the
+  // Sales Invoice's inline "+ Create Product/Service" flow). onError still
+  // fires too, for callers that also want a toast or similar.
+  const [saveError, setSaveError] = useState<string | null>(null);
   const v = validateServiceForm(form);
 
   function set<K extends keyof ServiceFormInput>(k: K, val: ServiceFormInput[K]) {
     setForm((p) => ({ ...p, [k]: val }));
+    setSaveError(null);
+  }
+
+  function fail(msg: string) {
+    setSaveError(msg);
+    onError(msg);
   }
 
   async function submit() {
     setAttempted(true);
     if (!v.ok) return;
     setSaving(true);
+    setSaveError(null);
     try {
       const payload = serviceFormToPayload(form, clientId);
       const res = existing
         ? ((await api.serviceCatalogue.update(existing.id, payload)) as ApiResp<ServiceCatalogueItem>)
         : ((await api.serviceCatalogue.create(payload)) as ApiResp<ServiceCatalogueItem>);
       if (!res.success || !res.data) throw new Error(res.error ?? "Save failed");
-      if (res.data.duplicate) { onError(`"${form.name.trim()}" already exists for this client.`); return; }
+      if (res.data.duplicate) { fail(`"${form.name.trim()}" already exists for this client.`); return; }
       onSaved(res.data);
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Save failed");
+      fail(e instanceof Error ? e.message : "Save failed");
     } finally {
       setSaving(false);
     }
@@ -116,6 +129,10 @@ export function ProductServiceFormModal({
         <Field label="Notes (optional)">
           <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Internal note" className={inputCls} />
         </Field>
+
+        {saveError && (
+          <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{saveError}</p>
+        )}
 
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50">Cancel</button>

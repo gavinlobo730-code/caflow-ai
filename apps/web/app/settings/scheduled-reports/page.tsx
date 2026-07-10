@@ -106,9 +106,9 @@ export default function ScheduledReportsPage() {
           .order("created_at", { ascending: false }),
         supabase
           .from("clients")
-          .select("id, name")
+          .select("id, name:client_name")
           .eq("firm_id", firmId)
-          .order("name"),
+          .order("client_name"),
       ]);
 
       // Build client lookup

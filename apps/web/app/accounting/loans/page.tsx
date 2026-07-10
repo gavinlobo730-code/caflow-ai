@@ -225,15 +225,15 @@ export default function LoansAndFDPage() {
         { data: loansData },
         { data: fdsData },
       ] = await Promise.all([
-        sb.from("clients").select("id, name").eq("firm_id", firmId).order("name"),
+        sb.from("clients").select("id, name:client_name").eq("firm_id", firmId).order("client_name"),
         sb
           .from("loans")
-          .select("*, clients(name)")
+          .select("*, clients(name:client_name)")
           .eq("firm_id", firmId)
           .order("created_at", { ascending: false }),
         sb
           .from("fixed_deposits")
-          .select("*, clients(name)")
+          .select("*, clients(name:client_name)")
           .eq("firm_id", firmId)
           .order("created_at", { ascending: false }),
       ]);
