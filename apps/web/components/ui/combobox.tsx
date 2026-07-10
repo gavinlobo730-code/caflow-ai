@@ -26,6 +26,17 @@ export interface ComboboxProps<T> extends ComboboxCore<T> {
   fetchOptions?: (query: string) => Promise<T[]>;
   /** Shown before typing (recent / frequent / favourites). */
   recent?: T[];
+  /**
+   * True while the caller's own `recent` fetch is still in flight. Without
+   * this, opening the picker before that fetch resolves shows `recent` as an
+   * empty array indistinguishable from "genuinely nothing here" — the panel
+   * asserts `emptyText` (e.g. "No Product/Service Found") even though data
+   * exists and is simply still loading (most visible on a cold backend
+   * start). Wire this to the same loading flag the caller uses for its
+   * `recent` fetch so the panel shows a neutral loading state instead of a
+   * false negative.
+   */
+  recentLoading?: boolean;
   debounceMs?: number;
   minChars?: number;
   /** Enable the "+ Create …" row; receives the current query. */
@@ -105,6 +116,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
     options,
     fetchOptions,
     recent,
+    recentLoading = false,
     debounceMs,
     minChars,
     onCreate,
@@ -158,6 +170,14 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
     minChars,
   });
   const { query, setQuery, results, loading, error, highlighted, setHighlighted, showCreate, retry } = combo;
+
+  // Before the query reaches minChars, `results` is just `recent` (see
+  // useCombobox) — so while the caller's own recent-fetch is still in
+  // flight, treat it exactly like an in-flight search for display purposes
+  // (loading text/spinner, no premature "+ Create"/emptyText).
+  const showingRecent = !!fetchOptions && query.trim().length < (minChars ?? 1);
+  const recentPending = showingRecent && recentLoading;
+  const busy = loading || recentPending;
 
   // Selection helpers (works for single value or an array).
   const selectedArr: T[] = React.useMemo(
@@ -395,7 +415,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
               autoComplete="off"
               className="w-full bg-transparent text-xs text-[#334155] placeholder:text-[#94A3B8] focus:outline-none"
             />
-            {loading && <Loader2 size={13} className="flex-shrink-0 animate-spin text-[#94A3B8]" />}
+            {busy && <Loader2 size={13} className="flex-shrink-0 animate-spin text-[#94A3B8]" />}
           </div>
 
           {/* Results */}
@@ -415,13 +435,16 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
               </div>
             ) : results.length === 0 && !showCreate ? (
               <div className="px-3 py-3 text-center text-[11px] text-[#94A3B8]">
-                <p>{loading ? "Searching…" : emptyText}</p>
+                <p>{busy ? "Loading…" : emptyText}</p>
                 {/* Offered before typing when emptyCreateLabel is set (an
                     entirely empty list, e.g. a new client's catalogue), or
                     once a query exists even below minChars — either way,
                     onCreate must never be reachable ONLY via a 2+ character
-                    search with no visible entry point. */}
-                {!loading && onCreate && (emptyCreateLabel != null || query.trim().length > 0) && (
+                    search with no visible entry point. Suppressed while the
+                    recent-fetch is still in flight so it doesn't flash a
+                    "create new" affordance for an item that already exists
+                    and simply hasn't loaded yet. */}
+                {!busy && onCreate && (emptyCreateLabel != null || query.trim().length > 0) && (
                   <button
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
