@@ -204,7 +204,7 @@ export interface BuiltService {
 export const SERVICE_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "name", label: "Name", required: true, hint: "Product / service name" },
   { key: "description", label: "Description", required: false, hint: "Line description (defaults to the name)" },
-  { key: "kind", label: "Kind", required: false, hint: "good / service (defaults to service)" },
+  { key: "kind", label: "Kind", required: false, hint: "product / service (defaults to service)" },
   { key: "category", label: "Category", required: false, hint: "e.g. Compliance (optional)" },
   { key: "hsn_sac", label: "HSN/SAC", required: false, hint: "Must already be in the firm's HSN/SAC library (optional)" },
   { key: "gst_rate", label: "GST %", required: false, hint: "e.g. 18 (defaults to 18%)" },
@@ -225,10 +225,15 @@ export function buildServices(rows: Record<string, string>[], clientId: string):
     const nameKey = name.toLowerCase().replace(/\s+/g, " ");
     if (seen.has(nameKey)) { errors.push(`Row ${rowNo}: duplicate name "${name}" in this file`); return; }
 
+    // "good" is the internal/API value (matches hsn_type and the backend
+    // model); "product" is accepted as an alias since that's the label the
+    // app itself now shows everywhere ("New Product/Service", the Kind
+    // dropdown) — a CA typing what they see in the app must not be rejected.
     const kindRaw = str(r.kind).toLowerCase();
-    const kind: "good" | "service" = kindRaw === "good" ? "good" : "service";
-    if (kindRaw && kindRaw !== "good" && kindRaw !== "service") {
-      errors.push(`Row ${rowNo}: kind must be "good" or "service"`); return;
+    const isGood = kindRaw === "good" || kindRaw === "product";
+    const kind: "good" | "service" = isGood ? "good" : "service";
+    if (kindRaw && !isGood && kindRaw !== "service") {
+      errors.push(`Row ${rowNo}: kind must be "product" or "service"`); return;
     }
 
     const gstRaw = str(r.gst_rate);

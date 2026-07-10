@@ -83,6 +83,15 @@ test("services: rupees → paise, percent → bps, kind validated", () => {
   assert.equal(records[0].purchase_price_paise, 100000);
 });
 
+test("services: \"product\" is accepted as an alias for the internal \"good\" value", () => {
+  // The app shows "Product" everywhere (the Kind dropdown, the catalogue
+  // list) — a CA typing what they see in the app must not be rejected, even
+  // though "good" stays the internal/API value.
+  const { records, errors } = buildServices([row({ name: "Steel Rod", kind: "Product" })], "c1");
+  assert.equal(errors.length, 0);
+  assert.equal(records[0].kind, "good");
+});
+
 test("services: invalid kind and duplicate name reported", () => {
   const { records, errors } = buildServices([
     row({ name: "Bad Kind", kind: "widget" }),
