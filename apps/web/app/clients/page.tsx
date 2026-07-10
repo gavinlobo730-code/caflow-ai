@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   ChevronRight, Plus, Search, RefreshCw, Pencil, KanbanSquare, Upload,
-  MoreVertical, Archive, RotateCcw, Trash2,
+  MoreVertical, Archive, RotateCcw, Trash2, X,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -77,6 +77,14 @@ export default function ClientsPage() {
   const [actionBusy, setActionBusy]               = useState(false);
   const [actionError, setActionError]             = useState<string | null>(null);
 
+  // Bulk select (Archive) — mirrors the BankMatchQueue selection pattern
+  // (app/clients/[id]/accounting/page.tsx): Set<id>, toggle/select-all/clear,
+  // bulk action bar shown only when something is selected.
+  const [selected, setSelected]   = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy]   = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkMessage, setBulkMessage] = useState<string | null>(null);
+
   const { userRole } = useAuth();
   const canArchive = hasRole(userRole, ["Partner", "Manager"]);
   const canDelete  = hasRole(userRole, ["Partner"]);
@@ -130,6 +138,14 @@ export default function ClientsPage() {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [menuOpenId]);
+
+  // Selection is over the visible list — a new filter tab shows a different
+  // set of clients, so stale selected ids no longer make sense.
+  useEffect(() => {
+    setSelected(new Set());
+    setBulkError(null);
+    setBulkMessage(null);
+  }, [filter]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -207,6 +223,76 @@ export default function ClientsPage() {
     } finally {
       setActionBusy(false);
     }
+  }
+
+  function toggleRow(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelected((prev) => (prev.size === filtered.length ? new Set() : new Set(filtered.map((c) => c.id))));
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+    setBulkError(null);
+    setBulkMessage(null);
+  }
+
+  // Bulk archive: skips already-archived clients client-side, runs the rest
+  // in parallel, and reports partial failures without silently clearing the
+  // selection — a prior bug in this codebase's shared DataTable component
+  // cleared selection on partial failure and hid which rows still needed
+  // attention, so this deliberately keeps selection whenever anything failed.
+  async function bulkArchive() {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    setBulkError(null);
+    setBulkMessage(null);
+
+    const ids = Array.from(selected);
+    const targets = ids.filter((id) => clients.find((c) => c.id === id)?.status !== "archived");
+    const skipped = ids.length - targets.length;
+
+    const results = await Promise.all(
+      targets.map((id) =>
+        archiveClient(id).then(
+          () => ({ id, error: null as string | null }),
+          (e) => ({ id, error: e instanceof Error ? e.message : "Archive failed" }),
+        ),
+      ),
+    );
+    const failed = results.filter((r) => r.error !== null);
+    const succeeded = targets.length - failed.length;
+
+    if (succeeded > 0) await load();
+    setBulkBusy(false);
+
+    if (failed.length > 0) {
+      // Partial (or total) failure: keep selection so the user can see what's
+      // left and retry, do not clear it.
+      setBulkError(
+        `Archived ${succeeded} of ${targets.length} client${targets.length === 1 ? "" : "s"}` +
+        (skipped > 0 ? `, skipped ${skipped} already archived` : "") +
+        `. Failed: ${failed.length} — ${failed[0].error}${failed.length > 1 ? ` (+${failed.length - 1} more)` : ""}.`
+      );
+      return;
+    }
+
+    // Full success (skips are not failures) — clear selection.
+    if (targets.length === 0) {
+      setBulkMessage(`All ${skipped} selected client${skipped === 1 ? " is" : "s are"} already archived.`);
+    } else {
+      setBulkMessage(
+        `Archived ${succeeded} client${succeeded === 1 ? "" : "s"}` +
+        (skipped > 0 ? `. Skipped ${skipped} already archived.` : ".")
+      );
+    }
+    setSelected(new Set());
   }
 
   async function handleClientImport(rows: ImportRow[]) {
@@ -364,6 +450,42 @@ export default function ClientsPage() {
         </div>
       )}
 
+      {/* Bulk select — Archive only (Manager+). Selection is over `filtered`. */}
+      {!loading && filtered.length > 0 && canArchive && (
+        <div className="flex items-center gap-2 px-1">
+          <input
+            type="checkbox"
+            aria-label="Select all visible clients"
+            checked={filtered.length > 0 && selected.size === filtered.length}
+            ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < filtered.length; }}
+            onChange={toggleSelectAll}
+            className="h-3.5 w-3.5 rounded border-[#CBD5E1]"
+          />
+          <span className="text-[10px] text-[#94A3B8]">Select all visible</span>
+        </div>
+      )}
+
+      {!loading && canArchive && selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#C7D2FE] bg-[#EEF2FF] px-3 py-2 text-xs">
+          <span className="font-semibold text-[#3730A3]">{selected.size} selected</span>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <button
+              onClick={bulkArchive}
+              disabled={bulkBusy}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-white px-2.5 py-1.5 font-medium text-[#4338CA] hover:bg-[#E0E7FF] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Archive size={12} />
+              {bulkBusy ? "Archiving…" : "Archive"}
+            </button>
+            <button onClick={clearSelection} disabled={bulkBusy} className="text-[#6366F1] hover:text-[#4338CA] disabled:opacity-50" aria-label="Clear selection">
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+      {!loading && canArchive && bulkError && <p className="text-xs text-red-600 px-1">{bulkError}</p>}
+      {!loading && canArchive && bulkMessage && <p className="text-xs text-[#64748B] px-1">{bulkMessage}</p>}
+
       {/* Client list */}
       {!loading && filtered.length > 0 && (
         <Card>
@@ -381,6 +503,17 @@ export default function ClientsPage() {
                     className="absolute inset-0"
                     aria-label={`Open ${c.client_name}`}
                   />
+
+                  {/* Bulk-select checkbox — z-10 to sit above the full-row Link */}
+                  {canArchive && (
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${c.client_name}`}
+                      checked={selected.has(c.id)}
+                      onChange={() => toggleRow(c.id)}
+                      className="relative z-10 h-3.5 w-3.5 rounded border-[#CBD5E1] shrink-0"
+                    />
+                  )}
 
                   {/* Avatar */}
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${

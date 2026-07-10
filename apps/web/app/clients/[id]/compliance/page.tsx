@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -165,6 +165,9 @@ export default function CompliancePage() {
   const [subTab, setSubTab] = useState<ComplianceSubTab>("all");
   const [markFiled, setMarkFiled] = useState<MarkFiledForm | null>(null);
   const [filingLoading, setFilingLoading] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
 
   const today = todayLocalISO();
 
@@ -185,6 +188,14 @@ export default function CompliancePage() {
     }
     load();
   }, [clientId]);
+
+  useEffect(() => { setSelected(new Set()); }, [subTab]);
+
+  async function reloadCompliance() {
+    if (!clientId || clientId === "_placeholder") return;
+    const comp = await getComplianceCalendar(clientId).catch(() => [] as ComplianceEntry[]);
+    setCompliance(comp);
+  }
 
   async function handleMarkFiled() {
     if (!markFiled) return;
@@ -229,6 +240,56 @@ export default function CompliancePage() {
     if (subTab === "mca") return /MCA|ROC|DIR/i.test(c.compliance_type);
     return true;
   });
+
+  function toggleRow(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  function toggleSelectAll() {
+    setSelected((prev) => (prev.size === filtered.length ? new Set() : new Set(filtered.map((c) => c.id))));
+  }
+  function clearSelection() {
+    setSelected(new Set());
+    setBulkError(null);
+  }
+  async function bulkMarkFiled() {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    setBulkError(null);
+    const ids = Array.from(selected);
+    const results = await Promise.all(
+      ids.map(async (id) => {
+        const entry = compliance.find((c) => c.id === id);
+        if (entry?.filing_status === "filed") return "skipped" as const;
+        try {
+          await markObligationFiled(id);
+          return "success" as const;
+        } catch (e) {
+          return e instanceof Error ? e.message : "Failed";
+        }
+      })
+    );
+    const successCount = results.filter((r) => r === "success").length;
+    const skipCount = results.filter((r) => r === "skipped").length;
+    const failCount = results.length - successCount - skipCount;
+
+    if (successCount > 0) {
+      await reloadCompliance();
+    }
+    setBulkBusy(false);
+
+    if (failCount > 0) {
+      setBulkError(
+        `Failed to mark ${failCount} of ${ids.length} filing${ids.length === 1 ? "" : "s"} as filed.` +
+          (skipCount > 0 ? ` ${skipCount} already filed (skipped).` : "")
+      );
+    } else {
+      clearSelection();
+    }
+  }
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4">
@@ -305,11 +366,40 @@ export default function CompliancePage() {
         {loading ? (
           <CardContent><div className="h-32 animate-pulse bg-[#F8FAFC] rounded" /></CardContent>
         ) : (
+          <>
+            {selected.size > 0 && (
+              <div className="mx-5 mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[#C7D2FE] bg-[#EEF2FF] px-3 py-2 text-xs">
+                <span className="font-semibold text-[#3730A3]">{selected.size} selected</span>
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={bulkMarkFiled}
+                    disabled={bulkBusy}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-white px-2.5 py-1.5 font-medium text-[#4338CA] hover:bg-[#E0E7FF] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {bulkBusy ? "Marking…" : "Mark Filed"}
+                  </button>
+                  <button onClick={clearSelection} disabled={bulkBusy} className="text-[#6366F1] hover:text-[#4338CA] disabled:opacity-50" aria-label="Clear selection">
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
+            {bulkError && <p className="mx-5 mt-2 text-[11px] text-red-600">{bulkError}</p>}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8]">
-                  <th className="px-5 py-3 text-left font-semibold">Type</th>
+                  <th className="px-5 py-3 text-left font-semibold w-8">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all visible compliance obligations"
+                      checked={filtered.length > 0 && selected.size === filtered.length}
+                      ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < filtered.length; }}
+                      onChange={toggleSelectAll}
+                      className="h-3.5 w-3.5 rounded border-[#CBD5E1]"
+                    />
+                  </th>
+                  <th className="px-3 py-3 text-left font-semibold">Type</th>
                   <th className="px-3 py-3 text-left font-semibold">Period</th>
                   <th className="px-3 py-3 text-left font-semibold">Due Date</th>
                   <th className="px-3 py-3 text-left font-semibold">Status</th>
@@ -320,7 +410,16 @@ export default function CompliancePage() {
               <tbody className="divide-y divide-[#F8FAFC]">
                 {filtered.map((c) => (
                   <tr key={c.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-5 py-3 text-sm font-medium text-[#0F172A]">{c.compliance_type}</td>
+                    <td className="px-5 py-3">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${c.compliance_type} filing`}
+                        checked={selected.has(c.id)}
+                        onChange={() => toggleRow(c.id)}
+                        className="h-3.5 w-3.5 rounded border-[#CBD5E1]"
+                      />
+                    </td>
+                    <td className="px-3 py-3 text-sm font-medium text-[#0F172A]">{c.compliance_type}</td>
                     <td className="px-3 py-3 text-xs text-[#64748B]">
                       {formatDate(c.period_start)} – {formatDate(c.period_end)}
                     </td>
@@ -357,6 +456,7 @@ export default function CompliancePage() {
               <div className="text-center py-12 text-[#94A3B8] text-sm">No compliance entries</div>
             )}
           </div>
+          </>
         )}
       </Card>
     </div>

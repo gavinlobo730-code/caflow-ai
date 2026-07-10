@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Calendar, AlertTriangle, Clock, CheckCircle, FileText,
@@ -19,8 +19,9 @@ import type { Client } from "@/lib/types";
 import DemoFilingModal from "@/components/DemoFilingModal";
 import { getDemoFilingsByEntry, saveDemoFiling, type DemoFiling } from "@/lib/data/demoFilings";
 import { isSimulatable, DEMO_STATUS_LABEL } from "@/lib/filing/demoFiling";
-import { DataTable } from "@/components/ui/data-table";
-import type { Column, FilterDef } from "@/lib/table/types";
+import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
+import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
+import { useToast } from "@/components/ui/use-toast";
 
 // ─── Type filter mapping ───────────────────────────────────────────────────
 // URL param → compliance_type predicate. TDS and MCA use prefix matching because
@@ -87,8 +88,9 @@ function DeadlinesContent() {
   const [filingLoading, setFilingLoading] = useState(false);
   const [demoFilings, setDemoFilings] = useState<Record<string, DemoFiling>>({});
   const [demoEntry, setDemoEntry] = useState<ComplianceEntry | null>(null);
+  const { toast } = useToast();
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -105,9 +107,9 @@ function DeadlinesContent() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [loadData]);
 
   async function handleSimulated(demoReference: string) {
     if (!demoEntry) return;
@@ -137,6 +139,39 @@ function DeadlinesContent() {
       setFilingLoading(false);
     }
   }
+
+  // Bulk mark filed — ARN/acknowledgement number is optional on this endpoint
+  // (same as the single-row flow above), so this loops markFiled(id) with no
+  // reference number over the selection instead of collecting one per row.
+  // Rows already filed/na are skipped client-side (the backend would 409/no-op
+  // on them) and reported as "skipped", not "failed".
+  const handleBulkMarkFiled = useCallback(async (selected: ComplianceEntry[]) => {
+    const alreadyFiled = selected.filter((r) => r.filing_status === "filed" || r.filing_status === "na");
+    const toFile = selected.filter((r) => r.filing_status !== "filed" && r.filing_status !== "na");
+    const results = await Promise.all(
+      toFile.map((r) =>
+        markObligationFiled(r.id)
+          .then(() => ({ ok: true as const }))
+          .catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : "Mark filed failed" }))
+      )
+    );
+    const filedCount = results.filter((r) => r.ok).length;
+    const failed = results.filter((r): r is { ok: false; error: string } => !r.ok);
+    if (filedCount > 0) await loadData();
+
+    const hasIssue = alreadyFiled.length > 0 || failed.length > 0;
+    const parts = [`${filedCount} marked filed`];
+    if (alreadyFiled.length > 0) parts.push(`${alreadyFiled.length} already filed`);
+    if (failed.length > 0) parts.push(`${failed.length} failed (${failed[0].error}${failed.length > 1 ? `, +${failed.length - 1} more` : ""})`);
+    toast({
+      title: hasIssue ? "Some obligations weren't marked filed" : "Marked filed",
+      description: `${parts.join(", ")}.`,
+      variant: hasIssue ? "destructive" : undefined,
+    });
+    // Keep the selection alive when something didn't go through, so the CA can
+    // see exactly what's still pending and retry/investigate.
+    return !hasIssue;
+  }, [loadData, toast]);
 
   // ── Client name / GSTIN lookups (compliance rows carry only client_id) ─────
   const clientMap = useMemo(
@@ -264,6 +299,16 @@ function DeadlinesContent() {
     return defs;
   }, [urlType]);
 
+  // ── DataTable bulk actions — mark filed (skips rows already filed/na) + export ─
+  const bulkActions: BulkAction<ComplianceEntry>[] = useMemo(() => [
+    {
+      id: "bulk-mark-filed", label: "Mark Filed", icon: <CheckCircle size={13} />,
+      confirm: "Mark the selected obligations as filed? Already-filed rows will be skipped.",
+      run: handleBulkMarkFiled,
+    },
+    exportSelectedAction<ComplianceEntry>("deadlines-selected.csv", columns),
+  ], [handleBulkMarkFiled, columns]);
+
   const pageTitle = urlType && TYPE_LABELS[urlType]
     ? `Deadlines — ${TYPE_LABELS[urlType]}`
     : "All Deadlines";
@@ -379,6 +424,7 @@ function DeadlinesContent() {
         data={typeRecords}
         columns={columns}
         filters={filters}
+        bulkActions={bulkActions}
         getRowId={(r) => r.id}
         onRefresh={loadData}
         searchPlaceholder="Search by client name or GSTIN…"

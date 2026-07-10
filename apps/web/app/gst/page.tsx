@@ -26,8 +26,9 @@ import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
-import type { Column, FilterDef } from "@/lib/table/types";
+import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO, computeOverdueStatus } from "@/lib/dateMath";
+import { useToast } from "@/components/ui/use-toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -340,6 +341,195 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
   );
 }
 
+// ─── Batch Mark Filed Modal ────────────────────────────────────────────────────
+// Bulk counterpart to the single-row "Mark as Filed" flow above. Every GST
+// filing requires a genuine ARN (acknowledgement trail), so bulk marking still
+// collects one ARN per row — just via a batch form instead of N single-row
+// modals. A shared "Filed Date" applies to every row.
+
+interface BatchMarkFiledModalProps {
+  selected: GSTFiling[];
+  onClose: () => void;
+  onSuccess: (updates: { id: string; filed_date: string }[]) => void;
+}
+
+function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledModalProps) {
+  // Already-filed rows never belong in this flow — filter once, up front.
+  const [rows, setRows] = useState<GSTFiling[]>(() => selected.filter((f) => f.status !== "Filed"));
+  const [filedDate, setFiledDate] = useState(todayLocalISO());
+  const [arns, setArns] = useState<Record<string, string>>({});
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const allArnsFilled = rows.length > 0 && rows.every((f) => (arns[f.id] ?? "").trim().length > 0);
+  const canSubmit = allArnsFilled && !!filedDate && !submitting;
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setFormError(null);
+    setRowErrors({});
+    try {
+      const sb = getSupabaseClient();
+      const results = await Promise.all(
+        rows.map(async (f) => {
+          try {
+            // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+            const { error: dbErr } = await sb
+              .from("compliance_calendar")
+              .update({
+                filing_status: "filed",
+                filed_date: filedDate,
+                arn_number: arns[f.id].trim(),
+              })
+              .eq("id", f.id);
+            if (dbErr) throw new Error(dbErr.message);
+            return { id: f.id, ok: true as const };
+          } catch (e) {
+            return { id: f.id, ok: false as const, message: e instanceof Error ? e.message : "Failed to update" };
+          }
+        })
+      );
+
+      const succeeded = results.filter((r): r is { id: string; ok: true } => r.ok);
+      const failed = results.filter((r): r is { id: string; ok: false; message: string } => !r.ok);
+
+      if (succeeded.length > 0) {
+        onSuccess(succeeded.map((r) => ({ id: r.id, filed_date: filedDate })));
+      }
+
+      if (failed.length > 0) {
+        // Keep the modal open, narrowed to only the rows that still need a
+        // retry — the CA needs to see exactly what failed, not a silent close.
+        const failedIds = new Set(failed.map((r) => r.id));
+        setRows((prev) => prev.filter((f) => failedIds.has(f.id)));
+        const errs: Record<string, string> = {};
+        failed.forEach((r) => { errs[r.id] = r.message; });
+        setRowErrors(errs);
+        setFormError(
+          `${failed.length} of ${results.length} filing${results.length > 1 ? "s" : ""} failed to update. Fix and retry, or cancel to leave ${failed.length > 1 ? "them" : "it"} pending.`
+        );
+        toast({
+          title: "Some filings weren't marked filed",
+          description: `${succeeded.length} marked filed, ${failed.length} failed.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Marked filed",
+          description: `${succeeded.length} filing${succeeded.length > 1 ? "s" : ""} marked as filed.`,
+        });
+        onClose();
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4 text-center">
+          <p className="text-sm text-[#334155] font-medium">Nothing to file</p>
+          <p className="text-xs text-[#64748B]">All selected filings are already marked as Filed.</p>
+          <button
+            onClick={onClose}
+            className="w-full border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg hover:bg-[#F8FAFC]"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-[#F1F5F9]">
+          <h3 className="text-base font-semibold text-[#0F172A]">
+            Mark {rows.length} Filing{rows.length > 1 ? "s" : ""} as Filed
+          </h3>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569] transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4 overflow-y-auto">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">CA Confirmation Required</p>
+            <p className="text-xs text-amber-700 mt-1">
+              This records already-filed returns. PracticeSync does NOT auto-submit to the GST Portal.
+              Verify each acknowledgement number before saving.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-[#334155] mb-1.5">
+              Date of Filing <span className="text-red-500">*</span>
+              <span className="text-[#94A3B8] font-normal ml-1">(applied to all rows below)</span>
+            </label>
+            <input
+              type="date"
+              value={filedDate}
+              onChange={(e) => setFiledDate(e.target.value)}
+              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="space-y-2">
+            {rows.map((f) => (
+              <div key={f.id} className="border border-[#E2E8F0] rounded-lg px-3 py-2.5 space-y-1.5">
+                <div className="text-sm text-[#334155]">
+                  <span className="font-medium">{f.client_name}</span>
+                  <span className="text-[#94A3B8]"> · {f.return_type} · {f.period}</span>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-[#334155] mb-1">
+                    Acknowledgement Number (ARN) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. AA270125001234A"
+                    value={arns[f.id] ?? ""}
+                    onChange={(e) => setArns((p) => ({ ...p, [f.id]: e.target.value }))}
+                    className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {rowErrors[f.id] && (
+                    <p className="text-[10px] text-red-600 mt-1">{rowErrors[f.id]}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {formError && (
+            <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{formError}</p>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-[#F1F5F9] flex gap-3 justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-[#F8FAFC] transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+          >
+            {submitting ? "Saving…" : `Confirm ${rows.length} Filing${rows.length > 1 ? "s" : ""}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function GSTPage() {
@@ -353,6 +543,11 @@ export default function GSTPage() {
   const [filedForm, setFiledForm] = useState({ arn: "", filed_date: "" });
   const [filedLoading, setFiledLoading] = useState(false);
   const [filedError, setFiledError] = useState<string | null>(null);
+  const [batchFiledModal, setBatchFiledModal] = useState<GSTFiling[] | null>(null);
+  // Bumped after the batch modal closes, to remount <DataTable> and drop its
+  // (id-keyed) row-selection Set — updating `filings` in place doesn't clear
+  // it, since the same row ids are still present in the refreshed data.
+  const [tableResetKey, setTableResetKey] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -473,6 +668,34 @@ export default function GSTPage() {
       setFiledLoading(false);
     }
   }
+
+  // ── Bulk Mark as Filed ──────────────────────────────────────────────────────
+  function closeBatchFiledModal() {
+    setBatchFiledModal(null);
+    setTableResetKey((k) => k + 1);
+  }
+
+  function handleBatchFiledSuccess(updates: { id: string; filed_date: string }[]) {
+    const byId = new Map(updates.map((u) => [u.id, u.filed_date]));
+    setFilings((prev) =>
+      prev.map((f) => (byId.has(f.id) ? { ...f, status: "Filed", filed_date: byId.get(f.id)! } : f))
+    );
+  }
+
+  const bulkActions: BulkAction<GSTFiling>[] = useMemo(() => [
+    {
+      id: "mark-filed",
+      label: "Mark Filed",
+      icon: <CheckCircle className="w-3.5 h-3.5" />,
+      // Just opens the batch reference-entry modal — `false` keeps the
+      // selection alive while the modal is up; the modal does the real work
+      // and (via closeBatchFiledModal) forces a table remount to clear it.
+      run: (selected) => {
+        setBatchFiledModal(selected);
+        return false;
+      },
+    },
+  ], []);
 
   // ── Summary counts (current month) ────────────────────────────────────────
   const currentPeriod = `${currentMonth} ${currentYear}`;
@@ -686,9 +909,11 @@ export default function GSTPage() {
         </div>
 
         <DataTable
+          key={tableResetKey}
           data={filings}
           columns={columns}
           filters={filters}
+          bulkActions={bulkActions}
           getRowId={(f) => f.id}
           loading={loading}
           searchPlaceholder="Search by client or GSTIN…"
@@ -835,6 +1060,18 @@ export default function GSTPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ================================================================== */}
+      {/* MODAL: Batch Mark GST Returns as Filed                              */}
+      {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT                            */}
+      {/* ================================================================== */}
+      {batchFiledModal && (
+        <BatchMarkFiledModal
+          selected={batchFiledModal}
+          onClose={closeBatchFiledModal}
+          onSuccess={handleBatchFiledSuccess}
+        />
       )}
     </div>
   );
