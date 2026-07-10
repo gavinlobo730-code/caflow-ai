@@ -5,6 +5,7 @@ import { AuthProvider } from "@/lib/auth/AuthContext";
 import { AuthGuard } from "@/lib/auth/AuthGuard";
 import { AppShell } from "@/components/AppShell";
 import { Toaster } from "@/components/ui/toaster";
+import { ConfirmDialogHost } from "@/components/ui/confirm-dialog";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -39,6 +40,7 @@ export default function RootLayout({
           </AuthGuard>
         </AuthProvider>
         <Toaster />
+        <ConfirmDialogHost />
       </body>
     </html>
   );

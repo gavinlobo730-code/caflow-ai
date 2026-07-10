@@ -6,8 +6,12 @@
  * `hasChanges` is a pure, unit-tested structural comparator (order-insensitive for
  * object keys) used to decide whether the editor is "dirty". `useUnsavedChanges`
  * wires that dirtiness to the browser: it warns on tab close / reload (beforeunload)
- * and exposes `confirmLeave()` for in-app navigation guards. Autosave is intentionally
+ * and exposes async `confirmLeave()` for in-app navigation guards. Autosave is intentionally
  * NOT implemented here (deferred).
+ *
+ * The confirm UI is injected (not imported directly) so this file stays free of
+ * any @/components import — it's unit-tested via plain `node --test`, which has
+ * no bundler/JSX transform, and confirmDialog's module pulls in JSX.
  */
 import { useEffect, useCallback } from "react";
 
@@ -36,9 +40,16 @@ const LEAVE_MESSAGE = "You have unsaved changes. Leave without saving?";
 /**
  * Guard the editor while `dirty` is true. Installs a `beforeunload` warning and
  * returns `confirmLeave()` — call it before any in-app navigation and only proceed
- * when it returns true. `message` is customisable for testing/wording.
+ * when it returns true. `message` is customisable for testing/wording. `confirmFn`
+ * lets the caller supply the actual confirm UI (e.g. confirmDialog from
+ * @/components/ui/confirm-dialog); defaults to window.confirm.
  */
-export function useUnsavedChanges(dirty: boolean, message: string = LEAVE_MESSAGE) {
+export function useUnsavedChanges(
+  dirty: boolean,
+  message: string = LEAVE_MESSAGE,
+  confirmFn: (message: string) => boolean | Promise<boolean> = (m) =>
+    typeof window === "undefined" ? true : window.confirm(m),
+) {
   useEffect(() => {
     if (!dirty) return;
     function onBeforeUnload(e: BeforeUnloadEvent) {
@@ -51,10 +62,10 @@ export function useUnsavedChanges(dirty: boolean, message: string = LEAVE_MESSAG
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty, message]);
 
-  const confirmLeave = useCallback((): boolean => {
-    if (!dirty) return true;
-    return typeof window === "undefined" ? true : window.confirm(message);
-  }, [dirty, message]);
+  const confirmLeave = useCallback((): Promise<boolean> => {
+    if (!dirty) return Promise.resolve(true);
+    return Promise.resolve(confirmFn(message));
+  }, [dirty, message, confirmFn]);
 
   return { confirmLeave, leaveMessage: message };
 }
