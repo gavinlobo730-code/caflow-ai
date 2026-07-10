@@ -12,7 +12,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from core.permissions import rbac
@@ -473,213 +473,195 @@ def create_invoice(
     All monetary values in integer paise.
     """
     try:
-        data = data.model_dump()
-        lines_data = data.get("lines", [])
-        if not lines_data:
-            raise HTTPException(status_code=422, detail="At least one line item is required")
+        invoice = _create_invoice_core(data.model_dump(), current_user)
+        return api_response(True, invoice)
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Full exception + traceback go to server logs only; client sees a generic message.
+        _logger.error("create_invoice failed: %s", e, exc_info=True)
+        return api_response(False, None, "Unable to create invoice. Please try again.")
 
-        firm_id    = current_user.get("firm_id")
-        client_id  = data["client_id"]
-        invoice_no = data["invoice_no"]  # shape already validated by SalesInvoiceIn
-        supply_state_code = data.get("supply_state_code", "")
 
-        customer: dict = {}
-        if _USE_MOCK:
-            # In mock mode use is_inter_state flag or derive from place_of_supply vs "27" (Mumbai)
-            place = data.get("place_of_supply") or data.get("supply_state_code") or ""
-            is_interstate = data.get("is_inter_state", False) or (bool(place) and place != "27")
-            client_state_code = "27"
-        else:
-            from core.supabase_client import get_supabase
-            db = get_supabase()
+def _create_invoice_core(data: dict, current_user: dict) -> dict:
+    """Shared invoice-creation logic used by both create_invoice and the bulk
+    import endpoint below — extracted verbatim (no behavior change) so the CSV
+    importer can create many invoices in ONE request instead of firing one POST
+    per invoice. Raises HTTPException on failure; returns the created invoice
+    dict (with lines) on success."""
+    lines_data = data.get("lines", [])
+    if not lines_data:
+        raise HTTPException(status_code=422, detail="At least one line item is required")
 
-            # Fetch customer state code (firm-scoped — never read another firm's master)
-            cust_resp = (
-                db.table("customers")
-                .select("state_code, gstin, credit_days, is_active")
-                .eq("id", data["customer_id"])
-                .eq("firm_id", firm_id)
-                .limit(1)
-                .execute()
-            )
-            customer = cust_resp.data[0] if cust_resp.data else {}
-            # Business guard: never raise an invoice against a deactivated customer.
-            if customer and customer.get("is_active") is False:
-                raise HTTPException(status_code=422, detail="This customer is inactive. Reactivate the customer before invoicing.")
+    firm_id    = current_user.get("firm_id")
+    client_id  = data["client_id"]
+    invoice_no = data["invoice_no"]  # shape already validated by SalesInvoiceIn
+    supply_state_code = data.get("supply_state_code", "")
 
-            # Fetch client state code from GSTIN (firm-scoped)
-            client_resp = (
-                db.table("clients")
-                .select("gstin")
-                .eq("id", client_id)
-                .eq("firm_id", firm_id)
-                .limit(1)
-                .execute()
-            )
-            client_rec = client_resp.data[0] if client_resp.data else {}
-            client_state_code = _get_state_code_from_gstin(client_rec.get("gstin")) or ""
+    customer: dict = {}
+    if _USE_MOCK:
+        # In mock mode use is_inter_state flag or derive from place_of_supply vs "27" (Mumbai)
+        place = data.get("place_of_supply") or data.get("supply_state_code") or ""
+        is_interstate = data.get("is_inter_state", False) or (bool(place) and place != "27")
+        client_state_code = "27"
+    else:
+        from core.supabase_client import get_supabase
+        db = get_supabase()
 
-        _assert_invoice_no_available(None if _USE_MOCK else db, firm_id, client_id, invoice_no)  # type: ignore[possibly-undefined]
+        # Fetch customer state code (firm-scoped — never read another firm's master)
+        cust_resp = (
+            db.table("customers")
+            .select("state_code, gstin, credit_days, is_active")
+            .eq("id", data["customer_id"])
+            .eq("firm_id", firm_id)
+            .limit(1)
+            .execute()
+        )
+        customer = cust_resp.data[0] if cust_resp.data else {}
+        # Business guard: never raise an invoice against a deactivated customer.
+        if customer and customer.get("is_active") is False:
+            raise HTTPException(status_code=422, detail="This customer is inactive. Reactivate the customer before invoicing.")
 
-        # Effective place of supply
-        effective_supply_state = supply_state_code or customer.get("state_code") or ""  # type: ignore[possibly-undefined]
+        # Fetch client state code from GSTIN (firm-scoped)
+        client_resp = (
+            db.table("clients")
+            .select("gstin")
+            .eq("id", client_id)
+            .eq("firm_id", firm_id)
+            .limit(1)
+            .execute()
+        )
+        client_rec = client_resp.data[0] if client_resp.data else {}
+        client_state_code = _get_state_code_from_gstin(client_rec.get("gstin")) or ""
 
-        if not _USE_MOCK:
-            # CGST Act §8: Intra-state if both in same state; inter-state otherwise
-            # (In mock mode is_interstate was already determined above from request flags)
-            is_interstate = bool(client_state_code and effective_supply_state and client_state_code != effective_supply_state)
+    _assert_invoice_no_available(None if _USE_MOCK else db, firm_id, client_id, invoice_no)  # type: ignore[possibly-undefined]
 
-        # ── Multi-Currency (Phase 3): resolve + freeze the document currency ──────
-        # INR / feature-off → identity (behaviour unchanged). For a foreign currency
-        # this validates policy + master + rate and freezes the booking rate; the
-        # line rate_paise below are then that currency's minor units.
-        from domain.currency.document_currency import resolve_document_currency, identity_currency
-        req_ccy = (data.get("currency") or "INR").strip().upper()
-        if _USE_MOCK or req_ccy == "INR":
-            dc = identity_currency(data["invoice_date"])
-        else:
-            _firm_row = (db.table("firms").select("multi_currency_entitled").eq("id", firm_id).limit(1).execute().data or [None])[0]
-            _client_mc = (db.table("clients").select("functional_currency, multi_currency_enabled").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
-            dc = resolve_document_currency(
-                db, _firm_row, _client_mc, currency=req_ccy,
-                exchange_rate=data.get("exchange_rate"), rate_date=data["invoice_date"],
-                rate_selected_by=current_user.get("id"))
+    # Effective place of supply
+    effective_supply_state = supply_state_code or customer.get("state_code") or ""  # type: ignore[possibly-undefined]
 
-        # Compute lines — use Decimal for quantity × rate_paise, cast to int immediately
-        computed_lines: list[dict] = []
-        total_taxable_paise = 0
-        total_cgst_paise    = 0
-        total_sgst_paise    = 0
-        total_igst_paise    = 0
+    if not _USE_MOCK:
+        # CGST Act §8: Intra-state if both in same state; inter-state otherwise
+        # (In mock mode is_interstate was already determined above from request flags)
+        is_interstate = bool(client_state_code and effective_supply_state and client_state_code != effective_supply_state)
 
-        for ln in lines_data:
-            qty        = ln.get("quantity", 1)
-            rate_paise = int(ln.get("rate_paise", 0))
-            # Model uses gst_rate_percent (e.g. 18.0), convert to bps (10000 bps = 100%)
-            gst_rate_percent = float(ln.get("gst_rate_percent", 0) or ln.get("gst_rate_bps", 0) / 100)
-            gst_rate_bps = int(round(gst_rate_percent * 100))
+    # ── Multi-Currency (Phase 3): resolve + freeze the document currency ──────
+    # INR / feature-off → identity (behaviour unchanged). For a foreign currency
+    # this validates policy + master + rate and freezes the booking rate; the
+    # line rate_paise below are then that currency's minor units.
+    from domain.currency.document_currency import resolve_document_currency, identity_currency
+    req_ccy = (data.get("currency") or "INR").strip().upper()
+    if _USE_MOCK or req_ccy == "INR":
+        dc = identity_currency(data["invoice_date"])
+    else:
+        _firm_row = (db.table("firms").select("multi_currency_entitled").eq("id", firm_id).limit(1).execute().data or [None])[0]
+        _client_mc = (db.table("clients").select("functional_currency, multi_currency_enabled").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
+        dc = resolve_document_currency(
+            db, _firm_row, _client_mc, currency=req_ccy,
+            exchange_rate=data.get("exchange_rate"), rate_date=data["invoice_date"],
+            rate_selected_by=current_user.get("id"))
 
-            # Integer multiplication: use Decimal for quantity precision, cast immediately
-            taxable_paise = int(Decimal(str(qty)) * rate_paise)
+    # Compute lines — use Decimal for quantity × rate_paise, cast to int immediately
+    computed_lines: list[dict] = []
+    total_taxable_paise = 0
+    total_cgst_paise    = 0
+    total_sgst_paise    = 0
+    total_igst_paise    = 0
 
-            cgst_paise, sgst_paise, igst_paise = _compute_line_gst(
-                taxable_paise, gst_rate_bps, is_interstate
-            )
+    for ln in lines_data:
+        qty        = ln.get("quantity", 1)
+        rate_paise = int(ln.get("rate_paise", 0))
+        # Model uses gst_rate_percent (e.g. 18.0), convert to bps (10000 bps = 100%)
+        gst_rate_percent = float(ln.get("gst_rate_percent", 0) or ln.get("gst_rate_bps", 0) / 100)
+        gst_rate_bps = int(round(gst_rate_percent * 100))
 
-            total_taxable_paise += taxable_paise
-            total_cgst_paise    += cgst_paise
-            total_sgst_paise    += sgst_paise
-            total_igst_paise    += igst_paise
+        # Integer multiplication: use Decimal for quantity precision, cast immediately
+        taxable_paise = int(Decimal(str(qty)) * rate_paise)
 
-            computed_lines.append({
-                "description":    ln.get("description", ""),
-                "hsn_sac":        ln.get("hsn_sac", ""),
-                "quantity":       qty,
-                # `.get(k, default)` only falls back when the key is ABSENT, but
-                # InvoiceLineIn.model_dump() always includes "unit" (as None when
-                # the caller omits it) — so `or "NOS"` is required to catch both
-                # "missing" and "explicitly None/blank".
-                "unit":           ln.get("unit") or "NOS",
-                "rate_paise":     rate_paise,
-                "gst_rate_bps":   gst_rate_bps,
-                "taxable_amount_paise": taxable_paise,
-                "cgst_paise":     cgst_paise,
-                "sgst_paise":     sgst_paise,
-                "igst_paise":     igst_paise,
-                "line_total_paise": taxable_paise + cgst_paise + sgst_paise + igst_paise,
-            })
-
-        # The line totals above are in the document (txn) currency's minor units.
-        # Convert each component to base (INR) paise at the frozen rate and define the
-        # base TOTAL as their SUM, so the GL balances exactly with no FX-rounding
-        # account. For INR, dc is the identity ⇒ base == txn and nothing changes.
-        txn_taxable   = total_taxable_paise
-        txn_total_gst = total_cgst_paise + total_sgst_paise + total_igst_paise
-        txn_total     = txn_taxable + txn_total_gst
-        base_taxable  = dc.to_base(total_taxable_paise)
-        base_cgst     = dc.to_base(total_cgst_paise)
-        base_sgst     = dc.to_base(total_sgst_paise)
-        base_igst     = dc.to_base(total_igst_paise)
-        base_total_gst = base_cgst + base_sgst + base_igst
-        base_total     = base_taxable + base_total_gst
-        # Invoice-level round-off (nearest ₹1) — INR invoices only. Absorbs the
-        # sub-rupee GST remainder so the payable total is a clean rupee; the delta
-        # is posted to the 'Round Off' ledger by journal_for_sales_invoice so the
-        # journal stays balanced. Foreign-currency invoices are not rupee-rounded.
-        round_off_paise = _round_off_paise(base_total) if dc.currency == "INR" else 0
-        # Base is authoritative for the header/GL/reports; the *_paise names below now
-        # carry base INR. (For INR these equal the txn values — byte-for-byte.)
-        total_taxable_paise = base_taxable
-        total_cgst_paise    = base_cgst
-        total_sgst_paise    = base_sgst
-        total_igst_paise    = base_igst
-        total_paise         = base_total + round_off_paise
-
-        # Currency columns written to the invoice (INR identity leaves them inert).
-        _ccy_cols = {
-            "txn_currency":     dc.currency,
-            "exchange_rate":    str(dc.rate),
-            "txn_taxable":      txn_taxable,
-            "txn_total_gst":    txn_total_gst,
-            # For INR, dc is identity so txn == base; keep txn_total consistent with
-            # the rounded base total. round_off_paise is 0 for foreign currency.
-            "txn_total":        txn_total + round_off_paise,
-            "rate_source":      dc.rate_source,
-            "rate_type":        dc.rate_type,
-            "rate_date":        dc.rate_date,
-            "rate_selected_by": dc.rate_selected_by,
-            "rate_overridden":  dc.rate_overridden,
-        }
-
-        # Snapshot credit terms onto the invoice. The customer's credit_days is the
-        # DEFAULT; an explicit due_date or credit_days on the request overrides it.
-        # Storing the resolved values here means later edits to the customer's
-        # Credit Days never change this (or any existing) invoice.
-        eff_due_date, eff_credit_days = _resolve_credit_terms(
-            data["invoice_date"], data.get("due_date"), data.get("credit_days"),
-            customer.get("credit_days"),
+        cgst_paise, sgst_paise, igst_paise = _compute_line_gst(
+            taxable_paise, gst_rate_bps, is_interstate
         )
 
-        # Validate posting date is not in a locked financial year (migration 020)
-        period_validation_service.validate_posting_date(firm_id or "", data["invoice_date"])
+        total_taxable_paise += taxable_paise
+        total_cgst_paise    += cgst_paise
+        total_sgst_paise    += sgst_paise
+        total_igst_paise    += igst_paise
 
-        if _USE_MOCK:
-            invoice_id = str(uuid.uuid4())
-            invoice = {
-                "id":                    invoice_id,
-                "firm_id":               firm_id,
-                "client_id":             client_id,
-                "customer_id":           data["customer_id"],
-                "invoice_no":            invoice_no,
-                "invoice_date":          data["invoice_date"],
-                "due_date":              eff_due_date,
-                "credit_days":           eff_credit_days,
-                "supply_state_code":     effective_supply_state,
-                "is_interstate":         is_interstate,
-                "reference_no":          data.get("reference_no"),
-                "taxable_amount_paise":  total_taxable_paise,
-                "cgst_paise":            total_cgst_paise,
-                "sgst_paise":            total_sgst_paise,
-                "igst_paise":            total_igst_paise,
-                "total_paise":           total_paise,
-                "total_gst_paise":       total_cgst_paise + total_sgst_paise + total_igst_paise,
-                "round_off_paise":       round_off_paise,
-                "paid_paise":            0,
-                "status":                "draft",
-                "notes":                 data.get("notes", ""),
-                "created_by":            current_user.get("auth_user_id"),
-                "created_at":            datetime.now(timezone.utc).isoformat(),
-                **_ccy_cols,
-                "lines":                 computed_lines,
-            }
-            MOCK_SALES_INVOICES.append(invoice)
-            for ln in computed_lines:
-                ln["id"] = str(uuid.uuid4())
-                ln["invoice_id"] = invoice_id
-                MOCK_SALES_INVOICE_LINES.append(ln)
-            return api_response(True, invoice)
+        computed_lines.append({
+            "description":    ln.get("description", ""),
+            "hsn_sac":        ln.get("hsn_sac", ""),
+            "quantity":       qty,
+            # `.get(k, default)` only falls back when the key is ABSENT, but
+            # InvoiceLineIn.model_dump() always includes "unit" (as None when
+            # the caller omits it) — so `or "NOS"` is required to catch both
+            # "missing" and "explicitly None/blank".
+            "unit":           ln.get("unit") or "NOS",
+            "rate_paise":     rate_paise,
+            "gst_rate_bps":   gst_rate_bps,
+            "taxable_amount_paise": taxable_paise,
+            "cgst_paise":     cgst_paise,
+            "sgst_paise":     sgst_paise,
+            "igst_paise":     igst_paise,
+            "line_total_paise": taxable_paise + cgst_paise + sgst_paise + igst_paise,
+        })
 
-        invoice_payload = {
+    # The line totals above are in the document (txn) currency's minor units.
+    # Convert each component to base (INR) paise at the frozen rate and define the
+    # base TOTAL as their SUM, so the GL balances exactly with no FX-rounding
+    # account. For INR, dc is the identity ⇒ base == txn and nothing changes.
+    txn_taxable   = total_taxable_paise
+    txn_total_gst = total_cgst_paise + total_sgst_paise + total_igst_paise
+    txn_total     = txn_taxable + txn_total_gst
+    base_taxable  = dc.to_base(total_taxable_paise)
+    base_cgst     = dc.to_base(total_cgst_paise)
+    base_sgst     = dc.to_base(total_sgst_paise)
+    base_igst     = dc.to_base(total_igst_paise)
+    base_total_gst = base_cgst + base_sgst + base_igst
+    base_total     = base_taxable + base_total_gst
+    # Invoice-level round-off (nearest ₹1) — INR invoices only. Absorbs the
+    # sub-rupee GST remainder so the payable total is a clean rupee; the delta
+    # is posted to the 'Round Off' ledger by journal_for_sales_invoice so the
+    # journal stays balanced. Foreign-currency invoices are not rupee-rounded.
+    round_off_paise = _round_off_paise(base_total) if dc.currency == "INR" else 0
+    # Base is authoritative for the header/GL/reports; the *_paise names below now
+    # carry base INR. (For INR these equal the txn values — byte-for-byte.)
+    total_taxable_paise = base_taxable
+    total_cgst_paise    = base_cgst
+    total_sgst_paise    = base_sgst
+    total_igst_paise    = base_igst
+    total_paise         = base_total + round_off_paise
+
+    # Currency columns written to the invoice (INR identity leaves them inert).
+    _ccy_cols = {
+        "txn_currency":     dc.currency,
+        "exchange_rate":    str(dc.rate),
+        "txn_taxable":      txn_taxable,
+        "txn_total_gst":    txn_total_gst,
+        # For INR, dc is identity so txn == base; keep txn_total consistent with
+        # the rounded base total. round_off_paise is 0 for foreign currency.
+        "txn_total":        txn_total + round_off_paise,
+        "rate_source":      dc.rate_source,
+        "rate_type":        dc.rate_type,
+        "rate_date":        dc.rate_date,
+        "rate_selected_by": dc.rate_selected_by,
+        "rate_overridden":  dc.rate_overridden,
+    }
+
+    # Snapshot credit terms onto the invoice. The customer's credit_days is the
+    # DEFAULT; an explicit due_date or credit_days on the request overrides it.
+    # Storing the resolved values here means later edits to the customer's
+    # Credit Days never change this (or any existing) invoice.
+    eff_due_date, eff_credit_days = _resolve_credit_terms(
+        data["invoice_date"], data.get("due_date"), data.get("credit_days"),
+        customer.get("credit_days"),
+    )
+
+    # Validate posting date is not in a locked financial year (migration 020)
+    period_validation_service.validate_posting_date(firm_id or "", data["invoice_date"])
+
+    if _USE_MOCK:
+        invoice_id = str(uuid.uuid4())
+        invoice = {
+            "id":                    invoice_id,
             "firm_id":               firm_id,
             "client_id":             client_id,
             "customer_id":           data["customer_id"],
@@ -703,76 +685,143 @@ def create_invoice(
             "created_by":            current_user.get("auth_user_id"),
             "created_at":            datetime.now(timezone.utc).isoformat(),
             **_ccy_cols,
+            "lines":                 computed_lines,
         }
-
-        # invoice_no is manual (CA-typed) and already duplicate-checked above;
-        # the UNIQUE(firm_id, client_id, invoice_no) constraint (migration 151)
-        # is still the final backstop for a genuine concurrent race — translate
-        # that into the same friendly message rather than a raw 500. Unlike
-        # auto-generated document numbers (services.numbering.insert_with_number),
-        # retrying with a DIFFERENT number would silently override what the CA typed.
-        from services.numbering import is_unique_violation
-        try:
-            ins_resp = db.table("client_sales_invoices").insert(invoice_payload).execute()
-            invoice = (ins_resp.data or [invoice_payload])[0]
-        except HTTPException:
-            raise
-        except Exception as e:
-            if is_unique_violation(e):
-                raise HTTPException(status_code=409, detail=f"Invoice number '{invoice_no}' already exists for this client.")
-            raise
-        invoice_id = invoice.get("id", str(uuid.uuid4()))
-
-        # Insert lines
-        line_payloads = []
+        MOCK_SALES_INVOICES.append(invoice)
         for ln in computed_lines:
-            line_payloads.append({
-                # FK column per migration 050 is sales_invoice_id (not invoice_id)
-                "sales_invoice_id":      invoice_id,
-                "description":           ln["description"],
-                "hsn_sac":               ln["hsn_sac"],
-                "quantity":              ln["quantity"],
-                "unit":                  ln["unit"],
-                "rate_paise":            ln["rate_paise"],
-                "gst_rate_bps":          ln["gst_rate_bps"],
-                "taxable_amount_paise":  ln["taxable_amount_paise"],
-                "cgst_paise":            ln["cgst_paise"],
-                "sgst_paise":            ln["sgst_paise"],
-                "igst_paise":            ln["igst_paise"],
-                "line_total_paise":      ln["line_total_paise"],
-            })
-        # Atomicity: PostgREST exposes no multi-statement transaction here, so if
-        # the line insert fails we compensate by deleting the just-created header.
-        # This guarantees we never leave an orphan invoice (header with no lines).
-        try:
-            lines_resp = db.table("client_sales_invoice_lines").insert(line_payloads).execute()  # type: ignore[possibly-undefined]
-        except Exception:
-            db.table("client_sales_invoices").delete().eq("id", invoice_id).execute()  # type: ignore[possibly-undefined]
-            raise
-        invoice["lines"] = lines_resp.data or computed_lines
+            ln["id"] = str(uuid.uuid4())
+            ln["invoice_id"] = invoice_id
+            MOCK_SALES_INVOICE_LINES.append(ln)
+        return invoice
 
-        # Learn HSN/SAC choices for smart suggestions (UX only; non-fatal).
-        _record_hsn_preferences(db, firm_id or "", client_id, computed_lines)
+    invoice_payload = {
+        "firm_id":               firm_id,
+        "client_id":             client_id,
+        "customer_id":           data["customer_id"],
+        "invoice_no":            invoice_no,
+        "invoice_date":          data["invoice_date"],
+        "due_date":              eff_due_date,
+        "credit_days":           eff_credit_days,
+        "supply_state_code":     effective_supply_state,
+        "is_interstate":         is_interstate,
+        "reference_no":          data.get("reference_no"),
+        "taxable_amount_paise":  total_taxable_paise,
+        "cgst_paise":            total_cgst_paise,
+        "sgst_paise":            total_sgst_paise,
+        "igst_paise":            total_igst_paise,
+        "total_paise":           total_paise,
+        "total_gst_paise":       total_cgst_paise + total_sgst_paise + total_igst_paise,
+        "round_off_paise":       round_off_paise,
+        "paid_paise":            0,
+        "status":                "draft",
+        "notes":                 data.get("notes", ""),
+        "created_by":            current_user.get("auth_user_id"),
+        "created_at":            datetime.now(timezone.utc).isoformat(),
+        **_ccy_cols,
+    }
 
-        log_event(
-            firm_id, "sales_invoice", invoice_id,
-            "create", actor_id=current_user.get("auth_user_id"),
-            actor_email=current_user.get("email"), new_data=invoice,
-        )
-        timeline_service.log(
-            client_id, "accounting", "Sales Invoice Created",
-            f"Invoice {invoice.get('invoice_no', '')} for ₹{invoice.get('total_paise', 0) // 100:,} created (draft)",
-            "info", firm_id=firm_id or "",
-            entity_type="sales_invoice", entity_id=invoice_id,
-            amount_paise=invoice.get("total_paise"), actor_id=current_user.get("auth_user_id"),
-        )
-        return api_response(True, invoice)
+    # invoice_no is manual (CA-typed) and already duplicate-checked above;
+    # the UNIQUE(firm_id, client_id, invoice_no) constraint (migration 151)
+    # is still the final backstop for a genuine concurrent race — translate
+    # that into the same friendly message rather than a raw 500. Unlike
+    # auto-generated document numbers (services.numbering.insert_with_number),
+    # retrying with a DIFFERENT number would silently override what the CA typed.
+    from services.numbering import is_unique_violation
+    try:
+        ins_resp = db.table("client_sales_invoices").insert(invoice_payload).execute()
+        invoice = (ins_resp.data or [invoice_payload])[0]
     except HTTPException:
         raise
     except Exception as e:
-        # Full exception + traceback go to server logs only; client sees a generic message.
-        _logger.error("create_invoice failed: %s", e, exc_info=True)
-        return api_response(False, None, "Unable to create invoice. Please try again.")
+        if is_unique_violation(e):
+            raise HTTPException(status_code=409, detail=f"Invoice number '{invoice_no}' already exists for this client.")
+        raise
+    invoice_id = invoice.get("id", str(uuid.uuid4()))
+
+    # Insert lines
+    line_payloads = []
+    for ln in computed_lines:
+        line_payloads.append({
+            # FK column per migration 050 is sales_invoice_id (not invoice_id)
+            "sales_invoice_id":      invoice_id,
+            "description":           ln["description"],
+            "hsn_sac":               ln["hsn_sac"],
+            "quantity":              ln["quantity"],
+            "unit":                  ln["unit"],
+            "rate_paise":            ln["rate_paise"],
+            "gst_rate_bps":          ln["gst_rate_bps"],
+            "taxable_amount_paise":  ln["taxable_amount_paise"],
+            "cgst_paise":            ln["cgst_paise"],
+            "sgst_paise":            ln["sgst_paise"],
+            "igst_paise":            ln["igst_paise"],
+            "line_total_paise":      ln["line_total_paise"],
+        })
+    # Atomicity: PostgREST exposes no multi-statement transaction here, so if
+    # the line insert fails we compensate by deleting the just-created header.
+    # This guarantees we never leave an orphan invoice (header with no lines).
+    try:
+        lines_resp = db.table("client_sales_invoice_lines").insert(line_payloads).execute()  # type: ignore[possibly-undefined]
+    except Exception:
+        db.table("client_sales_invoices").delete().eq("id", invoice_id).execute()  # type: ignore[possibly-undefined]
+        raise
+    invoice["lines"] = lines_resp.data or computed_lines
+
+    # Learn HSN/SAC choices for smart suggestions (UX only; non-fatal).
+    _record_hsn_preferences(db, firm_id or "", client_id, computed_lines)
+
+    log_event(
+        firm_id, "sales_invoice", invoice_id,
+        "create", actor_id=current_user.get("auth_user_id"),
+        actor_email=current_user.get("email"), new_data=invoice,
+    )
+    timeline_service.log(
+        client_id, "accounting", "Sales Invoice Created",
+        f"Invoice {invoice.get('invoice_no', '')} for ₹{invoice.get('total_paise', 0) // 100:,} created (draft)",
+        "info", firm_id=firm_id or "",
+        entity_type="sales_invoice", entity_id=invoice_id,
+        amount_paise=invoice.get("total_paise"), actor_id=current_user.get("auth_user_id"),
+    )
+    return invoice
+
+
+class _BulkInvoicesIn(BaseModel):
+    invoices: list[dict]
+
+
+@router.post("/bulk")
+def bulk_create_invoices(
+    payload: _BulkInvoicesIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Create many sales invoices in ONE request.
+
+    The CSV importer used to fire one POST /api/sales-invoices/ per invoice —
+    for a 100-row import that's 100 sequential network round-trips, and it
+    multiplies badly when many firms import concurrently. This endpoint loops
+    the exact same _create_invoice_core logic server-side (no behavior change,
+    no duplicated business rules), so N round-trips collapse to 1. A bad row
+    is reported per-item and does not abort the rest of the batch — matches
+    the existing CSV-import UX (partial success with a per-row error list).
+    """
+    items = payload.invoices
+    created: list[dict] = []
+    errors: list[dict] = []
+    for i, raw in enumerate(items):
+        invoice_no = raw.get("invoice_no", "") if isinstance(raw, dict) else ""
+        try:
+            try:
+                data = SalesInvoiceIn(**raw)
+            except PydanticValidationError as e:
+                errors.append({"index": i, "invoice_no": invoice_no, "error": str(e.errors()[0].get("msg", "Invalid invoice data")) if e.errors() else "Invalid invoice data"})
+                continue
+            invoice = _create_invoice_core(data.model_dump(), current_user)
+            created.append(invoice)
+        except HTTPException as e:
+            errors.append({"index": i, "invoice_no": invoice_no, "error": e.detail})
+        except Exception as e:
+            _logger.error("bulk_create_invoices item %d failed: %s", i, e, exc_info=True)
+            errors.append({"index": i, "invoice_no": invoice_no, "error": "Unable to create this invoice. Please try again."})
+    return api_response(True, {"created": created, "errors": errors})
 
 
 @router.get("/{invoice_id}")

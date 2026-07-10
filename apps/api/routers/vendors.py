@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ValidationError
 from models.common import api_response
 from models.parties import VendorIn, VendorUpdateIn
 from core.permissions import rbac
@@ -169,6 +170,192 @@ def create_vendor(
             return api_response(False, None, "Vendor creation failed due to a data constraint.")
         if "not-null" in msg or "null value" in msg:
             return api_response(False, None, "Vendor creation failed — a required field is missing.")
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
+
+
+class VendorBulkIn(BaseModel):
+    """Loose body for POST /bulk — a plain dict per item (not VendorIn) so one
+    malformed row fails validation individually instead of 422-ing the whole
+    CSV-import batch."""
+    vendors: list[dict]
+
+
+def _bulk_item_error_message(e: ValidationError) -> str:
+    """Turn a VendorIn ValidationError into one human-readable line."""
+    parts = []
+    for err in e.errors():
+        loc = ".".join(str(p) for p in err.get("loc", ()))
+        msg = err.get("msg", "Invalid value")
+        parts.append(f"{loc}: {msg}" if loc else msg)
+    return "; ".join(parts) or "Invalid vendor data."
+
+
+def _classify_db_error(msg_lower: str) -> str:
+    """Same user-safe classification create_vendor uses (M11: never echo raw
+    DB internals to the client)."""
+    if "duplicate" in msg_lower or "unique" in msg_lower:
+        return "A vendor with this GSTIN or PAN already exists for this client."
+    if "foreign key" in msg_lower or "violates" in msg_lower:
+        return "Vendor creation failed due to a data constraint."
+    if "not-null" in msg_lower or "null value" in msg_lower:
+        return "Vendor creation failed — a required field is missing."
+    return "Unable to complete vendor operation. Please try again."
+
+
+def _finish_vendor_creation(db, vendor: dict, payload: dict, current_user: dict) -> Optional[str]:
+    """Post-insert side effects for ONE newly-created vendor row — same
+    opening-balance GL sync (rollback-on-failure) and audit/timeline logging
+    create_vendor runs for a single create. Returns a user-safe error message
+    on failure, or None on success.
+    """
+    vendor_id = vendor.get("id", "")
+    firm_id = payload["firm_id"]
+
+    if int(payload.get("opening_balance_paise") or 0) != 0:
+        try:
+            from services.opening_balance_service import post_opening_balances
+            post_opening_balances(firm_id, payload.get("client_id"),
+                                  created_by=current_user.get("id"))
+        except Exception as sync_err:
+            _logger.error("create_vendors_bulk opening-balance sync failed; rolling back vendor %s: %s",
+                          vendor_id, sync_err)
+            try:
+                db.table("vendors").delete().eq("id", vendor_id).eq("firm_id", firm_id).execute()
+            except Exception:
+                pass
+            return "Unable to save vendor. Please try again."
+
+    log_event(
+        firm_id, "vendor", vendor_id,
+        "create", actor_id=current_user.get("auth_user_id"),
+        actor_email=current_user.get("email"), new_data=vendor,
+    )
+    timeline_service.log_timeline_event(
+        client_id=payload.get("client_id", ""),
+        firm_id=firm_id,
+        financial_year=_current_fy_long(),
+        category="accounting",
+        event_type="vendor_created",
+        title=f"Vendor {payload.get('name', '')} added",
+        description="New vendor added to the system.",
+        severity="info",
+        entity_type="vendor",
+        entity_id=vendor_id,
+        actor_id=current_user.get("auth_user_id"),
+        actor_name=current_user.get("email"),
+    )
+    return None
+
+
+@router.post("/bulk")
+def create_vendors_bulk(
+    body: VendorBulkIn,
+    current_user: dict = Depends(rbac("client", "write")),
+):
+    """Bulk-create vendors in ONE request — replaces the CSV-import UI's
+    N-sequential-POST loop (a 100-row import was 100 round-trips, multiplied
+    across every firm importing concurrently). Each item is validated
+    individually so one bad row doesn't fail the whole batch.
+
+    Insert strategy: try ONE batch insert first — the common, all-valid case,
+    a single round-trip to Postgres. A multi-row INSERT is all-or-nothing, so
+    a unique-constraint hit on any row fails the WHOLE batch and Postgres
+    doesn't tell us which row(s) caused it. In that case we fall back to
+    inserting the remaining items ONE AT A TIME, server-side (still just 1 HTTP
+    round-trip from the client), so duplicates can be isolated and reported
+    while the rest of the batch still succeeds.
+    """
+    created: list[dict] = []
+    duplicates: list[dict] = []
+    errors: list[dict] = []
+
+    # ── Per-item validation (VendorIn, not the loose FastAPI body model) ────
+    valid_items: list[tuple[int, dict]] = []  # (original index, payload)
+    for i, item in enumerate(body.vendors):
+        name = item.get("name") if isinstance(item, dict) else None
+        try:
+            vendor_in = VendorIn(**item)
+        except ValidationError as e:
+            errors.append({"index": i, "name": name, "error": _bulk_item_error_message(e)})
+            continue
+        except Exception:
+            errors.append({"index": i, "name": name, "error": "Invalid vendor data."})
+            continue
+
+        payload = vendor_in.model_dump()
+        payload["firm_id"] = current_user.get("firm_id")
+        payload["is_active"] = True
+        payload["created_at"] = datetime.now(timezone.utc).isoformat()
+        valid_items.append((i, payload))
+
+    if not valid_items:
+        return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors})
+
+    try:
+        if _USE_MOCK:
+            for i, payload in valid_items:
+                payload["id"] = str(uuid.uuid4())
+                MOCK_VENDORS.append(payload)
+                created.append(payload)
+            return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors})
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+
+        # ── Attempt 1: single batch insert (the fast path) ──────────────────
+        batch_rows = None
+        try:
+            resp = db.table("vendors").insert([p for _, p in valid_items]).execute()
+            if resp.data and len(resp.data) == len(valid_items):
+                batch_rows = resp.data
+        except Exception as batch_err:
+            _logger.info(
+                "create_vendors_bulk: batch insert failed (%s); falling back to per-row inserts.",
+                batch_err,
+            )
+            batch_rows = None
+
+        if batch_rows is not None:
+            for (i, payload), vendor in zip(valid_items, batch_rows):
+                err = _finish_vendor_creation(db, vendor, payload, current_user)
+                if err:
+                    errors.append({"index": i, "name": payload.get("name"), "error": err})
+                else:
+                    created.append(vendor)
+            return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors})
+
+        # ── Attempt 2: per-row fallback — isolates exactly which row(s) hit
+        #    the constraint, while everything else still succeeds. ───────────
+        for i, payload in valid_items:
+            try:
+                resp = db.table("vendors").insert(payload).execute()
+                if not resp.data:
+                    errors.append({
+                        "index": i, "name": payload.get("name"),
+                        "error": "Vendor could not be saved to the database. Please try again.",
+                    })
+                    continue
+                vendor = resp.data[0]
+            except Exception as row_err:
+                msg = _classify_db_error(str(row_err).lower())
+                entry = {"index": i, "name": payload.get("name"), "error": msg}
+                if "already exists" in msg:
+                    duplicates.append(entry)
+                else:
+                    errors.append(entry)
+                continue
+
+            err = _finish_vendor_creation(db, vendor, payload, current_user)
+            if err:
+                errors.append({"index": i, "name": payload.get("name"), "error": err})
+            else:
+                created.append(vendor)
+
+        return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("create_vendors_bulk: %s", e, exc_info=True)
         return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 

@@ -1339,25 +1339,31 @@ function SalesInvoices({
 
   /**
    * Bulk-import handler for the CSV/XLSX modal. Maps flat rows → grouped invoices
-   * via the pure buildSalesInvoices() mapper, then creates each invoice through the
-   * EXISTING /api/sales-invoices/ endpoint — the same path the manual form uses, so
-   * there is no parallel invoice logic. Returns a per-invoice success/error report.
+   * via the pure buildSalesInvoices() mapper, then creates them all in ONE request
+   * via /api/sales-invoices/bulk (same _create_invoice_core logic the manual form's
+   * single-create endpoint uses — no parallel invoice logic, just no per-row network
+   * round-trip). Returns a per-invoice success/error report.
    */
   async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
     const { invoices: built, errors } = buildSalesInvoices(rows, clientId, customers, services);
+    if (built.length === 0) return { imported: 0, errors };
     const token = await getAuthToken();
-    let imported = 0;
 
-    for (const inv of built) {
-      // inv.invoice_no is the real, CA/import-supplied number now (no internal
-      // grouping key to strip) — the server validates its shape and rejects a
-      // duplicate for this client exactly as a manually typed one would.
-      const result = await apiCall("/api/sales-invoices/", "POST", inv, token);
-      if (result.success) {
-        imported += inv.lines.length; // count line-rows so the totals match the upload
-      } else {
-        errors.push(`Invoice "${inv.invoice_no}": ${result.error ?? "failed to create"}`);
+    let imported = 0;
+    const result = await apiCall("/api/sales-invoices/bulk", "POST", { invoices: built }, token);
+    if (result.success) {
+      const data = result.data as {
+        created: { invoice_no: string; lines?: unknown[] }[];
+        errors: { invoice_no: string; error: string }[];
+      };
+      for (const inv of data.created) {
+        imported += Array.isArray(inv.lines) ? inv.lines.length : 0; // count line-rows so the totals match the upload
       }
+      for (const e of data.errors) {
+        errors.push(`Invoice "${e.invoice_no}": ${e.error}`);
+      }
+    } else {
+      errors.push(result.error ?? "Bulk import failed");
     }
 
     if (imported > 0) load();
@@ -2290,16 +2296,21 @@ function Customers({
     setMenu({ id: c.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
   }
 
-  /** Bulk-import customers through the EXISTING /api/customers/ endpoint.
-   *  Master-data integrity: re-importing the same file must NOT create
-   *  duplicates. We detect existing customers BEFORE inserting — by GSTIN
-   *  (CGST Act §25, preferred), then PAN (IT Act §139A), then normalised name —
-   *  and skip them. The backend applies the same guard as a second line of
-   *  defence, so a match it returns (duplicate=true) is also counted as skipped. */
+  /** Bulk-import customers through /api/customers/bulk — one request for the
+   *  whole file instead of one POST per row (was the real bottleneck on a
+   *  100-row import: 100 sequential round-trips, each re-running the same
+   *  dedup query). Master-data integrity: re-importing the same file must
+   *  NOT create duplicates. We detect existing customers BEFORE sending —
+   *  by GSTIN (CGST Act §25, preferred), then PAN (IT Act §139A), then
+   *  normalised name — and skip them client-side. The bulk endpoint applies
+   *  the same GSTIN/PAN guard as a second line of defence (its `duplicates`
+   *  entries are also counted as skipped); name-only matching has no backend
+   *  equivalent, so that pass stays here. */
   async function handleImport(
     rows: ImportRow[]
   ): Promise<{ imported: number; errors: string[]; skipped: number; skippedDetail: string[] }> {
     const { records, errors } = buildCustomers(rows, clientId);
+    if (records.length === 0) return { imported: 0, errors, skipped: 0, skippedDetail: [] };
     const token = await getAuthToken();
 
     // Snapshot the current active customers to match against.
@@ -2324,10 +2335,9 @@ function Customers({
       if (k) seen.add(k);
     }
 
-    let imported = 0;
     let skipped = 0;
     const skippedDetail: string[] = [];
-
+    const toCreate: typeof records = [];
     for (const c of records) {
       const k = keyOf(c);
       // Already present (in the firm's books or earlier in this same file).
@@ -2336,19 +2346,29 @@ function Customers({
         skippedDetail.push(`"${c.name}" already exists — skipped`);
         continue;
       }
-      const result = await apiCall("/api/customers/", "POST", c, token);
+      if (k) seen.add(k);
+      toCreate.push(c);
+    }
+
+    let imported = 0;
+    if (toCreate.length > 0) {
+      const result = await apiCall("/api/customers/bulk", "POST", { customers: toCreate }, token);
       if (result.success) {
-        const created = result.data as { duplicate?: boolean } | null;
-        if (created?.duplicate) {
-          // Backend caught a duplicate (e.g. GSTIN/PAN match) — not inserted.
+        const data = result.data as {
+          created: unknown[];
+          duplicates: { name?: string }[];
+          errors: { name?: string; error: string }[];
+        };
+        imported = data.created.length;
+        for (const d of data.duplicates) {
           skipped++;
-          skippedDetail.push(`"${c.name}" already exists — skipped`);
-        } else {
-          imported++;
-          if (k) seen.add(k);
+          skippedDetail.push(`"${d.name ?? "?"}" already exists — skipped`);
+        }
+        for (const e of data.errors) {
+          errors.push(`Customer "${e.name ?? "?"}": ${e.error}`);
         }
       } else {
-        errors.push(`Customer "${c.name}": ${result.error ?? "failed to create"}`);
+        errors.push(result.error ?? "Bulk import failed");
       }
     }
 

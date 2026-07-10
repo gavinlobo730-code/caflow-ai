@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import ValidationError as PydanticValidationError
+from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.parties import CustomerIn, CustomerUpdateIn
 from core.permissions import rbac
@@ -269,6 +269,178 @@ def create_customer(
             return api_response(False, None, "A customer with this GSTIN already exists.")
         if "foreign key" in err_str.lower() or "violates" in err_str.lower():
             return api_response(False, None, "Invalid client reference. Please refresh and try again.")
+        return api_response(False, None, "Unable to complete customer operation. Please try again.")
+
+
+class CustomerBulkIn(BaseModel):
+    """Loose body — items are validated individually inside the handler (via
+    CustomerIn(**item)) so one malformed CSV row cannot 422 the whole batch."""
+    customers: list[dict]
+
+
+@router.post("/bulk")
+def bulk_create_customers(
+    data: CustomerBulkIn,
+    current_user: dict = Depends(rbac("client", "write")),
+):
+    """Bulk customer import (CSV upload).
+
+    Replaces the frontend's `for (const c of records) POST /api/customers/` loop
+    — which re-ran create_customer's whole active-customer dedup SELECT on every
+    single row — with ONE dedup-snapshot fetch (per distinct client_id in the
+    batch, not per item) and ONE batch insert.
+
+    Duplicate matching mirrors _match_existing exactly (GSTIN first, then PAN —
+    CGST Act §25 / IT Act §139A, see _match_existing docstring), checked against
+    both the pre-fetched existing rows AND rows already accepted earlier in this
+    same batch, so two duplicate CSV rows never both get inserted.
+    """
+    try:
+        firm_id = current_user.get("firm_id")
+        items = data.customers or []
+
+        created: list[dict] = []
+        duplicates: list[dict] = []
+        errors: list[dict] = []
+
+        # ── Step 1: per-item validation ──────────────────────────────────────
+        validated: list[tuple[int, dict]] = []
+        for idx, item in enumerate(items):
+            item = item if isinstance(item, dict) else {}
+            try:
+                parsed = CustomerIn(**item)
+            except PydanticValidationError as e:
+                msgs = "; ".join(err.get("msg", str(err)) for err in e.errors())
+                errors.append({"index": idx, "name": item.get("name"), "error": msgs})
+                continue
+            except Exception as e:
+                errors.append({"index": idx, "name": item.get("name"), "error": str(e)})
+                continue
+            payload = parsed.model_dump()
+            payload["firm_id"] = firm_id
+            payload["is_active"] = True
+            payload["created_at"] = datetime.now(timezone.utc).isoformat()
+            # Client-generated id: lets within-batch duplicate detection (Step 3)
+            # and the post-insert opening-balance/audit loop (Step 5) address a
+            # row deterministically without depending on insert-response ordering.
+            payload["id"] = str(uuid.uuid4())
+            validated.append((idx, payload))
+
+        if not validated:
+            return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors})
+
+        # ── Step 2: dedup snapshot — ONE query per distinct client_id in the
+        # batch (this importer is always scoped to a single client_id per CSV
+        # upload in practice, so this is a single query in the common case; a
+        # batch that happens to span multiple client_ids still gets correct,
+        # per-client dedup instead of one query per item). ─────────────────────
+        client_ids = sorted({p.get("client_id") for _, p in validated})
+        existing_by_client: dict[str, list[dict]] = {}
+        db = None
+        if _USE_MOCK:
+            for cid in client_ids:
+                existing_by_client[cid] = [
+                    c for c in MOCK_CUSTOMERS
+                    if c.get("client_id") == cid and c.get("firm_id") == firm_id
+                ]
+        else:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+            for cid in client_ids:
+                resp = (
+                    db.table("customers")
+                    .select("*")
+                    .eq("client_id", cid)
+                    .eq("firm_id", firm_id)
+                    .eq("is_active", True)
+                    .execute()
+                )
+                existing_by_client[cid] = resp.data or []
+
+        # ── Step 3: duplicate guard — GSTIN-then-PAN (_match_existing), against
+        # the DB snapshot AND rows already accepted earlier in this batch. ──────
+        accepted_in_batch: dict[str, list[dict]] = {cid: [] for cid in client_ids}
+        to_insert: list[tuple[int, dict]] = []
+        for idx, payload in validated:
+            cid = payload.get("client_id")
+            gstin = _norm(payload.get("gstin"))
+            pan = _norm(payload.get("pan"))
+            candidates = existing_by_client.get(cid, []) + accepted_in_batch.get(cid, [])
+            match = _match_existing(candidates, gstin, pan)
+            if match:
+                duplicates.append({"index": idx, "name": payload.get("name"), "existing_id": match.get("id")})
+                continue
+            accepted_in_batch.setdefault(cid, []).append(payload)
+            to_insert.append((idx, payload))
+
+        if not to_insert:
+            return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors})
+
+        # ── Step 4: ONE batch insert for every new row. ─────────────────────────
+        if _USE_MOCK:
+            inserted_rows: list[tuple[int, dict]] = []
+            for idx, payload in to_insert:
+                row = dict(payload)
+                MOCK_CUSTOMERS.append(row)
+                inserted_rows.append((idx, row))
+        else:
+            resp = db.table("customers").insert([p for _, p in to_insert]).execute()
+            data_rows = resp.data or [p for _, p in to_insert]
+            inserted_rows = list(zip((idx for idx, _ in to_insert), data_rows))
+
+        # ── Step 5: opening-balance GL sync per newly-created row — same
+        # rollback-on-failure isolation as the single endpoint (post_opening_
+        # balances + delete-on-failure), but scoped to ONLY the failing row so
+        # one bad row's GL-posting failure can't sink the rest of the batch. ────
+        for idx, row in inserted_rows:
+            customer_id = row.get("id", "")
+            cid = row.get("client_id")
+            if int(row.get("opening_balance_paise") or 0) != 0:
+                try:
+                    from services.opening_balance_service import post_opening_balances
+                    # journal_entries.created_by FKs to public.users.id (INTERNAL id).
+                    post_opening_balances(firm_id, cid, created_by=current_user.get("id"))
+                except Exception as sync_err:
+                    _logger.error(
+                        "bulk_create_customers opening-balance sync failed for index %s; rolling back: %s",
+                        idx, sync_err,
+                    )
+                    try:
+                        if _USE_MOCK:
+                            MOCK_CUSTOMERS[:] = [c for c in MOCK_CUSTOMERS if c.get("id") != customer_id]
+                        else:
+                            db.table("customers").delete().eq("id", customer_id).eq("firm_id", firm_id).execute()
+                    except Exception:
+                        pass
+                    errors.append({"index": idx, "name": row.get("name"), "error": "Unable to save customer. Please try again."})
+                    continue
+
+            created.append(row)
+            log_event(
+                firm_id, "customer", customer_id,
+                "create", actor_id=current_user.get("auth_user_id"),
+                actor_email=current_user.get("email"), new_data=row,
+            )
+            timeline_service.log_timeline_event(
+                client_id=row.get("client_id", ""),
+                firm_id=firm_id,
+                financial_year=_current_fy_long(),
+                category="accounting",
+                event_type="customer_created",
+                title=f"Customer {row.get('name', '')} added",
+                description="New customer added to the system.",
+                severity="info",
+                entity_type="customer",
+                entity_id=customer_id,
+                actor_id=current_user.get("auth_user_id"),
+                actor_name=current_user.get("email"),
+            )
+
+        return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("bulk_create_customers: %s", e)
         return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
