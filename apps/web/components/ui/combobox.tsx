@@ -154,7 +154,10 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
   const listRef = React.useRef<HTMLDivElement>(null);
 
   React.useImperativeHandle(ref, () => ({
-    focus: () => triggerRef.current?.focus(),
+    // triggerRef is null while chrome="field" is open (the button is
+    // replaced by the inline input then) — fall back to inputRef so an
+    // external caller's focus() still lands on whichever control is visible.
+    focus: () => (triggerRef.current ?? inputRef.current)?.focus(),
   }), []);
 
   const combo = useCombobox<T>({
@@ -331,92 +334,139 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
 
   const defaultCreateLabel = (q: string) => `Create “${q}”`;
 
+  // Shared aria-activedescendant target for whichever input is currently on
+  // screen (the inline field-mode input, or the plain-mode panel's own).
+  const activeDescendant = results[highlighted]
+    ? `${baseId}-opt-${highlighted}`
+    : showCreate && highlighted === createIdx
+      ? `${baseId}-create`
+      : undefined;
+
+  // field-mode + open: the trigger IS the search box (see the JSX below), so
+  // the button never coexists with it — no toggle-to-close case to handle.
+  const showInlineInput = !plain && open;
+
   return (
     <div ref={wrapRef} className="relative">
-      {/* Trigger — looks like the app's <select> field, unless chrome="plain"
-          (the invoice HSN cell), where it reads as inline text + an action. */}
-      <button
-        type="button"
-        ref={triggerRef}
-        id={baseId}
-        disabled={disabled}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label={ariaLabel}
-        onClick={() => (open ? close() : openMenu())}
-        onKeyDown={(e) => {
-          if (!open && (e.key === "ArrowDown" || e.key === "Enter")) {
-            e.preventDefault();
-            openMenu();
-          }
-        }}
-        className={cn(
-          "items-center gap-2 text-left text-[#334155] transition-colors focus:outline-none disabled:cursor-not-allowed disabled:text-[#94A3B8]",
-          plain
-            ? "inline-flex rounded focus:ring-1 focus:ring-blue-500"
-            : cn("flex w-full justify-between rounded-lg border border-[#E2E8F0] bg-white focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC]", SIZE[size]),
-          className,
-        )}
-      >
-        <span
+      {/* Trigger. chrome="field" (the default) merges the trigger and the
+          search box into ONE control: clicking it turns it directly into a
+          live text input right in place, so there is never a second,
+          separate search box to notice and click into — typing starts
+          immediately and the results drop down below this same box.
+          chrome="plain" (the compact invoice-line "Change" chip) keeps the
+          original click-to-open-a-panel design: it's a deliberately minimal
+          override action on an already-filled line, not a primary search
+          field, so turning it into a wide inline input would misrepresent
+          it as more prominent than it's meant to be. */}
+      {showInlineInput ? (
+        <div
           className={cn(
-            "truncate",
-            !triggerLabel && (plain ? "text-[10px] font-medium text-blue-600" : "text-[#94A3B8]"),
+            "flex w-full items-center gap-2 rounded-lg border border-blue-500 bg-white ring-2 ring-blue-500",
+            SIZE[size],
+            className,
           )}
         >
-          {!multiple && selectedArr[0] && renderTrigger
-            ? renderTrigger(selectedArr[0])
-            : triggerLabel || placeholder}
-        </span>
-        {!plain && (
-          <span className="flex flex-shrink-0 items-center gap-1">
-            {clearable && !multiple && selectedArr.length > 0 && !disabled && (
-              <span
-                role="button"
-                tabIndex={-1}
-                aria-label="Clear"
-                onClick={clear}
-                className="rounded p-0.5 text-[#CBD5E1] hover:text-red-500"
-              >
-                <X size={13} />
-              </span>
+          <Search size={13} className="flex-shrink-0 text-[#94A3B8]" />
+          <input
+            ref={inputRef}
+            id={baseId}
+            role="combobox"
+            aria-expanded="true"
+            aria-controls={listboxId}
+            aria-autocomplete="list"
+            aria-activedescendant={activeDescendant}
+            aria-label={ariaLabel}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={searchPlaceholder}
+            autoComplete="off"
+            className="w-full min-w-0 bg-transparent text-xs text-[#334155] placeholder:text-[#94A3B8] focus:outline-none"
+          />
+          {busy && <Loader2 size={13} className="flex-shrink-0 animate-spin text-[#94A3B8]" />}
+        </div>
+      ) : (
+        <button
+          type="button"
+          ref={triggerRef}
+          id={baseId}
+          disabled={disabled}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label={ariaLabel}
+          onClick={() => (open ? close() : openMenu())}
+          onKeyDown={(e) => {
+            if (!open && (e.key === "ArrowDown" || e.key === "Enter")) {
+              e.preventDefault();
+              openMenu();
+            }
+          }}
+          className={cn(
+            "items-center gap-2 text-left text-[#334155] transition-colors focus:outline-none disabled:cursor-not-allowed disabled:text-[#94A3B8]",
+            plain
+              ? "inline-flex rounded focus:ring-1 focus:ring-blue-500"
+              : cn("flex w-full justify-between rounded-lg border border-[#E2E8F0] bg-white focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC]", SIZE[size]),
+            className,
+          )}
+        >
+          <span
+            className={cn(
+              "truncate",
+              !triggerLabel && (plain ? "text-[10px] font-medium text-blue-600" : "text-[#94A3B8]"),
             )}
-            <ChevronsUpDown size={13} className="text-[#94A3B8]" />
+          >
+            {!multiple && selectedArr[0] && renderTrigger
+              ? renderTrigger(selectedArr[0])
+              : triggerLabel || placeholder}
           </span>
-        )}
-      </button>
+          {!plain && (
+            <span className="flex flex-shrink-0 items-center gap-1">
+              {clearable && !multiple && selectedArr.length > 0 && !disabled && (
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  aria-label="Clear"
+                  onClick={clear}
+                  className="rounded p-0.5 text-[#CBD5E1] hover:text-red-500"
+                >
+                  <X size={13} />
+                </span>
+              )}
+              <ChevronsUpDown size={13} className="text-[#94A3B8]" />
+            </span>
+          )}
+        </button>
+      )}
 
       {open && coords && (
         <div
           style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width }}
           className="z-40 overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-lg"
         >
-          {/* Search box */}
-          <div className="flex items-center gap-2 border-b border-[#F1F5F9] px-2.5 py-2">
-            <Search size={13} className="flex-shrink-0 text-[#94A3B8]" />
-            <input
-              ref={inputRef}
-              id={inputId}
-              role="combobox"
-              aria-expanded="true"
-              aria-controls={listboxId}
-              aria-autocomplete="list"
-              aria-activedescendant={
-                results[highlighted]
-                  ? `${baseId}-opt-${highlighted}`
-                  : showCreate && highlighted === createIdx
-                    ? `${baseId}-create`
-                    : undefined
-              }
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder={searchPlaceholder}
-              autoComplete="off"
-              className="w-full bg-transparent text-xs text-[#334155] placeholder:text-[#94A3B8] focus:outline-none"
-            />
-            {busy && <Loader2 size={13} className="flex-shrink-0 animate-spin text-[#94A3B8]" />}
-          </div>
+          {/* Search box — only for chrome="plain", whose trigger stays a
+              static button/chip even while open (see above), so its search
+              box still lives here, inside the panel, exactly as before. */}
+          {plain && (
+            <div className="flex items-center gap-2 border-b border-[#F1F5F9] px-2.5 py-2">
+              <Search size={13} className="flex-shrink-0 text-[#94A3B8]" />
+              <input
+                ref={inputRef}
+                id={inputId}
+                role="combobox"
+                aria-expanded="true"
+                aria-controls={listboxId}
+                aria-autocomplete="list"
+                aria-activedescendant={activeDescendant}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={onKeyDown}
+                placeholder={searchPlaceholder}
+                autoComplete="off"
+                className="w-full bg-transparent text-xs text-[#334155] placeholder:text-[#94A3B8] focus:outline-none"
+              />
+              {busy && <Loader2 size={13} className="flex-shrink-0 animate-spin text-[#94A3B8]" />}
+            </div>
+          )}
 
           {/* Results */}
           <div
