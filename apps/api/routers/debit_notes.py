@@ -112,14 +112,14 @@ def list_debit_notes(
     """List debit notes for a client (firm-scoped — tenant isolation)."""
     try:
         if _USE_MOCK:
-            res = [d for d in MOCK_DEBIT_NOTES if d["client_id"] == client_id]
+            res = [d for d in MOCK_DEBIT_NOTES if d["client_id"] == client_id and not d.get("deleted_at")]
             if vendor_id:
                 res = [d for d in res if d.get("vendor_id") == vendor_id]
             return api_response(True, res)
         from core.supabase_client import get_supabase
         db = get_supabase()
         q = (db.table("debit_notes").select("*")
-             .eq("firm_id", current_user.get("firm_id")).eq("client_id", client_id))
+             .eq("firm_id", current_user.get("firm_id")).eq("client_id", client_id).is_("deleted_at", None))
         if vendor_id:
             q = q.eq("vendor_id", vendor_id)
         return api_response(True, q.order("debit_note_date", desc=True).execute().data or [])
@@ -196,7 +196,7 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
         from core.supabase_client import get_supabase
         db = get_supabase()
         firm_id = current_user.get("firm_id")
-        resp = db.table("debit_notes").select("*").eq("id", dn_id).eq("firm_id", firm_id).limit(1).execute()
+        resp = db.table("debit_notes").select("*").eq("id", dn_id).eq("firm_id", firm_id).is_("deleted_at", None).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Debit note {dn_id} not found")
         dn = resp.data[0]
@@ -284,4 +284,74 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
         raise
     except Exception as e:
         _logger.error("issue_debit_note: %s", e)
+        return api_response(False, None, "Unable to complete debit note operation. Please try again.")
+
+
+# Human-readable phrasing for statuses that block deletion.
+_DELETE_BLOCKED = {"issued": "an issued"}
+
+
+@router.delete("/{dn_id}")
+def delete_debit_note(
+    dn_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Soft-delete a DRAFT debit note.
+
+    Only drafts may be deleted. Issued debit notes are protected — once
+    issued they carry a posted journal and, if linked to a bill, have
+    already reduced that bill's payable (CGST Act §34); removing one
+    outright would corrupt both. Deletion is a soft-delete (sets
+    deleted_at, migration 183) plus an immutable audit_log 'delete' event,
+    mirroring sales_invoices.delete_invoice exactly.
+    """
+    try:
+        if _USE_MOCK:
+            for i, dn in enumerate(MOCK_DEBIT_NOTES):
+                if dn["id"] == dn_id and not dn.get("deleted_at"):
+                    st = dn.get("status")
+                    if st != "draft":
+                        raise HTTPException(
+                            status_code=422,
+                            detail=f"Cannot delete {_DELETE_BLOCKED.get(st, st)} debit note — only drafts can be deleted",
+                        )
+                    MOCK_DEBIT_NOTES.pop(i)
+                    return api_response(True, {"id": dn_id, "deleted": True})
+            raise HTTPException(status_code=404, detail=f"Debit note {dn_id} not found")
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        firm_id = current_user.get("firm_id")
+        resp = (
+            db.table("debit_notes").select("*")
+            .eq("id", dn_id).eq("firm_id", firm_id).is_("deleted_at", None).limit(1).execute()
+        )
+        if not resp.data:
+            raise HTTPException(status_code=404, detail=f"Debit note {dn_id} not found")
+        dn = resp.data[0]
+        st = dn.get("status")
+        if st != "draft":
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cannot delete {_DELETE_BLOCKED.get(st, st)} debit note — only drafts can be deleted",
+            )
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        db.table("debit_notes").update({"deleted_at": now_iso}).eq("id", dn_id).eq("firm_id", firm_id).execute()
+
+        log_event(
+            firm_id or "", "debit_note", dn_id,
+            "delete", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            old_data={
+                "debit_note_no": dn.get("debit_note_no"),
+                "status":        st,
+                "total_paise":   dn.get("total_paise"),
+            },
+        )
+        return api_response(True, {"id": dn_id, "deleted": True})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("delete_debit_note: %s", e)
         return api_response(False, None, "Unable to complete debit note operation. Please try again.")

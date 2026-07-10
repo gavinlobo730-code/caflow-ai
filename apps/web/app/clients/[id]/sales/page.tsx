@@ -10,7 +10,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise, formatDateTime, formatMoney } from "@/lib/services/formatting";
-import { DataTable } from "@/components/ui/data-table";
+import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
@@ -1139,6 +1139,75 @@ function SalesInvoices({
     setSendModal(null);
   }
 
+  // Bulk "Delete / Void" — per row, does the CORRECT operation for its status:
+  // a draft is truly deleted (DELETE, existing endpoint); anything issued is
+  // VOIDED (POST .../cancel, existing endpoint) — that reverses the posted
+  // journal but keeps the invoice number on record (CGST Rule 46(b): an
+  // issued number must stay explainable, never just vanish). One warning
+  // covers both, since from the CA's point of view it's the same "make this
+  // invoice go away" action; only the mechanism differs underneath.
+  async function bulkDeleteOrVoid(selected: SalesInvoice[]): Promise<boolean> {
+    const token = await getAuthToken();
+    let deleted = 0, voided = 0;
+    const failures: string[] = [];
+    await Promise.all(selected.map(async (inv) => {
+      try {
+        if (inv.status === "draft") {
+          const result = await apiCall(`/api/sales-invoices/${inv.id}`, "DELETE", undefined, token);
+          if (!result.success) throw new Error(result.error ?? "delete failed");
+          deleted++;
+        } else if (inv.status === "cancelled") {
+          failures.push(`${inv.invoice_no}: already voided`);
+        } else {
+          const result = await apiCall(`/api/sales-invoices/${inv.id}/cancel`, "POST", undefined, token);
+          if (!result.success) throw new Error(result.error ?? "void failed");
+          voided++;
+        }
+      } catch (e) {
+        failures.push(`${inv.invoice_no}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+    }));
+    const parts: string[] = [];
+    if (deleted) parts.push(`${deleted} draft${deleted !== 1 ? "s" : ""} deleted`);
+    if (voided) parts.push(`${voided} invoice${voided !== 1 ? "s" : ""} voided`);
+    if (failures.length) parts.push(`${failures.length} failed (${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""})`);
+    showToast(parts.join(", ") || "Nothing to do", failures.length ? "error" : "success");
+    if (deleted || voided) load();
+    return failures.length === 0;
+  }
+
+  // Bulk Send — same per-invoice guard as the single "Send" row action (no
+  // sending a draft/cancelled invoice, and no email on file is a per-row
+  // skip, not a hard stop for the rest of the batch).
+  async function bulkSendInvoices(selected: SalesInvoice[]): Promise<boolean> {
+    const token = await getAuthToken();
+    let sent = 0;
+    const failures: string[] = [];
+    await Promise.all(selected.map(async (inv) => {
+      if (inv.status === "draft" || inv.status === "cancelled") {
+        failures.push(`${inv.invoice_no}: cannot send a ${inv.status} invoice`);
+        return;
+      }
+      const cust = customers.find((c) => c.id === inv.customer_id);
+      if (!cust?.email) {
+        failures.push(`${inv.invoice_no}: no email on file`);
+        return;
+      }
+      try {
+        const result = await apiCall(`/api/sales-invoices/${inv.id}/send`, "POST", { to_email: cust.email }, token);
+        if (!result.success) throw new Error(result.error ?? "send failed");
+        sent++;
+      } catch (e) {
+        failures.push(`${inv.invoice_no}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+    }));
+    const summary = failures.length
+      ? `${sent} sent, ${failures.length} failed (${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""})`
+      : `${sent} invoice${sent !== 1 ? "s" : ""} sent`;
+    showToast(summary, failures.length ? "error" : "success");
+    return failures.length === 0;
+  }
+
   function openSend(inv: SalesInvoice) {
     const cust = customers.find((c) => c.id === inv.customer_id);
     setSendModal({ invoice: inv, customerEmail: cust?.email ?? null });
@@ -1400,6 +1469,24 @@ function SalesInvoices({
         persistKey="sales.invoices"
         emptyTitle="No invoices in this period"
         onRowClick={(inv) => setDetailId(inv.id)}
+        bulkActions={[
+          {
+            id: "delete-void",
+            label: "Delete / Void",
+            icon: <Trash2 size={13} />,
+            variant: "danger",
+            confirm: "Delete the selected draft invoices and void the selected issued invoices? Voiding reverses the accounting entry but keeps the invoice number on record. This cannot be undone.",
+            run: bulkDeleteOrVoid,
+          },
+          {
+            id: "send",
+            label: "Send",
+            icon: <Send size={13} />,
+            confirm: "Email the selected invoices to their customers?",
+            run: bulkSendInvoices,
+          },
+          exportSelectedAction("sales-invoices-selected.csv", columns),
+        ]}
         toolbarExtra={
           <div className="flex flex-wrap items-center gap-2">
             <div className="w-[180px]">
@@ -2179,6 +2266,59 @@ function Customers({
     return { imported, errors, skipped, skippedDetail };
   }
 
+  // Bulk deactivate — routed through the real API (unlike confirmDeactivate
+  // above, which writes to Supabase directly and leaves no audit trail) so a
+  // batch deactivation is still auditable. Unconditionally safe, same as the
+  // single-row version: existing invoices/receipts/journals are untouched.
+  async function bulkDeactivate(selected: Customer[]): Promise<boolean> {
+    const token = await getAuthToken();
+    const targets = selected.filter((c) => c.is_active);
+    let deactivated = 0;
+    const failures: string[] = [];
+    await Promise.all(targets.map(async (c) => {
+      try {
+        const result = await apiCall(`/api/customers/${c.id}`, "DELETE", undefined, token);
+        if (!result.success) throw new Error(result.error ?? "failed");
+        deactivated++;
+      } catch (e) {
+        failures.push(`${c.name}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+    }));
+    const skipped = selected.length - targets.length;
+    const parts: string[] = [];
+    if (deactivated) parts.push(`${deactivated} deactivated`);
+    if (skipped) parts.push(`${skipped} already inactive`);
+    if (failures.length) parts.push(`${failures.length} failed (${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""})`);
+    showToast(parts.join(", ") || "Nothing to do", failures.length ? "error" : "success");
+    if (deactivated) load();
+    return failures.length === 0;
+  }
+
+  // Bulk permanent delete — no pre-check GET here (unlike the single-row
+  // startDelete flow): the backend re-validates dependencies on every call
+  // and returns 409 for any customer with linked accounting records, so a
+  // blocked row is just reported as a failure rather than fetched twice.
+  async function bulkDeletePermanent(selected: Customer[]): Promise<boolean> {
+    const token = await getAuthToken();
+    let deleted = 0;
+    const failures: string[] = [];
+    await Promise.all(selected.map(async (c) => {
+      try {
+        const result = await apiCall(`/api/customers/${c.id}?permanent=true`, "DELETE", undefined, token);
+        if (!result.success) throw new Error(result.error ?? "failed");
+        deleted++;
+      } catch (e) {
+        failures.push(`${c.name}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+    }));
+    const summary = failures.length
+      ? `${deleted} deleted, ${failures.length} failed (${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""})`
+      : `${deleted} customer${deleted !== 1 ? "s" : ""} deleted`;
+    showToast(summary, failures.length ? "error" : "success");
+    if (deleted) load();
+    return failures.length === 0;
+  }
+
   // ── DataTable columns / filters ───────────────────────────────────────────
   const columns: Column<Customer>[] = useMemo(() => [
     { key: "name", header: "Name", accessor: (c) => c.name, searchable: true, sortable: true, sticky: true, hideable: false,
@@ -2452,6 +2592,24 @@ function Customers({
         exportFilename="customers"
         persistKey="sales.customers"
         emptyTitle="No customers yet"
+        bulkActions={[
+          {
+            id: "deactivate",
+            label: "Deactivate",
+            icon: <Ban size={13} />,
+            confirm: "Deactivate the selected customers? They will no longer be available for new invoices. Existing records are unaffected and this can be undone.",
+            run: bulkDeactivate,
+          },
+          {
+            id: "delete-permanent",
+            label: "Delete permanently",
+            icon: <Trash2 size={13} />,
+            variant: "danger",
+            confirm: "Permanently delete the selected customers? Any customer with linked invoices, receipts, credit notes or an opening balance will be skipped. This cannot be undone.",
+            run: bulkDeletePermanent,
+          },
+          exportSelectedAction("customers-selected.csv", columns),
+        ]}
         rowActions={(c) => (
           <button
             onClick={(e) => openMenuFor(e, c)}
@@ -3008,6 +3166,31 @@ function CreditNotes({
     }
   }
 
+  // Bulk delete — draft-only (backend rejects issued/applied credit notes
+  // with a 422, CGST Act §34: once issued they've already reduced the
+  // original invoice's outstanding balance and there is no cancel/void path
+  // for credit notes, unlike sales invoices).
+  async function bulkDeleteCreditNotes(selected: CreditNote[]): Promise<boolean> {
+    const token = await getAuthToken();
+    let deleted = 0;
+    const failures: string[] = [];
+    await Promise.all(selected.map(async (cn) => {
+      try {
+        const result = await apiCall(`/api/credit-notes/${cn.id}`, "DELETE", undefined, token);
+        if (!result.success) throw new Error(result.error ?? "failed");
+        deleted++;
+      } catch (e) {
+        failures.push(`${cn.cn_no}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+    }));
+    const summary = failures.length
+      ? `${deleted} deleted, ${failures.length} skipped (${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""})`
+      : `${deleted} credit note${deleted !== 1 ? "s" : ""} deleted`;
+    showToast(summary, failures.length ? "error" : "success");
+    if (deleted) load();
+    return failures.length === 0;
+  }
+
   // ── DataTable columns / filters ───────────────────────────────────────────
   const columns: Column<CreditNote>[] = useMemo(() => [
     { key: "cn_no", header: "CN No", accessor: (cn) => cn.cn_no, searchable: true, sortable: true, sticky: true, hideable: false,
@@ -3078,6 +3261,17 @@ function CreditNotes({
         exportFilename="credit-notes"
         persistKey="sales.credit-notes"
         emptyTitle={`No credit notes in FY ${financialYear}`}
+        bulkActions={[
+          {
+            id: "delete",
+            label: "Delete draft(s)",
+            icon: <Trash2 size={13} />,
+            variant: "danger",
+            confirm: "Delete the selected draft credit notes? Issued credit notes will be skipped. This cannot be undone.",
+            run: bulkDeleteCreditNotes,
+          },
+          exportSelectedAction("credit-notes-selected.csv", columns),
+        ]}
         rowActions={(cn) =>
           cn.status === "draft" ? (
             <button

@@ -2027,6 +2027,10 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
   const [loading, setLoading] = useState(false);
   const [sugg, setSugg] = useState<Record<string, MatchSuggestion[]>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
@@ -2037,6 +2041,7 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
     } catch { setRows([]); } finally { setLoading(false); }
   }, [clientId, status]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setSelected(new Set()); }, [status]);
 
   async function categorize(id: string, category: string) {
     if (!category) return;
@@ -2044,6 +2049,44 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
     try { await api.banking.categorize(id, { category }); await load(); }
     catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
     finally { setBusy((b) => ({ ...b, [id]: false })); }
+  }
+
+  function toggleRow(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  function toggleSelectAll() {
+    setSelected((prev) => (prev.size === rows.length ? new Set() : new Set(rows.map((t) => t.id))));
+  }
+  function clearSelection() {
+    setSelected(new Set());
+    setBulkCategory("");
+    setBulkError(null);
+  }
+  async function bulkCategorize() {
+    if (!bulkCategory || selected.size === 0) return;
+    setBulkBusy(true);
+    setBulkError(null);
+    const ids = Array.from(selected);
+    const results = await Promise.all(
+      ids.map((id) =>
+        api.banking.categorize(id, { category: bulkCategory }).then(
+          () => null,
+          (e) => (e instanceof Error ? e.message : "Failed"),
+        ),
+      ),
+    );
+    const failCount = results.filter((r) => r !== null).length;
+    await load();
+    setBulkBusy(false);
+    if (failCount > 0) {
+      setBulkError(`Failed to categorize ${failCount} of ${ids.length} transaction${ids.length === 1 ? "" : "s"}.`);
+    } else {
+      clearSelection();
+    }
   }
   async function loadSugg(id: string) {
     setBusy((b) => ({ ...b, [id]: true }));
@@ -2080,13 +2123,61 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
       {loading ? <div className="h-40 bg-[#F8FAFC] rounded-lg animate-pulse" /> : rows.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center text-sm text-[#94A3B8]">No transactions in this view.</div>
       ) : (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden divide-y divide-[#F8FAFC]">
-          {rows.map((t) => (
-            <div key={t.id} className="px-4 py-3 space-y-2">
+        <>
+          <div className="flex items-center gap-2 px-1">
+            <input
+              type="checkbox"
+              aria-label="Select all visible transactions"
+              checked={rows.length > 0 && selected.size === rows.length}
+              ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < rows.length; }}
+              onChange={toggleSelectAll}
+              className="h-3.5 w-3.5 rounded border-[#CBD5E1]"
+            />
+            <span className="text-[10px] text-[#94A3B8]">Select all visible</span>
+          </div>
+
+          {/* ── Bulk categorize action bar ─────────────────────────────── */}
+          {selected.size > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#C7D2FE] bg-[#EEF2FF] px-3 py-2 text-xs">
+              <span className="font-semibold text-[#3730A3]">{selected.size} selected</span>
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <select
+                  value={bulkCategory} disabled={bulkBusy}
+                  onChange={(e) => setBulkCategory(e.target.value)}
+                  className="px-2 py-1 text-xs border border-[#C7D2FE] rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                  <option value="">— Category —</option>
+                  {BANK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <button
+                  onClick={bulkCategorize}
+                  disabled={bulkBusy || !bulkCategory}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-white px-2.5 py-1.5 font-medium text-[#4338CA] hover:bg-[#E0E7FF] disabled:cursor-not-allowed disabled:opacity-50">
+                  {bulkBusy ? "Applying…" : "Apply"}
+                </button>
+                <button onClick={clearSelection} disabled={bulkBusy} className="text-[#6366F1] hover:text-[#4338CA] disabled:opacity-50" aria-label="Clear selection">
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+          {bulkError && <p className="text-[11px] text-red-600 px-1">{bulkError}</p>}
+
+          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden divide-y divide-[#F8FAFC]">
+            {rows.map((t) => (
+              <div key={t.id} className="px-4 py-3 space-y-2">
               <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-[#1E293B] truncate">{t.description}</p>
-                  <p className="text-[10px] text-[#94A3B8] mt-0.5">{t.transaction_date} · {t.reference_no ?? ""}</p>
+                <div className="flex items-start gap-2 min-w-0">
+                  <input
+                    type="checkbox"
+                    aria-label={`Select transaction ${t.description}`}
+                    checked={selected.has(t.id)}
+                    onChange={() => toggleRow(t.id)}
+                    className="mt-0.5 h-3.5 w-3.5 rounded border-[#CBD5E1] shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-[#1E293B] truncate">{t.description}</p>
+                    <p className="text-[10px] text-[#94A3B8] mt-0.5">{t.transaction_date} · {t.reference_no ?? ""}</p>
+                  </div>
                 </div>
                 <div className="shrink-0 text-right">
                   {t.debit_paise > 0 && <p className="text-xs font-mono text-red-700">{fmt(t.debit_paise)} Dr</p>}
@@ -2141,6 +2232,7 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
             </div>
           ))}
         </div>
+        </>
       )}
       <p className="text-[10px] text-[#94A3B8] text-center">
         Suggestions &amp; categorization only — accepting a match links the transaction; it does not post a journal (that is a later phase).

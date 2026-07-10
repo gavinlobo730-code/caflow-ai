@@ -22,9 +22,9 @@ import {
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
-import { DataTable } from "@/components/ui/data-table";
+import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
-import type { Column, FilterDef } from "@/lib/table/types";
+import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { formatPaise as formatPaiseINR } from "@/lib/services/formatting";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -1113,6 +1113,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
 function EngagementsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { toast } = useToast();
 
   // URL is the single source of truth for the active tab. The sidebar
   // (EngagementsPanel) reads the same `?tab=` param, so the two never drift.
@@ -1329,6 +1330,89 @@ function EngagementsPageInner() {
     </div>
   ), []);
 
+  // ── Bulk actions (DataTable checkbox selection) ─────────────────────────────
+  // Both reuse the exact same endpoints as the single-record actions in
+  // DetailModal (doDelete / the "Send to Client" doAction call) — see there for
+  // the reference call pattern (apiFetch, auth header, error surfacing).
+
+  // Bulk delete — soft-deletes each selected letter. Signed letters are the
+  // binding mandate that gates lead→client conversion and can never be deleted
+  // (the backend 409s on them, same guard as the single-row delete), so they're
+  // filtered out client-side and reported as "skipped" rather than "failed".
+  const handleBulkDeleteLetters = useCallback(async (selected: EngagementLetter[]) => {
+    const signed = selected.filter((l) => l.status === "Signed");
+    const deletable = selected.filter((l) => l.status !== "Signed");
+    const results = await Promise.all(
+      deletable.map((l) =>
+        apiFetch(`/api/engagement-letters/${l.id}`, { method: "DELETE" })
+          .then((json) => ({ ok: !!json.success, error: json.success ? undefined : (json.error ?? "Delete failed") }))
+          .catch((e) => ({ ok: false, error: e instanceof Error ? e.message : "Delete failed" }))
+      )
+    );
+    const deletedCount = results.filter((r) => r.ok).length;
+    const failedCount = results.length - deletedCount;
+    await loadData();
+
+    const hasIssue = signed.length > 0 || failedCount > 0;
+    const parts = [`${deletedCount} deleted`];
+    if (signed.length > 0) parts.push(`${signed.length} skipped (Signed — cannot be deleted)`);
+    if (failedCount > 0) parts.push(`${failedCount} failed`);
+    toast({
+      title: hasIssue ? "Some engagement letters weren't deleted" : "Engagement letters deleted",
+      description: `${parts.join(", ")}.`,
+      variant: hasIssue ? "destructive" : undefined,
+    });
+    // Keep the selection alive when something didn't go through, so the CA can
+    // see exactly what's left and retry/investigate.
+    return !hasIssue;
+  }, [loadData, toast]);
+
+  // Bulk send — emails each selected letter to its recipient via the same
+  // /send endpoint as "Send to Client". The endpoint resolves "no recipient
+  // email on file" / delivery failures as a 200 with success:false rather than
+  // throwing (see _deliver_engagement_email), and rejects the wrong status
+  // (e.g. already Sent/Signed) with a thrown 409 — both are caught per-row here.
+  const handleBulkSendLetters = useCallback(async (selected: EngagementLetter[]) => {
+    const results = await Promise.all(
+      selected.map((l) =>
+        apiFetch(`/api/engagement-letters/${l.id}/send`, { method: "POST", body: JSON.stringify({}) })
+          .then((json) => ({ ok: !!json.success, error: json.success ? undefined : (json.error ?? "Send failed") }))
+          .catch((e) => ({ ok: false, error: e instanceof Error ? e.message : "Send failed" }))
+      )
+    );
+    const sentCount = results.filter((r) => r.ok).length;
+    const failed = results.filter((r) => !r.ok);
+    await loadData();
+
+    const hasIssue = failed.length > 0;
+    toast({
+      title: hasIssue ? "Some engagement letters weren't sent" : "Engagement letters sent",
+      description: hasIssue
+        ? `${sentCount} sent, ${failed.length} failed — ${failed[0].error ?? "see letter for details"}${
+            failed.length > 1 ? ` (+${failed.length - 1} more)` : ""
+          }`
+        : `${sentCount} letter${sentCount === 1 ? "" : "s"} emailed to their recipients.`,
+      variant: hasIssue ? "destructive" : undefined,
+    });
+    // Keep the selection alive when something didn't go through, so the CA can
+    // see exactly what's left and retry/investigate.
+    return !hasIssue;
+  }, [loadData, toast]);
+
+  const letterBulkActions: BulkAction<EngagementLetter>[] = useMemo(() => [
+    {
+      id: "bulk-delete", label: "Delete", icon: <Trash2 size={13} />, variant: "danger",
+      confirm: "Delete the selected engagement letters? Signed letters will be skipped. This cannot be undone.",
+      run: handleBulkDeleteLetters,
+    },
+    {
+      id: "bulk-send", label: "Send", icon: <Send size={13} />,
+      confirm: "Email the selected engagement letters to their recipients?",
+      run: handleBulkSendLetters,
+    },
+    exportSelectedAction<EngagementLetter>("engagement-letters-selected.csv", letterColumns),
+  ], [handleBulkDeleteLetters, handleBulkSendLetters, letterColumns]);
+
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-5">
       {/* Header */}
@@ -1473,6 +1557,7 @@ function EngagementsPageInner() {
           data={filteredLetters}
           columns={letterColumns}
           filters={letterFilters}
+          bulkActions={letterBulkActions}
           getRowId={(l) => l.id}
           loading={loading}
           error={error}
