@@ -127,7 +127,7 @@ def list_services(
     client_id: str = Query(..., description="CA client ID — required, Products & Services are client-owned"),
     q: str = Query("", description="Search by name, description or SAC/HSN"),
     include_archived: bool = Query(False),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """List/search one client's presets. Active-only by default; ranked by
