@@ -15,7 +15,7 @@
  * Invoice Workflow Alignment: ONE creation workflow, not one per caller).
  */
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Pencil, Archive, RotateCcw, Search, BookMarked } from "lucide-react";
+import { Plus, Pencil, Archive, RotateCcw, Search, BookMarked, Upload } from "lucide-react";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
@@ -23,6 +23,8 @@ import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFo
 import {
   formatServiceRate, formatServicePrice, type ServiceCatalogueItem,
 } from "@/lib/catalogue/service";
+import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import { buildServices, SERVICE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 
 type Filter = "active" | "archived";
 
@@ -34,6 +36,7 @@ export default function ProductsServicesPage() {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("active");
   const [editing, setEditing] = useState<ServiceCatalogueItem | "new" | null>(null);
+  const [showImport, setShowImport] = useState(false);
   const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -80,6 +83,41 @@ export default function ProductsServicesPage() {
     }
   }
 
+  /** Bulk-import products/services through /api/service-catalogue/bulk — one
+   *  request for the whole file instead of one POST per row. Only Name is
+   *  mandatory; everything else (kind, category, HSN/SAC, GST rate, prices,
+   *  notes) is optional, matching the single-create form. */
+  async function handleImport(
+    rows: ImportRow[]
+  ): Promise<{ imported: number; errors: string[]; skipped: number; skippedDetail: string[] }> {
+    const { records, errors } = buildServices(rows, clientId);
+    if (records.length === 0) return { imported: 0, errors, skipped: 0, skippedDetail: [] };
+
+    let imported = 0;
+    let skipped = 0;
+    const skippedDetail: string[] = [];
+    const res = (await api.serviceCatalogue.bulkCreate(records)) as ApiResp<{
+      created: unknown[];
+      duplicates: { name?: string }[];
+      errors: { name?: string; error: string }[];
+    }>;
+    if (res.success && res.data) {
+      imported = res.data.created.length;
+      for (const d of res.data.duplicates) {
+        skipped++;
+        skippedDetail.push(`"${d.name ?? "?"}" already exists — skipped`);
+      }
+      for (const e of res.data.errors) {
+        errors.push(`"${e.name ?? "?"}": ${e.error}`);
+      }
+    } else {
+      errors.push(res.error ?? "Bulk import failed");
+    }
+
+    if (imported > 0) load();
+    return { imported, errors, skipped, skippedDetail };
+  }
+
   if (!clientId || clientId === "_placeholder") {
     return <div className="p-6 max-w-4xl mx-auto text-sm text-[#94A3B8]">Loading…</div>;
   }
@@ -98,12 +136,20 @@ export default function ProductsServicesPage() {
             <h1 className="text-xl font-semibold text-[#0F172A] flex items-center gap-2"><BookMarked size={18} className="text-emerald-600" /> Products &amp; Services</h1>
             <p className="text-sm text-[#64748B] mt-0.5">Reusable billing presets for this client. No stock or inventory — billing defaults only.</p>
           </div>
-          <button
-            onClick={() => setEditing("new")}
-            className="flex items-center gap-1.5 text-sm bg-emerald-600 text-white px-3.5 py-2 rounded-lg hover:bg-emerald-700 whitespace-nowrap"
-          >
-            <Plus size={15} /> New Product/Service
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowImport(true)}
+              className="flex items-center gap-1.5 text-sm border border-[#E2E8F0] text-[#475569] px-3.5 py-2 rounded-lg hover:bg-[#F8FAFC] whitespace-nowrap"
+            >
+              <Upload size={15} /> Import
+            </button>
+            <button
+              onClick={() => setEditing("new")}
+              className="flex items-center gap-1.5 text-sm bg-emerald-600 text-white px-3.5 py-2 rounded-lg hover:bg-emerald-700 whitespace-nowrap"
+            >
+              <Plus size={15} /> New Product/Service
+            </button>
+          </div>
         </div>
 
         {/* Search + filter */}
@@ -205,6 +251,16 @@ export default function ProductsServicesPage() {
           onClose={() => setEditing(null)}
           onSaved={(item) => { setEditing(null); showToast(`${item.name} ${editing === "new" ? "created" : "updated"}`, "success"); load(); }}
           onError={(msg) => showToast(msg, "error")}
+        />
+      )}
+
+      {showImport && (
+        <CsvImportModal
+          title="Import Products & Services"
+          columns={SERVICE_IMPORT_COLUMNS}
+          templateFilename="products-services-template.csv"
+          onImport={handleImport}
+          onClose={() => setShowImport(false)}
         />
       )}
     </RoleGuard>

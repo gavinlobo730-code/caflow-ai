@@ -28,7 +28,7 @@ import {
 
 const EMPTY_FORM: ServiceFormInput = {
   name: "", description: "", kind: "service", hsn_sac: "", gstRate: 18,
-  rate: "", purchasePrice: "", unit: "", category: "", notes: "",
+  rate: "", purchasePrice: "", category: "", notes: "",
 };
 
 const inputCls = "w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500";
@@ -113,9 +113,6 @@ export function ProductServiceFormModal({
             <input type="number" min="0" step="0.01" value={form.purchasePrice} onChange={(e) => set("purchasePrice", e.target.value)} placeholder="0.00" className={inputCls} />
           </Field>
         </div>
-        <Field label="Unit (optional)">
-          <input value={form.unit} onChange={(e) => set("unit", e.target.value)} placeholder="e.g. OTH, HRS, NOS" className={inputCls} />
-        </Field>
         <Field label="Notes (optional)">
           <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Internal note" className={inputCls} />
         </Field>

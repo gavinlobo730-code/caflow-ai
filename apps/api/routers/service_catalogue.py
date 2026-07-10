@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.service_catalogue import ServiceCatalogueIn, ServiceCatalogueUpdateIn
 from core.permissions import rbac
@@ -234,6 +235,155 @@ def create_service(
     except Exception as e:
         _logger.error("create_service: %s", e)
         return api_response(False, None, "Unable to create the service. Please try again.")
+
+
+class ServiceBulkIn(BaseModel):
+    """Loose body — items are validated individually inside the handler (via
+    ServiceCatalogueIn(**item)) so one malformed CSV row cannot 422 the whole
+    batch."""
+    services: list[dict]
+
+
+@router.post("/bulk")
+def bulk_create_services(
+    data: ServiceBulkIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Bulk product/service import (CSV upload).
+
+    Mirrors bulk_create_customers: instead of the frontend firing one
+    POST /api/service-catalogue/ per row, this does ONE HSN/SAC-library
+    snapshot (per firm, not per row), ONE duplicate-name snapshot (per
+    distinct client_id in the batch, not per row) and ONE batch insert.
+
+    Duplicate matching mirrors create_service's own rule exactly: a second
+    ACTIVE preset with the same case/space-insensitive name is a duplicate,
+    checked against both the pre-fetched existing rows AND rows already
+    accepted earlier in this same batch.
+    """
+    try:
+        firm_id = current_user.get("firm_id")
+        items = data.services or []
+
+        created: list[dict] = []
+        duplicates: list[dict] = []
+        errors: list[dict] = []
+
+        # ── Step 1: per-item validation ──────────────────────────────────────
+        validated: list[tuple[int, dict]] = []
+        for idx, item in enumerate(items):
+            item = item if isinstance(item, dict) else {}
+            try:
+                parsed = ServiceCatalogueIn(**item)
+            except PydanticValidationError as e:
+                msgs = "; ".join(err.get("msg", str(err)) for err in e.errors())
+                errors.append({"index": idx, "name": item.get("name"), "error": msgs})
+                continue
+            except Exception as e:
+                errors.append({"index": idx, "name": item.get("name"), "error": str(e)})
+                continue
+            payload = parsed.model_dump()
+            payload["firm_id"] = firm_id
+            payload["is_active"] = True
+            now = datetime.now(timezone.utc).isoformat()
+            payload["created_at"] = now
+            payload["updated_at"] = now
+            payload["id"] = str(uuid.uuid4())
+            validated.append((idx, payload))
+
+        if not validated:
+            return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors})
+
+        # ── Step 2: HSN/SAC library check — ONE snapshot for this firm instead
+        # of one query per row (_hsn_in_library, hoisted). ──────────────────────
+        db = None
+        active_hsn_codes: set = set()
+        if _USE_MOCK:
+            from routers.firm_hsn_library import MOCK_LIBRARY
+            active_hsn_codes = {
+                r.get("hsn_code") for r in MOCK_LIBRARY
+                if r.get("firm_id") == firm_id and r.get("is_active", True)
+            }
+        else:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+            hsn_rows = (
+                db.table("firm_hsn_library").select("hsn_code")
+                .eq("firm_id", firm_id).eq("is_active", True).execute().data or []
+            )
+            active_hsn_codes = {r.get("hsn_code") for r in hsn_rows}
+
+        checked: list[tuple[int, dict]] = []
+        for idx, payload in validated:
+            hsn = payload.get("hsn_sac")
+            if hsn and hsn not in active_hsn_codes:
+                errors.append({
+                    "index": idx, "name": payload.get("name"),
+                    "error": "That HSN/SAC code is not in your firm's library. Add it there first.",
+                })
+                continue
+            checked.append((idx, payload))
+
+        if not checked:
+            return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors})
+
+        # ── Step 3: duplicate-name snapshot — ONE query per distinct client_id
+        # in the batch (this importer is always scoped to a single client_id
+        # per CSV upload in practice, so this is a single query in the common
+        # case). ─────────────────────────────────────────────────────────────
+        client_ids = sorted({p.get("client_id") for _, p in checked})
+        existing_by_client: dict[str, list[dict]] = {}
+        if _USE_MOCK:
+            for cid in client_ids:
+                existing_by_client[cid] = [
+                    s for s in MOCK_SERVICES
+                    if s.get("client_id") == cid and s.get("firm_id") == firm_id and s.get("is_active", True)
+                ]
+        else:
+            for cid in client_ids:
+                resp = (
+                    db.table("service_catalogue").select("*")
+                    .eq("client_id", cid).eq("firm_id", firm_id).eq("is_active", True)
+                    .execute()
+                )
+                existing_by_client[cid] = resp.data or []
+
+        # ── Step 4: duplicate guard — against the DB snapshot AND rows already
+        # accepted earlier in this batch. ────────────────────────────────────
+        accepted_in_batch: dict[str, list[dict]] = {cid: [] for cid in client_ids}
+        to_insert: list[tuple[int, dict]] = []
+        for idx, payload in checked:
+            cid = payload.get("client_id")
+            key = _norm_name(payload.get("name"))
+            candidates = existing_by_client.get(cid, []) + accepted_in_batch.get(cid, [])
+            match = next((s for s in candidates if _norm_name(s.get("name")) == key), None)
+            if match:
+                duplicates.append({"index": idx, "name": payload.get("name"), "existing_id": match.get("id")})
+                continue
+            accepted_in_batch.setdefault(cid, []).append(payload)
+            to_insert.append((idx, payload))
+
+        if not to_insert:
+            return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors})
+
+        # ── Step 5: ONE batch insert for every new row. ─────────────────────────
+        if _USE_MOCK:
+            for idx, payload in to_insert:
+                payload["use_count"] = 0
+                payload["last_used_at"] = None
+                MOCK_SERVICES.append(payload)
+                created.append(payload)
+        else:
+            resp = db.table("service_catalogue").insert([p for _, p in to_insert]).execute()
+            rows = resp.data or [p for _, p in to_insert]
+            created.extend(rows)
+
+        return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("bulk_create_services: %s", e)
+        return api_response(False, None, "Unable to complete product/service import. Please try again.")
 
 
 @router.patch("/{service_id}")

@@ -81,7 +81,6 @@ export interface ServiceFormInput {
   gstRate: number;      // percent, e.g. 18
   rate: string;         // selling price, rupees (free text)
   purchasePrice: string; // rupees (free text), optional
-  unit: string;
   category: string;
   notes: string;
 }
@@ -117,7 +116,6 @@ export interface ServicePayload {
   gst_rate_bps: number;
   default_rate_paise: number;
   purchase_price_paise?: number;
-  unit?: string;
   category?: string;
   notes?: string;
 }
@@ -135,7 +133,6 @@ export function serviceFormToPayload(input: ServiceFormInput, clientId: string):
     gst_rate_bps: Math.round((input.gstRate || 0) * 100),
     default_rate_paise: Number.isFinite(rupees) && rupees > 0 ? Math.round(rupees * 100) : 0,
     purchase_price_paise: Number.isFinite(purchaseRupees) && purchaseRupees > 0 ? Math.round(purchaseRupees * 100) : undefined,
-    unit: input.unit.trim() || undefined,
     category: input.category.trim() || undefined,
     notes: input.notes.trim() || undefined,
   };
@@ -151,7 +148,6 @@ export function serviceToForm(item: ServiceCatalogueItem): ServiceFormInput {
     gstRate: item.gst_rate_bps == null ? 18 : item.gst_rate_bps / 100,
     rate: item.default_rate_paise ? String(item.default_rate_paise / 100) : "",
     purchasePrice: item.purchase_price_paise ? String(item.purchase_price_paise / 100) : "",
-    unit: item.unit ?? "",
     category: item.category ?? "",
     notes: item.notes ?? "",
   };

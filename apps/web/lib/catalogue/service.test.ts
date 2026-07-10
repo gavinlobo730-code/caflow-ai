@@ -19,7 +19,7 @@ const item = (over: Partial<ServiceCatalogueItem> = {}): ServiceCatalogueItem =>
 
 const form = (over: Partial<ServiceFormInput> = {}): ServiceFormInput => ({
   name: "Statutory Audit", description: "", kind: "service", hsn_sac: "998221",
-  gstRate: 18, rate: "50000", purchasePrice: "", unit: "OTH", category: "", notes: "", ...over,
+  gstRate: 18, rate: "50000", purchasePrice: "", category: "", notes: "", ...over,
 });
 
 test("serviceToLine drops a fully pre-priced line (description falls back to name)", () => {
@@ -53,7 +53,7 @@ test("validateServiceForm: name required, non-negative prices, gst range", () =>
 
 test("serviceFormToPayload maps rupees → integer paise, blanks → undefined, carries client_id + kind", () => {
   const p = serviceFormToPayload(
-    form({ rate: "50000.50", purchasePrice: "30000", description: " audit ", unit: "", category: " Compliance " }),
+    form({ rate: "50000.50", purchasePrice: "30000", description: " audit ", category: " Compliance " }),
     CLIENT_ID,
   );
   assert.equal(p.client_id, CLIENT_ID);
@@ -63,7 +63,6 @@ test("serviceFormToPayload maps rupees → integer paise, blanks → undefined, 
   assert.equal(p.gst_rate_bps, 1800);
   assert.equal(p.description, "audit");
   assert.equal(p.category, "Compliance");
-  assert.equal(p.unit, undefined);
   assert.equal(serviceFormToPayload(form({ rate: "" }), CLIENT_ID).default_rate_paise, 0);
   assert.equal(serviceFormToPayload(form({ purchasePrice: "" }), CLIENT_ID).purchase_price_paise, undefined);
 });
