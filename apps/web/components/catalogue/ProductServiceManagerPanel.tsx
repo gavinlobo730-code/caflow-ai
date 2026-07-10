@@ -2,22 +2,16 @@
 
 /**
  * Products & Services management — the ONE reusable UI (list, search, sort,
- * filter, bulk-select, create/edit/archive/delete), used in two contexts so
- * there is no separate/duplicate management screen to drift out of sync:
- *
- *   - `mode="embedded"` — fills its container. Used by the client workspace's
- *     Products & Services page (apps/web/app/clients/[id]/products-services)
- *     so the sidebar entry still has a real, bookmarkable/deep-linkable URL.
- *   - `mode="overlay"` — slides in as a half-screen panel over whatever the
- *     CA is doing, with a backdrop and a close affordance. Used by
- *     ServiceCataloguePicker's "+ Add Product/Service" row on a Sales
- *     Invoice line, so a CA who wants to browse/create/edit/archive/delete
- *     products never has to leave the invoice they're drafting.
+ * filter, bulk-select, create/edit/archive/delete). There is no standalone
+ * page for it; it only ever slides in as a half-screen overlay (backdrop +
+ * close affordance) from ServiceCataloguePicker's "+ Add Product/Service"
+ * row on a Sales Invoice line, so a CA who wants to browse/create/edit/
+ * archive/delete products never has to leave the invoice they're drafting.
  *
  * `onPick`, when provided, adds a click-to-select affordance on top of the
  * normal management actions (row click selects; the Edit/Archive/Delete
  * buttons still work independently — DataTable's actions column already
- * stops click propagation). Omit it for pure management (the embedded page).
+ * stops click propagation). Omit it for pure management.
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Plus, Pencil, Archive, RotateCcw, Trash2, BookMarked, Upload, X } from "lucide-react";
@@ -34,14 +28,12 @@ import type { Column, FilterDef } from "@/lib/table/types";
 
 export function ProductServiceManagerPanel({
   clientId,
-  mode,
   onClose,
   onPick,
 }: {
   clientId: string;
-  mode: "embedded" | "overlay";
-  /** Required for mode="overlay" (the panel's own close button + backdrop click). */
-  onClose?: () => void;
+  /** The panel's own close button + backdrop click. */
+  onClose: () => void;
   /** When set, picking a row (click, or its own affordance) hands the item
    * back to the caller — used by ServiceCataloguePicker so the invoice line
    * gets auto-filled exactly like a normal search result. */
@@ -227,7 +219,7 @@ export function ProductServiceManagerPanel({
     // search-result pick — keeps recent/frequent ranking accurate regardless
     // of whether the CA picked via the fast dropdown or this panel.
     api.serviceCatalogue.recordUsed(item.id).catch(() => {});
-    if (mode === "overlay") onClose?.();
+    onClose();
   }
 
   // ── DataTable columns / filters ───────────────────────────────────────────
@@ -384,13 +376,9 @@ export function ProductServiceManagerPanel({
     </div>
   );
 
-  if (mode === "embedded") {
-    return <div className="p-6 max-w-5xl mx-auto">{body}</div>;
-  }
-
-  // Overlay: half-screen slide-over from the right, backdrop closes it —
-  // same layering convention (fixed inset-0 backdrop + z-index) as every
-  // other modal in the app (ProductServiceFormModal, CsvImportModal, …).
+  // Half-screen slide-over from the right, backdrop closes it — same
+  // layering convention (fixed inset-0 backdrop + z-index) as every other
+  // modal in the app (ProductServiceFormModal, CsvImportModal, …).
   return (
     <div className="fixed inset-0 z-[80] flex justify-end bg-[#0F172A]/50" onClick={onClose}>
       <div

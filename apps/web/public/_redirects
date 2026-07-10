@@ -44,8 +44,6 @@
 /clients/:id/payroll.txt                                      /clients/_placeholder/payroll/index.txt  200
 /clients/:id/portal                                           /clients/_placeholder/portal/  200
 /clients/:id/portal.txt                                       /clients/_placeholder/portal/index.txt  200
-/clients/:id/products-services                                /clients/_placeholder/products-services/  200
-/clients/:id/products-services.txt                            /clients/_placeholder/products-services/index.txt  200
 /clients/:id/purchases                                        /clients/_placeholder/purchases/  200
 /clients/:id/purchases.txt                                    /clients/_placeholder/purchases/index.txt  200
 /clients/:id/relationships                                    /clients/_placeholder/relationships/  200
