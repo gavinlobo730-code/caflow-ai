@@ -23,7 +23,7 @@ import type { Client } from "@/lib/types";
 import { useToast } from "@/components/ui/use-toast";
 import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
-import type { Column, FilterDef } from "@/lib/table/types";
+import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO, daysBetweenLocalISO, toLocalISO, computeOverdueStatus } from "@/lib/dateMath";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -279,6 +279,180 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
   );
 }
 
+// ─── Batch Mark Filed Modal (bulk ROC filings) ─────────────────────────────────
+
+interface BatchFiledResult {
+  id: string;
+  filed_date: string;
+  srn: string;
+}
+
+function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: {
+  filings: MCAFiling[];
+  firmId: string;
+  tableError: boolean;
+  onClose: () => void;
+  onFiled: (updates: BatchFiledResult[]) => void;
+}) {
+  const { toast } = useToast();
+  // Already-filed rows never appear here — only pending/overdue rows can be
+  // batch-marked filed. Snapshotted once on open; rows are removed from this
+  // local list as they succeed (see handleSubmit), so a partial failure only
+  // re-shows the rows that still need attention.
+  const [rows, setRows] = useState<MCAFiling[]>(() => filings.filter(f => f.status !== "Filed"));
+  const [filedDate, setFiledDate] = useState(todayLocalISO());
+  const [srns, setSrns] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [failures, setFailures] = useState<{ label: string; error: string }[]>([]);
+
+  const allFilled = rows.length > 0 && rows.every(f => (srns[f.id] ?? "").trim().length > 0);
+
+  async function handleSubmit() {
+    if (!allFilled || !filedDate || saving) return;
+    setSaving(true);
+    setFailures([]);
+    try {
+      const results = await Promise.all(rows.map(async (f) => {
+        const srn = (srns[f.id] ?? "").trim();
+        try {
+          if (!tableError && firmId) {
+            // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+            const sb = getSupabaseClient();
+            const { error } = await sb
+              .from("mca_filings")
+              .update({ status: "filed", filed_date: filedDate, srn })
+              .eq("id", f.id);
+            if (error) throw new Error(error.message);
+          }
+          return { ok: true as const, id: f.id, srn };
+        } catch (e) {
+          return {
+            ok: false as const,
+            id: f.id,
+            label: `${f.client_name} · ${f.form_type}`,
+            error: e instanceof Error ? e.message : "Failed to update",
+          };
+        }
+      }));
+
+      const succeeded = results.filter((r): r is { ok: true; id: string; srn: string } => r.ok);
+      const failed = results.filter((r): r is { ok: false; id: string; label: string; error: string } => !r.ok);
+
+      if (succeeded.length > 0) {
+        onFiled(succeeded.map(r => ({ id: r.id, filed_date: filedDate, srn: r.srn })));
+      }
+
+      if (failed.length > 0) {
+        // Keep the modal open, showing only the rows that still need
+        // attention — mirrors the single-row flow's hard SRN requirement,
+        // just applied per-row instead of silently dropping failures.
+        const failedIds = new Set(failed.map(f => f.id));
+        setRows(prev => prev.filter(f => failedIds.has(f.id)));
+        setFailures(failed.map(f => ({ label: f.label, error: f.error })));
+      } else {
+        toast({ title: `Marked ${succeeded.length} filing${succeeded.length === 1 ? "" : "s"} as filed` });
+        onClose();
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-[#F1F5F9]">
+          <h3 className="text-base font-semibold text-[#0F172A]">Mark ROC Filings as Filed</h3>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569] transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4 overflow-y-auto">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">CA Confirmation Required</p>
+            <p className="text-xs text-amber-700 mt-1">
+              This records already-filed ROC forms. PracticeSync does NOT auto-submit to the MCA21 portal.
+              Verify each SRN before saving.
+            </p>
+          </div>
+
+          {rows.length === 0 ? (
+            <p className="text-sm text-[#64748B]">All selected filings are already marked as filed.</p>
+          ) : (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-[#334155] mb-1.5">
+                  Date of Filing <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={filedDate}
+                  onChange={(e) => setFiledDate(e.target.value)}
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-[10px] text-[#94A3B8] mt-1">Applied to all filings below.</p>
+              </div>
+
+              <div className="space-y-3">
+                {rows.map((f) => (
+                  <div key={f.id} className="border border-[#E2E8F0] rounded-lg px-4 py-3 space-y-2">
+                    <div className="text-sm text-[#334155]">
+                      <p className="font-medium">{f.client_name}</p>
+                      <p className="text-xs text-[#94A3B8] mt-0.5 font-mono">
+                        {f.company_cin} · {f.form_type} · Due {fmtDate(f.due_date)}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-[#334155] mb-1">
+                        SRN (Service Request Number) <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="SRN12345678"
+                        value={srns[f.id] ?? ""}
+                        onChange={(e) => setSrns((p) => ({ ...p, [f.id]: e.target.value }))}
+                        className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {failures.length > 0 && (
+            <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2 space-y-1">
+              <p className="font-medium">{failures.length} filing{failures.length === 1 ? "" : "s"} failed to update:</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                {failures.map((f, i) => <li key={i}>{f.label}: {f.error}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-[#F1F5F9] flex gap-3 justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-[#F8FAFC] transition-colors"
+          >
+            Cancel
+          </button>
+          {rows.length > 0 && (
+            <button
+              onClick={handleSubmit}
+              disabled={!allFilled || saving}
+              className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+            >
+              {saving ? "Saving…" : `Confirm ${rows.length} Filing${rows.length === 1 ? "" : "s"}`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function MCAPage() {
@@ -295,6 +469,7 @@ export default function MCAPage() {
   const [filedForm, setFiledForm] = useState({ srn: "", filed_date: "" });
   const [filedLoading, setFiledLoading] = useState(false);
   const [filedError, setFiledError] = useState<string | null>(null);
+  const [batchFiledModal, setBatchFiledModal] = useState<MCAFiling[] | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -344,6 +519,10 @@ export default function MCAPage() {
     setFiledModal({ filing: f });
     setFiledForm({ srn: "", filed_date: todayLocalISO() });
     setFiledError(null);
+  }
+
+  function openBatchModal(selected: MCAFiling[]) {
+    setBatchFiledModal(selected);
   }
 
   async function handleMarkFiled() {
@@ -479,6 +658,17 @@ export default function MCAPage() {
     },
   ], []);
 
+  // Bulk "Mark Filed" only opens the batch reference-entry modal — it never
+  // writes to Supabase itself (returns false so DataTable keeps the
+  // selection visible while the modal is open; the modal does the real work).
+  const filingBulkActions: BulkAction<MCAFiling>[] = useMemo(() => [
+    {
+      id: "mark-filed",
+      label: "Mark Filed",
+      run: (selected) => { openBatchModal(selected); return false; },
+    },
+  ], []);
+
   // ── Directors tab DataTable — KYC-overdue emphasis in the status cell ───────
   const directorColumns: Column<Director>[] = useMemo(() => [
     {
@@ -607,6 +797,7 @@ export default function MCAPage() {
             data={filings}
             columns={filingColumns}
             filters={filingFilters}
+            bulkActions={filingBulkActions}
             getRowId={(f) => f.id}
             loading={loading}
             searchPlaceholder="Search by company or form type…"
@@ -761,6 +952,25 @@ export default function MCAPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ================================================================== */}
+      {/* MODAL: Batch Mark ROC Filings as Filed                              */}
+      {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT                            */}
+      {/* ================================================================== */}
+      {batchFiledModal && (
+        <BatchMarkFiledModal
+          filings={batchFiledModal}
+          firmId={firmId}
+          tableError={tableError}
+          onClose={() => setBatchFiledModal(null)}
+          onFiled={(updates) => {
+            setFilings(prev => prev.map(f => {
+              const u = updates.find(x => x.id === f.id);
+              return u ? { ...f, status: "Filed" as FilingStatus, filed_date: u.filed_date, srn: u.srn } : f;
+            }));
+          }}
+        />
       )}
     </div>
   );

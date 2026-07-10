@@ -509,6 +509,57 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
     } catch { /* skip */ }
   }
 
+  // Bulk receive over the DataTable's selected rows. POST
+  // /api/purchase-bills/{id}/receive is draft-only on the backend (each row's
+  // journal-posting/FY-lock validation runs server-side) — loop per row via
+  // Promise.all so a mid-batch failure on one bill (e.g. FY-lock 409) is safe
+  // and can't corrupt the rest. Non-draft rows are skipped client-side (mirrors
+  // the single-row "Receive" rowAction's status === "draft" gate) rather than
+  // sent to the backend to 422. Refresh only if at least one bill was received,
+  // and keep the selection (return false) if anything was skipped or failed so
+  // the user can see what's left.
+  const handleBulkReceive = useCallback(async (rows: PurchaseBillRow[]): Promise<boolean> => {
+    const token = await getAuthToken();
+    const draftRows = rows.filter((b) => b.status === "draft");
+    const skipped = rows.length - draftRows.length;
+
+    type ReceiveResult = { ok: true } | { ok: false; reason: string };
+    const results: ReceiveResult[] = await Promise.all(
+      draftRows.map(async (b): Promise<ReceiveResult> => {
+        try {
+          // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+          const result = await apiCall(`/api/purchase-bills/${b.id}/receive`, "POST", undefined, token);
+          if (result.success) return { ok: true };
+          return { ok: false, reason: result.error ?? "Failed to receive bill" };
+        } catch (e) {
+          return { ok: false, reason: e instanceof Error ? e.message : "Failed to receive bill" };
+        }
+      })
+    );
+
+    const received = results.filter((r) => r.ok).length;
+    const failures = results.filter((r): r is { ok: false; reason: string } => !r.ok);
+    const failed = failures.length;
+
+    if (received > 0) load();
+
+    const parts: string[] = [];
+    if (received > 0) parts.push(`${received} received`);
+    if (skipped > 0) parts.push(`${skipped} skipped (not draft)`);
+    if (failed > 0) {
+      const reasons = Array.from(new Set(failures.map((f) => f.reason)));
+      parts.push(`${failed} failed (${reasons.join("; ")})`);
+    }
+    const text = parts.length > 0 ? `${parts.join(", ")}.` : "No draft bills selected.";
+
+    if (skipped > 0 || failed > 0) {
+      setMsg({ type: "err", text });
+      return false;
+    }
+    setMsg({ type: "ok", text });
+    return true;
+  }, [load]);
+
   /**
    * Bulk-import handler. Maps flat rows → grouped bills via buildPurchaseBills, then
    * creates each through the EXISTING /api/purchase-bills/ endpoint (no parallel logic).
@@ -572,6 +623,19 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
     { key: "net_payable", label: "Net payable", type: "amountRange", accessor: (b) => b.net_payable_paise },
     { key: "is_ai_extracted", label: "AI-extracted", type: "boolean", accessor: (b) => b.is_ai_extracted },
   ], [vendors]);
+
+  // ── DataTable bulk actions — receive is draft-only (non-draft rows are
+  // skipped client-side); export just CSV-dumps the checked rows. ─────────
+  const bulkActions: BulkAction<PurchaseBillRow>[] = useMemo(() => [
+    {
+      id: "receive",
+      label: "Receive draft(s)",
+      icon: <CheckCircle size={12} />,
+      confirm: "Receive the selected draft purchase bills? This posts a journal entry for each and cannot be undone.",
+      run: handleBulkReceive,
+    },
+    exportSelectedAction("purchase-bills-selected.csv", billColumns),
+  ], [handleBulkReceive, billColumns]);
 
   return (
     <div className="space-y-4 max-w-5xl">
@@ -863,6 +927,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
             </button>
           </>
         }
+        bulkActions={bulkActions}
         rowActions={(b) =>
           b.status === "draft" ? (
             <button onClick={() => handleReceive(b.id)} className="text-xs text-blue-600 hover:underline">Receive</button>

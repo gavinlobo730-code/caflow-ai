@@ -264,6 +264,8 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [editor, setEditor] = useState<RecurringTemplate | "new" | null>(null);
   const [historyFor, setHistoryFor] = useState<RecurringTemplate | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const showToast = (msg: string, type: "success" | "error") => { setToast({ msg, type }); setTimeout(() => setToast(null), 4000); };
 
@@ -309,6 +311,51 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
       showToast(`Template ${action === "resume" ? "resumed" : action + "d"}`, "success");
       load();
     } catch (e) { showToast(e instanceof Error ? e.message : "Update failed", "error"); }
+  }
+
+  function toggleRow(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  function toggleSelectAll() {
+    setSelected((prev) => (prev.size === templates.length ? new Set() : new Set(templates.map((t) => t.id))));
+  }
+
+  // Bulk pause/resume/archive — eligibility mirrors the single-row buttons
+  // (pause only shows for active, resume only for paused, archive for
+  // anything not already archived). Ineligible selected rows are reported
+  // as "skipped", not "failed".
+  async function bulkChangeStatus(action: "pause" | "resume" | "archive") {
+    const eligible = templates.filter((t) => selected.has(t.id) && (
+      action === "pause" ? t.status === "active" :
+      action === "resume" ? t.status === "paused" :
+      t.status !== "archived"
+    ));
+    if (eligible.length === 0) { showToast("No eligible templates in selection", "error"); return; }
+    setBulkBusy(true);
+    const token = await getAuthToken();
+    let ok = 0;
+    const failures: string[] = [];
+    await Promise.all(eligible.map(async (t) => {
+      try {
+        const res = await apiCall(`/api/recurring-invoices/${t.id}/${action}`, "POST", undefined, token);
+        if (!res.success) throw new Error(res.error ?? "failed");
+        ok++;
+      } catch (e) {
+        failures.push(`${t.title}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+    }));
+    setBulkBusy(false);
+    const skipped = selected.size - eligible.length;
+    const parts: string[] = [];
+    if (ok) parts.push(`${ok} ${action === "resume" ? "resumed" : action + "d"}`);
+    if (skipped) parts.push(`${skipped} not eligible`);
+    if (failures.length) parts.push(`${failures.length} failed (${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""})`);
+    showToast(parts.join(", "), failures.length ? "error" : "success");
+    if (ok) { setSelected(new Set()); load(); }
   }
 
   return (
@@ -361,66 +408,109 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
           <p className="text-xs text-[#94A3B8] mt-1">Create one to auto-generate draft invoices on a schedule.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
-                  <th className="px-4 py-3 text-left font-semibold">Template</th>
-                  <th className="px-3 py-3 text-left font-semibold">Customer</th>
-                  <th className="px-3 py-3 text-left font-semibold">Frequency</th>
-                  <th className="px-3 py-3 text-left font-semibold">Next Run</th>
-                  <th className="px-3 py-3 text-right font-semibold">Base (excl. GST)</th>
-                  <th className="px-3 py-3 text-left font-semibold">Status</th>
-                  <th className="px-4 py-3 text-right font-semibold">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                {templates.map((t) => (
-                  <tr key={t.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-4 py-2.5">
-                      <div className="font-medium text-[#1E293B]">{t.title}</div>
-                      {t.description && <div className="text-[10px] text-[#94A3B8]">{t.description}</div>}
-                    </td>
-                    <td className="px-3 py-2.5 text-[#334155]">{custName(t.customer_id)}</td>
-                    <td className="px-3 py-2.5 text-[#64748B]">{FREQ_LABEL[t.frequency] ?? t.frequency}</td>
-                    <td className="px-3 py-2.5 text-[#64748B] whitespace-nowrap">
-                      {t.status === "active" ? (t.next_run_date ?? "—") : <span className="text-[#CBD5E1]">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#334155]">{fmt(recBase(t.lines ?? []))}</td>
-                    <td className="px-3 py-2.5">
-                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${REC_STATUS_BADGE[t.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
-                        {t.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center justify-end gap-2.5">
-                        {t.status === "active" && (
-                          <button onClick={() => runNow(t)} className="text-xs text-blue-600 hover:underline">Run now</button>
-                        )}
-                        <button onClick={() => setHistoryFor(t)} className="text-[#94A3B8] hover:text-[#334155]" title="History & upcoming">
-                          <Clock size={13} />
-                        </button>
-                        {t.status !== "archived" && (
-                          <button onClick={() => setEditor(t)} className="text-[#94A3B8] hover:text-blue-600" title="Edit"><Pencil size={13} /></button>
-                        )}
-                        {t.status === "active" && (
-                          <button onClick={() => changeStatus(t, "pause")} className="text-xs text-amber-600 hover:underline">Pause</button>
-                        )}
-                        {t.status === "paused" && (
-                          <button onClick={() => changeStatus(t, "resume")} className="text-xs text-emerald-600 hover:underline">Resume</button>
-                        )}
-                        {t.status !== "archived" && (
-                          <button onClick={() => changeStatus(t, "archive")} className="text-[#CBD5E1] hover:text-red-600" title="Archive"><Trash2 size={13} /></button>
-                        )}
-                      </div>
-                    </td>
+        <>
+          {selected.size > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#C7D2FE] bg-[#EEF2FF] px-3 py-2 text-xs">
+              <span className="font-semibold text-[#3730A3]">{selected.size} selected</span>
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <button onClick={() => bulkChangeStatus("pause")} disabled={bulkBusy}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-white px-2.5 py-1.5 font-medium text-[#4338CA] hover:bg-[#E0E7FF] disabled:cursor-not-allowed disabled:opacity-50">
+                  Pause
+                </button>
+                <button onClick={() => bulkChangeStatus("resume")} disabled={bulkBusy}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-white px-2.5 py-1.5 font-medium text-[#4338CA] hover:bg-[#E0E7FF] disabled:cursor-not-allowed disabled:opacity-50">
+                  Resume
+                </button>
+                <button onClick={() => bulkChangeStatus("archive")} disabled={bulkBusy}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50">
+                  Archive
+                </button>
+                <button onClick={() => setSelected(new Set())} disabled={bulkBusy} className="text-[#6366F1] hover:text-[#4338CA] disabled:opacity-50" aria-label="Clear selection">
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                    <th className="px-4 py-3 text-left font-semibold w-8">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all templates"
+                        checked={templates.length > 0 && selected.size === templates.length}
+                        ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < templates.length; }}
+                        onChange={toggleSelectAll}
+                        className="h-3.5 w-3.5 rounded border-[#CBD5E1]"
+                      />
+                    </th>
+                    <th className="px-3 py-3 text-left font-semibold">Template</th>
+                    <th className="px-3 py-3 text-left font-semibold">Customer</th>
+                    <th className="px-3 py-3 text-left font-semibold">Frequency</th>
+                    <th className="px-3 py-3 text-left font-semibold">Next Run</th>
+                    <th className="px-3 py-3 text-right font-semibold">Base (excl. GST)</th>
+                    <th className="px-3 py-3 text-left font-semibold">Status</th>
+                    <th className="px-4 py-3 text-right font-semibold">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-[#F8FAFC]">
+                  {templates.map((t) => (
+                    <tr key={t.id} className="hover:bg-[#F8FAFC]">
+                      <td className="px-4 py-2.5">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${t.title}`}
+                          checked={selected.has(t.id)}
+                          onChange={() => toggleRow(t.id)}
+                          className="h-3.5 w-3.5 rounded border-[#CBD5E1]"
+                        />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="font-medium text-[#1E293B]">{t.title}</div>
+                        {t.description && <div className="text-[10px] text-[#94A3B8]">{t.description}</div>}
+                      </td>
+                      <td className="px-3 py-2.5 text-[#334155]">{custName(t.customer_id)}</td>
+                      <td className="px-3 py-2.5 text-[#64748B]">{FREQ_LABEL[t.frequency] ?? t.frequency}</td>
+                      <td className="px-3 py-2.5 text-[#64748B] whitespace-nowrap">
+                        {t.status === "active" ? (t.next_run_date ?? "—") : <span className="text-[#CBD5E1]">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-[#334155]">{fmt(recBase(t.lines ?? []))}</td>
+                      <td className="px-3 py-2.5">
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${REC_STATUS_BADGE[t.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+                          {t.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center justify-end gap-2.5">
+                          {t.status === "active" && (
+                            <button onClick={() => runNow(t)} className="text-xs text-blue-600 hover:underline">Run now</button>
+                          )}
+                          <button onClick={() => setHistoryFor(t)} className="text-[#94A3B8] hover:text-[#334155]" title="History & upcoming">
+                            <Clock size={13} />
+                          </button>
+                          {t.status !== "archived" && (
+                            <button onClick={() => setEditor(t)} className="text-[#94A3B8] hover:text-blue-600" title="Edit"><Pencil size={13} /></button>
+                          )}
+                          {t.status === "active" && (
+                            <button onClick={() => changeStatus(t, "pause")} className="text-xs text-amber-600 hover:underline">Pause</button>
+                          )}
+                          {t.status === "paused" && (
+                            <button onClick={() => changeStatus(t, "resume")} className="text-xs text-emerald-600 hover:underline">Resume</button>
+                          )}
+                          {t.status !== "archived" && (
+                            <button onClick={() => changeStatus(t, "archive")} className="text-[#CBD5E1] hover:text-red-600" title="Archive"><Trash2 size={13} /></button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
