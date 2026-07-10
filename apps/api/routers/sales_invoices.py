@@ -602,6 +602,8 @@ def _create_invoice_core(data: dict, current_user: dict) -> dict:
             "sgst_paise":     sgst_paise,
             "igst_paise":     igst_paise,
             "line_total_paise": taxable_paise + cgst_paise + sgst_paise + igst_paise,
+            # Pure traceability (migration 184) — see InvoiceLineIn.service_catalogue_id.
+            "service_catalogue_id": ln.get("service_catalogue_id"),
         })
 
     # The line totals above are in the document (txn) currency's minor units.
@@ -755,6 +757,7 @@ def _create_invoice_core(data: dict, current_user: dict) -> dict:
             "sgst_paise":            ln["sgst_paise"],
             "igst_paise":            ln["igst_paise"],
             "line_total_paise":      ln["line_total_paise"],
+            "service_catalogue_id":  ln["service_catalogue_id"],
         })
     # Atomicity: PostgREST exposes no multi-statement transaction here, so if
     # the line insert fails we compensate by deleting the just-created header.
@@ -979,6 +982,12 @@ def update_invoice(
                     "sgst_paise":           sgst,
                     "igst_paise":           igst,
                     "line_total_paise":     taxable + cgst + sgst + igst,
+                    # Pure traceability (migration 184) — see InvoiceLineIn.service_catalogue_id.
+                    # Must be carried through here too: this is a delete-then-
+                    # reinsert, so any line the frontend re-sends without it
+                    # would silently drop the link on save, wrongly making an
+                    # in-use preset look deletable again.
+                    "service_catalogue_id": ln.get("service_catalogue_id"),
                 })
 
             # Delete existing lines and reinsert

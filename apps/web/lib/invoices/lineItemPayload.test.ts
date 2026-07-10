@@ -37,3 +37,10 @@ test("unit is trimmed; blank/omitted unit becomes undefined (server defaults to 
   const blankUnit = toInvoiceLinePayload({ description: "Item", hsn_sac: "", qty: "1", rate: "10", gst_rate: 18, unit: "   " });
   assert.equal(blankUnit.unit, undefined);
 });
+
+test("serviceCatalogueId round-trips as service_catalogue_id; omitted becomes undefined", () => {
+  const picked = toInvoiceLinePayload({ description: "Item", hsn_sac: "", qty: "1", rate: "10", gst_rate: 18, serviceCatalogueId: "svc-1" });
+  assert.equal(picked.service_catalogue_id, "svc-1");
+  const notPicked = toInvoiceLinePayload({ description: "Item", hsn_sac: "", qty: "1", rate: "10", gst_rate: 18 });
+  assert.equal(notPicked.service_catalogue_id, undefined);
+});

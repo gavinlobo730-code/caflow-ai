@@ -452,23 +452,19 @@ def delete_service(
     service_id: str,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
-    """Permanently delete a preset — only when it has never been used.
+    """Permanently delete a preset — only when it is not linked to any real
+    sales invoice line, the same way customer deletion checks real linked
+    records before allowing a hard delete (see routers/customers.py's
+    _customer_dependencies).
 
-    There is no foreign key from any transaction line-item table (sales
-    invoice, purchase bill, credit note, debit note) back to
-    service_catalogue: picking a preset COPIES its values onto the line as
-    free text, it never stores a reference (see module docstring). So a
-    literal "is this on any invoice" join is not possible with today's
-    schema. use_count is the closest honest signal available: it is bumped
-    by POST /{id}/used, called the instant a preset is picked in
-    ServiceCataloguePicker — the ONLY path by which a preset's data ever
-    reaches a transaction line. use_count == 0 is therefore a hard guarantee
-    this row was never used anywhere. use_count > 0 conservatively blocks
-    deletion even though that pick might only have been into a draft that
-    was later discarded (never actually saved) — there's no way to tell
-    that apart from a real saved transaction today, so the safe assumption
-    wins. Archive (is_active=false via PATCH) remains the only removal path
-    once a preset has ever been used.
+    client_sales_invoice_lines.service_catalogue_id (migration 184) is a
+    real link, set the moment a preset is picked via ServiceCataloguePicker
+    and copied through create/update alike — so this checks actual usage,
+    not a proxy. Scoped to sales invoices only: that is currently the ONLY
+    transaction type with a Product/Service picker wired in (Purchase Bill /
+    Credit Note / Debit Note lines are free-text only). Archive
+    (is_active=false via PATCH) remains the only removal path once a preset
+    has ever been used.
     """
     try:
         firm_id = current_user.get("firm_id")
@@ -478,24 +474,27 @@ def delete_service(
                         if s.get("id") == service_id and s.get("firm_id") == firm_id), None)
             if not row:
                 raise HTTPException(status_code=404, detail="Service not found.")
-            if (row.get("use_count") or 0) > 0:
+            from routers.sales_invoices import MOCK_SALES_INVOICE_LINES
+            if any(ln.get("service_catalogue_id") == service_id for ln in MOCK_SALES_INVOICE_LINES):
                 return api_response(
                     False, None,
-                    "This product/service has been used before and can't be permanently deleted. Archive it instead.",
+                    "This product/service is used on a sales invoice and can't be permanently deleted. Archive it instead.",
                 )
             MOCK_SERVICES.remove(row)
             return api_response(True, {"id": service_id})
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        owned = (db.table("service_catalogue").select("id,use_count")
+        owned = (db.table("service_catalogue").select("id")
                  .eq("id", service_id).eq("firm_id", firm_id).execute().data or [])
         if not owned:
             raise HTTPException(status_code=404, detail="Service not found.")
-        if (owned[0].get("use_count") or 0) > 0:
+        in_use = (db.table("client_sales_invoice_lines").select("id")
+                  .eq("service_catalogue_id", service_id).limit(1).execute().data or [])
+        if in_use:
             return api_response(
                 False, None,
-                "This product/service has been used before and can't be permanently deleted. Archive it instead.",
+                "This product/service is used on a sales invoice and can't be permanently deleted. Archive it instead.",
             )
         db.table("service_catalogue").delete().eq("id", service_id).eq("firm_id", firm_id).execute()
         return api_response(True, {"id": service_id})

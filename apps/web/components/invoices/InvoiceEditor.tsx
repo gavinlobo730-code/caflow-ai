@@ -56,7 +56,10 @@ const EMPTY_LINE: InvoiceLine = { description: "", hsn_sac: "", qty: "1", rate: 
 // `product` is likewise presentational only — it just lets the row's
 // Product/Service cell display the current pick; toInvoiceLinePayload
 // explicitly picks fields rather than spreading, so it never reaches the API.
-type EditorLine = InvoiceLine & { _k: number; product?: ServiceCatalogueItem | null };
+// `serviceCatalogueId` DOES reach the API (as service_catalogue_id) — kept
+// separate from `product` so the link survives a re-edit even when `product`
+// isn't rehydrated as a full object on load (see initialLines below).
+type EditorLine = InvoiceLine & { _k: number; product?: ServiceCatalogueItem | null; serviceCatalogueId?: string | null };
 
 export function InvoiceEditor({
   clientId,
@@ -88,6 +91,11 @@ export function InvoiceEditor({
         rate: String((l.rate_paise ?? 0) / 100),
         gst_rate: Math.round((l.gst_rate_bps ?? 0) / 100),
         unit: l.unit ?? "",
+        // Round-tripped (not just presentational `product`, which isn't
+        // rehydrated here) so re-editing and resaving an invoice doesn't
+        // silently drop the delete-guard link — update_invoice deletes and
+        // reinserts every line from whatever gets sent back.
+        serviceCatalogueId: l.service_catalogue_id ?? null,
         _k: i,
       }))
     : [{ ...EMPTY_LINE, _k: 0 }];
@@ -274,7 +282,7 @@ export function InvoiceEditor({
   // values are copied, not linked, so a later edit/archive of the preset
   // can't change a past invoice.
   function onPickProduct(idx: number, item: ServiceCatalogueItem) {
-    setLine(idx, { ...serviceToLine(item), product: item });
+    setLine(idx, { ...serviceToLine(item), product: item, serviceCatalogueId: item.id });
   }
   // QuickBooks-style "Add line": appends a blank row whose FIRST field is the
   // Product/Service selector (not a free-text description) — the previous
