@@ -37,6 +37,19 @@ export interface ComboboxProps<T> extends ComboboxCore<T> {
    * false negative.
    */
   recentLoading?: boolean;
+  /**
+   * Set when the caller's own `recent` fetch failed (network error, timeout,
+   * or an app-level failure response) — as opposed to genuinely resolving
+   * with zero rows. Without this, a failed fetch is indistinguishable from
+   * "this client really has nothing yet": the caller's own try/catch has no
+   * way to signal the difference, so the panel would show the same
+   * `emptyText` either way — reading as a false "nothing exists" instead of
+   * an honest, retryable failure. Reuses the exact same error+Retry UI
+   * already shown for a failed in-flight search.
+   */
+  recentError?: string | null;
+  /** Retries the caller's `recent` fetch — required whenever `recentError` can be set. */
+  onRetryRecent?: () => void;
   debounceMs?: number;
   minChars?: number;
   /** Enable the "+ Create …" row; receives the current query. */
@@ -117,6 +130,8 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
     fetchOptions,
     recent,
     recentLoading = false,
+    recentError = null,
+    onRetryRecent,
     debounceMs,
     minChars,
     onCreate,
@@ -181,6 +196,11 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
   const showingRecent = !!fetchOptions && query.trim().length < (minChars ?? 1);
   const recentPending = showingRecent && recentLoading;
   const busy = loading || recentPending;
+  // Same treatment for a failed recent-fetch: surface it through the exact
+  // same error+Retry UI as a failed search, rather than falling through to
+  // the empty-state branch where it would read as "genuinely nothing here".
+  const displayError = error ?? (showingRecent ? recentError : null);
+  const doRetry = showingRecent && recentError ? onRetryRecent : retry;
 
   // Selection helpers (works for single value or an array).
   const selectedArr: T[] = React.useMemo(
@@ -476,10 +496,10 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
             aria-label={ariaLabel}
             className={cn("overflow-y-auto py-1", panelDensity === "spacious" ? "max-h-[28rem]" : "max-h-64")}
           >
-            {error ? (
+            {displayError ? (
               <div className="px-3 py-3 text-center text-[11px] text-red-600">
-                {error}.{" "}
-                <button type="button" onClick={retry} className="underline hover:text-red-700">
+                {displayError}.{" "}
+                <button type="button" onClick={doRetry} className="underline hover:text-red-700">
                   Retry
                 </button>
               </div>

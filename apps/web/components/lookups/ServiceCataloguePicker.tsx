@@ -57,6 +57,13 @@ export const ServiceCataloguePicker = React.forwardRef<ComboboxHandle, {
   const fetchOptions = React.useCallback(async (q: string): Promise<ServiceCatalogueItem[]> => {
     if (!clientId) return [];
     const res = (await api.serviceCatalogue.list(clientId, { q, limit: 15 })) as ApiResp<ServiceCatalogueItem[]>;
+    // An app-level failure (success:false, e.g. a caught backend exception —
+    // still HTTP 200) must THROW, not silently resolve to []: useCombobox
+    // already has a real error+Retry path for a rejected fetchOptions call,
+    // but only if it actually rejects. Swallowing this here would show the
+    // exact same "no matches" panel as a genuinely empty result — a false
+    // negative for something that actually exists but failed to load.
+    if (!res.success) throw new Error(res.error ?? "Couldn't search products/services");
     return res.data ?? [];
   }, [clientId]);
 
@@ -66,21 +73,40 @@ export const ServiceCataloguePicker = React.forwardRef<ComboboxHandle, {
   // genuinely empty catalogue, so the panel would falsely claim "No
   // Product/Service Found" for an item that exists and just hasn't loaded
   // yet (most visible on a cold backend start).
+  //
+  // `recentError` matters just as much: a FAILED fetch (network timeout, a
+  // still-cold backend, a 5xx) used to be swallowed by a bare `catch {}`,
+  // leaving `recent` at its empty initial value forever — indistinguishable
+  // from "this client genuinely has nothing", which is a false negative a
+  // CA has no way to tell apart from the truth. Surfaced now through the
+  // same error+Retry UI the search path already has, via a seq-guarded
+  // fetchRecent that doubles as both the initial load and the Retry handler.
   const [recent, setRecent] = React.useState<ServiceCatalogueItem[]>([]);
   const [recentLoading, setRecentLoading] = React.useState(false);
-  React.useEffect(() => {
-    if (!clientId) { setRecent([]); setRecentLoading(false); return; }
-    let alive = true;
+  const [recentError, setRecentError] = React.useState<string | null>(null);
+  const recentSeqRef = React.useRef(0);
+
+  const fetchRecent = React.useCallback(() => {
+    const seq = ++recentSeqRef.current;
+    if (!clientId) { setRecent([]); setRecentLoading(false); setRecentError(null); return; }
     setRecentLoading(true);
+    setRecentError(null);
     (async () => {
       try {
         const res = (await api.serviceCatalogue.list(clientId, { limit: 8 })) as ApiResp<ServiceCatalogueItem[]>;
-        if (alive) setRecent(res.data ?? []);
-      } catch { /* best-effort */ }
-      finally { if (alive) setRecentLoading(false); }
+        if (seq !== recentSeqRef.current) return;
+        if (res.success) setRecent(res.data ?? []);
+        else setRecentError(res.error ?? "Couldn't load products/services");
+      } catch (e) {
+        if (seq !== recentSeqRef.current) return;
+        setRecentError(e instanceof Error ? e.message : "Couldn't load products/services");
+      } finally {
+        if (seq === recentSeqRef.current) setRecentLoading(false);
+      }
     })();
-    return () => { alive = false; };
   }, [clientId]);
+
+  React.useEffect(() => { fetchRecent(); }, [fetchRecent]);
 
   return (
     <>
@@ -97,6 +123,8 @@ export const ServiceCataloguePicker = React.forwardRef<ComboboxHandle, {
         fetchOptions={fetchOptions}
         recent={recent}
         recentLoading={recentLoading}
+        recentError={recentError}
+        onRetryRecent={fetchRecent}
         getOptionId={(s) => s.id}
         getLabel={(s) => s.name}
         getSecondary={(s) => serviceSecondaryLine(s) || undefined}

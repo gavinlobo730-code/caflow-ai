@@ -22,7 +22,15 @@ const hsnRecentCache = new Map<string, Promise<HsnRow[]>>();
 
 /** The client's recent HSN/SAC history, deduped per (clientId, type) across
  * every row that wants it (every HsnLookup "Change" chip on the page shares
- * this instead of each firing its own request). */
+ * this instead of each firing its own request).
+ *
+ * Rejects (rather than resolving with []) on any failure — a caught
+ * app-level error (success:false, still HTTP 200) or a network exception —
+ * and evicts the cache entry either way so a caller's retry genuinely
+ * re-fetches instead of replaying a stale failure forever. A silent []
+ * here would be indistinguishable from "this client has no history yet",
+ * which is a false negative for something that actually exists and simply
+ * failed to load (most visible on a cold backend start). */
 export function getCachedHsnRecent(clientId: string, type?: string): Promise<HsnRow[]> {
   if (!clientId) return Promise.resolve([]);
   const key = `${clientId}::${type ?? ""}`;
@@ -30,10 +38,13 @@ export function getCachedHsnRecent(clientId: string, type?: string): Promise<Hsn
     hsnRecentCache.set(
       key,
       (api.hsn.search("", { client_id: clientId, type, limit: 8 }) as Promise<ApiResp<HsnRow[]>>)
-        .then((res) => res.data ?? [])
-        .catch(() => {
+        .then((res) => {
+          if (!res.success) throw new Error(res.error ?? "Couldn't load recent HSN/SAC codes");
+          return res.data ?? [];
+        })
+        .catch((e) => {
           hsnRecentCache.delete(key);
-          return [];
+          throw e;
         }),
     );
   }
@@ -52,7 +63,10 @@ export function getCachedHsnSearch(query: string, clientId?: string, type?: stri
     hsnQueryCache.set(
       key,
       (api.hsn.search(query, { client_id: clientId, type, limit: 8 }) as Promise<ApiResp<HsnRow[]>>)
-        .then((res) => res.data ?? [])
+        .then((res) => {
+          if (!res.success) throw new Error(res.error ?? "Couldn't search HSN/SAC");
+          return res.data ?? [];
+        })
         .catch((e) => {
           hsnQueryCache.delete(key);
           throw e;
