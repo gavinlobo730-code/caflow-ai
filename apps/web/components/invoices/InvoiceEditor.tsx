@@ -598,7 +598,6 @@ export function InvoiceEditor({
                   <th className="pb-2 text-left font-semibold">Description</th>
                   <th className="pb-2 text-left font-semibold w-28">HSN/SAC</th>
                   <th className="pb-2 text-right font-semibold w-16">Qty</th>
-                  <th className="pb-2 text-left font-semibold w-16">Unit</th>
                   <th className="pb-2 text-right font-semibold w-24">Rate ({isForeign ? currency : "₹"})</th>
                   <th className="pb-2 text-right font-semibold w-20">GST %</th>
                   <th className="pb-2 text-right font-semibold w-24">Amount</th>
@@ -655,11 +654,6 @@ export function InvoiceEditor({
                         <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })}
                           onKeyDown={(e) => onLineKeyDown(e, idx)} aria-label={`Line ${idx + 1} quantity`}
                           className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
-                      </td>
-                      <td className="py-1.5 pr-2">
-                        <input value={line.unit} onChange={(e) => setLine(idx, { unit: e.target.value })}
-                          onKeyDown={(e) => onLineKeyDown(e, idx)} placeholder="NOS" aria-label={`Line ${idx + 1} unit`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
                       </td>
                       <td className="py-1.5 pr-2">
                         <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })}

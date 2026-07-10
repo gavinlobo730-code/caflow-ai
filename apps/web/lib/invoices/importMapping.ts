@@ -18,11 +18,17 @@
  * typed one would — same endpoint, same check, no separate import-only path.
  *
  * product_service is optional: when a row names an existing Product/Service,
- * description/hsn_sac/rate/gst_rate/unit become OPTIONAL OVERRIDES (blank =
- * use the catalogue item's own values) — mirroring how picking a preset
- * pre-fills a manually-created line. The values are copied onto the line,
- * never linked (service_catalogue has no FK from invoice lines), so nothing
- * server-side needs to change for this.
+ * description/hsn_sac/rate/gst_rate become OPTIONAL OVERRIDES (blank = use
+ * the catalogue item's own values) — mirroring how picking a preset pre-fills
+ * a manually-created line. The values are copied onto the line, never linked
+ * (service_catalogue has no FK from invoice lines), so nothing server-side
+ * needs to change for this.
+ *
+ * unit has no import column — like the manual editor, it's never surfaced to
+ * the CA at all (nobody sets it explicitly). It's still read silently from a
+ * matched product_service's own unit, and the server defaults it to "NOS"
+ * when blank (CGST Rule 46(h) requires SOME unit of measure for goods, but
+ * not a value the CA has to think about).
  */
 
 export interface CustomerRef { id: string; name: string; }
@@ -80,7 +86,6 @@ export const SALES_INVOICE_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "product_service", label: "Product/Service", required: false, hint: "Existing catalogue item name (optional) — pre-fills description/HSN/rate/GST/unit" },
   { key: "description", label: "Description", required: false, hint: "Required unless Product/Service is given" },
   { key: "hsn_sac", label: "HSN/SAC", required: false, hint: "HSN or SAC code (optional; overrides the Product/Service's own)" },
-  { key: "unit", label: "Unit", required: false, hint: "e.g. NOS, HRS, KG (optional; overrides the Product/Service's own)" },
   { key: "quantity", label: "Quantity", required: true, hint: "e.g. 1" },
   { key: "rate", label: "Rate (₹)", required: false, hint: "Per-unit rate in rupees, e.g. 1500.00 — required unless Product/Service is given" },
   { key: "gst_rate", label: "GST %", required: false, hint: "e.g. 18 (for 18%) — required unless Product/Service is given" },
@@ -143,7 +148,7 @@ export function buildSalesInvoices(
       quantity: qty,
       rate_paise: Math.round(rate * 100),   // integer paise — never float
       gst_rate_percent: gst,
-      unit: (r.unit ?? "").trim() || service?.unit?.trim() || undefined,
+      unit: service?.unit?.trim() || undefined,
     };
 
     const existing = groups.get(invoiceNo);

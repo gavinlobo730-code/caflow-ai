@@ -121,13 +121,15 @@ test("row's own fields override the matched product_service's defaults", () => {
   const { invoices } = buildSalesInvoices(
     [row({
       invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10",
-      product_service: "Statutory Audit", description: "Custom description", rate: "60000", gst_rate: "12", unit: "HRS", quantity: "1",
+      product_service: "Statutory Audit", description: "Custom description", rate: "60000", gst_rate: "12", quantity: "1",
     })],
     "client-1", CUSTOMERS, SERVICES);
   assert.equal(invoices[0].lines[0].description, "Custom description");
   assert.equal(invoices[0].lines[0].rate_paise, 6000000);
   assert.equal(invoices[0].lines[0].gst_rate_percent, 12);
-  assert.equal(invoices[0].lines[0].unit, "HRS");
+  // unit has no import column — it always comes from the matched
+  // product_service (never row-level), so it's unaffected by other overrides.
+  assert.equal(invoices[0].lines[0].unit, "OTH");
 });
 
 test("unknown product_service is reported and skipped", () => {
