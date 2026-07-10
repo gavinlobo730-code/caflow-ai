@@ -1099,7 +1099,7 @@ function SalesInvoices({
         .eq("is_active", true)
         .order("name")
         .order("id")),
-      api.serviceCatalogue.list(clientId, { limit: 1000 }) as Promise<ApiResp<ServiceCatalogueItem[]>>,
+      api.serviceCatalogue.list(clientId, { limit: 100 }) as Promise<ApiResp<ServiceCatalogueItem[]>>,
     ]);
     setServices(servicesRes.data ?? []);
 
