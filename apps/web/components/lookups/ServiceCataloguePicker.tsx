@@ -2,7 +2,7 @@
 import * as React from "react";
 import { Combobox, type ComboboxHandle } from "@/components/ui/combobox";
 import { api, type ApiResp } from "@/lib/api";
-import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFormModal";
+import { ProductServiceManagerPanel } from "@/components/catalogue/ProductServiceManagerPanel";
 import {
   serviceSecondaryLine, type ServiceCatalogueItem,
 } from "@/lib/catalogue/service";
@@ -19,11 +19,13 @@ import {
  * Products/Services are client-owned (migration 182), so every fetch here is
  * scoped to `clientId` — a firm's other clients' presets never appear.
  *
- * No match ("No Product/Service Found") → the "+" row opens
- * ProductServiceFormModal (the SAME create dialog as the client-workspace
- * management page — one creation workflow, not a separate "custom line"
- * path). On save, the new item is handed straight to `onPick`, exactly like
- * a normal search result — auto-select + auto-fill, no extra step.
+ * The pinned "+ Add Product/Service" row opens ProductServiceManagerPanel as
+ * a slide-over — the SAME full management screen (browse/search/create/
+ * edit/archive/delete/bulk-actions) the client workspace's Products &
+ * Services page embeds, not a separate "quick create" dialog — so a CA who
+ * wants to fix a typo on an existing preset, or just look at what's already
+ * there, never has to leave the invoice. Picking (or freshly creating) a row
+ * there is handed straight to `onPick`, exactly like a normal search result.
  *
  * It is a controlled display, not a controlled input: `value` is the
  * caller's current pick for THIS row (shown in the trigger instead of the
@@ -43,16 +45,15 @@ export const ServiceCataloguePicker = React.forwardRef<ComboboxHandle, {
   className?: string;
   size?: "sm" | "md";
   placeholder?: string;
-  /** Forwarded create-dialog errors (e.g. duplicate name). If omitted, the
-   * picker shows a small inline message of its own so a failure is never
-   * silent. */
-  onError?: (msg: string) => void;
 }>(function ServiceCataloguePicker(
-  { clientId, value, onPick, disabled, ariaLabel, className, size = "sm", placeholder, onError },
+  { clientId, value, onPick, disabled, ariaLabel, className, size = "sm", placeholder },
   ref,
 ) {
-  const [quickCreateSeed, setQuickCreateSeed] = React.useState<string | null>(null);
-  const [localError, setLocalError] = React.useState<string | null>(null);
+  // ProductServiceManagerPanel owns its own error toast (shown right next to
+  // the action that failed) — nothing needs to bubble up to the invoice
+  // editor's page-level banner, which used to be the exact "error shows far
+  // from where it happened" problem this picker's create flow once had.
+  const [showManager, setShowManager] = React.useState(false);
 
   const fetchOptions = React.useCallback(async (q: string): Promise<ServiceCatalogueItem[]> => {
     if (!clientId) return [];
@@ -128,7 +129,7 @@ export const ServiceCataloguePicker = React.forwardRef<ComboboxHandle, {
         getOptionId={(s) => s.id}
         getLabel={(s) => s.name}
         getSecondary={(s) => serviceSecondaryLine(s) || undefined}
-        onCreate={(label) => setQuickCreateSeed(label)}
+        onCreate={() => setShowManager(true)}
         // QuickBooks-style: "+ Add Product/Service" is always the first row
         // in the list, with the client's existing presets listed below it —
         // not just a fallback that appears after a no-match search. This is
@@ -145,21 +146,12 @@ export const ServiceCataloguePicker = React.forwardRef<ComboboxHandle, {
         searchPlaceholder="Search products & services…"
         emptyText="No Product/Service Found"
       />
-      {localError && !onError && (
-        <p className="mt-1 text-[11px] text-red-600">{localError}</p>
-      )}
-      {quickCreateSeed !== null && (
-        <ProductServiceFormModal
+      {showManager && (
+        <ProductServiceManagerPanel
           clientId={clientId}
-          existing={null}
-          seedName={quickCreateSeed}
-          onClose={() => setQuickCreateSeed(null)}
-          onSaved={(item) => {
-            setQuickCreateSeed(null);
-            setLocalError(null);
-            onPick(item);
-          }}
-          onError={(msg) => (onError ? onError(msg) : setLocalError(msg))}
+          mode="overlay"
+          onClose={() => setShowManager(false)}
+          onPick={onPick}
         />
       )}
     </>
