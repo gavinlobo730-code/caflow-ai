@@ -146,11 +146,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const setWorkspace = useCallback(
     (id: WorkspaceId) => {
-      // Clicking "Clients" always opens the client list. Resuming a
-      // specific client's last-visited section is a per-client concern
-      // (clientSectionHistory.ts, consulted by app/clients/[id]/page.tsx
-      // when a specific client is opened) — not something the workspace
-      // switcher itself does.
+      // Clicking "Clients" always opens the client list.
       const target =
         id === "clients"
           ? DEFAULT_WORKSPACE_ROUTES.clients
