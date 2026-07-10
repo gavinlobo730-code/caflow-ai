@@ -104,6 +104,11 @@ export function HsnLookup(props: {
   const fetchOptions = React.useCallback(
     async (q: string): Promise<HsnResult[]> => {
       const res = (await api.hsn.search(q, { client_id: clientId, type })) as ApiResp<HsnResult[]>;
+      // An app-level failure (success:false, e.g. a caught backend exception
+      // — still HTTP 200) must THROW, not silently resolve to [] — that
+      // would show the exact same "no matches" panel as a genuinely empty
+      // result, hiding a real failure as a false negative.
+      if (!res.success) throw new Error(res.error ?? "Couldn't search HSN/SAC");
       // Group history → Services (SAC) → Goods (HSN) while keeping the server's
       // within-group relevance order (one unified lookup, distinguished visually).
       return orderHsnResults(res.data ?? []);
@@ -114,19 +119,38 @@ export function HsnLookup(props: {
   // Recently-used codes for this client, shown before the CA types anything
   // (reuses the same endpoint with an empty query → firm history). Cached and
   // shared across every HsnLookup "Change" chip on the page so an N-line
-  // invoice fires this fetch once, not N times. Best-effort: an empty/failed
-  // fetch simply shows the normal "type to search" hint.
+  // invoice fires this fetch once, not N times.
+  //
+  // `recentError` surfaces a genuinely failed fetch (network timeout, a
+  // still-cold backend, a 5xx) through the same error+Retry UI the search
+  // path already has — getCachedHsnRecent now rejects on failure (instead of
+  // silently resolving to []) precisely so this can tell "failed" apart from
+  // "genuinely has no history yet", which previously looked identical.
   const [recent, setRecent] = React.useState<HsnResult[]>([]);
   const [recentLoading, setRecentLoading] = React.useState(false);
-  React.useEffect(() => {
-    if (!clientId) { setRecent([]); setRecentLoading(false); return; }
-    let alive = true;
+  const [recentError, setRecentError] = React.useState<string | null>(null);
+  const recentSeqRef = React.useRef(0);
+
+  const fetchRecent = React.useCallback(() => {
+    const seq = ++recentSeqRef.current;
+    if (!clientId) { setRecent([]); setRecentLoading(false); setRecentError(null); return; }
     setRecentLoading(true);
-    getCachedHsnRecent(clientId, type).then((rows) => {
-      if (alive) { setRecent(orderHsnResults(rows)); setRecentLoading(false); }
-    });
-    return () => { alive = false; };
+    setRecentError(null);
+    getCachedHsnRecent(clientId, type)
+      .then((rows) => {
+        if (seq !== recentSeqRef.current) return;
+        setRecent(orderHsnResults(rows));
+      })
+      .catch((e) => {
+        if (seq !== recentSeqRef.current) return;
+        setRecentError(e instanceof Error ? e.message : "Couldn't load recent HSN/SAC codes");
+      })
+      .finally(() => {
+        if (seq === recentSeqRef.current) setRecentLoading(false);
+      });
   }, [clientId, type]);
+
+  React.useEffect(() => { fetchRecent(); }, [fetchRecent]);
 
   // The value is a bare code; show it in the trigger via a synthetic option.
   const selected: HsnResult | null = value ? { hsn_code: value } : null;
@@ -207,6 +231,8 @@ export function HsnLookup(props: {
       fetchOptions={fetchOptions}
       recent={recent}
       recentLoading={recentLoading}
+      recentError={recentError}
+      onRetryRecent={fetchRecent}
       getOptionId={(h) => h.hsn_code}
       getLabel={(h) => h.hsn_code}
       getSecondary={(h) => hsnSecondaryLine(h) || undefined}
