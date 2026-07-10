@@ -89,9 +89,9 @@ export default function GSTR3BPage() {
   useEffect(() => {
     const sb = getSupabaseClient();
     sb.from("clients")
-      .select("id,name,gstin")
+      .select("id,name:client_name,gstin")
       .eq("status", "active")
-      .order("name")
+      .order("client_name")
       .then(({ data }) => setClients((data ?? []) as { id: string; name: string; gstin: string | null }[]));
   }, []);
 
