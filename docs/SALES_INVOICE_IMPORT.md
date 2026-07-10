@@ -61,10 +61,9 @@ importers on this page don't use).
 | `invoice_date`      | Yes          | `YYYY-MM-DD`. Must match across every row sharing an `invoice_no`.       |
 | `due_date`          | No           | `YYYY-MM-DD`. Must match across every row sharing an `invoice_no` (if given). |
 | `supply_state_code` | No           | 2-digit GST state code, e.g. `27`. Must match across every row sharing an `invoice_no` (if given). |
-| `product_service`   | No           | Existing Product/Service catalogue item name for this client, or resolved via the "+ Add" step. Pre-fills `description`/`hsn_sac`/`rate`/`gst_rate`/`unit` from the catalogue item — the row's own values still win if given. |
+| `product_service`   | No           | Existing Product/Service catalogue item name for this client, or resolved via the "+ Add" step. Pre-fills `description`/`hsn_sac`/`rate`/`gst_rate` from the catalogue item — the row's own values still win if given. |
 | `description`       | If no `product_service` | Line-item description.                                       |
 | `hsn_sac`           | No           | HSN or SAC code. Overrides the `product_service`'s own if both are given. |
-| `unit`              | No           | e.g. `NOS`, `HRS`, `KG`. Overrides the `product_service`'s own if both are given. |
 | `quantity`          | Yes          | Positive number, e.g. `1`.                                            |
 | `rate`              | If no `product_service` (or its catalogue price is unset) | Per-unit rate in **rupees**, e.g. `1500.00`. |
 | `gst_rate`          | If no `product_service` (or its catalogue rate is unset) | GST percent, e.g. `18` for 18%. |
@@ -89,12 +88,20 @@ disagrees on any of them is reported and skipped (the rest of that invoice's
 rows still import; this mirrors the existing "reused with a different
 customer" rejection, extended to the other header fields).
 
-### Units
+### Money and percentage conversion
 
 The mapper converts to the backend's integer representation — never floats:
 
 - `rate` (rupees) → `rate_paise` = `round(rate × 100)`
 - `gst_rate` (percent) → `gst_rate_bps` = `round(percent × 100)` (basis points)
+
+### Unit of measure (UQC) is never a column
+
+There's no `unit` column, and the manual editor doesn't surface it either —
+nobody has to think about it. It's still read silently from a matched
+`product_service`'s own unit, and the server defaults it to `NOS` whenever
+it's blank, so every line still carries a value (CGST Rule 46(h) requires a
+unit of measure for goods lines) without ever asking the CA to set one.
 
 ## Validation rules
 
