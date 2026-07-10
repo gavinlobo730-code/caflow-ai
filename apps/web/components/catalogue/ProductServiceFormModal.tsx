@@ -86,7 +86,7 @@ export function ProductServiceFormModal({
           <Field label="Kind">
             <select value={form.kind} onChange={(e) => set("kind", e.target.value as "good" | "service")} className={inputCls}>
               <option value="service">Service</option>
-              <option value="good">Good</option>
+              <option value="good">Product</option>
             </select>
           </Field>
           <Field label="Category (optional)">

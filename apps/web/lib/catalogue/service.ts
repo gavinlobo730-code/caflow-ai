@@ -45,6 +45,15 @@ export function serviceToLine(item: ServiceCatalogueItem): Pick<InvoiceLine, "de
   };
 }
 
+/** User-facing label for a catalogue item's kind — "good" (the CGST goods/
+ * HSN vs services/SAC distinction used throughout the domain model and the
+ * HSN/SAC library) reads as "Product" everywhere a CA sees it, matching the
+ * "Product/Service" naming this whole module uses; the stored value stays
+ * "good" so it keeps lining up with hsn_type and the backend model. */
+export function formatServiceKind(kind?: "good" | "service" | null): string {
+  return kind === "good" ? "Product" : "Service";
+}
+
 /** "18% GST" / "" (unknown rate stays blank — never shown as 0%). */
 export function formatServiceRate(bps?: number | null): string {
   if (bps == null) return "";

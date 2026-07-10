@@ -4,7 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  serviceToLine, formatServiceRate, formatServicePrice, serviceSecondaryLine,
+  serviceToLine, formatServiceRate, formatServicePrice, formatServiceKind, serviceSecondaryLine,
   validateServiceForm, serviceFormToPayload, serviceToForm,
   type ServiceCatalogueItem, type ServiceFormInput,
 } from "./service.ts";
@@ -29,6 +29,13 @@ test("serviceToLine drops a fully pre-priced line (description falls back to nam
   assert.equal(serviceToLine(item({ description: "  " })).description, "Statutory Audit");
   assert.equal(serviceToLine(item({ default_rate_paise: 0 })).rate, "");
   assert.equal(serviceToLine(item({ gst_rate_bps: null })).gst_rate, 0);
+});
+
+test("formatServiceKind: good reads as Product, matching the modal's own naming", () => {
+  assert.equal(formatServiceKind("good"), "Product");
+  assert.equal(formatServiceKind("service"), "Service");
+  assert.equal(formatServiceKind(null), "Service");
+  assert.equal(formatServiceKind(undefined), "Service");
 });
 
 test("formatting helpers", () => {
