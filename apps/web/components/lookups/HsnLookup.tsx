@@ -117,11 +117,13 @@ export function HsnLookup(props: {
   // invoice fires this fetch once, not N times. Best-effort: an empty/failed
   // fetch simply shows the normal "type to search" hint.
   const [recent, setRecent] = React.useState<HsnResult[]>([]);
+  const [recentLoading, setRecentLoading] = React.useState(false);
   React.useEffect(() => {
-    if (!clientId) { setRecent([]); return; }
+    if (!clientId) { setRecent([]); setRecentLoading(false); return; }
     let alive = true;
+    setRecentLoading(true);
     getCachedHsnRecent(clientId, type).then((rows) => {
-      if (alive) setRecent(orderHsnResults(rows));
+      if (alive) { setRecent(orderHsnResults(rows)); setRecentLoading(false); }
     });
     return () => { alive = false; };
   }, [clientId, type]);
@@ -204,6 +206,7 @@ export function HsnLookup(props: {
       }}
       fetchOptions={fetchOptions}
       recent={recent}
+      recentLoading={recentLoading}
       getOptionId={(h) => h.hsn_code}
       getLabel={(h) => h.hsn_code}
       getSecondary={(h) => hsnSecondaryLine(h) || undefined}

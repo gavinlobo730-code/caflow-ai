@@ -61,15 +61,23 @@ export const ServiceCataloguePicker = React.forwardRef<ComboboxHandle, {
   }, [clientId]);
 
   // Recent/frequent presets shown before the CA types (empty query → recent).
+  // `recentLoading` matters as much as `recent` itself: without it, opening
+  // the picker before this fetch resolves is indistinguishable from a
+  // genuinely empty catalogue, so the panel would falsely claim "No
+  // Product/Service Found" for an item that exists and just hasn't loaded
+  // yet (most visible on a cold backend start).
   const [recent, setRecent] = React.useState<ServiceCatalogueItem[]>([]);
+  const [recentLoading, setRecentLoading] = React.useState(false);
   React.useEffect(() => {
-    if (!clientId) { setRecent([]); return; }
+    if (!clientId) { setRecent([]); setRecentLoading(false); return; }
     let alive = true;
+    setRecentLoading(true);
     (async () => {
       try {
         const res = (await api.serviceCatalogue.list(clientId, { limit: 8 })) as ApiResp<ServiceCatalogueItem[]>;
         if (alive) setRecent(res.data ?? []);
       } catch { /* best-effort */ }
+      finally { if (alive) setRecentLoading(false); }
     })();
     return () => { alive = false; };
   }, [clientId]);
@@ -88,6 +96,7 @@ export const ServiceCataloguePicker = React.forwardRef<ComboboxHandle, {
         }}
         fetchOptions={fetchOptions}
         recent={recent}
+        recentLoading={recentLoading}
         getOptionId={(s) => s.id}
         getLabel={(s) => s.name}
         getSecondary={(s) => serviceSecondaryLine(s) || undefined}
