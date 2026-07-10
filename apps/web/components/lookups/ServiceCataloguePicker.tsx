@@ -129,7 +129,12 @@ export const ServiceCataloguePicker = React.forwardRef<ComboboxHandle, {
         getLabel={(s) => s.name}
         getSecondary={(s) => serviceSecondaryLine(s) || undefined}
         onCreate={(label) => setQuickCreateSeed(label)}
-        createLabel={(q) => `No Product/Service Found — + Create "${q}"`}
+        // QuickBooks-style: "+ Add Product/Service" is always the first row
+        // in the list, with the client's existing presets listed below it —
+        // not just a fallback that appears after a no-match search. This is
+        // also what keeps a picker usable the instant it opens even while
+        // `recent`/search results are still loading.
+        pinCreateAtTop
         emptyCreateLabel="+ Add Product/Service"
         minChars={2}
         size={size}
