@@ -21,7 +21,7 @@ import { api, type ApiResp } from "@/lib/api/index";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFormModal";
 import {
-  formatServiceRate, formatServicePrice, type ServiceCatalogueItem,
+  formatServiceRate, formatServicePrice, formatServiceKind, type ServiceCatalogueItem,
 } from "@/lib/catalogue/service";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildServices, SERVICE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
@@ -217,7 +217,7 @@ export default function ProductsServicesPage() {
                       <td className="px-4 py-2.5">
                         <p className="font-medium text-[#1E293B]">
                           {s.name}
-                          <span className="ml-2 text-[9px] uppercase tracking-wide text-[#94A3B8]">{s.kind ?? "service"}</span>
+                          <span className="ml-2 text-[9px] uppercase tracking-wide text-[#94A3B8]">{formatServiceKind(s.kind)}</span>
                           {!s.is_active && <span className="ml-2 text-[10px] uppercase tracking-wide text-[#94A3B8]">archived</span>}
                         </p>
                         {s.description && <p className="text-[11px] text-[#94A3B8] truncate max-w-[280px]">{s.description}</p>}
