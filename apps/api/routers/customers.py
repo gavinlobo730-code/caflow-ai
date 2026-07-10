@@ -99,6 +99,9 @@ _DEPENDENCY_TABLES: list[tuple[str, str]] = [
     ("credit_notes", "credit_notes"),
     ("recurring_templates", "recurring_invoice_templates"),
 ]
+# Tables with a deleted_at (soft-delete) column — a deleted row is no longer
+# a live accounting record and must not block a customer's permanent delete.
+_SOFT_DELETE_DEPENDENCY_TABLES = {"client_sales_invoices", "credit_notes"}
 
 
 def _customer_dependencies(db, customer_id: str, opening_balance_paise: int) -> dict:
@@ -111,7 +114,10 @@ def _customer_dependencies(db, customer_id: str, opening_balance_paise: int) -> 
     counts: dict[str, int] = {}
     for label, table in _DEPENDENCY_TABLES:
         try:
-            resp = db.table(table).select("id").eq("customer_id", customer_id).execute()
+            q = db.table(table).select("id").eq("customer_id", customer_id)
+            if table in _SOFT_DELETE_DEPENDENCY_TABLES:
+                q = q.is_("deleted_at", None)
+            resp = q.execute()
             counts[label] = len(resp.data or [])
         except Exception as e:  # a missing/locked table must never mask a dependency
             _logger.warning("dependency count failed for %s: %s", table, e)
