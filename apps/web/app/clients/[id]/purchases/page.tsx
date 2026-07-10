@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Upload, AlertCircle, CheckCircle, X } from "lucide-react";
+import { Plus, Upload, AlertCircle, CheckCircle, Trash2, X } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise, formatMoney } from "@/lib/services/formatting";
 import { estimateBaseMinor, estimateForeignTds, convertBaseToForeignMinor } from "@/lib/services/currencyPreview";
-import { DataTable } from "@/components/ui/data-table";
-import type { Column, FilterDef } from "@/lib/table/types";
+import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
+import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { VendorLookup } from "@/components/lookups/VendorLookup";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
@@ -1519,6 +1519,35 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
     }
   }
 
+  // Bulk delete over the DataTable's selected rows. DELETE /api/debit-notes/{id}
+  // is draft-only on the backend (soft-deletes a draft; 422s "Cannot delete an
+  // issued debit note…" for anything already issued, 404 if not found) — loop
+  // per row so one rejection doesn't abort the rest, reuse the existing load()
+  // to refresh, and report a summary. If anything was skipped, keep the
+  // selection (return false) so the user can see what's left.
+  const handleBulkDelete = useCallback(async (rows: DebitNoteRow[]): Promise<boolean> => {
+    const token = await getAuthToken();
+    const results = await Promise.all(
+      rows.map(async (d) => {
+        try {
+          const result = await apiCall(`/api/debit-notes/${d.id}`, "DELETE", undefined, token);
+          return result.success;
+        } catch {
+          return false;
+        }
+      })
+    );
+    const deleted = results.filter(Boolean).length;
+    const skipped = results.length - deleted;
+    load();
+    if (skipped > 0) {
+      setMsg({ type: "err", text: `${deleted} deleted, ${skipped} skipped (issued)` });
+      return false;
+    }
+    setMsg({ type: "ok", text: `${deleted} debit note${deleted === 1 ? "" : "s"} deleted.` });
+    return true;
+  }, [load]);
+
   const columns: Column<DebitNoteRow>[] = useMemo(() => [
     { key: "debit_note_no", header: "DN No", accessor: (d) => d.debit_note_no ?? "", searchable: true, sortable: true, sticky: true, hideable: false,
       render: (d) => <span className="font-mono font-medium text-[#1E293B]">{d.debit_note_no ?? "—"}</span> },
@@ -1552,6 +1581,20 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
     { key: "vendor_name", label: "Vendor", type: "select", accessor: (d) => d.vendor_name ?? "",
       options: vendors.map((v) => ({ value: v.name, label: v.name })) },
   ], [vendors]);
+
+  // ── DataTable bulk actions — delete is draft-only (backend rejects issued
+  // debit notes with a 422); export just CSV-dumps the checked rows. ─────────
+  const bulkActions: BulkAction<DebitNoteRow>[] = useMemo(() => [
+    {
+      id: "delete",
+      label: "Delete draft(s)",
+      icon: <Trash2 size={12} />,
+      variant: "danger",
+      confirm: "Delete the selected draft debit notes? This cannot be undone.",
+      run: handleBulkDelete,
+    },
+    exportSelectedAction("debit-notes-selected.csv", columns),
+  ], [handleBulkDelete, columns]);
 
   return (
     <div className="space-y-4 max-w-screen-2xl">
@@ -1594,6 +1637,7 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
         toolbarExtra={
           <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"><Plus size={12} /> Create Debit Note</button>
         }
+        bulkActions={bulkActions}
         rowActions={(d) =>
           d.status === "draft" ? (
             <button onClick={() => issueDebitNote(d.id)} className="text-xs text-blue-600 hover:underline flex items-center gap-1">

@@ -6,6 +6,7 @@ import {
   ChevronsUpDown,
   Columns3,
   Download,
+  Loader2,
   RefreshCw,
   Search,
   X,
@@ -49,7 +50,7 @@ export interface DataTableProps<T> {
   toolbarExtra?: React.ReactNode;
 }
 
-function downloadCsv(filename: string, csv: string) {
+export function downloadCsv(filename: string, csv: string) {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -57,6 +58,22 @@ function downloadCsv(filename: string, csv: string) {
   a.download = filename.endsWith(".csv") ? filename : `${filename}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/**
+ * A ready-made "Export selected" bulk action — reuses the same CSV export
+ * the toolbar's own "Export" button uses (see `exportFilename`), just scoped
+ * to the checked rows instead of the whole filtered view. Drop it straight
+ * into `bulkActions`:
+ *   bulkActions={[...myActions, exportSelectedAction("invoices.csv", columns)]}
+ */
+export function exportSelectedAction<T>(filename: string, columns: Column<T>[]): BulkAction<T> {
+  return {
+    id: "export-selected",
+    label: "Export selected",
+    icon: <Download size={13} />,
+    run: (selected) => { downloadCsv(filename, toCsv(selected, columns)); },
+  };
 }
 
 const btn =
@@ -90,6 +107,9 @@ export function DataTable<T>({
   const t = useDataTable<T>({ data, columns, filters, getRowId, initialSort, initialPageSize, initialFilters, persistKey });
   const hasSearch = columns.some((c) => c.searchable);
   const hasBulk = Boolean(bulkActions && bulkActions.length);
+  // Which bulk action (by id) is currently running — disables the whole bar
+  // so a second click can't fire mid-run, and shows a spinner on that button.
+  const [runningActionId, setRunningActionId] = React.useState<string | null>(null);
 
   // Debounced search box (kept in sync with persisted/cleared state).
   const [q, setQ] = React.useState(t.prefs.search);
@@ -169,22 +189,34 @@ export function DataTable<T>({
             {bulkActions!.map((a) => (
               <button
                 key={a.id}
+                disabled={runningActionId !== null}
                 onClick={async () => {
                   if (a.confirm && !window.confirm(a.confirm)) return;
-                  await a.run(t.selectedRows);
-                  t.clearSelection();
+                  setRunningActionId(a.id);
+                  try {
+                    // A thrown error, same as an explicit `return false`, leaves
+                    // the selection intact — the action's own toast/report (if
+                    // any) is the source of truth for what happened per row, not
+                    // "the selection went away so it must have worked."
+                    const result = await a.run(t.selectedRows);
+                    if (result !== false) t.clearSelection();
+                  } catch (e) {
+                    console.error(`Bulk action "${a.id}" failed:`, e);
+                  } finally {
+                    setRunningActionId(null);
+                  }
                 }}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition-colors",
+                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                   a.variant === "danger"
                     ? "border border-red-200 bg-white text-red-700 hover:bg-red-50"
                     : "border border-[#C7D2FE] bg-white text-[#4338CA] hover:bg-[#E0E7FF]",
                 )}
               >
-                {a.icon} {a.label}
+                {runningActionId === a.id ? <Loader2 size={13} className="animate-spin" /> : a.icon} {a.label}
               </button>
             ))}
-            <button onClick={t.clearSelection} className="text-[#6366F1] hover:text-[#4338CA]" aria-label="Clear selection">
+            <button onClick={t.clearSelection} disabled={runningActionId !== null} className="text-[#6366F1] hover:text-[#4338CA] disabled:opacity-50" aria-label="Clear selection">
               <X size={14} />
             </button>
           </div>

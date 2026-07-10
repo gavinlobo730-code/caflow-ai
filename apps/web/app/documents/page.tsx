@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, ChangeEvent } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, ChangeEvent } from "react";
 import {
   FileText,
   Upload,
@@ -13,9 +13,10 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getClients } from "@/lib/data/clients";
 import { formatDate } from "@/lib/services/formatting";
-import { DataTable } from "@/components/ui/data-table";
+import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
-import type { Column, FilterDef } from "@/lib/table/types";
+import { useToast } from "@/components/ui/use-toast";
+import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import type { Client } from "@/lib/types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -362,6 +363,8 @@ export default function DocumentsPage() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
+  const { toast } = useToast();
+
   async function loadData() {
     setLoading(true);
     setPageError(null);
@@ -404,6 +407,36 @@ export default function DocumentsPage() {
       setDeleting(null);
     }
   }
+
+  // Bulk delete over the DataTable's selected rows (reuses the same
+  // DELETE /api/documents/{id} soft-delete call as the single-row action;
+  // confirm dialog is handled by DataTable via the bulk action's `confirm`).
+  const handleBulkDelete = useCallback(async (rows: Document[]) => {
+    const results = await Promise.all(
+      rows.map((doc) =>
+        apiFetch(`/api/documents/${doc.id}`, { method: "DELETE" })
+          .then(() => true)
+          .catch(() => false)
+      )
+    );
+    await loadData();
+
+    const failedCount = results.filter((ok) => !ok).length;
+    if (failedCount > 0) {
+      toast({
+        variant: "destructive",
+        title: "Some documents couldn't be deleted",
+        description: `${rows.length - failedCount} of ${rows.length} deleted. ${failedCount} failed — please try again.`,
+      });
+      return false;
+    }
+
+    toast({
+      title: "Documents deleted",
+      description: `${rows.length} document${rows.length === 1 ? "" : "s"} deleted.`,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast]);
 
   async function handleDownload(doc: Document) {
     try {
@@ -489,6 +522,16 @@ export default function DocumentsPage() {
     },
   ], [clients]);
 
+  // ── DataTable bulk actions ───────────────────────────────────────────────────
+  const bulkActions: BulkAction<Document>[] = useMemo(() => [
+    {
+      id: "delete", label: "Delete", icon: <Trash2 size={13} />, variant: "danger",
+      confirm: "Delete the selected documents? This cannot be undone.",
+      run: handleBulkDelete,
+    },
+    exportSelectedAction<Document>("documents-selected.csv", columns),
+  ], [handleBulkDelete, columns]);
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* ── Header ── */}
@@ -522,6 +565,7 @@ export default function DocumentsPage() {
         onRefresh={loadData}
         searchPlaceholder="Search by file name or client…"
         initialSort={{ key: "created_at", dir: "desc" }}
+        bulkActions={bulkActions}
         exportFilename="documents"
         persistKey="documents.list"
         emptyTitle={documents.length === 0 ? "No documents yet." : "No documents match the current filters."}

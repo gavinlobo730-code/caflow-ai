@@ -114,7 +114,7 @@ def list_credit_notes(
     """List credit notes for a client."""
     try:
         if _USE_MOCK:
-            result = [cn for cn in MOCK_CREDIT_NOTES if cn["client_id"] == client_id]
+            result = [cn for cn in MOCK_CREDIT_NOTES if cn["client_id"] == client_id and not cn.get("deleted_at")]
             if customer_id:
                 result = [cn for cn in result if cn.get("customer_id") == customer_id]
             return api_response(True, result)
@@ -124,7 +124,7 @@ def list_credit_notes(
         # Tenant isolation: the service-role client bypasses RLS, so the firm filter
         # is the ONLY thing preventing a cross-tenant read via a guessed client_id (H15/L4).
         q = (db.table("credit_notes").select("*")
-             .eq("firm_id", current_user.get("firm_id")).eq("client_id", client_id))
+             .eq("firm_id", current_user.get("firm_id")).eq("client_id", client_id).is_("deleted_at", None))
         if customer_id:
             q = q.eq("customer_id", customer_id)
         resp = q.order("credit_note_date", desc=True).execute()
@@ -307,7 +307,7 @@ def get_credit_note(
     """Get a single credit note with its line items."""
     try:
         if _USE_MOCK:
-            cn = next((c for c in MOCK_CREDIT_NOTES if c["id"] == cn_id), None)
+            cn = next((c for c in MOCK_CREDIT_NOTES if c["id"] == cn_id and not c.get("deleted_at")), None)
             if not cn:
                 raise HTTPException(status_code=404, detail=f"Credit note {cn_id} not found")
             cn["lines"] = [ln for ln in MOCK_CREDIT_NOTE_LINES if ln.get("credit_note_id") == cn_id]
@@ -315,7 +315,8 @@ def get_credit_note(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("credit_notes").select("*").eq("id", cn_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
+        resp = (db.table("credit_notes").select("*").eq("id", cn_id)
+                .eq("firm_id", current_user.get("firm_id")).is_("deleted_at", None).limit(1).execute())
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Credit note {cn_id} not found")
         cn = resp.data[0]
@@ -362,7 +363,7 @@ def issue_credit_note(
         firm_id = current_user.get("firm_id")
         # Tenant isolation (OOS-5): firm-scope the guard read and the write so a
         # foreign-firm credit-note id cannot be read or mutated under service-role.
-        resp = db.table("credit_notes").select("*").eq("id", cn_id).eq("firm_id", firm_id).limit(1).execute()
+        resp = db.table("credit_notes").select("*").eq("id", cn_id).eq("firm_id", firm_id).is_("deleted_at", None).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Credit note {cn_id} not found")
         cn = resp.data[0]
@@ -479,4 +480,74 @@ def issue_credit_note(
         raise
     except Exception as e:
         _logger.error("issue_credit_note: %s", e)
+        return api_response(False, None, "Unable to complete credit note operation. Please try again.")
+
+
+# Human-readable phrasing for statuses that block deletion.
+_DELETE_BLOCKED = {"issued": "an issued", "applied": "an applied"}
+
+
+@router.delete("/{cn_id}")
+def delete_credit_note(
+    cn_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Soft-delete a DRAFT credit note.
+
+    Only drafts may be deleted. Issued/applied credit notes are protected —
+    once issued they carry a posted journal and, if linked to an invoice,
+    have already reduced that invoice's outstanding balance (CGST Act §34);
+    removing one outright would corrupt both. Deletion is a soft-delete
+    (sets deleted_at, migration 183) plus an immutable audit_log 'delete'
+    event, mirroring sales_invoices.delete_invoice exactly.
+    """
+    try:
+        if _USE_MOCK:
+            for i, cn in enumerate(MOCK_CREDIT_NOTES):
+                if cn["id"] == cn_id and not cn.get("deleted_at"):
+                    st = cn.get("status")
+                    if st != "draft":
+                        raise HTTPException(
+                            status_code=422,
+                            detail=f"Cannot delete {_DELETE_BLOCKED.get(st, st)} credit note — only drafts can be deleted",
+                        )
+                    MOCK_CREDIT_NOTES.pop(i)
+                    return api_response(True, {"id": cn_id, "deleted": True})
+            raise HTTPException(status_code=404, detail=f"Credit note {cn_id} not found")
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        firm_id = current_user.get("firm_id")
+        resp = (
+            db.table("credit_notes").select("*")
+            .eq("id", cn_id).eq("firm_id", firm_id).is_("deleted_at", None).limit(1).execute()
+        )
+        if not resp.data:
+            raise HTTPException(status_code=404, detail=f"Credit note {cn_id} not found")
+        cn = resp.data[0]
+        st = cn.get("status")
+        if st != "draft":
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cannot delete {_DELETE_BLOCKED.get(st, st)} credit note — only drafts can be deleted",
+            )
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        db.table("credit_notes").update({"deleted_at": now_iso}).eq("id", cn_id).eq("firm_id", firm_id).execute()
+
+        log_event(
+            firm_id or "", "credit_note", cn_id,
+            "delete", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            old_data={
+                "credit_note_no": cn.get("credit_note_no"),
+                "status":         st,
+                "total_paise":    cn.get("total_paise"),
+            },
+        )
+        return api_response(True, {"id": cn_id, "deleted": True})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("delete_credit_note: %s", e)
         return api_response(False, None, "Unable to complete credit note operation. Please try again.")

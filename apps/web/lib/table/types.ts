@@ -99,7 +99,16 @@ export interface BulkAction<T> {
   id: string;
   label: string;
   icon?: React.ReactNode;
-  run: (selected: T[]) => void | Promise<void>;
+  /**
+   * Return `false` (or resolve to it) to signal the action did NOT fully
+   * succeed — DataTable keeps the current selection instead of clearing it,
+   * so the user can see what's still selected and retry or investigate
+   * (e.g. some rows were skipped/blocked and got reported in a toast).
+   * Returning void/undefined/true, same as before, clears the selection —
+   * existing callers that never return anything are unaffected. A thrown
+   * error is caught by DataTable and also does NOT clear the selection.
+   */
+  run: (selected: T[]) => void | boolean | Promise<void | boolean>;
   /** Ask for confirmation before running. */
   confirm?: string;
   /** Visual emphasis (e.g. destructive delete). */
