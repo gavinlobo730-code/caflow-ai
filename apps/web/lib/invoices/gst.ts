@@ -78,6 +78,9 @@ export interface ServerInvoiceLine {
   sgst_paise: number;
   igst_paise: number;
   line_total_paise: number;
+  /** Which service_catalogue preset (if any) this line was picked from — see
+   * lib/invoices/lineItemPayload.ts's InvoiceLineInput.serviceCatalogueId. */
+  service_catalogue_id?: string | null;
 }
 
 /** Full invoice detail (header + lines + accounting + customer embed). */

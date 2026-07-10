@@ -17,6 +17,14 @@ export interface InvoiceLineInput {
   rate: string; // rupees
   gst_rate: number; // percentage, e.g. 18
   unit?: string; // UQC, e.g. "NOS", "KGS"; blank -> server default "NOS"
+  /**
+   * Which service_catalogue preset (if any) this line was picked from — pure
+   * traceability for the Products & Services delete-guard (migration 184),
+   * never read by any GST/journal computation. Only Sales Invoices actually
+   * set this (via ServiceCataloguePicker); Credit Notes share this same
+   * payload shape but have no product picker, so it's always undefined there.
+   */
+  serviceCatalogueId?: string | null;
 }
 
 export interface InvoiceLinePayload {
@@ -26,6 +34,7 @@ export interface InvoiceLinePayload {
   rate_paise: number;
   gst_rate_percent: number;
   unit: string | undefined;
+  service_catalogue_id: string | null | undefined;
 }
 
 export function toInvoiceLinePayload(line: InvoiceLineInput): InvoiceLinePayload {
@@ -36,5 +45,6 @@ export function toInvoiceLinePayload(line: InvoiceLineInput): InvoiceLinePayload
     rate_paise: Math.round(parseFloat(line.rate) * 100),
     gst_rate_percent: line.gst_rate,
     unit: line.unit?.trim() || undefined,
+    service_catalogue_id: line.serviceCatalogueId ?? undefined,
   };
 }

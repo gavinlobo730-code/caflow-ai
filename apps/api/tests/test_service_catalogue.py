@@ -26,6 +26,7 @@ import pytest
 
 from routers.service_catalogue import router as sc_router, _rank_services, MOCK_SERVICES
 from routers.firm_hsn_library import MOCK_LIBRARY
+from routers.sales_invoices import MOCK_SALES_INVOICE_LINES
 from core.auth import get_current_user
 
 USER = {"id": "u-1", "firm_id": "firm-sc-1", "role": "Partner"}
@@ -45,9 +46,21 @@ def client():
 def clear_store():
     MOCK_SERVICES.clear()
     MOCK_LIBRARY.clear()
+    MOCK_SALES_INVOICE_LINES.clear()
     yield
     MOCK_SERVICES.clear()
     MOCK_LIBRARY.clear()
+    MOCK_SALES_INVOICE_LINES.clear()
+
+
+def _link_to_invoice_line(service_id: str, invoice_id: str = "inv-1"):
+    """Simulate a real sales-invoice line picked from this preset — the same
+    link create/update_invoice write via InvoiceLineIn.service_catalogue_id
+    (migration 184), without going through the full invoice-creation flow."""
+    MOCK_SALES_INVOICE_LINES.append({
+        "id": "line-1", "invoice_id": invoice_id, "service_catalogue_id": service_id,
+        "description": "linked line", "hsn_sac": "", "quantity": 1, "rate_paise": 100,
+    })
 
 
 def _seed_hsn(hsn_code: str, hsn_type: str = "services", firm_id: str = USER["firm_id"]):
@@ -197,9 +210,9 @@ def test_delete_unused_service_succeeds(client):
     assert _list(client, include_archived="true").json()["data"] == []
 
 
-def test_delete_blocked_once_used(client):
+def test_delete_blocked_when_linked_to_invoice_line(client):
     sid = _create(client, name="Picked Once").json()["data"]["id"]
-    client.post(f"/api/service-catalogue/{sid}/used")
+    _link_to_invoice_line(sid)
     resp = client.delete(f"/api/service-catalogue/{sid}")
     body = resp.json()
     assert body["success"] is False
@@ -208,12 +221,22 @@ def test_delete_blocked_once_used(client):
     assert len(_list(client, include_archived="true").json()["data"]) == 1
 
 
-def test_delete_blocked_even_when_archived_if_used(client):
+def test_delete_blocked_even_when_archived_if_linked(client):
     sid = _create(client, name="Archived But Used").json()["data"]["id"]
-    client.post(f"/api/service-catalogue/{sid}/used")
+    _link_to_invoice_line(sid)
     client.patch(f"/api/service-catalogue/{sid}", json={"is_active": False})
     resp = client.delete(f"/api/service-catalogue/{sid}")
     assert resp.json()["success"] is False
+
+
+def test_delete_allowed_when_only_picked_but_never_saved_to_an_invoice(client):
+    # use_count alone (the old heuristic) is no longer the signal — only a
+    # REAL invoice-line link blocks deletion now. A preset that was picked
+    # into a draft that was never actually saved must remain deletable.
+    sid = _create(client, name="Picked Into A Discarded Draft").json()["data"]["id"]
+    client.post(f"/api/service-catalogue/{sid}/used")
+    resp = client.delete(f"/api/service-catalogue/{sid}")
+    assert resp.json()["success"] is True
 
 
 def test_delete_unknown_id_is_404(client):
