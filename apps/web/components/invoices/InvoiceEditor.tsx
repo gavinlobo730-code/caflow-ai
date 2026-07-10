@@ -626,7 +626,6 @@ export function InvoiceEditor({
                           clientId={clientId}
                           value={line.product}
                           onPick={(item) => onPickProduct(idx, item)}
-                          onError={setError}
                           size="sm"
                           ariaLabel={`Line ${idx + 1} product or service`}
                         />
