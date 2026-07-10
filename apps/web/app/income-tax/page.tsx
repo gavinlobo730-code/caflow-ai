@@ -31,8 +31,9 @@ import { getClients } from "@/lib/data/clients";
 import { formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
 import { DataTable } from "@/components/ui/data-table";
-import type { Column, FilterDef } from "@/lib/table/types";
+import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { useToast } from "@/components/ui/use-toast";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -91,6 +92,14 @@ function isAuditCase(entityType: string): boolean {
   return AUDIT_ENTITY_TYPES.has(entityType?.toLowerCase() ?? "");
 }
 
+/** Derive assessment year (e.g. "2025-26") from a period's start date. */
+function getAYFromDates(periodStart: string): string {
+  const year = parseInt(periodStart.slice(0, 4));
+  const month = parseInt(periodStart.slice(5, 7));
+  const fyStart = month >= 4 ? year : year - 1;
+  return `${fyStart}-${String(fyStart + 1).slice(-2)}`;
+}
+
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
   overdue: "bg-red-100 text-red-700",
@@ -136,6 +145,229 @@ async function getFirmId(): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
+// Bulk Mark as Filed modal — batch reference-entry
+// CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+//
+// The single-row "Mark Filed" flow (see handleMarkFiled/filedModal below)
+// requires one real ARN per filing, so bulk marking can't be a one-click
+// action — this modal collects a per-row ARN plus one shared filing date,
+// then writes each row individually so a failure on one row never blocks
+// the others.
+// ---------------------------------------------------------------------------
+
+function BulkMarkFiledModal({
+  selected,
+  onClose,
+  onFiled,
+}: {
+  /** Rows the user checked in the table — may include already-filed rows. */
+  selected: ITREntry[];
+  onClose: () => void;
+  /** Re-loads the underlying table data after a write. */
+  onFiled: () => Promise<void> | void;
+}) {
+  const { toast } = useToast();
+
+  // Already-filed rows never appear in this modal.
+  const pending = useMemo(
+    () => selected.filter((e) => e.filing_status !== "filed"),
+    [selected],
+  );
+
+  const [filedDate, setFiledDate] = useState(todayLocalISO());
+  const [arns, setArns] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
+  // Rows already written successfully on a prior (partially-failed) submit —
+  // excluded from the next retry so we never re-check/re-block on them.
+  const [succeededIds, setSucceededIds] = useState<Set<string>>(new Set());
+
+  if (pending.length === 0) return null;
+
+  const remaining = pending.filter((e) => !succeededIds.has(e.id));
+  const allArnsFilled =
+    remaining.length > 0 && remaining.every((e) => (arns[e.id] ?? "").trim().length > 0);
+  const submitDisabled = loading || !filedDate || !allArnsFilled;
+
+  async function handleSubmit() {
+    if (submitDisabled || remaining.length === 0) return;
+    setLoading(true);
+    setError(null);
+    setRowErrors({});
+
+    const sb = getSupabaseClient();
+    const results = await Promise.all(
+      remaining.map(async (entry) => {
+        try {
+          const { error: updateErr } = await sb
+            .from("compliance_calendar")
+            .update({
+              filing_status: "filed",
+              filed_date: filedDate,
+              arn_number: arns[entry.id].trim(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", entry.id);
+          if (updateErr) throw new Error(updateErr.message);
+          return { id: entry.id, ok: true as const };
+        } catch (err) {
+          return {
+            id: entry.id,
+            ok: false as const,
+            message: err instanceof Error ? err.message : "Failed to update status",
+          };
+        }
+      }),
+    );
+
+    setLoading(false);
+
+    const failed = results.filter((r) => !r.ok);
+    const newlySucceeded = results.filter((r) => r.ok).map((r) => r.id);
+
+    if (failed.length > 0) {
+      // Keep the modal open — list which rows failed so the CA can fix and retry.
+      setSucceededIds((prev) => new Set([...Array.from(prev), ...newlySucceeded]));
+      setRowErrors(Object.fromEntries(failed.map((f) => [f.id, f.message])));
+      setError(
+        `${failed.length} of ${remaining.length} filing${remaining.length === 1 ? "" : "s"} ` +
+          `could not be updated. Fix the row(s) below and submit again.`,
+      );
+      await onFiled();
+      return;
+    }
+
+    await onFiled();
+    toast({
+      title: `Marked ${pending.length} ITR filing${pending.length === 1 ? "" : "s"} as filed`,
+    });
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-[#F1F5F9]">
+          <h3 className="text-base font-semibold text-[#0F172A]">
+            Mark {pending.length} ITR Filing{pending.length === 1 ? "" : "s"} as Filed
+          </h3>
+          <button
+            onClick={onClose}
+            className="text-[#94A3B8] hover:text-[#475569] transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {/* Warning banner — CA Review */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
+              CA Confirmation Required
+            </p>
+            <p className="text-xs text-amber-700 mt-1">
+              This records already-filed returns. PracticeSync does NOT
+              auto-submit to the Income Tax Portal. Verify every
+              acknowledgement number before saving.
+            </p>
+          </div>
+
+          {/* Shared Filed Date — applied to every row below on submit */}
+          <div>
+            <label className="block text-xs font-medium text-[#334155] mb-1.5">
+              Date of Filing <span className="text-red-500">*</span>
+              <span className="ml-1 text-[#94A3B8] font-normal">
+                (applied to all rows below)
+              </span>
+            </label>
+            <input
+              type="date"
+              value={filedDate}
+              onChange={(e) => setFiledDate(e.target.value)}
+              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Per-row Acknowledgement Number (ARN) entry */}
+          <div>
+            <label className="block text-xs font-medium text-[#334155] mb-1.5">
+              Acknowledgement Number (ARN) — one per filing{" "}
+              <span className="text-red-500">*</span>
+            </label>
+            <div className="max-h-[45vh] overflow-y-auto rounded-lg border border-[#F1F5F9]">
+              {pending.map((entry) => {
+                const isDone = succeededIds.has(entry.id);
+                const rowError = rowErrors[entry.id];
+                return (
+                  <div
+                    key={entry.id}
+                    className="flex items-center gap-3 px-4 py-3 border-b border-[#F1F5F9] last:border-0 bg-white"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-[#0F172A] truncate">
+                        {entry.clients?.client_name ?? "Client"}
+                      </p>
+                      <p className="text-xs text-[#94A3B8] mt-0.5 font-mono">
+                        {entry.compliance_type} · AY {getAYFromDates(entry.period_start)}
+                      </p>
+                    </div>
+                    {isDone ? (
+                      <span className="flex items-center gap-1 text-xs font-medium text-green-700 shrink-0">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Filed
+                      </span>
+                    ) : (
+                      <div className="w-44 shrink-0">
+                        <input
+                          type="text"
+                          placeholder="e.g. 123456789012345"
+                          value={arns[entry.id] ?? ""}
+                          onChange={(e) =>
+                            setArns((p) => ({ ...p, [entry.id]: e.target.value }))
+                          }
+                          className={`w-full border rounded-lg px-2.5 py-1.5 text-xs font-mono text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                            rowError ? "border-red-400" : "border-[#E2E8F0]"
+                          }`}
+                        />
+                        {rowError && (
+                          <p className="text-[10px] text-red-600 mt-1">{rowError}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {error && (
+            <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+              {error}
+            </p>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-[#F1F5F9] flex gap-3 justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-[#F8FAFC] transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitDisabled}
+            className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+          >
+            {loading ? "Saving…" : `Confirm Filing (${remaining.length})`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -165,6 +397,10 @@ export default function IncomeTaxPage() {
   const [filedForm, setFiledForm] = useState({ arn: "", filed_date: "" });
   const [filedLoading, setFiledLoading] = useState(false);
   const [filedError, setFiledError] = useState<string | null>(null);
+
+  // Bulk Mark as Filed modal (batch reference-entry — see BulkMarkFiledModal above)
+  const [bulkFiledSelection, setBulkFiledSelection] = useState<ITREntry[] | null>(null);
+  const { toast } = useToast();
 
   // ITR guide
   const [showGuide, setShowGuide] = useState(false);
@@ -324,15 +560,25 @@ export default function IncomeTaxPage() {
   }
 
   // ---------------------------------------------------------------------------
-  // Render helpers
+  // Bulk Mark as Filed — opens the batch reference-entry modal
+  // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
   // ---------------------------------------------------------------------------
 
-  function getAYFromDates(periodStart: string): string {
-    const year = parseInt(periodStart.slice(0, 4));
-    const month = parseInt(periodStart.slice(5, 7));
-    const fyStart = month >= 4 ? year : year - 1;
-    return `${fyStart}-${String(fyStart + 1).slice(-2)}`;
+  function openBulkFiledModal(selected: ITREntry[]) {
+    const pendingCount = selected.filter((e) => e.filing_status !== "filed").length;
+    if (pendingCount === 0) {
+      toast({
+        title: "Nothing to file",
+        description: "All selected ITR filings are already marked as filed.",
+      });
+      return;
+    }
+    setBulkFiledSelection(selected);
   }
+
+  // ---------------------------------------------------------------------------
+  // Render helpers
+  // ---------------------------------------------------------------------------
 
   // Effective status: an unfiled entry past its due date reads as "overdue".
   const effectiveStatusOf = useCallback(
@@ -445,6 +691,20 @@ export default function IncomeTaxPage() {
     );
     return defs;
   }, [entries, effectiveStatusOf]);
+
+  // Bulk actions — "Mark Filed" just opens the batch reference-entry modal;
+  // the modal (not this action) performs the actual Supabase writes.
+  const itrBulkActions: BulkAction<ITREntry>[] = [
+    {
+      id: "mark-filed",
+      label: "Mark Filed",
+      icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+      run: (selected) => {
+        openBulkFiledModal(selected);
+        return false;
+      },
+    },
+  ];
 
   // ---------------------------------------------------------------------------
   // Render
@@ -568,6 +828,7 @@ export default function IncomeTaxPage() {
                 onRefresh={loadData}
                 searchPlaceholder="Search by client name or PAN…"
                 initialSort={{ key: "due_date", dir: "asc" }}
+                bulkActions={itrBulkActions}
                 exportFilename="itr-status"
                 persistKey="income-tax.itr"
                 emptyTitle="No ITR deadlines added yet"
@@ -1025,6 +1286,18 @@ export default function IncomeTaxPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ================================================================== */}
+      {/* MODAL: Bulk Mark as Filed (batch reference-entry)                  */}
+      {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT                            */}
+      {/* ================================================================== */}
+      {bulkFiledSelection && (
+        <BulkMarkFiledModal
+          selected={bulkFiledSelection}
+          onClose={() => setBulkFiledSelection(null)}
+          onFiled={loadData}
+        />
       )}
     </div>
   );
