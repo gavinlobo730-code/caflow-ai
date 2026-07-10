@@ -483,17 +483,23 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                   Retry
                 </button>
               </div>
-            ) : results.length === 0 && !showCreate ? (
+            ) : results.length === 0 && (busy || !showCreate) ? (
               <div className="px-3 py-3 text-center text-[11px] text-[#94A3B8]">
                 <p>{busy ? "Loading…" : emptyText}</p>
                 {/* Offered before typing when emptyCreateLabel is set (an
                     entirely empty list, e.g. a new client's catalogue), or
                     once a query exists even below minChars — either way,
                     onCreate must never be reachable ONLY via a 2+ character
-                    search with no visible entry point. Suppressed while the
-                    recent-fetch is still in flight so it doesn't flash a
-                    "create new" affordance for an item that already exists
-                    and simply hasn't loaded yet. */}
+                    search with no visible entry point. Suppressed while a
+                    search is still in flight (recent-fetch OR a typed query's
+                    debounced search) so it never flashes a "create new"
+                    affordance for an item that already exists and simply
+                    hasn't loaded yet — `showCreate` itself goes true the
+                    instant 2+ characters are typed (it only checks the
+                    STALE/empty `asyncResults` from before this keystroke),
+                    so without this gate the create row renders every time,
+                    on every search, for the entire round-trip, regardless of
+                    whether the real match is about to arrive. */}
                 {!busy && onCreate && (emptyCreateLabel != null || query.trim().length > 0) && (
                   <button
                     type="button"
