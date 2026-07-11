@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Building2, ShieldCheck, ClipboardList, Calendar, Shield } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, isExactPath } from "@/lib/utils";
 
 const SETTINGS_NAV = [
   { href: "/settings", label: "Firm Profile", icon: Building2, exact: true },
@@ -25,7 +25,7 @@ export function SettingsPanel() {
       </div>
       <nav className="px-2 py-2 flex flex-col gap-0.5">
         {SETTINGS_NAV.map(({ href, label, icon: Icon, exact }) => {
-          const isActive = exact ? pathname === href : pathname.startsWith(href);
+          const isActive = exact ? isExactPath(pathname, href) : pathname.startsWith(href);
           return (
             <Link
               key={href}

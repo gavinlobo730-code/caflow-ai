@@ -10,7 +10,7 @@ import {
   PieChart,
   AlertTriangle,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, isExactPath } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { label: "Entity Registry",        href: "/relationships",                     icon: BookUser },
@@ -41,7 +41,7 @@ export function RelationshipsPanel() {
         {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
           const isActive =
             href === "/relationships"
-              ? pathname === "/relationships"
+              ? isExactPath(pathname, "/relationships")
               : pathname === href || pathname.startsWith(href + "/");
           return (
             <Link

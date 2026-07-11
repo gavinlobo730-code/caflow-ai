@@ -10,7 +10,7 @@ import {
   Bell,
   SlidersHorizontal,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, isExactPath } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { label: "Health Dashboard",   href: "/health",                  icon: LayoutDashboard },
@@ -41,7 +41,7 @@ export function HealthPanel() {
         {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
           const isActive =
             href === "/health"
-              ? pathname === "/health"
+              ? isExactPath(pathname, "/health")
               : pathname === href || pathname.startsWith(href + "/");
           return (
             <Link

@@ -13,7 +13,7 @@ import {
   Info,
   QrCode,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, isExactPath } from "@/lib/utils";
 
 const DEADLINE_ITEMS = [
   { href: "/deadlines", label: "All Deadlines", icon: Calendar, typeParam: null },
@@ -71,8 +71,8 @@ function DeadlinesPanelInner() {
           {DEADLINE_ITEMS.map(({ href, label, icon: Icon, typeParam }) => {
             const active =
               typeParam === null
-                ? pathname === "/deadlines" && !activeType  // "All Deadlines"
-                : activeType === typeParam;                  // type-specific items
+                ? isExactPath(pathname, "/deadlines") && !activeType  // "All Deadlines"
+                : activeType === typeParam;                            // type-specific items
             return (
               <Link
                 key={href}
