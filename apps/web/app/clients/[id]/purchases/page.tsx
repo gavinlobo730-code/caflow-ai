@@ -19,6 +19,7 @@ import { Combobox } from "@/components/ui/combobox";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS, type NameRef } from "@/lib/imports/mappers";
 import { dnLineGst } from "@/lib/purchases/debitNoteGst";
+import { UQC_CODES } from "@/lib/constants/uqc";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -223,6 +224,9 @@ interface BillLine {
   description: string;
   hsn_sac: string;
   quantity: number;
+  // Unit of measure (UQC), e.g. "NOS", "KGS" — migration 190. Blank = server
+  // default "NOS".
+  unit: string;
   rate: number; // rupees, or txn-currency major units when foreign
   gst_rate_bps: number;
   expense_account_id: string;
@@ -284,15 +288,18 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   // Form state
   const [vendorId, setVendorId] = useState("");
   const [billNo, setBillNo] = useState("");
+  const [ourReference, setOurReference] = useState("");
   const [billDate, setBillDate] = useState(toDate());
   const [dueDate, setDueDate] = useState("");
   const [lines, setLines] = useState<BillLine[]>([
-    { description: "", hsn_sac: "", quantity: 1, rate: 0, gst_rate_bps: 1800, expense_account_id: "", service_catalogue_id: "" },
+    { description: "", hsn_sac: "", quantity: 1, unit: "", rate: 0, gst_rate_bps: 1800, expense_account_id: "", service_catalogue_id: "" },
   ]);
 
   // Multi-Currency (Phase 3 backend already ships this; UI wired up here).
-  // Purchase bills have no edit/PATCH flow — this form is create-only, so
-  // there's no "locked after posting" state to show; currency just resets
+  // This create form always makes a draft (currency is picked/frozen at
+  // creation); a received bill's our_reference/notes/due_date/line units can
+  // still be corrected afterward via PATCH (routers/purchase_bills.py) —
+  // just not surfaced in this form, which is create-only. Currency resets
   // manually after each save (see handleSave), since this form never unmounts.
   const [currency, setCurrency] = useState("");
   const [exchangeRate, setExchangeRate] = useState("");
@@ -409,7 +416,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   function setLine(idx: number, patch: Partial<BillLine>) {
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
   }
-  // A Product/Service picked on this row pre-fills description/HSN/rate,
+  // A Product/Service picked on this row pre-fills description/HSN/rate/unit,
   // same as the sales-invoice line editor, and links the line for inventory
   // stock-in tracking (kept even for a service pick — apply_purchase_to_inventory
   // only acts on kind='good' items server-side, so a service link is inert).
@@ -419,6 +426,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
       description: line.description, hsn_sac: line.hsn_sac,
       gst_rate_bps: Math.round((line.gst_rate ?? 0) * 100),
       rate: line.rate ? parseFloat(line.rate) : 0,
+      unit: line.unit || "",
       product: item, service_catalogue_id: item.id,
     });
   }
@@ -451,6 +459,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
               description: String(li.description ?? ""),
               hsn_sac: String(li.hsn_sac ?? ""),
               quantity: Number(li.quantity ?? 1),
+              unit: "",
               rate: Math.floor(Number(li.rate_paise ?? 0)) / 100,
               gst_rate_bps: Number(li.gst_rate_bps ?? 1800),
               expense_account_id: "",
@@ -491,10 +500,12 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
           bill_date: billDate,
           due_date: dueDate || undefined,
           bill_no: billNo || undefined,
+          our_reference: ourReference || undefined,
           lines: lines.map((l) => ({
             description: l.description,
             hsn_sac: l.hsn_sac || undefined,
             quantity: l.quantity,
+            unit: l.unit || undefined,
             rate_paise: Math.round(l.rate * 100),
             // PurchaseBillLineIn (apps/api/models/invoices.py) declares
             // gst_rate_percent, not gst_rate_bps — the latter is silently
@@ -513,8 +524,8 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
 
       setMsg({ type: "ok", text: "Purchase bill saved as draft." });
       setShowForm(false);
-      setLines([{ description: "", hsn_sac: "", quantity: 1, rate: 0, gst_rate_bps: 1800, expense_account_id: "", service_catalogue_id: "" }]);
-      setBillNo(""); setVendorId(""); setBillDate(toDate()); setDueDate(""); setAiExtracted(null);
+      setLines([{ description: "", hsn_sac: "", quantity: 1, unit: "", rate: 0, gst_rate_bps: 1800, expense_account_id: "", service_catalogue_id: "" }]);
+      setBillNo(""); setOurReference(""); setVendorId(""); setBillDate(toDate()); setDueDate(""); setAiExtracted(null);
       setCurrency(""); setExchangeRate("");
       load();
     } catch (e) {
@@ -763,6 +774,10 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
               <input value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="INV-001" className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Our Reference</label>
+              <input value={ourReference} onChange={(e) => setOurReference(e.target.value)} placeholder="Internal tracking no." className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Bill Date *</label>
               <input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
@@ -773,8 +788,8 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
           </div>
 
           {/* Multi-Currency (Phase 3 backend, UI added here) — mirrors the
-              Sales Invoice selector. Purchase bills have no edit flow, so
-              there's no locked/read-only variant to show. */}
+              Sales Invoice selector. This create form has no locked/read-only
+              variant to show (currency is frozen at creation either way). */}
           {mcActive && (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
@@ -837,6 +852,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
                   <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
                   <th className="pb-2 text-left font-semibold w-28">Expense Account</th>
                   <th className="pb-2 text-right font-semibold w-16">Qty</th>
+                  <th className="pb-2 text-left font-semibold w-20">Unit</th>
                   <th className="pb-2 text-right font-semibold w-28">Rate ({isForeign ? currency : "₹"})</th>
                   <th className="pb-2 text-right font-semibold w-20">GST %</th>
                   <th className="pb-2 text-right font-semibold w-28">Amount{isForeign ? ` (${currency})` : ""}</th>
@@ -889,6 +905,11 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
                         <input type="number" min="0.001" step="0.001" value={line.quantity} onChange={(e) => setLine(idx, { quantity: parseFloat(e.target.value) || 1 })} className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs text-right" />
                       </td>
                       <td className="py-1.5 px-1">
+                        <select value={line.unit || "NOS"} onChange={(e) => setLine(idx, { unit: e.target.value })} className="w-full px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs">
+                          {UQC_CODES.map((u) => <option key={u.code} value={u.code}>{u.code}</option>)}
+                        </select>
+                      </td>
+                      <td className="py-1.5 px-1">
                         <input type="number" min="0" step="0.01" value={line.rate || ""} onChange={(e) => setLine(idx, { rate: parseFloat(e.target.value) || 0 })} placeholder="0.00" className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs text-right" />
                       </td>
                       <td className="py-1.5 px-1">
@@ -939,7 +960,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
               </tfoot>
             </table>
           </div>
-          <button onClick={() => setLines((prev) => [...prev, { description: "", hsn_sac: "", quantity: 1, rate: 0, gst_rate_bps: 1800, expense_account_id: "", service_catalogue_id: "" }])} className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Plus size={12} /> Add line</button>
+          <button onClick={() => setLines((prev) => [...prev, { description: "", hsn_sac: "", quantity: 1, unit: "", rate: 0, gst_rate_bps: 1800, expense_account_id: "", service_catalogue_id: "" }])} className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Plus size={12} /> Add line</button>
 
           <div className="flex gap-3 justify-end pt-1">
             <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
