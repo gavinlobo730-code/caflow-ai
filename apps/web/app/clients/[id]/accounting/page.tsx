@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Plus, RefreshCw, Upload, CheckCircle, X, Printer, FileText, Download, Share2 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -149,6 +149,27 @@ function fyDateRange(fy: string): { start: string; end: string } {
   const [startYear] = fy.split("-");
   const y = parseInt(startYear, 10);
   return { start: `${y}-04-01`, end: `${y + 1}-03-31` };
+}
+
+// "2026-27" shifted by -1 → "2025-26". Used for the Schedule III comparative
+// (prior year) column — Companies Act 2013, Schedule III requires the
+// previous year's figures alongside the current year on the P&L/BS face.
+function shiftFY(fy: string, delta: number): string {
+  const [startYear] = fy.split("-");
+  const start = parseInt(startYear, 10) + delta;
+  return `${start}-${String(start + 1).slice(-2)}`;
+}
+
+// Renders a signed % change cell for the "compare to prior year" columns.
+// `prev` undefined/0 with a nonzero `curr` reads as "New" rather than a
+// misleading infinite/undefined percentage.
+function ChangeCell({ curr, prev }: { curr: number; prev: number | undefined }) {
+  if (prev === undefined) return <span className="text-[#CBD5E1]">…</span>;
+  if (prev === 0) return curr === 0 ? <span className="text-[#CBD5E1]">—</span> : <span className="text-blue-600 font-medium">New</span>;
+  const pct = ((curr - prev) / Math.abs(prev)) * 100;
+  if (curr === prev) return <span className="text-[#94A3B8]">—</span>;
+  const up = pct > 0;
+  return <span className={up ? "text-green-700" : "text-red-700"}>{up ? "+" : ""}{pct.toFixed(1)}%</span>;
 }
 
 // Report lines can carry a synthetic id (e.g. "__retained__" for a computed
@@ -1397,6 +1418,16 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
+  // "Compare to prior year" — Schedule III requires the previous year's
+  // figures alongside the current year on the P&L face. Fetched lazily, only
+  // once the toggle is switched on.
+  const [comparePY, setComparePY] = useState(false);
+  const prevFY = shiftFY(financialYear, -1);
+  const [prevBalances, setPrevBalances] = useState<AccountBalance[]>([]);
+  const [prevCashPL, setPrevCashPL] = useState<CashPLData | null>(null);
+  const [prevPlTotals, setPrevPlTotals] = useState<{ revenue: number; expenses: number; net: number } | null>(null);
+  const [prevLoading, setPrevLoading] = useState(false);
+
   const updateBasis = (b: "accrual" | "cash") => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("basis", b);
@@ -1452,6 +1483,55 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
 
   useEffect(() => { load(); }, [load]);
 
+  const loadPrev = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
+    setPrevLoading(true);
+    const { start, end } = fyDateRange(prevFY);
+    try {
+      const res = (await cachedReport(
+        reportKey([clientId, prevFY, basis, "pl"]),
+        () => api.accounting.profitLoss({ basis, start_date: start, end_date: end, client_id: clientId }),
+      )) as { success: boolean; data: PLApiData | null };
+      if (basis === "cash") {
+        setPrevCashPL(res.success && res.data ? (res.data as unknown as CashPLData) : null);
+        setPrevPlTotals(null);
+      } else if (res.success && res.data) {
+        const d = res.data;
+        const toBal = (l: PLApiLine, type: string): AccountBalance => ({
+          account_id: l.account_id, account_code: l.account_code ?? "",
+          account_name: l.account_name, account_type: type,
+          account_subtype: l.account_subtype ?? null, net_paise: l.amount_paise,
+        });
+        setPrevBalances([
+          ...(d.revenue?.lines ?? []).map((l) => toBal(l, "Revenue")),
+          ...(d.operating_expenses?.lines ?? []).map((l) => toBal(l, "Expense")),
+        ]);
+        setPrevPlTotals({ revenue: d.revenue?.total_paise ?? 0, expenses: d.operating_expenses?.total_paise ?? 0, net: d.net_profit_paise ?? 0 });
+      } else {
+        setPrevBalances([]);
+        setPrevPlTotals({ revenue: 0, expenses: 0, net: 0 });
+      }
+    } catch {
+      setPrevCashPL(null);
+      setPrevBalances([]);
+      setPrevPlTotals({ revenue: 0, expenses: 0, net: 0 });
+    } finally {
+      setPrevLoading(false);
+    }
+  }, [clientId, prevFY, basis]);
+
+  useEffect(() => { if (comparePY) loadPrev(); }, [comparePY, loadPrev]);
+
+  const prevByAccount = useMemo(() => new Map(prevBalances.map((b) => [b.account_id, b.net_paise])), [prevBalances]);
+  const prevCashByAccount = useMemo(() => {
+    const m = new Map<string, number>();
+    if (prevCashPL) {
+      prevCashPL.revenue.lines.forEach((l) => { if (l.account_id) m.set(l.account_id, l.amount_paise); });
+      prevCashPL.operating_expenses.lines.forEach((l) => { if (l.account_id) m.set(l.account_id, l.amount_paise); });
+    }
+    return m;
+  }, [prevCashPL]);
+
   const revenue = balances.filter((b) => b.account_type === "Revenue");
   const expenses = balances.filter((b) => b.account_type === "Expense");
   // Grand totals are the backend's authoritative figures; bucket subtotals below
@@ -1478,6 +1558,12 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">Statement of Profit & Loss — FY {financialYear}</p>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setComparePY((v) => !v)}
+            className={`px-3 py-1.5 text-xs font-medium rounded border transition-colors ${comparePY ? "bg-[#1E293B] text-white border-[#1E293B]" : "bg-white text-[#64748B] border-[#E2E8F0] hover:bg-[#F8FAFC]"}`}
+          >
+            Compare vs FY {prevFY}
+          </button>
           <BasisToggle />
           <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button onClick={() => window.print()} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]" title="Print"><Printer size={13} /></button>
@@ -1491,6 +1577,25 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
         </div>
       )}
 
+      {comparePY && (
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Revenue", curr: totalRevenue, prev: prevPlTotals?.revenue },
+            { label: "Expenses", curr: totalExpenses, prev: prevPlTotals?.expenses },
+            { label: netPL >= 0 ? "Net Profit" : "Net Loss", curr: Math.abs(netPL), prev: prevPlTotals ? Math.abs(prevPlTotals.net) : undefined },
+          ].map((s) => (
+            <div key={s.label} className="rounded-lg border border-[#F1F5F9] bg-white p-3">
+              <p className="text-[10px] text-[#94A3B8] font-medium">{s.label}</p>
+              <p className="text-sm font-bold text-[#0F172A] mt-0.5">{fmt(s.curr)}</p>
+              <div className="flex items-center justify-between mt-1 text-[10px] text-[#94A3B8]">
+                <span>FY {prevFY}: {s.prev !== undefined ? fmt(s.prev) : (prevLoading ? "…" : "—")}</span>
+                <ChangeCell curr={s.curr} prev={s.prev} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {loading && <div className="h-48 rounded-lg bg-[#F8FAFC] animate-pulse" />}
 
       {/* Cash basis P&L — simplified flat view (no Schedule III bucketing) */}
@@ -1501,33 +1606,44 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
             <p className="text-[10px] text-[#94A3B8] mt-0.5">For the year ended 31 March {parseInt(financialYear.split("-")[0]) + 1} · Management Report Only</p>
           </div>
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
+            <thead>
+              <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]">
+                <th className="px-5 py-2 text-left font-semibold">Particulars</th>
+                <th className="px-4 py-2 text-right font-semibold">Amount (₹)</th>
+                {comparePY && <><th className="px-4 py-2 text-right font-semibold">FY {prevFY} (₹)</th><th className="px-4 py-2 text-right font-semibold">Change</th></>}
+              </tr>
+            </thead>
             <tbody>
-              <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">I. Revenue (Collected)</td></tr>
+              <tr><td colSpan={comparePY ? 4 : 2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">I. Revenue (Collected)</td></tr>
               {cashPL.revenue.lines.map((l, i) => (
                 <tr key={i} className={isDrillableAccount(l.account_id) ? "hover:bg-[#F8FAFC] cursor-pointer" : "hover:bg-[#F8FAFC]"} onClick={isDrillableAccount(l.account_id) ? () => onDrillDown(l.account_id as string) : undefined}>
                   <td className={`px-5 py-1.5 pl-10 text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{l.account_name}</td>
                   <td className={`px-4 py-1.5 text-right font-mono text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(l.amount_paise)}</td>
+                  {comparePY && <><td className="px-4 py-1.5 text-right font-mono text-[#94A3B8]">{l.account_id && prevCashByAccount.has(l.account_id) ? fmt(prevCashByAccount.get(l.account_id) as number) : "—"}</td><td className="px-4 py-1.5 text-right"><ChangeCell curr={l.amount_paise} prev={l.account_id ? prevCashByAccount.get(l.account_id) : undefined} /></td></>}
                 </tr>
               ))}
               <tr className="border-t border-[#E2E8F0] font-semibold">
                 <td className="px-5 py-2.5 text-[#1E293B]">Total Revenue (I)</td>
                 <td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(cashPL.revenue.total_paise)}</td>
+                {comparePY && <><td colSpan={2}></td></>}
               </tr>
-              <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">II. Expenses (Paid)</td></tr>
+              <tr><td colSpan={comparePY ? 4 : 2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">II. Expenses (Paid)</td></tr>
               {cashPL.operating_expenses.lines.map((l, i) => (
                 <tr key={i} className={isDrillableAccount(l.account_id) ? "hover:bg-[#F8FAFC] cursor-pointer" : "hover:bg-[#F8FAFC]"} onClick={isDrillableAccount(l.account_id) ? () => onDrillDown(l.account_id as string) : undefined}>
                   <td className={`px-5 py-1.5 pl-10 text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{l.account_name}</td>
                   <td className={`px-4 py-1.5 text-right font-mono text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(l.amount_paise)}</td>
+                  {comparePY && <><td className="px-4 py-1.5 text-right font-mono text-[#94A3B8]">{l.account_id && prevCashByAccount.has(l.account_id) ? fmt(prevCashByAccount.get(l.account_id) as number) : "—"}</td><td className="px-4 py-1.5 text-right"><ChangeCell curr={l.amount_paise} prev={l.account_id ? prevCashByAccount.get(l.account_id) : undefined} /></td></>}
                 </tr>
               ))}
               <tr className="border-t border-[#E2E8F0] font-semibold">
                 <td className="px-5 py-2.5 text-[#1E293B]">Total Expenses (II)</td>
                 <td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(cashPL.operating_expenses.total_paise)}</td>
+                {comparePY && <><td colSpan={2}></td></>}
               </tr>
               <tr className={`border-t-2 border-gray-300 font-bold text-sm ${cashPL.net_profit_paise >= 0 ? "bg-green-50" : "bg-red-50"}`}>
                 <td className="px-5 py-3 text-[#0F172A]">{cashPL.net_profit_paise >= 0 ? "III. Profit (I − II)" : "III. Loss (II − I)"}</td>
                 <td className={`px-4 py-3 text-right font-mono ${cashPL.net_profit_paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmt(Math.abs(cashPL.net_profit_paise))}</td>
+                {comparePY && <><td colSpan={2}></td></>}
               </tr>
             </tbody>
           </table>
@@ -1542,33 +1658,42 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
             <p className="text-[10px] text-[#94A3B8] mt-0.5">For the year ended 31 March {parseInt(financialYear.split("-")[0]) + 1}</p>
           </div>
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
+            <thead>
+              <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]">
+                <th className="px-5 py-2 text-left font-semibold">Particulars</th>
+                <th className="px-4 py-2 text-right font-semibold">Amount (₹)</th>
+                {comparePY && <><th className="px-4 py-2 text-right font-semibold">FY {prevFY} (₹)</th><th className="px-4 py-2 text-right font-semibold">Change</th></>}
+              </tr>
+            </thead>
             <tbody>
-              <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">I. Revenue</td></tr>
+              <tr><td colSpan={comparePY ? 4 : 2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">I. Revenue</td></tr>
               {PL_REV_ORDER.map((bucket) => {
                 const items = revBuckets[bucket] ?? [];
                 if (items.length === 0) return null;
                 const total = items.reduce((s, b) => s + b.net_paise, 0);
-                return <PLSection key={bucket} label={bucket} items={items} total={total} onDrillDown={onDrillDown} />;
+                return <PLSection key={bucket} label={bucket} items={items} total={total} onDrillDown={onDrillDown} comparePY={comparePY} prevByAccount={prevByAccount} />;
               })}
               <tr className="border-t border-[#E2E8F0] font-semibold">
                 <td className="px-5 py-2.5 text-[#1E293B]">Total Revenue (I)</td>
                 <td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(totalRevenue)}</td>
+                {comparePY && <><td colSpan={2}></td></>}
               </tr>
-              <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">II. Expenses</td></tr>
+              <tr><td colSpan={comparePY ? 4 : 2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">II. Expenses</td></tr>
               {PL_EXP_ORDER.map((bucket) => {
                 const items = expBuckets[bucket] ?? [];
                 if (items.length === 0) return null;
                 const total = items.reduce((s, b) => s + b.net_paise, 0);
-                return <PLSection key={bucket} label={bucket} items={items} total={total} onDrillDown={onDrillDown} />;
+                return <PLSection key={bucket} label={bucket} items={items} total={total} onDrillDown={onDrillDown} comparePY={comparePY} prevByAccount={prevByAccount} />;
               })}
               <tr className="border-t border-[#E2E8F0] font-semibold">
                 <td className="px-5 py-2.5 text-[#1E293B]">Total Expenses (II)</td>
                 <td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(totalExpenses)}</td>
+                {comparePY && <><td colSpan={2}></td></>}
               </tr>
               <tr className={`border-t-2 border-gray-300 font-bold text-sm ${netPL >= 0 ? "bg-green-50" : "bg-red-50"}`}>
                 <td className="px-5 py-3 text-[#0F172A]">{netPL >= 0 ? "III. Profit for the Year (I − II)" : "III. Loss for the Year (II − I)"}</td>
                 <td className={`px-4 py-3 text-right font-mono ${netPL >= 0 ? "text-green-700" : "text-red-700"}`}>{fmt(Math.abs(netPL))}</td>
+                {comparePY && <><td colSpan={2}></td></>}
               </tr>
             </tbody>
           </table>
@@ -1579,18 +1704,28 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
   );
 }
 
-function PLSection({ label, items, total, onDrillDown }: { label: string; items: AccountBalance[]; total: number; onDrillDown: (accountId: string) => void }) {
+function PLSection({
+  label, items, total, onDrillDown, comparePY, prevByAccount,
+}: {
+  label: string; items: AccountBalance[]; total: number; onDrillDown: (accountId: string) => void;
+  comparePY: boolean; prevByAccount: Map<string, number>;
+}) {
   const [open, setOpen] = useState(true);
   return (
     <>
       <tr className="cursor-pointer hover:bg-[#F8FAFC]" onClick={() => setOpen((o) => !o)}>
         <td className="px-5 py-2 text-[#334155] font-medium pl-8">{label}</td>
         <td className="px-4 py-2 text-right font-mono text-[#334155]">{fmt(total)}</td>
+        {comparePY && <><td colSpan={2}></td></>}
       </tr>
       {open && items.map((item) => (
         <tr key={item.account_id} className="text-[#94A3B8] hover:bg-[#F8FAFC] cursor-pointer" onClick={() => onDrillDown(item.account_id)}>
           <td className="px-5 py-1.5 pl-14 hover:text-blue-700 hover:underline">{item.account_name}</td>
           <td className="px-4 py-1.5 text-right font-mono hover:text-blue-700 hover:underline">{fmt(item.net_paise)}</td>
+          {comparePY && <>
+            <td className="px-4 py-1.5 text-right font-mono">{prevByAccount.has(item.account_id) ? fmt(prevByAccount.get(item.account_id) as number) : "—"}</td>
+            <td className="px-4 py-1.5 text-right"><ChangeCell curr={item.net_paise} prev={prevByAccount.get(item.account_id)} /></td>
+          </>}
         </tr>
       ))}
     </>
@@ -1640,6 +1775,15 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
   const [bsTotals, setBsTotals] = useState({ assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true });
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+
+  // "Compare to prior year" — Schedule III requires the previous year's
+  // figures alongside the current year on the Balance Sheet face.
+  const [comparePY, setComparePY] = useState(false);
+  const prevFY = shiftFY(financialYear, -1);
+  const [prevBalances, setPrevBalances] = useState<AccountBalance[]>([]);
+  const [prevCashBS, setPrevCashBS] = useState<CashBSData | null>(null);
+  const [prevBsTotals, setPrevBsTotals] = useState<{ assets: number; liab: number; equity: number } | null>(null);
+  const [prevLoading, setPrevLoading] = useState(false);
 
   const updateBasis = (b: "accrual" | "cash") => {
     const params = new URLSearchParams(searchParams.toString());
@@ -1700,6 +1844,61 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
 
   useEffect(() => { load(); }, [load]);
 
+  const loadPrev = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
+    setPrevLoading(true);
+    const { end } = fyDateRange(prevFY);
+    try {
+      const res = (await cachedReport(
+        reportKey([clientId, prevFY, basis, "bs"]),
+        () => api.accounting.balanceSheet({ basis, as_of_date: end, client_id: clientId }),
+      )) as { success: boolean; data: BSApiData | null };
+      if (basis === "cash") {
+        setPrevCashBS(res.success && res.data ? (res.data as unknown as CashBSData) : null);
+        setPrevBsTotals(null);
+      } else if (res.success && res.data) {
+        const d = res.data;
+        const fromSection = (secs: BSApiSection[] | undefined, type: string): AccountBalance[] =>
+          (secs ?? []).flatMap((s) => (s.lines ?? []).map((l) => ({
+            account_id: l.account_id ?? l.account_name, account_code: l.account_code ?? "",
+            account_name: l.account_name, account_type: type,
+            account_subtype: l.account_subtype ?? null, net_paise: l.balance_paise,
+          })));
+        setPrevBalances([
+          ...fromSection(d.assets, "Asset"),
+          ...fromSection(d.liabilities, "Liability"),
+          ...fromSection(d.equity, "Equity"),
+        ]);
+        setPrevBsTotals({
+          assets: d.total_assets_paise ?? 0,
+          liab: d.liabilities?.[0]?.total_paise ?? 0,
+          equity: d.equity?.[0]?.total_paise ?? 0,
+        });
+      } else {
+        setPrevBalances([]);
+        setPrevBsTotals({ assets: 0, liab: 0, equity: 0 });
+      }
+    } catch {
+      setPrevCashBS(null);
+      setPrevBalances([]);
+      setPrevBsTotals({ assets: 0, liab: 0, equity: 0 });
+    } finally {
+      setPrevLoading(false);
+    }
+  }, [clientId, prevFY, basis]);
+
+  useEffect(() => { if (comparePY) loadPrev(); }, [comparePY, loadPrev]);
+
+  const prevByAccount = useMemo(() => new Map(prevBalances.map((b) => [b.account_id, b.net_paise])), [prevBalances]);
+  const prevCashByAccount = useMemo(() => {
+    const m = new Map<string, number>();
+    if (prevCashBS) {
+      [...prevCashBS.equity, ...prevCashBS.liabilities, ...prevCashBS.assets].forEach((sec) =>
+        sec.lines.forEach((l) => { if (l.account_id) m.set(l.account_id, l.balance_paise); }));
+    }
+    return m;
+  }, [prevCashBS]);
+
   // Line inclusion mirrors the backend section contents (non-zero balances) so
   // the displayed lines and the backend totals below always reconcile.
   const assets = balances.filter((b) => b.account_type === "Asset" && b.net_paise !== 0);
@@ -1733,6 +1932,12 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">Balance Sheet — as at 31 March {parseInt(financialYear.split("-")[0]) + 1}</p>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setComparePY((v) => !v)}
+            className={`px-3 py-1.5 text-xs font-medium rounded border transition-colors ${comparePY ? "bg-[#1E293B] text-white border-[#1E293B]" : "bg-white text-[#64748B] border-[#E2E8F0] hover:bg-[#F8FAFC]"}`}
+          >
+            Compare vs FY {prevFY}
+          </button>
           <BasisToggle />
           <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button onClick={() => window.print()} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]" title="Print"><Printer size={13} /></button>
@@ -1746,6 +1951,25 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
         </div>
       )}
 
+      {comparePY && (
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Total Assets", curr: totalAssets, prev: prevBsTotals?.assets },
+            { label: "Total Liabilities", curr: totalLiab, prev: prevBsTotals?.liab },
+            { label: "Total Equity", curr: totalEquity, prev: prevBsTotals?.equity },
+          ].map((s) => (
+            <div key={s.label} className="rounded-lg border border-[#F1F5F9] bg-white p-3">
+              <p className="text-[10px] text-[#94A3B8] font-medium">{s.label}</p>
+              <p className="text-sm font-bold text-[#0F172A] mt-0.5">{fmt(s.curr)}</p>
+              <div className="flex items-center justify-between mt-1 text-[10px] text-[#94A3B8]">
+                <span>FY {prevFY}: {s.prev !== undefined ? fmt(s.prev) : (prevLoading ? "…" : "—")}</span>
+                <ChangeCell curr={s.curr} prev={s.prev} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {loading && <div className="h-48 rounded-lg bg-[#F8FAFC] animate-pulse" />}
 
       {/* Cash basis balance sheet — simplified flat view */}
@@ -1756,25 +1980,33 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
               <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">I. Equity & Liabilities (Cash Basis)</p>
             </div>
             <table className="w-full text-xs">
-              <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
+              <thead>
+                <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]">
+                  <th className="px-5 py-2 text-left font-semibold">Particulars</th>
+                  <th className="px-4 py-2 text-right font-semibold">Amount (₹)</th>
+                  {comparePY && <><th className="px-4 py-2 text-right font-semibold">FY {prevFY} (₹)</th><th className="px-4 py-2 text-right font-semibold">Change</th></>}
+                </tr>
+              </thead>
               <tbody>
-                <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(A) Equity</td></tr>
+                <tr><td colSpan={comparePY ? 4 : 2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(A) Equity</td></tr>
                 {(cashBS.equity[0]?.lines ?? []).map((l, i) => (
                   <tr key={i} className={isDrillableAccount(l.account_id) ? "hover:bg-[#F8FAFC] cursor-pointer" : "hover:bg-[#F8FAFC]"} onClick={isDrillableAccount(l.account_id) ? () => onDrillDown(l.account_id as string) : undefined}>
                     <td className={`px-5 py-1.5 pl-10 text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{l.account_name}</td>
                     <td className={`px-4 py-1.5 text-right font-mono text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(l.balance_paise)}</td>
+                    {comparePY && <><td className="px-4 py-1.5 text-right font-mono text-[#94A3B8]">{l.account_id && prevCashByAccount.has(l.account_id) ? fmt(prevCashByAccount.get(l.account_id) as number) : "—"}</td><td className="px-4 py-1.5 text-right"><ChangeCell curr={l.balance_paise} prev={l.account_id ? prevCashByAccount.get(l.account_id) : undefined} /></td></>}
                   </tr>
                 ))}
-                <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Equity</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(cashBS.equity[0]?.total_paise ?? 0)}</td></tr>
-                <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(B) Liabilities</td></tr>
+                <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Equity</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(cashBS.equity[0]?.total_paise ?? 0)}</td>{comparePY && <><td colSpan={2}></td></>}</tr>
+                <tr><td colSpan={comparePY ? 4 : 2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(B) Liabilities</td></tr>
                 {(cashBS.liabilities[0]?.lines ?? []).map((l, i) => (
                   <tr key={i} className={isDrillableAccount(l.account_id) ? "hover:bg-[#F8FAFC] cursor-pointer" : "hover:bg-[#F8FAFC]"} onClick={isDrillableAccount(l.account_id) ? () => onDrillDown(l.account_id as string) : undefined}>
                     <td className={`px-5 py-1.5 pl-10 text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{l.account_name}</td>
                     <td className={`px-4 py-1.5 text-right font-mono text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(l.balance_paise)}</td>
+                    {comparePY && <><td className="px-4 py-1.5 text-right font-mono text-[#94A3B8]">{l.account_id && prevCashByAccount.has(l.account_id) ? fmt(prevCashByAccount.get(l.account_id) as number) : "—"}</td><td className="px-4 py-1.5 text-right"><ChangeCell curr={l.balance_paise} prev={l.account_id ? prevCashByAccount.get(l.account_id) : undefined} /></td></>}
                   </tr>
                 ))}
-                <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Liabilities</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(cashBS.liabilities[0]?.total_paise ?? 0)}</td></tr>
-                <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Equity & Liabilities</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(cashBS.total_liabilities_equity_paise)}</td></tr>
+                <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Liabilities</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(cashBS.liabilities[0]?.total_paise ?? 0)}</td>{comparePY && <><td colSpan={2}></td></>}</tr>
+                <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Equity & Liabilities</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(cashBS.total_liabilities_equity_paise)}</td>{comparePY && <><td colSpan={2}></td></>}</tr>
               </tbody>
             </table>
           </div>
@@ -1783,15 +2015,22 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
               <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">II. Assets (Cash Basis)</p>
             </div>
             <table className="w-full text-xs">
-              <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
+              <thead>
+                <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]">
+                  <th className="px-5 py-2 text-left font-semibold">Particulars</th>
+                  <th className="px-4 py-2 text-right font-semibold">Amount (₹)</th>
+                  {comparePY && <><th className="px-4 py-2 text-right font-semibold">FY {prevFY} (₹)</th><th className="px-4 py-2 text-right font-semibold">Change</th></>}
+                </tr>
+              </thead>
               <tbody>
                 {(cashBS.assets[0]?.lines ?? []).map((l, i) => (
                   <tr key={i} className={isDrillableAccount(l.account_id) ? "hover:bg-[#F8FAFC] cursor-pointer" : "hover:bg-[#F8FAFC]"} onClick={isDrillableAccount(l.account_id) ? () => onDrillDown(l.account_id as string) : undefined}>
                     <td className={`px-5 py-1.5 pl-10 text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{l.account_name}</td>
                     <td className={`px-4 py-1.5 text-right font-mono text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(l.balance_paise)}</td>
+                    {comparePY && <><td className="px-4 py-1.5 text-right font-mono text-[#94A3B8]">{l.account_id && prevCashByAccount.has(l.account_id) ? fmt(prevCashByAccount.get(l.account_id) as number) : "—"}</td><td className="px-4 py-1.5 text-right"><ChangeCell curr={l.balance_paise} prev={l.account_id ? prevCashByAccount.get(l.account_id) : undefined} /></td></>}
                   </tr>
                 ))}
-                <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Assets</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(cashBS.total_assets_paise)}</td></tr>
+                <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Assets</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(cashBS.total_assets_paise)}</td>{comparePY && <><td colSpan={2}></td></>}</tr>
               </tbody>
             </table>
           </div>
@@ -1809,16 +2048,22 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
               <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">I. Equity & Liabilities</p>
             </div>
             <table className="w-full text-xs">
-              <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
+              <thead>
+                <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]">
+                  <th className="px-5 py-2 text-left font-semibold">Particulars</th>
+                  <th className="px-4 py-2 text-right font-semibold">Amount (₹)</th>
+                  {comparePY && <><th className="px-4 py-2 text-right font-semibold">FY {prevFY} (₹)</th><th className="px-4 py-2 text-right font-semibold">Change</th></>}
+                </tr>
+              </thead>
               <tbody>
-                <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(A) Equity</td></tr>
-                {BS_EQ_ORDER.map((bucket) => { const items = equityBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} onDrillDown={onDrillDown} />; })}
-                {equityBuckets["Capital Account"] && <BSSectionRows label="Capital Account" items={equityBuckets["Capital Account"]} onDrillDown={onDrillDown} />}
-                <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Equity</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(totalEquity)}</td></tr>
-                <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(B) Liabilities</td></tr>
-                {BS_LIAB_ORDER.map((bucket) => { const items = liabBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} onDrillDown={onDrillDown} />; })}
-                <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Liabilities</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(totalLiab)}</td></tr>
-                <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Equity & Liabilities</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(totalLiab + totalEquity)}</td></tr>
+                <tr><td colSpan={comparePY ? 4 : 2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(A) Equity</td></tr>
+                {BS_EQ_ORDER.map((bucket) => { const items = equityBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} onDrillDown={onDrillDown} comparePY={comparePY} prevByAccount={prevByAccount} />; })}
+                {equityBuckets["Capital Account"] && <BSSectionRows label="Capital Account" items={equityBuckets["Capital Account"]} onDrillDown={onDrillDown} comparePY={comparePY} prevByAccount={prevByAccount} />}
+                <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Equity</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(totalEquity)}</td>{comparePY && <><td colSpan={2}></td></>}</tr>
+                <tr><td colSpan={comparePY ? 4 : 2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(B) Liabilities</td></tr>
+                {BS_LIAB_ORDER.map((bucket) => { const items = liabBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} onDrillDown={onDrillDown} comparePY={comparePY} prevByAccount={prevByAccount} />; })}
+                <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Liabilities</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(totalLiab)}</td>{comparePY && <><td colSpan={2}></td></>}</tr>
+                <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Equity & Liabilities</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(totalLiab + totalEquity)}</td>{comparePY && <><td colSpan={2}></td></>}</tr>
               </tbody>
             </table>
           </div>
@@ -1827,10 +2072,16 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
               <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">II. Assets</p>
             </div>
             <table className="w-full text-xs">
-              <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
+              <thead>
+                <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]">
+                  <th className="px-5 py-2 text-left font-semibold">Particulars</th>
+                  <th className="px-4 py-2 text-right font-semibold">Amount (₹)</th>
+                  {comparePY && <><th className="px-4 py-2 text-right font-semibold">FY {prevFY} (₹)</th><th className="px-4 py-2 text-right font-semibold">Change</th></>}
+                </tr>
+              </thead>
               <tbody>
-                {BS_ASSET_ORDER.map((bucket) => { const items = assetBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} onDrillDown={onDrillDown} />; })}
-                <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Assets</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(totalAssets)}</td></tr>
+                {BS_ASSET_ORDER.map((bucket) => { const items = assetBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} onDrillDown={onDrillDown} comparePY={comparePY} prevByAccount={prevByAccount} />; })}
+                <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Assets</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(totalAssets)}</td>{comparePY && <><td colSpan={2}></td></>}</tr>
               </tbody>
             </table>
           </div>
@@ -1844,7 +2095,12 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
   );
 }
 
-function BSSectionRows({ label, items, onDrillDown }: { label: string; items: AccountBalance[]; onDrillDown: (accountId: string) => void }) {
+function BSSectionRows({
+  label, items, onDrillDown, comparePY, prevByAccount,
+}: {
+  label: string; items: AccountBalance[]; onDrillDown: (accountId: string) => void;
+  comparePY: boolean; prevByAccount: Map<string, number>;
+}) {
   const [open, setOpen] = useState(true);
   const total = items.reduce((s, b) => s + b.net_paise, 0);
   return (
@@ -1852,6 +2108,7 @@ function BSSectionRows({ label, items, onDrillDown }: { label: string; items: Ac
       <tr className="cursor-pointer hover:bg-[#F8FAFC]" onClick={() => setOpen((o) => !o)}>
         <td className="px-5 py-2 text-[#334155] font-medium pl-8">{label}</td>
         <td className="px-4 py-2 text-right font-mono text-[#334155]">{fmt(total)}</td>
+        {comparePY && <><td colSpan={2}></td></>}
       </tr>
       {open && items.map((item) => {
         const drillable = isDrillableAccount(item.account_id);
@@ -1859,6 +2116,10 @@ function BSSectionRows({ label, items, onDrillDown }: { label: string; items: Ac
           <tr key={item.account_id} className={drillable ? "text-[#94A3B8] hover:bg-[#F8FAFC] cursor-pointer" : "text-[#94A3B8]"} onClick={drillable ? () => onDrillDown(item.account_id) : undefined}>
             <td className={`px-5 py-1.5 pl-14 ${drillable ? "hover:text-blue-700 hover:underline" : ""}`}>{item.account_name}</td>
             <td className={`px-4 py-1.5 text-right font-mono ${drillable ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(item.net_paise)}</td>
+            {comparePY && <>
+              <td className="px-4 py-1.5 text-right font-mono">{prevByAccount.has(item.account_id) ? fmt(prevByAccount.get(item.account_id) as number) : "—"}</td>
+              <td className="px-4 py-1.5 text-right"><ChangeCell curr={item.net_paise} prev={prevByAccount.get(item.account_id)} /></td>
+            </>}
           </tr>
         );
       })}
