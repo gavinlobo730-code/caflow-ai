@@ -740,6 +740,12 @@ export const api = {
       request(`/api/firm-hsn-library/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     retire: (id: string) =>
       request(`/api/firm-hsn-library/${id}`, { method: "DELETE" }),
+    // Permanent delete — blocked server-side if the code is still referenced
+    // anywhere (Product/Service catalogue, any invoice/note/bill line).
+    purge: (id: string) =>
+      request(`/api/firm-hsn-library/${id}/purge`, { method: "DELETE" }),
+    bulkPurge: (ids: string[]) =>
+      request("/api/firm-hsn-library/bulk-delete", { method: "POST", body: JSON.stringify({ ids }) }),
   },
   firmHsnRateHistory: {
     // CA-entered, validity-dated GST rate versions per library code

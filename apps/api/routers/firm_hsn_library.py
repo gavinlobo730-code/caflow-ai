@@ -3,10 +3,11 @@
 
 Caflow does not ship or expose a shared HSN/SAC master to users. Every code a
 firm bills against comes from THIS table: added by manual entry or import,
-edited, retired (never hard-deleted). `public.hsn_master` is retained only as
-an internal, non-exposed implementation detail and is not read by this
-router — this endpoint returns exactly what the firm put in its own library,
-nothing else.
+edited, retired (soft — the default removal path), or permanently deleted
+once confirmed unused (see purge_code below). `public.hsn_master` is
+retained only as an internal, non-exposed implementation detail and is not
+read by this router — this endpoint returns exactly what the firm put in
+its own library, nothing else.
 
 The stored GST rate is a CA-entered PRE-FILL HINT ONLY (CGST Rule 46(g)) —
 never used in any tax or journal computation. Products/Services and invoice
@@ -333,9 +334,8 @@ def retire_code(
     library_id: str,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
-    """Retire a code (is_active=false). Never a hard delete — a retired code
-    may still be referenced by historical Products/Services/invoice lines,
-    which store their own snapshot regardless."""
+    """Retire a code (is_active=false) — the default, always-safe removal
+    path. See purge_code below for a real, permanent delete."""
     try:
         firm_id = current_user.get("firm_id")
         now = datetime.now(timezone.utc).isoformat()
@@ -364,3 +364,168 @@ def retire_code(
     except Exception as e:
         _logger.error("retire_code: %s", e)
         return api_response(False, None, "Unable to retire the code. Please try again.")
+
+
+# ── Permanent delete ─────────────────────────────────────────────────────────
+# firm_hsn_library carries no live foreign key from anywhere else — every
+# consumer (Products/Services, every invoice/note/bill line type) snapshots
+# the hsn_sac STRING at the moment it's picked (see module docstring), so a
+# real delete can never orphan a row. But a code that HAS been used is still
+# worth keeping visible for audit trail, so usage is checked by string match
+# across every place a code can be picked from, and blocks the delete —
+# mirrors service_catalogue.py's delete_service guard, generalised to every
+# document type since (unlike a Product/Service preset) an HSN/SAC code can
+# be picked directly on any line, not just via one picker.
+
+_USAGE_CHECKS = [
+    # (human label, table with hsn_sac, parent table for firm_id, or None if direct)
+    ("your Product/Service catalogue", "service_catalogue", None),
+    ("a sales invoice", "client_sales_invoice_lines", "client_sales_invoices"),
+    ("a credit note", "credit_note_lines", "credit_notes"),
+    ("a debit note", "debit_note_lines", "debit_notes"),
+    ("a purchase bill", "purchase_bill_lines", "purchase_bills"),
+    ("a recurring invoice template", "recurring_invoice_template_lines", "recurring_invoice_templates"),
+]
+
+
+def _find_hsn_usage(db, firm_id: str, hsn_code: str) -> list[str]:
+    """Where a code is still referenced, checked by exact string match on
+    hsn_sac — the only way to detect usage, since nothing joins back to
+    firm_hsn_library by id. Returns human-readable labels; empty = unused."""
+    found: list[str] = []
+    for label, table, parent_table in _USAGE_CHECKS:
+        if parent_table is None:
+            rows = (
+                db.table(table).select("id")
+                .eq("firm_id", firm_id).eq("hsn_sac", hsn_code)
+                .limit(1).execute().data or []
+            )
+        else:
+            rows = (
+                db.table(table).select(f"id, {parent_table}!inner(firm_id)")
+                .eq("hsn_sac", hsn_code).eq(f"{parent_table}.firm_id", firm_id)
+                .limit(1).execute().data or []
+            )
+        if rows:
+            found.append(label)
+    return found
+
+
+def _find_hsn_usage_mock(hsn_code: str) -> list[str]:
+    """Mock-mode equivalent of _find_hsn_usage, mirrors service_catalogue.py's
+    delete_service mock branch (deferred import of each router's in-memory
+    store to avoid a circular import). Best-effort: recurring invoice
+    templates have no mock line store, so they're not checked here — the
+    real (Supabase) path above is exhaustive."""
+    found: list[str] = []
+    from routers.service_catalogue import MOCK_SERVICES
+    if any(s.get("hsn_sac") == hsn_code for s in MOCK_SERVICES):
+        found.append("your Product/Service catalogue")
+    from routers.sales_invoices import MOCK_SALES_INVOICE_LINES
+    if any(ln.get("hsn_sac") == hsn_code for ln in MOCK_SALES_INVOICE_LINES):
+        found.append("a sales invoice")
+    from routers.credit_notes import MOCK_CREDIT_NOTE_LINES
+    if any(ln.get("hsn_sac") == hsn_code for ln in MOCK_CREDIT_NOTE_LINES):
+        found.append("a credit note")
+    from routers.debit_notes import MOCK_DEBIT_NOTE_LINES
+    if any(ln.get("hsn_sac") == hsn_code for ln in MOCK_DEBIT_NOTE_LINES):
+        found.append("a debit note")
+    from routers.purchase_bills import MOCK_PURCHASE_BILL_LINES
+    if any(ln.get("hsn_sac") == hsn_code for ln in MOCK_PURCHASE_BILL_LINES):
+        found.append("a purchase bill")
+    return found
+
+
+def _blocked_message(used_in: list[str]) -> str:
+    return f"This code is used on {', '.join(used_in)} and can't be permanently deleted. Retire it instead."
+
+
+@router.delete("/{library_id}/purge")
+def purge_code(
+    library_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Permanently delete a code — only when it has never been used anywhere.
+    Unlike retire_code, this actually removes the row; see the module note
+    above for why that's safe once usage is confirmed absent."""
+    try:
+        firm_id = current_user.get("firm_id")
+
+        if _USE_MOCK:
+            row = next((r for r in MOCK_LIBRARY
+                        if r.get("id") == library_id and r.get("firm_id") == firm_id), None)
+            if not row:
+                raise HTTPException(status_code=404, detail="Code not found in your library.")
+            used_in = _find_hsn_usage_mock(row["hsn_code"])
+            if used_in:
+                return api_response(False, None, _blocked_message(used_in))
+            MOCK_LIBRARY.remove(row)
+            return api_response(True, {"id": library_id})
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        owned = (db.table("firm_hsn_library").select("id, hsn_code")
+                 .eq("id", library_id).eq("firm_id", firm_id).execute().data or [])
+        if not owned:
+            raise HTTPException(status_code=404, detail="Code not found in your library.")
+        used_in = _find_hsn_usage(db, firm_id, owned[0]["hsn_code"])
+        if used_in:
+            return api_response(False, None, _blocked_message(used_in))
+        db.table("firm_hsn_library").delete().eq("id", library_id).eq("firm_id", firm_id).execute()
+        return api_response(True, {"id": library_id})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("purge_code: %s", e)
+        return api_response(False, None, "Unable to permanently delete the code. Please try again.")
+
+
+class FirmHsnLibraryBulkDeleteIn(BaseModel):
+    ids: list[str]
+
+
+@router.post("/bulk-delete")
+def bulk_purge_codes(
+    data: FirmHsnLibraryBulkDeleteIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Permanently delete multiple codes in one request — same usage guard as
+    purge_code, applied per row so one blocked code doesn't stop the rest."""
+    try:
+        firm_id = current_user.get("firm_id")
+        ids = data.ids or []
+        if not ids:
+            return api_response(True, {"deleted": [], "blocked": []})
+
+        deleted: list[str] = []
+        blocked: list[dict] = []
+
+        if _USE_MOCK:
+            for library_id in ids:
+                row = next((r for r in MOCK_LIBRARY
+                            if r.get("id") == library_id and r.get("firm_id") == firm_id), None)
+                if not row:
+                    continue
+                used_in = _find_hsn_usage_mock(row["hsn_code"])
+                if used_in:
+                    blocked.append({"id": library_id, "hsn_code": row["hsn_code"], "used_in": used_in})
+                    continue
+                MOCK_LIBRARY.remove(row)
+                deleted.append(library_id)
+            return api_response(True, {"deleted": deleted, "blocked": blocked})
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        rows = (db.table("firm_hsn_library").select("id, hsn_code")
+                .eq("firm_id", firm_id).in_("id", ids).execute().data or [])
+        for row in rows:
+            used_in = _find_hsn_usage(db, firm_id, row["hsn_code"])
+            if used_in:
+                blocked.append({"id": row["id"], "hsn_code": row["hsn_code"], "used_in": used_in})
+                continue
+            db.table("firm_hsn_library").delete().eq("id", row["id"]).eq("firm_id", firm_id).execute()
+            deleted.append(row["id"])
+        return api_response(True, {"deleted": deleted, "blocked": blocked})
+    except Exception as e:
+        _logger.error("bulk_purge_codes: %s", e)
+        return api_response(False, None, "Unable to complete the bulk delete. Please try again.")
