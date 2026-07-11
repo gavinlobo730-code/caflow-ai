@@ -3,8 +3,11 @@ broadened from services-only in the HSN/SAC architecture redesign).
 
 A client's repeatable products/services (name + default HSN/SAC, GST rate,
 unit price) so the invoice editor can drop a fully pre-priced line in one
-pick. NOT an inventory master: no stock, valuation, quantity, SKU, barcode or
-warehouse — only billing defaults.
+pick. Historically NOT an inventory master (no stock, valuation, quantity,
+SKU, barcode or warehouse — only billing defaults); migration 188
+deliberately supersedes that for kind='good' rows, which now also carry
+real stock quantity and moving-average cost (domain/inventory_service.py).
+kind='service' rows are unaffected — those columns stay NULL/0 for them.
 
 CLIENT-owned (migration 182): "Client B must never inherit Client A's
 products." Every row belongs to exactly one client; RLS (can_access_client)

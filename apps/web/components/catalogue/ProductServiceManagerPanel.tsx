@@ -237,6 +237,15 @@ export function ProductServiceManagerPanel({
       ) },
     { key: "hsn_sac", header: "SAC/HSN", accessor: (s) => s.hsn_sac ?? "", searchable: true,
       render: (s) => <span className="font-mono text-[#64748B]">{s.hsn_sac || "—"}</span> },
+    // Stock on hand — kind='good' only (migration 188). A service row shows
+    // "—", never 0, since a service was never stock-tracked to begin with.
+    { key: "stock_qty_units", header: "Stock", accessor: (s) => (s.kind === "good" ? s.stock_qty_units ?? 0 : 0), sortable: true, align: "right",
+      render: (s) => {
+        if (s.kind !== "good") return <span className="text-[#CBD5E1]">—</span>;
+        const qty = s.stock_qty_units ?? 0;
+        const label = Number.isInteger(qty) ? String(qty) : qty.toFixed(3).replace(/\.?0+$/, "");
+        return <span className={`font-mono ${qty < 0 ? "text-red-600" : "text-[#334155]"}`}>{label}</span>;
+      } },
     { key: "gst_rate_bps", header: "GST", accessor: (s) => s.gst_rate_bps ?? 0, sortable: true, align: "right",
       render: (s) => <span className="text-[#334155]">{formatServiceRate(s.gst_rate_bps) || "—"}</span> },
     { key: "default_rate_paise", header: "Selling price", accessor: (s) => s.default_rate_paise ?? 0, sortable: true, align: "right",
@@ -264,7 +273,7 @@ export function ProductServiceManagerPanel({
           <p className="text-sm text-[#64748B] mt-0.5">
             {onPick
               ? "Search, pick, or manage this client's billing presets without leaving the invoice."
-              : "Reusable billing presets for this client. No stock or inventory — billing defaults only."}
+              : "Reusable billing presets for this client. Products (kind='good') also track stock and moving-average cost — see the Inventory tab for full ledger detail."}
           </p>
         </div>
         <div className="flex items-center gap-2">
