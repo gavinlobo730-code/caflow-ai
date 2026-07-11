@@ -22,11 +22,11 @@ NUMERIC(10,3) columns) — quantity is not money, but Decimal still avoids the
 float-imprecision class of bug for the same reason paise avoids it for money.
 
 Stock-tracking failures must NEVER block the sale/purchase they're attached
-to — record_stock_out returns None (never raises) when an item has no stock
-history yet, and the router layer treats that as "skip COGS for this line,"
-not an error. The core sales-invoice / purchase-bill posting flows this
-plugs into were live production code before inventory existed; nothing here
-may regress them.
+to — record_stock_out never raises, even for an item with no stock history
+yet (it records the movement as "oversold" from a zero baseline instead of
+skipping; see record_stock_out's own docstring). The core sales-invoice /
+purchase-bill posting flows this plugs into were live production code
+before inventory existed; nothing here may regress them.
 """
 from __future__ import annotations
 
@@ -202,21 +202,25 @@ def record_stock_out(
     quantity, movement_type: str = "sale",
     source_type: Optional[str] = None, source_id: Optional[str] = None,
     reference_no: Optional[str] = None, created_by: Optional[str] = None,
-) -> Optional[dict]:
-    """Returns None if this item has no stock history yet — the caller MUST
-    treat that as "skip COGS for this line", never as an error. Quantity
-    tracking for goods with no purchase/opening-balance history yet is a
-    setup gap, not a reason to block the sale that surfaced it."""
+) -> dict:
+    """Prices the outgoing units at the CURRENT moving-average cost. If this
+    item has no stock history at all yet (no opening balance, no prior
+    purchase), starts from a zero baseline instead of skipping — the
+    movement still records (quantity goes negative, i.e. "oversold", at
+    Rs 0 cost) so a CA sees on the Inventory page that this item needs its
+    opening stock set up, rather than the sale leaving no trace anywhere.
+    Cost stays 0 until a real purchase/opening balance establishes an
+    average; the oversold quantity self-corrects the next time stock comes
+    in, exactly like any other stock-in blending into the running average."""
     prev = _last_ledger_row(db, service_catalogue_id)
     if prev is None:
         _logger.warning(
-            "record_stock_out: no stock history for service_catalogue_id=%s — skipping (setup gap, not an error)",
+            "record_stock_out: no stock history for service_catalogue_id=%s — recording as oversold at Rs 0 cost until stock is set up",
             service_catalogue_id,
         )
-        return None
-    prev_qty = Decimal(str(prev["running_qty_units"]))
-    prev_value = int(prev["running_value_paise"])
-    prev_avg = int(prev["running_avg_cost_paise"])
+    prev_qty = Decimal(str(prev["running_qty_units"])) if prev else Decimal("0")
+    prev_value = int(prev["running_value_paise"]) if prev else 0
+    prev_avg = int(prev["running_avg_cost_paise"]) if prev else 0
     calc = _compute_stock_out(prev_qty, prev_value, prev_avg, Decimal(str(quantity)))
     if calc["running_qty_units"] < 0:
         _logger.warning(
@@ -353,15 +357,17 @@ def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, 
                 source_type="sales_invoice", source_id=invoice["id"], reference_no=invoice.get("invoice_no"),
                 created_by=created_by,
             )
-            if movement:
-                journal_id = post_cogs_journal_entry(
-                    db, firm_id=firm_id, client_id=client_id, movement_date=invoice.get("invoice_date"),
-                    item_name=item.get("name") or line.get("description") or "item",
-                    value_paise=abs(int(movement["value_delta_paise"])),
-                    reference_no=invoice.get("invoice_no") or invoice["id"],
-                    source_type="sales_invoice", source_id=invoice["id"], created_by=created_by,
-                )
-                _set_ledger_journal_entry_id(db, movement.get("id"), journal_id)
+            # A movement with no cost basis (Rs 0, "oversold") has nothing to
+            # recognise as COGS yet — post_cogs_journal_entry's own value_paise
+            # <= 0 guard skips it cleanly until a real average cost exists.
+            journal_id = post_cogs_journal_entry(
+                db, firm_id=firm_id, client_id=client_id, movement_date=invoice.get("invoice_date"),
+                item_name=item.get("name") or line.get("description") or "item",
+                value_paise=abs(int(movement["value_delta_paise"])),
+                reference_no=invoice.get("invoice_no") or invoice["id"],
+                source_type="sales_invoice", source_id=invoice["id"], created_by=created_by,
+            )
+            _set_ledger_journal_entry_id(db, movement.get("id"), journal_id)
     except Exception as e:
         _logger.error("apply_sale_to_inventory failed for invoice %s: %s", invoice.get("id"), e, exc_info=True)
 
@@ -629,10 +635,9 @@ def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_not
                 movement_date=debit_note.get("debit_note_date"), quantity=qty, movement_type="purchase_return",
                 source_type="debit_note", source_id=dn_id, reference_no=dn_no, created_by=created_by,
             )
-            if movement:
-                total_value += abs(int(movement["value_delta_paise"]))
-                if movement.get("id"):
-                    movement_ids.append(movement["id"])
+            total_value += abs(int(movement["value_delta_paise"]))
+            if movement.get("id"):
+                movement_ids.append(movement["id"])
         if total_value > 0:
             journal_id = post_purchase_return_journal_entry(
                 db, firm_id=firm_id, client_id=client_id, movement_date=debit_note.get("debit_note_date"),
@@ -670,7 +675,7 @@ def reverse_purchase_stock(db, *, firm_id: str, client_id: str, bill_id: str, bi
                 movement_date=today, quantity=qty, movement_type="purchase_reversal",
                 source_type="purchase_bill", source_id=bill_id, reference_no=bill_reference, created_by=created_by,
             )
-            if movement and movement.get("id"):
+            if movement.get("id"):
                 movement_ids.append(movement["id"])
 
         from services.phase2_journal_service import phase2_journal_service
