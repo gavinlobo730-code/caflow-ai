@@ -275,8 +275,20 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
     const validRows = rows.filter(r => r.errors.length === 0).map(r => r.data);
     if (validRows.length === 0) return;
     setStep("importing");
-    const res = await onImport(validRows);
-    setResult(res);
+    try {
+      const res = await onImport(validRows);
+      setResult(res);
+    } catch (e) {
+      // A thrown network/timeout/server error must still land the modal on
+      // "done" with a visible message — otherwise it's stuck showing the
+      // spinner forever with no way to tell whether the import actually
+      // went through server-side (large batches can finish on the backend
+      // well after the frontend's own request timeout gives up on them).
+      setResult({
+        imported: 0,
+        errors: [e instanceof Error ? e.message : "Import failed. Check the list before retrying — some rows may have already been created."],
+      });
+    }
     setStep("done");
   }
 
