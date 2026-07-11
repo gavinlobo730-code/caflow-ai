@@ -461,6 +461,25 @@ def _apply_credit_days_due_date(data: dict, base_invoice_date: Optional[str]) ->
         pass
 
 
+def _apply_due_date_credit_days(data: dict, base_invoice_date: Optional[str]) -> None:
+    """Mirror of _apply_credit_days_due_date: when due_date is set directly without
+    an explicit credit_days (e.g. the post-issue Edit Details modal), recompute and
+    re-store credit_days as the actual day-gap, so the derived "Terms" label
+    (lib/sales/paymentTerms.ts) never goes stale relative to the real due date.
+    No-op otherwise."""
+    if not data.get("due_date") or data.get("credit_days") is not None:
+        return
+    if not base_invoice_date:
+        return
+    try:
+        data["credit_days"] = (
+            date.fromisoformat(str(data["due_date"])[:10])
+            - date.fromisoformat(str(base_invoice_date)[:10])
+        ).days
+    except (ValueError, TypeError):
+        pass
+
+
 @router.post("/")
 def create_invoice(
     data: SalesInvoiceIn,
@@ -1039,6 +1058,7 @@ def update_invoice(
                             data["invoice_no"], exclude_id=invoice_id,
                         )
                     _apply_credit_days_due_date(data, data.get("invoice_date") or inv.get("invoice_date"))
+                    _apply_due_date_credit_days(data, data.get("invoice_date") or inv.get("invoice_date"))
                     if line_units:
                         for ln in MOCK_SALES_INVOICE_LINES:
                             if ln.get("id") in line_units and ln.get("invoice_id") == invoice_id:
@@ -1072,15 +1092,18 @@ def update_invoice(
         if data.get("invoice_date"):
             period_validation_service.validate_posting_date(firm_id, data["invoice_date"])
 
-        # Recompute due_date from an edited credit period (credit_days set, no
-        # explicit due_date). Snapshot stays on the invoice only.
-        if data.get("credit_days") is not None and not data.get("due_date"):
+        # Keep due_date and credit_days in sync whichever one was edited directly
+        # (credit_days -> due_date, or due_date -> credit_days), so the derived
+        # "Terms" label never goes stale relative to the actual due date. Snapshot
+        # stays on the invoice only.
+        if data.get("credit_days") is not None or data.get("due_date"):
             base_date = data.get("invoice_date")
             if not base_date:
                 d2 = (db.table("client_sales_invoices").select("invoice_date")
                       .eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute())
-                base_date = d2.data[0]["invoice_date"] if d2.data else None
+                base_date = d2.data[0].get("invoice_date") if d2.data else None
             _apply_credit_days_due_date(data, base_date)
+            _apply_due_date_credit_days(data, base_date)
 
         # If lines are provided, recompute GST
         if "lines" in data:

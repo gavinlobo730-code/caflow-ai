@@ -462,7 +462,8 @@ class TestUpdateInvoice:
         def _controller(event):
             t, op = event["table"], event["op"]
             if t == "client_sales_invoices" and op == "select":
-                return _Resp(data=[{"id": "INV-1", "status": "issued", "client_id": "C1"}])
+                return _Resp(data=[{"id": "INV-1", "status": "issued", "client_id": "C1",
+                                    "invoice_date": "2026-07-01"}])
             if t == "client_sales_invoices" and op == "update":
                 return _Resp(data=[{**event["payload"], "id": "INV-1"}])
             return _Resp(data=[])
@@ -476,6 +477,9 @@ class TestUpdateInvoice:
         assert upd_event["payload"]["reference_no"] == "PO-9981"
         assert upd_event["payload"]["notes"] == "Called customer to confirm"
         assert upd_event["payload"]["due_date"] == "2026-08-01"
+        # Editing due_date directly must resync credit_days so the derived
+        # "Terms" label doesn't go stale (Jul 01 -> Aug 01 = 31 days).
+        assert upd_event["payload"]["credit_days"] == 31
 
     def test_update_line_units_on_issued_invoice(self, fake_db):
         recorder, holder = fake_db
