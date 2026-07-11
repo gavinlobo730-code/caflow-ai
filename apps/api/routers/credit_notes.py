@@ -485,7 +485,8 @@ def issue_credit_note(
             from domain.inventory_service import apply_credit_note_to_inventory
             apply_credit_note_to_inventory(
                 db, firm_id=firm_id or "", client_id=client_id,
-                credit_note=updated_cn, created_by=current_user.get("auth_user_id"),
+                # journal_entries.created_by FK references users(id), not auth_user_id.
+                credit_note=updated_cn, created_by=current_user.get("id"),
             )
         except Exception as e:
             _logger.error("issue_credit_note: inventory apply failed for %s: %s", cn_id, e, exc_info=True)
