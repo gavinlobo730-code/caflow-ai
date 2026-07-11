@@ -695,7 +695,7 @@ def cancel_purchase_bill(
         # Tenant isolation (OOS-5): firm-scope the guard read and the write so a
         # foreign-firm bill id cannot be read or mutated under service-role.
         resp = (db.table("purchase_bills")
-                .select("status, journal_entry_id, bill_no, client_id, paid_paise")
+                .select("status, journal_entry_id, bill_no, our_reference, client_id, paid_paise")
                 .eq("id", bill_id).eq("firm_id", firm_id).limit(1).execute())
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
@@ -743,6 +743,21 @@ def cancel_purchase_bill(
             "cancelled_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", bill_id).eq("firm_id", firm_id).execute()
         updated = upd.data[0] if upd.data else {}
+
+        # Inventory: undo the stock-in + Inventory-reclass journal
+        # apply_purchase_to_inventory posted at receive time, for any goods
+        # lines on this bill. Runs AFTER cancellation is committed — never
+        # blocks it.
+        try:
+            from domain.inventory_service import reverse_purchase_stock
+            reverse_purchase_stock(
+                db, firm_id=firm_id or "", client_id=bill.get("client_id", ""), bill_id=bill_id,
+                bill_reference=bill.get("bill_no") or bill.get("our_reference") or bill_id,
+                created_by=current_user.get("auth_user_id"),
+            )
+        except Exception as e:
+            _logger.error("cancel_purchase_bill: inventory reversal failed for %s: %s", bill_id, e, exc_info=True)
+
         log_event(
             firm_id or "", "purchase_bill", bill_id,
             "cancel", actor_id=current_user.get("auth_user_id"),

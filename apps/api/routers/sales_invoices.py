@@ -1331,6 +1331,19 @@ def cancel_invoice(
         }).eq("id", invoice_id).eq("firm_id", firm_id).execute()
 
         updated = upd.data[0] if upd.data else {}
+
+        # Inventory: undo the stock-out + COGS journal apply_sale_to_inventory
+        # posted at issue time, for any goods lines on this invoice. Runs
+        # AFTER cancellation is committed — never blocks it.
+        try:
+            from domain.inventory_service import reverse_sale_stock
+            reverse_sale_stock(
+                db, firm_id=firm_id or "", client_id=inv.get("client_id", ""), invoice_id=invoice_id,
+                invoice_no=inv.get("invoice_no", ""), created_by=current_user.get("auth_user_id"),
+            )
+        except Exception as e:
+            _logger.error("cancel_invoice: inventory reversal failed for %s: %s", invoice_id, e, exc_info=True)
+
         log_event(
             firm_id or "", "sales_invoice", invoice_id,
             "cancel", actor_id=current_user.get("auth_user_id"),
