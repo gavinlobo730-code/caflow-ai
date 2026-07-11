@@ -34,6 +34,10 @@ export interface ServiceCatalogueItem {
    * costing ledger once, on first save. Meaningless for services. */
   opening_qty_units?: number | null;
   opening_cost_paise?: number | null;
+  /** The "as of" date the opening balance is struck at — distinct from
+   * when the row was created. Defaults server-side to the client's
+   * financial-year start when not explicitly set. */
+  opening_balance_date?: string | null;
   /** Current stock state (kind='good' only) — cached, server-computed by
    * domain/inventory_service.py. Read-only here; never set by this form. */
   stock_qty_units?: number | null;
@@ -108,6 +112,9 @@ export interface ServiceFormInput {
   unit: string;           // official CBIC UQC code, e.g. "KGS" — "" = unset
   openingQty: string;     // free text, units (e.g. "100")
   openingCost: string;    // free text, rupees — total cost of the opening qty, not per-unit
+  /** The "as of" date the opening balance is struck at — "" lets the
+   * backend default to the client's financial-year start. */
+  openingBalanceDate: string;
 }
 
 export interface ServiceFormValidation {
@@ -156,6 +163,7 @@ export interface ServicePayload {
   unit?: string;
   opening_qty_units?: number;
   opening_cost_paise?: number;
+  opening_balance_date?: string;
 }
 
 /** Map a validated form to the API create/update body (rupees → integer paise).
@@ -181,6 +189,7 @@ export function serviceFormToPayload(input: ServiceFormInput, clientId: string):
     unit: isGood && input.unit.trim() ? input.unit.trim() : undefined,
     opening_qty_units: Number.isFinite(openingQty) && openingQty > 0 ? openingQty : undefined,
     opening_cost_paise: Number.isFinite(openingCostRupees) && openingCostRupees >= 0 ? Math.round(openingCostRupees * 100) : undefined,
+    opening_balance_date: isGood && input.openingBalanceDate.trim() ? input.openingBalanceDate.trim() : undefined,
   };
 }
 
@@ -203,5 +212,6 @@ export function serviceToForm(item: ServiceCatalogueItem): ServiceFormInput {
     // opening fields, so re-saving never looks like it silently changed anything.
     openingQty: item.stock_qty_units == null && item.opening_qty_units != null ? String(item.opening_qty_units) : "",
     openingCost: item.stock_qty_units == null && item.opening_cost_paise != null ? String(item.opening_cost_paise / 100) : "",
+    openingBalanceDate: item.stock_qty_units == null && item.opening_balance_date ? item.opening_balance_date.slice(0, 10) : "",
   };
 }

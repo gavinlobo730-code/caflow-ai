@@ -706,8 +706,15 @@ export const api = {
     create: (body: unknown) =>
       request("/api/service-catalogue/", { method: "POST", body: JSON.stringify(body) }),
     // One request for a whole CSV import instead of one POST per row.
-    bulkCreate: (services: unknown[]) =>
-      request("/api/service-catalogue/bulk", { method: "POST", body: JSON.stringify({ services }) }),
+    // openingBalanceDate is ONE "as of" date for the whole batch (an
+    // opening-stock import is a single conversion event, not N independent
+    // ones) — omit to let the backend default to each row's client's
+    // financial-year start.
+    bulkCreate: (services: unknown[], openingBalanceDate?: string) =>
+      request("/api/service-catalogue/bulk", {
+        method: "POST",
+        body: JSON.stringify({ services, opening_balance_date: openingBalanceDate || undefined }),
+      }),
     update: (id: string, body: unknown) =>
       request(`/api/service-catalogue/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     // Only succeeds when the item has never been picked into a transaction
