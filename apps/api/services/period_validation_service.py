@@ -129,6 +129,31 @@ class PeriodValidationService:
                 ),
             )
 
+    def validate_posting_date_cached(self, firm_id: str, date_str: str, cache: Optional[dict]) -> None:
+        """Same guarantee as validate_posting_date, memoized per (firm's) FY
+        via a caller-supplied dict — for bulk imports, where the lock status
+        of the SAME financial year cannot change mid-request, so checking it
+        again for every one of (say) 9,999 rows is pure RPC overhead once the
+        first row in that FY has already verified it. Pass cache=None for the
+        normal single-row behavior (no memoization, unchanged RPC-per-call
+        contract — every existing caller keeps calling validate_posting_date
+        directly and is unaffected by this method's existence).
+
+        Only caches the PASS case: if a FY turns out to be locked, every row
+        in it still raises through a real RPC call (nothing is cached for a
+        locked FY), so a locked year is reported no less accurately than
+        before — this only removes redundant round trips for the common case
+        of an open FY, never changes what gets blocked.
+        """
+        if cache is None:
+            self.validate_posting_date(firm_id, date_str)
+            return
+        fy = get_fy_for_date(date_str)
+        if cache.get(fy):
+            return
+        self.validate_posting_date(firm_id, date_str)
+        cache[fy] = True
+
 
 # Module-level singleton
 period_validation_service = PeriodValidationService()
