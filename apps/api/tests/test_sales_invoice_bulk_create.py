@@ -104,3 +104,54 @@ def test_bulk_create_empty_batch(monkeypatch):
     resp = si.bulk_create_invoices(_BulkPayload([]), CALLER)
     assert resp["success"] is True
     assert resp["data"] == {"created": [], "errors": []}
+
+
+def test_bulk_create_prefetches_once_not_per_invoice(monkeypatch):
+    """The whole point of this endpoint's rewrite: customer/client rows and
+    the existing-invoice-number check must be fetched ONCE for the batch, not
+    once per invoice — at import scale (thousands of rows) the per-invoice
+    version is the difference between a few seconds and a request timeout.
+    Asserts .table() call count grows with the number of DISTINCT
+    lookups needed (a small constant), not with batch size."""
+    si, db = _setup(monkeypatch)
+    calls = {"n": 0}
+    real_table = db.table
+    def counting_table(name):
+        calls["n"] += 1
+        return real_table(name)
+    monkeypatch.setattr(db, "table", counting_table)
+
+    payload = _BulkPayload([_invoice_dict(f"BULK-{i:03d}") for i in range(1, 21)])
+    resp = si.bulk_create_invoices(payload, CALLER)
+
+    assert resp["success"] is True
+    assert len(resp["data"]["created"]) == 20
+    # Every invoice shares the same client/customer, so the pre-fetch is 3
+    # calls total (customers, clients, existing invoice numbers) regardless
+    # of batch size — the per-invoice .table() calls that remain are the
+    # ones that genuinely can't be batched (the header insert and the lines
+    # insert, 2 per invoice = 40), not the ~7 each the old code did.
+    assert calls["n"] < 20 * 4, (
+        f"{calls['n']} .table() calls for 20 invoices — pre-fetch batching "
+        "does not appear to be working (expected well under 80)"
+    )
+
+
+def test_bulk_create_intra_batch_duplicate_invoice_no(monkeypatch):
+    """Two rows sharing an invoice_no within the SAME batch (never produced by
+    buildSalesInvoices' grouping, but the endpoint must still reject the
+    second occurrence rather than create it) — the set-based dedup this
+    endpoint uses to avoid a per-invoice existence query must catch a
+    duplicate introduced mid-batch, not just one that already existed before
+    the request started."""
+    si, db = _setup(monkeypatch)
+    payload = _BulkPayload([_invoice_dict("BULK-SAME"), _invoice_dict("BULK-SAME")])
+
+    resp = si.bulk_create_invoices(payload, CALLER)
+
+    assert resp["success"] is True
+    created_numbers = [inv["invoice_no"] for inv in resp["data"]["created"]]
+    assert created_numbers == ["BULK-SAME"]
+    assert len(resp["data"]["errors"]) == 1
+    assert resp["data"]["errors"][0]["invoice_no"] == "BULK-SAME"
+    assert "already exists" in resp["data"]["errors"][0]["error"]
