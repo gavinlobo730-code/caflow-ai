@@ -34,6 +34,12 @@ class ServiceCatalogueIn(BaseModel):
     # moving-average costing ledger (domain/inventory_service.seed_opening_balance).
     opening_qty_units: Optional[float] = None
     opening_cost_paise: Optional[int] = None
+    # The "as of" date the opening balance is struck at — distinct from when
+    # the row is created. Optional: the router defaults to the client's
+    # financial-year start (matching QuickBooks Online / Zoho Books, and the
+    # platform's own opening_balance_service.py convention for AR/AP/bank
+    # opening balances) rather than silently using today's date.
+    opening_balance_date: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -116,6 +122,7 @@ class ServiceCatalogueUpdateIn(BaseModel):
     is_active: Optional[bool] = None
     opening_qty_units: Optional[float] = None
     opening_cost_paise: Optional[int] = None
+    opening_balance_date: Optional[str] = None
 
     @field_validator("name")
     @classmethod

@@ -230,8 +230,20 @@ def seed_opening_balances_batch(
         qty = Decimal(str(opening_qty))
         if qty <= 0:
             continue
+        # opening_balance_date, when the key is present at all, is the
+        # caller's RESOLVED "as of" date (see routers/service_catalogue.py's
+        # _resolve_opening_balance_date) — an explicit None/blank there means
+        # the resolved date fell in a locked financial year, so this row's
+        # seeding is skipped rather than silently falling back to today.
+        # Callers that never resolved a date at all (the key is absent) keep
+        # the old created_at/today fallback for backward compatibility.
+        if "opening_balance_date" in row:
+            movement_date = row.get("opening_balance_date")
+            if not movement_date:
+                continue
+        else:
+            movement_date = (row.get("created_at") or "")[:10] or fallback_date
         calc = _compute_stock_in(Decimal("0"), 0, qty, int(opening_cost_paise))
-        movement_date = (row.get("created_at") or "")[:10] or fallback_date
         client_id = row.get("client_id")
         ledger_rows.append({
             "firm_id": firm_id,
