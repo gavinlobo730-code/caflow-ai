@@ -1028,6 +1028,15 @@ function SalesInvoices({
   const [detailId, setDetailId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SalesInvoice | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
+  // Row overflow menu — everything except the draft row's one-click "Issue"
+  // lives here so the actions column reads as one button, not a strip of
+  // mixed icon/text buttons. Anchored to the viewport (mirrors the Customers
+  // tab's own menu below) since the table scrolls/clips an in-flow dropdown.
+  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  function openMenuFor(e: React.MouseEvent, inv: SalesInvoice) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setMenu({ id: inv.id, top: r.bottom + 4, left: Math.max(8, r.right - 192) });
+  }
 
   // FY / date-window selector that SCOPES THE SERVER QUERY (which rows load).
   // Client-side search/sort/status/amount/date filtering is owned by DataTable
@@ -1574,6 +1583,69 @@ function SalesInvoices({
         />
       )}
 
+      {/* Row overflow menu — View/Edit/Delete/Send/Remind/Deliveries/Pay link,
+          everything except a draft's own visible "Issue" button. */}
+      {menu && (() => {
+        const inv = scoped.find((x) => x.id === menu.id);
+        if (!inv) return null;
+        return (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
+            <div
+              className="fixed z-50 w-48 bg-white rounded-lg border border-[#E2E8F0] shadow-lg py-1 text-xs"
+              style={{ top: menu.top, left: menu.left }}
+            >
+              <button onClick={() => { setMenu(null); setDetailId(inv.id); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                <Eye size={13} /> View details
+              </button>
+              {inv.status === "draft" && (
+                <>
+                  <button onClick={() => { setMenu(null); openEdit(inv); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                    <Pencil size={13} /> Edit draft
+                  </button>
+                  <div className="my-1 border-t border-[#F1F5F9]" />
+                  <button onClick={() => { setMenu(null); setDeleteTarget(inv); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                    <Trash2 size={13} /> Delete draft
+                  </button>
+                </>
+              )}
+              {inv.status !== "draft" && inv.status !== "cancelled" && (
+                <>
+                  <button onClick={() => { setMenu(null); openSend(inv); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                    <Send size={13} /> Send
+                  </button>
+                  {isOverdueForUi(inv) && (
+                    <button
+                      onClick={() => { setMenu(null); openRemind(inv); }}
+                      title={inv.last_reminded_at
+                        ? `Last reminded ${fmtDateTime(inv.last_reminded_at)} · ${inv.reminder_count ?? 0} sent`
+                        : "Send an overdue-payment reminder"}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-amber-700"
+                    >
+                      <AlertTriangle size={13} /> Remind{inv.reminder_count ? ` (${inv.reminder_count})` : ""}
+                    </button>
+                  )}
+                  <button onClick={() => { setMenu(null); loadAndShowDeliveries(inv); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                    <Clock size={13} /> Delivery history
+                  </button>
+                  {(inv.status === "issued" || inv.status === "partially_paid") && (
+                    <button onClick={() => { setMenu(null); setPaymentModal(inv); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                      <CreditCard size={13} /> Pay link
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </>
+        );
+      })()}
+
       {/* Table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
       <DataTable
         data={scoped}
@@ -1651,76 +1723,23 @@ function SalesInvoices({
           </div>
         }
         rowActions={(inv) => (
-          <div className="flex items-center justify-end gap-2.5">
-            <button
-              onClick={() => setDetailId(inv.id)}
-              className="text-[#94A3B8] hover:text-[#334155]"
-              title="View details"
-            >
-              <Eye size={13} />
-            </button>
+          <div className="flex items-center justify-end gap-2">
             {inv.status === "draft" && (
-              <>
-                <button
-                  onClick={() => openEdit(inv)}
-                  className="text-[#94A3B8] hover:text-blue-600"
-                  title="Edit draft"
-                >
-                  <Pencil size={13} />
-                </button>
-                <button
-                  onClick={() => issueInvoice(inv.id)}
-                  disabled={issuingId === inv.id}
-                  className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
-                >
-                  {issuingId === inv.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
-                </button>
-                <button
-                  onClick={() => setDeleteTarget(inv)}
-                  className="text-[#CBD5E1] hover:text-red-600"
-                  title="Delete draft"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </>
-            )}
-            {inv.status !== "draft" && inv.status !== "cancelled" && (
               <button
-                onClick={() => openSend(inv)}
-                className="text-xs text-emerald-600 hover:underline flex items-center gap-1"
+                onClick={() => issueInvoice(inv.id)}
+                disabled={issuingId === inv.id}
+                className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
               >
-                <Send size={11} /> Send
+                {issuingId === inv.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
               </button>
             )}
-            {isOverdueForUi(inv) && (
-              <button
-                onClick={() => openRemind(inv)}
-                className="text-xs text-amber-600 hover:underline flex items-center gap-1"
-                title={inv.last_reminded_at
-                  ? `Last reminded ${fmtDateTime(inv.last_reminded_at)} · ${inv.reminder_count ?? 0} sent`
-                  : "Send an overdue-payment reminder"}
-              >
-                <AlertTriangle size={11} /> Remind{inv.reminder_count ? ` (${inv.reminder_count})` : ""}
-              </button>
-            )}
-            {inv.status !== "draft" && inv.status !== "cancelled" && (
-              <button
-                onClick={() => loadAndShowDeliveries(inv)}
-                className="text-[#CBD5E1] hover:text-[#64748B]"
-                title="Delivery & reminder history"
-              >
-                <Clock size={11} />
-              </button>
-            )}
-            {(inv.status === "issued" || inv.status === "partially_paid") && (
-              <button
-                onClick={() => setPaymentModal(inv)}
-                className="text-xs text-indigo-600 hover:underline flex items-center gap-1"
-                title="Online payment link & history"
-              >
-                <CreditCard size={11} /> Pay link
-              </button>
-            )}
+            <button
+              onClick={(e) => openMenuFor(e, inv)}
+              aria-label={`Actions for invoice ${inv.invoice_no}`}
+              className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
+            >
+              <MoreHorizontal size={16} />
+            </button>
           </div>
         )}
       />
