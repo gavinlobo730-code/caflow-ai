@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
-  ChevronRight, Plus, Search, RefreshCw, Pencil, KanbanSquare, Upload,
+  ChevronRight, Plus, Search, RefreshCw, Pencil, KanbanSquare, Upload, Download,
   MoreVertical, Archive, RotateCcw, Trash2, X,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,6 +16,8 @@ import {
 import type { Client } from "@/lib/types";
 import { filterClients } from "@/lib/clients/search";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import { downloadCsv } from "@/components/ui/data-table";
+import { toCsv } from "@/lib/table/process";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getLatestHealthScores } from "@/lib/services/health-score-compute";
@@ -34,6 +36,21 @@ const CLIENT_IMPORT_COLUMNS = [
   { key: "state",        label: "State",          required: false, hint: "e.g. Maharashtra" },
   { key: "pincode",      label: "Pincode",        required: false, hint: "6-digit" },
   { key: "gst_filing_frequency", label: "GST Frequency", required: false, hint: "monthly | quarterly" },
+];
+
+// Raw entity_type (not the friendly ENTITY_LABELS) so an exported CSV can be
+// re-imported via CLIENT_IMPORT_COLUMNS above without a manual translation step.
+const CLIENT_EXPORT_COLUMNS: { key: string; header: string; accessor: (row: Client) => unknown }[] = [
+  { key: "client_name", header: "Client Name", accessor: (c) => c.client_name },
+  { key: "entity_type", header: "Entity Type", accessor: (c) => c.entity_type },
+  { key: "pan",         header: "PAN",         accessor: (c) => c.pan },
+  { key: "gstin",       header: "GSTIN",       accessor: (c) => c.gstin },
+  { key: "mobile",      header: "Mobile",      accessor: (c) => c.mobile },
+  { key: "email",       header: "Email",       accessor: (c) => c.email },
+  { key: "city",        header: "City",        accessor: (c) => c.city },
+  { key: "state",       header: "State",       accessor: (c) => c.state },
+  { key: "pincode",     header: "Pincode",     accessor: (c) => c.pincode },
+  { key: "status",      header: "Status",      accessor: (c) => c.status },
 ];
 
 const VALID_ENTITY_TYPES = ["Proprietorship","Partnership","LLP","Private Limited","Public Limited","Trust","Society","Individual"];
@@ -356,6 +373,14 @@ export default function ClientsPage() {
           >
             <Upload size={15} />
             Import CSV
+          </button>
+          <button
+            onClick={() => downloadCsv("clients.csv", toCsv(filtered, CLIENT_EXPORT_COLUMNS))}
+            disabled={filtered.length === 0}
+            className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download size={15} />
+            Export
           </button>
           <button
             onClick={openCreate}

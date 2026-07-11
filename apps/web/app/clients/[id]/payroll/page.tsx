@@ -12,6 +12,8 @@ import { supabase } from "@/lib/supabase/client";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { buildEmployees, EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
+import { downloadCsv } from "@/components/ui/data-table";
+import { toCsv } from "@/lib/table/process";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -179,6 +181,19 @@ function DashboardTab({ clientId }: { clientId: string }) {
 
 // ─── Employees Tab ────────────────────────────────────────────────────────────
 
+const EMPLOYEE_EXPORT_COLUMNS: { key: string; header: string; accessor: (row: Employee) => unknown }[] = [
+  { key: "name", header: "Name", accessor: (e) => e.name },
+  { key: "pan", header: "PAN", accessor: (e) => e.pan ?? "" },
+  { key: "designation", header: "Designation", accessor: (e) => e.designation ?? "" },
+  { key: "department", header: "Department", accessor: (e) => e.department ?? "" },
+  { key: "basic", header: "Basic Salary (₹)", accessor: (e) => (e.basic_paise / 100).toFixed(2) },
+  { key: "hra_percent", header: "HRA %", accessor: (e) => e.hra_percent },
+  { key: "pf_applicable", header: "PF Applicable", accessor: (e) => (e.pf_applicable ? "Yes" : "No") },
+  { key: "esi_applicable", header: "ESI Applicable", accessor: (e) => (e.esi_applicable ? "Yes" : "No") },
+  { key: "pt_applicable", header: "PT Applicable", accessor: (e) => (e.pt_applicable ? "Yes" : "No") },
+  { key: "status", header: "Status", accessor: (e) => e.status },
+];
+
 function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -250,6 +265,9 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
         <div className="flex gap-2">
           <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 px-3 py-1.5 border border-[#E2E8F0] text-[#475569] text-[12px] font-medium rounded-lg hover:bg-[#F1F5F9] transition-colors">
             <Upload size={13} /> Import
+          </button>
+          <button onClick={() => downloadCsv("employees.csv", toCsv(employees, EMPLOYEE_EXPORT_COLUMNS))} disabled={employees.length === 0} className="flex items-center gap-1.5 px-3 py-1.5 border border-[#E2E8F0] text-[#475569] text-[12px] font-medium rounded-lg hover:bg-[#F1F5F9] transition-colors disabled:opacity-50">
+            <Download size={13} /> Export
           </button>
           <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-[12px] font-medium rounded-lg hover:bg-blue-700 transition-colors">
             <Plus size={13} /> Add Employee

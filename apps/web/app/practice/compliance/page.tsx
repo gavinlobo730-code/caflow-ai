@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { ShieldCheck, RefreshCw, Bell, PlayCircle, AlertTriangle, CalendarClock } from "lucide-react";
+import { ShieldCheck, RefreshCw, Bell, PlayCircle, AlertTriangle, CalendarClock, Download } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
 import { todayLocalISO } from "@/lib/dateMath";
+import { downloadCsv } from "@/components/ui/data-table";
+import { toCsv } from "@/lib/table/process";
 
 // Compliance lifecycle (mirrors the server-side VALID_TRANSITIONS — presentation
 // only; the backend is the source of truth and rejects invalid transitions).
@@ -35,6 +37,14 @@ interface Obligation {
   preparer_id?: string | null; reviewer_id?: string | null; approver_id?: string | null;
   risk_score?: number;
 }
+// Mirrors the visible "Compliance queue" table columns (see the <td> cells below).
+const QUEUE_EXPORT_COLUMNS: { key: string; header: string; accessor: (row: Obligation) => unknown }[] = [
+  { key: "obligation",  header: "Obligation",  accessor: (o) => o.period_label ?? o.obligation_type ?? o.compliance_type },
+  { key: "type",        header: "Type",        accessor: (o) => o.compliance_type },
+  { key: "due_date",    header: "Due Date",    accessor: (o) => o.due_date },
+  { key: "status",      header: "Status",      accessor: (o) => o.status },
+  { key: "risk_score",  header: "Risk Score",  accessor: (o) => o.risk_score ?? "" },
+];
 interface WorkloadRow { key: string; obligations: number; overdue: number }
 interface Dashboard {
   summary: { total_obligations: number; open_obligations: number; due_this_week: number; due_this_month: number; overdue: number };
@@ -162,6 +172,11 @@ function ComplianceDashboard() {
               <option value="all">All types</option>
               {types.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
+            <button onClick={() => downloadCsv("compliance-queue.csv", toCsv(queue, QUEUE_EXPORT_COLUMNS))}
+              disabled={queue.length === 0}
+              className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 text-[#182350] hover:bg-[#F8FAFC] disabled:opacity-50">
+              <Download size={13} /> Export
+            </button>
           </div>
         </div>
         {queue.length === 0 ? (

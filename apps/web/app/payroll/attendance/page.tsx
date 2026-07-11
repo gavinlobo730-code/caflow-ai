@@ -8,13 +8,16 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ArrowLeft, Save, Upload, Edit2, Check, X } from "lucide-react";
+import { ArrowLeft, Save, Upload, Download, Edit2, Check, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import { downloadCsv } from "@/components/ui/data-table";
+import { toCsv } from "@/lib/table/process";
+import type { Column } from "@/lib/table/types";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -53,6 +56,30 @@ const ATTENDANCE_IMPORT_COLUMNS = [
   { key: "casual_leaves",  label: "Casual Leaves",   required: false, hint: "e.g. 1" },
   { key: "sick_leaves",    label: "Sick Leaves",     required: false, hint: "e.g. 0" },
   { key: "earned_leaves",  label: "Earned Leaves",   required: false, hint: "e.g. 1" },
+];
+
+type AttendanceExportRow = {
+  name: string;
+  designation: string;
+  working_days: number;
+  days_present: number;
+  casual_leaves: number;
+  sick_leaves: number;
+  earned_leaves: number;
+  lop: number;
+  net_pay_days: number;
+};
+
+const ATTENDANCE_EXPORT_COLUMNS: Column<AttendanceExportRow>[] = [
+  { key: "name",           header: "Employee",       accessor: (r) => r.name },
+  { key: "designation",    header: "Designation",    accessor: (r) => r.designation },
+  { key: "working_days",   header: "Working Days",   accessor: (r) => r.working_days },
+  { key: "days_present",   header: "Days Present",   accessor: (r) => r.days_present },
+  { key: "casual_leaves",  header: "CL",             accessor: (r) => r.casual_leaves },
+  { key: "sick_leaves",    header: "SL",             accessor: (r) => r.sick_leaves },
+  { key: "earned_leaves",  header: "EL",             accessor: (r) => r.earned_leaves },
+  { key: "lop",            header: "LOP",            accessor: (r) => r.lop },
+  { key: "net_pay_days",   header: "Net Pay Days",   accessor: (r) => r.net_pay_days },
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -281,6 +308,38 @@ export default function AttendancePage() {
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" onClick={() => setShowImport(true)} className="flex items-center gap-1.5">
                       <Upload size={14} />Import CSV
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={employees.length === 0}
+                      onClick={() => {
+                        const exportRows: AttendanceExportRow[] = employees.map(emp => {
+                          const row = attendance[emp.id] ?? {
+                            employee_id: emp.id,
+                            working_days: 26, days_present: 26,
+                            casual_leaves: 0, sick_leaves: 0, earned_leaves: 0,
+                          };
+                          return {
+                            name: emp.name,
+                            designation: emp.designation,
+                            working_days: row.working_days,
+                            days_present: row.days_present,
+                            casual_leaves: row.casual_leaves,
+                            sick_leaves: row.sick_leaves,
+                            earned_leaves: row.earned_leaves,
+                            lop: calcLOP(row),
+                            net_pay_days: calcNetPayDays(row),
+                          };
+                        });
+                        downloadCsv(
+                          `attendance-${attYear}-${String(attMonth).padStart(2, "0")}.csv`,
+                          toCsv(exportRows, ATTENDANCE_EXPORT_COLUMNS),
+                        );
+                      }}
+                      className="flex items-center gap-1.5"
+                    >
+                      <Download size={14} />Export
                     </Button>
                     <Button size="sm" onClick={saveAttendance} disabled={saving} className="flex items-center gap-1.5">
                       <Save size={14} />{saving ? "Saving..." : "Save Attendance"}

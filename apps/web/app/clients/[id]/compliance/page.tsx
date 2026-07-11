@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { CheckCircle, X } from "lucide-react";
+import { CheckCircle, Download, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { downloadCsv } from "@/components/ui/data-table";
+import { toCsv } from "@/lib/table/process";
 import { getComplianceCalendar, markFiled as markObligationFiled, seedComplianceCalendar } from "@/lib/data/compliance";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { formatDate } from "@/lib/services/formatting";
@@ -241,6 +243,15 @@ export default function CompliancePage() {
     return true;
   });
 
+  const complianceExportColumns: { key: string; header: string; accessor: (row: ComplianceEntry) => unknown }[] = [
+    { key: "compliance_type", header: "Type", accessor: (row) => row.compliance_type },
+    { key: "period_start", header: "Period Start", accessor: (row) => formatDate(row.period_start) },
+    { key: "period_end", header: "Period End", accessor: (row) => formatDate(row.period_end) },
+    { key: "due_date", header: "Due Date", accessor: (row) => formatDate(row.due_date) },
+    { key: "filing_status", header: "Status", accessor: (row) => row.filing_status },
+    { key: "arn_number", header: "ARN", accessor: (row) => row.arn_number ?? "" },
+  ];
+
   function toggleRow(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -359,9 +370,18 @@ export default function CompliancePage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">
-            Compliance Calendar ({loading ? "…" : `${filtered.length} deadlines`})
-          </CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-sm">
+              Compliance Calendar ({loading ? "…" : `${filtered.length} deadlines`})
+            </CardTitle>
+            <button
+              onClick={() => downloadCsv("compliance-calendar.csv", toCsv(filtered, complianceExportColumns))}
+              disabled={filtered.length === 0}
+              className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-2.5 py-1 rounded-md hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Download size={12} /> Export
+            </button>
+          </div>
         </CardHeader>
         {loading ? (
           <CardContent><div className="h-32 animate-pulse bg-[#F8FAFC] rounded" /></CardContent>

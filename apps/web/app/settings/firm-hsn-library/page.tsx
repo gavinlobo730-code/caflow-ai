@@ -12,7 +12,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { ChevronLeft, Plus, Pencil, Archive, RotateCcw, Search, Hash, Upload } from "lucide-react";
+import { ChevronLeft, Plus, Pencil, Archive, RotateCcw, Search, Hash, Upload, Download } from "lucide-react";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
 import {
@@ -20,9 +20,20 @@ import {
 } from "@/components/lookups/FirmHsnLibraryQuickAddModal";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { FIRM_HSN_LIBRARY_IMPORT_COLUMNS, buildFirmHsnCodes } from "@/lib/imports/firmHsnLibrary";
+import { downloadCsv } from "@/components/ui/data-table";
+import { toCsv } from "@/lib/table/process";
+import type { Column } from "@/lib/table/types";
 
 type Filter = "active" | "archived";
 type TypeFilter = "all" | "goods" | "services";
+
+const EXPORT_COLUMNS: Column<FirmHsnLibraryRow>[] = [
+  { key: "hsn_code", header: "Code", accessor: (r) => r.hsn_code },
+  { key: "description", header: "Description", accessor: (r) => r.description },
+  { key: "hsn_type", header: "Type", accessor: (r) => r.hsn_type },
+  { key: "gst_rate_pct", header: "GST Rate", accessor: (r) => r.gst_rate_pct ?? "" },
+  { key: "is_active", header: "Status", accessor: (r) => (r.is_active ? "Active" : "Archived") },
+];
 
 export default function FirmHsnLibraryPage() {
   const [items, setItems] = useState<FirmHsnLibraryRow[]>([]);
@@ -153,6 +164,13 @@ export default function FirmHsnLibraryPage() {
                 className="flex items-center gap-1.5 text-sm border border-[#E2E8F0] text-[#475569] px-3.5 py-2 rounded-lg hover:bg-[#F8FAFC] whitespace-nowrap"
               >
                 <Upload size={15} /> Import
+              </button>
+              <button
+                onClick={() => downloadCsv("firm-hsn-sac-library.csv", toCsv(items, EXPORT_COLUMNS))}
+                disabled={items.length === 0}
+                className="flex items-center gap-1.5 text-sm border border-[#E2E8F0] text-[#475569] px-3.5 py-2 rounded-lg hover:bg-[#F8FAFC] whitespace-nowrap disabled:opacity-50"
+              >
+                <Download size={15} /> Export
               </button>
               <button
                 onClick={() => setAdding(true)}
