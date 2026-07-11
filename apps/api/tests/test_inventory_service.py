@@ -345,6 +345,31 @@ def test_seed_opening_balances_batch_seeds_every_goods_row_in_two_round_trips():
     assert item2["stock_qty_units"] == "4" and item2["avg_cost_paise"] == 200_00
 
 
+def test_seed_opening_balances_batch_cache_upsert_carries_tenant_columns():
+    # Regression: the cache upsert conflict-targets "id" (the PK) while
+    # firm_id/client_id are NOT part of that conflict target — a payload of
+    # just {id, stock_qty_units, avg_cost_paise} leaves firm_id/client_id
+    # NULL on the candidate row Postgres's RLS WITH CHECK evaluates for an
+    # INSERT ... ON CONFLICT DO UPDATE (even though the row already exists
+    # and the statement only ever runs the UPDATE branch), which real
+    # Supabase rejects with "new row violates row-level security policy" —
+    # silently leaving stock_qty_units/avg_cost_paise at 0 forever, exactly
+    # like the products/services import that surfaced this. name is also
+    # NOT NULL with no column default, so it must ride along too. FakeDB
+    # doesn't enforce RLS, so this only asserts the payload SHAPE is right.
+    db = _FakeDB()
+    row = {"id": "item-1", "client_id": "client-1", "kind": "good", "name": "Widget",
+           "opening_qty_units": "10", "opening_cost_paise": 10_000_00, "created_at": "2026-04-01T00:00:00Z"}
+    _seed_catalogue_item(db, item_id="item-1")
+
+    seed_opening_balances_batch(db, firm_id="firm-1", created_by="user-1", rows=[row])
+
+    item = next(r for r in db.store["service_catalogue"] if r["id"] == "item-1")
+    assert item["firm_id"] == "firm-1"
+    assert item["client_id"] == "client-1"
+    assert item["name"] == "Widget"
+
+
 def test_seed_opening_balances_batch_skips_services_and_rows_missing_qty_or_cost():
     db = _FakeDB()
     rows = [

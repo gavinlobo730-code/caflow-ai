@@ -252,6 +252,20 @@ def seed_opening_balances_batch(
         })
         cache_rows.append({
             "id": row["id"],
+            # RLS's WITH CHECK for service_catalogue (firm_id = get_my_firm_id(),
+            # can_access_client(client_id)) is evaluated against the row an
+            # upsert WOULD insert, even when the row already exists and the
+            # statement resolves to an UPDATE via ON CONFLICT — a payload with
+            # only {id, stock_qty_units, avg_cost_paise} leaves firm_id/
+            # client_id NULL on that candidate row and gets rejected with
+            # "new row violates row-level security policy" before the UPDATE
+            # ever runs. name is also NOT NULL with no column default, so it's
+            # included too. All three are re-written to their EXISTING values
+            # (never touched by the actual UPDATE for a row that already
+            # matches), just present so the phantom insert candidate is valid.
+            "firm_id": firm_id,
+            "client_id": client_id,
+            "name": row.get("name"),
             "stock_qty_units": str(calc["running_qty_units"]),
             "avg_cost_paise": calc["running_avg_cost_paise"],
         })
