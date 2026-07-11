@@ -87,7 +87,8 @@ export function ProductServiceManagerPanel({
   }
 
   // Permanent delete — the backend only allows this when the item has never
-  // been linked to a real sales invoice line; otherwise it rejects with
+  // been linked to a real, non-draft/cancelled invoice/bill/note line, and
+  // has no inventory stock movement history; otherwise it rejects with
   // success:false and a message pointing at Archive instead, which we
   // surface via the same error toast rather than a generic failure.
   async function deleteItem(item: ServiceCatalogueItem) {
@@ -333,7 +334,7 @@ export function ProductServiceManagerPanel({
             label: "Delete permanently",
             icon: <Trash2 size={13} />,
             variant: "danger",
-            confirm: "Permanently delete the selected products/services? Any item used on a sales invoice will be skipped. This cannot be undone.",
+            confirm: "Permanently delete the selected products/services? Any item still in use (an invoice, bill, note, or with stock history) will be skipped. This cannot be undone.",
             run: bulkDelete,
           },
           exportSelectedAction("products-services-selected.csv", columns),
