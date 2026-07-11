@@ -13,7 +13,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from models.common import api_response
@@ -188,8 +188,11 @@ def user_login_history(user_id: str, current_user: dict = Depends(rbac("team", "
 
 
 @router.get("/login-history")
-def firm_login_history(current_user: dict = Depends(rbac("team", "read"))):
-    return api_response(True, {"events": login_events_repo.list_for_firm(current_user["firm_id"])})
+def firm_login_history(
+    limit: int = Query(200, ge=1, le=1000),
+    current_user: dict = Depends(rbac("team", "read")),
+):
+    return api_response(True, {"events": login_events_repo.list_for_firm(current_user["firm_id"], limit=limit)})
 
 
 class LoginEventBody(BaseModel):

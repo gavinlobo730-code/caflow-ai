@@ -39,8 +39,13 @@ function isOverdue(due?: string) {
   return new Date(due) < new Date();
 }
 
+// Backend hard-caps this endpoint at 200 (routers/workflow_builder.py list_approvals,
+// `le=200`) — request the max allowed and detect if we still hit it.
+const APPROVALS_FETCH_LIMIT = 200;
+
 export default function ApprovalsPage() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [approvalsCapped, setApprovalsCapped] = useState(false);
   const [status, setStatus] = useState("pending");
   const [loading, setLoading] = useState(true);
   const [responding, setResponding] = useState<string | null>(null);
@@ -49,10 +54,12 @@ export default function ApprovalsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params: Record<string, string> = {};
+      const params: Record<string, string> = { limit: String(APPROVALS_FETCH_LIMIT) };
       if (status !== "all") params.status = status;
       const res = (await api.workflowEngine.listApprovals(params)) as { data: { approvals: Approval[] } };
-      setApprovals(res.data?.approvals || []);
+      const rows = res.data?.approvals || [];
+      setApprovals(rows);
+      setApprovalsCapped(rows.length === APPROVALS_FETCH_LIMIT);
     } finally {
       setLoading(false);
     }
@@ -107,7 +114,7 @@ export default function ApprovalsPage() {
           </div>
           <div className="bg-white border border-[#E2E8F0] rounded-xl p-4">
             <p className="text-xs text-[#64748B] uppercase tracking-wide font-medium">All Today</p>
-            <p className="text-2xl font-bold text-[#182350] mt-1">{approvals.length}</p>
+            <p className="text-2xl font-bold text-[#182350] mt-1">{approvals.length}{approvalsCapped ? "+" : ""}</p>
           </div>
         </div>
 

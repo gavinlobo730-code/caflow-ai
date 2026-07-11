@@ -7,6 +7,10 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { PageLoader } from "@/components/ui/skeleton";
 
 // M6 — administrative login history + global force-logout (Partner oversight).
+// Backend defaults to this many rows (routers/identity.py firm_login_history)
+// — used only to detect the cap below, not to request a different size.
+const LOGIN_HISTORY_DEFAULT_LIMIT = 200;
+
 const EVENT_STYLE: Record<string, string> = {
   login: "bg-emerald-50 text-emerald-700",
   logout: "bg-gray-100 text-gray-500",
@@ -19,6 +23,7 @@ export default function LoginHistoryPage() {
   const { userRole } = useAuth();
   const isPartner = userRole === "Partner";
   const [events, setEvents] = useState<LoginEvent[]>([]);
+  const [capped, setCapped] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +33,9 @@ export default function LoginHistoryPage() {
     setLoading(true); setError(null);
     try {
       const r = await api.identity.loginHistory();
-      setEvents(r.data?.events ?? []);
+      const rows = r.data?.events ?? [];
+      setEvents(rows);
+      setCapped(rows.length === LOGIN_HISTORY_DEFAULT_LIMIT);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load login history");
     } finally {
@@ -58,6 +65,11 @@ export default function LoginHistoryPage() {
         <div className="flex items-center gap-2">
           <History size={18} className="text-[#182350]" />
           <h1 className="text-lg font-semibold text-[#182350]">Login History</h1>
+          {!loading && (
+            <span className="text-[12px] text-gray-400">
+              {events.length}{capped ? "+" : ""} event{events.length === 1 ? "" : "s"}
+            </span>
+          )}
         </div>
         {isPartner && (
           <button onClick={forceLogoutAll} disabled={busy}
@@ -66,7 +78,10 @@ export default function LoginHistoryPage() {
           </button>
         )}
       </div>
-      <p className="text-[12px] text-gray-500 mb-4">Login, logout, and forced-logout events for your firm (audited).</p>
+      <p className="text-[12px] text-gray-500 mb-4">
+        Login, logout, and forced-logout events for your firm (audited).
+        {capped && ` Showing the most recent ${LOGIN_HISTORY_DEFAULT_LIMIT} events.`}
+      </p>
 
       {!isPartner && (
         <div className="flex items-center gap-2 text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">

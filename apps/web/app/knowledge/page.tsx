@@ -76,6 +76,7 @@ function KnowledgeInner() {
         <div className="flex items-center gap-2">
           <Library size={18} className="text-[#182350]" />
           <h1 className="text-lg font-semibold text-[#182350]">Knowledge Base{scope ? ` — ${scope}` : ""}</h1>
+          {!loading && !error && <span className="text-[12px] text-gray-400">{articles.length} article{articles.length === 1 ? "" : "s"}</span>}
         </div>
         <div className="flex items-center gap-3">
           {canAuthor && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg bg-[#182350] text-white"><Plus size={13} /> New article</button>}
