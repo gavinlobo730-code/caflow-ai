@@ -22,11 +22,12 @@ const form = (over: Partial<ServiceFormInput> = {}): ServiceFormInput => ({
   gstRate: 18, rate: "50000", purchasePrice: "", category: "", notes: "", ...over,
 });
 
-test("serviceToLine drops a fully pre-priced line (description falls back to name)", () => {
+test("serviceToLine drops a fully pre-priced line (description never falls back to name)", () => {
   assert.deepEqual(serviceToLine(item()), {
     description: "Statutory audit FY 2025-26", hsn_sac: "998221", rate: "50000", gst_rate: 18, unit: "OTH",
   });
-  assert.equal(serviceToLine(item({ description: "  " })).description, "Statutory Audit");
+  assert.equal(serviceToLine(item({ description: "  " })).description, "");
+  assert.equal(serviceToLine(item({ description: null })).description, "");
   assert.equal(serviceToLine(item({ default_rate_paise: 0 })).rate, "");
   assert.equal(serviceToLine(item({ gst_rate_bps: null })).gst_rate, 0);
 });

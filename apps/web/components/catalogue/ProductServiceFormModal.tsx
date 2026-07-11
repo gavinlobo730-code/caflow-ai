@@ -93,7 +93,7 @@ export function ProductServiceFormModal({
           <input autoFocus value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Statutory Audit, Steel Rod" className={inputCls} />
         </Field>
         <Field label="Description (optional)">
-          <input value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Line description (defaults to the name)" className={inputCls} />
+          <input value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Line description shown on the invoice" className={inputCls} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Kind">

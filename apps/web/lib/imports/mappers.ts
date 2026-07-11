@@ -203,7 +203,7 @@ export interface BuiltService {
 
 export const SERVICE_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "name", label: "Name", required: true, hint: "Product / service name" },
-  { key: "description", label: "Description", required: false, hint: "Line description (defaults to the name)" },
+  { key: "description", label: "Description", required: false, hint: "Line description shown on the invoice (optional)" },
   { key: "kind", label: "Kind", required: false, hint: "product / service (defaults to service)" },
   { key: "category", label: "Category", required: false, hint: "e.g. Compliance (optional)" },
   { key: "hsn_sac", label: "HSN/SAC", required: false, hint: "Must already be in the firm's HSN/SAC library (optional)" },
