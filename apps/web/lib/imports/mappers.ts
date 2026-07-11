@@ -199,6 +199,9 @@ export interface BuiltService {
   default_rate_paise: number;
   purchase_price_paise?: number;
   notes?: string;
+  unit?: string;
+  opening_qty_units?: number;
+  opening_cost_paise?: number;
 }
 
 export const SERVICE_IMPORT_COLUMNS: ImportColumn[] = [
@@ -210,6 +213,9 @@ export const SERVICE_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "gst_rate", label: "GST %", required: false, hint: "e.g. 18 (defaults to 18%)" },
   { key: "selling_price", label: "Selling Price (₹)", required: false, hint: "Default selling price in rupees (optional)" },
   { key: "purchase_price", label: "Purchase Price (₹)", required: false, hint: "Default purchase price in rupees (optional)" },
+  { key: "unit", label: "Unit", required: false, hint: "GST Unit Quantity Code, e.g. KGS, NOS, LTR — Product rows only (optional)" },
+  { key: "opening_qty", label: "Opening Qty", required: false, hint: "Opening stock quantity — Product rows only (optional)" },
+  { key: "opening_cost", label: "Opening Stock Value (₹)", required: false, hint: "Total cost of the opening quantity, not per-unit — Product rows only (optional)" },
   { key: "notes", label: "Notes", required: false, hint: "Internal note (optional)" },
 ];
 
@@ -253,6 +259,31 @@ export function buildServices(rows: Record<string, string>[], clientId: string):
       errors.push(`Row ${rowNo}: purchase price must be a non-negative number`); return;
     }
 
+    // Unit + opening stock — goods only. A service row can't carry either
+    // (CGST Rule 46(h): UQC applies to goods, not services); silently
+    // dropping them for a service row (rather than erroring) matches how
+    // the manual form only shows these fields for kind=good.
+    const unit = isGood ? (str(r.unit).toUpperCase() || undefined) : undefined;
+    let openingQty: number | undefined;
+    let openingCostPaise: number | undefined;
+    if (isGood) {
+      const openingQtyRaw = str(r.opening_qty);
+      if (openingQtyRaw) {
+        openingQty = num(r.opening_qty);
+        if (!Number.isFinite(openingQty) || openingQty < 0) {
+          errors.push(`Row ${rowNo}: opening qty must be a non-negative number`); return;
+        }
+        if (openingQty === 0) openingQty = undefined;
+      }
+      const openingCostRaw = str(r.opening_cost);
+      if (openingCostRaw) {
+        openingCostPaise = toPaise(r.opening_cost);
+        if (!Number.isFinite(openingCostPaise) || openingCostPaise < 0) {
+          errors.push(`Row ${rowNo}: opening stock value must be a non-negative number`); return;
+        }
+      }
+    }
+
     seen.add(nameKey);
     records.push({
       client_id: clientId,
@@ -265,6 +296,9 @@ export function buildServices(rows: Record<string, string>[], clientId: string):
       default_rate_paise: sellingPaise,
       purchase_price_paise: purchasePaise,
       notes: str(r.notes) || undefined,
+      unit,
+      opening_qty_units: openingQty,
+      opening_cost_paise: openingCostPaise,
     });
   });
 

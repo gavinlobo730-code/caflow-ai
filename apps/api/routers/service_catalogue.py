@@ -396,6 +396,26 @@ def bulk_create_services(
             rows = resp.data or [p for _, p in to_insert]
             created.extend(rows)
 
+            # Seed the moving-average costing ledger for every imported goods
+            # row that came with an opening balance. One row = one ledger
+            # insert + one cache update (seed_opening_balance itself), same
+            # as the single-create path — never blocks the import: a
+            # per-row seeding failure is logged and the rest of the batch
+            # continues.
+            for row in rows:
+                if row.get("kind") != "good" or not (row.get("opening_qty_units") or row.get("opening_cost_paise")):
+                    continue
+                try:
+                    from domain.inventory_service import seed_opening_balance
+                    seed_opening_balance(
+                        db, firm_id=firm_id, client_id=row.get("client_id"), service_catalogue_id=row["id"],
+                        movement_date=row.get("created_at", "")[:10] or datetime.now(timezone.utc).date().isoformat(),
+                        opening_qty=row.get("opening_qty_units"), opening_cost_paise=row.get("opening_cost_paise"),
+                        created_by=current_user.get("auth_user_id"),
+                    )
+                except Exception as e:
+                    _logger.error("bulk_create_services: opening balance seeding failed for %s: %s", row.get("id"), e, exc_info=True)
+
         return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors})
     except HTTPException:
         raise
