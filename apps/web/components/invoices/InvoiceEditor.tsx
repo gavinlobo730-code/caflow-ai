@@ -61,12 +61,32 @@ const EMPTY_LINE: InvoiceLine = { description: "", hsn_sac: "", qty: "1", rate: 
 // isn't rehydrated as a full object on load (see initialLines below).
 type EditorLine = InvoiceLine & { _k: number; product?: ServiceCatalogueItem | null; serviceCatalogueId?: string | null };
 
+/** existing.lines / duplicateSeed.lines are the same InvoiceDetail shape —
+ * shared so the two seeding paths below can't drift apart. */
+function detailLinesToEditorLines(lines: InvoiceDetail["lines"]): EditorLine[] {
+  return lines.map((l, i) => ({
+    description: l.description ?? "",
+    hsn_sac: l.hsn_sac ?? "",
+    qty: String(l.quantity ?? 1),
+    rate: String((l.rate_paise ?? 0) / 100),
+    gst_rate: Math.round((l.gst_rate_bps ?? 0) / 100),
+    unit: l.unit ?? "",
+    // Round-tripped (not just presentational `product`, which isn't
+    // rehydrated here) so re-editing and resaving an invoice doesn't
+    // silently drop the delete-guard link — update_invoice deletes and
+    // reinserts every line from whatever gets sent back.
+    serviceCatalogueId: l.service_catalogue_id ?? null,
+    _k: i,
+  }));
+}
+
 export function InvoiceEditor({
   clientId,
   clientName,
   clientStateCode,
   customers,
   existing,
+  duplicateSeed,
   onDone,
   onCancel,
 }: {
@@ -75,6 +95,10 @@ export function InvoiceEditor({
   clientStateCode: string;
   customers: Customer[];
   existing?: InvoiceDetail | null;
+  /** "Duplicate invoice" pre-fill (customer + lines + supply context only —
+   * never the number, dates or payment state) for an otherwise-blank new
+   * invoice. Ignored once `existing` is set (edit mode). */
+  duplicateSeed?: InvoiceDetail | null;
   /** Called after a successful save with a human message (the caller navigates). */
   onDone: (message: string) => void;
   /** Called when the user cancels (the caller navigates; guarded by dirty check). */
@@ -83,24 +107,12 @@ export function InvoiceEditor({
   const today = new Date().toISOString().split("T")[0];
   const isEdit = !!existing;
 
-  const initialLines: EditorLine[] = existing && existing.lines.length > 0
-    ? existing.lines.map((l, i) => ({
-        description: l.description ?? "",
-        hsn_sac: l.hsn_sac ?? "",
-        qty: String(l.quantity ?? 1),
-        rate: String((l.rate_paise ?? 0) / 100),
-        gst_rate: Math.round((l.gst_rate_bps ?? 0) / 100),
-        unit: l.unit ?? "",
-        // Round-tripped (not just presentational `product`, which isn't
-        // rehydrated here) so re-editing and resaving an invoice doesn't
-        // silently drop the delete-guard link — update_invoice deletes and
-        // reinserts every line from whatever gets sent back.
-        serviceCatalogueId: l.service_catalogue_id ?? null,
-        _k: i,
-      }))
+  const initialLines: EditorLine[] =
+    existing && existing.lines.length > 0 ? detailLinesToEditorLines(existing.lines)
+    : duplicateSeed && duplicateSeed.lines.length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
     : [{ ...EMPTY_LINE, _k: 0 }];
 
-  const [customerId, setCustomerId] = useState(existing?.customer_id ?? "");
+  const [customerId, setCustomerId] = useState(existing?.customer_id ?? duplicateSeed?.customer_id ?? "");
   // Fully manual (Decision: no Caflow-generated numbering scheme) — the CA
   // types it; validateInvoiceEditor checks the CGST Rule 46(b) shape and the
   // server checks per-client uniqueness (the client can't see every other
@@ -116,14 +128,14 @@ export function InvoiceEditor({
           : (existing.due_date ? String(diffDaysISO(existing.invoice_date, existing.due_date) ?? "") : ""))
       : "",
   );
-  const [supplyStateCode, setSupplyStateCode] = useState(existing?.supply_state_code ?? "");
-  const [isInterstate, setIsInterstate] = useState(existing?.is_interstate ?? false);
+  const [supplyStateCode, setSupplyStateCode] = useState(existing?.supply_state_code ?? duplicateSeed?.supply_state_code ?? "");
+  const [isInterstate, setIsInterstate] = useState(existing?.is_interstate ?? duplicateSeed?.is_interstate ?? false);
   const [termCustom, setTermCustom] = useState<boolean>(() => {
     if (creditDays === "") return false;
     const n = parseInt(creditDays, 10);
     return termLabelForDays(Number.isNaN(n) ? null : n) === CUSTOM_TERM;
   });
-  const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [notes, setNotes] = useState(existing?.notes ?? duplicateSeed?.notes ?? "");
   const [lines, setLines] = useState<EditorLine[]>(initialLines);
   const keyRef = useRef(initialLines.length); // next stable row key
   const nextKey = () => keyRef.current++;
@@ -166,14 +178,14 @@ export function InvoiceEditor({
 
   // ── Dirty detection (Batch 2 carry-forward: real "Unsaved changes" indicator) ──
   const initialSnapshot = useRef({
-    customerId: existing?.customer_id ?? "",
+    customerId: existing?.customer_id ?? duplicateSeed?.customer_id ?? "",
     invoiceNo: existing?.invoice_no ?? "",
     invoiceDate: existing?.invoice_date ?? today,
     dueDate: existing?.due_date ?? "",
     referenceNo: existing?.reference_no ?? "",
-    creditDays, supplyStateCode: existing?.supply_state_code ?? "",
-    isInterstate: existing?.is_interstate ?? false,
-    notes: existing?.notes ?? "",
+    creditDays, supplyStateCode: existing?.supply_state_code ?? duplicateSeed?.supply_state_code ?? "",
+    isInterstate: existing?.is_interstate ?? duplicateSeed?.is_interstate ?? false,
+    notes: existing?.notes ?? duplicateSeed?.notes ?? "",
     lines: initialLines, currency, exchangeRate,
   });
   const currentSnapshot = { customerId, invoiceNo, invoiceDate, dueDate, referenceNo, creditDays, supplyStateCode, isInterstate, notes, lines, currency, exchangeRate };

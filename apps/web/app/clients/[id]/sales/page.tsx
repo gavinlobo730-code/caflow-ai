@@ -27,6 +27,7 @@ import { api, type ApiResp } from "@/lib/api";
 import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { useRouter } from "next/navigation";
 import { newInvoiceHref, editInvoiceHref } from "@/lib/invoices/workspaceNav";
+import { writeDuplicateSeed } from "@/lib/invoices/duplicateSeed";
 import {
   API, apiCall, apiGet, getAuthToken, fmt, computeGst, GST_RATES, STATUS_BADGE, DELIVERY_STATUS_LABEL,
   type InvoiceDelivery, type InvoiceDetail,
@@ -1196,49 +1197,18 @@ function SalesInvoices({
     router.push(editInvoiceHref(clientId, inv.id));
   }
 
-  // Duplicate an existing invoice into a fresh DRAFT by re-posting its header +
-  // lines through the SAME create endpoint the editor uses (no parallel logic),
-  // then opening the new draft in the editor for review. Copies the supply
-  // context and line items but never the number, dates or payment state.
-  //
-  // invoice_no is a required field on create (numbering is fully manual — see
-  // SalesInvoiceIn), so the duplicate can't just omit it: a "-COPY" suffix on
-  // the original number is only a placeholder the CA is expected to change on
-  // the edit screen they land on right after. Truncated to fit CGST Rule
-  // 46(b)'s 16-character cap.
-  async function handleDuplicate(inv: InvoiceDetail) {
-    try {
-      const token = await getAuthToken();
-      const today = new Date().toISOString().split("T")[0];
-      const suffix = "-COPY";
-      const placeholderInvoiceNo = `${inv.invoice_no.slice(0, Math.max(1, 16 - suffix.length))}${suffix}`;
-      const lines = inv.lines.map((l) => ({
-        description: l.description,
-        hsn_sac: l.hsn_sac ?? undefined,
-        quantity: l.quantity,
-        unit: l.unit ?? undefined,
-        rate_paise: l.rate_paise,
-        gst_rate_percent: (l.gst_rate_bps ?? 0) / 100,
-      }));
-      const created = await apiCall("/api/sales-invoices/", "POST", {
-        client_id: clientId,
-        customer_id: inv.customer_id,
-        invoice_no: placeholderInvoiceNo,
-        invoice_date: today,
-        supply_state_code: inv.supply_state_code || undefined,
-        is_inter_state: inv.is_interstate,
-        notes: inv.notes || undefined,
-        lines,
-      }, token);
-      if (!created.success) throw new Error(created.error ?? "Failed to duplicate invoice");
-      const draft = created.data as { id: string; invoice_no: string } | null;
-      setDetailId(null);
-      showToast(`Draft ${draft?.invoice_no ?? ""} created from ${inv.invoice_no}`, "success");
-      if (draft?.id) router.push(editInvoiceHref(clientId, draft.id));
-      else load();
-    } catch (e) {
-      showToast(e instanceof Error ? e.message : "Failed to duplicate invoice", "error");
-    }
+  // Duplicate: QuickBooks-style — nothing is created server-side up front.
+  // The source invoice is stashed (writeDuplicateSeed) and the New Invoice
+  // route is opened; InvoiceEditor pre-fills its unsaved form from it (the
+  // customer and line items, never the number/dates/payment state — those
+  // start exactly like any other new invoice). The CA reviews, types their
+  // own invoice number, and saves like normal; a colliding number surfaces
+  // the SAME inline "already exists" error every manually-typed one does,
+  // right there in the editor — never a surprise on a different screen.
+  function handleDuplicate(inv: InvoiceDetail) {
+    writeDuplicateSeed(inv);
+    setDetailId(null);
+    router.push(newInvoiceHref(clientId));
   }
 
   async function deleteInvoice(inv: SalesInvoice) {
