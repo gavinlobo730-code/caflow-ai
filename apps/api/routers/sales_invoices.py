@@ -697,8 +697,13 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         customer.get("credit_days"),
     )
 
-    # Validate posting date is not in a locked financial year (migration 020)
-    period_validation_service.validate_posting_date(firm_id or "", data["invoice_date"])
+    # Validate posting date is not in a locked financial year (migration 020).
+    # Memoized per FY within a bulk batch (bulk_cache carries the cache dict)
+    # — see validate_posting_date_cached's docstring.
+    period_validation_service.validate_posting_date_cached(
+        firm_id or "", data["invoice_date"],
+        bulk_cache.get("locked_fy_cache") if bulk_cache is not None else None,
+    )
 
     if _USE_MOCK:
         invoice_id = str(uuid.uuid4())
@@ -908,12 +913,18 @@ def bulk_create_invoices(
                 if inv.get("firm_id") == firm_id and inv.get("client_id") == cid
             }
 
+    # Locked-FY status is firm-wide and cannot change mid-request — shared and
+    # mutated across the whole loop (see validate_posting_date_cached) so a
+    # batch spanning 2 financial years costs 2 RPC calls, not one per invoice.
+    locked_fy_cache: dict = {}
+
     for i, invoice_no, data in parsed:
         try:
             bulk_cache = {
                 "customer": customers_by_id.get(data.customer_id, {}),
                 "client_rec": clients_by_id.get(data.client_id, {}),
                 "existing_invoice_nos": existing_invoice_nos_by_client.setdefault(data.client_id, set()),
+                "locked_fy_cache": locked_fy_cache,
             }
             invoice = _create_invoice_core(data.model_dump(), current_user, bulk_cache=bulk_cache)
             created.append(invoice)

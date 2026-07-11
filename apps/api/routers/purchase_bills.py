@@ -359,8 +359,13 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         "rate_overridden":  dc.rate_overridden,
     }
 
-    # Validate posting date is not in a locked financial year (migration 020)
-    period_validation_service.validate_posting_date(firm_id or "", data["bill_date"])
+    # Validate posting date is not in a locked financial year (migration 020).
+    # Memoized per FY within a bulk batch (bulk_cache carries the cache dict)
+    # — see validate_posting_date_cached's docstring.
+    period_validation_service.validate_posting_date_cached(
+        firm_id or "", data["bill_date"],
+        bulk_cache.get("locked_fy_cache") if bulk_cache is not None else None,
+    )
 
     if _USE_MOCK:
         bill_id = str(uuid.uuid4())
@@ -531,6 +536,11 @@ def bulk_create_purchase_bills(
             for r in (resp.data or []):
                 client_gstin_by_id[r["id"]] = r.get("gstin")
 
+    # Locked-FY status is firm-wide and cannot change mid-request — shared and
+    # mutated across the whole loop (see validate_posting_date_cached) so a
+    # batch spanning 2 financial years costs 2 RPC calls, not one per bill.
+    locked_fy_cache: dict = {}
+
     for i, bill_no, data in parsed:
         try:
             bulk_cache = None
@@ -538,6 +548,7 @@ def bulk_create_purchase_bills(
                 bulk_cache = {
                     "vendor": vendors_by_id.get(data.vendor_id),
                     "client_gstin": client_gstin_by_id.get(data.client_id),
+                    "locked_fy_cache": locked_fy_cache,
                 }
             bill = _create_purchase_bill_core(data.model_dump(), current_user, bulk_cache=bulk_cache)
             created.append(bill)
