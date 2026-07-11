@@ -24,18 +24,21 @@ test("draft actions: edit/delete/issue only", () => {
   assert.equal(a.viewJournal, false);
   assert.equal(a.duplicate, false);
   assert.equal(a.pdf, false);
+  // A draft is edited in place via the full editor (`edit`), not the
+  // posted-only soft-field patch.
+  assert.equal(a.editDetails, false);
 });
 
-test("issued actions: record payment, send, duplicate, credit note, journal, pdf", () => {
+test("issued actions: record payment, send, duplicate, credit note, journal, pdf, editDetails", () => {
   const a = availableActions("issued");
-  for (const k of ["recordPayment", "paymentLink", "send", "duplicate", "creditNote", "viewJournal", "pdf"] as const) {
+  for (const k of ["recordPayment", "paymentLink", "send", "duplicate", "creditNote", "viewJournal", "pdf", "editDetails"] as const) {
     assert.equal(a[k], true, `issued should allow ${k}`);
   }
   assert.equal(a.edit, false);
   assert.equal(a.issue, false);
 });
 
-test("paid: no record payment / pay link; still duplicate, credit note, journal, pdf, send", () => {
+test("paid: no record payment / pay link; still duplicate, credit note, journal, pdf, send, editDetails", () => {
   const a = availableActions("paid");
   assert.equal(a.recordPayment, false);
   assert.equal(a.paymentLink, false);
@@ -44,9 +47,10 @@ test("paid: no record payment / pay link; still duplicate, credit note, journal,
   assert.equal(a.viewJournal, true);
   assert.equal(a.pdf, true);
   assert.equal(a.send, true);
+  assert.equal(a.editDetails, true);
 });
 
-test("cancelled: read-only-ish (duplicate + pdf + journal), no payment/credit/send", () => {
+test("cancelled: read-only-ish (duplicate + pdf + journal), no payment/credit/send/editDetails", () => {
   const a = availableActions("cancelled");
   assert.equal(a.recordPayment, false);
   assert.equal(a.creditNote, false);
@@ -54,6 +58,7 @@ test("cancelled: read-only-ish (duplicate + pdf + journal), no payment/credit/se
   assert.equal(a.duplicate, true);
   assert.equal(a.pdf, true);
   assert.equal(a.viewJournal, false);
+  assert.equal(a.editDetails, false);
 });
 
 test("deliverySummary reflects sent state (viewed not tracked)", () => {

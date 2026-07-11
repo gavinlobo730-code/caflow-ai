@@ -34,6 +34,7 @@ import { CompliancePanel } from "@/components/invoices/CompliancePanel";
 import {
   complianceTimelineItems, type EInvoiceRecord, type EWayRecord,
 } from "@/lib/invoices/compliance";
+import { UQC_CODES } from "@/lib/constants/uqc";
 
 const fmtDateTime = formatDateTime;
 
@@ -100,6 +101,7 @@ export function InvoiceViewDrawer({
   const [journalLoading, setJournalLoading] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [cnOpen, setCnOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -238,6 +240,8 @@ export function InvoiceViewDrawer({
                 const days = inv.credit_days ?? (inv.due_date ? diffDaysISO(inv.invoice_date, inv.due_date) : null);
                 return <DetailRow label="Terms" value={days == null ? "—" : termLabelForDays(days)} />;
               })()}
+              <DetailRow label="Reference / PO no." value={inv.reference_no ?? "—"} />
+              <DetailRow label="Notes" value={inv.notes ?? "—"} />
             </div>
           </section>
 
@@ -245,6 +249,7 @@ export function InvoiceViewDrawer({
           {actions && (
             <div className="flex flex-wrap gap-2 pt-1">
               {actions.edit && summary && <Action onClick={() => onEdit(summary)} icon={<Pencil size={12} />}>Edit</Action>}
+              {actions.editDetails && <Action onClick={() => setEditOpen(true)} icon={<Pencil size={12} />}>Edit Details</Action>}
               {actions.issue && <Action primary onClick={() => onIssue(inv.id)} icon={<CheckCircle size={12} />}>Issue</Action>}
               {actions.delete && summary && <Action danger onClick={() => onDelete(summary)} icon={<Trash2 size={12} />}>Delete</Action>}
               {actions.recordPayment && <Action primary onClick={() => setPayOpen(true)} icon={<CreditCard size={12} />}>Record Payment</Action>}
@@ -389,6 +394,14 @@ export function InvoiceViewDrawer({
           onError={(m) => onToast(m, "error")}
         />
       )}
+      {editOpen && inv && (
+        <EditDetailsModal
+          invoice={inv}
+          onClose={() => setEditOpen(false)}
+          onDone={() => { setEditOpen(false); onToast(`${inv.invoice_no} updated`, "success"); onChanged(); load(); }}
+          onError={(m) => onToast(m, "error")}
+        />
+      )}
     </Drawer>
   );
 }
@@ -517,6 +530,74 @@ function CreateCreditNoteModal({ invoice, clientId, onClose, onDone, onError }: 
       <Field label="Credit note date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
       <Field label="Reason / notes"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Reason for the credit note" className={inputCls} /></Field>
       <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Create Credit Note" />
+    </ModalShell>
+  );
+}
+
+// ── Edit Details (reuses PATCH /api/sales-invoices/{id} — soft fields only) ──
+// Once an invoice is issued, only reference/PO number, notes, due date and
+// per-line unit may still change (routers/sales_invoices.py:
+// _SOFT_UPDATE_FIELDS + line_units) — none of these affect amount or tax, so
+// correcting them doesn't need a Credit Note. Everything else stays locked;
+// this modal simply has no field for anything else.
+function EditDetailsModal({ invoice, onClose, onDone, onError }: {
+  invoice: InvoiceDetail; onClose: () => void; onDone: () => void; onError: (m: string) => void;
+}) {
+  const [referenceNo, setReferenceNo] = useState(invoice.reference_no ?? "");
+  const [notes, setNotes] = useState(invoice.notes ?? "");
+  const [dueDate, setDueDate] = useState(invoice.due_date ?? "");
+  const [units, setUnits] = useState<Record<string, string>>(
+    Object.fromEntries(invoice.lines.map((l) => [l.id ?? "", l.unit ?? "NOS"]).filter(([id]) => id))
+  );
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    setSaving(true);
+    try {
+      const token = await getAuthToken();
+      const r = await apiCall(`/api/sales-invoices/${invoice.id}`, "PATCH", {
+        reference_no: referenceNo.trim() || undefined,
+        notes: notes.trim() || undefined,
+        due_date: dueDate || undefined,
+        line_units: Object.keys(units).length ? units : undefined,
+      }, token);
+      if (!r.success) throw new Error(r.error ?? "Failed to update invoice");
+      onDone();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Failed to update invoice");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalShell title={`Edit Details — ${invoice.invoice_no}`} onClose={onClose}>
+      <p className="text-[11px] text-[#64748B]">
+        This invoice is issued — only these fields can still change. To correct the amount, dates, customer or line
+        items, issue a Credit Note instead (CGST Act §34).
+      </p>
+      <Field label="Reference / PO number"><input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="Customer PO number" className={inputCls} /></Field>
+      <Field label="Notes"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputCls} /></Field>
+      <Field label="Due date"><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputCls} /></Field>
+      {invoice.lines.length > 0 && (
+        <Field label="Line units">
+          <div className="space-y-1.5">
+            {invoice.lines.map((l) => l.id ? (
+              <div key={l.id} className="flex items-center gap-2">
+                <span className="flex-1 text-[11px] text-[#64748B] truncate">{l.description}</span>
+                <select
+                  value={units[l.id] ?? "NOS"}
+                  onChange={(e) => setUnits((prev) => ({ ...prev, [l.id as string]: e.target.value }))}
+                  className="text-xs px-2 py-1 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {UQC_CODES.map((u) => <option key={u.code} value={u.code}>{u.code}</option>)}
+                </select>
+              </div>
+            ) : null)}
+          </div>
+        </Field>
+      )}
+      <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Save" />
     </ModalShell>
   );
 }
