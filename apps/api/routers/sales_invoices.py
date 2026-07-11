@@ -483,12 +483,25 @@ def create_invoice(
         return api_response(False, None, "Unable to create invoice. Please try again.")
 
 
-def _create_invoice_core(data: dict, current_user: dict) -> dict:
+def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[dict] = None) -> dict:
     """Shared invoice-creation logic used by both create_invoice and the bulk
-    import endpoint below — extracted verbatim (no behavior change) so the CSV
-    importer can create many invoices in ONE request instead of firing one POST
-    per invoice. Raises HTTPException on failure; returns the created invoice
-    dict (with lines) on success."""
+    import endpoint below — extracted verbatim (no behavior change for a
+    single create: bulk_cache is always None there) so the CSV importer can
+    create many invoices in ONE request instead of firing one POST per
+    invoice. Raises HTTPException on failure; returns the created invoice
+    dict (with lines) on success.
+
+    bulk_cache (bulk import only — see bulk_create_invoices, which pre-fetches
+    it once per request instead of once per invoice):
+      "customer": this invoice's customer row (already resolved by the caller)
+      "client_rec": the selling client's row (shared across the whole batch)
+      "existing_invoice_nos": mutable set of invoice_nos already taken for
+        this client — checked and updated here instead of a per-invoice query,
+        which also catches an intra-batch duplicate the CSV mapper missed.
+    Skips the per-invoice HSN-preference/audit/timeline writes in bulk mode —
+    all three are documented non-fatal, best-effort UX/audit metadata (never
+    read by GST/journal/report code); bulk_create_invoices writes one summary
+    audit + timeline entry for the whole batch afterward instead."""
     lines_data = data.get("lines", [])
     if not lines_data:
         raise HTTPException(status_code=422, detail="At least one line item is required")
@@ -508,33 +521,41 @@ def _create_invoice_core(data: dict, current_user: dict) -> dict:
         from core.supabase_client import get_supabase
         db = get_supabase()
 
-        # Fetch customer state code (firm-scoped — never read another firm's master)
-        cust_resp = (
-            db.table("customers")
-            .select("state_code, gstin, credit_days, is_active")
-            .eq("id", data["customer_id"])
-            .eq("firm_id", firm_id)
-            .limit(1)
-            .execute()
-        )
-        customer = cust_resp.data[0] if cust_resp.data else {}
+        if bulk_cache is not None:
+            customer = bulk_cache["customer"]
+            client_rec = bulk_cache["client_rec"]
+        else:
+            # Fetch customer state code (firm-scoped — never read another firm's master)
+            cust_resp = (
+                db.table("customers")
+                .select("state_code, gstin, credit_days, is_active")
+                .eq("id", data["customer_id"])
+                .eq("firm_id", firm_id)
+                .limit(1)
+                .execute()
+            )
+            customer = cust_resp.data[0] if cust_resp.data else {}
+            # Fetch client state code from GSTIN (firm-scoped)
+            client_resp = (
+                db.table("clients")
+                .select("gstin")
+                .eq("id", client_id)
+                .eq("firm_id", firm_id)
+                .limit(1)
+                .execute()
+            )
+            client_rec = client_resp.data[0] if client_resp.data else {}
         # Business guard: never raise an invoice against a deactivated customer.
         if customer and customer.get("is_active") is False:
             raise HTTPException(status_code=422, detail="This customer is inactive. Reactivate the customer before invoicing.")
-
-        # Fetch client state code from GSTIN (firm-scoped)
-        client_resp = (
-            db.table("clients")
-            .select("gstin")
-            .eq("id", client_id)
-            .eq("firm_id", firm_id)
-            .limit(1)
-            .execute()
-        )
-        client_rec = client_resp.data[0] if client_resp.data else {}
         client_state_code = _get_state_code_from_gstin(client_rec.get("gstin")) or ""
 
-    _assert_invoice_no_available(None if _USE_MOCK else db, firm_id, client_id, invoice_no)  # type: ignore[possibly-undefined]
+    if bulk_cache is not None:
+        if invoice_no in bulk_cache["existing_invoice_nos"]:
+            raise HTTPException(status_code=409, detail=f"Invoice number '{invoice_no}' already exists for this client.")
+        bulk_cache["existing_invoice_nos"].add(invoice_no)
+    else:
+        _assert_invoice_no_available(None if _USE_MOCK else db, firm_id, client_id, invoice_no)  # type: ignore[possibly-undefined]
 
     # Effective place of supply
     effective_supply_state = supply_state_code or customer.get("state_code") or ""  # type: ignore[possibly-undefined]
@@ -769,21 +790,26 @@ def _create_invoice_core(data: dict, current_user: dict) -> dict:
         raise
     invoice["lines"] = lines_resp.data or computed_lines
 
-    # Learn HSN/SAC choices for smart suggestions (UX only; non-fatal).
-    _record_hsn_preferences(db, firm_id or "", client_id, computed_lines)
+    # Per-invoice HSN-preference/audit/timeline writes — skipped in bulk mode
+    # (see the bulk_cache docstring above): bulk_create_invoices writes one
+    # summary audit + timeline entry for the whole batch instead of firm_id/
+    # client_id-identical rows repeated once per imported invoice.
+    if bulk_cache is None:
+        # Learn HSN/SAC choices for smart suggestions (UX only; non-fatal).
+        _record_hsn_preferences(db, firm_id or "", client_id, computed_lines)
 
-    log_event(
-        firm_id, "sales_invoice", invoice_id,
-        "create", actor_id=current_user.get("auth_user_id"),
-        actor_email=current_user.get("email"), new_data=invoice,
-    )
-    timeline_service.log(
-        client_id, "accounting", "Sales Invoice Created",
-        f"Invoice {invoice.get('invoice_no', '')} for ₹{invoice.get('total_paise', 0) // 100:,} created (draft)",
-        "info", firm_id=firm_id or "",
-        entity_type="sales_invoice", entity_id=invoice_id,
-        amount_paise=invoice.get("total_paise"), actor_id=current_user.get("auth_user_id"),
-    )
+        log_event(
+            firm_id, "sales_invoice", invoice_id,
+            "create", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"), new_data=invoice,
+        )
+        timeline_service.log(
+            client_id, "accounting", "Sales Invoice Created",
+            f"Invoice {invoice.get('invoice_no', '')} for ₹{invoice.get('total_paise', 0) // 100:,} created (draft)",
+            "info", firm_id=firm_id or "",
+            entity_type="sales_invoice", entity_id=invoice_id,
+            amount_paise=invoice.get("total_paise"), actor_id=current_user.get("auth_user_id"),
+        )
     return invoice
 
 
@@ -801,29 +827,107 @@ def bulk_create_invoices(
     The CSV importer used to fire one POST /api/sales-invoices/ per invoice —
     for a 100-row import that's 100 sequential network round-trips, and it
     multiplies badly when many firms import concurrently. This endpoint loops
-    the exact same _create_invoice_core logic server-side (no behavior change,
-    no duplicated business rules), so N round-trips collapse to 1. A bad row
-    is reported per-item and does not abort the rest of the batch — matches
-    the existing CSV-import UX (partial success with a per-row error list).
+    the exact same _create_invoice_core logic server-side, so N round-trips
+    collapse to roughly 1 for the WHOLE batch: the customer/client rows and
+    the set of already-used invoice numbers are pre-fetched ONCE here
+    (bulk_cache) instead of once per invoice inside _create_invoice_core —
+    at a few thousand rows, that per-invoice version is the difference
+    between a few seconds and tens of minutes (almost certainly past any
+    request timeout, and with no way to tell how much of the batch actually
+    landed if it does). A bad row is reported per-item and does not abort the
+    rest of the batch — matches the existing CSV-import UX (partial success
+    with a per-row error list).
     """
     items = payload.invoices
     created: list[dict] = []
     errors: list[dict] = []
+    firm_id = current_user.get("firm_id")
+
+    # Parse/validate every row up front so the pre-fetch below only has to
+    # cover rows that will actually reach _create_invoice_core.
+    parsed: list[tuple[int, str, SalesInvoiceIn]] = []
     for i, raw in enumerate(items):
         invoice_no = raw.get("invoice_no", "") if isinstance(raw, dict) else ""
         try:
-            try:
-                data = SalesInvoiceIn(**raw)
-            except PydanticValidationError as e:
-                errors.append({"index": i, "invoice_no": invoice_no, "error": str(e.errors()[0].get("msg", "Invalid invoice data")) if e.errors() else "Invalid invoice data"})
-                continue
-            invoice = _create_invoice_core(data.model_dump(), current_user)
+            parsed.append((i, invoice_no, SalesInvoiceIn(**raw)))
+        except PydanticValidationError as e:
+            errors.append({"index": i, "invoice_no": invoice_no, "error": str(e.errors()[0].get("msg", "Invalid invoice data")) if e.errors() else "Invalid invoice data"})
+
+    customers_by_id: dict = {}
+    clients_by_id: dict = {}
+    # client_id -> set(invoice_no already taken) — scoped per client to match
+    # the real UNIQUE(firm_id, client_id, invoice_no) constraint (migration
+    # 151); shared/mutated across the loop below so an intra-batch duplicate
+    # (two rows with the same invoice_no the CSV mapper somehow let through)
+    # is caught the same way a pre-existing one is.
+    existing_invoice_nos_by_client: dict = {}
+    if parsed and not _USE_MOCK:
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        client_ids = list({p[2].client_id for p in parsed})
+        customer_ids = list({p[2].customer_id for p in parsed})
+        CHUNK = 200  # stay well under any PostgREST IN-list/URL-length limit
+        for i in range(0, len(customer_ids), CHUNK):
+            chunk = customer_ids[i:i + CHUNK]
+            resp = (db.table("customers").select("id, state_code, gstin, credit_days, is_active")
+                    .eq("firm_id", firm_id).in_("id", chunk).execute())
+            for r in (resp.data or []):
+                customers_by_id[r["id"]] = r
+        for i in range(0, len(client_ids), CHUNK):
+            chunk = client_ids[i:i + CHUNK]
+            resp = db.table("clients").select("id, gstin").eq("firm_id", firm_id).in_("id", chunk).execute()
+            for r in (resp.data or []):
+                clients_by_id[r["id"]] = r
+        for cid in client_ids:
+            resp = (db.table("client_sales_invoices").select("invoice_no")
+                    .eq("firm_id", firm_id).eq("client_id", cid).execute())
+            existing_invoice_nos_by_client[cid] = {r["invoice_no"] for r in (resp.data or [])}
+    elif parsed and _USE_MOCK:
+        for cid in {p[2].client_id for p in parsed}:
+            existing_invoice_nos_by_client[cid] = {
+                inv.get("invoice_no") for inv in MOCK_SALES_INVOICES
+                if inv.get("firm_id") == firm_id and inv.get("client_id") == cid
+            }
+
+    for i, invoice_no, data in parsed:
+        try:
+            bulk_cache = {
+                "customer": customers_by_id.get(data.customer_id, {}),
+                "client_rec": clients_by_id.get(data.client_id, {}),
+                "existing_invoice_nos": existing_invoice_nos_by_client.setdefault(data.client_id, set()),
+            }
+            invoice = _create_invoice_core(data.model_dump(), current_user, bulk_cache=bulk_cache)
             created.append(invoice)
         except HTTPException as e:
             errors.append({"index": i, "invoice_no": invoice_no, "error": e.detail})
         except Exception as e:
             _logger.error("bulk_create_invoices item %d failed: %s", i, e, exc_info=True)
             errors.append({"index": i, "invoice_no": invoice_no, "error": "Unable to create this invoice. Please try again."})
+
+    # One summary audit + timeline entry for the whole batch instead of one
+    # per invoice (skipped inside _create_invoice_core for bulk_cache calls
+    # — see its docstring): a bulk import's real audit-trail question is
+    # "who imported N invoices and when", not N near-identical entries.
+    if created:
+        log_event(
+            firm_id, "sales_invoice", "bulk_import", "create",
+            actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+            new_data={"count": len(created), "invoice_nos": [c.get("invoice_no") for c in created][:100]},
+        )
+        by_client: dict[str, list[dict]] = {}
+        for c in created:
+            by_client.setdefault(c.get("client_id", ""), []).append(c)
+        for cid, invs in by_client.items():
+            if not cid:
+                continue
+            total = sum(inv.get("total_paise", 0) for inv in invs)
+            timeline_service.log(
+                cid, "accounting", "Sales Invoices Imported",
+                f"{len(invs)} invoice(s) imported via bulk upload, totaling ₹{total // 100:,}.",
+                "info", firm_id=firm_id or "",
+                entity_type="sales_invoice", amount_paise=total,
+                actor_id=current_user.get("auth_user_id"),
+            )
     return api_response(True, {"created": created, "errors": errors})
 
 
