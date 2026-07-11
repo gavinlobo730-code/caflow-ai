@@ -206,6 +206,32 @@ def test_oos5_bill_update_same_firm_ok(monkeypatch):
     assert db.data["purchase_bills"][0]["notes"] == "hi"
 
 
+# ── Post-receipt soft-field edits (mirrors the sales-invoice audit fix) ──────
+def test_bill_update_rejects_locked_field_once_received(monkeypatch):
+    pb, db = _seed_bill(monkeypatch, "F", status="received")
+    with pytest.raises(HTTPException) as ei:
+        pb.update_purchase_bill("BILL", PurchaseBillUpdateIn(bill_no="NEW-NO"), _CALLER)
+    assert ei.value.status_code == 422
+    assert db.data["purchase_bills"][0].get("bill_no") is None
+
+
+def test_bill_update_allows_soft_fields_once_received(monkeypatch):
+    pb, db = _seed_bill(monkeypatch, "F", status="received")
+    resp = pb.update_purchase_bill(
+        "BILL", PurchaseBillUpdateIn(notes="vendor confirmed delivery", due_date="2026-08-01"), _CALLER)
+    assert resp["success"] is True
+    assert db.data["purchase_bills"][0]["notes"] == "vendor confirmed delivery"
+    assert db.data["purchase_bills"][0]["due_date"] == "2026-08-01"
+
+
+def test_bill_update_rejects_any_edit_once_cancelled(monkeypatch):
+    pb, db = _seed_bill(monkeypatch, "F", status="cancelled")
+    with pytest.raises(HTTPException) as ei:
+        pb.update_purchase_bill("BILL", PurchaseBillUpdateIn(notes="trying to edit a cancelled bill"), _CALLER)
+    assert ei.value.status_code == 422
+    assert db.data["purchase_bills"][0].get("notes") is None
+
+
 def test_oos5_bill_receive_foreign_firm_404(monkeypatch):
     pb, db = _seed_bill(monkeypatch, "OTHER")
     with pytest.raises(HTTPException) as ei:

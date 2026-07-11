@@ -212,7 +212,14 @@ class PurchaseBillIn(BaseModel):
 
 
 class PurchaseBillUpdateIn(BaseModel):
-    """Partial update of a draft purchase bill."""
+    """Partial update of a purchase bill.
+
+    Draft bills: every field below is editable. Once received (or later),
+    the router (routers/purchase_bills.py: update_purchase_bill) only
+    accepts notes and due_date — bill_no, bill_date, lines and
+    is_inter_state are locked post-receipt, matching the same rule applied
+    to sales invoices (routers/sales_invoices.py).
+    """
     bill_date: Optional[str] = None
     due_date: Optional[str] = None
     bill_no: Optional[str] = None
