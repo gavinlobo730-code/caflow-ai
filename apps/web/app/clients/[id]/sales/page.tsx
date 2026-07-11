@@ -1019,6 +1019,7 @@ function SalesInvoices({
   // Detail drawer (deep-linked via ?invoice=) / delete
   const [detailId, setDetailId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SalesInvoice | null>(null);
+  const [issuingId, setIssuingId] = useState<string | null>(null);
 
   // FY / date-window selector that SCOPES THE SERVER QUERY (which rows load).
   // Client-side search/sort/status/amount/date filtering is owned by DataTable
@@ -1154,6 +1155,9 @@ function SalesInvoices({
   );
 
   async function issueInvoice(id: string) {
+    if (issuingId) return; // already posting one — the button is disabled, but a
+    // programmatic double-call (e.g. the detail drawer's onIssue) shouldn't race it.
+    setIssuingId(id);
     try {
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
       const token = await getAuthToken();
@@ -1163,6 +1167,8 @@ function SalesInvoices({
       load();
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Error issuing invoice", "error");
+    } finally {
+      setIssuingId(null);
     }
   }
 
@@ -1647,9 +1653,10 @@ function SalesInvoices({
                 </button>
                 <button
                   onClick={() => issueInvoice(inv.id)}
-                  className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                  disabled={issuingId === inv.id}
+                  className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
                 >
-                  <CheckCircle size={11} /> Issue
+                  {issuingId === inv.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
                 </button>
                 <button
                   onClick={() => setDeleteTarget(inv)}
@@ -3205,6 +3212,7 @@ function CreditNotes({
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [issuingId, setIssuingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -3265,6 +3273,8 @@ function CreditNotes({
   }
 
   async function issueCreditNote(id: string) {
+    if (issuingId) return;
+    setIssuingId(id);
     try {
       const token = await getAuthToken();
       const result = await apiCall(`/api/credit-notes/${id}/issue`, "POST", undefined, token);
@@ -3273,6 +3283,8 @@ function CreditNotes({
       load();
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Error issuing credit note", "error");
+    } finally {
+      setIssuingId(null);
     }
   }
 
@@ -3386,9 +3398,10 @@ function CreditNotes({
           cn.status === "draft" ? (
             <button
               onClick={() => issueCreditNote(cn.id)}
-              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+              disabled={issuingId === cn.id}
+              className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
             >
-              <CheckCircle size={11} /> Issue
+              {issuingId === cn.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
             </button>
           ) : null
         }
