@@ -67,9 +67,12 @@ test("services: only name required, rest defaults sensibly", () => {
   assert.equal(records[0].purchase_price_paise, undefined);
   assert.equal(records[0].hsn_sac, undefined);
   assert.equal(records[0].client_id, "c1");
-  // Unit was removed from the Product/Service form/import entirely (matches
-  // the earlier decision to hide Unit from the Sales Invoice UI).
-  assert.equal("unit" in records[0], false);
+  // Unit/opening stock are goods-only (CGST Rule 46(h): UQC applies to
+  // goods, not services) — a service row never gets a value for either,
+  // even if the CSV happened to have data in those columns.
+  assert.equal(records[0].unit, undefined);
+  assert.equal(records[0].opening_qty_units, undefined);
+  assert.equal(records[0].opening_cost_paise, undefined);
 });
 
 test("services: rupees → paise, percent → bps, kind validated", () => {
@@ -107,6 +110,45 @@ test("services: blank name is rejected", () => {
   const { records, errors } = buildServices([row({ name: "  " })], "c1");
   assert.equal(records.length, 0);
   assert.match(errors[0], /name is required/i);
+});
+
+test("services: unit and opening stock import for a goods row", () => {
+  const { records, errors } = buildServices([
+    row({ name: "Bottled Water", kind: "good", unit: "kgs", opening_qty: "100", opening_cost: "5000" }),
+  ], "c1");
+  assert.equal(errors.length, 0);
+  assert.equal(records[0].unit, "KGS");
+  assert.equal(records[0].opening_qty_units, 100);
+  assert.equal(records[0].opening_cost_paise, 500000);
+});
+
+test("services: unit and opening stock are dropped for a service row even if present in the CSV", () => {
+  const { records, errors } = buildServices([
+    row({ name: "Consulting", kind: "service", unit: "hrs", opening_qty: "10", opening_cost: "500" }),
+  ], "c1");
+  assert.equal(errors.length, 0);
+  assert.equal(records[0].unit, undefined);
+  assert.equal(records[0].opening_qty_units, undefined);
+  assert.equal(records[0].opening_cost_paise, undefined);
+});
+
+test("services: opening qty of exactly 0 is treated as unset, not a seed signal", () => {
+  const { records, errors } = buildServices([
+    row({ name: "Bottled Water", kind: "good", opening_qty: "0", opening_cost: "0" }),
+  ], "c1");
+  assert.equal(errors.length, 0);
+  assert.equal(records[0].opening_qty_units, undefined);
+  assert.equal(records[0].opening_cost_paise, 0);
+});
+
+test("services: negative opening qty/cost rejected", () => {
+  const badQty = buildServices([row({ name: "A", kind: "good", opening_qty: "-1" })], "c1");
+  assert.equal(badQty.records.length, 0);
+  assert.match(badQty.errors[0], /opening qty/i);
+
+  const badCost = buildServices([row({ name: "B", kind: "good", opening_cost: "-1" })], "c1");
+  assert.equal(badCost.records.length, 0);
+  assert.match(badCost.errors[0], /opening stock value/i);
 });
 
 // ── Purchase bills ─────────────────────────────────────────────────────────
