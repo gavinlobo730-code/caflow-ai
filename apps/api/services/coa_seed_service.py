@@ -40,6 +40,7 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     ("1002", "Petty Cash",                   "Asset", "Cash"),
     ("1101", "Bank Account",                 "Asset", "Bank"),          # %Bank%
     ("1201", "Trade Receivables",            "Asset", "Receivable"),    # %Trade Receivable%
+    ("1202", "Inventory",                    "Asset", "Current Asset"), # %Inventor% (domain/inventory_service.py)
     ("1301", "GST Input Tax Credit",         "Asset", "Tax"),           # %GST Input%
     ("1401", "TDS Receivable",               "Asset", "Tax"),
     ("1402", "Advance Tax Paid",             "Asset", "Tax"),
@@ -79,6 +80,7 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     ("4102", "Other Income",                 "Revenue", "Other Income"),
     ("4901", "Profit on Asset Disposal",     "Revenue", "Other Income"), # %Profit on Asset Disposal%
     # ── Expenses ──
+    ("5000", "Cost of Goods Sold",           "Expense", "Direct Expense"),     # %Cost of Goods Sold% (domain/inventory_service.py)
     ("5001", "Purchases",                    "Expense", "Direct Expense"),     # %Purchase%
     ("5002", "Salaries Expense",             "Expense", "Personnel"),          # %Salaries Expense%
     ("5003", "Depreciation Expense",         "Expense", "Non-cash Expense"),   # %Depreciation Expense%
