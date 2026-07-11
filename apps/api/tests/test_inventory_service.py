@@ -239,16 +239,21 @@ def test_record_stock_in_then_out_round_trip_matches_pure_math():
     assert [r["movement_type"] for r in ledger] == ["purchase", "sale"]
 
 
-def test_record_stock_out_with_no_prior_history_returns_none_never_raises():
+def test_record_stock_out_with_no_prior_history_records_as_oversold_at_zero_cost():
     db = _FakeDB()
     _seed_catalogue_item(db)
     result = record_stock_out(
         db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
         movement_date="2026-04-10", quantity=Decimal("1"),
     )
-    assert result is None
-    # No ledger row and no cache mutation — a no-op, not a partial write.
-    assert db.store.get("inventory_stock_ledger", []) == []
+    # No cost basis yet (no opening balance, no prior purchase) — the movement
+    # still records from a zero baseline rather than vanishing, so the CA sees
+    # this item went to -1 on the Inventory page instead of nothing at all.
+    assert result is not None
+    assert result["running_qty_units"] == "-1"
+    assert result["running_value_paise"] == 0
+    assert result["running_avg_cost_paise"] == 0
+    assert len(get_stock_ledger(db, "item-1")) == 1
 
 
 def test_seed_opening_balance_is_idempotent():
@@ -321,17 +326,23 @@ def test_apply_sale_to_inventory_records_stock_out_for_goods_line_only():
     assert db.store.get("inventory_stock_ledger", []) == ledger
 
 
-def test_apply_sale_to_inventory_never_raises_when_item_has_no_stock_history():
+def test_apply_sale_to_inventory_records_as_oversold_when_item_has_no_stock_history():
     db = _FakeDB()
     _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
     db.store["client_sales_invoice_lines"] = [
         {"id": "line-1", "sales_invoice_id": "inv-1", "description": "Widget", "quantity": "1", "service_catalogue_id": "good-1"},
     ]
     invoice = {"id": "inv-1", "invoice_no": "INV-1", "invoice_date": "2026-04-20", "client_id": "client-1"}
-    # No opening balance / prior purchase recorded for good-1 — record_stock_out
-    # returns None internally; this call must complete without raising.
+    # No opening balance / prior purchase recorded for good-1 — the sale still
+    # records (visible as -1 on hand at Rs 0 cost) instead of vanishing; no
+    # COGS journal posts since there's no cost basis to recognise yet.
     apply_sale_to_inventory(db, firm_id="firm-1", client_id="client-1", invoice=invoice)
-    assert db.store.get("inventory_stock_ledger", []) == []
+    ledger = get_stock_ledger(db, "good-1")
+    assert [r["movement_type"] for r in ledger] == ["sale"]
+    assert ledger[0]["running_qty_units"] == "-1"
+    assert ledger[0]["running_value_paise"] == 0
+    goods_row = next(r for r in db.store["service_catalogue"] if r["id"] == "good-1")
+    assert goods_row["stock_qty_units"] == "-1"
 
 
 def test_apply_purchase_to_inventory_records_stock_in_and_updates_average():
@@ -495,7 +506,7 @@ def test_apply_debit_note_to_inventory_destocks_goods_line_at_current_average():
     assert goods_row["stock_qty_units"] == "8"
 
 
-def test_apply_debit_note_to_inventory_never_raises_with_no_stock_history():
+def test_apply_debit_note_to_inventory_records_as_oversold_with_no_stock_history():
     db = _FakeDB()
     _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
     db.store["debit_note_lines"] = [
@@ -503,10 +514,14 @@ def test_apply_debit_note_to_inventory_never_raises_with_no_stock_history():
          "service_catalogue_id": "good-1"},
     ]
     debit_note = {"id": "dn-1", "debit_note_no": "DN-2526-0002", "debit_note_date": "2026-04-10", "client_id": "client-1"}
-    # No prior stock for good-1 — record_stock_out returns None internally;
-    # this call must complete without raising.
+    # No prior stock for good-1 — the return still records (visible as -1 on
+    # hand at Rs 0 cost) instead of vanishing; no reclass journal posts since
+    # there's no cost basis to move.
     apply_debit_note_to_inventory(db, firm_id="firm-1", client_id="client-1", debit_note=debit_note)
-    assert db.store.get("inventory_stock_ledger", []) == []
+    ledger = get_stock_ledger(db, "good-1")
+    assert [r["movement_type"] for r in ledger] == ["purchase_return"]
+    assert ledger[0]["running_qty_units"] == "-1"
+    assert ledger[0]["running_value_paise"] == 0
 
 
 # ── journal_entry_id backfill ────────────────────────────────────────────────
