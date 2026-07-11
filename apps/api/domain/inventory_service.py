@@ -273,7 +273,7 @@ def post_cogs_journal_entry(
         return phase2_journal_service._create_journal(
             db=db, firm_id=firm_id, client_id=client_id, entry_date=movement_date,
             reference_no=f"{reference_no}-COGS", narration=f"Cost of goods sold — {item_name}",
-            entry_type="COGS", source_type=source_type, source_id=source_id, created_by=created_by,
+            entry_type="Journal", source_type=source_type, source_id=source_id, created_by=created_by,
             lines=[
                 {"account_id": cogs_id, "debit_paise": value_paise, "credit_paise": 0, "narration": f"COGS — {item_name}"},
                 {"account_id": inventory_id, "debit_paise": 0, "credit_paise": value_paise, "narration": f"Inventory reduction — {item_name}"},
@@ -313,7 +313,7 @@ def post_inventory_receipt_journal_entry(
         return phase2_journal_service._create_journal(
             db=db, firm_id=firm_id, client_id=client_id, entry_date=movement_date,
             reference_no=f"{reference_no}-INV", narration=f"Capitalise purchase as inventory — {item_name}",
-            entry_type="Inventory", source_type=source_type, source_id=source_id, created_by=created_by,
+            entry_type="Journal", source_type=source_type, source_id=source_id, created_by=created_by,
             lines=[
                 {"account_id": inventory_id, "debit_paise": value_paise, "credit_paise": 0, "narration": f"Inventory — {item_name}"},
                 {"account_id": from_account_id, "debit_paise": 0, "credit_paise": value_paise, "narration": f"Reclassify from expense — {item_name}"},
@@ -501,7 +501,7 @@ def post_sale_return_journal_entry(
         return phase2_journal_service._create_journal(
             db=db, firm_id=firm_id, client_id=client_id, entry_date=movement_date,
             reference_no=f"{reference_no}-INVRET", narration=f"Inventory restored — sales return {item_name}",
-            entry_type="Inventory", source_type=source_type, source_id=source_id, created_by=created_by,
+            entry_type="Journal", source_type=source_type, source_id=source_id, created_by=created_by,
             lines=[
                 {"account_id": inventory_id, "debit_paise": value_paise, "credit_paise": 0, "narration": f"Inventory — {item_name}"},
                 {"account_id": cogs_id, "debit_paise": 0, "credit_paise": value_paise, "narration": f"COGS reversed — {item_name}"},
@@ -535,7 +535,7 @@ def post_purchase_return_journal_entry(
         return phase2_journal_service._create_journal(
             db=db, firm_id=firm_id, client_id=client_id, entry_date=movement_date,
             reference_no=f"{reference_no}-INVRET", narration=f"Inventory reduced — purchase return {item_name}",
-            entry_type="Inventory", source_type=source_type, source_id=source_id, created_by=created_by,
+            entry_type="Journal", source_type=source_type, source_id=source_id, created_by=created_by,
             lines=[
                 {"account_id": expense_id, "debit_paise": value_paise, "credit_paise": 0, "narration": f"Reclassify to expense — {item_name}"},
                 {"account_id": inventory_id, "debit_paise": 0, "credit_paise": value_paise, "narration": f"Inventory — {item_name}"},
@@ -701,3 +701,168 @@ def reverse_purchase_stock(db, *, firm_id: str, client_id: str, bill_id: str, bi
                     _set_ledger_journal_entry_id(db, mid, reversal_id)
     except Exception as e:
         _logger.error("reverse_purchase_stock failed for bill %s: %s", bill_id, e, exc_info=True)
+
+
+# ── Manual stock adjustment ──────────────────────────────────────────────────
+# The only movement not driven by a sales invoice / purchase bill / credit
+# note / debit note — a CA-initiated physical-count correction, damage,
+# theft, destruction or free-sample giveaway (routers/inventory.py). CGST
+# Act §17(5)(h): ITC must be reversed for goods lost, stolen, destroyed,
+# written off, or given away as gifts/free samples — never for a favourable
+# count surplus. Whether reverse_itc applies is a CA judgment call passed in
+# by the caller, never inferred here (see models/inventory.py's docstring).
+
+def record_stock_adjustment(
+    db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
+    quantity, direction: str, reference_no: Optional[str] = None, created_by: Optional[str] = None,
+) -> dict:
+    """direction="increase": stock-IN valued at the CURRENT average cost —
+    keeps the average stable rather than diluting/inflating it with an
+    assumed cost for stock whose origin is unknown (a physical count found
+    more than the books show). direction="decrease": stock-OUT, priced at
+    the current average like a sale (record_stock_out's own zero-baseline
+    behavior applies unchanged if this item somehow has no history yet)."""
+    if direction == "increase":
+        prev = _last_ledger_row(db, service_catalogue_id)
+        prev_avg = int(prev["running_avg_cost_paise"]) if prev else 0
+        total_cost_paise = _round_paise(Decimal(str(quantity)) * prev_avg)
+        return record_stock_in(
+            db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
+            movement_date=movement_date, quantity=quantity, total_cost_paise=total_cost_paise,
+            movement_type="adjustment", source_type="adjustment", source_id=None,
+            reference_no=reference_no, created_by=created_by,
+        )
+    return record_stock_out(
+        db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
+        movement_date=movement_date, quantity=quantity, movement_type="adjustment",
+        source_type="adjustment", source_id=None, reference_no=reference_no, created_by=created_by,
+    )
+
+
+def post_stock_writeoff_journal_entry(
+    db, *, firm_id: str, client_id: str, movement_date: str, item_name: str,
+    value_paise: int, gst_rate_bps: int, reverse_itc: bool, reference_no: str,
+    source_type: Optional[str] = None, source_id: Optional[str] = None, created_by: Optional[str] = None,
+) -> Optional[str]:
+    """Dr Stock Write-off Expense / Cr Inventory for the item's carrying
+    value, plus — when reverse_itc is True — an additional Dr [same
+    write-off account] / Cr GST Input Tax Credit line reversing the ITC
+    originally claimed on that value (CGST Act §17(5)(h)). The ITC amount
+    is APPROXIMATED using this item's own gst_rate_bps (the rate it's
+    classified/sold at) — a CA should verify against the actual purchase
+    invoice(s) for a high-value write-off; this is a starting figure, not
+    an authoritative GSTR-3B reversal computation."""
+    if value_paise <= 0:
+        return None
+    try:
+        from services.phase2_journal_service import phase2_journal_service
+
+        inventory_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Inventor%", system_key="inventory")
+        try:
+            writeoff_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Write%off%")
+        except ValueError:
+            try:
+                writeoff_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Loss%")
+            except ValueError:
+                writeoff_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Expense%")
+
+        lines = [
+            {"account_id": writeoff_id, "debit_paise": value_paise, "credit_paise": 0, "narration": f"Stock write-off — {item_name}"},
+            {"account_id": inventory_id, "debit_paise": 0, "credit_paise": value_paise, "narration": f"Inventory reduced — {item_name}"},
+        ]
+        if reverse_itc and gst_rate_bps:
+            itc_reversed = _round_paise(Decimal(value_paise) * gst_rate_bps / Decimal(10000))
+            if itc_reversed > 0:
+                gst_input_id = phase2_journal_service._find_account(db, firm_id, client_id, "%GST Input%", system_key="gst_input")
+                lines.append({"account_id": writeoff_id, "debit_paise": itc_reversed, "credit_paise": 0, "narration": f"ITC reversed (CGST Act §17(5)(h)) — {item_name}"})
+                lines.append({"account_id": gst_input_id, "debit_paise": 0, "credit_paise": itc_reversed, "narration": f"GST input credit reversed — {item_name}"})
+
+        return phase2_journal_service._create_journal(
+            db=db, firm_id=firm_id, client_id=client_id, entry_date=movement_date,
+            reference_no=f"{reference_no}-WOFF", narration=f"Stock write-off — {item_name}",
+            entry_type="Journal", source_type=source_type, source_id=source_id, created_by=created_by,
+            lines=lines,
+        )
+    except Exception as e:
+        _logger.warning("post_stock_writeoff_journal_entry skipped (%s): %s", reference_no, e)
+        return None
+
+
+def post_stock_surplus_journal_entry(
+    db, *, firm_id: str, client_id: str, movement_date: str, item_name: str,
+    value_paise: int, reference_no: str, source_type: Optional[str] = None,
+    source_id: Optional[str] = None, created_by: Optional[str] = None,
+) -> Optional[str]:
+    """Dr Inventory / Cr Miscellaneous Income — a physical count found MORE
+    stock than the books show. No GST/ITC implication: CGST Act §17(5)(h)
+    governs credit reversal on lost/destroyed/gifted goods, not a
+    favourable count."""
+    if value_paise <= 0:
+        return None
+    try:
+        from services.phase2_journal_service import phase2_journal_service
+
+        inventory_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Inventor%", system_key="inventory")
+        try:
+            income_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Miscellaneous Income%")
+        except ValueError:
+            income_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Other Income%")
+        return phase2_journal_service._create_journal(
+            db=db, firm_id=firm_id, client_id=client_id, entry_date=movement_date,
+            reference_no=f"{reference_no}-SURP", narration=f"Stock surplus — {item_name}",
+            entry_type="Journal", source_type=source_type, source_id=source_id, created_by=created_by,
+            lines=[
+                {"account_id": inventory_id, "debit_paise": value_paise, "credit_paise": 0, "narration": f"Inventory increased — {item_name}"},
+                {"account_id": income_id, "debit_paise": 0, "credit_paise": value_paise, "narration": f"Stock surplus — {item_name}"},
+            ],
+        )
+    except Exception as e:
+        _logger.warning("post_stock_surplus_journal_entry skipped (%s): %s", reference_no, e)
+        return None
+
+
+def apply_stock_adjustment(
+    db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
+    quantity, direction: str, reverse_itc: bool = False, reference_no: Optional[str] = None,
+    created_by: Optional[str] = None,
+) -> Optional[dict]:
+    """One call per manual stock adjustment (routers/inventory.py). Fail-soft
+    — never raises; a missing chart-of-accounts entry degrades the journal,
+    never the stock movement itself. Returns the ledger row, or None if the
+    item can't be found (the router already 404s on that case, so this is
+    only a defensive fallback)."""
+    try:
+        items = (
+            db.table("service_catalogue").select("id, name, gst_rate_bps")
+            .eq("id", service_catalogue_id).limit(1).execute().data
+        ) or []
+        if not items:
+            return None
+        item = items[0]
+        item_name = item.get("name") or "item"
+
+        movement = record_stock_adjustment(
+            db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
+            movement_date=movement_date, quantity=quantity, direction=direction,
+            reference_no=reference_no, created_by=created_by,
+        )
+        value_paise = abs(int(movement["value_delta_paise"]))
+        ref = reference_no or service_catalogue_id
+        if direction == "decrease":
+            journal_id = post_stock_writeoff_journal_entry(
+                db, firm_id=firm_id, client_id=client_id, movement_date=movement_date,
+                item_name=item_name, value_paise=value_paise, gst_rate_bps=int(item.get("gst_rate_bps") or 0),
+                reverse_itc=reverse_itc, reference_no=ref,
+                source_type="adjustment", source_id=movement.get("id"), created_by=created_by,
+            )
+        else:
+            journal_id = post_stock_surplus_journal_entry(
+                db, firm_id=firm_id, client_id=client_id, movement_date=movement_date,
+                item_name=item_name, value_paise=value_paise, reference_no=ref,
+                source_type="adjustment", source_id=movement.get("id"), created_by=created_by,
+            )
+        _set_ledger_journal_entry_id(db, movement.get("id"), journal_id)
+        return movement
+    except Exception as e:
+        _logger.error("apply_stock_adjustment failed for item %s: %s", service_catalogue_id, e, exc_info=True)
+        return None
