@@ -418,3 +418,42 @@ def get_cash_flow(
         current_user["firm_id"], client_id, start_date, end_date, basis=basis
     )
     return api_response(True, cf)
+
+
+@router.get("/statement-analysis")
+async def get_statement_analysis(
+    financial_year: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
+    client_id: Optional[str] = Query(None),
+    basis: str = Query("accrual", pattern="^(accrual|cash)$"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """
+    Short AI-generated narrative plus liquidity/profitability ratios for the
+    P&L and Balance Sheet, computed from the SAME reporting engine as every
+    other statement (domain/financial_analysis_service.compute_ratios never
+    re-derives a money figure — it only aggregates the backend's own paise
+    totals). Advisory only, for the CA's own review — never auto-filed or
+    submitted anywhere.
+    """
+    from domain.financial_analysis_service import generate_statement_analysis
+
+    def _fy_range(fy: str) -> tuple[str, str]:
+        y = int(fy.split("-")[0])
+        return f"{y}-04-01", f"{y + 1}-03-31"
+
+    def _shift_fy(fy: str, delta: int) -> str:
+        y = int(fy.split("-")[0]) + delta
+        return f"{y}-{str(y + 1)[-2:]}"
+
+    start, end = _fy_range(financial_year)
+    prev_fy = _shift_fy(financial_year, -1)
+    prev_start, prev_end = _fy_range(prev_fy)
+
+    svc = _reporting_service()
+    firm_id = current_user["firm_id"]
+    pl = svc.profit_loss(firm_id, client_id, start, end, basis=basis)
+    bs = svc.balance_sheet(firm_id, client_id, end, basis=basis)
+    prev_pl = svc.profit_loss(firm_id, client_id, prev_start, prev_end, basis=basis)
+
+    result = await generate_statement_analysis(pl, bs, prev_pl, financial_year, prev_fy)
+    return api_response(True, result)
