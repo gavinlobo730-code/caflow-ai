@@ -231,7 +231,25 @@ def create_service(
         if existing:
             return api_response(True, {**existing, "duplicate": True})
         resp = db.table("service_catalogue").insert(payload).execute()
-        return api_response(True, resp.data[0] if resp.data else payload)
+        created = resp.data[0] if resp.data else payload
+
+        # Seed the moving-average costing ledger from the opening balance, if
+        # one was given (goods only — meaningless for services, and
+        # seed_opening_balance itself no-ops if either field is missing).
+        # Never blocks creation: a failure here is logged, not raised.
+        if payload.get("kind") == "good" and (payload.get("opening_qty_units") or payload.get("opening_cost_paise")):
+            try:
+                from domain.inventory_service import seed_opening_balance
+                seed_opening_balance(
+                    db, firm_id=firm_id, client_id=client_id, service_catalogue_id=created["id"],
+                    movement_date=now[:10], opening_qty=payload.get("opening_qty_units"),
+                    opening_cost_paise=payload.get("opening_cost_paise"),
+                    created_by=current_user.get("auth_user_id"),
+                )
+            except Exception as e:
+                _logger.error("create_service: opening balance seeding failed for %s: %s", created.get("id"), e, exc_info=True)
+
+        return api_response(True, created)
     except Exception as e:
         _logger.error("create_service: %s", e)
         return api_response(False, None, "Unable to create the service. Please try again.")
@@ -439,7 +457,21 @@ def update_service(
                 return api_response(False, None, "Another active service already uses that name.")
         resp = (db.table("service_catalogue").update(patch)
                 .eq("id", service_id).eq("firm_id", firm_id).execute())
-        return api_response(True, resp.data[0] if resp.data else {**owned[0], **patch})
+        updated = resp.data[0] if resp.data else {**owned[0], **patch}
+
+        if owned[0].get("kind") == "good" and "opening_qty_units" in patch and "opening_cost_paise" in patch:
+            try:
+                from domain.inventory_service import seed_opening_balance
+                seed_opening_balance(
+                    db, firm_id=firm_id, client_id=owned[0]["client_id"], service_catalogue_id=service_id,
+                    movement_date=datetime.now(timezone.utc).date().isoformat(),
+                    opening_qty=patch.get("opening_qty_units"), opening_cost_paise=patch.get("opening_cost_paise"),
+                    created_by=current_user.get("auth_user_id"),
+                )
+            except Exception as e:
+                _logger.error("update_service: opening balance seeding failed for %s: %s", service_id, e, exc_info=True)
+
+        return api_response(True, updated)
     except HTTPException:
         raise
     except Exception as e:

@@ -61,6 +61,20 @@ class InvoiceLineIn(BaseModel):
             raise ValueError("rate_paise must be non-negative.")
         return v
 
+    @field_validator("unit")
+    @classmethod
+    def normalize_unit(cls, v: Optional[str]) -> Optional[str]:
+        # Normalize only — do NOT reject values outside the official UQC list
+        # (VALID_UQC_CODES). This field predates the UQC dropdown and existing
+        # lines/products may carry a pre-existing free-text value (e.g. "HRS"
+        # for service hours); rejecting it here would make an old line
+        # un-editable for any unrelated field change. The dropdown (new UI)
+        # only offers valid UQC codes, so new data is compliant by construction —
+        # this validator just normalizes case/whitespace for whatever comes in.
+        if v is None or v == "":
+            return None
+        return v.strip().upper()
+
 
 class SalesInvoiceIn(BaseModel):
     """Create a new sales invoice. CGST Act §31."""
@@ -135,6 +149,12 @@ class PurchaseBillLineIn(BaseModel):
     is_service: bool = False
     tds_applicable: bool = False
     expense_account_id: Optional[str] = None   # per-line expense classification (H10)
+    # Which service_catalogue preset (if any) this line restocks — required so
+    # a received bill line can be identified as a stock-in movement for a
+    # specific item (domain/inventory_service.apply_purchase_to_inventory).
+    # Pure traceability like InvoiceLineIn's own field: never read by any
+    # GST/journal computation, only by the inventory costing engine.
+    service_catalogue_id: Optional[str] = None
 
     @field_validator("rate_paise")
     @classmethod

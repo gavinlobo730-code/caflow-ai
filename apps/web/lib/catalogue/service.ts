@@ -30,6 +30,14 @@ export interface ServiceCatalogueItem {
   is_active: boolean;
   use_count?: number | null;
   last_used_at?: string | null;
+  /** Opening stock balance (kind='good' only) — seeds the moving-average
+   * costing ledger once, on first save. Meaningless for services. */
+  opening_qty_units?: number | null;
+  opening_cost_paise?: number | null;
+  /** Current stock state (kind='good' only) — cached, server-computed by
+   * domain/inventory_service.py. Read-only here; never set by this form. */
+  stock_qty_units?: number | null;
+  avg_cost_paise?: number | null;
   /** Set by the API when a create collided with an existing active name. */
   duplicate?: boolean;
 }
@@ -96,10 +104,14 @@ export interface ServiceFormInput {
   purchasePrice: string; // rupees (free text), optional
   category: string;
   notes: string;
+  /** Goods only — ignored (never sent) when kind is "service". */
+  unit: string;           // official CBIC UQC code, e.g. "KGS" — "" = unset
+  openingQty: string;     // free text, units (e.g. "100")
+  openingCost: string;    // free text, rupees — total cost of the opening qty, not per-unit
 }
 
 export interface ServiceFormValidation {
-  errors: { name?: string; rate?: string; gstRate?: string; purchasePrice?: string };
+  errors: { name?: string; rate?: string; gstRate?: string; purchasePrice?: string; openingQty?: string; openingCost?: string };
   ok: boolean;
 }
 
@@ -117,6 +129,16 @@ export function validateServiceForm(input: ServiceFormInput): ServiceFormValidat
   if (!Number.isFinite(input.gstRate) || input.gstRate < 0 || input.gstRate > 100) {
     errors.gstRate = "GST rate must be between 0 and 100.";
   }
+  if (input.kind === "good") {
+    const openingQty = parseFloat(input.openingQty);
+    if (input.openingQty.trim() !== "" && (!Number.isFinite(openingQty) || openingQty < 0)) {
+      errors.openingQty = "Enter a valid non-negative quantity.";
+    }
+    const openingCost = parseFloat(input.openingCost);
+    if (input.openingCost.trim() !== "" && (!Number.isFinite(openingCost) || openingCost < 0)) {
+      errors.openingCost = "Enter a valid non-negative cost.";
+    }
+  }
   return { errors, ok: Object.keys(errors).length === 0 };
 }
 
@@ -131,12 +153,20 @@ export interface ServicePayload {
   purchase_price_paise?: number;
   category?: string;
   notes?: string;
+  unit?: string;
+  opening_qty_units?: number;
+  opening_cost_paise?: number;
 }
 
-/** Map a validated form to the API create/update body (rupees → integer paise). */
+/** Map a validated form to the API create/update body (rupees → integer paise).
+ * Unit and opening balance are only sent for goods — a service line has no
+ * UQC and can't carry stock, so these fields never leak onto a service payload. */
 export function serviceFormToPayload(input: ServiceFormInput, clientId: string): ServicePayload {
   const rupees = parseFloat(input.rate);
   const purchaseRupees = parseFloat(input.purchasePrice);
+  const isGood = input.kind === "good";
+  const openingQty = isGood ? parseFloat(input.openingQty) : NaN;
+  const openingCostRupees = isGood ? parseFloat(input.openingCost) : NaN;
   return {
     client_id: clientId,
     name: input.name.trim(),
@@ -148,6 +178,9 @@ export function serviceFormToPayload(input: ServiceFormInput, clientId: string):
     purchase_price_paise: Number.isFinite(purchaseRupees) && purchaseRupees > 0 ? Math.round(purchaseRupees * 100) : undefined,
     category: input.category.trim() || undefined,
     notes: input.notes.trim() || undefined,
+    unit: isGood && input.unit.trim() ? input.unit.trim() : undefined,
+    opening_qty_units: Number.isFinite(openingQty) && openingQty > 0 ? openingQty : undefined,
+    opening_cost_paise: Number.isFinite(openingCostRupees) && openingCostRupees >= 0 ? Math.round(openingCostRupees * 100) : undefined,
   };
 }
 
@@ -163,5 +196,12 @@ export function serviceToForm(item: ServiceCatalogueItem): ServiceFormInput {
     purchasePrice: item.purchase_price_paise ? String(item.purchase_price_paise / 100) : "",
     category: item.category ?? "",
     notes: item.notes ?? "",
+    unit: item.unit ?? "",
+    // Opening balance is a one-time seed (domain/inventory_service.seed_opening_balance
+    // is idempotent — a second save is a no-op) — once stock exists, editing
+    // shows the CURRENT running state instead of re-offering the original
+    // opening fields, so re-saving never looks like it silently changed anything.
+    openingQty: item.stock_qty_units == null && item.opening_qty_units != null ? String(item.opening_qty_units) : "",
+    openingCost: item.stock_qty_units == null && item.opening_cost_paise != null ? String(item.opening_cost_paise / 100) : "",
   };
 }
