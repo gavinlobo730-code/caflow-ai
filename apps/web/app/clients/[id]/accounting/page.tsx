@@ -30,7 +30,6 @@ type AccountingTab =
   | "dashboard"
   | "coa"
   | "journal"
-  | "ledger"
   | "trial"
   | "pl"
   | "balance-sheet"
@@ -47,7 +46,6 @@ const TABS: { id: AccountingTab; label: string }[] = [
   { id: "dashboard",     label: "Dashboard" },
   { id: "coa",           label: "Accounts" },
   { id: "journal",       label: "Journal" },
-  { id: "ledger",        label: "Ledger" },
   { id: "trial",         label: "Trial Balance" },
   { id: "pl",            label: "P & L" },
   { id: "balance-sheet", label: "Balance Sheet" },
@@ -153,6 +151,13 @@ function fyDateRange(fy: string): { start: string; end: string } {
   return { start: `${y}-04-01`, end: `${y + 1}-03-31` };
 }
 
+// Report lines can carry a synthetic id (e.g. "__retained__" for a computed
+// Retained Earnings rollup) instead of a real chart-of-accounts id — those
+// have no ledger of their own, so drill-down must skip them.
+function isDrillableAccount(id?: string): boolean {
+  return !!id && !id.startsWith("__");
+}
+
 // Schedule III P&L bucket — Companies Act 2013, Schedule III, Part II
 function plBucket(type: string, subtype: string | null): string {
   const s = (subtype ?? "").toLowerCase();
@@ -218,6 +223,11 @@ export default function AccountingPage() {
   // Multi-Currency Phase 5 — the FX Reports tab is shown ONLY when multi-currency is
   // active for this client, so an INR-only client sees no added complexity (CLAUDE.md).
   const [mcActive, setMcActive] = useState(false);
+  // QuickBooks-style drill-down: set by clicking an amount on Trial Balance,
+  // P&L, or the Balance Sheet. Lives outside `tab`/basis/FY state entirely, so
+  // opening or closing it never touches the report underneath.
+  const [drillDown, setDrillDown] = useState<{ accountId: string } | null>(null);
+  const openDrillDown = useCallback((accountId: string) => setDrillDown({ accountId }), []);
 
   const loadAccounts = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
@@ -285,17 +295,14 @@ export default function AccountingPage() {
             onPosted={() => { clearReports(clientId); loadAccounts(); setReloadKey((k) => k + 1); }}
           />
         )}
-        {tab === "ledger" && (
-          <GeneralLedger accounts={accounts} clientId={clientId} financialYear={financialYear} />
-        )}
         {tab === "trial" && (
-          <TrialBalance clientId={clientId} financialYear={financialYear} />
+          <TrialBalance clientId={clientId} financialYear={financialYear} onDrillDown={openDrillDown} />
         )}
         {tab === "pl" && (
-          <ProfitAndLoss clientId={clientId} financialYear={financialYear} />
+          <ProfitAndLoss clientId={clientId} financialYear={financialYear} onDrillDown={openDrillDown} />
         )}
         {tab === "balance-sheet" && (
-          <BalanceSheet clientId={clientId} financialYear={financialYear} />
+          <BalanceSheet clientId={clientId} financialYear={financialYear} onDrillDown={openDrillDown} />
         )}
         {tab === "cashflow" && (
           <CashFlow clientId={clientId} financialYear={financialYear} />
@@ -322,6 +329,16 @@ export default function AccountingPage() {
           <FXReports clientId={clientId} financialYear={financialYear} />
         )}
       </div>
+
+      {drillDown && (
+        <LedgerDrillDown
+          accounts={accounts}
+          clientId={clientId}
+          financialYear={financialYear}
+          initialAccountId={drillDown.accountId}
+          onClose={() => setDrillDown(null)}
+        />
+      )}
     </div>
   );
 }
@@ -400,10 +417,10 @@ function AccountingDashboard({
 
   const netPL = stats.revenue_paise - stats.expenses_paise;
 
-  if (loading) return <div className="space-y-4 max-w-4xl">{[...Array(3)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-[#F8FAFC] animate-pulse" />)}</div>;
+  if (loading) return <div className="space-y-4 max-w-4xl mx-auto">{[...Array(3)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-[#F8FAFC] animate-pulse" />)}</div>;
 
   return (
-    <div className="space-y-5 max-w-4xl">
+    <div className="space-y-5 max-w-4xl mx-auto">
       {/* Stat strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <DashCard label="Revenue" value={fmt(stats.revenue_paise)} accent="green" action={() => onNavigate("pl")} />
@@ -507,7 +524,7 @@ function ChartOfAccounts({ accounts, loading, onRefresh }: { accounts: Account[]
   ];
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 max-w-4xl mx-auto">
       <div className="flex items-center justify-between">
         <p className="text-xs text-[#64748B]">{accounts.length} accounts</p>
       </div>
@@ -657,7 +674,7 @@ function JournalEntryForm({
   }
 
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="space-y-5 max-w-3xl mx-auto">
       {success && <div className="bg-green-50 border border-green-100 rounded-lg px-4 py-3 text-sm text-green-700 font-medium">Journal entry saved successfully.</div>}
       <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
         <h3 className="text-sm font-semibold text-[#0F172A]">New Journal Entry</h3>
@@ -761,34 +778,58 @@ function JournalEntryForm({
   );
 }
 
-// ── General Ledger ─────────────────────────────────────────────────────────
+// ── Ledger Drill-Down Overlay ────────────────────────────────────────────────
+// QuickBooks-style: click an amount/account on Trial Balance, P&L, or the
+// Balance Sheet and this opens on top with that account's full ledger. Its
+// account switcher and date range are entirely local state, seeded once on
+// open from the report's FY — closing it never touches the tab, FY, or basis
+// toggle underneath, so the report is exactly as it was left.
 
-function GeneralLedger({ accounts, clientId, financialYear }: { accounts: Account[]; clientId: string; financialYear: string }) {
-  const [selectedAccountId, setSelectedAccountId] = useState("");
+function LedgerDrillDown({
+  accounts, clientId, financialYear, initialAccountId, onClose,
+}: {
+  accounts: Account[];
+  clientId: string;
+  financialYear: string;
+  initialAccountId: string;
+  onClose: () => void;
+}) {
+  const [accountId, setAccountId] = useState(initialAccountId);
+  const fyRange = fyDateRange(financialYear);
+  const [startDate, setStartDate] = useState(fyRange.start);
+  const [endDate, setEndDate] = useState(fyRange.end);
   const [ledger, setLedger] = useState<LedgerView | null>(null);
   const [loading, setLoading] = useState(false);
 
   // The backend reporting engine computes opening/running/closing balances —
   // the browser only fetches and renders (Phase 3.4: no accounting math in React).
-  async function loadLedger(accountId: string) {
+  const load = useCallback(async () => {
     if (!accountId || !clientId || clientId === "_placeholder") { setLedger(null); return; }
     setLoading(true);
-    const { start, end } = fyDateRange(financialYear);
     try {
       const res = (await cachedReport(
-        reportKey([clientId, financialYear, "ledger", accountId]),
+        reportKey([clientId, "ledger", accountId, startDate, endDate]),
         () => api.accounting.ledger({
-          client_id: clientId, account_id: accountId, start_date: start, end_date: end,
+          client_id: clientId, account_id: accountId, start_date: startDate, end_date: endDate,
         }),
       )) as { success: boolean; data: LedgerView };
       setLedger(res.success ? res.data : null);
     } catch { setLedger(null); } finally { setLoading(false); }
-  }
+  }, [clientId, accountId, startDate, endDate]);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const bal = (paise: number, isDebit: boolean) => (
     <>{fmt(Math.abs(paise))}<span className="text-[10px] font-normal ml-1 opacity-60">{isDebit ? "Dr" : "Cr"}</span></>
   );
   const hasActivity = !!ledger && (ledger.lines.length > 0 || ledger.opening_balance_paise !== 0);
+  const accountName = ledger?.account_name ?? accounts.find((a) => a.id === accountId)?.account_name ?? "";
 
   // Ledger line columns. Money is paise → right-aligned via `fmt` (formatPaise).
   // The running balance is the backend's authoritative per-row figure — sorting
@@ -818,29 +859,48 @@ function GeneralLedger({ accounts, clientId, financialYear }: { accounts: Accoun
   ];
 
   return (
-    <div className="space-y-4 max-w-4xl">
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-        <label className="block text-xs font-medium text-[#475569] mb-1.5">Select Account</label>
-        <div className="max-w-xs">
-          <AccountLookup
-            accounts={accounts}
-            value={selectedAccountId}
-            onChange={(id) => { setSelectedAccountId(id); loadLedger(id); }}
-            placeholder="— Choose account —"
-            ariaLabel="Select account"
-          />
-        </div>
-      </div>
-
-      {selectedAccountId && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-[#334155]">Ledger — FY {financialYear} — {ledger?.account_name ?? accounts.find((a) => a.id === selectedAccountId)?.account_name}</p>
-            {loading && <RefreshCw size={13} className="animate-spin text-[#94A3B8]" />}
+    <div className="fixed inset-0 bg-[#0F172A]/60 z-[100] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[88vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-center justify-between shrink-0">
+          <div>
+            <p className="text-sm font-semibold text-[#0F172A]">{accountName || "Ledger"}</p>
+            <p className="text-[11px] text-[#94A3B8] mt-0.5">Account ledger</p>
           </div>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155] text-xl leading-none" aria-label="Back">×</button>
+        </div>
 
-          {!loading && ledger && hasActivity ? (
-            <>
+        <div className="px-5 py-3 border-b border-[#F1F5F9] flex items-end gap-3 flex-wrap shrink-0">
+          <div className="w-64">
+            <label className="block text-[10px] font-medium text-[#94A3B8] mb-1">Account</label>
+            <AccountLookup
+              accounts={accounts}
+              value={accountId}
+              onChange={setAccountId}
+              placeholder="— Choose account —"
+              ariaLabel="Select account"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium text-[#94A3B8] mb-1">From</label>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+              className="px-2.5 py-[7px] text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium text-[#94A3B8] mb-1">To</label>
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+              className="px-2.5 py-[7px] text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <button onClick={() => { setStartDate(fyRange.start); setEndDate(fyRange.end); }} className="text-xs text-blue-600 hover:underline pb-1.5">
+            Reset to FY {financialYear}
+          </button>
+          {loading && <RefreshCw size={13} className="animate-spin text-[#94A3B8] mb-1.5" />}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          {!accountId ? (
+            <div className="text-center py-10 text-[#94A3B8] text-sm">Choose an account to view its ledger.</div>
+          ) : !loading && ledger && hasActivity ? (
+            <div className="space-y-3">
               {/* Opening / Closing are backend-computed context — kept outside the
                   table so search/sort/pagination never repositions them. */}
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#F1F5F9] bg-[#F8FAFC] px-4 py-2 text-xs text-[#64748B]">
@@ -859,7 +919,7 @@ function GeneralLedger({ accounts, clientId, financialYear }: { accounts: Accoun
                 exportFilename="ledger"
                 persistKey="accounting.ledger"
                 emptyTitle="No transactions"
-                emptyDescription={`No posted transactions for this account up to FY ${financialYear}.`}
+                emptyDescription="No posted transactions for this account in the selected range."
               />
 
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-2.5 text-xs font-semibold text-[#334155]">
@@ -870,19 +930,21 @@ function GeneralLedger({ accounts, clientId, financialYear }: { accounts: Accoun
                   <span className={ledger.closing_is_debit ? "text-blue-700" : "text-orange-700"}>{bal(ledger.closing_balance_paise, ledger.closing_is_debit)}</span>
                 </span>
               </div>
-            </>
+            </div>
           ) : !loading ? (
-            <div className="rounded-xl border border-[#F1F5F9] bg-white text-center py-10 text-[#94A3B8] text-sm">No posted transactions for this account up to FY {financialYear}.</div>
-          ) : null}
+            <div className="text-center py-10 text-[#94A3B8] text-sm">No posted transactions for this account in the selected range.</div>
+          ) : (
+            <div className="h-40 rounded-lg bg-[#F8FAFC] animate-pulse" />
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
 // ── Trial Balance ──────────────────────────────────────────────────────────
 
-function TrialBalance({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+function TrialBalance({ clientId, financialYear, onDrillDown }: { clientId: string; financialYear: string; onDrillDown: (accountId: string) => void }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
@@ -938,7 +1000,7 @@ function TrialBalance({ clientId, financialYear }: { clientId: string; financial
   const isBalanced = totals.balanced;
 
   return (
-    <div className="space-y-4 max-w-3xl">
+    <div className="space-y-4 max-w-4xl mx-auto">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">Trial Balance — FY {financialYear}</p>
         <div className="flex items-center gap-2">
@@ -961,12 +1023,12 @@ function TrialBalance({ clientId, financialYear }: { clientId: string; financial
             <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className="px-4 py-3 text-left font-semibold">Code</th><th className="px-3 py-3 text-left font-semibold">Account</th><th className="px-3 py-3 text-left font-semibold">Type</th><th className="px-3 py-3 text-right font-semibold">Debit (₹)</th><th className="px-4 py-3 text-right font-semibold">Credit (₹)</th></tr></thead>
             <tbody className="divide-y divide-[#F8FAFC]">
               {rows.map((r) => (
-                <tr key={r.account_id} className="hover:bg-[#F8FAFC]">
+                <tr key={r.account_id} className="hover:bg-[#F8FAFC] cursor-pointer" onClick={() => onDrillDown(r.account_id)}>
                   <td className="px-4 py-2 font-mono text-[#64748B]">{r.account_code}</td>
-                  <td className="px-3 py-2 font-medium text-[#1E293B]">{r.account_name}</td>
+                  <td className="px-3 py-2 font-medium text-[#1E293B] hover:text-blue-700 hover:underline">{r.account_name}</td>
                   <td className="px-3 py-2 text-[#94A3B8]">{r.account_type}</td>
-                  <td className="px-3 py-2 text-right font-mono text-[#334155]">{r.total_debit_paise > 0 ? fmt(r.total_debit_paise) : "—"}</td>
-                  <td className="px-4 py-2 text-right font-mono text-[#334155]">{r.total_credit_paise > 0 ? fmt(r.total_credit_paise) : "—"}</td>
+                  <td className="px-3 py-2 text-right font-mono text-[#334155] hover:text-blue-700 hover:underline">{r.total_debit_paise > 0 ? fmt(r.total_debit_paise) : "—"}</td>
+                  <td className="px-4 py-2 text-right font-mono text-[#334155] hover:text-blue-700 hover:underline">{r.total_credit_paise > 0 ? fmt(r.total_credit_paise) : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -1074,7 +1136,7 @@ function FXReports({ clientId, financialYear }: { clientId: string; financialYea
   const currencyOptions = fxCurrencyOptions(view, data);
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 max-w-4xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex rounded border border-[#E2E8F0] overflow-hidden text-xs">
           {FX_VIEWS.map((v) => (
@@ -1302,8 +1364,8 @@ function FXReportBody({ view, data, byC }: {
 // Part II for presentation only.
 
 interface CashPLData {
-  revenue: { lines: { account_name: string; amount_paise: number }[]; total_paise: number };
-  operating_expenses: { lines: { account_name: string; amount_paise: number }[]; total_paise: number };
+  revenue: { lines: { account_id?: string; account_name: string; amount_paise: number }[]; total_paise: number };
+  operating_expenses: { lines: { account_id?: string; account_name: string; amount_paise: number }[]; total_paise: number };
   net_profit_paise: number;
   start_date: string;
   end_date: string;
@@ -1323,7 +1385,7 @@ interface PLApiData {
   net_profit_paise: number;
 }
 
-function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: string; financialYear: string; onDrillDown: (accountId: string) => void }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
@@ -1412,7 +1474,7 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
   );
 
   return (
-    <div className="space-y-4 max-w-2xl">
+    <div className="space-y-4 max-w-4xl mx-auto">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">Statement of Profit & Loss — FY {financialYear}</p>
         <div className="flex items-center gap-2">
@@ -1443,9 +1505,9 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
             <tbody>
               <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">I. Revenue (Collected)</td></tr>
               {cashPL.revenue.lines.map((l, i) => (
-                <tr key={i} className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-1.5 pl-10 text-[#334155]">{l.account_name}</td>
-                  <td className="px-4 py-1.5 text-right font-mono text-[#334155]">{fmt(l.amount_paise)}</td>
+                <tr key={i} className={isDrillableAccount(l.account_id) ? "hover:bg-[#F8FAFC] cursor-pointer" : "hover:bg-[#F8FAFC]"} onClick={isDrillableAccount(l.account_id) ? () => onDrillDown(l.account_id as string) : undefined}>
+                  <td className={`px-5 py-1.5 pl-10 text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{l.account_name}</td>
+                  <td className={`px-4 py-1.5 text-right font-mono text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(l.amount_paise)}</td>
                 </tr>
               ))}
               <tr className="border-t border-[#E2E8F0] font-semibold">
@@ -1454,9 +1516,9 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
               </tr>
               <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">II. Expenses (Paid)</td></tr>
               {cashPL.operating_expenses.lines.map((l, i) => (
-                <tr key={i} className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-1.5 pl-10 text-[#334155]">{l.account_name}</td>
-                  <td className="px-4 py-1.5 text-right font-mono text-[#334155]">{fmt(l.amount_paise)}</td>
+                <tr key={i} className={isDrillableAccount(l.account_id) ? "hover:bg-[#F8FAFC] cursor-pointer" : "hover:bg-[#F8FAFC]"} onClick={isDrillableAccount(l.account_id) ? () => onDrillDown(l.account_id as string) : undefined}>
+                  <td className={`px-5 py-1.5 pl-10 text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{l.account_name}</td>
+                  <td className={`px-4 py-1.5 text-right font-mono text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(l.amount_paise)}</td>
                 </tr>
               ))}
               <tr className="border-t border-[#E2E8F0] font-semibold">
@@ -1487,7 +1549,7 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
                 const items = revBuckets[bucket] ?? [];
                 if (items.length === 0) return null;
                 const total = items.reduce((s, b) => s + b.net_paise, 0);
-                return <PLSection key={bucket} label={bucket} items={items} total={total} />;
+                return <PLSection key={bucket} label={bucket} items={items} total={total} onDrillDown={onDrillDown} />;
               })}
               <tr className="border-t border-[#E2E8F0] font-semibold">
                 <td className="px-5 py-2.5 text-[#1E293B]">Total Revenue (I)</td>
@@ -1498,7 +1560,7 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
                 const items = expBuckets[bucket] ?? [];
                 if (items.length === 0) return null;
                 const total = items.reduce((s, b) => s + b.net_paise, 0);
-                return <PLSection key={bucket} label={bucket} items={items} total={total} />;
+                return <PLSection key={bucket} label={bucket} items={items} total={total} onDrillDown={onDrillDown} />;
               })}
               <tr className="border-t border-[#E2E8F0] font-semibold">
                 <td className="px-5 py-2.5 text-[#1E293B]">Total Expenses (II)</td>
@@ -1517,7 +1579,7 @@ function ProfitAndLoss({ clientId, financialYear }: { clientId: string; financia
   );
 }
 
-function PLSection({ label, items, total }: { label: string; items: AccountBalance[]; total: number }) {
+function PLSection({ label, items, total, onDrillDown }: { label: string; items: AccountBalance[]; total: number; onDrillDown: (accountId: string) => void }) {
   const [open, setOpen] = useState(true);
   return (
     <>
@@ -1526,9 +1588,9 @@ function PLSection({ label, items, total }: { label: string; items: AccountBalan
         <td className="px-4 py-2 text-right font-mono text-[#334155]">{fmt(total)}</td>
       </tr>
       {open && items.map((item) => (
-        <tr key={item.account_id} className="text-[#94A3B8]">
-          <td className="px-5 py-1.5 pl-14">{item.account_name}</td>
-          <td className="px-4 py-1.5 text-right font-mono">{fmt(item.net_paise)}</td>
+        <tr key={item.account_id} className="text-[#94A3B8] hover:bg-[#F8FAFC] cursor-pointer" onClick={() => onDrillDown(item.account_id)}>
+          <td className="px-5 py-1.5 pl-14 hover:text-blue-700 hover:underline">{item.account_name}</td>
+          <td className="px-4 py-1.5 text-right font-mono hover:text-blue-700 hover:underline">{fmt(item.net_paise)}</td>
         </tr>
       ))}
     </>
@@ -1539,7 +1601,7 @@ function PLSection({ label, items, total }: { label: string; items: AccountBalan
 // Cumulative balances up to FY end date.
 // Companies Act 2013, Schedule III, Part I.
 
-interface CashBSSection { label: string; lines: { account_name: string; balance_paise: number }[]; total_paise: number }
+interface CashBSSection { label: string; lines: { account_id?: string; account_name: string; balance_paise: number }[]; total_paise: number }
 interface CashBSData {
   assets: CashBSSection[];
   liabilities: CashBSSection[];
@@ -1567,7 +1629,7 @@ interface BSApiData {
   is_balanced: boolean;
 }
 
-function BalanceSheet({ clientId, financialYear }: { clientId: string; financialYear: string }) {
+function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: string; financialYear: string; onDrillDown: (accountId: string) => void }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
@@ -1667,7 +1729,7 @@ function BalanceSheet({ clientId, financialYear }: { clientId: string; financial
   );
 
   return (
-    <div className="space-y-4 max-w-2xl">
+    <div className="space-y-4 max-w-4xl mx-auto">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">Balance Sheet — as at 31 March {parseInt(financialYear.split("-")[0]) + 1}</p>
         <div className="flex items-center gap-2">
@@ -1698,12 +1760,18 @@ function BalanceSheet({ clientId, financialYear }: { clientId: string; financial
               <tbody>
                 <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(A) Equity</td></tr>
                 {(cashBS.equity[0]?.lines ?? []).map((l, i) => (
-                  <tr key={i} className="hover:bg-[#F8FAFC]"><td className="px-5 py-1.5 pl-10 text-[#334155]">{l.account_name}</td><td className="px-4 py-1.5 text-right font-mono text-[#334155]">{fmt(l.balance_paise)}</td></tr>
+                  <tr key={i} className={isDrillableAccount(l.account_id) ? "hover:bg-[#F8FAFC] cursor-pointer" : "hover:bg-[#F8FAFC]"} onClick={isDrillableAccount(l.account_id) ? () => onDrillDown(l.account_id as string) : undefined}>
+                    <td className={`px-5 py-1.5 pl-10 text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{l.account_name}</td>
+                    <td className={`px-4 py-1.5 text-right font-mono text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(l.balance_paise)}</td>
+                  </tr>
                 ))}
                 <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Equity</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(cashBS.equity[0]?.total_paise ?? 0)}</td></tr>
                 <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(B) Liabilities</td></tr>
                 {(cashBS.liabilities[0]?.lines ?? []).map((l, i) => (
-                  <tr key={i} className="hover:bg-[#F8FAFC]"><td className="px-5 py-1.5 pl-10 text-[#334155]">{l.account_name}</td><td className="px-4 py-1.5 text-right font-mono text-[#334155]">{fmt(l.balance_paise)}</td></tr>
+                  <tr key={i} className={isDrillableAccount(l.account_id) ? "hover:bg-[#F8FAFC] cursor-pointer" : "hover:bg-[#F8FAFC]"} onClick={isDrillableAccount(l.account_id) ? () => onDrillDown(l.account_id as string) : undefined}>
+                    <td className={`px-5 py-1.5 pl-10 text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{l.account_name}</td>
+                    <td className={`px-4 py-1.5 text-right font-mono text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(l.balance_paise)}</td>
+                  </tr>
                 ))}
                 <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Liabilities</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(cashBS.liabilities[0]?.total_paise ?? 0)}</td></tr>
                 <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Equity & Liabilities</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(cashBS.total_liabilities_equity_paise)}</td></tr>
@@ -1718,7 +1786,10 @@ function BalanceSheet({ clientId, financialYear }: { clientId: string; financial
               <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
               <tbody>
                 {(cashBS.assets[0]?.lines ?? []).map((l, i) => (
-                  <tr key={i} className="hover:bg-[#F8FAFC]"><td className="px-5 py-1.5 pl-10 text-[#334155]">{l.account_name}</td><td className="px-4 py-1.5 text-right font-mono text-[#334155]">{fmt(l.balance_paise)}</td></tr>
+                  <tr key={i} className={isDrillableAccount(l.account_id) ? "hover:bg-[#F8FAFC] cursor-pointer" : "hover:bg-[#F8FAFC]"} onClick={isDrillableAccount(l.account_id) ? () => onDrillDown(l.account_id as string) : undefined}>
+                    <td className={`px-5 py-1.5 pl-10 text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{l.account_name}</td>
+                    <td className={`px-4 py-1.5 text-right font-mono text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(l.balance_paise)}</td>
+                  </tr>
                 ))}
                 <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Assets</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(cashBS.total_assets_paise)}</td></tr>
               </tbody>
@@ -1741,11 +1812,11 @@ function BalanceSheet({ clientId, financialYear }: { clientId: string; financial
               <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
               <tbody>
                 <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(A) Equity</td></tr>
-                {BS_EQ_ORDER.map((bucket) => { const items = equityBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} />; })}
-                {equityBuckets["Capital Account"] && <BSSectionRows label="Capital Account" items={equityBuckets["Capital Account"]} />}
+                {BS_EQ_ORDER.map((bucket) => { const items = equityBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} onDrillDown={onDrillDown} />; })}
+                {equityBuckets["Capital Account"] && <BSSectionRows label="Capital Account" items={equityBuckets["Capital Account"]} onDrillDown={onDrillDown} />}
                 <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Equity</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(totalEquity)}</td></tr>
                 <tr><td colSpan={2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(B) Liabilities</td></tr>
-                {BS_LIAB_ORDER.map((bucket) => { const items = liabBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} />; })}
+                {BS_LIAB_ORDER.map((bucket) => { const items = liabBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} onDrillDown={onDrillDown} />; })}
                 <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Liabilities</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(totalLiab)}</td></tr>
                 <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Equity & Liabilities</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(totalLiab + totalEquity)}</td></tr>
               </tbody>
@@ -1758,7 +1829,7 @@ function BalanceSheet({ clientId, financialYear }: { clientId: string; financial
             <table className="w-full text-xs">
               <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]"><th className="px-5 py-2 text-left font-semibold">Particulars</th><th className="px-4 py-2 text-right font-semibold">Amount (₹)</th></tr></thead>
               <tbody>
-                {BS_ASSET_ORDER.map((bucket) => { const items = assetBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} />; })}
+                {BS_ASSET_ORDER.map((bucket) => { const items = assetBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} onDrillDown={onDrillDown} />; })}
                 <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Assets</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(totalAssets)}</td></tr>
               </tbody>
             </table>
@@ -1773,7 +1844,7 @@ function BalanceSheet({ clientId, financialYear }: { clientId: string; financial
   );
 }
 
-function BSSectionRows({ label, items }: { label: string; items: AccountBalance[] }) {
+function BSSectionRows({ label, items, onDrillDown }: { label: string; items: AccountBalance[]; onDrillDown: (accountId: string) => void }) {
   const [open, setOpen] = useState(true);
   const total = items.reduce((s, b) => s + b.net_paise, 0);
   return (
@@ -1782,12 +1853,15 @@ function BSSectionRows({ label, items }: { label: string; items: AccountBalance[
         <td className="px-5 py-2 text-[#334155] font-medium pl-8">{label}</td>
         <td className="px-4 py-2 text-right font-mono text-[#334155]">{fmt(total)}</td>
       </tr>
-      {open && items.map((item) => (
-        <tr key={item.account_id} className="text-[#94A3B8]">
-          <td className="px-5 py-1.5 pl-14">{item.account_name}</td>
-          <td className="px-4 py-1.5 text-right font-mono">{fmt(item.net_paise)}</td>
-        </tr>
-      ))}
+      {open && items.map((item) => {
+        const drillable = isDrillableAccount(item.account_id);
+        return (
+          <tr key={item.account_id} className={drillable ? "text-[#94A3B8] hover:bg-[#F8FAFC] cursor-pointer" : "text-[#94A3B8]"} onClick={drillable ? () => onDrillDown(item.account_id) : undefined}>
+            <td className={`px-5 py-1.5 pl-14 ${drillable ? "hover:text-blue-700 hover:underline" : ""}`}>{item.account_name}</td>
+            <td className={`px-4 py-1.5 text-right font-mono ${drillable ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(item.net_paise)}</td>
+          </tr>
+        );
+      })}
     </>
   );
 }
@@ -1890,7 +1964,7 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
   const r = cf?.operating_reconciliation;
 
   return (
-    <div className="space-y-4 max-w-3xl">
+    <div className="space-y-4 max-w-3xl mx-auto">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">Cash Flow Statement — FY {financialYear}</p>
         <div className="flex items-center gap-2">
@@ -2110,7 +2184,7 @@ function BankMatchQueue({ clientId }: { clientId: string }) {
   const confColor = (l: string) => l === "high" ? "text-green-700 bg-green-50" : l === "medium" ? "text-amber-700 bg-amber-50" : "text-[#64748B] bg-[#F1F5F9]";
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 max-w-4xl mx-auto">
       <div className="flex gap-1 bg-[#F1F5F9] p-1 rounded-lg w-fit">
         {QUEUE_FILTERS.map((f) => (
           <button key={f.id} onClick={() => setStatus(f.id)}
@@ -2299,7 +2373,7 @@ function BankPostingQueue({ clientId, accounts }: { clientId: string; accounts: 
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="space-y-4 max-w-5xl">
+    <div className="space-y-4 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
         <div className="flex gap-1 bg-[#F1F5F9] p-1 rounded-lg w-fit">
           {([["ready", `Ready to Post (${ready.length})`], ["pending", `Pending Approval (${pending.length})`], ["posted", `Posted (${posted.length})`]] as const).map(([id, label]) => (
@@ -2676,7 +2750,7 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
   }
 
   return (
-    <div className="space-y-4 max-w-5xl">
+    <div className="space-y-4 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
         <div className="flex gap-1 bg-[#F1F5F9] p-1 rounded-lg w-fit">
           {([["draft", "Draft"], ["posted", "Posted"]] as const).map(([id, label]) => (
@@ -2774,7 +2848,7 @@ function BankAccounts({ clientId }: { clientId: string }) {
   };
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 max-w-4xl mx-auto">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">{statements.length} bank statement{statements.length !== 1 ? "s" : ""} imported</p>
         <div className="flex gap-2">
@@ -3051,7 +3125,7 @@ function BankReconciliation({ clientId }: { clientId: string }) {
   const statusBadge = (s: string) => s === "completed" ? "bg-green-100 text-green-700" : s === "in_progress" ? "bg-amber-100 text-amber-700" : "bg-[#F1F5F9] text-[#64748B]";
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 max-w-4xl mx-auto">
       {/* Session selector */}
       <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 flex items-end gap-3 flex-wrap">
         <div className="flex-1 min-w-[240px]">
@@ -3419,7 +3493,7 @@ function FinancialReports({ clientId, financialYear }: { clientId: string; finan
   ];
 
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="space-y-5 max-w-3xl mx-auto">
       {/* Generate / export reports */}
       <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
