@@ -60,3 +60,24 @@ class StockAdjustmentIn(BaseModel):
         if v not in ADJUSTMENT_REASONS:
             raise ValueError(f"reason must be one of {sorted(ADJUSTMENT_REASONS)}.")
         return v
+
+
+class NrvWritedownIn(BaseModel):
+    """Write inventory down to net realisable value (routers/inventory.py:
+    POST /items/{id}/writedown). AS-2 / Ind AS 2 / ICDS-II require
+    inventory to be carried at the LOWER of cost or net realisable value —
+    a value-only correction, quantity never changes. A no-op if the
+    supplied NRV is already >= the current moving-average cost (inventory
+    stays at cost, the normal case)."""
+    client_id: str
+    writedown_date: str  # YYYY-MM-DD
+    nrv_per_unit_paise: int
+    reference_no: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("nrv_per_unit_paise")
+    @classmethod
+    def non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("nrv_per_unit_paise must be non-negative.")
+        return v

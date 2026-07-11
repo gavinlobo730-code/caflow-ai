@@ -14,7 +14,7 @@
  * tab's ledger drill-down: its own date range, defaulting to the client's FY.
  */
 import { useCallback, useEffect, useState } from "react";
-import { RefreshCw, AlertTriangle, ClipboardEdit, Loader2 } from "lucide-react";
+import { RefreshCw, AlertTriangle, ClipboardEdit, Loader2, TrendingDown } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { api } from "@/lib/api";
 import { DataTable } from "@/components/ui/data-table";
@@ -62,6 +62,7 @@ const MOVEMENT_LABELS: Record<string, string> = {
   sale_return: "Sales Return (Credit Note)",
   purchase_return: "Purchase Return (Debit Note)",
   adjustment: "Adjustment",
+  nrv_writedown: "NRV Write-down",
 };
 
 // Reason taxonomy for a manual stock adjustment (models/inventory.py:
@@ -220,6 +221,7 @@ function StockLedgerDrillDown({
   const [lines, setLines] = useState<StockLedgerLine[]>([]);
   const [loading, setLoading] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
+  const [writedownOpen, setWritedownOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -255,6 +257,10 @@ function StockLedgerDrillDown({
             <button onClick={() => setAdjustOpen(true)}
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569]">
               <ClipboardEdit size={13} /> Adjust Stock
+            </button>
+            <button onClick={() => setWritedownOpen(true)}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569]">
+              <TrendingDown size={13} /> Write Down to NRV
             </button>
             <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155] text-xl leading-none" aria-label="Back">×</button>
           </div>
@@ -324,6 +330,15 @@ function StockLedgerDrillDown({
           item={item}
           onClose={() => setAdjustOpen(false)}
           onSaved={() => { setAdjustOpen(false); load(); onAdjusted(); }}
+        />
+      )}
+
+      {writedownOpen && (
+        <NrvWritedownModal
+          clientId={clientId}
+          item={item}
+          onClose={() => setWritedownOpen(false)}
+          onSaved={() => { setWritedownOpen(false); load(); onAdjusted(); }}
         />
       )}
     </div>
@@ -465,6 +480,112 @@ function AdjustStockModal({
             <button onClick={submit} disabled={saving}
               className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5">
               {saving && <Loader2 size={12} className="animate-spin" />} Save Adjustment
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NrvWritedownModal({
+  clientId, item, onClose, onSaved,
+}: {
+  clientId: string;
+  item: StockItem;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const today = new Date().toISOString().split("T")[0];
+  const currentAvgCost = (item.avg_cost_paise ?? 0) / 100;
+  const [nrvPerUnit, setNrvPerUnit] = useState("");
+  const [writedownDate, setWritedownDate] = useState(today);
+  const [referenceNo, setReferenceNo] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const nrvNum = parseFloat(nrvPerUnit);
+  const qty = item.stock_qty_units ?? 0;
+  const previewWritedown = nrvNum >= 0 && nrvNum < currentAvgCost ? (currentAvgCost - nrvNum) * qty : 0;
+
+  async function submit() {
+    if (!(nrvNum >= 0)) { setError("Enter a valid net realisable value per unit."); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const result = (await api.inventory.writedown(item.id, {
+        client_id: clientId,
+        writedown_date: writedownDate,
+        nrv_per_unit_paise: Math.round(nrvNum * 100),
+        reference_no: referenceNo.trim() || undefined,
+        notes: notes.trim() || undefined,
+      })) as { success: boolean; data: unknown; error: string | null };
+      if (!result.success) throw new Error(result.error ?? "Failed to record the write-down");
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to record the write-down");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-[#0F172A]/60 z-[110] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-center justify-between">
+          <p className="text-sm font-semibold text-[#0F172A]">Write Down to NRV — {item.name}</p>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155] text-xl leading-none" aria-label="Close">×</button>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-[11px] text-[#94A3B8]">
+            AS-2 / Ind AS 2 / ICDS-II: inventory must be carried at the lower of cost or net realisable value. Quantity
+            never changes — only the recorded value. Current average cost is {formatServicePrice(item.avg_cost_paise) || "₹0"}/unit
+            on {fmtQty(qty)} units on hand.
+          </p>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Net realisable value / unit (₹) *</label>
+              <input type="number" min="0" step="0.01" value={nrvPerUnit} onChange={(e) => setNrvPerUnit(e.target.value)}
+                placeholder="0.00" className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Date *</label>
+              <input type="date" value={writedownDate} onChange={(e) => setWritedownDate(e.target.value)}
+                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+
+          {previewWritedown > 0 ? (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+              This writes down inventory value by ₹{previewWritedown.toLocaleString("en-IN", { maximumFractionDigits: 2 })}.
+            </p>
+          ) : nrvPerUnit !== "" && nrvNum >= currentAvgCost ? (
+            <p className="text-xs text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2.5">
+              NRV is at or above the current average cost — no write-down needed; nothing will be posted.
+            </p>
+          ) : null}
+
+          <div>
+            <label className="block text-xs font-medium text-[#475569] mb-1">Reference</label>
+            <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="e.g. valuation note #"
+              className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-[#475569] mb-1">Notes</label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+              placeholder="Basis for the NRV estimate" className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+
+          {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={onClose} disabled={saving} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50">Cancel</button>
+            <button onClick={submit} disabled={saving}
+              className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+              {saving && <Loader2 size={12} className="animate-spin" />} Save Write-down
             </button>
           </div>
         </div>

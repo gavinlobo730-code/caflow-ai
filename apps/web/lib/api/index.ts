@@ -174,6 +174,8 @@ export const api = {
       request(`/api/inventory/items/${serviceCatalogueId}/ledger?${new URLSearchParams(params)}`),
     adjust: (serviceCatalogueId: string, body: unknown) =>
       request(`/api/inventory/items/${serviceCatalogueId}/adjust`, { method: "POST", body: JSON.stringify(body) }),
+    writedown: (serviceCatalogueId: string, body: unknown) =>
+      request(`/api/inventory/items/${serviceCatalogueId}/writedown`, { method: "POST", body: JSON.stringify(body) }),
   },
   // Multi-Currency (Phase 1/5) — currency master + resolved policy (gates FX UI).
   currencies: {
