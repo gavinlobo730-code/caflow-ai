@@ -34,10 +34,14 @@ export interface ServiceCatalogueItem {
   duplicate?: boolean;
 }
 
-/** Map a preset to the editor line fields it pre-fills (qty is left to the caller). */
+/** Map a preset to the editor line fields it pre-fills (qty is left to the
+ * caller). Description is copied as-is, blank if the preset has none — it
+ * never falls back to the Name, so a CA who wants a line description has to
+ * set one (on the preset or the line itself) rather than getting a silent
+ * Name-as-description they never typed. */
 export function serviceToLine(item: ServiceCatalogueItem): Pick<InvoiceLine, "description" | "hsn_sac" | "rate" | "gst_rate" | "unit"> {
   return {
-    description: (item.description?.trim() || item.name).trim(),
+    description: (item.description ?? "").trim(),
     hsn_sac: item.hsn_sac ?? "",
     rate: item.default_rate_paise ? String(item.default_rate_paise / 100) : "",
     gst_rate: item.gst_rate_bps == null ? 0 : item.gst_rate_bps / 100,

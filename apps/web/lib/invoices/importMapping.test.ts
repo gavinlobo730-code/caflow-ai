@@ -142,7 +142,7 @@ test("unknown product_service is reported and skipped", () => {
 
 test("a product_service with no default price still requires a rate", () => {
   const { invoices, errors } = buildSalesInvoices(
-    [row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", product_service: "No Price Service", quantity: "1" })],
+    [row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", product_service: "No Price Service", description: "Line text", quantity: "1" })],
     "client-1", CUSTOMERS, SERVICES);
   assert.equal(invoices.length, 0);
   assert.match(errors[0], /rate.*non-negative/i);
@@ -154,4 +154,22 @@ test("no product_service still requires description, rate and gst_rate directly"
     "client-1", CUSTOMERS);
   assert.equal(invoices.length, 0);
   assert.match(errors[0], /description is required/i);
+});
+
+// A product_service with no description of its own never falls back to its
+// Name — matches the manual editor's serviceToLine, which stopped doing this
+// (a CA reported a blank-description preset silently filling the invoice
+// line with the product name, which they never typed).
+test("a product_service with no description of its own still requires a row-level description", () => {
+  const { invoices, errors } = buildSalesInvoices(
+    [row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", product_service: "No Price Service", rate: "500", quantity: "1" })],
+    "client-1", CUSTOMERS, SERVICES);
+  assert.equal(invoices.length, 0);
+  assert.match(errors[0], /description is required/i);
+
+  const ok = buildSalesInvoices(
+    [row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", product_service: "No Price Service", description: "Custom line text", rate: "500", gst_rate: "18", quantity: "1" })],
+    "client-1", CUSTOMERS, SERVICES);
+  assert.equal(ok.errors.length, 0);
+  assert.equal(ok.invoices[0].lines[0].description, "Custom line text");
 });

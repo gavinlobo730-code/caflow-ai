@@ -18,9 +18,12 @@
  * typed one would — same endpoint, same check, no separate import-only path.
  *
  * product_service is optional: when a row names an existing Product/Service,
- * description/hsn_sac/rate/gst_rate become OPTIONAL OVERRIDES (blank = use
- * the catalogue item's own values) — mirroring how picking a preset pre-fills
- * a manually-created line. The values are copied onto the line, never linked
+ * hsn_sac/rate/gst_rate become OPTIONAL OVERRIDES (blank = use the catalogue
+ * item's own values) — mirroring how picking a preset pre-fills a manually-
+ * created line. description works the same way EXCEPT it never falls back to
+ * the product's Name (matching the manual editor's serviceToLine): a row
+ * still needs an explicit description, either in its own column or on the
+ * matched preset. The values are copied onto the line, never linked
  * (service_catalogue has no FK from invoice lines), so nothing server-side
  * needs to change for this.
  *
@@ -128,8 +131,8 @@ export function buildSalesInvoices(
     if (dueDate && !DATE_RE.test(dueDate)) { errors.push(`Row ${rowNo}: due_date must be YYYY-MM-DD`); return; }
     if (productName && !service) { errors.push(`Row ${rowNo}: unknown product/service "${productName}" — create it first`); return; }
 
-    const description = (r.description ?? "").trim() || (service ? (service.description?.trim() || service.name) : "");
-    if (!description) { errors.push(`Row ${rowNo}: description is required (or give a Product/Service)`); return; }
+    const description = (r.description ?? "").trim() || (service?.description?.trim() ?? "");
+    if (!description) { errors.push(`Row ${rowNo}: description is required (or use a Product/Service that has its own description set)`); return; }
 
     const qty = num(r.quantity);
     if (!Number.isFinite(qty) || qty <= 0) { errors.push(`Row ${rowNo}: quantity must be a positive number`); return; }
