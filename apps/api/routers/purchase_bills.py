@@ -646,6 +646,22 @@ def receive_purchase_bill(
             actor_name=current_user.get("email"),
         )
 
+        # Inventory: stock-in + moving-average recompute for any goods lines
+        # linked to a stock-tracked catalogue item, plus a reclassification
+        # journal entry moving that value from the expense account it landed
+        # on into Inventory. Runs AFTER the bill is committed received — a
+        # failure here must never affect an already-received bill.
+        # apply_purchase_to_inventory itself never raises; this try/except is
+        # belt-and-suspenders.
+        try:
+            from domain.inventory_service import apply_purchase_to_inventory
+            apply_purchase_to_inventory(
+                db, firm_id=current_user.get("firm_id", ""), client_id=updated_bill.get("client_id", ""),
+                bill=updated_bill, created_by=current_user.get("auth_user_id"),
+            )
+        except Exception as e:
+            _logger.error("receive_purchase_bill: inventory posting failed for %s: %s", bill_id, e, exc_info=True)
+
         updated_bill["journal_entry_id"] = journal_id
         return api_response(True, updated_bill)
     except HTTPException:
