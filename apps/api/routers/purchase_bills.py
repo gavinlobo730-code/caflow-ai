@@ -511,20 +511,46 @@ def get_purchase_bill(
         return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
 
 
+# Once a bill is received, only these fields may still change — mirrors the
+# same rule on sales invoices (routers/sales_invoices.py:_SOFT_UPDATE_FIELDS).
+_SOFT_BILL_UPDATE_FIELDS = {"notes", "due_date"}
+
+
+def _reject_locked_bill_fields(data: dict) -> None:
+    """bill_no/bill_date/lines/is_inter_state are locked once a bill is
+    received — a correction to any of those needs a Debit Note instead of a
+    silent edit (CGST Act §34, same principle as the sales-invoice side)."""
+    locked = sorted(set(data.keys()) - _SOFT_BILL_UPDATE_FIELDS)
+    if locked:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Cannot change {', '.join(locked)} on a received bill — only "
+                "notes and due date can still be edited. Issue a Debit Note "
+                "to correct anything else (CGST Act §34)."
+            ),
+        )
+
+
 @router.patch("/{bill_id}")
 def update_purchase_bill(
     bill_id: str,
     data: PurchaseBillUpdateIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
-    """Update a draft purchase bill. Only allowed on draft status."""
+    """Update a purchase bill. DRAFT: full edit. RECEIVED/PARTIALLY_PAID/
+    PAID: only notes and due_date may change — see _reject_locked_bill_fields.
+    CANCELLED: cannot be updated at all."""
     try:
         data = data.model_dump(exclude_none=True)
         if _USE_MOCK:
             for i, b in enumerate(MOCK_PURCHASE_BILLS):
                 if b["id"] == bill_id:
-                    if b.get("status") != "draft":
-                        raise HTTPException(status_code=422, detail="Only draft bills can be updated")
+                    status = b.get("status")
+                    if status == "cancelled":
+                        raise HTTPException(status_code=422, detail="Cancelled bills cannot be updated")
+                    if status != "draft":
+                        _reject_locked_bill_fields(data)
                     MOCK_PURCHASE_BILLS[i] = {**b, **data, "updated_at": datetime.now(timezone.utc).isoformat()}
                     return api_response(True, MOCK_PURCHASE_BILLS[i])
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
@@ -536,8 +562,11 @@ def update_purchase_bill(
         resp = db.table("purchase_bills").select("status, bill_date").eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
-        if resp.data[0]["status"] != "draft":
-            raise HTTPException(status_code=422, detail="Only draft bills can be updated")
+        status = resp.data[0]["status"]
+        if status == "cancelled":
+            raise HTTPException(status_code=422, detail="Cancelled bills cannot be updated")
+        if status != "draft":
+            _reject_locked_bill_fields(data)
         # FY-lock: block editing a bill dated in a locked year, and block moving it
         # INTO a locked year. (Create already validates; edits were the gap.)
         firm_id = current_user.get("firm_id") or ""
