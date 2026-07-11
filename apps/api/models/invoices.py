@@ -167,6 +167,10 @@ class PurchaseBillLineIn(BaseModel):
     description: str
     hsn_sac: Optional[str] = None
     quantity: float = 1.0
+    # Unit of measure (UQC), e.g. "NOS", "KGS" — migration 190. purchase_bill_lines
+    # had no unit column at all until now, unlike client_sales_invoice_lines/
+    # credit_note_lines/debit_note_lines, which all share InvoiceLineIn.unit.
+    unit: Optional[str] = None
     rate_paise: int
     gst_rate_percent: float = 18.0
     is_service: bool = False
@@ -186,6 +190,15 @@ class PurchaseBillLineIn(BaseModel):
             raise ValueError("rate_paise must be non-negative.")
         return v
 
+    @field_validator("unit")
+    @classmethod
+    def normalize_unit(cls, v: Optional[str]) -> Optional[str]:
+        # Same lenient normalize-only rule as InvoiceLineIn.unit — see that
+        # validator's comment for why values are never rejected.
+        if v is None or v == "":
+            return None
+        return v.strip().upper()
+
 
 class PurchaseBillIn(BaseModel):
     """Create a purchase bill. IT Act §194C/194I/194J: TDS from vendor master."""
@@ -194,6 +207,10 @@ class PurchaseBillIn(BaseModel):
     bill_date: str  # YYYY-MM-DD
     due_date: Optional[str] = None
     bill_no: Optional[str] = None
+    # The firm's OWN internal reference/tracking number for this bill —
+    # distinct from bill_no (the vendor's own document number). Optional,
+    # firm-set, never validated against anything external.
+    our_reference: Optional[str] = None
     lines: list[PurchaseBillLineIn]
     notes: Optional[str] = None
     is_inter_state: bool = False
@@ -216,16 +233,27 @@ class PurchaseBillUpdateIn(BaseModel):
 
     Draft bills: every field below is editable. Once received (or later),
     the router (routers/purchase_bills.py: update_purchase_bill) only
-    accepts notes and due_date — bill_no, bill_date, lines and
-    is_inter_state are locked post-receipt, matching the same rule applied
-    to sales invoices (routers/sales_invoices.py).
+    accepts our_reference, notes, due_date and line_units — bill_no,
+    bill_date, lines and is_inter_state are locked post-receipt, matching
+    the same rule applied to sales invoices (routers/sales_invoices.py).
     """
     bill_date: Optional[str] = None
     due_date: Optional[str] = None
     bill_no: Optional[str] = None
+    our_reference: Optional[str] = None
     lines: Optional[list[PurchaseBillLineIn]] = None
     notes: Optional[str] = None
     is_inter_state: Optional[bool] = None
+    # {line_id: new unit} — always allowed regardless of status, same
+    # rationale as SalesInvoiceUpdateIn.line_units above.
+    line_units: Optional[dict[str, str]] = None
+
+    @field_validator("line_units")
+    @classmethod
+    def _normalize_line_units(cls, v: Optional[dict[str, str]]) -> Optional[dict[str, str]]:
+        if v is None:
+            return None
+        return {k: (val.strip().upper() if val else val) for k, val in v.items()}
 
 
 class BillFromDocumentIn(BaseModel):

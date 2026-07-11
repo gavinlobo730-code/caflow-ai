@@ -228,6 +228,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict) -> dict:
             "hsn_sac":              ln.get("hsn_sac", ""),
             "expense_account_id":   ln.get("expense_account_id"),
             "quantity":             qty,
+            "unit":                 ln.get("unit") or "NOS",
             "rate_paise":           rate_paise,
             "gst_rate_bps":         gst_rate_bps,
             "taxable_amount_paise": taxable,
@@ -235,6 +236,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict) -> dict:
             "sgst_paise":           sgst,
             "igst_paise":           igst,
             "line_total_paise":     taxable + cgst + sgst + igst,
+            "service_catalogue_id": ln.get("service_catalogue_id"),
         })
 
     total_paise = total_taxable + total_cgst + total_sgst + total_igst
@@ -349,6 +351,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict) -> dict:
             "client_id":             client_id,
             "vendor_id":             vendor_id,
             "bill_no":               data.get("bill_no", ""),
+            "our_reference":         data.get("our_reference"),
             "bill_date":             data["bill_date"],
             "due_date":              data.get("due_date"),
             "is_interstate":         is_interstate,
@@ -381,6 +384,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict) -> dict:
         "client_id":             client_id,
         "vendor_id":             vendor_id,
         "bill_no":               data.get("bill_no", ""),
+        "our_reference":         data.get("our_reference"),
         "bill_date":             data["bill_date"],
         "due_date":              data.get("due_date"),
         "is_interstate":         is_interstate,
@@ -412,6 +416,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict) -> dict:
             "hsn_sac":               ln["hsn_sac"],
             "expense_account_id":    ln.get("expense_account_id"),
             "quantity":              ln["quantity"],
+            "unit":                  ln.get("unit") or "NOS",
             "rate_paise":            ln["rate_paise"],
             "gst_rate_bps":          ln["gst_rate_bps"],
             "taxable_amount_paise":  ln["taxable_amount_paise"],
@@ -419,6 +424,12 @@ def _create_purchase_bill_core(data: dict, current_user: dict) -> dict:
             "sgst_paise":            ln["sgst_paise"],
             "igst_paise":            ln["igst_paise"],
             "line_total_paise":      ln["line_total_paise"],
+            # BUG FIX (audit): this key was missing entirely, so a product
+            # picked via ServiceCataloguePicker on a Purchase Bill line never
+            # actually persisted — apply_purchase_to_inventory's later SELECT
+            # of this column always saw NULL, silently skipping stock-in for
+            # every bill ever created through this path.
+            "service_catalogue_id":  ln.get("service_catalogue_id"),
         }
         for ln in computed_lines
     ]
@@ -513,7 +524,8 @@ def get_purchase_bill(
 
 # Once a bill is received, only these fields may still change — mirrors the
 # same rule on sales invoices (routers/sales_invoices.py:_SOFT_UPDATE_FIELDS).
-_SOFT_BILL_UPDATE_FIELDS = {"notes", "due_date"}
+# line_units is handled separately, always allowed regardless of status.
+_SOFT_BILL_UPDATE_FIELDS = {"notes", "due_date", "our_reference"}
 
 
 def _reject_locked_bill_fields(data: dict) -> None:
@@ -526,8 +538,8 @@ def _reject_locked_bill_fields(data: dict) -> None:
             status_code=422,
             detail=(
                 f"Cannot change {', '.join(locked)} on a received bill — only "
-                "notes and due date can still be edited. Issue a Debit Note "
-                "to correct anything else (CGST Act §34)."
+                "our reference, notes and due date can still be edited. Issue "
+                "a Debit Note to correct anything else (CGST Act §34)."
             ),
         )
 
@@ -539,10 +551,14 @@ def update_purchase_bill(
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """Update a purchase bill. DRAFT: full edit. RECEIVED/PARTIALLY_PAID/
-    PAID: only notes and due_date may change — see _reject_locked_bill_fields.
-    CANCELLED: cannot be updated at all."""
+    PAID: only our_reference, notes, due_date and line_units may change —
+    see _reject_locked_bill_fields. CANCELLED: cannot be updated at all."""
     try:
         data = data.model_dump(exclude_none=True)
+        # Always allowed regardless of status — unit alone never touches
+        # rate/quantity/amount/GST.
+        line_units = data.pop("line_units", None)
+
         if _USE_MOCK:
             for i, b in enumerate(MOCK_PURCHASE_BILLS):
                 if b["id"] == bill_id:
@@ -551,6 +567,10 @@ def update_purchase_bill(
                         raise HTTPException(status_code=422, detail="Cancelled bills cannot be updated")
                     if status != "draft":
                         _reject_locked_bill_fields(data)
+                    if line_units:
+                        for ln in MOCK_PURCHASE_BILL_LINES:
+                            if ln.get("id") in line_units and ln.get("bill_id") == bill_id:
+                                ln["unit"] = line_units[ln["id"]] or "NOS"
                     MOCK_PURCHASE_BILLS[i] = {**b, **data, "updated_at": datetime.now(timezone.utc).isoformat()}
                     return api_response(True, MOCK_PURCHASE_BILLS[i])
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
@@ -575,6 +595,14 @@ def update_purchase_bill(
             period_validation_service.validate_posting_date(firm_id, existing_date)
         if data.get("bill_date"):
             period_validation_service.validate_posting_date(firm_id, data["bill_date"])
+
+        # Per-line unit correction — safe on any non-cancelled status since
+        # unit never affects rate/quantity/amount/GST.
+        if line_units:
+            for line_id, unit in line_units.items():
+                db.table("purchase_bill_lines").update(
+                    {"unit": unit or "NOS"}
+                ).eq("id", line_id).eq("bill_id", bill_id).execute()
 
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
         upd = db.table("purchase_bills").update(data).eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
@@ -906,6 +934,7 @@ def create_bill_from_document(
                     "description":          ln.get("description", ""),
                     "hsn_sac":              ln.get("hsn_sac", ""),
                     "rate_paise":           int(ln.get("rate_paise", 0)),
+                    "unit":                 ln.get("unit") or "NOS",
                     "gst_rate_bps":         int(ln.get("gst_rate_bps", 0)),
                     "quantity":             ln.get("quantity", 1),
                     "taxable_amount_paise": int(ln.get("taxable_amount_paise", 0)),
@@ -913,6 +942,8 @@ def create_bill_from_document(
                     "sgst_paise":           0,
                     "igst_paise":           0,
                     "line_total_paise":     int(ln.get("rate_paise", 0)),
+                    # AI extraction has no product-catalogue awareness — the CA
+                    # links a Product/Service later via the draft's line editor.
                 }
                 for ln in line_items
             ]
