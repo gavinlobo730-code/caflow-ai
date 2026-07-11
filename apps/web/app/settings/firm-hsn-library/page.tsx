@@ -27,6 +27,13 @@ import type { Column } from "@/lib/table/types";
 type Filter = "active" | "archived";
 type TypeFilter = "all" | "goods" | "services";
 
+// Backend caps a single list response at 200 rows (routers/firm_hsn_library.py
+// has no pagination) — when a fetch comes back exactly at the cap we can't tell
+// whether that's the true total or more rows exist beyond it, so the count
+// badge below shows "200+" and a hint to narrow the search instead of a bare
+// (possibly wrong) total.
+const HSN_LIBRARY_FETCH_LIMIT = 200;
+
 const EXPORT_COLUMNS: Column<FirmHsnLibraryRow>[] = [
   { key: "hsn_code", header: "Code", accessor: (r) => r.hsn_code },
   { key: "description", header: "Description", accessor: (r) => r.description },
@@ -37,6 +44,10 @@ const EXPORT_COLUMNS: Column<FirmHsnLibraryRow>[] = [
 
 export default function FirmHsnLibraryPage() {
   const [items, setItems] = useState<FirmHsnLibraryRow[]>([]);
+  // Whether the raw fetch (before the "archived" tab's client-side is_active
+  // filter) hit HSN_LIBRARY_FETCH_LIMIT — the archived tab filters down from
+  // that same capped fetch, so items.length alone would understate a cap.
+  const [capped, setCapped] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [q, setQ] = useState("");
@@ -62,10 +73,11 @@ export default function FirmHsnLibraryPage() {
         q: q.trim() || undefined,
         hsn_type: typeFilter === "all" ? undefined : typeFilter,
         include_archived: filter === "archived",
-        limit: 200,
+        limit: HSN_LIBRARY_FETCH_LIMIT,
       })) as ApiResp<FirmHsnLibraryRow[]>;
       if (!res.success) { setError(true); return; }
       const rows = res.data ?? [];
+      setCapped(rows.length === HSN_LIBRARY_FETCH_LIMIT);
       // include_archived returns both; the "archived" tab shows only archived.
       setItems(filter === "archived" ? rows.filter((r) => r.is_active === false) : rows);
     } catch {
@@ -153,9 +165,21 @@ export default function FirmHsnLibraryPage() {
           </Link>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h1 className="text-xl font-semibold text-[#0F172A] flex items-center gap-2"><Hash size={18} className="text-violet-600" /> Firm HSN/SAC Library</h1>
+              <h1 className="text-xl font-semibold text-[#0F172A] flex items-center gap-2">
+                <Hash size={18} className="text-violet-600" /> Firm HSN/SAC Library
+                {!loading && !error && (
+                  <span className="text-xs font-normal text-[#94A3B8]">
+                    {items.length}{capped ? "+" : ""} code{items.length === 1 ? "" : "s"}
+                  </span>
+                )}
+              </h1>
               <p className="text-sm text-[#64748B] mt-0.5">
                 The HSN/SAC codes your firm bills against. You add and curate every code here — Caflow does not ship a shared list or suggest a classification; every Product/Service and invoice line picks from this library.
+                {capped && (
+                  <span className="block text-amber-600 mt-0.5">
+                    Showing the first {HSN_LIBRARY_FETCH_LIMIT} matches — refine your search to see more.
+                  </span>
+                )}
               </p>
             </div>
             <div className="flex items-center gap-2">
