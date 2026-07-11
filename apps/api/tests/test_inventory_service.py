@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import pytest
 
+import domain.inventory_service as inventory_service
 from domain.inventory_service import (
     _compute_stock_in,
     _compute_stock_out,
@@ -506,3 +507,49 @@ def test_apply_debit_note_to_inventory_never_raises_with_no_stock_history():
     # this call must complete without raising.
     apply_debit_note_to_inventory(db, firm_id="firm-1", client_id="client-1", debit_note=debit_note)
     assert db.store.get("inventory_stock_ledger", []) == []
+
+
+# ── journal_entry_id backfill ────────────────────────────────────────────────
+# inventory_stock_ledger.journal_entry_id (migration 188) is only knowable
+# AFTER the movement row already exists (a movement is always recorded before
+# its journal is posted) — these tests monkeypatch the journal-posting call
+# to a fixed id (the fake DB has no chart_of_accounts, so the real posting
+# functions always no-op) and assert the backfill UPDATE actually lands.
+
+def test_apply_sale_to_inventory_backfills_journal_entry_id_onto_its_movement(monkeypatch):
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    record_stock_in(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="opening",
+    )
+    db.store["client_sales_invoice_lines"] = [
+        {"id": "line-1", "sales_invoice_id": "inv-1", "description": "Widget x3", "quantity": "3", "service_catalogue_id": "good-1"},
+    ]
+    invoice = {"id": "inv-1", "invoice_no": "INV-1", "invoice_date": "2026-04-20", "client_id": "client-1"}
+    monkeypatch.setattr(inventory_service, "post_cogs_journal_entry", lambda *a, **k: "journal-cogs-1")
+
+    apply_sale_to_inventory(db, firm_id="firm-1", client_id="client-1", invoice=invoice)
+
+    sale_row = next(r for r in get_stock_ledger(db, "good-1") if r["movement_type"] == "sale")
+    assert sale_row["journal_entry_id"] == "journal-cogs-1"
+
+
+def test_apply_credit_note_to_inventory_backfills_journal_entry_id_onto_every_line_movement(monkeypatch):
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    _seed_catalogue_item(db, item_id="good-2", kind="good", name="Gadget")
+    db.store["credit_note_lines"] = [
+        {"id": "cnl-1", "credit_note_id": "cn-1", "description": "Widget returned", "quantity": "2",
+         "taxable_amount_paise": 2_000_00, "service_catalogue_id": "good-1"},
+        {"id": "cnl-2", "credit_note_id": "cn-1", "description": "Gadget returned", "quantity": "1",
+         "taxable_amount_paise": 500_00, "service_catalogue_id": "good-2"},
+    ]
+    credit_note = {"id": "cn-1", "credit_note_no": "CN-2526-0003", "credit_note_date": "2026-04-15", "client_id": "client-1"}
+    monkeypatch.setattr(inventory_service, "post_sale_return_journal_entry", lambda *a, **k: "journal-invret-1")
+
+    apply_credit_note_to_inventory(db, firm_id="firm-1", client_id="client-1", credit_note=credit_note)
+
+    return_rows = [r for r in db.store["inventory_stock_ledger"] if r["movement_type"] == "sale_return"]
+    assert len(return_rows) == 2
+    assert all(r["journal_entry_id"] == "journal-invret-1" for r in return_rows)

@@ -136,6 +136,23 @@ def _insert_and_cache(
     return inserted.data[0] if inserted.data else row
 
 
+def _set_ledger_journal_entry_id(db, ledger_row_id: Optional[str], journal_entry_id: Optional[str]) -> None:
+    """Backfill inventory_stock_ledger.journal_entry_id once the COGS/
+    Inventory/return journal for this movement (or batch of movements) is
+    known — the column exists from migration 188 but a movement is always
+    recorded BEFORE its journal is posted, so it can only be set after the
+    fact. Best-effort: a failure here never affects the movement or journal
+    that already succeeded, it only degrades this cross-reference."""
+    if not ledger_row_id or not journal_entry_id:
+        return
+    try:
+        db.table("inventory_stock_ledger").update(
+            {"journal_entry_id": journal_entry_id}
+        ).eq("id", ledger_row_id).execute()
+    except Exception as e:
+        _logger.warning("Failed to backfill journal_entry_id on ledger row %s: %s", ledger_row_id, e)
+
+
 def seed_opening_balance(
     db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
     opening_qty, opening_cost_paise, created_by: Optional[str] = None,
@@ -337,13 +354,14 @@ def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, 
                 created_by=created_by,
             )
             if movement:
-                post_cogs_journal_entry(
+                journal_id = post_cogs_journal_entry(
                     db, firm_id=firm_id, client_id=client_id, movement_date=invoice.get("invoice_date"),
                     item_name=item.get("name") or line.get("description") or "item",
                     value_paise=abs(int(movement["value_delta_paise"])),
                     reference_no=invoice.get("invoice_no") or invoice["id"],
                     source_type="sales_invoice", source_id=invoice["id"], created_by=created_by,
                 )
+                _set_ledger_journal_entry_id(db, movement.get("id"), journal_id)
     except Exception as e:
         _logger.error("apply_sale_to_inventory failed for invoice %s: %s", invoice.get("id"), e, exc_info=True)
 
@@ -377,12 +395,13 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
                 movement_type="purchase", source_type="purchase_bill", source_id=bill["id"],
                 reference_no=reference_no, created_by=created_by,
             )
-            post_inventory_receipt_journal_entry(
+            journal_id = post_inventory_receipt_journal_entry(
                 db, firm_id=firm_id, client_id=client_id, movement_date=bill.get("bill_date"),
                 item_name=item.get("name") or line.get("description") or "item",
                 value_paise=int(movement["value_delta_paise"]), expense_account_id=line.get("expense_account_id"),
                 reference_no=reference_no, source_type="purchase_bill", source_id=bill["id"], created_by=created_by,
             )
+            _set_ledger_journal_entry_id(db, movement.get("id"), journal_id)
     except Exception as e:
         _logger.error("apply_purchase_to_inventory failed for bill %s: %s", bill.get("id"), e, exc_info=True)
 
@@ -418,16 +437,19 @@ def reverse_sale_stock(db, *, firm_id: str, client_id: str, invoice_id: str, inv
             .execute().data
         ) or []
         today = _today()
+        movement_ids = []
         for mv in original_moves:
             qty = abs(Decimal(str(mv["quantity_delta"])))
             value = abs(int(mv["value_delta_paise"]))
             if qty <= 0:
                 continue
-            record_stock_in(
+            movement = record_stock_in(
                 db, firm_id=firm_id, client_id=client_id, service_catalogue_id=mv["service_catalogue_id"],
                 movement_date=today, quantity=qty, total_cost_paise=value, movement_type="sale_reversal",
                 source_type="sales_invoice", source_id=invoice_id, reference_no=invoice_no, created_by=created_by,
             )
+            if movement and movement.get("id"):
+                movement_ids.append(movement["id"])
 
         from services.phase2_journal_service import phase2_journal_service
         cogs_ref = f"{invoice_no}-COGS"
@@ -443,11 +465,13 @@ def reverse_sale_stock(db, *, firm_id: str, client_id: str, invoice_id: str, inv
                 .limit(1).execute().data
             )
             if not already_reversed:
-                phase2_journal_service.reverse_entry(
+                reversal_id = phase2_journal_service.reverse_entry(
                     db, firm_id, jrnl_id, today,
                     narration=f"Cancellation of invoice {invoice_no} — inventory reversal",
                     created_by=created_by,
                 )
+                for mid in movement_ids:
+                    _set_ledger_journal_entry_id(db, mid, reversal_id)
     except Exception as e:
         _logger.error("reverse_sale_stock failed for invoice %s: %s", invoice_id, e, exc_info=True)
 
@@ -541,25 +565,30 @@ def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_n
         ) or []
         goods_by_id = {i["id"]: i for i in items if i.get("kind") == "good"}
         total_value = 0
+        movement_ids = []
         for line in lines:
             item = goods_by_id.get(line.get("service_catalogue_id"))
             qty = line.get("quantity")
             value = int(line.get("taxable_amount_paise") or 0)
             if not item or not qty or float(qty) <= 0 or value <= 0:
                 continue
-            record_stock_in(
+            movement = record_stock_in(
                 db, firm_id=firm_id, client_id=client_id, service_catalogue_id=item["id"],
                 movement_date=credit_note.get("credit_note_date"), quantity=qty, total_cost_paise=value,
                 movement_type="sale_return", source_type="credit_note", source_id=cn_id,
                 reference_no=cn_no, created_by=created_by,
             )
             total_value += value
+            if movement and movement.get("id"):
+                movement_ids.append(movement["id"])
         if total_value > 0:
-            post_sale_return_journal_entry(
+            journal_id = post_sale_return_journal_entry(
                 db, firm_id=firm_id, client_id=client_id, movement_date=credit_note.get("credit_note_date"),
                 item_name=f"credit note {cn_no}", value_paise=total_value, reference_no=cn_no,
                 source_type="credit_note", source_id=cn_id, created_by=created_by,
             )
+            for mid in movement_ids:
+                _set_ledger_journal_entry_id(db, mid, journal_id)
     except Exception as e:
         _logger.error("apply_credit_note_to_inventory failed for CN %s: %s", credit_note.get("id"), e, exc_info=True)
 
@@ -589,6 +618,7 @@ def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_not
         ) or []
         goods_by_id = {i["id"]: i for i in items if i.get("kind") == "good"}
         total_value = 0
+        movement_ids = []
         for line in lines:
             item = goods_by_id.get(line.get("service_catalogue_id"))
             qty = line.get("quantity")
@@ -601,12 +631,16 @@ def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_not
             )
             if movement:
                 total_value += abs(int(movement["value_delta_paise"]))
+                if movement.get("id"):
+                    movement_ids.append(movement["id"])
         if total_value > 0:
-            post_purchase_return_journal_entry(
+            journal_id = post_purchase_return_journal_entry(
                 db, firm_id=firm_id, client_id=client_id, movement_date=debit_note.get("debit_note_date"),
                 item_name=f"debit note {dn_no}", value_paise=total_value, reference_no=dn_no,
                 source_type="debit_note", source_id=dn_id, created_by=created_by,
             )
+            for mid in movement_ids:
+                _set_ledger_journal_entry_id(db, mid, journal_id)
     except Exception as e:
         _logger.error("apply_debit_note_to_inventory failed for DN %s: %s", debit_note.get("id"), e, exc_info=True)
 
@@ -626,15 +660,18 @@ def reverse_purchase_stock(db, *, firm_id: str, client_id: str, bill_id: str, bi
             .execute().data
         ) or []
         today = _today()
+        movement_ids = []
         for mv in original_moves:
             qty = abs(Decimal(str(mv["quantity_delta"])))
             if qty <= 0:
                 continue
-            record_stock_out(
+            movement = record_stock_out(
                 db, firm_id=firm_id, client_id=client_id, service_catalogue_id=mv["service_catalogue_id"],
                 movement_date=today, quantity=qty, movement_type="purchase_reversal",
                 source_type="purchase_bill", source_id=bill_id, reference_no=bill_reference, created_by=created_by,
             )
+            if movement and movement.get("id"):
+                movement_ids.append(movement["id"])
 
         from services.phase2_journal_service import phase2_journal_service
         inv_ref = f"{bill_reference}-INV"
@@ -650,10 +687,12 @@ def reverse_purchase_stock(db, *, firm_id: str, client_id: str, bill_id: str, bi
                 .limit(1).execute().data
             )
             if not already_reversed:
-                phase2_journal_service.reverse_entry(
+                reversal_id = phase2_journal_service.reverse_entry(
                     db, firm_id, jrnl_id, today,
                     narration=f"Cancellation of purchase bill {bill_reference} — inventory reversal",
                     created_by=created_by,
                 )
+                for mid in movement_ids:
+                    _set_ledger_journal_entry_id(db, mid, reversal_id)
     except Exception as e:
         _logger.error("reverse_purchase_stock failed for bill %s: %s", bill_id, e, exc_info=True)
