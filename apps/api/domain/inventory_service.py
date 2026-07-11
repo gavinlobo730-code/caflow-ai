@@ -31,6 +31,7 @@ before inventory existed; nothing here may regress them.
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
@@ -159,7 +160,9 @@ def seed_opening_balance(
 ) -> Optional[dict]:
     """Idempotent — a no-op if an opening row already exists for this item
     (the product form may re-save without changing opening stock) or if
-    opening qty/cost are not both set."""
+    opening qty/cost are not both set. Also posts (and links, via
+    _set_ledger_journal_entry_id) a Dr Inventory / Cr Opening Balance Equity
+    journal for the movement — see post_opening_stock_journal_entry."""
     if opening_qty is None or opening_cost_paise is None:
         return None
     qty = Decimal(str(opening_qty))
@@ -173,11 +176,17 @@ def seed_opening_balance(
     if existing.data:
         return None
     calc = _compute_stock_in(Decimal("0"), 0, qty, int(opening_cost_paise))
-    return _insert_and_cache(
+    row = _insert_and_cache(
         db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
         movement_date=movement_date, movement_type="opening", calc=calc,
         source_type=None, source_id=None, reference_no=None, created_by=created_by,
     )
+    journal_id = post_opening_stock_journal_entry(
+        db, firm_id=firm_id, client_id=client_id, movement_date=movement_date,
+        value_paise=int(calc["value_delta_paise"]), item_count=1, created_by=created_by,
+    )
+    _set_ledger_journal_entry_id(db, row.get("id") if row else None, journal_id)
+    return row
 
 
 def seed_opening_balances_batch(
@@ -196,10 +205,20 @@ def seed_opening_balances_batch(
     2. Never raises — a seeding failure here is logged and simply leaves
     those items without a seeded opening balance, matching
     seed_opening_balance's own never-block guarantee for the CSV import UX
-    (a bad opening balance must never fail the whole product/service batch)."""
+    (a bad opening balance must never fail the whole product/service batch).
+
+    Also posts ONE combined Dr Inventory / Cr Opening Balance Equity journal
+    PER CLIENT in the batch (see post_opening_stock_journal_entry) — posted
+    BEFORE the ledger insert so journal_entry_id can be written directly on
+    each ledger row in that same insert, with no separate per-row backfill
+    UPDATE needed (the per-document movement types above post their journal
+    AFTER the ledger row because they don't know its value until
+    record_stock_in/out computes it; here every row's value is already known
+    from pure Python math, so the ordering can just be flipped)."""
     ledger_rows: list[dict] = []
     cache_rows: list[dict] = []
     fallback_date = datetime.now(timezone.utc).date().isoformat()
+    totals_by_client: dict = {}
 
     for row in rows:
         if row.get("kind") != "good":
@@ -213,9 +232,10 @@ def seed_opening_balances_batch(
             continue
         calc = _compute_stock_in(Decimal("0"), 0, qty, int(opening_cost_paise))
         movement_date = (row.get("created_at") or "")[:10] or fallback_date
+        client_id = row.get("client_id")
         ledger_rows.append({
             "firm_id": firm_id,
-            "client_id": row.get("client_id"),
+            "client_id": client_id,
             "service_catalogue_id": row["id"],
             "movement_date": movement_date,
             "movement_type": "opening",
@@ -235,9 +255,22 @@ def seed_opening_balances_batch(
             "stock_qty_units": str(calc["running_qty_units"]),
             "avg_cost_paise": calc["running_avg_cost_paise"],
         })
+        totals = totals_by_client.setdefault(client_id, {"value_paise": 0, "movement_date": movement_date, "count": 0})
+        totals["value_paise"] += int(calc["value_delta_paise"])
+        totals["count"] += 1
 
     if not ledger_rows:
         return
+
+    journal_id_by_client: dict = {}
+    for client_id, totals in totals_by_client.items():
+        journal_id_by_client[client_id] = post_opening_stock_journal_entry(
+            db, firm_id=firm_id, client_id=client_id, movement_date=totals["movement_date"],
+            value_paise=totals["value_paise"], item_count=totals["count"], created_by=created_by,
+        )
+    for lr in ledger_rows:
+        lr["journal_entry_id"] = journal_id_by_client.get(lr["client_id"])
+
     try:
         db.table("inventory_stock_ledger").insert(ledger_rows).execute()
     except Exception as e:
@@ -390,6 +423,58 @@ def post_inventory_receipt_journal_entry(
         )
     except Exception as e:
         _logger.warning("post_inventory_receipt_journal_entry skipped (%s): %s", reference_no, e)
+        return None
+
+
+def post_opening_stock_journal_entry(
+    db, *, firm_id: str, client_id: str, movement_date: str, value_paise: int,
+    item_count: int, created_by: Optional[str] = None,
+) -> Optional[str]:
+    """Dr Inventory / Cr Opening Balance Equity for opening stock brought
+    onto the books — the SAME contra account opening_balance_service already
+    uses for customers'/vendors'/bank accounts' opening positions, so the
+    Trial Balance and Balance Sheet reconcile with what the Inventory page
+    shows instead of silently omitting it. This was the one inventory
+    movement type with no journal at all: purchase receipts, sales/COGS,
+    sale/purchase returns, write-offs and NRV write-downs above all post
+    their own entry; seed_opening_balance / seed_opening_balances_batch only
+    ever wrote the ledger row and the service_catalogue cache.
+
+    ONE combined entry for `item_count` items/value_paise, not one per item
+    — Inventory is a single control account regardless of which item the
+    value belongs to (the same reason opening_balance_service posts one
+    Trade Receivables line for every customer's opening balance combined,
+    not one per customer); the per-item breakdown already lives in
+    service_catalogue / inventory_stock_ledger, not the journal. Callers
+    seeding many items in one batch should sum value_paise across the whole
+    batch and call this ONCE — calling it per item would reintroduce the
+    same per-row round-trip cost seed_opening_balances_batch exists to avoid.
+
+    Never raises — a missing chart-of-accounts entry degrades the journal
+    (the opening quantity/cost is still recorded in the ledger either way),
+    not a reason to fail whatever created the item(s)."""
+    if value_paise <= 0:
+        return None
+    try:
+        from services.phase2_journal_service import phase2_journal_service
+
+        inventory_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Inventor%", system_key="inventory")
+        obe_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Opening Balance Equity%")
+        reference_no = f"OPENING-STOCK-{uuid.uuid4().hex[:8].upper()}"
+        narration = (
+            f"Opening stock brought forward — {item_count} item{'s' if item_count != 1 else ''}"
+        )
+        return phase2_journal_service._create_journal(
+            db=db, firm_id=firm_id, client_id=client_id, entry_date=movement_date,
+            reference_no=reference_no, narration=narration,
+            entry_type="Opening", source_type="Opening", source_id=None, created_by=created_by,
+            lines=[
+                {"account_id": inventory_id, "debit_paise": value_paise, "credit_paise": 0, "narration": "Opening stock"},
+                {"account_id": obe_id, "debit_paise": 0, "credit_paise": value_paise, "narration": "Opening balance contra"},
+            ],
+        )
+    except Exception as e:
+        _logger.warning("post_opening_stock_journal_entry skipped (value=%d, items=%d): %s", value_paise, item_count, e)
         return None
 
 
