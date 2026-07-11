@@ -24,7 +24,8 @@ import { InvoiceViewDrawer } from "@/components/invoices/InvoiceViewDrawer";
 import { CustomerFormModal } from "@/components/customers/CustomerFormModal";
 import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFormModal";
 import { api, type ApiResp } from "@/lib/api";
-import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
+import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
+import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
 import { useRouter } from "next/navigation";
 import { newInvoiceHref, editInvoiceHref } from "@/lib/invoices/workspaceNav";
 import { writeDuplicateSeed } from "@/lib/invoices/duplicateSeed";
@@ -3418,6 +3419,15 @@ function CreditNotes({
 
 // ── Credit Note Form ───────────────────────────────────────────────────────
 
+// A credit note line reuses the invoice-line shape, plus the Product/Service
+// it was picked from — for a goods return this links the line to a stock-in
+// movement (domain.inventory_service.apply_credit_note_to_inventory).
+// Optional: a line with no pick just never moves stock.
+interface CreditNoteLine extends InvoiceLine {
+  service_catalogue_id?: string;
+  product?: ServiceCatalogueItem | null;
+}
+
 function CreditNoteForm({
   clientId,
   customers,
@@ -3436,7 +3446,7 @@ function CreditNoteForm({
   const [originalInvoiceId, setOriginalInvoiceId] = useState("");
   const [isInterstate, setIsInterstate] = useState(false);
   const [customerInvoices, setCustomerInvoices] = useState<SalesInvoice[]>([]);
-  const [lines, setLines] = useState<InvoiceLine[]>([
+  const [lines, setLines] = useState<CreditNoteLine[]>([
     { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "" },
   ]);
   const [saving, setSaving] = useState(false);
@@ -3461,7 +3471,7 @@ function CreditNoteForm({
     loadInvoices();
   }, [customerId, clientId]);
 
-  function setLine(idx: number, patch: Partial<InvoiceLine>) {
+  function setLine(idx: number, patch: Partial<CreditNoteLine>) {
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
   }
   function addLine() {
@@ -3470,6 +3480,13 @@ function CreditNoteForm({
   function removeLine(idx: number) {
     if (lines.length <= 1) return;
     setLines((prev) => prev.filter((_, i) => i !== idx));
+  }
+  // A Product/Service picked on this row pre-fills description/HSN/rate and
+  // links the line for inventory stock-in tracking on issue (goods only —
+  // a service pick is harmless traceability, apply_credit_note_to_inventory
+  // only acts on kind='good' items server-side).
+  function onPickProduct(idx: number, item: ServiceCatalogueItem) {
+    setLine(idx, { ...serviceToLine(item), service_catalogue_id: item.id, product: item });
   }
 
   async function handleSave() {
@@ -3490,7 +3507,7 @@ function CreditNoteForm({
           credit_note_date: cnDate,
           reason: reason.trim(),
           sales_invoice_id: originalInvoiceId || undefined,
-          lines: validLines.map(toInvoiceLinePayload),
+          lines: validLines.map((l) => toInvoiceLinePayload({ ...l, serviceCatalogueId: l.service_catalogue_id })),
         },
         token
       );
@@ -3573,6 +3590,7 @@ function CreditNoteForm({
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+              <th className="pb-2 text-left font-semibold w-36">Product/Service</th>
               <th className="pb-2 text-left font-semibold">Description</th>
               <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
               <th className="pb-2 text-right font-semibold w-16">Qty</th>
@@ -3588,6 +3606,18 @@ function CreditNoteForm({
               const lineTotal = lineTaxable + Math.round((lineTaxable * line.gst_rate) / 100);
               return (
                 <tr key={idx}>
+                  <td className="py-1.5 pr-2">
+                    {/* Links this line to a Product/Service for inventory
+                        stock-in tracking on issue (goods only — optional,
+                        a return with no pick just never restocks anything). */}
+                    <ServiceCataloguePicker
+                      clientId={clientId}
+                      value={line.product}
+                      onPick={(item) => onPickProduct(idx, item)}
+                      size="sm"
+                      ariaLabel={`Line ${idx + 1} product or service`}
+                    />
+                  </td>
                   <td className="py-1.5 pr-2">
                     <input
                       value={line.description}

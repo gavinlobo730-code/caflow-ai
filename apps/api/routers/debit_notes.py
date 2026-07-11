@@ -99,6 +99,10 @@ def _compute_lines(lines_data: list, is_interstate: bool):
             "quantity": qty, "rate_paise": rate_paise, "gst_rate_bps": gst_rate_bps,
             "taxable_amount_paise": taxable, "cgst_paise": cgst, "sgst_paise": sgst,
             "igst_paise": igst, "line_total_paise": taxable + cgst + sgst + igst,
+            # Which Product/Service (goods only, in practice) this return
+            # de-stocks — migration 189. Optional: unset just means this line
+            # never moves stock (domain.inventory_service.apply_debit_note_to_inventory).
+            "service_catalogue_id": ln.get("service_catalogue_id"),
         })
     return computed, total_taxable, total_cgst, total_sgst, total_igst
 
@@ -278,6 +282,19 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
             severity="success", entity_type="debit_note", entity_id=dn_id,
             amount_paise=updated.get("total_paise"),
             actor_id=current_user.get("auth_user_id"), actor_name=current_user.get("email"))
+
+        # Inventory: purchase return — goods physically leave stock (goods
+        # lines only). Runs AFTER issuance and the AP/GL effects above have
+        # committed — never blocks issuing the debit note.
+        try:
+            from domain.inventory_service import apply_debit_note_to_inventory
+            apply_debit_note_to_inventory(
+                db, firm_id=firm_id or "", client_id=client_id,
+                debit_note=updated, created_by=current_user.get("auth_user_id"),
+            )
+        except Exception as e:
+            _logger.error("issue_debit_note: inventory apply failed for %s: %s", dn_id, e, exc_info=True)
+
         updated["journal_entry_id"] = journal_id
         return api_response(True, updated)
     except HTTPException:

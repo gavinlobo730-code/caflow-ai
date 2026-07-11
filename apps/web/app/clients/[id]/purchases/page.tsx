@@ -1798,6 +1798,12 @@ interface DebitNoteLine {
   quantity: number;
   rate: number; // rupees
   gst_rate_bps: number;
+  // Which Product/Service (goods only, in practice) this return de-stocks —
+  // required so a debit note line can be recognised as a stock-out movement
+  // for a specific item (domain/inventory_service.py). Pure traceability,
+  // same as BillLine's own field: never read by any GST/journal computation.
+  service_catalogue_id?: string;
+  product?: ServiceCatalogueItem | null;
 }
 
 interface OpenBillOption {
@@ -1861,6 +1867,18 @@ function DebitNoteForm({
     if (lines.length <= 1) return;
     setLines((prev) => prev.filter((_, i) => i !== idx));
   }
+  // A Product/Service picked on this row pre-fills description/HSN/rate and
+  // links the line for inventory stock-out tracking on issue (goods only —
+  // apply_debit_note_to_inventory only acts on kind='good' items server-side).
+  function onPickProduct(idx: number, item: ServiceCatalogueItem) {
+    const line = serviceToLine(item);
+    setLine(idx, {
+      description: line.description, hsn_sac: line.hsn_sac,
+      gst_rate_bps: Math.round((line.gst_rate ?? 0) * 100),
+      rate: line.rate ? parseFloat(line.rate) : 0,
+      product: item, service_catalogue_id: item.id,
+    });
+  }
 
   const totals = lines.reduce(
     (acc, l) => {
@@ -1902,6 +1920,7 @@ function DebitNoteForm({
             // Backend's shared InvoiceLineIn model declares gst_rate_percent
             // (not gst_rate_bps) — send the field it actually reads.
             gst_rate_percent: l.gst_rate_bps / 100,
+            service_catalogue_id: l.service_catalogue_id || undefined,
           })),
         },
         token
@@ -1985,6 +2004,7 @@ function DebitNoteForm({
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+              <th className="pb-2 text-left font-semibold w-36">Product/Service</th>
               <th className="pb-2 text-left font-semibold">Description</th>
               <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
               <th className="pb-2 text-right font-semibold w-16">Qty</th>
@@ -1999,6 +2019,18 @@ function DebitNoteForm({
               const g = dnLineGst(line, isInterstate);
               return (
                 <tr key={idx}>
+                  <td className="py-1.5 pr-2">
+                    {/* Links this line to a Product/Service for inventory
+                        stock-out tracking on issue (goods only — optional,
+                        a return with no pick just never de-stocks anything). */}
+                    <ServiceCataloguePicker
+                      clientId={clientId}
+                      value={line.product}
+                      onPick={(item) => onPickProduct(idx, item)}
+                      size="sm"
+                      ariaLabel={`Line ${idx + 1} product or service`}
+                    />
+                  </td>
                   <td className="py-1.5 pr-2">
                     <input
                       value={line.description}

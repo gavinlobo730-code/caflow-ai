@@ -219,6 +219,10 @@ def create_credit_note(
                 "sgst_paise":           sgst,
                 "igst_paise":           igst,
                 "line_total_paise":     taxable + cgst + sgst + igst,
+                # Which Product/Service (goods only, in practice) this return
+                # restocks — migration 189. Optional: a line with no pick just
+                # never moves stock (domain.inventory_service.apply_credit_note_to_inventory).
+                "service_catalogue_id": ln.get("service_catalogue_id"),
             })
 
         total_paise = total_taxable + total_cgst + total_sgst + total_igst
@@ -473,6 +477,18 @@ def issue_credit_note(
             actor_id=current_user.get("auth_user_id"),
             actor_name=current_user.get("email"),
         )
+
+        # Inventory: sales return — goods physically return to stock (goods
+        # lines only). Runs AFTER issuance and the AR/GL effects above have
+        # committed — never blocks issuing the credit note.
+        try:
+            from domain.inventory_service import apply_credit_note_to_inventory
+            apply_credit_note_to_inventory(
+                db, firm_id=firm_id or "", client_id=client_id,
+                credit_note=updated_cn, created_by=current_user.get("auth_user_id"),
+            )
+        except Exception as e:
+            _logger.error("issue_credit_note: inventory apply failed for %s: %s", cn_id, e, exc_info=True)
 
         updated_cn["journal_entry_id"] = journal_id
         return api_response(True, updated_cn)
