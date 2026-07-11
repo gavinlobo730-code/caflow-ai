@@ -37,6 +37,7 @@ from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.service_catalogue import ServiceCatalogueIn, ServiceCatalogueUpdateIn
 from core.permissions import rbac
+from services.period_validation_service import period_validation_service
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.service_catalogue")
@@ -74,6 +75,38 @@ def _hsn_in_library(firm_id: str, hsn_code: str) -> bool:
 def _norm_name(v: Optional[str]) -> str:
     """Case/space-insensitive key for duplicate detection."""
     return re.sub(r"\s+", " ", (v or "").strip()).lower()
+
+
+def _default_opening_balance_date(db, client_id: str) -> str:
+    """The client's financial-year start if set, else 1 April of the
+    CURRENT financial year — mirrors opening_balance_service.py's
+    _default_opening_date fallback (the same "as of" convention already
+    used for customers'/vendors'/bank accounts' opening balances), rather
+    than silently dating an opening stock balance to whenever it happened
+    to be typed in. See migration 196 / domain/inventory_service.py."""
+    try:
+        resp = db.table("clients").select("financial_year_start").eq("id", client_id).limit(1).execute()
+        if resp.data and resp.data[0].get("financial_year_start"):
+            return str(resp.data[0]["financial_year_start"])
+    except Exception as e:
+        _logger.warning("_default_opening_balance_date: client FY-start lookup failed: %s", e)
+    fy_start_year = datetime.now(timezone.utc).year if datetime.now(timezone.utc).month >= 4 else datetime.now(timezone.utc).year - 1
+    return f"{fy_start_year}-04-01"
+
+
+def _resolve_opening_balance_date(db, firm_id: str, client_id: str, requested: Optional[str]) -> Optional[str]:
+    """Resolve the date an opening-stock movement is struck at: the CA's
+    explicit choice if given, else _default_opening_balance_date. Returns
+    None (skip seeding) if the resolved date falls in a locked financial
+    year — an opening balance must never silently corrupt a closed period;
+    the CA can reopen the year or pick a valid date instead. Never raises."""
+    date = requested or _default_opening_balance_date(db, client_id)
+    try:
+        period_validation_service.validate_posting_date(firm_id, date)
+    except HTTPException as e:
+        _logger.warning("_resolve_opening_balance_date: %s is in a locked period for client %s: %s", date, client_id, e.detail)
+        return None
+    return date
 
 
 def _rank_services(term: str, rows: list[dict]) -> list[dict]:
@@ -233,19 +266,33 @@ def create_service(
         existing = next((s for s in existing_rows if _norm_name(s.get("name")) == key), None)
         if existing:
             return api_response(True, {**existing, "duplicate": True})
+
+        # Resolve the opening-balance "as of" date BEFORE insert, so it's
+        # persisted with the row — the CA's explicit choice, else the
+        # client's FY start (never "today"/created_at; see migration 196).
+        # None (no opening balance given, or the resolved date fell in a
+        # locked FY) leaves the column unset and skips seeding below.
+        has_opening_balance = payload.get("kind") == "good" and (payload.get("opening_qty_units") or payload.get("opening_cost_paise"))
+        resolved_opening_date = (
+            _resolve_opening_balance_date(db, firm_id, client_id, payload.get("opening_balance_date"))
+            if has_opening_balance else None
+        )
+        payload["opening_balance_date"] = resolved_opening_date
+
         resp = db.table("service_catalogue").insert(payload).execute()
         created = resp.data[0] if resp.data else payload
 
         # Seed the moving-average costing ledger from the opening balance, if
         # one was given (goods only — meaningless for services, and
-        # seed_opening_balance itself no-ops if either field is missing).
-        # Never blocks creation: a failure here is logged, not raised.
-        if payload.get("kind") == "good" and (payload.get("opening_qty_units") or payload.get("opening_cost_paise")):
+        # seed_opening_balance itself no-ops if either field is missing) AND
+        # its resolved date didn't land in a locked FY. Never blocks
+        # creation: a failure here is logged, not raised.
+        if has_opening_balance and resolved_opening_date:
             try:
                 from domain.inventory_service import seed_opening_balance
                 seed_opening_balance(
                     db, firm_id=firm_id, client_id=client_id, service_catalogue_id=created["id"],
-                    movement_date=now[:10], opening_qty=payload.get("opening_qty_units"),
+                    movement_date=resolved_opening_date, opening_qty=payload.get("opening_qty_units"),
                     opening_cost_paise=payload.get("opening_cost_paise"),
                     # journal_entries.created_by FK references users(id), not auth_user_id.
                     created_by=current_user.get("id"),
@@ -264,6 +311,12 @@ class ServiceBulkIn(BaseModel):
     ServiceCatalogueIn(**item)) so one malformed CSV row cannot 422 the whole
     batch."""
     services: list[dict]
+    # ONE opening-balance "as of" date for the WHOLE batch (not per row) — an
+    # opening-stock import is a single conversion event, not N independent
+    # ones; the CA sets it once (see ProductServiceManagerPanel's import
+    # flow). Falls back to each row's client's FY start if omitted — never
+    # to "today"/upload time. See _resolve_opening_balance_date.
+    opening_balance_date: Optional[str] = None
 
 
 @router.post("/bulk")
@@ -370,6 +423,22 @@ def bulk_create_services(
                 )
                 existing_by_client[cid] = resp.data or []
 
+        # ── Step 3.5: resolve the opening-balance "as of" date — the CA's
+        # explicit choice for the batch, else each row's client's FY start
+        # (ONE resolution per distinct client, not per row). A date that
+        # falls in a locked FY resolves to None for that client, which
+        # seed_opening_balances_batch treats as "skip seeding" for those
+        # rows — the product/service itself still gets created either way.
+        if not _USE_MOCK:
+            opening_date_by_client: dict = {}
+            for _, payload in checked:
+                if payload.get("kind") != "good" or not (payload.get("opening_qty_units") or payload.get("opening_cost_paise")):
+                    continue
+                cid = payload.get("client_id")
+                if cid not in opening_date_by_client:
+                    opening_date_by_client[cid] = _resolve_opening_balance_date(db, firm_id, cid, data.opening_balance_date)
+                payload["opening_balance_date"] = opening_date_by_client[cid]
+
         # ── Step 4: duplicate guard — against the DB snapshot AND rows already
         # accepted earlier in this batch. ────────────────────────────────────
         accepted_in_batch: dict[str, list[dict]] = {cid: [] for cid in client_ids}
@@ -473,16 +542,28 @@ def update_service(
                       .execute().data or [])
             if any(o for o in others if o["id"] != service_id and _norm_name(o.get("name")) == key):
                 return api_response(False, None, "Another active service already uses that name.")
+
+        has_opening_balance = owned[0].get("kind") == "good" and "opening_qty_units" in patch and "opening_cost_paise" in patch
+        resolved_opening_date = None
+        if has_opening_balance:
+            # Same "as of" resolution as create_service — the CA's explicit
+            # choice, else the client's FY start (never "today"). Persisted
+            # in the same PATCH so opening_balance_date lands with the row.
+            resolved_opening_date = _resolve_opening_balance_date(
+                db, firm_id, owned[0]["client_id"], patch.get("opening_balance_date"),
+            )
+            patch["opening_balance_date"] = resolved_opening_date
+
         resp = (db.table("service_catalogue").update(patch)
                 .eq("id", service_id).eq("firm_id", firm_id).execute())
         updated = resp.data[0] if resp.data else {**owned[0], **patch}
 
-        if owned[0].get("kind") == "good" and "opening_qty_units" in patch and "opening_cost_paise" in patch:
+        if has_opening_balance and resolved_opening_date:
             try:
                 from domain.inventory_service import seed_opening_balance
                 seed_opening_balance(
                     db, firm_id=firm_id, client_id=owned[0]["client_id"], service_catalogue_id=service_id,
-                    movement_date=datetime.now(timezone.utc).date().isoformat(),
+                    movement_date=resolved_opening_date,
                     opening_qty=patch.get("opening_qty_units"), opening_cost_paise=patch.get("opening_cost_paise"),
                     # journal_entries.created_by FK references users(id), not auth_user_id.
                     created_by=current_user.get("id"),
