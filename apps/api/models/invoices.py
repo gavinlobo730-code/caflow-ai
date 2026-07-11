@@ -48,10 +48,11 @@ class InvoiceLineIn(BaseModel):
     # pure traceability for the Products & Services delete-guard (real
     # "is this used on any invoice" check, mirroring how customer deletion
     # already checks real linked records). Never read by any GST/journal
-    # computation: the line's own description/hsn_sac/rate are always the
-    # authoritative values, copied at pick time. Only meaningful for Sales
-    # Invoices today — Credit Notes reuse this same model but have no
-    # Product/Service picker wired in, so it's always None there.
+    # computation directly: the line's own description/hsn_sac/rate are
+    # always the authoritative values, copied at pick time. Shared by Sales
+    # Invoices, Credit Notes and Debit Notes (all reuse this model) — for
+    # goods items it's also how domain/inventory_service.py identifies a
+    # line as a stock movement for a specific product (migrations 184/188/189).
     service_catalogue_id: Optional[str] = None
 
     @field_validator("rate_paise")

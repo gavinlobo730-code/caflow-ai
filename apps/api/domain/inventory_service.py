@@ -452,6 +452,165 @@ def reverse_sale_stock(db, *, firm_id: str, client_id: str, invoice_id: str, inv
         _logger.error("reverse_sale_stock failed for invoice %s: %s", invoice_id, e, exc_info=True)
 
 
+def post_sale_return_journal_entry(
+    db, *, firm_id: str, client_id: str, movement_date: str, item_name: str,
+    value_paise: int, reference_no: str, source_type: Optional[str] = None,
+    source_id: Optional[str] = None, created_by: Optional[str] = None,
+) -> Optional[str]:
+    """Dr Inventory / Cr Cost of Goods Sold — the mirror of
+    post_cogs_journal_entry, for the returned-goods value on a credit note.
+    Goods coming back into stock reverse the COGS that was posted when they
+    were originally sold."""
+    if value_paise <= 0:
+        return None
+    try:
+        from services.phase2_journal_service import phase2_journal_service
+
+        inventory_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Inventor%", system_key="inventory")
+        cogs_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Cost of Goods Sold%", system_key="cogs")
+        return phase2_journal_service._create_journal(
+            db=db, firm_id=firm_id, client_id=client_id, entry_date=movement_date,
+            reference_no=f"{reference_no}-INVRET", narration=f"Inventory restored — sales return {item_name}",
+            entry_type="Inventory", source_type=source_type, source_id=source_id, created_by=created_by,
+            lines=[
+                {"account_id": inventory_id, "debit_paise": value_paise, "credit_paise": 0, "narration": f"Inventory — {item_name}"},
+                {"account_id": cogs_id, "debit_paise": 0, "credit_paise": value_paise, "narration": f"COGS reversed — {item_name}"},
+            ],
+        )
+    except Exception as e:
+        _logger.warning("post_sale_return_journal_entry skipped (%s): %s", reference_no, e)
+        return None
+
+
+def post_purchase_return_journal_entry(
+    db, *, firm_id: str, client_id: str, movement_date: str, item_name: str,
+    value_paise: int, reference_no: str, source_type: Optional[str] = None,
+    source_id: Optional[str] = None, created_by: Optional[str] = None,
+) -> Optional[str]:
+    """Dr [Purchases/Expense] / Cr Inventory — the mirror of
+    post_inventory_receipt_journal_entry, for the returned-goods value on a
+    debit note. Resolves the debit side with the SAME fallback order
+    journal_for_debit_note itself uses ("%Purchase%" then "%Expense%") since
+    a debit note line carries no per-line expense_account_id override."""
+    if value_paise <= 0:
+        return None
+    try:
+        from services.phase2_journal_service import phase2_journal_service
+
+        inventory_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Inventor%", system_key="inventory")
+        try:
+            expense_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Purchase%")
+        except ValueError:
+            expense_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Expense%")
+        return phase2_journal_service._create_journal(
+            db=db, firm_id=firm_id, client_id=client_id, entry_date=movement_date,
+            reference_no=f"{reference_no}-INVRET", narration=f"Inventory reduced — purchase return {item_name}",
+            entry_type="Inventory", source_type=source_type, source_id=source_id, created_by=created_by,
+            lines=[
+                {"account_id": expense_id, "debit_paise": value_paise, "credit_paise": 0, "narration": f"Reclassify to expense — {item_name}"},
+                {"account_id": inventory_id, "debit_paise": 0, "credit_paise": value_paise, "narration": f"Inventory — {item_name}"},
+            ],
+        )
+    except Exception as e:
+        _logger.warning("post_purchase_return_journal_entry skipped (%s): %s", reference_no, e)
+        return None
+
+
+def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_note: dict, created_by: Optional[str] = None) -> None:
+    """Sales return: goods physically return to stock. Stock-IN at the
+    returned line's own taxable value (same convention a purchase receipt
+    uses to value its stock-in), plus a separate Dr Inventory / Cr COGS
+    journal entry for the same total. Called AFTER the credit note is
+    already issued and its own GL journal + AR sub-ledger application have
+    committed (routers/credit_notes.py) — fail-soft, never raises."""
+    try:
+        cn_id = credit_note.get("id")
+        cn_no = credit_note.get("credit_note_no") or cn_id
+        lines = (
+            db.table("credit_note_lines")
+            .select("id, description, quantity, taxable_amount_paise, service_catalogue_id")
+            .eq("credit_note_id", cn_id)
+            .execute().data
+        ) or []
+        catalogue_ids = list({l["service_catalogue_id"] for l in lines if l.get("service_catalogue_id")})
+        if not catalogue_ids:
+            return
+        items = (
+            db.table("service_catalogue").select("id, kind, name")
+            .in_("id", catalogue_ids).execute().data
+        ) or []
+        goods_by_id = {i["id"]: i for i in items if i.get("kind") == "good"}
+        total_value = 0
+        for line in lines:
+            item = goods_by_id.get(line.get("service_catalogue_id"))
+            qty = line.get("quantity")
+            value = int(line.get("taxable_amount_paise") or 0)
+            if not item or not qty or float(qty) <= 0 or value <= 0:
+                continue
+            record_stock_in(
+                db, firm_id=firm_id, client_id=client_id, service_catalogue_id=item["id"],
+                movement_date=credit_note.get("credit_note_date"), quantity=qty, total_cost_paise=value,
+                movement_type="sale_return", source_type="credit_note", source_id=cn_id,
+                reference_no=cn_no, created_by=created_by,
+            )
+            total_value += value
+        if total_value > 0:
+            post_sale_return_journal_entry(
+                db, firm_id=firm_id, client_id=client_id, movement_date=credit_note.get("credit_note_date"),
+                item_name=f"credit note {cn_no}", value_paise=total_value, reference_no=cn_no,
+                source_type="credit_note", source_id=cn_id, created_by=created_by,
+            )
+    except Exception as e:
+        _logger.error("apply_credit_note_to_inventory failed for CN %s: %s", credit_note.get("id"), e, exc_info=True)
+
+
+def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_note: dict, created_by: Optional[str] = None) -> None:
+    """Purchase return: goods physically leave stock. Stock-OUT at the
+    CURRENT moving-average cost (same convention as a sale), plus a
+    separate Dr Expense / Cr Inventory journal entry for the realised
+    value. Called AFTER the debit note is already issued and its own GL
+    journal + AP sub-ledger application have committed
+    (routers/debit_notes.py) — fail-soft, never raises."""
+    try:
+        dn_id = debit_note.get("id")
+        dn_no = debit_note.get("debit_note_no") or dn_id
+        lines = (
+            db.table("debit_note_lines")
+            .select("id, description, quantity, service_catalogue_id")
+            .eq("debit_note_id", dn_id)
+            .execute().data
+        ) or []
+        catalogue_ids = list({l["service_catalogue_id"] for l in lines if l.get("service_catalogue_id")})
+        if not catalogue_ids:
+            return
+        items = (
+            db.table("service_catalogue").select("id, kind, name")
+            .in_("id", catalogue_ids).execute().data
+        ) or []
+        goods_by_id = {i["id"]: i for i in items if i.get("kind") == "good"}
+        total_value = 0
+        for line in lines:
+            item = goods_by_id.get(line.get("service_catalogue_id"))
+            qty = line.get("quantity")
+            if not item or not qty or float(qty) <= 0:
+                continue
+            movement = record_stock_out(
+                db, firm_id=firm_id, client_id=client_id, service_catalogue_id=item["id"],
+                movement_date=debit_note.get("debit_note_date"), quantity=qty, movement_type="purchase_return",
+                source_type="debit_note", source_id=dn_id, reference_no=dn_no, created_by=created_by,
+            )
+            if movement:
+                total_value += abs(int(movement["value_delta_paise"]))
+        if total_value > 0:
+            post_purchase_return_journal_entry(
+                db, firm_id=firm_id, client_id=client_id, movement_date=debit_note.get("debit_note_date"),
+                item_name=f"debit note {dn_no}", value_paise=total_value, reference_no=dn_no,
+                source_type="debit_note", source_id=dn_id, created_by=created_by,
+            )
+    except Exception as e:
+        _logger.error("apply_debit_note_to_inventory failed for DN %s: %s", debit_note.get("id"), e, exc_info=True)
+
+
 def reverse_purchase_stock(db, *, firm_id: str, client_id: str, bill_id: str, bill_reference: str, created_by: Optional[str] = None) -> None:
     try:
         already = (

@@ -19,6 +19,8 @@ from domain.inventory_service import (
     apply_purchase_to_inventory,
     reverse_sale_stock,
     reverse_purchase_stock,
+    apply_credit_note_to_inventory,
+    apply_debit_note_to_inventory,
 )
 
 
@@ -407,3 +409,100 @@ def test_reverse_purchase_stock_removes_quantity_and_is_idempotent():
 
     reverse_purchase_stock(db, firm_id="firm-1", client_id="client-1", bill_id="bill-1", bill_reference="BILL-1")
     assert len(get_stock_ledger(db, "good-1")) == 2
+
+
+# ── Credit Note / Debit Note inventory wiring ────────────────────────────────
+# Same fail-soft, no-chart-of-accounts fake DB as the sale/purchase orchestration
+# tests above — the journal posting inside always no-ops here; only the stock
+# MOVEMENT is asserted.
+
+def test_apply_credit_note_to_inventory_restocks_goods_line_only():
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    db.store["service_catalogue"].append({
+        "id": "svc-1", "firm_id": "firm-1", "client_id": "client-1",
+        "name": "Consulting", "kind": "service", "stock_qty_units": "0", "avg_cost_paise": 0,
+    })
+    record_stock_in(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="opening",
+    )
+    record_stock_out(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-10", quantity=Decimal("3"), movement_type="sale",
+        source_type="sales_invoice", source_id="inv-1", reference_no="INV-1",
+    )
+    db.store["credit_note_lines"] = [
+        {"id": "cnl-1", "credit_note_id": "cn-1", "description": "Widget returned", "quantity": "2",
+         "taxable_amount_paise": 2_000_00, "service_catalogue_id": "good-1"},
+        {"id": "cnl-2", "credit_note_id": "cn-1", "description": "Consulting credit", "quantity": "1",
+         "taxable_amount_paise": 500_00, "service_catalogue_id": "svc-1"},
+        {"id": "cnl-3", "credit_note_id": "cn-1", "description": "Rate correction, no catalogue link", "quantity": "1",
+         "taxable_amount_paise": 100_00, "service_catalogue_id": None},
+    ]
+    credit_note = {"id": "cn-1", "credit_note_no": "CN-2526-0001", "credit_note_date": "2026-04-15", "client_id": "client-1"}
+
+    apply_credit_note_to_inventory(db, firm_id="firm-1", client_id="client-1", credit_note=credit_note)
+
+    ledger = get_stock_ledger(db, "good-1")
+    assert [r["movement_type"] for r in ledger] == ["opening", "sale", "sale_return"]
+    assert ledger[-1]["quantity_delta"] == "2"
+    assert ledger[-1]["value_delta_paise"] == 2_000_00
+    goods_row = next(r for r in db.store["service_catalogue"] if r["id"] == "good-1")
+    assert goods_row["stock_qty_units"] == "9"  # 10 - 3 + 2
+    # Service line and the unlinked line must never touch the ledger.
+    assert len(ledger) == 3
+
+
+def test_apply_credit_note_to_inventory_never_raises_with_no_catalogue_link():
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    db.store["credit_note_lines"] = [
+        {"id": "cnl-1", "credit_note_id": "cn-1", "description": "Rate correction", "quantity": "1",
+         "taxable_amount_paise": 100_00, "service_catalogue_id": None},
+    ]
+    credit_note = {"id": "cn-1", "credit_note_no": "CN-2526-0002", "credit_note_date": "2026-04-15", "client_id": "client-1"}
+    # No goods line at all — must complete without raising and touch nothing.
+    apply_credit_note_to_inventory(db, firm_id="firm-1", client_id="client-1", credit_note=credit_note)
+    assert db.store.get("inventory_stock_ledger", []) == []
+
+
+def test_apply_debit_note_to_inventory_destocks_goods_line_at_current_average():
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    record_stock_in(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="purchase",
+        source_type="purchase_bill", source_id="bill-1", reference_no="BILL-1",
+    )
+    db.store["debit_note_lines"] = [
+        {"id": "dnl-1", "debit_note_id": "dn-1", "description": "Widget returned to vendor", "quantity": "2",
+         "service_catalogue_id": "good-1"},
+    ]
+    debit_note = {"id": "dn-1", "debit_note_no": "DN-2526-0001", "debit_note_date": "2026-04-10", "client_id": "client-1"}
+
+    apply_debit_note_to_inventory(db, firm_id="firm-1", client_id="client-1", debit_note=debit_note)
+
+    ledger = get_stock_ledger(db, "good-1")
+    assert [r["movement_type"] for r in ledger] == ["purchase", "purchase_return"]
+    # Priced at the CURRENT moving average (Rs 1000/unit), not any value carried
+    # on the debit note line itself — debit_note_lines has no taxable_amount_paise
+    # read by this path at all, mirroring how a sale prices stock-out.
+    assert ledger[-1]["quantity_delta"] == "-2"
+    assert ledger[-1]["value_delta_paise"] == -2_000_00
+    goods_row = next(r for r in db.store["service_catalogue"] if r["id"] == "good-1")
+    assert goods_row["stock_qty_units"] == "8"
+
+
+def test_apply_debit_note_to_inventory_never_raises_with_no_stock_history():
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    db.store["debit_note_lines"] = [
+        {"id": "dnl-1", "debit_note_id": "dn-1", "description": "Widget returned", "quantity": "1",
+         "service_catalogue_id": "good-1"},
+    ]
+    debit_note = {"id": "dn-1", "debit_note_no": "DN-2526-0002", "debit_note_date": "2026-04-10", "client_id": "client-1"}
+    # No prior stock for good-1 — record_stock_out returns None internally;
+    # this call must complete without raising.
+    apply_debit_note_to_inventory(db, firm_id="firm-1", client_id="client-1", debit_note=debit_note)
+    assert db.store.get("inventory_stock_ledger", []) == []
