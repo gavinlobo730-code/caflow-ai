@@ -12,7 +12,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { ChevronLeft, Plus, Pencil, Archive, RotateCcw, Search, Hash, Upload, Download } from "lucide-react";
+import { ChevronLeft, Plus, Pencil, Archive, RotateCcw, Search, Hash, Upload, Download, Trash2, X } from "lucide-react";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
 import {
@@ -23,6 +23,7 @@ import { FIRM_HSN_LIBRARY_IMPORT_COLUMNS, buildFirmHsnCodes } from "@/lib/import
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import type { Column } from "@/lib/table/types";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 type Filter = "active" | "archived";
 type TypeFilter = "all" | "goods" | "services";
@@ -58,6 +59,8 @@ export default function FirmHsnLibraryPage() {
   const [editing, setEditing] = useState<FirmHsnLibraryRow | null>(null);
   const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   function showToast(msg: string, kind: "success" | "error") {
     setToast({ msg, kind });
@@ -92,6 +95,21 @@ export default function FirmHsnLibraryPage() {
     return () => clearTimeout(t);
   }, [load]);
 
+  // Selection only ever refers to rows on screen — drop it whenever the
+  // visible set changes (search/filter/tab switch or a reload).
+  useEffect(() => { setSelected(new Set()); }, [items]);
+
+  function toggleRow(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  function toggleSelectAll() {
+    setSelected((prev) => (prev.size === items.length ? new Set() : new Set(items.map((r) => r.id))));
+  }
+
   async function retire(row: FirmHsnLibraryRow) {
     try {
       const res = (await api.firmHsnLibrary.retire(row.id)) as ApiResp<unknown>;
@@ -111,6 +129,58 @@ export default function FirmHsnLibraryPage() {
       load();
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Could not restore this code.", "error");
+    }
+  }
+
+  /** Permanent delete — blocked server-side (with a specific reason) if the
+   *  code is still used anywhere. Distinct from retire(), which is always
+   *  allowed and just hides the code from the active picker. */
+  async function purgeSingle(row: FirmHsnLibraryRow) {
+    const ok = await confirmDialog({
+      message: `Permanently delete ${row.hsn_code} — ${row.description}? This cannot be undone.`,
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const res = (await api.firmHsnLibrary.purge(row.id)) as ApiResp<unknown>;
+      if (!res.success) throw new Error(res.error ?? "Could not delete this code.");
+      showToast(`${row.hsn_code} permanently deleted`, "success");
+      load();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Could not delete this code.", "error");
+    }
+  }
+
+  async function bulkDelete() {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    const ok = await confirmDialog({
+      message: `Permanently delete ${ids.length} code${ids.length === 1 ? "" : "s"}? Any code still in use will be skipped. This cannot be undone.`,
+      danger: true,
+    });
+    if (!ok) return;
+    setBulkBusy(true);
+    try {
+      const res = (await api.firmHsnLibrary.bulkPurge(ids)) as ApiResp<{
+        deleted: string[];
+        blocked: { id: string; hsn_code: string; used_in: string[] }[];
+      }>;
+      if (!res.success || !res.data) throw new Error(res.error ?? "Bulk delete failed.");
+      const { deleted, blocked } = res.data;
+      if (blocked.length === 0) {
+        showToast(`${deleted.length} code${deleted.length === 1 ? "" : "s"} permanently deleted`, "success");
+      } else {
+        const blockedCodes = blocked.map((b) => b.hsn_code).join(", ");
+        showToast(
+          `${deleted.length} deleted. ${blocked.length} skipped (still in use): ${blockedCodes}`,
+          deleted.length > 0 ? "success" : "error",
+        );
+      }
+      load();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Bulk delete failed.", "error");
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -239,6 +309,25 @@ export default function FirmHsnLibraryPage() {
           </div>
         </div>
 
+        {/* Bulk action bar */}
+        {selected.size > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#C7D2FE] bg-[#EEF2FF] px-3 py-2 text-xs">
+            <span className="font-semibold text-[#3730A3]">{selected.size} selected</span>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <button
+                onClick={bulkDelete}
+                disabled={bulkBusy}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Trash2 size={13} /> {bulkBusy ? "Deleting…" : "Delete"}
+              </button>
+              <button onClick={() => setSelected(new Set())} disabled={bulkBusy} className="text-[#6366F1] hover:text-[#4338CA] disabled:opacity-50" aria-label="Clear selection">
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* List */}
         <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           {loading ? (
@@ -267,11 +356,21 @@ export default function FirmHsnLibraryPage() {
               <table className="w-full text-sm min-w-[640px]">
                 <thead>
                   <tr className="text-[11px] text-[#94A3B8] border-b border-[#F1F5F9]">
+                    <th className="w-8 px-4 py-2">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all visible codes"
+                        checked={items.length > 0 && selected.size === items.length}
+                        ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < items.length; }}
+                        onChange={toggleSelectAll}
+                        className="cursor-pointer accent-violet-600"
+                      />
+                    </th>
                     <th className="px-4 py-2 text-left font-semibold">Code</th>
                     <th className="px-4 py-2 text-left font-semibold">Description</th>
                     <th className="px-4 py-2 text-left font-semibold">Type</th>
                     <th className="px-4 py-2 text-right font-semibold">GST rate</th>
-                    <th className="px-4 py-2 text-right font-semibold w-24"></th>
+                    <th className="px-4 py-2 text-right font-semibold w-28"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F8FAFC]">
@@ -279,6 +378,15 @@ export default function FirmHsnLibraryPage() {
                     const active = filter === "active";
                     return (
                       <tr key={r.id} className={active ? "" : "bg-[#FAFAFA] text-[#94A3B8]"}>
+                        <td className="px-4 py-2.5">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${r.hsn_code}`}
+                            checked={selected.has(r.id)}
+                            onChange={() => toggleRow(r.id)}
+                            className="cursor-pointer accent-violet-600"
+                          />
+                        </td>
                         <td className="px-4 py-2.5 font-mono text-[#1E293B]">{r.hsn_code}</td>
                         <td className="px-4 py-2.5">
                           <p className="text-[#1E293B] truncate max-w-[280px]">{r.description}</p>
@@ -295,6 +403,7 @@ export default function FirmHsnLibraryPage() {
                             ) : (
                               <button onClick={() => restore(r)} className="p-1.5 text-[#64748B] hover:text-violet-600 hover:bg-violet-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
                             )}
+                            <button onClick={() => purgeSingle(r)} className="p-1.5 text-[#64748B] hover:text-red-600 hover:bg-red-50 rounded" aria-label="Delete permanently"><Trash2 size={14} /></button>
                           </div>
                         </td>
                       </tr>
