@@ -31,6 +31,7 @@ may regress them.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
@@ -384,3 +385,116 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
             )
     except Exception as e:
         _logger.error("apply_purchase_to_inventory failed for bill %s: %s", bill.get("id"), e, exc_info=True)
+
+
+# ── Reversal on cancellation ─────────────────────────────────────────────────
+# cancel_invoice / cancel_purchase_bill reverse the document's main journal
+# entry but know nothing about inventory — these two functions are the stock
+# side of that same cancellation, called alongside it. A reversal is NOT a
+# rewind to the original state: it adds/removes the original quantity at the
+# CURRENT moving average (via the same record_stock_in/record_stock_out used
+# for a normal movement) since other transactions may have happened in
+# between — the same principle a real moving-average ledger uses everywhere
+# else. Idempotent (checked via the sale_reversal/purchase_reversal rows
+# themselves) and never raises: a cancellation must succeed even if its
+# inventory reversal hits a problem.
+
+def _today() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def reverse_sale_stock(db, *, firm_id: str, client_id: str, invoice_id: str, invoice_no: str, created_by: Optional[str] = None) -> None:
+    try:
+        already = (
+            db.table("inventory_stock_ledger").select("id")
+            .eq("source_type", "sales_invoice").eq("source_id", invoice_id).eq("movement_type", "sale_reversal")
+            .limit(1).execute().data
+        )
+        if already:
+            return
+        original_moves = (
+            db.table("inventory_stock_ledger").select("*")
+            .eq("source_type", "sales_invoice").eq("source_id", invoice_id).eq("movement_type", "sale")
+            .execute().data
+        ) or []
+        today = _today()
+        for mv in original_moves:
+            qty = abs(Decimal(str(mv["quantity_delta"])))
+            value = abs(int(mv["value_delta_paise"]))
+            if qty <= 0:
+                continue
+            record_stock_in(
+                db, firm_id=firm_id, client_id=client_id, service_catalogue_id=mv["service_catalogue_id"],
+                movement_date=today, quantity=qty, total_cost_paise=value, movement_type="sale_reversal",
+                source_type="sales_invoice", source_id=invoice_id, reference_no=invoice_no, created_by=created_by,
+            )
+
+        from services.phase2_journal_service import phase2_journal_service
+        cogs_ref = f"{invoice_no}-COGS"
+        jr = (
+            db.table("journal_entries").select("id")
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("reference_no", cogs_ref).eq("is_posted", True)
+            .limit(1).execute().data
+        )
+        if jr:
+            jrnl_id = jr[0]["id"]
+            already_reversed = (
+                db.table("journal_entries").select("id").eq("firm_id", firm_id).eq("reversal_of", jrnl_id)
+                .limit(1).execute().data
+            )
+            if not already_reversed:
+                phase2_journal_service.reverse_entry(
+                    db, firm_id, jrnl_id, today,
+                    narration=f"Cancellation of invoice {invoice_no} — inventory reversal",
+                    created_by=created_by,
+                )
+    except Exception as e:
+        _logger.error("reverse_sale_stock failed for invoice %s: %s", invoice_id, e, exc_info=True)
+
+
+def reverse_purchase_stock(db, *, firm_id: str, client_id: str, bill_id: str, bill_reference: str, created_by: Optional[str] = None) -> None:
+    try:
+        already = (
+            db.table("inventory_stock_ledger").select("id")
+            .eq("source_type", "purchase_bill").eq("source_id", bill_id).eq("movement_type", "purchase_reversal")
+            .limit(1).execute().data
+        )
+        if already:
+            return
+        original_moves = (
+            db.table("inventory_stock_ledger").select("*")
+            .eq("source_type", "purchase_bill").eq("source_id", bill_id).eq("movement_type", "purchase")
+            .execute().data
+        ) or []
+        today = _today()
+        for mv in original_moves:
+            qty = abs(Decimal(str(mv["quantity_delta"])))
+            if qty <= 0:
+                continue
+            record_stock_out(
+                db, firm_id=firm_id, client_id=client_id, service_catalogue_id=mv["service_catalogue_id"],
+                movement_date=today, quantity=qty, movement_type="purchase_reversal",
+                source_type="purchase_bill", source_id=bill_id, reference_no=bill_reference, created_by=created_by,
+            )
+
+        from services.phase2_journal_service import phase2_journal_service
+        inv_ref = f"{bill_reference}-INV"
+        jr = (
+            db.table("journal_entries").select("id")
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("reference_no", inv_ref).eq("is_posted", True)
+            .limit(1).execute().data
+        )
+        if jr:
+            jrnl_id = jr[0]["id"]
+            already_reversed = (
+                db.table("journal_entries").select("id").eq("firm_id", firm_id).eq("reversal_of", jrnl_id)
+                .limit(1).execute().data
+            )
+            if not already_reversed:
+                phase2_journal_service.reverse_entry(
+                    db, firm_id, jrnl_id, today,
+                    narration=f"Cancellation of purchase bill {bill_reference} — inventory reversal",
+                    created_by=created_by,
+                )
+    except Exception as e:
+        _logger.error("reverse_purchase_stock failed for bill %s: %s", bill_id, e, exc_info=True)

@@ -17,6 +17,8 @@ from domain.inventory_service import (
     get_stock_ledger,
     apply_sale_to_inventory,
     apply_purchase_to_inventory,
+    reverse_sale_stock,
+    reverse_purchase_stock,
 )
 
 
@@ -348,3 +350,60 @@ def test_apply_purchase_to_inventory_records_stock_in_and_updates_average():
     goods_row = next(r for r in db.store["service_catalogue"] if r["id"] == "good-1")
     assert goods_row["stock_qty_units"] == "10"
     assert goods_row["avg_cost_paise"] == 1_000_00
+
+
+# ── Reversal on cancellation ─────────────────────────────────────────────────
+
+def test_reverse_sale_stock_restores_quantity_and_is_idempotent():
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    record_stock_in(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="opening",
+    )
+    sale = record_stock_out(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-10", quantity=Decimal("3"), movement_type="sale",
+        source_type="sales_invoice", source_id="inv-1", reference_no="INV-1",
+    )
+    assert sale["running_qty_units"] == "7"
+
+    reverse_sale_stock(db, firm_id="firm-1", client_id="client-1", invoice_id="inv-1", invoice_no="INV-1")
+
+    goods_row = next(r for r in db.store["service_catalogue"] if r["id"] == "good-1")
+    assert goods_row["stock_qty_units"] == "10"  # back to pre-sale quantity
+    ledger = get_stock_ledger(db, "good-1")
+    assert [r["movement_type"] for r in ledger] == ["opening", "sale", "sale_reversal"]
+
+    # A second cancellation attempt (e.g. a retried request) must not double-reverse.
+    reverse_sale_stock(db, firm_id="firm-1", client_id="client-1", invoice_id="inv-1", invoice_no="INV-1")
+    assert len(get_stock_ledger(db, "good-1")) == 3
+
+
+def test_reverse_sale_stock_never_raises_with_no_sale_to_reverse():
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    # No prior sale recorded for this invoice — must complete without raising.
+    reverse_sale_stock(db, firm_id="firm-1", client_id="client-1", invoice_id="inv-none", invoice_no="INV-NONE")
+    assert get_stock_ledger(db, "good-1") == []
+
+
+def test_reverse_purchase_stock_removes_quantity_and_is_idempotent():
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    purchase = record_stock_in(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-05", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="purchase",
+        source_type="purchase_bill", source_id="bill-1", reference_no="BILL-1",
+    )
+    assert purchase["running_qty_units"] == "10"
+
+    reverse_purchase_stock(db, firm_id="firm-1", client_id="client-1", bill_id="bill-1", bill_reference="BILL-1")
+
+    goods_row = next(r for r in db.store["service_catalogue"] if r["id"] == "good-1")
+    assert goods_row["stock_qty_units"] == "0"
+    ledger = get_stock_ledger(db, "good-1")
+    assert [r["movement_type"] for r in ledger] == ["purchase", "purchase_reversal"]
+
+    reverse_purchase_stock(db, firm_id="firm-1", client_id="client-1", bill_id="bill-1", bill_reference="BILL-1")
+    assert len(get_stock_ledger(db, "good-1")) == 2
