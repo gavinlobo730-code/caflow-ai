@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   Plus, RefreshCw, X, FileText, CheckCircle, Upload, Send, Clock,
   Pencil, Trash2, Eye, Download, Loader2, AlertTriangle,
@@ -147,18 +148,25 @@ function LoadingSkeleton() {
 
 // ── Toast ──────────────────────────────────────────────────────────────────
 
+// Portal + fixed position (above the InvoiceViewDrawer's z-50 and the
+// slide-over panels' z-[80]) so an error/success from an action taken
+// INSIDE an open drawer (Issue, Duplicate, Delete, …) is never hidden
+// behind it — a plain in-flow div here previously rendered underneath the
+// drawer's own content, invisible to whatever the CA was actually looking
+// at when they triggered the action.
 function Toast({ msg, type }: { msg: string; type: "success" | "error" }) {
-  if (!msg) return null;
-  return (
+  if (!msg || typeof document === "undefined") return null;
+  return createPortal(
     <div
-      className={`rounded-lg px-4 py-3 text-sm font-medium mb-4 ${
+      className={`fixed top-4 right-4 z-[110] max-w-sm rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${
         type === "success"
           ? "bg-green-50 border border-green-100 text-green-700"
           : "bg-red-50 border border-red-100 text-red-700"
       }`}
     >
       {msg}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -1183,10 +1191,18 @@ function SalesInvoices({
   // lines through the SAME create endpoint the editor uses (no parallel logic),
   // then opening the new draft in the editor for review. Copies the supply
   // context and line items but never the number, dates or payment state.
+  //
+  // invoice_no is a required field on create (numbering is fully manual — see
+  // SalesInvoiceIn), so the duplicate can't just omit it: a "-COPY" suffix on
+  // the original number is only a placeholder the CA is expected to change on
+  // the edit screen they land on right after. Truncated to fit CGST Rule
+  // 46(b)'s 16-character cap.
   async function handleDuplicate(inv: InvoiceDetail) {
     try {
       const token = await getAuthToken();
       const today = new Date().toISOString().split("T")[0];
+      const suffix = "-COPY";
+      const placeholderInvoiceNo = `${inv.invoice_no.slice(0, Math.max(1, 16 - suffix.length))}${suffix}`;
       const lines = inv.lines.map((l) => ({
         description: l.description,
         hsn_sac: l.hsn_sac ?? undefined,
@@ -1198,6 +1214,7 @@ function SalesInvoices({
       const created = await apiCall("/api/sales-invoices/", "POST", {
         client_id: clientId,
         customer_id: inv.customer_id,
+        invoice_no: placeholderInvoiceNo,
         invoice_date: today,
         supply_state_code: inv.supply_state_code || undefined,
         is_inter_state: inv.is_interstate,
