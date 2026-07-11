@@ -291,10 +291,16 @@ def test_purchase_price_negative_rejected(client):
     assert _create(client, purchase_price_paise=-1).status_code == 422
 
 
-def test_still_no_inventory_fields_with_goods_kind(client):
+def test_create_response_has_no_unrecognised_inventory_field_names(client):
+    # Migration 188 added real stock/valuation tracking (stock_qty_units,
+    # avg_cost_paise, opening_qty_units, opening_cost_paise — see
+    # domain/inventory_service.py), superseding this table's original
+    # "no inventory master" lock. This test now only guards against ad-hoc
+    # field names (sku/barcode/warehouse) that were never part of that design
+    # and still aren't — not against inventory concepts existing at all.
     _seed_hsn("2202", hsn_type="goods")
     data = _create(client, name="Bottled Water", kind="good", hsn_sac="2202").json()["data"]
-    for banned in ("sku", "barcode", "stock", "quantity_on_hand", "valuation", "warehouse"):
+    for banned in ("sku", "barcode", "quantity_on_hand", "warehouse"):
         assert banned not in data
 
 

@@ -1230,6 +1230,21 @@ def issue_invoice(
             actor_name=current_user.get("email"),
         )
 
+        # Inventory: stock-out + COGS journal for any goods lines linked to a
+        # stock-tracked catalogue item. Runs AFTER the invoice is committed
+        # issued above — a failure here (e.g. Inventory/COGS control accounts
+        # not set up yet) must never affect an already-issued invoice.
+        # apply_sale_to_inventory itself never raises; this try/except is
+        # belt-and-suspenders.
+        try:
+            from domain.inventory_service import apply_sale_to_inventory
+            apply_sale_to_inventory(
+                db, firm_id=current_user.get("firm_id", ""), client_id=updated_inv.get("client_id", ""),
+                invoice=updated_inv, created_by=current_user.get("auth_user_id"),
+            )
+        except Exception as e:
+            _logger.error("issue_invoice: inventory posting failed for %s: %s", invoice_id, e, exc_info=True)
+
         updated_inv["journal_entry_id"] = journal_id
         return api_response(True, updated_inv)
     except HTTPException:
