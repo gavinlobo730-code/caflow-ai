@@ -6,7 +6,8 @@ import { Plus, RefreshCw, Upload, CheckCircle, X, Printer, FileText, Download, S
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise, formatMoney } from "@/lib/services/formatting";
-import { DataTable } from "@/components/ui/data-table";
+import { DataTable, downloadCsv } from "@/components/ui/data-table";
+import { toCsv } from "@/lib/table/process";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -1628,6 +1629,37 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
     </div>
   );
 
+  // CSV export — plain rupee numbers (no ₹ prefix / comma grouping) so the
+  // amount column is directly usable as a spreadsheet number.
+  const buildPlExportRows = (): { section: string; particulars: string; amount: string }[] => {
+    const rows: { section: string; particulars: string; amount: string }[] = [];
+    if (basis === "cash") {
+      if (!cashPL) return rows;
+      cashPL.revenue.lines.forEach((l) => rows.push({ section: "Revenue", particulars: l.account_name, amount: (l.amount_paise / 100).toFixed(2) }));
+      cashPL.operating_expenses.lines.forEach((l) => rows.push({ section: "Expenses", particulars: l.account_name, amount: (l.amount_paise / 100).toFixed(2) }));
+      rows.push({ section: "", particulars: "Total Revenue", amount: (cashPL.revenue.total_paise / 100).toFixed(2) });
+      rows.push({ section: "", particulars: "Total Expenses", amount: (cashPL.operating_expenses.total_paise / 100).toFixed(2) });
+      rows.push({ section: "", particulars: cashPL.net_profit_paise >= 0 ? "Net Profit" : "Net Loss", amount: (Math.abs(cashPL.net_profit_paise) / 100).toFixed(2) });
+    } else {
+      PL_REV_ORDER.forEach((bucket) => {
+        (revBuckets[bucket] ?? []).forEach((item) => rows.push({ section: bucket, particulars: item.account_name, amount: (item.net_paise / 100).toFixed(2) }));
+      });
+      PL_EXP_ORDER.forEach((bucket) => {
+        (expBuckets[bucket] ?? []).forEach((item) => rows.push({ section: bucket, particulars: item.account_name, amount: (item.net_paise / 100).toFixed(2) }));
+      });
+      rows.push({ section: "", particulars: "Total Revenue", amount: (totalRevenue / 100).toFixed(2) });
+      rows.push({ section: "", particulars: "Total Expenses", amount: (totalExpenses / 100).toFixed(2) });
+      rows.push({ section: "", particulars: netPL >= 0 ? "Net Profit" : "Net Loss", amount: (Math.abs(netPL) / 100).toFixed(2) });
+    }
+    return rows;
+  };
+  const plExportColumns: Column<{ section: string; particulars: string; amount: string }>[] = [
+    { key: "section", header: "Section", accessor: (r) => r.section },
+    { key: "particulars", header: "Particulars", accessor: (r) => r.particulars },
+    { key: "amount", header: "Amount (₹)", accessor: (r) => r.amount },
+  ];
+  const plExportDisabled = !loaded || (basis === "cash" ? !cashPL : balances.length === 0);
+
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
       <div className="flex items-center justify-between">
@@ -1641,6 +1673,14 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
           </button>
           <BasisToggle />
           <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button
+            onClick={() => downloadCsv(`profit-and-loss-fy-${financialYear}.csv`, toCsv(buildPlExportRows(), plExportColumns))}
+            disabled={plExportDisabled}
+            className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"
+            title="Export CSV"
+          >
+            <Download size={13} />
+          </button>
           <button onClick={() => window.print()} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]" title="Print"><Printer size={13} /></button>
         </div>
       </div>
@@ -2004,6 +2044,41 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
     </div>
   );
 
+  // CSV export — plain rupee numbers (no ₹ prefix / comma grouping) so the
+  // amount column is directly usable as a spreadsheet number.
+  const buildBsExportRows = (): { section: string; particulars: string; amount: string }[] => {
+    const rows: { section: string; particulars: string; amount: string }[] = [];
+    if (basis === "cash") {
+      if (!cashBS) return rows;
+      [...cashBS.equity, ...cashBS.liabilities, ...cashBS.assets].forEach((sec) => {
+        sec.lines.forEach((l) => rows.push({ section: sec.label, particulars: l.account_name, amount: (l.balance_paise / 100).toFixed(2) }));
+      });
+      rows.push({ section: "", particulars: "Total Assets", amount: (cashBS.total_assets_paise / 100).toFixed(2) });
+      rows.push({ section: "", particulars: "Total Liabilities", amount: ((cashBS.liabilities[0]?.total_paise ?? 0) / 100).toFixed(2) });
+      rows.push({ section: "", particulars: "Total Equity", amount: ((cashBS.equity[0]?.total_paise ?? 0) / 100).toFixed(2) });
+    } else {
+      BS_EQ_ORDER.forEach((bucket) => {
+        (equityBuckets[bucket] ?? []).forEach((item) => rows.push({ section: bucket, particulars: item.account_name, amount: (item.net_paise / 100).toFixed(2) }));
+      });
+      BS_LIAB_ORDER.forEach((bucket) => {
+        (liabBuckets[bucket] ?? []).forEach((item) => rows.push({ section: bucket, particulars: item.account_name, amount: (item.net_paise / 100).toFixed(2) }));
+      });
+      BS_ASSET_ORDER.forEach((bucket) => {
+        (assetBuckets[bucket] ?? []).forEach((item) => rows.push({ section: bucket, particulars: item.account_name, amount: (item.net_paise / 100).toFixed(2) }));
+      });
+      rows.push({ section: "", particulars: "Total Assets", amount: (totalAssets / 100).toFixed(2) });
+      rows.push({ section: "", particulars: "Total Liabilities", amount: (totalLiab / 100).toFixed(2) });
+      rows.push({ section: "", particulars: "Total Equity", amount: (totalEquity / 100).toFixed(2) });
+    }
+    return rows;
+  };
+  const bsExportColumns: Column<{ section: string; particulars: string; amount: string }>[] = [
+    { key: "section", header: "Section", accessor: (r) => r.section },
+    { key: "particulars", header: "Particulars", accessor: (r) => r.particulars },
+    { key: "amount", header: "Amount (₹)", accessor: (r) => r.amount },
+  ];
+  const bsExportDisabled = !loaded || (basis === "cash" ? !cashBS : balances.length === 0);
+
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
       <div className="flex items-center justify-between">
@@ -2017,6 +2092,14 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
           </button>
           <BasisToggle />
           <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button
+            onClick={() => downloadCsv(`balance-sheet-fy-${financialYear}.csv`, toCsv(buildBsExportRows(), bsExportColumns))}
+            disabled={bsExportDisabled}
+            className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"
+            title="Export CSV"
+          >
+            <Download size={13} />
+          </button>
           <button onClick={() => window.print()} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]" title="Print"><Printer size={13} /></button>
         </div>
       </div>
@@ -2303,12 +2386,45 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
 
   const r = cf?.operating_reconciliation;
 
+  // CSV export — plain rupee numbers (no ₹ prefix / comma grouping) so the
+  // amount column is directly usable as a spreadsheet number.
+  const buildCfExportRows = (): { section: string; particulars: string; amount: string }[] => {
+    if (!cf) return [];
+    const rows: { section: string; particulars: string; amount: string }[] = [];
+    const sections: { label: string; section: CFSection }[] = [
+      { label: "Operating Activities", section: cf.operating },
+      { label: "Investing Activities", section: cf.investing },
+      { label: "Financing Activities", section: cf.financing },
+    ];
+    sections.forEach(({ label, section }) => {
+      section.lines.forEach((l) => rows.push({ section: label, particulars: l.account_name, amount: (l.amount_paise / 100).toFixed(2) }));
+      rows.push({ section: label, particulars: "Net Cash", amount: (section.total_paise / 100).toFixed(2) });
+    });
+    rows.push({ section: "", particulars: "Opening Cash", amount: (cf.opening_cash_paise / 100).toFixed(2) });
+    rows.push({ section: "", particulars: "Net Change", amount: (cf.net_change_paise / 100).toFixed(2) });
+    rows.push({ section: "", particulars: "Closing Cash", amount: (cf.closing_cash_paise / 100).toFixed(2) });
+    return rows;
+  };
+  const cfExportColumns: Column<{ section: string; particulars: string; amount: string }>[] = [
+    { key: "section", header: "Section", accessor: (row) => row.section },
+    { key: "particulars", header: "Particulars", accessor: (row) => row.particulars },
+    { key: "amount", header: "Amount (₹)", accessor: (row) => row.amount },
+  ];
+
   return (
     <div className="space-y-4 max-w-3xl mx-auto">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">Cash Flow Statement — FY {financialYear}</p>
         <div className="flex items-center gap-2">
           <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button
+            onClick={() => downloadCsv(`cash-flow-fy-${financialYear}.csv`, toCsv(buildCfExportRows(), cfExportColumns))}
+            disabled={!cf}
+            className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"
+            title="Export CSV"
+          >
+            <Download size={13} />
+          </button>
           <button onClick={() => window.print()} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]" title="Print"><Printer size={13} /></button>
         </div>
       </div>
