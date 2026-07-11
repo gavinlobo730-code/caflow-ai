@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserCheck, LayoutGrid, Users, Link2, ShieldCheck, History } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, isExactPath } from "@/lib/utils";
 
 const TEAM_ITEMS = [
   { href: "/team", label: "Team", icon: UserCheck },
@@ -36,7 +36,7 @@ export function TeamPanel() {
           {TEAM_ITEMS.map(({ href, label, icon: Icon }) => {
             const active =
               href === "/team"
-                ? pathname === "/team"
+                ? isExactPath(pathname, "/team")
                 : pathname === href || pathname.startsWith(href + "/");
             return (
               <Link

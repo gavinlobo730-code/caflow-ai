@@ -6,7 +6,7 @@ import {
   Building2, LayoutDashboard, IndianRupee, Receipt, Wallet, ClipboardList,
   StickyNote, ShieldCheck, Gauge,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, isExactPath } from "@/lib/utils";
 
 // Amendment v1.1 — Practice workspace (Partner-only). Revenue Operations home.
 const NAV_ITEMS = [
@@ -39,7 +39,7 @@ export function PracticePanel() {
         {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
           // Exact match for /practice so it isn't always active for sub-routes.
           const isActive = href === "/practice"
-            ? pathname === "/practice"
+            ? isExactPath(pathname, "/practice")
             : pathname === href || pathname.startsWith(href + "/");
           return (
             <Link

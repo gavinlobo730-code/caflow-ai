@@ -10,7 +10,7 @@ import {
   CheckCircle,
   LayoutTemplate,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, isExactPath } from "@/lib/utils";
 
 const ENGAGEMENTS_ITEMS = [
   { href: "/engagements", label: "All Engagements", icon: FileText, tabParam: null },
@@ -44,8 +44,8 @@ function EngagementsPanelInner() {
           {ENGAGEMENTS_ITEMS.map(({ href, label, icon: Icon, tabParam }) => {
             const active =
               tabParam === null
-                ? pathname === "/engagements" && !activeTab // "All Engagements"
-                : activeTab === tabParam;                    // tab-specific items
+                ? isExactPath(pathname, "/engagements") && !activeTab // "All Engagements"
+                : activeTab === tabParam;                              // tab-specific items
             return (
               <Link
                 key={href}

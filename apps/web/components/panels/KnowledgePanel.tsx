@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Library, FileText, Building, Search, Tag, Clock } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, isExactPath } from "@/lib/utils";
 
 // Amendment v1.1 — Knowledge workspace (all staff). Firm/department articles.
 const NAV_ITEMS = [
@@ -18,7 +18,6 @@ const NAV_ITEMS = [
 export function KnowledgePanel() {
   const pathname = usePathname();
   const params = useSearchParams();
-  const current = `${pathname}${params.toString() ? "?" + params.toString() : ""}`;
   return (
     <div className="flex flex-col h-full text-[#182350]">
       <div className="flex items-center gap-2 px-4 py-4 border-b border-gray-200 shrink-0">
@@ -32,7 +31,8 @@ export function KnowledgePanel() {
       </div>
       <nav className="flex-1 overflow-y-auto py-2 px-2">
         {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
-          const isActive = current === href || (href === "/knowledge" && pathname === "/knowledge" && !params.toString());
+          const [hrefPath, hrefQuery = ""] = href.split("?");
+          const isActive = isExactPath(pathname, hrefPath) && params.toString() === hrefQuery;
           return (
             <Link
               key={label}

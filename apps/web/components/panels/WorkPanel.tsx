@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CheckSquare, ListTodo, Clock, LayoutTemplate, Workflow, ShieldCheck } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, isExactPath } from "@/lib/utils";
 
 const WORK_ITEMS = [
   { href: "/work", label: "All Work", icon: CheckSquare },
@@ -35,8 +35,7 @@ export function WorkPanel() {
         </p>
         <div className="space-y-0.5">
           {WORK_ITEMS.map(({ href, label, icon: Icon }) => {
-            const active =
-              href === "/work" ? pathname === "/work" : pathname === href;
+            const active = isExactPath(pathname, href);
             return (
               <Link
                 key={href}
@@ -66,7 +65,7 @@ export function WorkPanel() {
         </p>
         <div className="space-y-0.5">
           {AUTOMATION_ITEMS.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href;
+            const active = isExactPath(pathname, href);
             return (
               <Link
                 key={href}
