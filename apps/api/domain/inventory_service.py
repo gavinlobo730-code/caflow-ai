@@ -866,3 +866,124 @@ def apply_stock_adjustment(
     except Exception as e:
         _logger.error("apply_stock_adjustment failed for item %s: %s", service_catalogue_id, e, exc_info=True)
         return None
+
+
+# ── Lower-of-cost-or-NRV write-down ──────────────────────────────────────────
+# AS-2 / Ind AS 2 / ICDS-II: inventory must be carried at the LOWER of cost
+# or net realisable value. A VALUE-only movement — quantity never changes —
+# distinct from a manual stock adjustment (which always represents a
+# quantity change). movement_type='nrv_writedown' (migration 191).
+
+def _compute_nrv_writedown(prev_qty: Decimal, prev_value_paise: int, nrv_per_unit_paise: int) -> Optional[dict]:
+    """Pure math, no I/O. Returns None when NRV is already >= the current
+    carrying value — no write-down needed, inventory stays at cost (the
+    normal case)."""
+    if prev_qty <= 0:
+        return None
+    new_value = _round_paise(prev_qty * nrv_per_unit_paise)
+    if new_value >= prev_value_paise:
+        return None
+    new_avg = _round_paise(Decimal(new_value) / prev_qty)
+    return {
+        "quantity_delta": Decimal("0"),
+        "unit_cost_paise": nrv_per_unit_paise,
+        "value_delta_paise": new_value - prev_value_paise,  # negative
+        "running_qty_units": prev_qty,
+        "running_avg_cost_paise": new_avg,
+        "running_value_paise": new_value,
+    }
+
+
+def record_nrv_writedown(
+    db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
+    nrv_per_unit_paise: int, reference_no: Optional[str] = None, created_by: Optional[str] = None,
+) -> Optional[dict]:
+    """Returns None if this item has no stock (nothing to write down) or if
+    the supplied NRV is already >= the current average cost — both
+    legitimate no-ops, never an error."""
+    prev = _last_ledger_row(db, service_catalogue_id)
+    if prev is None:
+        return None
+    prev_qty = Decimal(str(prev["running_qty_units"]))
+    prev_value = int(prev["running_value_paise"])
+    calc = _compute_nrv_writedown(prev_qty, prev_value, nrv_per_unit_paise)
+    if calc is None:
+        return None
+    return _insert_and_cache(
+        db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
+        movement_date=movement_date, movement_type="nrv_writedown", calc=calc,
+        source_type="nrv_writedown", source_id=None, reference_no=reference_no, created_by=created_by,
+    )
+
+
+def post_nrv_writedown_journal_entry(
+    db, *, firm_id: str, client_id: str, movement_date: str, item_name: str,
+    value_paise: int, reference_no: str, source_type: Optional[str] = None,
+    source_id: Optional[str] = None, created_by: Optional[str] = None,
+) -> Optional[str]:
+    """Dr Inventory Write-down Expense / Cr Inventory for the shortfall
+    between cost and net realisable value (AS-2 / Ind AS 2 / ICDS-II)."""
+    if value_paise <= 0:
+        return None
+    try:
+        from services.phase2_journal_service import phase2_journal_service
+
+        inventory_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Inventor%", system_key="inventory")
+        try:
+            writedown_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Write%down%")
+        except ValueError:
+            try:
+                writedown_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Write%off%")
+            except ValueError:
+                try:
+                    writedown_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Loss%")
+                except ValueError:
+                    writedown_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Expense%")
+
+        return phase2_journal_service._create_journal(
+            db=db, firm_id=firm_id, client_id=client_id, entry_date=movement_date,
+            reference_no=f"{reference_no}-NRV", narration=f"Inventory write-down to net realisable value — {item_name}",
+            entry_type="Journal", source_type=source_type, source_id=source_id, created_by=created_by,
+            lines=[
+                {"account_id": writedown_id, "debit_paise": value_paise, "credit_paise": 0, "narration": f"NRV write-down — {item_name}"},
+                {"account_id": inventory_id, "debit_paise": 0, "credit_paise": value_paise, "narration": f"Inventory reduced to NRV — {item_name}"},
+            ],
+        )
+    except Exception as e:
+        _logger.warning("post_nrv_writedown_journal_entry skipped (%s): %s", reference_no, e)
+        return None
+
+
+def apply_nrv_writedown(
+    db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
+    nrv_per_unit_paise: int, reference_no: Optional[str] = None, created_by: Optional[str] = None,
+) -> Optional[dict]:
+    """One call per manual NRV write-down (routers/inventory.py). Fail-soft
+    — never raises. Returns None when there's no stock to write down or NRV
+    is already >= cost (both legitimate no-ops, not failures)."""
+    try:
+        items = (
+            db.table("service_catalogue").select("id, name")
+            .eq("id", service_catalogue_id).limit(1).execute().data
+        ) or []
+        item_name = items[0].get("name") if items else "item"
+
+        movement = record_nrv_writedown(
+            db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
+            movement_date=movement_date, nrv_per_unit_paise=nrv_per_unit_paise,
+            reference_no=reference_no, created_by=created_by,
+        )
+        if not movement:
+            return None
+        write_down_paise = abs(int(movement["value_delta_paise"]))
+        ref = reference_no or service_catalogue_id
+        journal_id = post_nrv_writedown_journal_entry(
+            db, firm_id=firm_id, client_id=client_id, movement_date=movement_date,
+            item_name=item_name, value_paise=write_down_paise, reference_no=ref,
+            source_type="nrv_writedown", source_id=movement.get("id"), created_by=created_by,
+        )
+        _set_ledger_journal_entry_id(db, movement.get("id"), journal_id)
+        return movement
+    except Exception as e:
+        _logger.error("apply_nrv_writedown failed for item %s: %s", service_catalogue_id, e, exc_info=True)
+        return None

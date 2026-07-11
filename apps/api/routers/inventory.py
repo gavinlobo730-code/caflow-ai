@@ -15,7 +15,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from models.common import api_response
-from models.inventory import StockAdjustmentIn
+from models.inventory import StockAdjustmentIn, NrvWritedownIn
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
@@ -152,3 +152,54 @@ def adjust_stock(
     except Exception as e:
         _logger.error("adjust_stock: %s", e)
         return api_response(False, None, "Unable to record the stock adjustment. Please try again.")
+
+
+@router.post("/items/{service_catalogue_id}/writedown")
+def writedown_stock_to_nrv(
+    service_catalogue_id: str,
+    data: NrvWritedownIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Write inventory down to net realisable value when NRV has fallen
+    below the current moving-average cost (AS-2 / Ind AS 2 / ICDS-II:
+    inventory must be carried at the LOWER of cost or NRV). No quantity
+    change — value only. A no-op (200, data=null) if NRV is already >= the
+    current average cost, or the item has no stock yet."""
+    try:
+        if _USE_MOCK:
+            return api_response(True, None)
+
+        firm_id = current_user.get("firm_id")
+        from core.supabase_client import get_supabase
+        from domain.inventory_service import apply_nrv_writedown
+        db = get_supabase()
+
+        item_resp = (
+            db.table("service_catalogue").select("id, kind")
+            .eq("id", service_catalogue_id).eq("firm_id", firm_id).eq("client_id", data.client_id)
+            .limit(1).execute()
+        )
+        if not item_resp.data:
+            raise HTTPException(status_code=404, detail="Stock item not found.")
+        if item_resp.data[0].get("kind") != "good":
+            raise HTTPException(status_code=422, detail="Only stock-tracked products can be written down.")
+
+        period_validation_service.validate_posting_date(firm_id or "", data.writedown_date)
+
+        reference_no = data.reference_no or f"NRV-{data.writedown_date}"
+        movement = apply_nrv_writedown(
+            db, firm_id=firm_id or "", client_id=data.client_id, service_catalogue_id=service_catalogue_id,
+            movement_date=data.writedown_date, nrv_per_unit_paise=data.nrv_per_unit_paise,
+            reference_no=reference_no, created_by=current_user.get("auth_user_id"),
+        )
+        log_event(
+            firm_id or "", "inventory_nrv_writedown", service_catalogue_id, "create",
+            actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+            new_data={"nrv_per_unit_paise": data.nrv_per_unit_paise, "notes": data.notes, "applied": bool(movement)},
+        )
+        return api_response(True, movement)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("writedown_stock_to_nrv: %s", e)
+        return api_response(False, None, "Unable to record the write-down. Please try again.")

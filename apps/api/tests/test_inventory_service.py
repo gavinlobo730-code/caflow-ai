@@ -24,6 +24,9 @@ from domain.inventory_service import (
     apply_debit_note_to_inventory,
     record_stock_adjustment,
     apply_stock_adjustment,
+    _compute_nrv_writedown,
+    record_nrv_writedown,
+    apply_nrv_writedown,
 )
 
 
@@ -700,3 +703,116 @@ def test_apply_stock_adjustment_increase_posts_surplus_journal(monkeypatch):
     lines = captured["lines"]
     assert any(l["account_id"] == "acct-inventory" and l["debit_paise"] == 5_000_00 for l in lines)
     assert any(l["account_id"] == "acct-misc-income" and l["credit_paise"] == 5_000_00 for l in lines)
+
+
+# ── Lower-of-cost-or-NRV write-down ──────────────────────────────────────────
+
+def test_compute_nrv_writedown_reduces_value_and_avg_cost_qty_unchanged():
+    # 10 units at Rs 1000/unit avg (value 10,000); NRV has fallen to Rs 700/unit.
+    calc = _compute_nrv_writedown(Decimal("10"), 10_000_00, 700_00)
+    assert calc is not None
+    assert calc["quantity_delta"] == Decimal("0")
+    assert calc["running_qty_units"] == Decimal("10")  # unchanged
+    assert calc["running_value_paise"] == 7_000_00
+    assert calc["running_avg_cost_paise"] == 700_00
+    assert calc["value_delta_paise"] == -3_000_00
+
+
+def test_compute_nrv_writedown_is_noop_when_nrv_at_or_above_cost():
+    # NRV equal to or above the current average cost -> no write-down.
+    assert _compute_nrv_writedown(Decimal("10"), 10_000_00, 1_000_00) is None
+    assert _compute_nrv_writedown(Decimal("10"), 10_000_00, 1_200_00) is None
+
+
+def test_compute_nrv_writedown_noop_with_zero_quantity():
+    assert _compute_nrv_writedown(Decimal("0"), 0, 500_00) is None
+
+
+def test_record_nrv_writedown_inserts_value_only_movement():
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    record_stock_in(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="opening",
+    )
+    row = record_nrv_writedown(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-15", nrv_per_unit_paise=700_00, reference_no="NRV-1",
+    )
+    assert row is not None
+    assert row["movement_type"] == "nrv_writedown"
+    assert row["running_qty_units"] == "10"
+    assert row["running_value_paise"] == 7_000_00
+    goods_row = next(r for r in db.store["service_catalogue"] if r["id"] == "good-1")
+    assert goods_row["stock_qty_units"] == "10"  # quantity cache unchanged
+    assert goods_row["avg_cost_paise"] == 700_00
+
+
+def test_record_nrv_writedown_returns_none_with_no_stock_history():
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    assert record_nrv_writedown(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-15", nrv_per_unit_paise=700_00,
+    ) is None
+    assert db.store.get("inventory_stock_ledger", []) == []
+
+
+def test_record_nrv_writedown_returns_none_when_nrv_not_below_cost():
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    record_stock_in(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="opening",
+    )
+    assert record_nrv_writedown(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-15", nrv_per_unit_paise=1_500_00,  # NRV above cost
+    ) is None
+    # Only the opening row exists — no spurious write-down row inserted.
+    assert len(get_stock_ledger(db, "good-1")) == 1
+
+
+def test_apply_nrv_writedown_posts_journal_with_valid_entry_type(monkeypatch):
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    record_stock_in(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="opening",
+    )
+
+    import services.phase2_journal_service as pjs
+    accounts = {"%Inventor%": "acct-inventory", "%Write%down%": "acct-writedown"}
+    monkeypatch.setattr(pjs.phase2_journal_service, "_find_account",
+                        lambda db, firm_id, client_id, pattern, system_key=None: accounts[pattern])
+    captured = {}
+    monkeypatch.setattr(pjs.phase2_journal_service, "_create_journal",
+                        lambda db, **k: captured.update(k) or "journal-nrv-1")
+
+    movement = apply_nrv_writedown(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-15", nrv_per_unit_paise=700_00, reference_no="NRV-2",
+    )
+
+    assert movement["running_value_paise"] == 7_000_00
+    assert captured["entry_type"] == "Journal"  # journal_entries.entry_type CHECK constraint
+    lines = captured["lines"]
+    assert any(l["account_id"] == "acct-writedown" and l["debit_paise"] == 3_000_00 for l in lines)
+    assert any(l["account_id"] == "acct-inventory" and l["credit_paise"] == 3_000_00 for l in lines)
+    ledger = get_stock_ledger(db, "good-1")
+    assert ledger[-1]["journal_entry_id"] == "journal-nrv-1"
+
+
+def test_apply_nrv_writedown_returns_none_without_posting_when_not_needed(monkeypatch):
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    record_stock_in(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="opening",
+    )
+    result = apply_nrv_writedown(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-15", nrv_per_unit_paise=1_500_00,
+    )
+    assert result is None
+    assert len(get_stock_ledger(db, "good-1")) == 1  # only the opening row
