@@ -5,7 +5,7 @@
  * InvoiceEditor (which owns the workspace layout, toolbar, summary and dirty guard).
  * Loading/empty/error render inside the same workspace shell for continuity.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { InvoiceEditor } from "@/components/invoices/InvoiceEditor";
@@ -16,6 +16,8 @@ import {
 import { loadInvoiceEditorContext, type InvoiceEditorContext } from "@/lib/invoices/editorContext";
 import { salesListHref, salesListFlashHref, invoiceBreadcrumbs } from "@/lib/invoices/workspaceNav";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { readAndClearDuplicateSeed } from "@/lib/invoices/duplicateSeed";
+import type { InvoiceDetail } from "@/lib/invoices/shared";
 
 export default function NewInvoicePage() {
   // Read the client id from ClientNavContext (window.location-derived), NOT
@@ -32,6 +34,14 @@ export default function NewInvoicePage() {
   const [ctx, setCtx] = useState<InvoiceEditorContext | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  // Read-and-clear exactly once. A useState lazy initializer would work in
+  // production, but React 18 Strict Mode double-invokes it in dev — the
+  // first call would clear sessionStorage, the second would read back null
+  // and "win". A guarded ref survives that double-invoke (same ref object
+  // across both calls in one render, so the guard already trips on call 2).
+  const seedRef = useRef<InvoiceDetail | null | undefined>(undefined);
+  if (seedRef.current === undefined) seedRef.current = readAndClearDuplicateSeed();
+  const duplicateSeed = seedRef.current;
 
   useEffect(() => {
     // Guard against the static-export placeholder ever reaching a data query.
@@ -52,6 +62,7 @@ export default function NewInvoicePage() {
         clientStateCode={ctx.clientStateCode}
         customers={ctx.customers}
         existing={null}
+        duplicateSeed={duplicateSeed}
         onDone={(msg) => router.push(salesListFlashHref(clientId, msg))}
         onCancel={() => router.push(salesListHref(clientId))}
       />
