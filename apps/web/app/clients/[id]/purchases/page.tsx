@@ -12,6 +12,8 @@ import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { VendorLookup } from "@/components/lookups/VendorLookup";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
+import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
+import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { Combobox } from "@/components/ui/combobox";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
@@ -224,6 +226,13 @@ interface BillLine {
   rate: number; // rupees, or txn-currency major units when foreign
   gst_rate_bps: number;
   expense_account_id: string;
+  // Which Product/Service (goods only, in practice) this line restocks —
+  // required so a received bill line can be recognised as a stock-in
+  // movement for a specific item (domain/inventory_service.py). Pure
+  // traceability, same as the sales-invoice line's own field: never read by
+  // any GST/journal computation.
+  service_catalogue_id: string;
+  product?: ServiceCatalogueItem | null;
 }
 
 interface CurrencyOption {
@@ -278,7 +287,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   const [billDate, setBillDate] = useState(toDate());
   const [dueDate, setDueDate] = useState("");
   const [lines, setLines] = useState<BillLine[]>([
-    { description: "", hsn_sac: "", quantity: 1, rate: 0, gst_rate_bps: 1800, expense_account_id: "" },
+    { description: "", hsn_sac: "", quantity: 1, rate: 0, gst_rate_bps: 1800, expense_account_id: "", service_catalogue_id: "" },
   ]);
 
   // Multi-Currency (Phase 3 backend already ships this; UI wired up here).
@@ -400,6 +409,19 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   function setLine(idx: number, patch: Partial<BillLine>) {
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
   }
+  // A Product/Service picked on this row pre-fills description/HSN/rate,
+  // same as the sales-invoice line editor, and links the line for inventory
+  // stock-in tracking (kept even for a service pick — apply_purchase_to_inventory
+  // only acts on kind='good' items server-side, so a service link is inert).
+  function onPickProduct(idx: number, item: ServiceCatalogueItem) {
+    const line = serviceToLine(item);
+    setLine(idx, {
+      description: line.description, hsn_sac: line.hsn_sac,
+      gst_rate_bps: Math.round((line.gst_rate ?? 0) * 100),
+      rate: line.rate ? parseFloat(line.rate) : 0,
+      product: item, service_catalogue_id: item.id,
+    });
+  }
 
   // AI document extraction
   async function handleExtract() {
@@ -432,6 +454,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
               rate: Math.floor(Number(li.rate_paise ?? 0)) / 100,
               gst_rate_bps: Number(li.gst_rate_bps ?? 1800),
               expense_account_id: "",
+              service_catalogue_id: "",
             }))
           );
         }
@@ -479,6 +502,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
             // 18% default regardless of the rate picked here (Part 4, Beta batch).
             gst_rate_percent: l.gst_rate_bps / 100,
             expense_account_id: l.expense_account_id || undefined,
+            service_catalogue_id: l.service_catalogue_id || undefined,
           })),
           currency: isForeign ? currency : undefined,
           exchange_rate: isForeign ? exchangeRate : undefined,
@@ -489,7 +513,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
 
       setMsg({ type: "ok", text: "Purchase bill saved as draft." });
       setShowForm(false);
-      setLines([{ description: "", hsn_sac: "", quantity: 1, rate: 0, gst_rate_bps: 1800, expense_account_id: "" }]);
+      setLines([{ description: "", hsn_sac: "", quantity: 1, rate: 0, gst_rate_bps: 1800, expense_account_id: "", service_catalogue_id: "" }]);
       setBillNo(""); setVendorId(""); setBillDate(toDate()); setDueDate(""); setAiExtracted(null);
       setCurrency(""); setExchangeRate("");
       load();
@@ -808,6 +832,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                  <th className="pb-2 text-left font-semibold w-36">Product/Service</th>
                   <th className="pb-2 text-left font-semibold">Description *</th>
                   <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
                   <th className="pb-2 text-left font-semibold w-28">Expense Account</th>
@@ -823,6 +848,20 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
                   const g = lineGst(line);
                   return (
                     <tr key={idx}>
+                      <td className="py-1.5 pr-2">
+                        {/* Links this line to a Product/Service for inventory
+                            stock-in tracking (goods only, in practice — a
+                            service pick is harmless traceability). Optional:
+                            leaving it unset just means this bill line never
+                            restocks anything. */}
+                        <ServiceCataloguePicker
+                          clientId={clientId}
+                          value={line.product}
+                          onPick={(item) => onPickProduct(idx, item)}
+                          size="sm"
+                          ariaLabel={`Line ${idx + 1} product or service`}
+                        />
+                      </td>
                       <td className="py-1.5 pr-2">
                         <input value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
                       </td>
@@ -869,30 +908,30 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
               </tbody>
               <tfoot>
                 <tr className="border-t border-[#F1F5F9] text-xs font-semibold">
-                  <td colSpan={6} className="pt-2 text-right text-[#64748B] pr-2">Taxable{isForeign ? ` (${currency})` : ""}</td>
+                  <td colSpan={7} className="pt-2 text-right text-[#64748B] pr-2">Taxable{isForeign ? ` (${currency})` : ""}</td>
                   <td className="pt-2 text-right font-mono text-[#334155] px-1">{fmtAmt(totals.taxable)}</td>
                   <td />
                 </tr>
                 <tr className="text-xs">
-                  <td colSpan={6} className="text-right text-[#94A3B8] pr-2">Total GST</td>
+                  <td colSpan={7} className="text-right text-[#94A3B8] pr-2">Total GST</td>
                   <td className="text-right font-mono text-[#64748B] px-1">{fmtAmt(totals.gst)}</td>
                   <td />
                 </tr>
                 {tds_paise > 0 && (
                   <tr className="text-xs">
-                    <td colSpan={6} className="text-right text-blue-600 pr-2">Less: TDS{isForeign ? " (₹)" : ""}</td>
+                    <td colSpan={7} className="text-right text-blue-600 pr-2">Less: TDS{isForeign ? " (₹)" : ""}</td>
                     <td className="text-right font-mono text-blue-600 px-1">({fmt(tds_paise)})</td>
                     <td />
                   </tr>
                 )}
                 <tr className="text-xs font-bold border-t border-[#E2E8F0]">
-                  <td colSpan={6} className="pt-1 text-right text-[#1E293B] pr-2">Net Payable{isForeign ? ` (${currency})` : ""}</td>
+                  <td colSpan={7} className="pt-1 text-right text-[#1E293B] pr-2">Net Payable{isForeign ? ` (${currency})` : ""}</td>
                   <td className="pt-1 text-right font-mono text-[#0F172A] px-1">{fmtAmt(net_payable)}</td>
                   <td />
                 </tr>
                 {isForeign && rateNum > 0 && totals.total > 0 && (
                   <tr className="text-xs">
-                    <td colSpan={6} className="text-right text-[#94A3B8] pr-2">≈ Estimated INR total</td>
+                    <td colSpan={7} className="text-right text-[#94A3B8] pr-2">≈ Estimated INR total</td>
                     <td className="text-right font-mono text-[#94A3B8] px-1">{fmt(estBaseTotal)}</td>
                     <td />
                   </tr>
@@ -900,7 +939,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
               </tfoot>
             </table>
           </div>
-          <button onClick={() => setLines((prev) => [...prev, { description: "", hsn_sac: "", quantity: 1, rate: 0, gst_rate_bps: 1800, expense_account_id: "" }])} className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Plus size={12} /> Add line</button>
+          <button onClick={() => setLines((prev) => [...prev, { description: "", hsn_sac: "", quantity: 1, rate: 0, gst_rate_bps: 1800, expense_account_id: "", service_catalogue_id: "" }])} className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Plus size={12} /> Add line</button>
 
           <div className="flex gap-3 justify-end pt-1">
             <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>

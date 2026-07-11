@@ -34,6 +34,8 @@
 /clients/:id/health.txt                                       /clients/_placeholder/health/index.txt  200
 /clients/:id/instructions                                     /clients/_placeholder/instructions/  200
 /clients/:id/instructions.txt                                 /clients/_placeholder/instructions/index.txt  200
+/clients/:id/inventory                                        /clients/_placeholder/inventory/  200
+/clients/:id/inventory.txt                                    /clients/_placeholder/inventory/index.txt  200
 /clients/:id/knowledge                                        /clients/_placeholder/knowledge/  200
 /clients/:id/knowledge.txt                                    /clients/_placeholder/knowledge/index.txt  200
 /clients/:id/lifecycle                                        /clients/_placeholder/lifecycle/  200

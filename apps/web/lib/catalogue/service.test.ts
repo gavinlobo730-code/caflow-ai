@@ -19,7 +19,8 @@ const item = (over: Partial<ServiceCatalogueItem> = {}): ServiceCatalogueItem =>
 
 const form = (over: Partial<ServiceFormInput> = {}): ServiceFormInput => ({
   name: "Statutory Audit", description: "", kind: "service", hsn_sac: "998221",
-  gstRate: 18, rate: "50000", purchasePrice: "", category: "", notes: "", ...over,
+  gstRate: 18, rate: "50000", purchasePrice: "", category: "", notes: "",
+  unit: "", openingQty: "", openingCost: "", ...over,
 });
 
 test("serviceToLine drops a fully pre-priced line (description never falls back to name)", () => {
@@ -59,6 +60,15 @@ test("validateServiceForm: name required, non-negative prices, gst range", () =>
   assert.equal(validateServiceForm(form({ gstRate: 120 })).errors.gstRate !== undefined, true);
 });
 
+test("validateServiceForm: opening qty/cost only checked for goods, non-negative", () => {
+  assert.equal(validateServiceForm(form({ kind: "good", openingQty: "10", openingCost: "500" })).ok, true);
+  assert.equal(validateServiceForm(form({ kind: "good", openingQty: "-1" })).errors.openingQty !== undefined, true);
+  assert.equal(validateServiceForm(form({ kind: "good", openingCost: "-1" })).errors.openingCost !== undefined, true);
+  assert.equal(validateServiceForm(form({ kind: "good" })).ok, true); // both optional
+  // A service can never have an invalid opening qty/cost — the fields are ignored for it.
+  assert.equal(validateServiceForm(form({ kind: "service", openingQty: "-1" })).ok, true);
+});
+
 test("serviceFormToPayload maps rupees → integer paise, blanks → undefined, carries client_id + kind", () => {
   const p = serviceFormToPayload(
     form({ rate: "50000.50", purchasePrice: "30000", description: " audit ", category: " Compliance " }),
@@ -73,6 +83,26 @@ test("serviceFormToPayload maps rupees → integer paise, blanks → undefined, 
   assert.equal(p.category, "Compliance");
   assert.equal(serviceFormToPayload(form({ rate: "" }), CLIENT_ID).default_rate_paise, 0);
   assert.equal(serviceFormToPayload(form({ purchasePrice: "" }), CLIENT_ID).purchase_price_paise, undefined);
+});
+
+test("serviceFormToPayload only sends unit/opening balance for goods, never services", () => {
+  const goodPayload = serviceFormToPayload(
+    form({ kind: "good", unit: "kgs", openingQty: "100", openingCost: "5000" }), CLIENT_ID,
+  );
+  assert.equal(goodPayload.unit, "kgs");
+  assert.equal(goodPayload.opening_qty_units, 100);
+  assert.equal(goodPayload.opening_cost_paise, 500000);
+
+  // Same field values, but kind=service — none of them may leak onto the payload.
+  const servicePayload = serviceFormToPayload(
+    form({ kind: "service", unit: "kgs", openingQty: "100", openingCost: "5000" }), CLIENT_ID,
+  );
+  assert.equal(servicePayload.unit, undefined);
+  assert.equal(servicePayload.opening_qty_units, undefined);
+  assert.equal(servicePayload.opening_cost_paise, undefined);
+
+  // Opening qty of 0 (nothing on hand yet) must not be sent as a truthy "seed this" signal.
+  assert.equal(serviceFormToPayload(form({ kind: "good", openingQty: "0" }), CLIENT_ID).opening_qty_units, undefined);
 });
 
 test("serviceToForm round-trips an item into editable strings", () => {

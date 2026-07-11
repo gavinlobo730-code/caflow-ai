@@ -5,8 +5,11 @@ exercised without a live DB, mirroring test_customers-style coverage. Pure
 ranking is asserted directly.
 
 Batch 6 guardrail, still enforced after the HSN/SAC redesign broadened this
-from services-only to goods+services: these tests assert that no
-stock/inventory concept exists on a row.
+from services-only to goods+services: these tests assert that no AD-HOC
+field name (sku/barcode/warehouse) exists on a row. Migration 188 gave
+kind='good' rows real stock/valuation fields (opening_qty_units,
+opening_cost_paise, stock_qty_units, avg_cost_paise) — see the dedicated
+section below and domain/inventory_service.py for the costing engine itself.
 
 HSN/SAC redesign (Decision C): `hsn_sac` must be a code already in the
 firm's own `firm_hsn_library` — `_seed_hsn` below seeds that library in mock
@@ -289,6 +292,39 @@ def test_purchase_price_and_category_are_optional_and_stored(client):
 
 def test_purchase_price_negative_rejected(client):
     assert _create(client, purchase_price_paise=-1).status_code == 422
+
+
+# ── Opening stock balance + unit (migration 188) ────────────────────────────
+
+def test_opening_qty_and_cost_are_optional_and_stored(client):
+    _seed_hsn("2202", hsn_type="goods")
+    r = _create(client, name="Bottled Water", kind="good", hsn_sac="2202",
+                opening_qty_units=100, opening_cost_paise=5000)
+    data = r.json()["data"]
+    assert data["opening_qty_units"] == 100
+    assert data["opening_cost_paise"] == 5000
+
+
+def test_opening_qty_negative_rejected(client):
+    _seed_hsn("2202", hsn_type="goods")
+    r = _create(client, name="Bottled Water", kind="good", hsn_sac="2202", opening_qty_units=-1)
+    assert r.status_code == 422
+
+
+def test_opening_cost_negative_rejected(client):
+    _seed_hsn("2202", hsn_type="goods")
+    r = _create(client, name="Bottled Water", kind="good", hsn_sac="2202", opening_cost_paise=-1)
+    assert r.status_code == 422
+
+
+def test_unit_is_normalized_to_uppercase(client):
+    r = _create(client, unit="kgs")
+    assert r.json()["data"]["unit"] == "KGS"
+
+
+def test_unit_blank_string_becomes_none(client):
+    r = _create(client, unit="")
+    assert r.json()["data"]["unit"] is None
 
 
 def test_create_response_has_no_unrecognised_inventory_field_names(client):

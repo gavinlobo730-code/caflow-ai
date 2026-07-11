@@ -166,6 +166,13 @@ export const api = {
       openBalances: (params: Record<string, string>) => request(`/api/fx-reports/open-balances?${new URLSearchParams(params)}`),
     },
   },
+  // Stock register + per-item ledger (migration 188). Read-only — all
+  // movements are written as a side effect of issuing/receiving documents.
+  inventory: {
+    items: (params: Record<string, string>) => request(`/api/inventory/items?${new URLSearchParams(params)}`),
+    ledger: (serviceCatalogueId: string, params: Record<string, string>) =>
+      request(`/api/inventory/items/${serviceCatalogueId}/ledger?${new URLSearchParams(params)}`),
+  },
   // Multi-Currency (Phase 1/5) — currency master + resolved policy (gates FX UI).
   currencies: {
     list: (params?: Record<string, string>) => request(`/api/currencies${params ? "?" + new URLSearchParams(params) : ""}`),

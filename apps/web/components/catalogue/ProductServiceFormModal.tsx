@@ -21,6 +21,7 @@ import { Modal } from "@/components/ui/modal";
 import { api, type ApiResp } from "@/lib/api/index";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { GST_RATES } from "@/lib/invoices/shared";
+import { UQC_CODES } from "@/lib/constants/uqc";
 import {
   validateServiceForm, serviceFormToPayload, serviceToForm,
   type ServiceCatalogueItem, type ServiceFormInput,
@@ -29,6 +30,7 @@ import {
 const EMPTY_FORM: ServiceFormInput = {
   name: "", description: "", kind: "service", hsn_sac: "", gstRate: 18,
   rate: "", purchasePrice: "", category: "", notes: "",
+  unit: "", openingQty: "", openingCost: "",
 };
 
 const inputCls = "w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500";
@@ -56,6 +58,11 @@ export function ProductServiceFormModal({
   // fires too, for callers that also want a toast or similar.
   const [saveError, setSaveError] = useState<string | null>(null);
   const v = validateServiceForm(form);
+  // Opening balance is a one-time seed (idempotent server-side, but re-
+  // showing the original opening fields once real stock movements exist
+  // would look editable when it no longer is) — once stock is on hand, show
+  // the current running state instead.
+  const stockAlreadyStarted = !!existing && (existing.stock_qty_units ?? 0) > 0;
 
   function set<K extends keyof ServiceFormInput>(k: K, val: ServiceFormInput[K]) {
     setForm((p) => ({ ...p, [k]: val }));
@@ -126,6 +133,37 @@ export function ProductServiceFormModal({
             <input type="number" min="0" step="0.01" value={form.purchasePrice} onChange={(e) => set("purchasePrice", e.target.value)} placeholder="0.00" className={inputCls} />
           </Field>
         </div>
+
+        {/* Unit + opening stock — goods only. A service has no GST Unit
+            Quantity Code (CGST Rule 46(h) only requires UQC for goods) and
+            can't carry stock. */}
+        {form.kind === "good" && (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Unit (optional)">
+              <select value={form.unit} onChange={(e) => set("unit", e.target.value)} className={inputCls}>
+                <option value="">— Select —</option>
+                {UQC_CODES.map((u) => <option key={u.code} value={u.code}>{u.code} — {u.label}</option>)}
+              </select>
+            </Field>
+            {stockAlreadyStarted ? (
+              <Field label="Current stock">
+                <div className={`${inputCls} bg-[#F8FAFC] text-[#475569]`}>
+                  {existing?.stock_qty_units ?? 0} {form.unit || "units"} · avg ₹{((existing?.avg_cost_paise ?? 0) / 100).toFixed(2)}
+                </div>
+              </Field>
+            ) : (
+              <Field label="Opening quantity (optional)" error={attempted ? v.errors.openingQty : undefined}>
+                <input type="number" min="0" step="0.001" value={form.openingQty} onChange={(e) => set("openingQty", e.target.value)} placeholder="0" className={inputCls} />
+              </Field>
+            )}
+          </div>
+        )}
+        {form.kind === "good" && !stockAlreadyStarted && (
+          <Field label="Opening stock value (₹ total, optional)" error={attempted ? v.errors.openingCost : undefined}>
+            <input type="number" min="0" step="0.01" value={form.openingCost} onChange={(e) => set("openingCost", e.target.value)} placeholder="Total cost of the opening quantity, not per-unit" className={inputCls} />
+          </Field>
+        )}
+
         <Field label="Notes (optional)">
           <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Internal note" className={inputCls} />
         </Field>
