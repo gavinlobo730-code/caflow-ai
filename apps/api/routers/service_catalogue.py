@@ -502,25 +502,109 @@ def update_service(
         return api_response(False, None, "Unable to update the service. Please try again.")
 
 
+
+# ── Permanent delete ─────────────────────────────────────────────────────────
+# service_catalogue_id (migration 184, extended to Purchase Bill/Credit Note/
+# Debit Note lines by 189) is a REAL link, set the moment a preset is picked
+# via ServiceCataloguePicker and copied through create/update alike — so this
+# checks actual usage, not a proxy, the same way customer deletion checks real
+# linked records (routers/customers.py's _customer_dependencies). A draft or
+# cancelled document was never a final financial record, so it doesn't count
+# — mirrors CGST Act §34: once a document is actually issued, correcting it
+# means a Credit/Debit Note, not silently editing what it referenced. Archive
+# (is_active=false via PATCH) remains the only removal path once a preset has
+# genuinely been used.
+
+_SERVICE_USAGE_CHECKS = [
+    ("a sales invoice", "client_sales_invoice_lines", "sales_invoice_id", "client_sales_invoices"),
+    ("a purchase bill", "purchase_bill_lines", "bill_id", "purchase_bills"),
+    ("a credit note", "credit_note_lines", "credit_note_id", "credit_notes"),
+    ("a debit note", "debit_note_lines", "debit_note_id", "debit_notes"),
+]
+
+
+def _find_service_usage(db, service_id: str) -> list[str]:
+    """Two-step per document type (fetch linked lines, then their parents'
+    status) rather than a single embedded-join query — PostgREST supports
+    `parent!inner(status)` embedding, but keeping this to plain eq/in_ filters
+    means it also runs correctly against the FakeDB test harness, which has
+    no join support at all."""
+    found: list[str] = []
+    for label, line_table, fk_col, parent_table in _SERVICE_USAGE_CHECKS:
+        lines = (
+            db.table(line_table).select(f"id, {fk_col}")
+            .eq("service_catalogue_id", service_id).execute().data or []
+        )
+        parent_ids = list({ln[fk_col] for ln in lines if ln.get(fk_col)})
+        if not parent_ids:
+            continue
+        parents = (
+            db.table(parent_table).select("id, status")
+            .in_("id", parent_ids).execute().data or []
+        )
+        if any(p.get("status") not in ("draft", "cancelled") for p in parents):
+            found.append(label)
+    # inventory_stock_ledger.service_catalogue_id cascades on delete (migration
+    # 188) — silently wiping real stock movement history otherwise.
+    if (db.table("inventory_stock_ledger").select("id")
+            .eq("service_catalogue_id", service_id).limit(1).execute().data or []):
+        found.append("your inventory stock ledger (it has recorded stock movements)")
+    return found
+
+
+def _find_service_usage_mock(service_id: str) -> list[str]:
+    """Mock-mode equivalent — deferred imports of each router's in-memory
+    store to avoid a circular import (mirrors firm_hsn_library.py's
+    _find_hsn_usage_mock)."""
+    found: list[str] = []
+
+    from routers.sales_invoices import MOCK_SALES_INVOICE_LINES, MOCK_SALES_INVOICES
+    invoices_by_id = {i.get("id"): i for i in MOCK_SALES_INVOICES}
+    if any(
+        (invoices_by_id.get(ln.get("sales_invoice_id")) or {}).get("status") not in ("draft", "cancelled")
+        for ln in MOCK_SALES_INVOICE_LINES if ln.get("service_catalogue_id") == service_id
+    ):
+        found.append("a sales invoice")
+
+    from routers.purchase_bills import MOCK_PURCHASE_BILL_LINES, MOCK_PURCHASE_BILLS
+    bills_by_id = {b.get("id"): b for b in MOCK_PURCHASE_BILLS}
+    if any(
+        (bills_by_id.get(ln.get("bill_id")) or {}).get("status") not in ("draft", "cancelled")
+        for ln in MOCK_PURCHASE_BILL_LINES if ln.get("service_catalogue_id") == service_id
+    ):
+        found.append("a purchase bill")
+
+    from routers.credit_notes import MOCK_CREDIT_NOTE_LINES, MOCK_CREDIT_NOTES
+    cn_by_id = {c.get("id"): c for c in MOCK_CREDIT_NOTES}
+    if any(
+        (cn_by_id.get(ln.get("credit_note_id")) or {}).get("status") not in ("draft", "cancelled")
+        for ln in MOCK_CREDIT_NOTE_LINES if ln.get("service_catalogue_id") == service_id
+    ):
+        found.append("a credit note")
+
+    from routers.debit_notes import MOCK_DEBIT_NOTE_LINES, MOCK_DEBIT_NOTES
+    dn_by_id = {d.get("id"): d for d in MOCK_DEBIT_NOTES}
+    if any(
+        (dn_by_id.get(ln.get("debit_note_id")) or {}).get("status") not in ("draft", "cancelled")
+        for ln in MOCK_DEBIT_NOTE_LINES if ln.get("service_catalogue_id") == service_id
+    ):
+        found.append("a debit note")
+
+    return found
+
+
+def _service_blocked_message(used_in: list[str]) -> str:
+    return f"This product/service is used on {', '.join(used_in)} and can't be permanently deleted. Archive it instead."
+
+
 @router.delete("/{service_id}")
 def delete_service(
     service_id: str,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
-    """Permanently delete a preset — only when it is not linked to any real
-    sales invoice line, the same way customer deletion checks real linked
-    records before allowing a hard delete (see routers/customers.py's
-    _customer_dependencies).
-
-    client_sales_invoice_lines.service_catalogue_id (migration 184) is a
-    real link, set the moment a preset is picked via ServiceCataloguePicker
-    and copied through create/update alike — so this checks actual usage,
-    not a proxy. Scoped to sales invoices only: that is currently the ONLY
-    transaction type with a Product/Service picker wired in (Purchase Bill /
-    Credit Note / Debit Note lines are free-text only). Archive
-    (is_active=false via PATCH) remains the only removal path once a preset
-    has ever been used.
-    """
+    """Permanently delete a preset — only when it is not linked to any real,
+    non-draft/cancelled document, or to any inventory stock movement. See the
+    module note above for what counts as "used" and why."""
     try:
         firm_id = current_user.get("firm_id")
 
@@ -529,12 +613,9 @@ def delete_service(
                         if s.get("id") == service_id and s.get("firm_id") == firm_id), None)
             if not row:
                 raise HTTPException(status_code=404, detail="Service not found.")
-            from routers.sales_invoices import MOCK_SALES_INVOICE_LINES
-            if any(ln.get("service_catalogue_id") == service_id for ln in MOCK_SALES_INVOICE_LINES):
-                return api_response(
-                    False, None,
-                    "This product/service is used on a sales invoice and can't be permanently deleted. Archive it instead.",
-                )
+            used_in = _find_service_usage_mock(service_id)
+            if used_in:
+                return api_response(False, None, _service_blocked_message(used_in))
             MOCK_SERVICES.remove(row)
             return api_response(True, {"id": service_id})
 
@@ -544,13 +625,9 @@ def delete_service(
                  .eq("id", service_id).eq("firm_id", firm_id).execute().data or [])
         if not owned:
             raise HTTPException(status_code=404, detail="Service not found.")
-        in_use = (db.table("client_sales_invoice_lines").select("id")
-                  .eq("service_catalogue_id", service_id).limit(1).execute().data or [])
-        if in_use:
-            return api_response(
-                False, None,
-                "This product/service is used on a sales invoice and can't be permanently deleted. Archive it instead.",
-            )
+        used_in = _find_service_usage(db, service_id)
+        if used_in:
+            return api_response(False, None, _service_blocked_message(used_in))
         db.table("service_catalogue").delete().eq("id", service_id).eq("firm_id", firm_id).execute()
         return api_response(True, {"id": service_id})
     except HTTPException:
