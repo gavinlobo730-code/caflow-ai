@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.firm_hsn_library import FirmHsnLibraryIn, FirmHsnLibraryUpdateIn
 from core.permissions import rbac
@@ -171,6 +172,122 @@ def add_code(
     except Exception as e:
         _logger.error("add_code: %s", e)
         return api_response(False, None, "Unable to add the code to your library. Please try again.")
+
+
+class FirmHsnLibraryBulkIn(BaseModel):
+    """Loose body — items are validated individually inside the handler (via
+    FirmHsnLibraryIn(**item)) so one malformed CSV row cannot 422 the whole
+    batch."""
+    codes: list[dict]
+
+
+@router.post("/bulk")
+def bulk_add_codes(
+    data: FirmHsnLibraryBulkIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Bulk-import HSN/SAC codes into the firm's library (CSV upload).
+
+    Mirrors service_catalogue.py's bulk_create_services: ONE existing-codes
+    snapshot for this firm instead of one query per row, then ONE batch
+    insert for every brand-new code — regardless of how many rows are in the
+    file. A code that already exists and is ACTIVE is reported as a
+    duplicate (same rule as add_code's single-row path); one that exists but
+    is RETIRED is reactivated. Reactivation is necessarily a per-row update
+    (there's no DB-level unique constraint on (firm_id, hsn_code) to upsert
+    against, and resurrecting an already-retired code mid-bulk-import is
+    expected to be rare — most rows in a real import are brand-new codes),
+    so it doesn't get the same one-call treatment as new-code inserts.
+    """
+    try:
+        firm_id = current_user.get("firm_id")
+        items = data.codes or []
+
+        created: list[dict] = []
+        reactivated: list[dict] = []
+        duplicates: list[dict] = []
+        errors: list[dict] = []
+
+        # ── Step 1: per-item validation (in-memory, no DB) ───────────────────
+        validated: list[tuple[int, dict]] = []
+        for idx, item in enumerate(items):
+            item = item if isinstance(item, dict) else {}
+            try:
+                parsed = FirmHsnLibraryIn(**item)
+            except PydanticValidationError as e:
+                msgs = "; ".join(err.get("msg", str(err)) for err in e.errors())
+                errors.append({"index": idx, "hsn_code": item.get("hsn_code"), "error": msgs})
+                continue
+            payload = parsed.model_dump()
+            payload["firm_id"] = firm_id
+            validated.append((idx, payload))
+
+        if not validated:
+            return api_response(True, {"created": created, "reactivated": reactivated, "duplicates": duplicates, "errors": errors})
+
+        # ── Step 2: ONE existing-codes snapshot for this firm (active AND
+        # retired — a retired match needs reactivation, not a duplicate report). ──
+        now = datetime.now(timezone.utc).isoformat()
+        db = None
+        if _USE_MOCK:
+            existing_rows = [r for r in MOCK_LIBRARY if r.get("firm_id") == firm_id]
+        else:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+            existing_rows = db.table("firm_hsn_library").select("*").eq("firm_id", firm_id).execute().data or []
+        existing_by_code = {r.get("hsn_code"): r for r in existing_rows}
+
+        # ── Step 3: classify each row against the snapshot AND rows already
+        # accepted earlier in this same batch (catches a duplicate the CSV
+        # itself contains, not just one already in the library). ────────────
+        seen_in_batch: set = set()
+        to_insert: list[tuple[int, dict]] = []
+        to_reactivate: list[tuple[int, dict, dict]] = []
+        for idx, payload in validated:
+            code = payload["hsn_code"]
+            if code in seen_in_batch:
+                duplicates.append({"index": idx, "hsn_code": code, "error": "Duplicate code within this file."})
+                continue
+            seen_in_batch.add(code)
+            existing = existing_by_code.get(code)
+            if existing and existing.get("is_active", True):
+                duplicates.append({"index": idx, "hsn_code": code, "existing_id": existing.get("id")})
+                continue
+            if existing:
+                to_reactivate.append((idx, payload, existing))
+                continue
+            payload["id"] = str(uuid.uuid4())
+            payload["is_active"] = True
+            payload["created_at"] = now
+            payload["updated_at"] = now
+            to_insert.append((idx, payload))
+
+        # ── Step 4: ONE batch insert for every brand-new code. ───────────────
+        if to_insert:
+            if _USE_MOCK:
+                for idx, payload in to_insert:
+                    MOCK_LIBRARY.append(payload)
+                    created.append(payload)
+            else:
+                resp = db.table("firm_hsn_library").insert([p for _, p in to_insert]).execute()
+                created.extend(resp.data or [p for _, p in to_insert])
+
+        # ── Step 5: reactivations — per-row (see docstring: expected rare). ──
+        for idx, payload, existing in to_reactivate:
+            patch = {**payload, "is_active": True, "updated_at": now}
+            patch.pop("firm_id", None)
+            patch.pop("hsn_code", None)  # immutable after creation, per FirmHsnLibraryUpdateIn
+            if _USE_MOCK:
+                existing.update(patch)
+                reactivated.append(existing)
+            else:
+                resp = db.table("firm_hsn_library").update(patch).eq("id", existing["id"]).execute()
+                reactivated.append(resp.data[0] if resp.data else {**existing, **patch})
+
+        return api_response(True, {"created": created, "reactivated": reactivated, "duplicates": duplicates, "errors": errors})
+    except Exception as e:
+        _logger.error("bulk_add_codes: %s", e)
+        return api_response(False, None, "Unable to complete the HSN/SAC library import. Please try again.")
 
 
 @router.patch("/{library_id}")

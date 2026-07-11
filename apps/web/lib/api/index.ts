@@ -721,6 +721,9 @@ export const api = {
     },
     add: (body: unknown) =>
       request("/api/firm-hsn-library/", { method: "POST", body: JSON.stringify(body) }),
+    // One request for a whole CSV import instead of one POST per row.
+    bulkAdd: (codes: unknown[]) =>
+      request("/api/firm-hsn-library/bulk", { method: "POST", body: JSON.stringify({ codes }) }),
     update: (id: string, body: unknown) =>
       request(`/api/firm-hsn-library/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     retire: (id: string) =>

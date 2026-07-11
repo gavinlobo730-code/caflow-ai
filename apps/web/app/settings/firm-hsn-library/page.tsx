@@ -12,12 +12,14 @@
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { ChevronLeft, Plus, Pencil, Archive, RotateCcw, Search, Hash } from "lucide-react";
+import { ChevronLeft, Plus, Pencil, Archive, RotateCcw, Search, Hash, Upload } from "lucide-react";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
 import {
   FirmHsnLibraryQuickAddModal, type FirmHsnLibraryRow,
 } from "@/components/lookups/FirmHsnLibraryQuickAddModal";
+import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import { FIRM_HSN_LIBRARY_IMPORT_COLUMNS, buildFirmHsnCodes } from "@/lib/imports/firmHsnLibrary";
 
 type Filter = "active" | "archived";
 type TypeFilter = "all" | "goods" | "services";
@@ -30,6 +32,7 @@ export default function FirmHsnLibraryPage() {
   const [filter, setFilter] = useState<Filter>("active");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState<FirmHsnLibraryRow | null>(null);
   const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -88,6 +91,42 @@ export default function FirmHsnLibraryPage() {
     }
   }
 
+  /** Bulk-import HSN/SAC codes through /api/firm-hsn-library/bulk — one
+   *  request for the whole file instead of one POST per row. A retired code
+   *  that reappears in the file is reactivated (counts as imported, not
+   *  skipped); an already-active duplicate is reported as skipped. */
+  async function handleImport(
+    rows: ImportRow[]
+  ): Promise<{ imported: number; errors: string[]; skipped: number; skippedDetail: string[] }> {
+    const { records, errors } = buildFirmHsnCodes(rows);
+    if (records.length === 0) return { imported: 0, errors, skipped: 0, skippedDetail: [] };
+
+    let imported = 0;
+    let skipped = 0;
+    const skippedDetail: string[] = [];
+    const res = (await api.firmHsnLibrary.bulkAdd(records)) as ApiResp<{
+      created: FirmHsnLibraryRow[];
+      reactivated: FirmHsnLibraryRow[];
+      duplicates: { hsn_code?: string }[];
+      errors: { hsn_code?: string; error: string }[];
+    }>;
+    if (res.success && res.data) {
+      imported = res.data.created.length + res.data.reactivated.length;
+      for (const d of res.data.duplicates) {
+        skipped++;
+        skippedDetail.push(`"${d.hsn_code ?? "?"}" already in your library — skipped`);
+      }
+      for (const e of res.data.errors) {
+        errors.push(`"${e.hsn_code ?? "?"}": ${e.error}`);
+      }
+    } else {
+      errors.push(res.error ?? "Bulk import failed");
+    }
+
+    if (imported > 0) load();
+    return { imported, errors, skipped, skippedDetail };
+  }
+
   return (
     <RoleGuard allowed={["Partner", "Manager"]}>
       <div className="p-6 max-w-4xl mx-auto space-y-5">
@@ -108,12 +147,20 @@ export default function FirmHsnLibraryPage() {
                 The HSN/SAC codes your firm bills against. You add and curate every code here — Caflow does not ship a shared list or suggest a classification; every Product/Service and invoice line picks from this library.
               </p>
             </div>
-            <button
-              onClick={() => setAdding(true)}
-              className="flex items-center gap-1.5 text-sm bg-violet-600 text-white px-3.5 py-2 rounded-lg hover:bg-violet-700 whitespace-nowrap"
-            >
-              <Plus size={15} /> Add Code
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setImporting(true)}
+                className="flex items-center gap-1.5 text-sm border border-[#E2E8F0] text-[#475569] px-3.5 py-2 rounded-lg hover:bg-[#F8FAFC] whitespace-nowrap"
+              >
+                <Upload size={15} /> Import
+              </button>
+              <button
+                onClick={() => setAdding(true)}
+                className="flex items-center gap-1.5 text-sm bg-violet-600 text-white px-3.5 py-2 rounded-lg hover:bg-violet-700 whitespace-nowrap"
+              >
+                <Plus size={15} /> Add Code
+              </button>
+            </div>
           </div>
         </div>
 
@@ -222,6 +269,16 @@ export default function FirmHsnLibraryPage() {
         <FirmHsnLibraryQuickAddModal
           onClose={() => setAdding(false)}
           onAdded={() => { setAdding(false); showToast("Code added to your library", "success"); load(); }}
+        />
+      )}
+
+      {importing && (
+        <CsvImportModal
+          title="Import HSN/SAC Codes"
+          columns={FIRM_HSN_LIBRARY_IMPORT_COLUMNS}
+          templateFilename="hsn-sac-library-template.csv"
+          onImport={handleImport}
+          onClose={() => setImporting(false)}
         />
       )}
 
