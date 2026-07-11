@@ -180,6 +180,75 @@ def seed_opening_balance(
     )
 
 
+def seed_opening_balances_batch(
+    db, *, firm_id: str, created_by: Optional[str], rows: list[dict],
+) -> None:
+    """Batched equivalent of seed_opening_balance for a batch of BRAND-NEW
+    service_catalogue rows (bulk import only — see bulk_create_services).
+    Every row here was just assigned a fresh uuid a moment ago in this same
+    request, so — unlike the single-row path — there is no possible
+    pre-existing ledger row to guard against, which is what let
+    seed_opening_balance get away with 4 sequential round trips per item
+    (existing-check, ledger insert, cache update... twice for anything that
+    also re-reads). Collapsing that per-row loop to one ledger batch insert
+    and one cache batch upsert is what actually fixes the multi-minute bulk
+    import hang: 300+ products no longer means 1,000+ round trips, it means
+    2. Never raises — a seeding failure here is logged and simply leaves
+    those items without a seeded opening balance, matching
+    seed_opening_balance's own never-block guarantee for the CSV import UX
+    (a bad opening balance must never fail the whole product/service batch)."""
+    ledger_rows: list[dict] = []
+    cache_rows: list[dict] = []
+    fallback_date = datetime.now(timezone.utc).date().isoformat()
+
+    for row in rows:
+        if row.get("kind") != "good":
+            continue
+        opening_qty = row.get("opening_qty_units")
+        opening_cost_paise = row.get("opening_cost_paise")
+        if opening_qty is None or opening_cost_paise is None:
+            continue
+        qty = Decimal(str(opening_qty))
+        if qty <= 0:
+            continue
+        calc = _compute_stock_in(Decimal("0"), 0, qty, int(opening_cost_paise))
+        movement_date = (row.get("created_at") or "")[:10] or fallback_date
+        ledger_rows.append({
+            "firm_id": firm_id,
+            "client_id": row.get("client_id"),
+            "service_catalogue_id": row["id"],
+            "movement_date": movement_date,
+            "movement_type": "opening",
+            "quantity_delta": str(calc["quantity_delta"]),
+            "unit_cost_paise": calc["unit_cost_paise"],
+            "value_delta_paise": calc["value_delta_paise"],
+            "running_qty_units": str(calc["running_qty_units"]),
+            "running_avg_cost_paise": calc["running_avg_cost_paise"],
+            "running_value_paise": calc["running_value_paise"],
+            "source_type": None,
+            "source_id": None,
+            "reference_no": None,
+            "created_by": created_by,
+        })
+        cache_rows.append({
+            "id": row["id"],
+            "stock_qty_units": str(calc["running_qty_units"]),
+            "avg_cost_paise": calc["running_avg_cost_paise"],
+        })
+
+    if not ledger_rows:
+        return
+    try:
+        db.table("inventory_stock_ledger").insert(ledger_rows).execute()
+    except Exception as e:
+        _logger.error("seed_opening_balances_batch: ledger batch insert failed for %d rows: %s", len(ledger_rows), e, exc_info=True)
+        return
+    try:
+        db.table("service_catalogue").upsert(cache_rows, on_conflict="id").execute()
+    except Exception as e:
+        _logger.error("seed_opening_balances_batch: cache batch upsert failed for %d rows: %s", len(cache_rows), e, exc_info=True)
+
+
 def record_stock_in(
     db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
     quantity, total_cost_paise: int, movement_type: str = "purchase",

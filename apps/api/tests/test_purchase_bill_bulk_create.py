@@ -93,3 +93,28 @@ def test_bulk_create_empty_batch(monkeypatch):
     resp = pb.bulk_create_purchase_bills(_BulkPayload([]), CALLER)
     assert resp["success"] is True
     assert resp["data"] == {"created": [], "errors": []}
+
+
+def test_bulk_create_prefetches_vendor_and_client_once_not_per_bill(monkeypatch):
+    # The whole point of bulk_cache: a real import naturally bills the same
+    # vendor many times, so a per-row vendor/client lookup (what this used to
+    # do before the fix) is exactly the N+1 pattern that made a big products/
+    # services import hang long enough to trip the frontend's own timeout.
+    pb, db = _setup(monkeypatch)
+    calls = {"vendors": 0, "clients": 0}
+    orig_table = db.table
+
+    def counting_table(name):
+        if name in calls:
+            calls[name] += 1
+        return orig_table(name)
+
+    monkeypatch.setattr(db, "table", counting_table)
+
+    payload = _BulkPayload([_bill_dict(f"VINV-{i:03d}") for i in range(1, 6)])
+    resp = pb.bulk_create_purchase_bills(payload, CALLER)
+
+    assert resp["success"] is True
+    assert len(resp["data"]["created"]) == 5
+    assert calls["vendors"] == 1
+    assert calls["clients"] == 1

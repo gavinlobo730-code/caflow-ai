@@ -15,6 +15,7 @@ from domain.inventory_service import (
     record_stock_in,
     record_stock_out,
     seed_opening_balance,
+    seed_opening_balances_batch,
     get_stock_ledger,
     apply_sale_to_inventory,
     apply_purchase_to_inventory,
@@ -126,6 +127,8 @@ class _FakeQuery:
         self._limit = None
         self._insert_rows = None
         self._update_patch = None
+        self._upsert_rows = None
+        self._upsert_key = None
 
     def select(self, *_a, **_k):
         return self
@@ -162,6 +165,11 @@ class _FakeQuery:
         self._update_patch = patch
         return self
 
+    def upsert(self, rows, on_conflict=None):
+        self._upsert_rows = rows if isinstance(rows, list) else [rows]
+        self._upsert_key = (on_conflict or "id").split(",")
+        return self
+
     def _match(self, r):
         for op, k, v in self.f:
             if op == "eq" and r.get(k) != v:
@@ -182,6 +190,22 @@ class _FakeQuery:
                 row = {"id": f"{self.t}-{len(rows_table)}", **r}
                 rows_table.append(row)
                 out.append(row)
+            return _Res(out)
+        if self._upsert_rows is not None:
+            # Merge-duplicates semantics (matches PostgREST/Supabase upsert):
+            # only the columns present in each payload row are written; a
+            # match on the conflict key updates in place, otherwise inserts.
+            out = []
+            for r in self._upsert_rows:
+                key_vals = {k: r.get(k) for k in self._upsert_key}
+                existing = next((row for row in rows_table if all(row.get(k) == v for k, v in key_vals.items())), None)
+                if existing is not None:
+                    existing.update(r)
+                    out.append(existing)
+                else:
+                    row = dict(r)
+                    rows_table.append(row)
+                    out.append(row)
             return _Res(out)
         if self._update_patch is not None:
             updated = []
@@ -287,6 +311,61 @@ def test_seed_opening_balance_skips_when_qty_or_cost_missing():
         db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
         movement_date="2026-04-01", opening_qty=None, opening_cost_paise=500_00,
     ) is None
+
+
+# ── seed_opening_balances_batch — bulk import fast path ─────────────────────
+# Replaces bulk_create_services' old per-row seed_opening_balance loop (one
+# existing-check + one insert + one cache update PER product — ~1,000+
+# sequential round trips for a 300-product import, which is what actually
+# made a real bulk import hang long enough to trip the frontend's own
+# request timeout). This collapses the whole batch to one ledger insert
+# and one cache upsert, regardless of row count.
+
+def test_seed_opening_balances_batch_seeds_every_goods_row_in_two_round_trips():
+    db = _FakeDB()
+    rows = [
+        {"id": "item-1", "client_id": "client-1", "kind": "good",
+         "opening_qty_units": "10", "opening_cost_paise": 10_000_00, "created_at": "2026-04-01T00:00:00Z"},
+        {"id": "item-2", "client_id": "client-1", "kind": "good",
+         "opening_qty_units": "4", "opening_cost_paise": 800_00, "created_at": "2026-04-01T00:00:00Z"},
+    ]
+    for r in rows:
+        _seed_catalogue_item(db, item_id=r["id"])
+
+    seed_opening_balances_batch(db, firm_id="firm-1", created_by="user-1", rows=rows)
+
+    ledger = db.store["inventory_stock_ledger"]
+    assert len(ledger) == 2
+    assert {r["service_catalogue_id"] for r in ledger} == {"item-1", "item-2"}
+    assert all(r["movement_type"] == "opening" for r in ledger)
+
+    item1 = next(r for r in db.store["service_catalogue"] if r["id"] == "item-1")
+    item2 = next(r for r in db.store["service_catalogue"] if r["id"] == "item-2")
+    assert item1["stock_qty_units"] == "10" and item1["avg_cost_paise"] == 1_000_00
+    assert item2["stock_qty_units"] == "4" and item2["avg_cost_paise"] == 200_00
+
+
+def test_seed_opening_balances_batch_skips_services_and_rows_missing_qty_or_cost():
+    db = _FakeDB()
+    rows = [
+        {"id": "svc-1", "client_id": "client-1", "kind": "service",
+         "opening_qty_units": "10", "opening_cost_paise": 10_000_00},  # not a good — skipped
+        {"id": "item-3", "client_id": "client-1", "kind": "good",
+         "opening_qty_units": None, "opening_cost_paise": 500_00},     # no qty — skipped
+        {"id": "item-4", "client_id": "client-1", "kind": "good",
+         "opening_qty_units": "0", "opening_cost_paise": 500_00},      # zero qty — skipped
+    ]
+    for r in rows:
+        _seed_catalogue_item(db, item_id=r["id"])
+
+    seed_opening_balances_batch(db, firm_id="firm-1", created_by="user-1", rows=rows)
+    assert db.store.get("inventory_stock_ledger", []) == []
+
+
+def test_seed_opening_balances_batch_noop_on_empty_list():
+    db = _FakeDB()
+    seed_opening_balances_batch(db, firm_id="firm-1", created_by="user-1", rows=[])
+    assert db.store.get("inventory_stock_ledger", []) == []
     assert seed_opening_balance(
         db, firm_id="firm-1", client_id="client-1", service_catalogue_id="item-1",
         movement_date="2026-04-01", opening_qty=Decimal("0"), opening_cost_paise=500_00,

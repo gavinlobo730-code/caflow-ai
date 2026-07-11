@@ -156,12 +156,23 @@ def create_purchase_bill(
         return api_response(False, None, "Unable to create purchase bill. Please try again.")
 
 
-def _create_purchase_bill_core(data: dict, current_user: dict) -> dict:
+def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optional[dict] = None) -> dict:
     """Shared purchase-bill-creation logic used by both create_purchase_bill
     and the bulk import endpoint below — extracted verbatim (no behavior
-    change) so the CSV importer can create many bills in ONE request instead
-    of firing one POST per bill. Raises HTTPException on failure; returns the
-    created bill dict (with lines) on success."""
+    change for a single create: bulk_cache is always None there) so the CSV
+    importer can create many bills in ONE request instead of firing one POST
+    per bill. Raises HTTPException on failure; returns the created bill dict
+    (with lines) on success.
+
+    bulk_cache (bulk import only — see bulk_create_purchase_bills, which
+    pre-fetches it once per request instead of once per bill):
+      "vendor": this bill's vendor row (already resolved by the caller)
+      "client_gstin": the buying client's GSTIN (for the interstate check)
+        — shared across the whole batch per client_id.
+    Skips the per-bill audit/timeline writes in bulk mode — both are
+    documented non-fatal, best-effort UX/audit metadata (never read by
+    GST/TDS/journal code); bulk_create_purchase_bills writes one summary
+    audit + timeline entry for the whole batch afterward instead."""
     required = ["client_id", "vendor_id", "bill_date", "lines"]
     for field in required:
         if not data.get(field):
@@ -185,21 +196,29 @@ def _create_purchase_bill_core(data: dict, current_user: dict) -> dict:
         from core.supabase_client import get_supabase
         db = get_supabase()
 
-        # Fetch vendor for TDS info and state code (firm-scoped — tenant isolation)
-        v_resp = db.table("vendors").select("*").eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute()
-        if not v_resp.data:
-            raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
-        vendor = v_resp.data[0]
+        if bulk_cache is not None:
+            vendor = bulk_cache["vendor"]
+            if not vendor:
+                raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
+        else:
+            # Fetch vendor for TDS info and state code (firm-scoped — tenant isolation)
+            v_resp = db.table("vendors").select("*").eq("id", vendor_id).eq("firm_id", firm_id).limit(1).execute()
+            if not v_resp.data:
+                raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
+            vendor = v_resp.data[0]
         # Business guard: never book a bill against a deactivated vendor.
         if vendor.get("is_active") is False:
             raise HTTPException(status_code=422, detail="This vendor is inactive. Reactivate the vendor before booking a bill.")
 
         # Determine is_interstate
         vendor_state = vendor.get("state_code") or _get_state_code_from_gstin(vendor.get("gstin")) or ""
-        client_resp  = db.table("clients").select("gstin").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute()
-        client_state = ""
-        if client_resp.data:
-            client_state = _get_state_code_from_gstin(client_resp.data[0].get("gstin")) or ""
+        if bulk_cache is not None:
+            client_state = _get_state_code_from_gstin(bulk_cache.get("client_gstin")) or ""
+        else:
+            client_resp  = db.table("clients").select("gstin").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute()
+            client_state = ""
+            if client_resp.data:
+                client_state = _get_state_code_from_gstin(client_resp.data[0].get("gstin")) or ""
         is_interstate = bool(vendor_state and client_state and vendor_state != client_state)
 
     # Compute lines — all in integer paise
@@ -436,18 +455,23 @@ def _create_purchase_bill_core(data: dict, current_user: dict) -> dict:
     lines_resp = db.table("purchase_bill_lines").insert(line_payloads).execute()  # type: ignore[possibly-undefined]
     bill["lines"] = lines_resp.data or computed_lines
 
-    log_event(
-        firm_id or "", "purchase_bill", bill_id,
-        "create", actor_id=current_user.get("auth_user_id"),
-        actor_email=current_user.get("email"), new_data=bill,
-    )
-    timeline_service.log(
-        client_id, "accounting", "Purchase Bill Created",
-        f"Bill {bill.get('bill_no', '')} for ₹{bill.get('total_paise', 0) // 100:,} created (draft)",
-        "info", firm_id=firm_id or "",
-        entity_type="purchase_bill", entity_id=bill_id,
-        amount_paise=bill.get("total_paise"), actor_id=current_user.get("auth_user_id"),
-    )
+    # Per-bill audit/timeline writes — skipped in bulk mode (see the
+    # bulk_cache docstring above): bulk_create_purchase_bills writes one
+    # summary audit + timeline entry for the whole batch instead of firm_id/
+    # client_id-identical rows repeated once per imported bill.
+    if bulk_cache is None:
+        log_event(
+            firm_id or "", "purchase_bill", bill_id,
+            "create", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"), new_data=bill,
+        )
+        timeline_service.log(
+            client_id, "accounting", "Purchase Bill Created",
+            f"Bill {bill.get('bill_no', '')} for ₹{bill.get('total_paise', 0) // 100:,} created (draft)",
+            "info", firm_id=firm_id or "",
+            entity_type="purchase_bill", entity_id=bill_id,
+            amount_paise=bill.get("total_paise"), actor_id=current_user.get("auth_user_id"),
+        )
     return bill
 
 
@@ -466,29 +490,87 @@ def bulk_create_purchase_bills(
     a 100-row import that's 100 sequential network round-trips, and it
     multiplies badly when many firms import concurrently. This endpoint loops
     the exact same _create_purchase_bill_core logic server-side (no behavior
-    change, no duplicated GST/TDS business rules), so N round-trips collapse
-    to 1. A bad row is reported per-item and does not abort the rest of the
-    batch — matches the existing CSV-import UX (partial success with a
-    per-row error list).
+    change, no duplicated GST/TDS business rules), collapsing N round-trips
+    to roughly 1 for the WHOLE batch: the vendor and client rows are
+    pre-fetched ONCE here (bulk_cache), mirroring bulk_create_invoices —
+    without it, every bill re-fetches the SAME vendor/client rows a bulk
+    import naturally repeats many times (several bills per vendor). A bad
+    row is reported per-item and does not abort the rest of the batch —
+    matches the existing CSV-import UX (partial success with a per-row
+    error list).
     """
     items = payload.bills
     created: list[dict] = []
     errors: list[dict] = []
+    firm_id = current_user.get("firm_id")
+
+    parsed: list[tuple[int, str, PurchaseBillIn]] = []
     for i, raw in enumerate(items):
         bill_no = raw.get("bill_no", "") if isinstance(raw, dict) else ""
         try:
-            try:
-                data = PurchaseBillIn(**raw)
-            except PydanticValidationError as e:
-                errors.append({"index": i, "bill_no": bill_no, "error": str(e.errors()[0].get("msg", "Invalid bill data")) if e.errors() else "Invalid bill data"})
-                continue
-            bill = _create_purchase_bill_core(data.model_dump(), current_user)
+            parsed.append((i, bill_no, PurchaseBillIn(**raw)))
+        except PydanticValidationError as e:
+            errors.append({"index": i, "bill_no": bill_no, "error": str(e.errors()[0].get("msg", "Invalid bill data")) if e.errors() else "Invalid bill data"})
+
+    vendors_by_id: dict = {}
+    client_gstin_by_id: dict = {}
+    if parsed and not _USE_MOCK:
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        vendor_ids = list({p[2].vendor_id for p in parsed})
+        client_ids = list({p[2].client_id for p in parsed})
+        CHUNK = 200  # stay well under any PostgREST IN-list/URL-length limit
+        for i in range(0, len(vendor_ids), CHUNK):
+            chunk = vendor_ids[i:i + CHUNK]
+            resp = db.table("vendors").select("*").eq("firm_id", firm_id).in_("id", chunk).execute()
+            for r in (resp.data or []):
+                vendors_by_id[r["id"]] = r
+        for i in range(0, len(client_ids), CHUNK):
+            chunk = client_ids[i:i + CHUNK]
+            resp = db.table("clients").select("id, gstin").eq("firm_id", firm_id).in_("id", chunk).execute()
+            for r in (resp.data or []):
+                client_gstin_by_id[r["id"]] = r.get("gstin")
+
+    for i, bill_no, data in parsed:
+        try:
+            bulk_cache = None
+            if not _USE_MOCK:
+                bulk_cache = {
+                    "vendor": vendors_by_id.get(data.vendor_id),
+                    "client_gstin": client_gstin_by_id.get(data.client_id),
+                }
+            bill = _create_purchase_bill_core(data.model_dump(), current_user, bulk_cache=bulk_cache)
             created.append(bill)
         except HTTPException as e:
             errors.append({"index": i, "bill_no": bill_no, "error": e.detail})
         except Exception as e:
             _logger.error("bulk_create_purchase_bills item %d failed: %s", i, e, exc_info=True)
             errors.append({"index": i, "bill_no": bill_no, "error": "Unable to create this bill. Please try again."})
+
+    # One summary audit + timeline entry for the whole batch instead of one
+    # per bill (skipped inside _create_purchase_bill_core for bulk_cache
+    # calls — see its docstring): a bulk import's real audit-trail question
+    # is "who imported N bills and when", not N near-identical entries.
+    if created:
+        log_event(
+            firm_id or "", "purchase_bill", "bulk_import", "create",
+            actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+            new_data={"count": len(created), "bill_nos": [c.get("bill_no") for c in created][:100]},
+        )
+        by_client: dict[str, list[dict]] = {}
+        for c in created:
+            by_client.setdefault(c.get("client_id", ""), []).append(c)
+        for cid, bills in by_client.items():
+            if not cid:
+                continue
+            total = sum(b.get("total_paise", 0) for b in bills)
+            timeline_service.log(
+                cid, "accounting", "Purchase Bills Imported",
+                f"{len(bills)} bill(s) imported via bulk upload, totaling ₹{total // 100:,}.",
+                "info", firm_id=firm_id or "",
+                entity_type="purchase_bill", amount_paise=total,
+                actor_id=current_user.get("auth_user_id"),
+            )
     return api_response(True, {"created": created, "errors": errors})
 
 
