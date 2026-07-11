@@ -12,6 +12,7 @@ import type { InvoiceStatus, InvoiceDelivery } from "./gst";
 // ── Action availability ───────────────────────────────────────────────────────
 export interface HubActions {
   edit: boolean;
+  editDetails: boolean;
   delete: boolean;
   issue: boolean;
   recordPayment: boolean;
@@ -30,6 +31,12 @@ export function availableActions(status: InvoiceStatus): HubActions {
   const collectible = status === "issued" || status === "partially_paid"; // owed money remains
   return {
     edit: isDraft,
+    // Reference/PO number, notes, due date and line unit — none of these
+    // affect amount or tax, so they stay editable once posted (routers/
+    // sales_invoices.py: update_invoice's _SOFT_UPDATE_FIELDS). Everything
+    // else needs a Credit Note to correct (CGST Act §34) — not editable
+    // here even when posted, matching `edit` staying draft-only above.
+    editDetails: posted,
     delete: isDraft,
     issue: isDraft,
     recordPayment: collectible,

@@ -120,7 +120,15 @@ class SalesInvoiceIn(BaseModel):
 
 
 class SalesInvoiceUpdateIn(BaseModel):
-    """Partial update of a draft sales invoice."""
+    """Partial update of a sales invoice.
+
+    Draft invoices: every field below is editable. Once issued, the router
+    (routers/sales_invoices.py: update_invoice) only accepts reference_no,
+    notes, due_date/credit_days and line_units — CGST Rule 46 tax-invoice
+    content (invoice_no, dates, customer, line qty/rate/HSN/GST,
+    is_inter_state) is locked post-issue; a correction to those must go
+    through a Credit Note (CGST Act §34), not a silent edit.
+    """
     customer_id: Optional[str] = None
     # Editable only while the invoice is a draft (enforced by the router,
     # which already blocks any update once issued) — same manual, CA-owned
@@ -134,11 +142,25 @@ class SalesInvoiceUpdateIn(BaseModel):
     reference_no: Optional[str] = None
     notes: Optional[str] = None
     is_inter_state: Optional[bool] = None
+    # {line_id: new unit} — unit alone never affects rate/quantity/amount/GST,
+    # so it's allowed on an issued invoice unlike the rest of `lines` above
+    # (a full line replace, draft-only). Handled separately in the router,
+    # independent of every other field here.
+    line_units: Optional[dict[str, str]] = None
 
     @field_validator("invoice_no")
     @classmethod
     def _invoice_no_shape(cls, v: Optional[str]) -> Optional[str]:
         return None if v is None else _validate_invoice_no_shape(v)
+
+    @field_validator("line_units")
+    @classmethod
+    def _normalize_line_units(cls, v: Optional[dict[str, str]]) -> Optional[dict[str, str]]:
+        # Same lenient normalize-only rule as InvoiceLineIn.unit above — see
+        # that validator's comment for why values are never rejected.
+        if v is None:
+            return None
+        return {k: (val.strip().upper() if val else val) for k, val in v.items()}
 
 
 class PurchaseBillLineIn(BaseModel):

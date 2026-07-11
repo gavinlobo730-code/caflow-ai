@@ -11,7 +11,7 @@
  * tab's ledger drill-down: its own date range, defaulting to the client's FY.
  */
 import { useCallback, useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, AlertTriangle } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { api } from "@/lib/api";
 import { DataTable } from "@/components/ui/data-table";
@@ -56,8 +56,18 @@ const MOVEMENT_LABELS: Record<string, string> = {
   sale: "Sale",
   sale_reversal: "Sale Reversal",
   purchase_reversal: "Purchase Reversal",
+  sale_return: "Sales Return (Credit Note)",
+  purchase_return: "Purchase Return (Debit Note)",
   adjustment: "Adjustment",
 };
+
+/** True once an item has gone negative on hand with no cost ever recorded
+ * against it (no opening balance, no purchase) — record_stock_out still
+ * tracks the movement (domain/inventory_service.py) rather than skip it
+ * silently, but the Rs 0 cost is a real "unknown," not a computed zero. */
+function isUntrackedOversold(i: { stock_qty_units: number | null; avg_cost_paise: number | null }): boolean {
+  return (i.stock_qty_units ?? 0) < 0 && !(i.avg_cost_paise ?? 0);
+}
 
 function fmtQty(v: number | string | null | undefined): string {
   if (v == null) return "0";
@@ -106,14 +116,29 @@ export default function InventoryPage() {
     { key: "stock_qty_units", header: "On Hand", accessor: (i) => i.stock_qty_units ?? 0, sortable: true, align: "right",
       render: (i) => {
         const qty = i.stock_qty_units ?? 0;
-        return <span className={`font-mono font-semibold ${qty < 0 ? "text-red-600" : "text-[#334155]"}`}>{fmtQty(qty)}</span>;
+        return (
+          <span className={`inline-flex items-center gap-1 font-mono font-semibold ${qty < 0 ? "text-red-600" : "text-[#334155]"}`}>
+            {isUntrackedOversold(i) && (
+              <AlertTriangle size={12} className="text-amber-500 shrink-0"
+                aria-label="Cost not established — sold before a purchase or opening balance was recorded" />
+            )}
+            {fmtQty(qty)}
+          </span>
+        );
       } },
     { key: "avg_cost_paise", header: "Avg Cost", accessor: (i) => i.avg_cost_paise ?? 0, sortable: true, align: "right",
       exportValue: (i) => (i.avg_cost_paise ?? 0) / 100,
       render: (i) => <span className="font-mono text-[#64748B]">{formatServicePrice(i.avg_cost_paise) || "—"}</span> },
     { key: "stock_value_paise", header: "Stock Value", accessor: (i) => i.stock_value_paise ?? 0, sortable: true, align: "right",
       exportValue: (i) => (i.stock_value_paise ?? 0) / 100,
-      render: (i) => <span className="font-mono font-semibold text-[#0F172A]">{formatServicePrice(i.stock_value_paise) || "₹0"}</span> },
+      render: (i) => isUntrackedOversold(i) ? (
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700"
+          title="Cost not established — this item sold before it ever had a purchase or opening balance recorded. Enter one to start valuing its stock.">
+          Cost unknown
+        </span>
+      ) : (
+        <span className="font-mono font-semibold text-[#0F172A]">{formatServicePrice(i.stock_value_paise) || "₹0"}</span>
+      ) },
     { key: "is_active", header: "Status", accessor: (i) => (i.is_active ? "active" : "archived"),
       render: (i) => (
         <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${i.is_active ? "bg-green-50 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>

@@ -980,13 +980,40 @@ def get_invoice(
         return api_response(False, None, "Unable to complete invoice operation. Please try again.")
 
 
+# Once an invoice is issued, only these fields may still change — none of
+# them affect amount or tax, so a correction doesn't need a Credit Note.
+# (line_units is handled separately below; it's popped out of `data` before
+# this set is checked, since it's always allowed regardless of status.)
+_SOFT_UPDATE_FIELDS = {"reference_no", "notes", "due_date", "credit_days"}
+
+
+def _reject_locked_invoice_fields(data: dict) -> None:
+    """Everything outside _SOFT_UPDATE_FIELDS is CGST Rule 46 tax-invoice
+    content (invoice_no, dates, customer, line qty/rate/HSN/GST,
+    is_interstate) — CGST Act §34 requires a Credit Note to correct any of
+    that once issued, never a silent edit."""
+    locked = sorted(set(data.keys()) - _SOFT_UPDATE_FIELDS)
+    if locked:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Cannot change {', '.join(locked)} on an issued invoice — only "
+                "reference/PO number, notes and due date can still be edited. "
+                "Issue a Credit Note to correct anything else (CGST Act §34)."
+            ),
+        )
+
+
 @router.patch("/{invoice_id}")
 def update_invoice(
     invoice_id: str,
     data: SalesInvoiceUpdateIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
-    """Update a draft invoice. Recomputes GST if lines are changed. Only allowed on draft status."""
+    """Update an invoice. DRAFT: full edit, recomputes GST if lines change.
+    ISSUED/PARTIALLY_PAID/PAID: only reference_no, notes, due_date/
+    credit_days and per-line unit (line_units) may change — see
+    _reject_locked_invoice_fields. CANCELLED: cannot be updated at all."""
     try:
         data = data.model_dump(exclude_none=True)
         # The request model field is is_inter_state; the DB column is is_interstate.
@@ -994,17 +1021,28 @@ def update_invoice(
         # below and persists correctly — without this the column write would 400.
         if "is_inter_state" in data:
             data["is_interstate"] = data.pop("is_inter_state")
+        # Always allowed regardless of status — unit alone never touches
+        # rate/quantity/amount/GST, unlike a full `lines` replace.
+        line_units = data.pop("line_units", None)
+
         if _USE_MOCK:
             for i, inv in enumerate(MOCK_SALES_INVOICES):
                 if inv["id"] == invoice_id:
-                    if inv.get("status") != "draft":
-                        raise HTTPException(status_code=422, detail="Only draft invoices can be updated")
+                    status = inv.get("status")
+                    if status == "cancelled":
+                        raise HTTPException(status_code=422, detail="Cancelled invoices cannot be updated")
+                    if status != "draft":
+                        _reject_locked_invoice_fields(data)
                     if "invoice_no" in data:
                         _assert_invoice_no_available(
                             None, current_user.get("firm_id"), inv.get("client_id"),
                             data["invoice_no"], exclude_id=invoice_id,
                         )
                     _apply_credit_days_due_date(data, data.get("invoice_date") or inv.get("invoice_date"))
+                    if line_units:
+                        for ln in MOCK_SALES_INVOICE_LINES:
+                            if ln.get("id") in line_units and ln.get("invoice_id") == invoice_id:
+                                ln["unit"] = line_units[ln["id"]] or "NOS"
                     MOCK_SALES_INVOICES[i] = {**inv, **data, "updated_at": datetime.now(timezone.utc).isoformat()}
                     return api_response(True, MOCK_SALES_INVOICES[i])
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
@@ -1017,8 +1055,11 @@ def update_invoice(
         resp = db.table("client_sales_invoices").select("status, invoice_date, client_id").eq("id", invoice_id).eq("firm_id", firm_id).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
-        if resp.data[0]["status"] != "draft":
-            raise HTTPException(status_code=422, detail="Only draft invoices can be updated")
+        status = resp.data[0]["status"]
+        if status == "cancelled":
+            raise HTTPException(status_code=422, detail="Cancelled invoices cannot be updated")
+        if status != "draft":
+            _reject_locked_invoice_fields(data)
         if "invoice_no" in data:
             _assert_invoice_no_available(
                 db, firm_id, resp.data[0]["client_id"], data["invoice_no"], exclude_id=invoice_id,
@@ -1118,6 +1159,15 @@ def update_invoice(
             data["igst_paise"]           = total_igst
             data["round_off_paise"]      = round_off_edit
             data["total_paise"]          = base_total_edit + round_off_edit
+
+        # Per-line unit correction — independent of the full lines-replace
+        # block above (draft-only), safe on any non-cancelled status since
+        # unit never affects rate/quantity/amount/GST.
+        if line_units:
+            for line_id, unit in line_units.items():
+                db.table("client_sales_invoice_lines").update(
+                    {"unit": unit or "NOS"}
+                ).eq("id", line_id).eq("sales_invoice_id", invoice_id).execute()
 
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
         upd_resp = db.table("client_sales_invoices").update(data).eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).execute()

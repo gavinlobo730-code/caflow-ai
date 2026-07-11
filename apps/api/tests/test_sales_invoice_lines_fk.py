@@ -16,6 +16,7 @@ assert:
 CGST Act §8: inter-state supply → IGST. All amounts in integer paise.
 """
 import pytest
+from fastapi import HTTPException
 
 from routers import sales_invoices
 from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn, InvoiceLineIn
@@ -432,3 +433,87 @@ class TestUpdateInvoice:
         assert pl["sgst_paise"] == 900
         assert pl["igst_paise"] == 0
         assert pl["total_paise"] == 11800
+
+    # ── Post-issue soft-field edits (audit fix) ──────────────────────────────
+    # Once issued, only reference_no/notes/due_date/credit_days and line_units
+    # may still change — everything else is CGST Rule 46 tax-invoice content
+    # and needs a Credit Note to correct (CGST Act §34).
+
+    def test_update_rejects_locked_field_on_issued_invoice(self, fake_db):
+        recorder, holder = fake_db
+
+        def _controller(event):
+            t, op = event["table"], event["op"]
+            if t == "client_sales_invoices" and op == "select":
+                return _Resp(data=[{"id": "INV-1", "status": "issued", "client_id": "C1"}])
+            return _Resp(data=[])
+
+        holder["controller"] = _controller
+        upd = SalesInvoiceUpdateIn(invoice_date="2026-07-01")
+        with pytest.raises(HTTPException) as exc:
+            sales_invoices.update_invoice("INV-1", upd, _USER)
+        assert exc.value.status_code == 422
+        # No write should have been attempted once the field check fails.
+        assert not [e for e in recorder if e["table"] == "client_sales_invoices" and e["op"] == "update"]
+
+    def test_update_allows_soft_fields_on_issued_invoice(self, fake_db):
+        recorder, holder = fake_db
+
+        def _controller(event):
+            t, op = event["table"], event["op"]
+            if t == "client_sales_invoices" and op == "select":
+                return _Resp(data=[{"id": "INV-1", "status": "issued", "client_id": "C1"}])
+            if t == "client_sales_invoices" and op == "update":
+                return _Resp(data=[{**event["payload"], "id": "INV-1"}])
+            return _Resp(data=[])
+
+        holder["controller"] = _controller
+        upd = SalesInvoiceUpdateIn(reference_no="PO-9981", notes="Called customer to confirm", due_date="2026-08-01")
+        resp = sales_invoices.update_invoice("INV-1", upd, _USER)
+
+        assert resp["success"] is True
+        upd_event = [e for e in recorder if e["table"] == "client_sales_invoices" and e["op"] == "update"][0]
+        assert upd_event["payload"]["reference_no"] == "PO-9981"
+        assert upd_event["payload"]["notes"] == "Called customer to confirm"
+        assert upd_event["payload"]["due_date"] == "2026-08-01"
+
+    def test_update_line_units_on_issued_invoice(self, fake_db):
+        recorder, holder = fake_db
+
+        def _controller(event):
+            t, op = event["table"], event["op"]
+            if t == "client_sales_invoices" and op == "select":
+                return _Resp(data=[{"id": "INV-1", "status": "issued", "client_id": "C1"}])
+            if t == "client_sales_invoices" and op == "update":
+                return _Resp(data=[{**event["payload"], "id": "INV-1"}])
+            if t == "client_sales_invoice_lines" and op == "update":
+                return _Resp(data=[{**event["payload"], "id": "L1"}])
+            return _Resp(data=[])
+
+        holder["controller"] = _controller
+        upd = SalesInvoiceUpdateIn(line_units={"L1": "kgs"})
+        resp = sales_invoices.update_invoice("INV-1", upd, _USER)
+
+        assert resp["success"] is True
+        line_updates = [e for e in recorder if e["table"] == "client_sales_invoice_lines" and e["op"] == "update"]
+        assert len(line_updates) == 1
+        assert line_updates[0]["payload"] == {"unit": "KGS"}
+        assert line_updates[0]["filters"] == {"id": "L1", "sales_invoice_id": "INV-1"}
+        # Line unit changes never touch the header's own amount/GST columns.
+        header_update = [e for e in recorder if e["table"] == "client_sales_invoices" and e["op"] == "update"][0]
+        assert "taxable_amount_paise" not in header_update["payload"]
+
+    def test_update_rejects_any_edit_on_cancelled_invoice(self, fake_db):
+        recorder, holder = fake_db
+
+        def _controller(event):
+            t, op = event["table"], event["op"]
+            if t == "client_sales_invoices" and op == "select":
+                return _Resp(data=[{"id": "INV-1", "status": "cancelled", "client_id": "C1"}])
+            return _Resp(data=[])
+
+        holder["controller"] = _controller
+        upd = SalesInvoiceUpdateIn(notes="trying to edit a cancelled invoice")
+        with pytest.raises(HTTPException) as exc:
+            sales_invoices.update_invoice("INV-1", upd, _USER)
+        assert exc.value.status_code == 422
