@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ChevronLeft, Plus, Play, Pause, Trash2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, Plus, Play, Pause, Trash2, AlertCircle, CheckCircle2, Download } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { downloadCsv } from "@/components/ui/data-table";
+import { toCsv } from "@/lib/table/process";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getClients } from "@/lib/data/clients";
@@ -291,6 +293,19 @@ export default function RecurringPage() {
     return accounts.find(a => a.id === id)?.account_name ?? id;
   }
 
+  const exportColumns: { key: string; header: string; accessor: (row: RecurringTemplate) => unknown }[] = [
+    { key: "name", header: "Name", accessor: (tpl) => tpl.name },
+    { key: "frequency", header: "Frequency", accessor: (tpl) => tpl.frequency },
+    { key: "next_due", header: "Next Due", accessor: (tpl) => nextDueDate(tpl) },
+    { key: "debit_account", header: "Debit Account", accessor: (tpl) => accountName(tpl.debit_account_id) },
+    { key: "credit_account", header: "Credit Account", accessor: (tpl) => accountName(tpl.credit_account_id) },
+    { key: "amount", header: "Amount (₹)", accessor: (tpl) => (tpl.amount_paise / 100).toFixed(2) },
+    { key: "narration", header: "Narration", accessor: (tpl) => tpl.narration },
+    { key: "start_date", header: "Start Date", accessor: (tpl) => tpl.start_date },
+    { key: "end_date", header: "End Date", accessor: (tpl) => tpl.end_date },
+    { key: "status", header: "Status", accessor: (tpl) => tpl.status },
+  ];
+
   const freqBadge: Record<Frequency, string> = {
     Monthly: "bg-blue-100 text-blue-700",
     Quarterly: "bg-purple-100 text-purple-700",
@@ -310,6 +325,13 @@ export default function RecurringPage() {
           <h1 className="text-xl font-semibold text-[#0F172A]">Recurring Transactions</h1>
           <p className="text-sm text-[#64748B] mt-0.5">{templates.filter(t => t.status === "Active").length} active templates</p>
         </div>
+        <button
+          onClick={() => downloadCsv("recurring-templates.csv", toCsv(templates, exportColumns))}
+          disabled={templates.length === 0}
+          className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-md hover:bg-[#F8FAFC] disabled:opacity-50"
+        >
+          <Download size={13} /> Export
+        </button>
         <button
           onClick={openModal}
           className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700"
