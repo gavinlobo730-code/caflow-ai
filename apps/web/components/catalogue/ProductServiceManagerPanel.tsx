@@ -22,6 +22,7 @@ import {
   formatServiceRate, formatServicePrice, formatServiceKind, type ServiceCatalogueItem,
 } from "@/lib/catalogue/service";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import { Modal } from "@/components/ui/modal";
 import { buildServices, SERVICE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
@@ -43,7 +44,12 @@ export function ProductServiceManagerPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [editing, setEditing] = useState<ServiceCatalogueItem | "new" | null>(null);
-  const [showImport, setShowImport] = useState(false);
+  // Import is a two-step flow: first capture ONE opening-balance "as of"
+  // date for the whole file (an opening-stock import is a single conversion
+  // event, not N independent ones — see handleImport), then the normal
+  // upload/preview/import CsvImportModal.
+  const [importStep, setImportStep] = useState<"closed" | "date" | "csv">("closed");
+  const [openingBalanceDate, setOpeningBalanceDate] = useState("");
   const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -191,7 +197,7 @@ export function ProductServiceManagerPanel({
     let imported = 0;
     let skipped = 0;
     const skippedDetail: string[] = [];
-    const res = (await api.serviceCatalogue.bulkCreate(records)) as ApiResp<{
+    const res = (await api.serviceCatalogue.bulkCreate(records, openingBalanceDate)) as ApiResp<{
       created: unknown[];
       duplicates: { name?: string }[];
       errors: { name?: string; error: string }[];
@@ -279,7 +285,7 @@ export function ProductServiceManagerPanel({
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowImport(true)}
+            onClick={() => { setOpeningBalanceDate(""); setImportStep("date"); }}
             className="flex items-center gap-1.5 text-sm border border-[#E2E8F0] text-[#475569] px-3.5 py-2 rounded-lg hover:bg-[#F8FAFC] whitespace-nowrap"
           >
             <Upload size={15} /> Import
@@ -374,13 +380,37 @@ export function ProductServiceManagerPanel({
         />
       )}
 
-      {showImport && (
+      {importStep === "date" && (
+        <Modal title="Opening stock date" onClose={() => setImportStep("closed")} maxWidthClass="max-w-md">
+          <p className="text-sm text-[#64748B]">
+            If your file sets opening stock (quantity/value) for any products, what date is that stock <strong>as of</strong>?
+            This is when the stock existed — not today, or whenever you happen to be importing. Leave blank to default to your client&apos;s financial-year start.
+          </p>
+          <label className="block space-y-1">
+            <span className="block text-xs font-medium text-[#475569]">Opening balance as of (optional)</span>
+            <input
+              type="date"
+              autoFocus
+              value={openingBalanceDate}
+              onChange={(e) => setOpeningBalanceDate(e.target.value)}
+              className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </label>
+          <p className="text-xs text-[#94A3B8]">No opening stock in this file? Leave this blank and continue — it's ignored for rows with no opening quantity/value.</p>
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={() => setImportStep("closed")} className="text-sm px-3.5 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+            <button onClick={() => setImportStep("csv")} className="text-sm px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Continue</button>
+          </div>
+        </Modal>
+      )}
+
+      {importStep === "csv" && (
         <CsvImportModal
           title="Import Products & Services"
           columns={SERVICE_IMPORT_COLUMNS}
           templateFilename="products-services-template.csv"
           onImport={handleImport}
-          onClose={() => setShowImport(false)}
+          onClose={() => setImportStep("closed")}
         />
       )}
     </div>

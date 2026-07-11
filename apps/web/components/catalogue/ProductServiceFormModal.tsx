@@ -30,7 +30,7 @@ import {
 const EMPTY_FORM: ServiceFormInput = {
   name: "", description: "", kind: "service", hsn_sac: "", gstRate: 18,
   rate: "", purchasePrice: "", category: "", notes: "",
-  unit: "", openingQty: "", openingCost: "",
+  unit: "", openingQty: "", openingCost: "", openingBalanceDate: "",
 };
 
 const inputCls = "w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500";
@@ -161,6 +161,14 @@ export function ProductServiceFormModal({
         {form.kind === "good" && !stockAlreadyStarted && (
           <Field label="Opening stock value (₹ total, optional)" error={attempted ? v.errors.openingCost : undefined}>
             <input type="number" min="0" step="0.01" value={form.openingCost} onChange={(e) => set("openingCost", e.target.value)} placeholder="Total cost of the opening quantity, not per-unit" className={inputCls} />
+          </Field>
+        )}
+        {form.kind === "good" && !stockAlreadyStarted && (form.openingQty || form.openingCost) && (
+          <Field label="Opening balance as of (optional)">
+            <input type="date" value={form.openingBalanceDate} onChange={(e) => set("openingBalanceDate", e.target.value)} className={inputCls} />
+            <span className="block text-[11px] text-[#94A3B8] mt-1">
+              The date this stock is on hand as of — not when you're entering it. Defaults to your client&apos;s financial-year start if left blank.
+            </span>
           </Field>
         )}
 
