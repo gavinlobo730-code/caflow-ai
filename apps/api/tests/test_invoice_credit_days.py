@@ -9,8 +9,8 @@ Verifies (CAFLOW customer-module task):
 All dates are plain calendar arithmetic; all money is integer paise elsewhere.
 """
 import routers.sales_invoices as si
-from routers.sales_invoices import _resolve_credit_terms, _apply_credit_days_due_date
-from models.invoices import SalesInvoiceIn, InvoiceLineIn
+from routers.sales_invoices import _resolve_credit_terms, _apply_credit_days_due_date, _apply_due_date_credit_days
+from models.invoices import SalesInvoiceIn, InvoiceLineIn, SalesInvoiceUpdateIn
 from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
 
 FIRM = "FIRM-A"
@@ -77,6 +77,29 @@ def test_apply_noop_when_no_credit_days():
     assert "due_date" not in d
 
 
+# ── reverse resolver: due_date edited directly -> re-derive credit_days ──────
+# Mirror of _apply_credit_days_due_date, so the "Terms" label (a pure function
+# of the stored credit_days) never goes stale after a due-date-only edit —
+# e.g. the post-issue Edit Details modal, which only ever sends due_date.
+
+def test_apply_reverse_recompute_on_edit():
+    d = {"due_date": "2026-04-30"}
+    _apply_due_date_credit_days(d, "2026-04-10")
+    assert d["credit_days"] == 20
+
+
+def test_apply_reverse_noop_when_credit_days_already_present():
+    d = {"due_date": "2026-04-30", "credit_days": 99}
+    _apply_due_date_credit_days(d, "2026-04-10")
+    assert d["credit_days"] == 99
+
+
+def test_apply_reverse_noop_when_no_due_date():
+    d = {}
+    _apply_due_date_credit_days(d, "2026-04-10")
+    assert "credit_days" not in d
+
+
 # ── create flow (real DB path via FakeDB) ────────────────────────────────────
 
 def test_new_invoice_defaults_due_date_from_customer(monkeypatch):
@@ -118,3 +141,24 @@ def test_existing_invoice_unaffected_by_customer_credit_days_change(monkeypatch)
     second = si.create_invoice(_inv(invoice_no="CD-002"), CALLER)["data"]
     assert second["credit_days"] == 60
     assert second["due_date"] == "2026-06-09"
+
+
+# ── post-issue edit: due_date changes directly must resync credit_days ──────
+# Regression test for the "Terms doesn't change when I edit the due date"
+# report: the Edit Details modal only ever sends due_date, never credit_days.
+
+def test_edit_due_date_on_issued_invoice_resyncs_credit_days(monkeypatch):
+    db = _setup(monkeypatch, credit_days=15)
+    inv = si.create_invoice(_inv(), CALLER)["data"]
+    assert inv["due_date"] == "2026-04-25" and inv["credit_days"] == 15
+
+    for row in db.rows("client_sales_invoices"):
+        if row["id"] == inv["id"]:
+            row["status"] = "issued"
+
+    resp = si.update_invoice(inv["id"], SalesInvoiceUpdateIn(due_date="2026-06-01"), CALLER)
+    assert resp["success"] is True
+
+    stored = next(r for r in db.rows("client_sales_invoices") if r["id"] == inv["id"])
+    assert stored["due_date"] == "2026-06-01"
+    assert stored["credit_days"] == 52  # Apr 10 -> Jun 01
