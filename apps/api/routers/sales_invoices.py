@@ -1324,7 +1324,11 @@ def issue_invoice(
             from domain.inventory_service import apply_sale_to_inventory
             apply_sale_to_inventory(
                 db, firm_id=current_user.get("firm_id", ""), client_id=updated_inv.get("client_id", ""),
-                invoice=updated_inv, created_by=current_user.get("auth_user_id"),
+                # journal_entries.created_by FK references users(id), not the
+                # auth_user_id (JWT sub / auth.users.id) — see
+                # phase2_journal_service.reverse_entry's created_by a few
+                # lines above, which already gets this right.
+                invoice=updated_inv, created_by=current_user.get("id"),
             )
         except Exception as e:
             _logger.error("issue_invoice: inventory posting failed for %s: %s", invoice_id, e, exc_info=True)
@@ -1423,7 +1427,8 @@ def cancel_invoice(
             from domain.inventory_service import reverse_sale_stock
             reverse_sale_stock(
                 db, firm_id=firm_id or "", client_id=inv.get("client_id", ""), invoice_id=invoice_id,
-                invoice_no=inv.get("invoice_no", ""), created_by=current_user.get("auth_user_id"),
+                # journal_entries.created_by FK references users(id), not auth_user_id.
+                invoice_no=inv.get("invoice_no", ""), created_by=current_user.get("id"),
             )
         except Exception as e:
             _logger.error("cancel_invoice: inventory reversal failed for %s: %s", invoice_id, e, exc_info=True)

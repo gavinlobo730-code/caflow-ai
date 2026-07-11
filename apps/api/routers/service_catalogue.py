@@ -247,7 +247,8 @@ def create_service(
                     db, firm_id=firm_id, client_id=client_id, service_catalogue_id=created["id"],
                     movement_date=now[:10], opening_qty=payload.get("opening_qty_units"),
                     opening_cost_paise=payload.get("opening_cost_paise"),
-                    created_by=current_user.get("auth_user_id"),
+                    # journal_entries.created_by FK references users(id), not auth_user_id.
+                    created_by=current_user.get("id"),
                 )
             except Exception as e:
                 _logger.error("create_service: opening balance seeding failed for %s: %s", created.get("id"), e, exc_info=True)
@@ -409,7 +410,8 @@ def bulk_create_services(
             # Never blocks the import: seeding failures are logged, not raised.
             from domain.inventory_service import seed_opening_balances_batch
             seed_opening_balances_batch(
-                db, firm_id=firm_id, created_by=current_user.get("auth_user_id"), rows=rows,
+                # journal_entries.created_by FK references users(id), not auth_user_id.
+                db, firm_id=firm_id, created_by=current_user.get("id"), rows=rows,
             )
 
         return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors})
@@ -482,7 +484,8 @@ def update_service(
                     db, firm_id=firm_id, client_id=owned[0]["client_id"], service_catalogue_id=service_id,
                     movement_date=datetime.now(timezone.utc).date().isoformat(),
                     opening_qty=patch.get("opening_qty_units"), opening_cost_paise=patch.get("opening_cost_paise"),
-                    created_by=current_user.get("auth_user_id"),
+                    # journal_entries.created_by FK references users(id), not auth_user_id.
+                    created_by=current_user.get("id"),
                 )
             except Exception as e:
                 _logger.error("update_service: opening balance seeding failed for %s: %s", service_id, e, exc_info=True)

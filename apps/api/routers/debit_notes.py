@@ -290,7 +290,8 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
             from domain.inventory_service import apply_debit_note_to_inventory
             apply_debit_note_to_inventory(
                 db, firm_id=firm_id or "", client_id=client_id,
-                debit_note=updated, created_by=current_user.get("auth_user_id"),
+                # journal_entries.created_by FK references users(id), not auth_user_id.
+                debit_note=updated, created_by=current_user.get("id"),
             )
         except Exception as e:
             _logger.error("issue_debit_note: inventory apply failed for %s: %s", dn_id, e, exc_info=True)

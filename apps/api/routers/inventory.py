@@ -136,7 +136,8 @@ def adjust_stock(
             db, firm_id=firm_id or "", client_id=data.client_id, service_catalogue_id=service_catalogue_id,
             movement_date=data.adjustment_date, quantity=data.quantity, direction=data.direction,
             reverse_itc=data.reverse_itc, reference_no=reference_no,
-            created_by=current_user.get("auth_user_id"),
+            # journal_entries.created_by FK references users(id), not auth_user_id.
+            created_by=current_user.get("id"),
         )
         log_event(
             firm_id or "", "inventory_adjustment", service_catalogue_id, "create",
@@ -190,7 +191,8 @@ def writedown_stock_to_nrv(
         movement = apply_nrv_writedown(
             db, firm_id=firm_id or "", client_id=data.client_id, service_catalogue_id=service_catalogue_id,
             movement_date=data.writedown_date, nrv_per_unit_paise=data.nrv_per_unit_paise,
-            reference_no=reference_no, created_by=current_user.get("auth_user_id"),
+            # journal_entries.created_by FK references users(id), not auth_user_id.
+            reference_no=reference_no, created_by=current_user.get("id"),
         )
         log_event(
             firm_id or "", "inventory_nrv_writedown", service_catalogue_id, "create",

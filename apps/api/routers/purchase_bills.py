@@ -807,7 +807,8 @@ def receive_purchase_bill(
             from domain.inventory_service import apply_purchase_to_inventory
             apply_purchase_to_inventory(
                 db, firm_id=current_user.get("firm_id", ""), client_id=updated_bill.get("client_id", ""),
-                bill=updated_bill, created_by=current_user.get("auth_user_id"),
+                # journal_entries.created_by FK references users(id), not auth_user_id.
+                bill=updated_bill, created_by=current_user.get("id"),
             )
         except Exception as e:
             _logger.error("receive_purchase_bill: inventory posting failed for %s: %s", bill_id, e, exc_info=True)
@@ -903,7 +904,8 @@ def cancel_purchase_bill(
             reverse_purchase_stock(
                 db, firm_id=firm_id or "", client_id=bill.get("client_id", ""), bill_id=bill_id,
                 bill_reference=bill.get("bill_no") or bill.get("our_reference") or bill_id,
-                created_by=current_user.get("auth_user_id"),
+                # journal_entries.created_by FK references users(id), not auth_user_id.
+                created_by=current_user.get("id"),
             )
         except Exception as e:
             _logger.error("cancel_purchase_bill: inventory reversal failed for %s: %s", bill_id, e, exc_info=True)
