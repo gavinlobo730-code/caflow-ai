@@ -22,6 +22,8 @@ from domain.inventory_service import (
     reverse_purchase_stock,
     apply_credit_note_to_inventory,
     apply_debit_note_to_inventory,
+    record_stock_adjustment,
+    apply_stock_adjustment,
 )
 
 
@@ -568,3 +570,133 @@ def test_apply_credit_note_to_inventory_backfills_journal_entry_id_onto_every_li
     return_rows = [r for r in db.store["inventory_stock_ledger"] if r["movement_type"] == "sale_return"]
     assert len(return_rows) == 2
     assert all(r["journal_entry_id"] == "journal-invret-1" for r in return_rows)
+
+
+# ── Manual stock adjustment ──────────────────────────────────────────────────
+
+def test_record_stock_adjustment_decrease_prices_at_current_average():
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    record_stock_in(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="opening",
+    )
+    row = record_stock_adjustment(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-10", quantity=Decimal("3"), direction="decrease", reference_no="ADJ-1",
+    )
+    assert row["movement_type"] == "adjustment"
+    assert row["running_qty_units"] == "7"
+    assert row["running_value_paise"] == 7_000_00
+    assert row["running_avg_cost_paise"] == 1_000_00
+
+
+def test_record_stock_adjustment_increase_keeps_average_stable():
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    record_stock_in(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="opening",
+    )
+    # A physical count found 5 MORE units than the books show — value it at
+    # the CURRENT average (Rs 1000/unit) rather than diluting/inflating the
+    # average with an assumed cost for stock of unknown origin.
+    row = record_stock_adjustment(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-10", quantity=Decimal("5"), direction="increase", reference_no="ADJ-2",
+    )
+    assert row["movement_type"] == "adjustment"
+    assert row["running_qty_units"] == "15"
+    assert row["running_avg_cost_paise"] == 1_000_00  # unchanged
+    assert row["running_value_paise"] == 15_000_00
+
+
+def test_apply_stock_adjustment_writeoff_reverses_itc_using_item_gst_rate(monkeypatch):
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget", gst_rate_bps=1800)
+    record_stock_in(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="opening",
+    )
+
+    import services.phase2_journal_service as pjs
+    accounts = {"%Inventor%": "acct-inventory", "%Write%off%": "acct-writeoff", "%GST Input%": "acct-gst-input"}
+    monkeypatch.setattr(pjs.phase2_journal_service, "_find_account",
+                        lambda db, firm_id, client_id, pattern, system_key=None: accounts[pattern])
+    captured = {}
+    def _fake_create_journal(**kwargs):
+        captured.update(kwargs)
+        return "journal-woff-1"
+    monkeypatch.setattr(pjs.phase2_journal_service, "_create_journal", lambda db, **k: _fake_create_journal(**k))
+
+    movement = apply_stock_adjustment(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-15", quantity=Decimal("2"), direction="decrease",
+        reverse_itc=True, reference_no="ADJ-3",
+    )
+
+    assert movement["running_qty_units"] == "8"
+    # 2 units @ Rs 1000 avg = Rs 2000 write-off value; 18% ITC reversal = Rs 360.
+    lines = captured["lines"]
+    assert any(l["account_id"] == "acct-writeoff" and l["debit_paise"] == 2_000_00 for l in lines)
+    assert any(l["account_id"] == "acct-writeoff" and l["debit_paise"] == 360_00 for l in lines)
+    gst_credit = next((l for l in lines if l["account_id"] == "acct-gst-input"), None)
+    assert gst_credit is not None
+    assert gst_credit["credit_paise"] == 360_00
+    assert captured["entry_type"] == "Journal"  # journal_entries.entry_type CHECK constraint
+    ledger = get_stock_ledger(db, "good-1")
+    assert ledger[-1]["journal_entry_id"] == "journal-woff-1"
+
+
+def test_apply_stock_adjustment_writeoff_skips_itc_reversal_when_not_requested(monkeypatch):
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget", gst_rate_bps=1800)
+    record_stock_in(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="opening",
+    )
+
+    import services.phase2_journal_service as pjs
+    accounts = {"%Inventor%": "acct-inventory", "%Write%off%": "acct-writeoff"}
+    monkeypatch.setattr(pjs.phase2_journal_service, "_find_account",
+                        lambda db, firm_id, client_id, pattern, system_key=None: accounts[pattern])
+    captured = {}
+    monkeypatch.setattr(pjs.phase2_journal_service, "_create_journal",
+                        lambda db, **k: captured.update(k) or "journal-woff-2")
+
+    apply_stock_adjustment(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-15", quantity=Decimal("2"), direction="decrease",
+        reverse_itc=False, reference_no="ADJ-4",
+    )
+
+    assert len(captured["lines"]) == 2  # write-off + inventory only, no ITC lines
+
+
+def test_apply_stock_adjustment_increase_posts_surplus_journal(monkeypatch):
+    db = _FakeDB()
+    _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
+    record_stock_in(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-01", quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="opening",
+    )
+
+    import services.phase2_journal_service as pjs
+    accounts = {"%Inventor%": "acct-inventory", "%Miscellaneous Income%": "acct-misc-income"}
+    monkeypatch.setattr(pjs.phase2_journal_service, "_find_account",
+                        lambda db, firm_id, client_id, pattern, system_key=None: accounts[pattern])
+    captured = {}
+    monkeypatch.setattr(pjs.phase2_journal_service, "_create_journal",
+                        lambda db, **k: captured.update(k) or "journal-surp-1")
+
+    movement = apply_stock_adjustment(
+        db, firm_id="firm-1", client_id="client-1", service_catalogue_id="good-1",
+        movement_date="2026-04-15", quantity=Decimal("5"), direction="increase",
+        reverse_itc=False, reference_no="ADJ-5",
+    )
+
+    assert movement["running_qty_units"] == "15"
+    assert captured["entry_type"] == "Journal"
+    lines = captured["lines"]
+    assert any(l["account_id"] == "acct-inventory" and l["debit_paise"] == 5_000_00 for l in lines)
+    assert any(l["account_id"] == "acct-misc-income" and l["credit_paise"] == 5_000_00 for l in lines)
