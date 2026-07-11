@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Upload, AlertCircle, CheckCircle, Trash2, X } from "lucide-react";
+import { Plus, Upload, AlertCircle, CheckCircle, Trash2, X, Loader2 } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
@@ -1562,6 +1562,7 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [issuingId, setIssuingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1600,6 +1601,8 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
   useEffect(() => { load(); }, [load]);
 
   async function issueDebitNote(id: string) {
+    if (issuingId) return;
+    setIssuingId(id);
     try {
       const token = await getAuthToken();
       const result = await apiCall(`/api/debit-notes/${id}/issue`, "POST", undefined, token);
@@ -1608,6 +1611,8 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
       load();
     } catch (e) {
       setMsg({ type: "err", text: e instanceof Error ? e.message : "Error issuing debit note" });
+    } finally {
+      setIssuingId(null);
     }
   }
 
@@ -1732,8 +1737,12 @@ function DebitNotes({ clientId, financialYear }: { clientId: string; financialYe
         bulkActions={bulkActions}
         rowActions={(d) =>
           d.status === "draft" ? (
-            <button onClick={() => issueDebitNote(d.id)} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-              <CheckCircle size={11} /> Issue
+            <button
+              onClick={() => issueDebitNote(d.id)}
+              disabled={issuingId === d.id}
+              className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
+            >
+              {issuingId === d.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
             </button>
           ) : null
         }
