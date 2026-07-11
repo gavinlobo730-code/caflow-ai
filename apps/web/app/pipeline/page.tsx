@@ -223,13 +223,17 @@ function toApiBody(lead: Lead) {
   };
 }
 
-async function apiLoadLeads(): Promise<Lead[]> {
-  const json = await apiFetch("/api/lifecycle/leads?limit=200");
+// Backend enforces no upper bound on this endpoint's limit (routers/lifecycle.py
+// list_leads) — request a generously high ceiling so it's never hit in practice.
+const LEADS_FETCH_LIMIT = 2000;
+
+async function apiLoadLeads(): Promise<{ leads: Lead[]; capped: boolean }> {
+  const json = await apiFetch(`/api/lifecycle/leads?limit=${LEADS_FETCH_LIMIT}`);
   if (!json.success) throw new Error(json.error ?? "Failed to load leads");
+  const rawRows = json.data as Record<string, unknown>[];
   // Drop soft-deleted rows on the raw stage string before mapping to Lead.
-  return (json.data as Record<string, unknown>[])
-    .filter((row) => row.stage !== "_deleted")
-    .map(fromApiLead);
+  const leads = rawRows.filter((row) => row.stage !== "_deleted").map(fromApiLead);
+  return { leads, capped: rawRows.length === LEADS_FETCH_LIMIT };
 }
 
 async function apiCreateLead(lead: Lead): Promise<Lead> {
@@ -899,6 +903,7 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
 export default function PipelinePage() {
   const { toast } = useToast();
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [leadsCapped, setLeadsCapped] = useState(false);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editLead, setEditLead] = useState<Lead | null>(null);
@@ -910,8 +915,9 @@ export default function PipelinePage() {
     setLoading(true);
     setLoadError(null);
     apiLoadLeads()
-      .then((data) => {
-        setLeads(data);
+      .then(({ leads, capped }) => {
+        setLeads(leads);
+        setLeadsCapped(capped);
       })
       .catch((e) => {
         setLoadError(e instanceof Error ? e.message : "Failed to load leads");
@@ -1027,7 +1033,7 @@ export default function PipelinePage() {
           <p className="text-xs text-[#64748B]">Total Leads</p>
           <p className="text-xl font-bold text-[#0F172A] mt-0.5">
             <Users size={14} className="inline mr-1 text-blue-500" />
-            {totalLeads}
+            {totalLeads}{leadsCapped ? "+" : ""}
           </p>
         </div>
         <div className="bg-white rounded-lg border border-[#F1F5F9] px-4 py-3">

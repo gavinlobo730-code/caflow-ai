@@ -83,10 +83,20 @@ function paiseToCurrency(p: number) {
   return `₹${(p / 100).toLocaleString("en-IN")}`;
 }
 
+// /api/lifecycle/renewals returns renewals across ALL of the firm's clients
+// (no client_id filter param) capped at `limit`, and this page filters down
+// to just this client afterward — so a low limit can silently omit renewals
+// for THIS client if enough other clients' renewals sort ahead of them, not
+// just when this client alone has many. Request a generously high ceiling
+// (no server-side upper bound enforced — routers/lifecycle.py list_renewals)
+// so that's never a real risk, and still detect the cap as a safety net.
+const RENEWALS_FETCH_LIMIT = 2000;
+
 export default function ClientLifecyclePage() {
   const { clientId } = useClientNav();
   const [workflows, setWorkflows] = useState<OnboardingWorkflow[]>([]);
   const [renewals, setRenewals] = useState<Renewal[]>([]);
+  const [renewalsCapped, setRenewalsCapped] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creatingWorkflow, setCreatingWorkflow] = useState(false);
@@ -106,13 +116,14 @@ export default function ClientLifecyclePage() {
         ApiResponse<Renewal[]>
       ] = await Promise.all([
         apiFetch(`/api/lifecycle/onboarding?client_id=${clientId}`),
-        apiFetch(`/api/lifecycle/renewals?limit=50`),
+        apiFetch(`/api/lifecycle/renewals?limit=${RENEWALS_FETCH_LIMIT}`),
       ]);
       setWorkflows(wfJson.success ? wfJson.data : []);
       const clientRenewals = rnJson.success
         ? rnJson.data.filter((r: Renewal & { client_id?: string }) => r.client_id === clientId)
         : [];
       setRenewals(clientRenewals);
+      setRenewalsCapped(rnJson.success && rnJson.data.length === RENEWALS_FETCH_LIMIT);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -291,7 +302,7 @@ export default function ClientLifecyclePage() {
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-[#182350]">
             Renewals
-            <span className="ml-2 text-xs text-gray-500 font-normal">({renewals.length})</span>
+            <span className="ml-2 text-xs text-gray-500 font-normal">({renewals.length}{renewalsCapped ? "+" : ""})</span>
           </h2>
           <button
             onClick={() => setRenewalModal(true)}

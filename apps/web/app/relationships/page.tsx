@@ -9,6 +9,10 @@ import { formatDate } from "@/lib/services/formatting";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+// See loadEntities() below — no server-side ceiling on this endpoint, so this
+// is just a generous request size, not an enforced cap.
+const ENTITY_FETCH_LIMIT = 2000;
+
 async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
@@ -98,6 +102,7 @@ const EMPTY_FORM = {
 
 export default function RelationshipsPage() {
   const [entities, setEntities] = useState<Entity[]>([]);
+  const [entitiesCapped, setEntitiesCapped] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -122,9 +127,13 @@ export default function RelationshipsPage() {
     setLoading(true);
     setError(null);
     try {
-      const json: ApiResponse<Entity[]> = await apiFetch("/api/relationships/entities");
+      // Backend defaults to 50 rows with no upper bound enforced (routers/relationships.py
+      // list_entities) — request a generously high ceiling so it's never hit in practice,
+      // and still detect it below in case some firm's registry ever does exceed it.
+      const json: ApiResponse<Entity[]> = await apiFetch(`/api/relationships/entities?limit=${ENTITY_FETCH_LIMIT}`);
       if (!json.success) throw new Error(json.error ?? "Failed to load entities");
       setEntities(json.data);
+      setEntitiesCapped(json.data.length === ENTITY_FETCH_LIMIT);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -211,7 +220,8 @@ export default function RelationshipsPage() {
         <div>
           <h1 className="text-2xl font-bold text-[#182350]">Entity Registry</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {entities.length} entities across all clients
+            {entities.length}{entitiesCapped ? "+" : ""} entities across all clients
+            {entitiesCapped && " — refine your search to see more"}
           </p>
         </div>
         <div className="flex items-center gap-2">

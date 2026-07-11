@@ -223,15 +223,22 @@ function TriggersTab() {
 
 // ── Tab: Profiles ─────────────────────────────────────────────────────────────
 
+// Backend hard-caps this endpoint at 100 (routers/memory_intelligence.py,
+// `le=100`) — request the max allowed and detect if we still hit it.
+const PROFILES_FETCH_LIMIT = 100;
+
 function ProfilesTab() {
   const [profiles, setProfiles] = useState<ClientProfile[]>([]);
+  const [capped, setCapped] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await api.memory.listProfiles() as { data: { profiles: ClientProfile[] } };
-        setProfiles(res.data?.profiles ?? []);
+        const res = await api.memory.listProfiles({ limit: String(PROFILES_FETCH_LIMIT) }) as { data: { profiles: ClientProfile[] } };
+        const rows = res.data?.profiles ?? [];
+        setProfiles(rows);
+        setCapped(rows.length === PROFILES_FETCH_LIMIT);
       } catch {
         setProfiles([]);
       } finally {
@@ -255,7 +262,12 @@ function ProfilesTab() {
   );
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    <div>
+      <p className="text-xs text-slate-400 mb-3">
+        {profiles.length}{capped ? "+" : ""} client profile{profiles.length === 1 ? "" : "s"}
+        {capped && " — showing the first 100"}
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
       {profiles.map((p) => {
         const scoreColor =
           p.compliance_score >= 80 ? "text-emerald-600" :
@@ -317,22 +329,30 @@ function ProfilesTab() {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
 
 // ── Tab: Anomalies ────────────────────────────────────────────────────────────
 
+// Backend hard-caps this endpoint at 100 (routers/memory_intelligence.py,
+// `le=100`) — request the max allowed and detect if we still hit it.
+const ANOMALIES_FETCH_LIMIT = 100;
+
 function AnomaliesTab() {
   const [anomalies, setAnomalies] = useState<PatternAnomaly[]>([]);
+  const [capped, setCapped] = useState(false);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.memory.listAnomalies({ status: "open" }) as { data: { anomalies: PatternAnomaly[] } };
-      setAnomalies(res.data?.anomalies ?? []);
+      const res = await api.memory.listAnomalies({ status: "open", limit: String(ANOMALIES_FETCH_LIMIT) }) as { data: { anomalies: PatternAnomaly[] } };
+      const rows = res.data?.anomalies ?? [];
+      setAnomalies(rows);
+      setCapped(rows.length === ANOMALIES_FETCH_LIMIT);
     } catch {
       setAnomalies([]);
     } finally {
@@ -368,6 +388,10 @@ function AnomaliesTab() {
 
   return (
     <div className="space-y-3">
+      <p className="text-xs text-slate-400">
+        {anomalies.length}{capped ? "+" : ""} open anomal{anomalies.length === 1 ? "y" : "ies"}
+        {capped && " — showing the first 100"}
+      </p>
       {anomalies.map((a) => {
         const isSpike = a.actual_value > a.baseline_value;
         const DeviationIcon = isSpike ? TrendingUp : TrendingDown;
