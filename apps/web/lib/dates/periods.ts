@@ -1,8 +1,17 @@
 /**
  * Shared period-picker presets and date-range math for transaction list
- * pages (Sales Invoices, Purchase Bills, Bank, ...) — one canonical
- * implementation instead of each page hand-rolling its own FY math.
+ * pages (Sales Invoices, Purchase Bills, Bank, ...) and the multi-period
+ * comparison columns on P&L / Balance Sheet — one canonical implementation
+ * instead of each page hand-rolling its own FY math.
+ *
+ * Dates are parsed and formatted using LOCAL calendar components throughout
+ * — never round-tripped through UTC via Date#toISOString (see lib/dateMath.ts:
+ * IST is UTC+5:30, so local midnight is 18:30 UTC on the PREVIOUS calendar
+ * day, and toISOString().split("T")[0] silently shifts every date back one
+ * day for any browser running in an ahead-of-UTC timezone — i.e. every
+ * India-based user of this product).
  */
+import { toLocalISO, todayLocalISO } from "../dateMath.ts";
 
 export type PeriodMode =
   | "today"
@@ -16,10 +25,6 @@ export type PeriodMode =
 export interface DateRange {
   start: string; // YYYY-MM-DD
   end: string;   // YYYY-MM-DD
-}
-
-function toIso(d: Date): string {
-  return d.toISOString().split("T")[0];
 }
 
 function addDays(d: Date, n: number): Date {
@@ -61,20 +66,20 @@ export function periodOptionLabel(mode: PeriodMode, financialYear: string): stri
 
 /**
  * Resolve a period mode to a concrete [start, end] date range.
- * `todayIso` is injectable for tests; defaults to the real current date.
+ * `todayIso` is injectable for tests; defaults to the real current LOCAL date.
  */
 export function resolvePeriodRange(
   mode: PeriodMode,
   financialYear: string,
   custom: { from: string; to: string },
-  todayIso: string = toIso(new Date()),
+  todayIso: string = todayLocalISO(),
 ): DateRange {
   const today = new Date(`${todayIso}T00:00:00`);
   switch (mode) {
     case "today":
       return { start: todayIso, end: todayIso };
     case "yesterday": {
-      const y = toIso(addDays(today, -1));
+      const y = toLocalISO(addDays(today, -1));
       return { start: y, end: y };
     }
     case "this_week": {
@@ -83,11 +88,11 @@ export function resolvePeriodRange(
       const mondayOffset = dow === 0 ? -6 : 1 - dow;
       const monday = addDays(today, mondayOffset);
       const sunday = addDays(monday, 6);
-      return { start: toIso(monday), end: toIso(sunday) };
+      return { start: toLocalISO(monday), end: toLocalISO(sunday) };
     }
     case "last_3_months": {
       const start = new Date(today.getFullYear(), today.getMonth() - 2, 1);
-      return { start: toIso(start), end: todayIso };
+      return { start: toLocalISO(start), end: todayIso };
     }
     case "last_fy":
       return fyRangeFor(shiftFY(financialYear, -1));
@@ -96,5 +101,147 @@ export function resolvePeriodRange(
     case "this_fy":
     default:
       return fyRangeFor(financialYear);
+  }
+}
+
+// ── Multi-period comparison columns (P&L / Balance Sheet) ──────────────────
+// QuickBooks' "Display columns by" — pick a period (PeriodMode above), then
+// split it into Monthly/Quarterly/Yearly columns instead of one lump sum, so
+// a CA can eyeball a trend across a financial year without exporting to Excel.
+
+export type Granularity = "total" | "month" | "quarter" | "year";
+
+export const GRANULARITY_OPTIONS: { value: Granularity; label: string }[] = [
+  { value: "total", label: "Total" },
+  { value: "month", label: "Monthly" },
+  { value: "quarter", label: "Quarterly" },
+  { value: "year", label: "Yearly" },
+];
+
+export interface PeriodColumn {
+  label: string;
+  start: string;
+  end: string;
+}
+
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function ymd(y: number, m: number, d: number): string {
+  return `${y}-${pad2(m)}-${pad2(d)}`;
+}
+
+/** Last day-of-month for 1-indexed month `m` (e.g. m=4 → 30 for April). */
+function lastDayOfMonth(y: number, m: number): number {
+  return new Date(y, m, 0).getDate();
+}
+
+function formatOneDate(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return `${d} ${MONTH_ABBR[m - 1]} ${y}`;
+}
+
+export function formatRangeLabel(start: string, end: string): string {
+  return start === end ? formatOneDate(start) : `${formatOneDate(start)} – ${formatOneDate(end)}`;
+}
+
+function totalColumnLabel(mode: PeriodMode, financialYear: string, start: string, end: string): string {
+  if (mode === "this_fy") return `FY ${financialYear}`;
+  if (mode === "last_fy") return `FY ${shiftFY(financialYear, -1)}`;
+  return formatRangeLabel(start, end);
+}
+
+function splitByMonth(start: string, end: string): PeriodColumn[] {
+  const cols: PeriodColumn[] = [];
+  let [y, m] = start.split("-").map(Number);
+  for (;;) {
+    const monthStart = ymd(y, m, 1);
+    const monthEnd = ymd(y, m, lastDayOfMonth(y, m));
+    cols.push({
+      label: `${MONTH_ABBR[m - 1]} ${y}`,
+      start: monthStart < start ? start : monthStart,
+      end: monthEnd > end ? end : monthEnd,
+    });
+    if (monthEnd >= end) break;
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return cols;
+}
+
+/** Indian FY quarter start month (1/4/7/10) containing calendar month `m`. */
+function quarterStartMonth(m: number): number {
+  if (m >= 4 && m <= 6) return 4;
+  if (m >= 7 && m <= 9) return 7;
+  if (m >= 10 && m <= 12) return 10;
+  return 1;
+}
+
+function splitByQuarter(start: string, end: string): PeriodColumn[] {
+  const cols: PeriodColumn[] = [];
+  const [y0, m0] = start.split("-").map(Number);
+  let y = y0;
+  let qm = quarterStartMonth(m0);
+  for (;;) {
+    const qStart = ymd(y, qm, 1);
+    let endM = qm + 2, endY = y;
+    if (endM > 12) { endM -= 12; endY += 1; }
+    const qEnd = ymd(endY, endM, lastDayOfMonth(endY, endM));
+    cols.push({
+      label: `${MONTH_ABBR[qm - 1]}–${MONTH_ABBR[endM - 1]} ${y}`,
+      start: qStart < start ? start : qStart,
+      end: qEnd > end ? end : qEnd,
+    });
+    if (qEnd >= end) break;
+    qm += 3;
+    if (qm > 12) { qm -= 12; y += 1; }
+  }
+  return cols;
+}
+
+function splitByYear(start: string, end: string): PeriodColumn[] {
+  const cols: PeriodColumn[] = [];
+  const [y0, m0] = start.split("-").map(Number);
+  let fyStartYear = m0 >= 4 ? y0 : y0 - 1;
+  for (;;) {
+    const fyStart = ymd(fyStartYear, 4, 1);
+    const fyEnd = ymd(fyStartYear + 1, 3, 31);
+    cols.push({
+      label: `FY ${fyStartYear}-${String(fyStartYear + 1).slice(-2)}`,
+      start: fyStart < start ? start : fyStart,
+      end: fyEnd > end ? end : fyEnd,
+    });
+    if (fyEnd >= end) break;
+    fyStartYear += 1;
+  }
+  return cols;
+}
+
+/**
+ * Resolve a period mode to its overall [start, end], then split it into
+ * display columns per `granularity`. "total" (the default) always returns
+ * exactly one column spanning the whole range — identical to today's single-
+ * period statements, so existing call sites are unaffected until they opt in
+ * to a finer granularity.
+ */
+export function splitPeriodColumns(
+  mode: PeriodMode,
+  financialYear: string,
+  custom: { from: string; to: string },
+  granularity: Granularity,
+  todayIso?: string,
+): PeriodColumn[] {
+  const { start, end } = resolvePeriodRange(mode, financialYear, custom, todayIso);
+  if (start > end) return [{ label: totalColumnLabel(mode, financialYear, start, end), start, end }];
+  switch (granularity) {
+    case "month": return splitByMonth(start, end);
+    case "quarter": return splitByQuarter(start, end);
+    case "year": return splitByYear(start, end);
+    case "total":
+    default:
+      return [{ label: totalColumnLabel(mode, financialYear, start, end), start, end }];
   }
 }
