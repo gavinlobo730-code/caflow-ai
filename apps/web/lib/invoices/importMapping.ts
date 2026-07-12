@@ -23,9 +23,14 @@
  * created line. description works the same way EXCEPT it never falls back to
  * the product's Name (matching the manual editor's serviceToLine): a row
  * still needs an explicit description, either in its own column or on the
- * matched preset. The values are copied onto the line, never linked
- * (service_catalogue has no FK from invoice lines), so nothing server-side
- * needs to change for this.
+ * matched preset. The values are copied onto the line AND the line is linked
+ * via service_catalogue_id (InvoiceLineIn.service_catalogue_id,
+ * migration 184) — a matched "good" line is what makes an issued invoice
+ * actually draw down inventory (domain/inventory_service.py's
+ * apply_sale_to_inventory is gated on this field being set per line; it used
+ * to be left unset here, so a bulk-imported sale of a stock-tracked item
+ * silently never moved stock even though the manual editor's product picker
+ * always has).
  *
  * unit has no import column — like the manual editor, it's never surfaced to
  * the CA at all (nobody sets it explicitly). It's still read silently from a
@@ -54,6 +59,9 @@ export interface BuiltLine {
   rate_paise: number;        // integer paise (rupees × 100)
   gst_rate_percent: number;  // e.g. 18 for 18%
   unit?: string;
+  /** Links this line to the matched Product/Service catalogue item — see
+   * the module docstring above. Undefined when no product_service matched. */
+  service_catalogue_id?: string;
 }
 
 export interface BuiltInvoice {
@@ -152,6 +160,7 @@ export function buildSalesInvoices(
       rate_paise: Math.round(rate * 100),   // integer paise — never float
       gst_rate_percent: gst,
       unit: service?.unit?.trim() || undefined,
+      service_catalogue_id: service?.id,
     };
 
     const existing = groups.get(invoiceNo);

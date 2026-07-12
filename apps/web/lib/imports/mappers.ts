@@ -337,6 +337,14 @@ export interface BuiltBillLine {
   // not gst_rate_bps — the latter used to be silently dropped by Pydantic,
   // defaulting every imported line to 18% GST (Beta-readiness Part 4).
   gst_rate_percent: number;
+  unit?: string;
+  // Links this line to a Product/Service catalogue item so a RECEIVED bill
+  // actually restocks inventory — domain/inventory_service.py's
+  // apply_purchase_to_inventory only moves stock for lines carrying this
+  // (see PurchaseBillLineIn.service_catalogue_id). Mirrors
+  // lib/invoices/importMapping.ts's BuiltLine.service_catalogue_id, which
+  // has the identical gap on the sales side.
+  service_catalogue_id?: string;
 }
 
 export interface BuiltBill {
@@ -349,24 +357,41 @@ export interface BuiltBill {
   ref: string;
 }
 
+/** The subset of ServiceCatalogueItem this mapper needs to pre-fill a line.
+ * Mirrors lib/invoices/importMapping.ts's own ServiceRef, but prefills rate
+ * from purchase_price_paise (not the selling default_rate_paise) — these
+ * are PURCHASE lines. */
+export interface PurchaseServiceRef {
+  id: string;
+  name: string;
+  description?: string | null;
+  hsn_sac?: string | null;
+  gst_rate_bps?: number | null;
+  purchase_price_paise?: number | null;
+  unit?: string | null;
+}
+
 export const PURCHASE_BILL_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "vendor", label: "Vendor", required: true, hint: "Existing vendor name (must already exist for this client)" },
   { key: "bill_no", label: "Bill No", required: false, hint: "Vendor's bill number (also groups multiple line rows into one bill)" },
   { key: "bill_date", label: "Bill Date", required: true, hint: "YYYY-MM-DD" },
   { key: "due_date", label: "Due Date", required: false, hint: "YYYY-MM-DD (optional)" },
-  { key: "description", label: "Description", required: true, hint: "Line item description" },
-  { key: "hsn_sac", label: "HSN/SAC", required: false, hint: "HSN or SAC code (optional)" },
+  { key: "product_service", label: "Product/Service", required: false, hint: "Existing catalogue item name (optional) — links this line so a received bill restocks inventory, and pre-fills HSN/rate/GST/unit" },
+  { key: "description", label: "Description", required: false, hint: "Required unless Product/Service is given" },
+  { key: "hsn_sac", label: "HSN/SAC", required: false, hint: "HSN or SAC code (optional; overrides the Product/Service's own)" },
   { key: "quantity", label: "Quantity", required: true, hint: "e.g. 1" },
-  { key: "rate", label: "Rate (₹)", required: true, hint: "Per-unit rate in rupees" },
-  { key: "gst_rate", label: "GST %", required: true, hint: "e.g. 18 (for 18%)" },
+  { key: "rate", label: "Rate (₹)", required: false, hint: "Per-unit rate in rupees — required unless Product/Service has a purchase price" },
+  { key: "gst_rate", label: "GST %", required: false, hint: "e.g. 18 (for 18%) — required unless Product/Service is given" },
 ];
 
 export function buildPurchaseBills(
   rows: Record<string, string>[],
   clientId: string,
   vendors: NameRef[],
+  services: PurchaseServiceRef[] = [],
 ): { bills: BuiltBill[]; errors: string[] } {
   const byName = new Map(vendors.map((v) => [v.name.trim().toLowerCase(), v.id]));
+  const servicesByName = new Map(services.map((s) => [s.name.trim().toLowerCase(), s]));
   const groups = new Map<string, BuiltBill>();
   const errors: string[] = [];
 
@@ -375,29 +400,39 @@ export function buildPurchaseBills(
     const vendorName = str(r.vendor);
     const billDate = str(r.bill_date);
     const dueDate = str(r.due_date);
-    const description = str(r.description);
     const billNo = str(r.bill_no);
+    const productName = str(r.product_service);
     const vendorId = byName.get(vendorName.toLowerCase());
+    const service = productName ? servicesByName.get(productName.toLowerCase()) : undefined;
 
     if (!vendorId) { errors.push(`Row ${rowNo}: unknown vendor "${vendorName}" — create the vendor first`); return; }
     if (!DATE_RE.test(billDate)) { errors.push(`Row ${rowNo}: bill_date must be YYYY-MM-DD`); return; }
     if (dueDate && !DATE_RE.test(dueDate)) { errors.push(`Row ${rowNo}: due_date must be YYYY-MM-DD`); return; }
-    if (!description) { errors.push(`Row ${rowNo}: description is required`); return; }
+    if (productName && !service) { errors.push(`Row ${rowNo}: unknown product/service "${productName}" — create it first`); return; }
+
+    const description = str(r.description) || (service?.description?.trim() ?? "");
+    if (!description) { errors.push(`Row ${rowNo}: description is required (or use a Product/Service that has its own description set)`); return; }
 
     const qty = num(r.quantity);
-    const rate = num(r.rate);
-    const gst = num(r.gst_rate);
     if (!Number.isFinite(qty) || qty <= 0) { errors.push(`Row ${rowNo}: quantity must be a positive number`); return; }
-    if (!Number.isFinite(rate) || rate < 0) { errors.push(`Row ${rowNo}: rate (₹) must be a non-negative number`); return; }
-    if (!Number.isFinite(gst) || gst < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number`); return; }
+
+    const rateRaw = str(r.rate);
+    const rate = rateRaw ? num(r.rate) : (service?.purchase_price_paise != null ? service.purchase_price_paise / 100 : NaN);
+    if (!Number.isFinite(rate) || rate < 0) { errors.push(`Row ${rowNo}: rate (₹) must be a non-negative number (or give a Product/Service with a purchase price)`); return; }
+
+    const gstRaw = str(r.gst_rate);
+    const gst = gstRaw ? num(r.gst_rate) : (service?.gst_rate_bps != null ? service.gst_rate_bps / 100 : NaN);
+    if (!Number.isFinite(gst) || gst < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or give a Product/Service with a default rate)`); return; }
 
     const ref = billNo || `${vendorName.toLowerCase()}|${billDate}`;
     const line: BuiltBillLine = {
       description,
-      hsn_sac: str(r.hsn_sac) || undefined,
+      hsn_sac: str(r.hsn_sac) || service?.hsn_sac?.trim() || undefined,
       quantity: qty,
-      rate_paise: toPaise(r.rate),
+      rate_paise: Math.round(rate * 100),
       gst_rate_percent: gst,
+      unit: service?.unit?.trim() || undefined,
+      service_catalogue_id: service?.id,
     };
 
     const existing = groups.get(ref);

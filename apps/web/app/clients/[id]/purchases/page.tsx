@@ -14,10 +14,11 @@ import { AccountLookup } from "@/components/lookups/AccountLookup";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
 import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
+import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFormModal";
 import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { Combobox } from "@/components/ui/combobox";
-import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
-import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS, type NameRef } from "@/lib/imports/mappers";
+import CsvImportModal, { type ImportRow, type ReferenceResolver } from "@/components/CsvImportModal";
+import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS, type NameRef, type PurchaseServiceRef } from "@/lib/imports/mappers";
 import { dnLineGst } from "@/lib/purchases/debitNoteGst";
 import { UQC_CODES } from "@/lib/constants/uqc";
 
@@ -276,6 +277,10 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   const [bills, setBills] = useState<PurchaseBillRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [accounts, setAccounts] = useState<{ id: string; account_code: string; account_name: string }[]>([]);
+  // Client's own Product/Service catalogue — only needed for the CSV import's
+  // "resolve missing references" step (product_service column), same role
+  // this plays on the Sales Invoices tab.
+  const [services, setServices] = useState<ServiceCatalogueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -337,7 +342,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
     setLoading(true);
     const supabase = getSupabaseClient();
     const { start, end } = fyRange(financialYear);
-    const [billsRes, vendorsRes, accsRes] = await Promise.all([
+    const [billsRes, vendorsRes, accsRes, servicesRes] = await Promise.all([
       selectAll(() => supabase
         .from("purchase_bills")
         .select("*, vendors(name)")
@@ -361,10 +366,18 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
         .eq("is_active", true)
         .order("account_code")
         .order("id")),
+      selectAll(() => supabase
+        .from("service_catalogue")
+        .select("id, name, description, hsn_sac, gst_rate_bps, purchase_price_paise, unit, kind, is_active")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .order("name")
+        .order("id")),
     ]);
     setBills((billsRes.data as PurchaseBillRow[]) ?? []);
     setVendors((vendorsRes.data as Vendor[]) ?? []);
     setAccounts(accsRes.data ?? []);
+    setServices((servicesRes.data as ServiceCatalogueItem[]) ?? []);
     setLoading(false);
   }, [clientId, financialYear]);
 
@@ -604,7 +617,11 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
    */
   async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
     const vendorRefs: NameRef[] = vendors.map((v) => ({ id: v.id, name: v.name }));
-    const { bills: built, errors } = buildPurchaseBills(rows, clientId, vendorRefs);
+    const serviceRefs: PurchaseServiceRef[] = services.map((s) => ({
+      id: s.id, name: s.name, description: s.description, hsn_sac: s.hsn_sac,
+      gst_rate_bps: s.gst_rate_bps, purchase_price_paise: s.purchase_price_paise, unit: s.unit,
+    }));
+    const { bills: built, errors } = buildPurchaseBills(rows, clientId, vendorRefs, serviceRefs);
     if (built.length === 0) return { imported: 0, errors };
     const token = await getAuthToken();
 
@@ -686,6 +703,28 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
     exportSelectedAction("purchase-bills-selected.csv", billColumns),
   ], [handleBulkReceive, billColumns]);
 
+  // "Resolve missing references" step for the product_service import column —
+  // mirrors the Sales Invoices tab's own importResolvers exactly. Reads
+  // `services` fresh (not captured once), so a product created inline here
+  // immediately drops out of the "missing" list — see ReferenceResolver's contract.
+  const importResolvers: ReferenceResolver[] = [
+    {
+      column: "product_service",
+      label: "Products & Services",
+      isKnown: (name) => services.some((s) => s.name.trim().toLowerCase() === name.trim().toLowerCase()),
+      renderCreate: (name, onDone) => (
+        <ProductServiceFormModal
+          clientId={clientId}
+          existing={null}
+          seedName={name}
+          onClose={onDone}
+          onSaved={(item) => { setServices((prev) => [...prev, item]); onDone(); }}
+          onError={(text) => setMsg({ type: "err", text })}
+        />
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-4 max-w-5xl">
       {msg && (
@@ -723,6 +762,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
           templateFilename="purchase-bills-template.csv"
           onImport={handleImport}
           onClose={() => setShowImport(false)}
+          resolvers={importResolvers}
         />
       )}
 
