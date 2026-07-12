@@ -1,6 +1,6 @@
 "use client";
 
-import { PERIOD_OPTIONS, periodOptionLabel, type PeriodMode } from "@/lib/dates/periods";
+import { PERIOD_OPTIONS, periodOptionLabel, GRANULARITY_OPTIONS, type PeriodMode, type Granularity } from "@/lib/dates/periods";
 
 /**
  * QuickBooks-style period dropdown: Today / Yesterday / This Week / Last 3
@@ -8,10 +8,16 @@ import { PERIOD_OPTIONS, periodOptionLabel, type PeriodMode } from "@/lib/dates/
  * into a page's toolbar next to search — the page owns the `mode`/custom
  * from-to state and resolves it to a concrete date range via
  * `resolvePeriodRange` (lib/dates/periods.ts) to scope its own query.
+ *
+ * Pass `granularity`/`onGranularityChange` to also render the "Display
+ * columns by" split (Total/Monthly/Quarterly/Yearly) used by P&L/Balance
+ * Sheet's multi-period comparison — omit both to get the plain single-range
+ * picker used by transaction list pages (Sales Invoices, Purchase Bills).
  */
 export default function PeriodPicker({
   mode, onModeChange, financialYear,
   customFrom, customTo, onCustomFromChange, onCustomToChange,
+  granularity, onGranularityChange,
   ariaLabel = "Date range",
 }: {
   mode: PeriodMode;
@@ -21,6 +27,8 @@ export default function PeriodPicker({
   customTo: string;
   onCustomFromChange: (v: string) => void;
   onCustomToChange: (v: string) => void;
+  granularity?: Granularity;
+  onGranularityChange?: (g: Granularity) => void;
   ariaLabel?: string;
 }) {
   return (
@@ -53,6 +61,18 @@ export default function PeriodPicker({
             className="px-2 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
           />
         </>
+      )}
+      {granularity && onGranularityChange && (
+        <select
+          value={granularity}
+          onChange={(e) => onGranularityChange(e.target.value as Granularity)}
+          aria-label="Display columns by"
+          className="px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
+        >
+          {GRANULARITY_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>Display: {o.label}</option>
+          ))}
+        </select>
       )}
     </div>
   );

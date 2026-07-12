@@ -16,6 +16,8 @@ import { api } from "@/lib/api";
 import { cachedReport, reportKey, clearReports } from "@/lib/accounting/reportCache";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { todayLocalISO } from "@/lib/dateMath";
+import PeriodPicker from "@/components/PeriodPicker";
+import { splitPeriodColumns, type PeriodMode, type Granularity } from "@/lib/dates/periods";
 import {
   parseCSV,
   importBankStatement,
@@ -150,27 +152,6 @@ function fyDateRange(fy: string): { start: string; end: string } {
   const [startYear] = fy.split("-");
   const y = parseInt(startYear, 10);
   return { start: `${y}-04-01`, end: `${y + 1}-03-31` };
-}
-
-// "2026-27" shifted by -1 → "2025-26". Used for the Schedule III comparative
-// (prior year) column — Companies Act 2013, Schedule III requires the
-// previous year's figures alongside the current year on the P&L/BS face.
-function shiftFY(fy: string, delta: number): string {
-  const [startYear] = fy.split("-");
-  const start = parseInt(startYear, 10) + delta;
-  return `${start}-${String(start + 1).slice(-2)}`;
-}
-
-// Renders a signed % change cell for the "compare to prior year" columns.
-// `prev` undefined/0 with a nonzero `curr` reads as "New" rather than a
-// misleading infinite/undefined percentage.
-function ChangeCell({ curr, prev }: { curr: number; prev: number | undefined }) {
-  if (prev === undefined) return <span className="text-[#CBD5E1]">…</span>;
-  if (prev === 0) return curr === 0 ? <span className="text-[#CBD5E1]">—</span> : <span className="text-blue-600 font-medium">New</span>;
-  const pct = ((curr - prev) / Math.abs(prev)) * 100;
-  if (curr === prev) return <span className="text-[#94A3B8]">—</span>;
-  const up = pct > 0;
-  return <span className={up ? "text-green-700" : "text-red-700"}>{up ? "+" : ""}{pct.toFixed(1)}%</span>;
 }
 
 // Report lines can carry a synthetic id (e.g. "__retained__" for a computed
@@ -1386,14 +1367,6 @@ function FXReportBody({ view, data, byC }: {
 // account-level lines and groups them per Companies Act 2013, Schedule III,
 // Part II for presentation only.
 
-interface CashPLData {
-  revenue: { lines: { account_id?: string; account_name: string; amount_paise: number }[]; total_paise: number };
-  operating_expenses: { lines: { account_id?: string; account_name: string; amount_paise: number }[]; total_paise: number };
-  net_profit_paise: number;
-  start_date: string;
-  end_date: string;
-}
-
 // Account-level line returned by the backend P&L (accrual & cash).
 interface PLApiLine {
   account_id: string;
@@ -1408,27 +1381,35 @@ interface PLApiData {
   net_profit_paise: number;
 }
 
+interface PLColumnResult {
+  label: string;
+  balances: AccountBalance[];
+  totals: { revenue: number; expenses: number; net: number };
+}
+
 function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: string; financialYear: string; onDrillDown: (accountId: string) => void }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
 
-  const [balances, setBalances] = useState<AccountBalance[]>([]);
-  const [cashPL, setCashPL] = useState<CashPLData | null>(null);
-  // Authoritative accrual totals from the backend — never recomputed here.
-  const [plTotals, setPlTotals] = useState({ revenue: 0, expenses: 0, net: 0 });
+  // Period + "Display columns by" (QuickBooks-style multi-period comparison):
+  // pick a window (PeriodPicker), then optionally split it into Monthly/
+  // Quarterly/Yearly columns instead of one lump sum. Each column is an
+  // independent backend profit_loss() call for its own [start,end] — the
+  // frontend only decides which windows to ask for and lays results out
+  // side by side (IT Act §44AA; no financial math here).
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("this_fy");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [granularity, setGranularity] = useState<Granularity>("total");
+  const columnDefs = useMemo(
+    () => splitPeriodColumns(periodMode, financialYear, { from: customFrom, to: customTo }, granularity),
+    [periodMode, financialYear, customFrom, customTo, granularity],
+  );
+
+  const [columns, setColumns] = useState<PLColumnResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
-
-  // "Compare to prior year" — Schedule III requires the previous year's
-  // figures alongside the current year on the P&L face. Fetched lazily, only
-  // once the toggle is switched on.
-  const [comparePY, setComparePY] = useState(false);
-  const prevFY = shiftFY(financialYear, -1);
-  const [prevBalances, setPrevBalances] = useState<AccountBalance[]>([]);
-  const [prevCashPL, setPrevCashPL] = useState<CashPLData | null>(null);
-  const [prevPlTotals, setPrevPlTotals] = useState<{ revenue: number; expenses: number; net: number } | null>(null);
-  const [prevLoading, setPrevLoading] = useState(false);
 
   const updateBasis = (b: "accrual" | "cash") => {
     const params = new URLSearchParams(searchParams.toString());
@@ -1439,115 +1420,69 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
   const load = useCallback(async (force?: boolean) => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
-    // Both bases computed server-side from the same posted ledger, scoped to this
-    // client (IT Act §44AA). The frontend only passes parameters and groups the
-    // returned account lines for display (Schedule III) — no financial math here.
-    const { start, end } = fyDateRange(financialYear);
-    try {
-      const res = (await cachedReport(
-        reportKey([clientId, financialYear, basis, "pl"]),
-        () => api.accounting.profitLoss({ basis, start_date: start, end_date: end, client_id: clientId }),
-        { force },
-      )) as { success: boolean; data: PLApiData | null };
-
-      if (basis === "cash") {
-        if (res.success && res.data) setCashPL(res.data as unknown as CashPLData);
-        else setCashPL(null);
-      } else if (res.success && res.data) {
+    const results = await Promise.all(columnDefs.map(async (col): Promise<PLColumnResult> => {
+      try {
+        const res = (await cachedReport(
+          reportKey([clientId, col.start, col.end, basis, "pl"]),
+          () => api.accounting.profitLoss({ basis, start_date: col.start, end_date: col.end, client_id: clientId }),
+          { force },
+        )) as { success: boolean; data: PLApiData | null };
+        if (!res.success || !res.data) return { label: col.label, balances: [], totals: { revenue: 0, expenses: 0, net: 0 } };
         const d = res.data;
+        // Cash-basis lines carry no account_code/account_subtype (the cash
+        // engine doesn't classify by Schedule III subtype) — they default
+        // to "" / null and fall into that bucket's catch-all below, same
+        // shape as accrual otherwise, so both bases share one renderer.
         const toBal = (l: PLApiLine, type: string): AccountBalance => ({
           account_id: l.account_id, account_code: l.account_code ?? "",
           account_name: l.account_name, account_type: type,
           account_subtype: l.account_subtype ?? null, net_paise: l.amount_paise,
         });
-        const rows = [
+        const balances = [
           ...(d.revenue?.lines ?? []).map((l) => toBal(l, "Revenue")),
           ...(d.operating_expenses?.lines ?? []).map((l) => toBal(l, "Expense")),
-        ].filter((b) => b.net_paise !== 0).sort((a, b) => a.account_code.localeCompare(b.account_code));
-        setBalances(rows);
-        setPlTotals({
-          revenue: d.revenue?.total_paise ?? 0,
-          expenses: d.operating_expenses?.total_paise ?? 0,
-          net: d.net_profit_paise ?? 0,
-        });
-      } else {
-        setBalances([]);
-        setPlTotals({ revenue: 0, expenses: 0, net: 0 });
+        ];
+        return {
+          label: col.label,
+          balances,
+          totals: { revenue: d.revenue?.total_paise ?? 0, expenses: d.operating_expenses?.total_paise ?? 0, net: d.net_profit_paise ?? 0 },
+        };
+      } catch {
+        // Backend error/timeout for this column — degrade to empty, never an infinite skeleton (audit M17).
+        return { label: col.label, balances: [], totals: { revenue: 0, expenses: 0, net: 0 } };
       }
-    } catch {
-      // Backend error/timeout — degrade to empty, never an infinite skeleton (audit M17).
-      setCashPL(null);
-      setBalances([]);
-      setPlTotals({ revenue: 0, expenses: 0, net: 0 });
-    } finally {
-      setLoading(false); setLoaded(true);
-    }
-  }, [clientId, financialYear, basis]);
+    }));
+    setColumns(results);
+    setLoading(false); setLoaded(true);
+  }, [clientId, basis, columnDefs]);
 
   useEffect(() => { load(); }, [load]);
 
-  const loadPrev = useCallback(async () => {
-    if (!clientId || clientId === "_placeholder") return;
-    setPrevLoading(true);
-    const { start, end } = fyDateRange(prevFY);
-    try {
-      const res = (await cachedReport(
-        reportKey([clientId, prevFY, basis, "pl"]),
-        () => api.accounting.profitLoss({ basis, start_date: start, end_date: end, client_id: clientId }),
-      )) as { success: boolean; data: PLApiData | null };
-      if (basis === "cash") {
-        setPrevCashPL(res.success && res.data ? (res.data as unknown as CashPLData) : null);
-        setPrevPlTotals(null);
-      } else if (res.success && res.data) {
-        const d = res.data;
-        const toBal = (l: PLApiLine, type: string): AccountBalance => ({
-          account_id: l.account_id, account_code: l.account_code ?? "",
-          account_name: l.account_name, account_type: type,
-          account_subtype: l.account_subtype ?? null, net_paise: l.amount_paise,
-        });
-        setPrevBalances([
-          ...(d.revenue?.lines ?? []).map((l) => toBal(l, "Revenue")),
-          ...(d.operating_expenses?.lines ?? []).map((l) => toBal(l, "Expense")),
-        ]);
-        setPrevPlTotals({ revenue: d.revenue?.total_paise ?? 0, expenses: d.operating_expenses?.total_paise ?? 0, net: d.net_profit_paise ?? 0 });
-      } else {
-        setPrevBalances([]);
-        setPrevPlTotals({ revenue: 0, expenses: 0, net: 0 });
-      }
-    } catch {
-      setPrevCashPL(null);
-      setPrevBalances([]);
-      setPrevPlTotals({ revenue: 0, expenses: 0, net: 0 });
-    } finally {
-      setPrevLoading(false);
-    }
-  }, [clientId, prevFY, basis]);
+  // Row identity (account name/subtype for bucket grouping) is the union of
+  // every account with activity in ANY column; the VALUE shown for a row
+  // always comes from that column's own lookup map — never re-derived
+  // across columns, never summed client-side.
+  const columnMaps = useMemo(() => columns.map((c) => new Map(c.balances.map((b) => [b.account_id, b.net_paise]))), [columns]);
+  const unionAccounts = useMemo(() => {
+    const byId = new Map<string, AccountBalance>();
+    for (const col of columns) for (const b of col.balances) if (b.net_paise !== 0 && !byId.has(b.account_id)) byId.set(b.account_id, b);
+    return Array.from(byId.values());
+  }, [columns]);
 
-  useEffect(() => { if (comparePY) loadPrev(); }, [comparePY, loadPrev]);
-
-  const prevByAccount = useMemo(() => new Map(prevBalances.map((b) => [b.account_id, b.net_paise])), [prevBalances]);
-  const prevCashByAccount = useMemo(() => {
-    const m = new Map<string, number>();
-    if (prevCashPL) {
-      prevCashPL.revenue.lines.forEach((l) => { if (l.account_id) m.set(l.account_id, l.amount_paise); });
-      prevCashPL.operating_expenses.lines.forEach((l) => { if (l.account_id) m.set(l.account_id, l.amount_paise); });
-    }
-    return m;
-  }, [prevCashPL]);
-
-  const revenue = balances.filter((b) => b.account_type === "Revenue");
-  const expenses = balances.filter((b) => b.account_type === "Expense");
-  // Grand totals are the backend's authoritative figures; bucket subtotals below
-  // are presentation-only Schedule III grouping of the same backend line amounts.
-  const totalRevenue = plTotals.revenue;
-  const totalExpenses = plTotals.expenses;
-  const netPL = plTotals.net;
-
+  const revenue = unionAccounts.filter((b) => b.account_type === "Revenue");
+  const expenses = unionAccounts.filter((b) => b.account_type === "Expense");
   const revBuckets = groupBy(revenue, (b) => plBucket(b.account_type, b.account_subtype));
   const expBuckets = groupBy(expenses, (b) => plBucket(b.account_type, b.account_subtype));
 
   const PL_REV_ORDER = ["Revenue from Operations", "Other Income"];
   const PL_EXP_ORDER = ["Cost of Materials Consumed", "Employee Benefit Expense", "Finance Costs", "Depreciation & Amortisation", "Other Expenses"];
+
+  // Grand totals per column are the backend's own authoritative figures —
+  // never re-derived from the union above.
+  const totalRevenueByCol = columns.map((c) => c.totals.revenue);
+  const totalExpensesByCol = columns.map((c) => c.totals.expenses);
+  const netByCol = columns.map((c) => c.totals.net);
+  const netPL = netByCol[netByCol.length - 1] ?? 0; // most-recent column's sign drives the Profit/Loss label
 
   const BasisToggle = () => (
     <div className="flex rounded border border-[#E2E8F0] overflow-hidden text-xs">
@@ -1556,52 +1491,48 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
     </div>
   );
 
-  // CSV export — plain rupee numbers (no ₹ prefix / comma grouping) so the
-  // amount column is directly usable as a spreadsheet number.
-  const buildPlExportRows = (): { section: string; particulars: string; amount: string }[] => {
-    const rows: { section: string; particulars: string; amount: string }[] = [];
-    if (basis === "cash") {
-      if (!cashPL) return rows;
-      cashPL.revenue.lines.forEach((l) => rows.push({ section: "Revenue", particulars: l.account_name, amount: (l.amount_paise / 100).toFixed(2) }));
-      cashPL.operating_expenses.lines.forEach((l) => rows.push({ section: "Expenses", particulars: l.account_name, amount: (l.amount_paise / 100).toFixed(2) }));
-      rows.push({ section: "", particulars: "Total Revenue", amount: (cashPL.revenue.total_paise / 100).toFixed(2) });
-      rows.push({ section: "", particulars: "Total Expenses", amount: (cashPL.operating_expenses.total_paise / 100).toFixed(2) });
-      rows.push({ section: "", particulars: cashPL.net_profit_paise >= 0 ? "Net Profit" : "Net Loss", amount: (Math.abs(cashPL.net_profit_paise) / 100).toFixed(2) });
-    } else {
-      PL_REV_ORDER.forEach((bucket) => {
-        (revBuckets[bucket] ?? []).forEach((item) => rows.push({ section: bucket, particulars: item.account_name, amount: (item.net_paise / 100).toFixed(2) }));
-      });
-      PL_EXP_ORDER.forEach((bucket) => {
-        (expBuckets[bucket] ?? []).forEach((item) => rows.push({ section: bucket, particulars: item.account_name, amount: (item.net_paise / 100).toFixed(2) }));
-      });
-      rows.push({ section: "", particulars: "Total Revenue", amount: (totalRevenue / 100).toFixed(2) });
-      rows.push({ section: "", particulars: "Total Expenses", amount: (totalExpenses / 100).toFixed(2) });
-      rows.push({ section: "", particulars: netPL >= 0 ? "Net Profit" : "Net Loss", amount: (Math.abs(netPL) / 100).toFixed(2) });
-    }
+  // CSV export — plain rupee numbers (no ₹ prefix / comma grouping), one
+  // column per displayed period.
+  const buildPlExportRows = (): Record<string, string>[] => {
+    const rows: Record<string, string>[] = [];
+    const pushRow = (section: string, particulars: string, values: number[]) => {
+      const row: Record<string, string> = { section, particulars };
+      columns.forEach((c, i) => { row[c.label] = ((values[i] ?? 0) / 100).toFixed(2); });
+      rows.push(row);
+    };
+    PL_REV_ORDER.forEach((bucket) => {
+      (revBuckets[bucket] ?? []).forEach((item) => pushRow(bucket, item.account_name, columnMaps.map((m) => m.get(item.account_id) ?? 0)));
+    });
+    pushRow("", "Total Revenue", totalRevenueByCol);
+    PL_EXP_ORDER.forEach((bucket) => {
+      (expBuckets[bucket] ?? []).forEach((item) => pushRow(bucket, item.account_name, columnMaps.map((m) => m.get(item.account_id) ?? 0)));
+    });
+    pushRow("", "Total Expenses", totalExpensesByCol);
+    pushRow("", "Net Profit / (Loss)", netByCol);
     return rows;
   };
-  const plExportColumns: Column<{ section: string; particulars: string; amount: string }>[] = [
+  const plExportColumns: Column<Record<string, string>>[] = [
     { key: "section", header: "Section", accessor: (r) => r.section },
     { key: "particulars", header: "Particulars", accessor: (r) => r.particulars },
-    { key: "amount", header: "Amount (₹)", accessor: (r) => r.amount },
+    ...columns.map((c, i): Column<Record<string, string>> => ({ key: `col${i}`, header: `${c.label} (₹)`, accessor: (r) => r[c.label] ?? "" })),
   ];
-  const plExportDisabled = !loaded || (basis === "cash" ? !cashPL : balances.length === 0);
+  const plExportDisabled = !loaded || unionAccounts.length === 0;
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">Statement of Profit & Loss — FY {financialYear}</p>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setComparePY((v) => !v)}
-            className={`px-3 py-1.5 text-xs font-medium rounded border transition-colors ${comparePY ? "bg-[#1E293B] text-white border-[#1E293B]" : "bg-white text-[#64748B] border-[#E2E8F0] hover:bg-[#F8FAFC]"}`}
-          >
-            Compare vs FY {prevFY}
-          </button>
+    <div className="space-y-4 max-w-5xl mx-auto">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-xs font-semibold text-[#334155]">Statement of Profit & Loss</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <PeriodPicker
+            mode={periodMode} onModeChange={setPeriodMode} financialYear={financialYear}
+            customFrom={customFrom} customTo={customTo} onCustomFromChange={setCustomFrom} onCustomToChange={setCustomTo}
+            granularity={granularity} onGranularityChange={setGranularity}
+            ariaLabel="Period"
+          />
           <BasisToggle />
           <button onClick={() => load(true)} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
-            onClick={() => downloadCsv(`profit-and-loss-fy-${financialYear}.csv`, toCsv(buildPlExportRows(), plExportColumns))}
+            onClick={() => downloadCsv(`profit-and-loss-${financialYear}.csv`, toCsv(buildPlExportRows(), plExportColumns))}
             disabled={plExportDisabled}
             className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"
             title="Export CSV"
@@ -1619,127 +1550,51 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
         </div>
       )}
 
-      {comparePY && (
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: "Revenue", curr: totalRevenue, prev: prevPlTotals?.revenue },
-            { label: "Expenses", curr: totalExpenses, prev: prevPlTotals?.expenses },
-            { label: netPL >= 0 ? "Net Profit" : "Net Loss", curr: Math.abs(netPL), prev: prevPlTotals ? Math.abs(prevPlTotals.net) : undefined },
-          ].map((s) => (
-            <div key={s.label} className="rounded-lg border border-[#F1F5F9] bg-white p-3">
-              <p className="text-[10px] text-[#94A3B8] font-medium">{s.label}</p>
-              <p className="text-sm font-bold text-[#0F172A] mt-0.5">{fmt(s.curr)}</p>
-              <div className="flex items-center justify-between mt-1 text-[10px] text-[#94A3B8]">
-                <span>FY {prevFY}: {s.prev !== undefined ? fmt(s.prev) : (prevLoading ? "…" : "—")}</span>
-                <ChangeCell curr={s.curr} prev={s.prev} />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {loading && <div className="h-48 rounded-lg bg-[#F8FAFC] animate-pulse" />}
 
-      {/* Cash basis P&L — simplified flat view (no Schedule III bucketing) */}
-      {!loading && loaded && basis === "cash" && cashPL && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="px-5 py-4 bg-[#F8FAFC] border-b border-[#F1F5F9]">
-            <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">Statement of Profit & Loss (Cash Basis)</p>
-            <p className="text-[10px] text-[#94A3B8] mt-0.5">For the year ended 31 March {parseInt(financialYear.split("-")[0]) + 1} · Management Report Only</p>
-          </div>
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]">
-                <th className="px-5 py-2 text-left font-semibold">Particulars</th>
-                <th className="px-4 py-2 text-right font-semibold">Amount (₹)</th>
-                {comparePY && <><th className="px-4 py-2 text-right font-semibold">FY {prevFY} (₹)</th><th className="px-4 py-2 text-right font-semibold">Change</th></>}
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td colSpan={comparePY ? 4 : 2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">I. Revenue (Collected)</td></tr>
-              {cashPL.revenue.lines.map((l, i) => (
-                <tr key={i} className={isDrillableAccount(l.account_id) ? "hover:bg-[#F8FAFC] cursor-pointer" : "hover:bg-[#F8FAFC]"} onClick={isDrillableAccount(l.account_id) ? () => onDrillDown(l.account_id as string) : undefined}>
-                  <td className={`px-5 py-1.5 pl-10 text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{l.account_name}</td>
-                  <td className={`px-4 py-1.5 text-right font-mono text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(l.amount_paise)}</td>
-                  {comparePY && <><td className="px-4 py-1.5 text-right font-mono text-[#94A3B8]">{l.account_id && prevCashByAccount.has(l.account_id) ? fmt(prevCashByAccount.get(l.account_id) as number) : "—"}</td><td className="px-4 py-1.5 text-right"><ChangeCell curr={l.amount_paise} prev={l.account_id ? prevCashByAccount.get(l.account_id) : undefined} /></td></>}
-                </tr>
-              ))}
-              <tr className="border-t border-[#E2E8F0] font-semibold">
-                <td className="px-5 py-2.5 text-[#1E293B]">Total Revenue (I)</td>
-                <td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(cashPL.revenue.total_paise)}</td>
-                {comparePY && <><td colSpan={2}></td></>}
-              </tr>
-              <tr><td colSpan={comparePY ? 4 : 2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">II. Expenses (Paid)</td></tr>
-              {cashPL.operating_expenses.lines.map((l, i) => (
-                <tr key={i} className={isDrillableAccount(l.account_id) ? "hover:bg-[#F8FAFC] cursor-pointer" : "hover:bg-[#F8FAFC]"} onClick={isDrillableAccount(l.account_id) ? () => onDrillDown(l.account_id as string) : undefined}>
-                  <td className={`px-5 py-1.5 pl-10 text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{l.account_name}</td>
-                  <td className={`px-4 py-1.5 text-right font-mono text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(l.amount_paise)}</td>
-                  {comparePY && <><td className="px-4 py-1.5 text-right font-mono text-[#94A3B8]">{l.account_id && prevCashByAccount.has(l.account_id) ? fmt(prevCashByAccount.get(l.account_id) as number) : "—"}</td><td className="px-4 py-1.5 text-right"><ChangeCell curr={l.amount_paise} prev={l.account_id ? prevCashByAccount.get(l.account_id) : undefined} /></td></>}
-                </tr>
-              ))}
-              <tr className="border-t border-[#E2E8F0] font-semibold">
-                <td className="px-5 py-2.5 text-[#1E293B]">Total Expenses (II)</td>
-                <td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(cashPL.operating_expenses.total_paise)}</td>
-                {comparePY && <><td colSpan={2}></td></>}
-              </tr>
-              <tr className={`border-t-2 border-gray-300 font-bold text-sm ${cashPL.net_profit_paise >= 0 ? "bg-green-50" : "bg-red-50"}`}>
-                <td className="px-5 py-3 text-[#0F172A]">{cashPL.net_profit_paise >= 0 ? "III. Profit (I − II)" : "III. Loss (II − I)"}</td>
-                <td className={`px-4 py-3 text-right font-mono ${cashPL.net_profit_paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmt(Math.abs(cashPL.net_profit_paise))}</td>
-                {comparePY && <><td colSpan={2}></td></>}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Accrual basis P&L — Schedule III format */}
-      {!loading && loaded && basis === "accrual" && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden print:border-0">
+      {!loading && loaded && (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-x-auto print:border-0">
           <div className="px-5 py-4 bg-[#F8FAFC] border-b border-[#F1F5F9] print:bg-white">
-            <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">Statement of Profit & Loss</p>
-            <p className="text-[10px] text-[#94A3B8] mt-0.5">For the year ended 31 March {parseInt(financialYear.split("-")[0]) + 1}</p>
+            <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">Statement of Profit & Loss{basis === "cash" ? " (Cash Basis)" : ""}</p>
+            <p className="text-[10px] text-[#94A3B8] mt-0.5">
+              {columns.length > 1 ? `${columns.length} periods: ${columns[0]?.label} – ${columns[columns.length - 1]?.label}` : columns[0]?.label}
+            </p>
           </div>
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]">
                 <th className="px-5 py-2 text-left font-semibold">Particulars</th>
-                <th className="px-4 py-2 text-right font-semibold">Amount (₹)</th>
-                {comparePY && <><th className="px-4 py-2 text-right font-semibold">FY {prevFY} (₹)</th><th className="px-4 py-2 text-right font-semibold">Change</th></>}
+                {columns.map((c, i) => <th key={i} className="px-4 py-2 text-right font-semibold whitespace-nowrap">{c.label} (₹)</th>)}
               </tr>
             </thead>
             <tbody>
-              <tr><td colSpan={comparePY ? 4 : 2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">I. Revenue</td></tr>
+              <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">I. Revenue</td></tr>
               {PL_REV_ORDER.map((bucket) => {
                 const items = revBuckets[bucket] ?? [];
                 if (items.length === 0) return null;
-                const total = items.reduce((s, b) => s + b.net_paise, 0);
-                return <PLSection key={bucket} label={bucket} items={items} total={total} onDrillDown={onDrillDown} comparePY={comparePY} prevByAccount={prevByAccount} />;
+                return <PLSection key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />;
               })}
               <tr className="border-t border-[#E2E8F0] font-semibold">
                 <td className="px-5 py-2.5 text-[#1E293B]">Total Revenue (I)</td>
-                <td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(totalRevenue)}</td>
-                {comparePY && <><td colSpan={2}></td></>}
+                {totalRevenueByCol.map((v, i) => <td key={i} className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(v)}</td>)}
               </tr>
-              <tr><td colSpan={comparePY ? 4 : 2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">II. Expenses</td></tr>
+              <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">II. Expenses</td></tr>
               {PL_EXP_ORDER.map((bucket) => {
                 const items = expBuckets[bucket] ?? [];
                 if (items.length === 0) return null;
-                const total = items.reduce((s, b) => s + b.net_paise, 0);
-                return <PLSection key={bucket} label={bucket} items={items} total={total} onDrillDown={onDrillDown} comparePY={comparePY} prevByAccount={prevByAccount} />;
+                return <PLSection key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />;
               })}
               <tr className="border-t border-[#E2E8F0] font-semibold">
                 <td className="px-5 py-2.5 text-[#1E293B]">Total Expenses (II)</td>
-                <td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(totalExpenses)}</td>
-                {comparePY && <><td colSpan={2}></td></>}
+                {totalExpensesByCol.map((v, i) => <td key={i} className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(v)}</td>)}
               </tr>
               <tr className={`border-t-2 border-gray-300 font-bold text-sm ${netPL >= 0 ? "bg-green-50" : "bg-red-50"}`}>
-                <td className="px-5 py-3 text-[#0F172A]">{netPL >= 0 ? "III. Profit for the Year (I − II)" : "III. Loss for the Year (II − I)"}</td>
-                <td className={`px-4 py-3 text-right font-mono ${netPL >= 0 ? "text-green-700" : "text-red-700"}`}>{fmt(Math.abs(netPL))}</td>
-                {comparePY && <><td colSpan={2}></td></>}
+                <td className="px-5 py-3 text-[#0F172A]">{netPL >= 0 ? "III. Profit for the Period (I − II)" : "III. Loss for the Period (II − I)"}</td>
+                {netByCol.map((v, i) => <td key={i} className={`px-4 py-3 text-right font-mono ${v >= 0 ? "text-green-700" : "text-red-700"}`}>{fmt(Math.abs(v))}</td>)}
               </tr>
             </tbody>
           </table>
-          {balances.length === 0 && <div className="text-center py-12 text-[#94A3B8] text-sm">No posted entries with Revenue or Expense accounts in FY {financialYear}.</div>}
+          {unionAccounts.length === 0 && <div className="text-center py-12 text-[#94A3B8] text-sm">No posted entries with Revenue or Expense accounts in the selected period.</div>}
         </div>
       )}
     </div>
@@ -1747,27 +1602,22 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
 }
 
 function PLSection({
-  label, items, total, onDrillDown, comparePY, prevByAccount,
+  label, items, columnMaps, onDrillDown,
 }: {
-  label: string; items: AccountBalance[]; total: number; onDrillDown: (accountId: string) => void;
-  comparePY: boolean; prevByAccount: Map<string, number>;
+  label: string; items: AccountBalance[]; columnMaps: Map<string, number>[]; onDrillDown: (accountId: string) => void;
 }) {
   const [open, setOpen] = useState(true);
+  const totals = columnMaps.map((m) => items.reduce((s, item) => s + (m.get(item.account_id) ?? 0), 0));
   return (
     <>
       <tr className="cursor-pointer hover:bg-[#F8FAFC]" onClick={() => setOpen((o) => !o)}>
         <td className="px-5 py-2 text-[#334155] font-medium pl-8">{label}</td>
-        <td className="px-4 py-2 text-right font-mono text-[#334155]">{fmt(total)}</td>
-        {comparePY && <><td colSpan={2}></td></>}
+        {totals.map((t, i) => <td key={i} className="px-4 py-2 text-right font-mono text-[#334155]">{fmt(t)}</td>)}
       </tr>
       {open && items.map((item) => (
         <tr key={item.account_id} className="text-[#94A3B8] hover:bg-[#F8FAFC] cursor-pointer" onClick={() => onDrillDown(item.account_id)}>
           <td className="px-5 py-1.5 pl-14 hover:text-blue-700 hover:underline">{item.account_name}</td>
-          <td className="px-4 py-1.5 text-right font-mono hover:text-blue-700 hover:underline">{fmt(item.net_paise)}</td>
-          {comparePY && <>
-            <td className="px-4 py-1.5 text-right font-mono">{prevByAccount.has(item.account_id) ? fmt(prevByAccount.get(item.account_id) as number) : "—"}</td>
-            <td className="px-4 py-1.5 text-right"><ChangeCell curr={item.net_paise} prev={prevByAccount.get(item.account_id)} /></td>
-          </>}
+          {columnMaps.map((m, i) => <td key={i} className="px-4 py-1.5 text-right font-mono hover:text-blue-700 hover:underline">{fmt(m.get(item.account_id) ?? 0)}</td>)}
         </tr>
       ))}
     </>
@@ -1777,16 +1627,6 @@ function PLSection({
 // ── Balance Sheet ──────────────────────────────────────────────────────────
 // Cumulative balances up to FY end date.
 // Companies Act 2013, Schedule III, Part I.
-
-interface CashBSSection { label: string; lines: { account_id?: string; account_name: string; balance_paise: number }[]; total_paise: number }
-interface CashBSData {
-  assets: CashBSSection[];
-  liabilities: CashBSSection[];
-  equity: CashBSSection[];
-  total_assets_paise: number;
-  total_liabilities_equity_paise: number;
-  is_balanced: boolean;
-}
 
 // Account-level shapes returned by the backend balance sheet (accrual & cash).
 interface BSApiLine {
@@ -1806,26 +1646,32 @@ interface BSApiData {
   is_balanced: boolean;
 }
 
+interface BSColumnResult {
+  label: string;
+  balances: AccountBalance[];
+  totals: { assets: number; liab: number; equity: number; liabEquity: number; balanced: boolean };
+}
+
 function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: string; financialYear: string; onDrillDown: (accountId: string) => void }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
 
-  const [balances, setBalances] = useState<AccountBalance[]>([]);
-  const [cashBS, setCashBS] = useState<CashBSData | null>(null);
-  // Authoritative accrual totals from the backend — never recomputed here.
-  const [bsTotals, setBsTotals] = useState({ assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true });
+  // Period + "Display columns by" — see ProfitAndLoss for the shared design.
+  // A Balance Sheet is a point-in-time snapshot, so each column fetches "as
+  // of" its own END date rather than a flow over [start,end].
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("this_fy");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [granularity, setGranularity] = useState<Granularity>("total");
+  const columnDefs = useMemo(
+    () => splitPeriodColumns(periodMode, financialYear, { from: customFrom, to: customTo }, granularity),
+    [periodMode, financialYear, customFrom, customTo, granularity],
+  );
+
+  const [columns, setColumns] = useState<BSColumnResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
-
-  // "Compare to prior year" — Schedule III requires the previous year's
-  // figures alongside the current year on the Balance Sheet face.
-  const [comparePY, setComparePY] = useState(false);
-  const prevFY = shiftFY(financialYear, -1);
-  const [prevBalances, setPrevBalances] = useState<AccountBalance[]>([]);
-  const [prevCashBS, setPrevCashBS] = useState<CashBSData | null>(null);
-  const [prevBsTotals, setPrevBsTotals] = useState<{ assets: number; liab: number; equity: number } | null>(null);
-  const [prevLoading, setPrevLoading] = useState(false);
 
   const updateBasis = (b: "accrual" | "cash") => {
     const params = new URLSearchParams(searchParams.toString());
@@ -1836,22 +1682,14 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
   const load = useCallback(async (force?: boolean) => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
-    // Both bases computed server-side from the same posted ledger, scoped to this
-    // client (Companies Act §128). Retained earnings / net profit is computed in
-    // the backend and returned in the equity section. The frontend only groups
-    // the returned balances for Schedule III presentation — no financial math.
-    const { end } = fyDateRange(financialYear);
-    try {
-      const res = (await cachedReport(
-        reportKey([clientId, financialYear, basis, "bs"]),
-        () => api.accounting.balanceSheet({ basis, as_of_date: end, client_id: clientId }),
-        { force },
-      )) as { success: boolean; data: BSApiData | null };
-
-      if (basis === "cash") {
-        if (res.success && res.data) setCashBS(res.data as unknown as CashBSData);
-        else setCashBS(null);
-      } else if (res.success && res.data) {
+    const results = await Promise.all(columnDefs.map(async (col): Promise<BSColumnResult> => {
+      try {
+        const res = (await cachedReport(
+          reportKey([clientId, col.end, basis, "bs"]),
+          () => api.accounting.balanceSheet({ basis, as_of_date: col.end, client_id: clientId }),
+          { force },
+        )) as { success: boolean; data: BSApiData | null };
+        if (!res.success || !res.data) return { label: col.label, balances: [], totals: { assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true } };
         const d = res.data;
         const fromSection = (secs: BSApiSection[] | undefined, type: string): AccountBalance[] =>
           (secs ?? []).flatMap((s) => (s.lines ?? []).map((l) => ({
@@ -1859,101 +1697,58 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
             account_name: l.account_name, account_type: type,
             account_subtype: l.account_subtype ?? null, net_paise: l.balance_paise,
           })));
-        setBalances([
+        const balances = [
           ...fromSection(d.assets, "Asset"),
           ...fromSection(d.liabilities, "Liability"),
           ...fromSection(d.equity, "Equity"),
-        ].sort((a, b) => a.account_code.localeCompare(b.account_code)));
-        setBsTotals({
-          assets: d.total_assets_paise ?? 0,
-          liab: d.liabilities?.[0]?.total_paise ?? 0,
-          equity: d.equity?.[0]?.total_paise ?? 0,
-          liabEquity: d.total_liabilities_equity_paise ?? 0,
-          balanced: d.is_balanced ?? false,
-        });
-      } else {
-        setBalances([]);
-        setBsTotals({ assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true });
+        ];
+        return {
+          label: col.label,
+          balances,
+          totals: {
+            assets: d.total_assets_paise ?? 0,
+            liab: d.liabilities?.[0]?.total_paise ?? 0,
+            equity: d.equity?.[0]?.total_paise ?? 0,
+            liabEquity: d.total_liabilities_equity_paise ?? 0,
+            balanced: d.is_balanced ?? false,
+          },
+        };
+      } catch {
+        // Backend error/timeout for this column — degrade to empty, never an infinite skeleton (audit M17).
+        return { label: col.label, balances: [], totals: { assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true } };
       }
-    } catch {
-      // Backend error/timeout — degrade to empty, never an infinite skeleton (audit M17).
-      setCashBS(null);
-      setBalances([]);
-      setBsTotals({ assets: 0, liab: 0, equity: 0, liabEquity: 0, balanced: true });
-    } finally {
-      setLoading(false); setLoaded(true);
-    }
-  }, [clientId, financialYear, basis]);
+    }));
+    setColumns(results);
+    setLoading(false); setLoaded(true);
+  }, [clientId, basis, columnDefs]);
 
   useEffect(() => { load(); }, [load]);
 
-  const loadPrev = useCallback(async () => {
-    if (!clientId || clientId === "_placeholder") return;
-    setPrevLoading(true);
-    const { end } = fyDateRange(prevFY);
-    try {
-      const res = (await cachedReport(
-        reportKey([clientId, prevFY, basis, "bs"]),
-        () => api.accounting.balanceSheet({ basis, as_of_date: end, client_id: clientId }),
-      )) as { success: boolean; data: BSApiData | null };
-      if (basis === "cash") {
-        setPrevCashBS(res.success && res.data ? (res.data as unknown as CashBSData) : null);
-        setPrevBsTotals(null);
-      } else if (res.success && res.data) {
-        const d = res.data;
-        const fromSection = (secs: BSApiSection[] | undefined, type: string): AccountBalance[] =>
-          (secs ?? []).flatMap((s) => (s.lines ?? []).map((l) => ({
-            account_id: l.account_id ?? l.account_name, account_code: l.account_code ?? "",
-            account_name: l.account_name, account_type: type,
-            account_subtype: l.account_subtype ?? null, net_paise: l.balance_paise,
-          })));
-        setPrevBalances([
-          ...fromSection(d.assets, "Asset"),
-          ...fromSection(d.liabilities, "Liability"),
-          ...fromSection(d.equity, "Equity"),
-        ]);
-        setPrevBsTotals({
-          assets: d.total_assets_paise ?? 0,
-          liab: d.liabilities?.[0]?.total_paise ?? 0,
-          equity: d.equity?.[0]?.total_paise ?? 0,
-        });
-      } else {
-        setPrevBalances([]);
-        setPrevBsTotals({ assets: 0, liab: 0, equity: 0 });
-      }
-    } catch {
-      setPrevCashBS(null);
-      setPrevBalances([]);
-      setPrevBsTotals({ assets: 0, liab: 0, equity: 0 });
-    } finally {
-      setPrevLoading(false);
+  const columnMaps = useMemo(() => columns.map((c) => new Map(c.balances.map((b) => [b.account_id, b.net_paise]))), [columns]);
+  // Row identity is the union across columns. Equity rows are always kept
+  // even at a zero balance (Share Capital/Reserves should still appear for
+  // a new company) — Asset/Liability rows only appear where at least one
+  // column has a nonzero balance, mirroring the original single-column filter.
+  const unionAccounts = useMemo(() => {
+    const byId = new Map<string, AccountBalance>();
+    for (const col of columns) for (const b of col.balances) {
+      const keep = b.account_type === "Equity" || b.net_paise !== 0;
+      if (keep && !byId.has(b.account_id)) byId.set(b.account_id, b);
     }
-  }, [clientId, prevFY, basis]);
+    return Array.from(byId.values());
+  }, [columns]);
 
-  useEffect(() => { if (comparePY) loadPrev(); }, [comparePY, loadPrev]);
+  const assets = unionAccounts.filter((b) => b.account_type === "Asset");
+  const liabilities = unionAccounts.filter((b) => b.account_type === "Liability");
+  const equity = unionAccounts.filter((b) => b.account_type === "Equity");
 
-  const prevByAccount = useMemo(() => new Map(prevBalances.map((b) => [b.account_id, b.net_paise])), [prevBalances]);
-  const prevCashByAccount = useMemo(() => {
-    const m = new Map<string, number>();
-    if (prevCashBS) {
-      [...prevCashBS.equity, ...prevCashBS.liabilities, ...prevCashBS.assets].forEach((sec) =>
-        sec.lines.forEach((l) => { if (l.account_id) m.set(l.account_id, l.balance_paise); }));
-    }
-    return m;
-  }, [prevCashBS]);
-
-  // Line inclusion mirrors the backend section contents (non-zero balances) so
-  // the displayed lines and the backend totals below always reconcile.
-  const assets = balances.filter((b) => b.account_type === "Asset" && b.net_paise !== 0);
-  const liabilities = balances.filter((b) => b.account_type === "Liability" && b.net_paise !== 0);
-  const equity = balances.filter((b) => b.account_type === "Equity");
-
-  // Grand totals are the backend's authoritative figures; bucket subtotals below
-  // are presentation-only Schedule III grouping of the same backend line amounts.
-  const totalAssets = bsTotals.assets;
-  const totalLiab = bsTotals.liab;
-  const totalEquity = bsTotals.equity;
-  const isBalanced = bsTotals.balanced;
+  // Grand totals per column are the backend's own authoritative figures —
+  // never re-derived from the union above.
+  const totalAssetsByCol = columns.map((c) => c.totals.assets);
+  const totalLiabByCol = columns.map((c) => c.totals.liab);
+  const totalEquityByCol = columns.map((c) => c.totals.equity);
+  const totalLiabEquityByCol = columns.map((c) => c.totals.liabEquity);
+  const isBalanced = columns.length === 0 || columns.every((c) => c.totals.balanced);
 
   const assetBuckets = groupBy(assets, (b) => bsBucket(b.account_type, b.account_subtype));
   const liabBuckets = groupBy(liabilities, (b) => bsBucket(b.account_type, b.account_subtype));
@@ -1970,56 +1765,51 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
     </div>
   );
 
-  // CSV export — plain rupee numbers (no ₹ prefix / comma grouping) so the
-  // amount column is directly usable as a spreadsheet number.
-  const buildBsExportRows = (): { section: string; particulars: string; amount: string }[] => {
-    const rows: { section: string; particulars: string; amount: string }[] = [];
-    if (basis === "cash") {
-      if (!cashBS) return rows;
-      [...cashBS.equity, ...cashBS.liabilities, ...cashBS.assets].forEach((sec) => {
-        sec.lines.forEach((l) => rows.push({ section: sec.label, particulars: l.account_name, amount: (l.balance_paise / 100).toFixed(2) }));
-      });
-      rows.push({ section: "", particulars: "Total Assets", amount: (cashBS.total_assets_paise / 100).toFixed(2) });
-      rows.push({ section: "", particulars: "Total Liabilities", amount: ((cashBS.liabilities[0]?.total_paise ?? 0) / 100).toFixed(2) });
-      rows.push({ section: "", particulars: "Total Equity", amount: ((cashBS.equity[0]?.total_paise ?? 0) / 100).toFixed(2) });
-    } else {
-      BS_EQ_ORDER.forEach((bucket) => {
-        (equityBuckets[bucket] ?? []).forEach((item) => rows.push({ section: bucket, particulars: item.account_name, amount: (item.net_paise / 100).toFixed(2) }));
-      });
-      BS_LIAB_ORDER.forEach((bucket) => {
-        (liabBuckets[bucket] ?? []).forEach((item) => rows.push({ section: bucket, particulars: item.account_name, amount: (item.net_paise / 100).toFixed(2) }));
-      });
-      BS_ASSET_ORDER.forEach((bucket) => {
-        (assetBuckets[bucket] ?? []).forEach((item) => rows.push({ section: bucket, particulars: item.account_name, amount: (item.net_paise / 100).toFixed(2) }));
-      });
-      rows.push({ section: "", particulars: "Total Assets", amount: (totalAssets / 100).toFixed(2) });
-      rows.push({ section: "", particulars: "Total Liabilities", amount: (totalLiab / 100).toFixed(2) });
-      rows.push({ section: "", particulars: "Total Equity", amount: (totalEquity / 100).toFixed(2) });
-    }
+  // CSV export — plain rupee numbers (no ₹ prefix / comma grouping), one
+  // column per displayed period.
+  const buildBsExportRows = (): Record<string, string>[] => {
+    const rows: Record<string, string>[] = [];
+    const pushRow = (section: string, particulars: string, values: number[]) => {
+      const row: Record<string, string> = { section, particulars };
+      columns.forEach((c, i) => { row[c.label] = ((values[i] ?? 0) / 100).toFixed(2); });
+      rows.push(row);
+    };
+    BS_EQ_ORDER.forEach((bucket) => {
+      (equityBuckets[bucket] ?? []).forEach((item) => pushRow(bucket, item.account_name, columnMaps.map((m) => m.get(item.account_id) ?? 0)));
+    });
+    pushRow("", "Total Equity", totalEquityByCol);
+    BS_LIAB_ORDER.forEach((bucket) => {
+      (liabBuckets[bucket] ?? []).forEach((item) => pushRow(bucket, item.account_name, columnMaps.map((m) => m.get(item.account_id) ?? 0)));
+    });
+    pushRow("", "Total Liabilities", totalLiabByCol);
+    BS_ASSET_ORDER.forEach((bucket) => {
+      (assetBuckets[bucket] ?? []).forEach((item) => pushRow(bucket, item.account_name, columnMaps.map((m) => m.get(item.account_id) ?? 0)));
+    });
+    pushRow("", "Total Assets", totalAssetsByCol);
     return rows;
   };
-  const bsExportColumns: Column<{ section: string; particulars: string; amount: string }>[] = [
+  const bsExportColumns: Column<Record<string, string>>[] = [
     { key: "section", header: "Section", accessor: (r) => r.section },
     { key: "particulars", header: "Particulars", accessor: (r) => r.particulars },
-    { key: "amount", header: "Amount (₹)", accessor: (r) => r.amount },
+    ...columns.map((c, i): Column<Record<string, string>> => ({ key: `col${i}`, header: `${c.label} (₹)`, accessor: (r) => r[c.label] ?? "" })),
   ];
-  const bsExportDisabled = !loaded || (basis === "cash" ? !cashBS : balances.length === 0);
+  const bsExportDisabled = !loaded || unionAccounts.length === 0;
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">Balance Sheet — as at 31 March {parseInt(financialYear.split("-")[0]) + 1}</p>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setComparePY((v) => !v)}
-            className={`px-3 py-1.5 text-xs font-medium rounded border transition-colors ${comparePY ? "bg-[#1E293B] text-white border-[#1E293B]" : "bg-white text-[#64748B] border-[#E2E8F0] hover:bg-[#F8FAFC]"}`}
-          >
-            Compare vs FY {prevFY}
-          </button>
+    <div className="space-y-4 max-w-5xl mx-auto">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-xs font-semibold text-[#334155]">Balance Sheet</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <PeriodPicker
+            mode={periodMode} onModeChange={setPeriodMode} financialYear={financialYear}
+            customFrom={customFrom} customTo={customTo} onCustomFromChange={setCustomFrom} onCustomToChange={setCustomTo}
+            granularity={granularity} onGranularityChange={setGranularity}
+            ariaLabel="As of / period"
+          />
           <BasisToggle />
           <button onClick={() => load(true)} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
-            onClick={() => downloadCsv(`balance-sheet-fy-${financialYear}.csv`, toCsv(buildBsExportRows(), bsExportColumns))}
+            onClick={() => downloadCsv(`balance-sheet-${financialYear}.csv`, toCsv(buildBsExportRows(), bsExportColumns))}
             disabled={bsExportDisabled}
             className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"
             title="Export CSV"
@@ -2037,144 +1827,70 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
         </div>
       )}
 
-      {comparePY && (
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: "Total Assets", curr: totalAssets, prev: prevBsTotals?.assets },
-            { label: "Total Liabilities", curr: totalLiab, prev: prevBsTotals?.liab },
-            { label: "Total Equity", curr: totalEquity, prev: prevBsTotals?.equity },
-          ].map((s) => (
-            <div key={s.label} className="rounded-lg border border-[#F1F5F9] bg-white p-3">
-              <p className="text-[10px] text-[#94A3B8] font-medium">{s.label}</p>
-              <p className="text-sm font-bold text-[#0F172A] mt-0.5">{fmt(s.curr)}</p>
-              <div className="flex items-center justify-between mt-1 text-[10px] text-[#94A3B8]">
-                <span>FY {prevFY}: {s.prev !== undefined ? fmt(s.prev) : (prevLoading ? "…" : "—")}</span>
-                <ChangeCell curr={s.curr} prev={s.prev} />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {loading && <div className="h-48 rounded-lg bg-[#F8FAFC] animate-pulse" />}
 
-      {/* Cash basis balance sheet — simplified flat view */}
-      {!loading && loaded && basis === "cash" && cashBS && (
+      {!loading && loaded && (
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          {columns.length > 1 && (
+            <p className="text-[10px] text-[#94A3B8]">
+              {columns.length} snapshots, each as of the end of its period: {columns[0]?.label} – {columns[columns.length - 1]?.label}
+            </p>
+          )}
+          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-x-auto">
             <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#F1F5F9]">
-              <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">I. Equity & Liabilities (Cash Basis)</p>
+              <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">I. Equity & Liabilities{basis === "cash" ? " (Cash Basis)" : ""}</p>
             </div>
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]">
                   <th className="px-5 py-2 text-left font-semibold">Particulars</th>
-                  <th className="px-4 py-2 text-right font-semibold">Amount (₹)</th>
-                  {comparePY && <><th className="px-4 py-2 text-right font-semibold">FY {prevFY} (₹)</th><th className="px-4 py-2 text-right font-semibold">Change</th></>}
+                  {columns.map((c, i) => <th key={i} className="px-4 py-2 text-right font-semibold whitespace-nowrap">{c.label} (₹)</th>)}
                 </tr>
               </thead>
               <tbody>
-                <tr><td colSpan={comparePY ? 4 : 2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(A) Equity</td></tr>
-                {(cashBS.equity[0]?.lines ?? []).map((l, i) => (
-                  <tr key={i} className={isDrillableAccount(l.account_id) ? "hover:bg-[#F8FAFC] cursor-pointer" : "hover:bg-[#F8FAFC]"} onClick={isDrillableAccount(l.account_id) ? () => onDrillDown(l.account_id as string) : undefined}>
-                    <td className={`px-5 py-1.5 pl-10 text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{l.account_name}</td>
-                    <td className={`px-4 py-1.5 text-right font-mono text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(l.balance_paise)}</td>
-                    {comparePY && <><td className="px-4 py-1.5 text-right font-mono text-[#94A3B8]">{l.account_id && prevCashByAccount.has(l.account_id) ? fmt(prevCashByAccount.get(l.account_id) as number) : "—"}</td><td className="px-4 py-1.5 text-right"><ChangeCell curr={l.balance_paise} prev={l.account_id ? prevCashByAccount.get(l.account_id) : undefined} /></td></>}
-                  </tr>
-                ))}
-                <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Equity</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(cashBS.equity[0]?.total_paise ?? 0)}</td>{comparePY && <><td colSpan={2}></td></>}</tr>
-                <tr><td colSpan={comparePY ? 4 : 2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(B) Liabilities</td></tr>
-                {(cashBS.liabilities[0]?.lines ?? []).map((l, i) => (
-                  <tr key={i} className={isDrillableAccount(l.account_id) ? "hover:bg-[#F8FAFC] cursor-pointer" : "hover:bg-[#F8FAFC]"} onClick={isDrillableAccount(l.account_id) ? () => onDrillDown(l.account_id as string) : undefined}>
-                    <td className={`px-5 py-1.5 pl-10 text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{l.account_name}</td>
-                    <td className={`px-4 py-1.5 text-right font-mono text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(l.balance_paise)}</td>
-                    {comparePY && <><td className="px-4 py-1.5 text-right font-mono text-[#94A3B8]">{l.account_id && prevCashByAccount.has(l.account_id) ? fmt(prevCashByAccount.get(l.account_id) as number) : "—"}</td><td className="px-4 py-1.5 text-right"><ChangeCell curr={l.balance_paise} prev={l.account_id ? prevCashByAccount.get(l.account_id) : undefined} /></td></>}
-                  </tr>
-                ))}
-                <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Liabilities</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(cashBS.liabilities[0]?.total_paise ?? 0)}</td>{comparePY && <><td colSpan={2}></td></>}</tr>
-                <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Equity & Liabilities</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(cashBS.total_liabilities_equity_paise)}</td>{comparePY && <><td colSpan={2}></td></>}</tr>
+                <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(A) Equity</td></tr>
+                {BS_EQ_ORDER.map((bucket) => { const items = equityBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />; })}
+                <tr className="border-t border-[#E2E8F0] font-semibold">
+                  <td className="px-5 py-2.5 text-[#1E293B]">Total Equity</td>
+                  {totalEquityByCol.map((v, i) => <td key={i} className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(v)}</td>)}
+                </tr>
+                <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(B) Liabilities</td></tr>
+                {BS_LIAB_ORDER.map((bucket) => { const items = liabBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />; })}
+                <tr className="border-t border-[#E2E8F0] font-semibold">
+                  <td className="px-5 py-2.5 text-[#1E293B]">Total Liabilities</td>
+                  {totalLiabByCol.map((v, i) => <td key={i} className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(v)}</td>)}
+                </tr>
+                <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]">
+                  <td className="px-5 py-3 text-[#0F172A] text-sm">Total Equity & Liabilities</td>
+                  {totalLiabEquityByCol.map((v, i) => <td key={i} className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(v)}</td>)}
+                </tr>
               </tbody>
             </table>
           </div>
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-x-auto">
             <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#F1F5F9]">
-              <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">II. Assets (Cash Basis)</p>
+              <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">II. Assets{basis === "cash" ? " (Cash Basis)" : ""}</p>
             </div>
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]">
                   <th className="px-5 py-2 text-left font-semibold">Particulars</th>
-                  <th className="px-4 py-2 text-right font-semibold">Amount (₹)</th>
-                  {comparePY && <><th className="px-4 py-2 text-right font-semibold">FY {prevFY} (₹)</th><th className="px-4 py-2 text-right font-semibold">Change</th></>}
+                  {columns.map((c, i) => <th key={i} className="px-4 py-2 text-right font-semibold whitespace-nowrap">{c.label} (₹)</th>)}
                 </tr>
               </thead>
               <tbody>
-                {(cashBS.assets[0]?.lines ?? []).map((l, i) => (
-                  <tr key={i} className={isDrillableAccount(l.account_id) ? "hover:bg-[#F8FAFC] cursor-pointer" : "hover:bg-[#F8FAFC]"} onClick={isDrillableAccount(l.account_id) ? () => onDrillDown(l.account_id as string) : undefined}>
-                    <td className={`px-5 py-1.5 pl-10 text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{l.account_name}</td>
-                    <td className={`px-4 py-1.5 text-right font-mono text-[#334155] ${isDrillableAccount(l.account_id) ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(l.balance_paise)}</td>
-                    {comparePY && <><td className="px-4 py-1.5 text-right font-mono text-[#94A3B8]">{l.account_id && prevCashByAccount.has(l.account_id) ? fmt(prevCashByAccount.get(l.account_id) as number) : "—"}</td><td className="px-4 py-1.5 text-right"><ChangeCell curr={l.balance_paise} prev={l.account_id ? prevCashByAccount.get(l.account_id) : undefined} /></td></>}
-                  </tr>
-                ))}
-                <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Assets</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(cashBS.total_assets_paise)}</td>{comparePY && <><td colSpan={2}></td></>}</tr>
-              </tbody>
-            </table>
-          </div>
-          <div className={`rounded-lg px-4 py-3 text-xs font-medium ${cashBS.is_balanced ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-            {cashBS.is_balanced ? "✓ Balance Sheet balances — Assets = Equity + Liabilities" : "✗ Balance Sheet out of balance — check for errors"}
-          </div>
-        </div>
-      )}
-
-      {/* Accrual balance sheet — Schedule III format */}
-      {!loading && loaded && basis === "accrual" && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-            <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#F1F5F9]">
-              <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">I. Equity & Liabilities</p>
-            </div>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]">
-                  <th className="px-5 py-2 text-left font-semibold">Particulars</th>
-                  <th className="px-4 py-2 text-right font-semibold">Amount (₹)</th>
-                  {comparePY && <><th className="px-4 py-2 text-right font-semibold">FY {prevFY} (₹)</th><th className="px-4 py-2 text-right font-semibold">Change</th></>}
+                {BS_ASSET_ORDER.map((bucket) => { const items = assetBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />; })}
+                <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]">
+                  <td className="px-5 py-3 text-[#0F172A] text-sm">Total Assets</td>
+                  {totalAssetsByCol.map((v, i) => <td key={i} className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(v)}</td>)}
                 </tr>
-              </thead>
-              <tbody>
-                <tr><td colSpan={comparePY ? 4 : 2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(A) Equity</td></tr>
-                {BS_EQ_ORDER.map((bucket) => { const items = equityBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} onDrillDown={onDrillDown} comparePY={comparePY} prevByAccount={prevByAccount} />; })}
-                {equityBuckets["Capital Account"] && <BSSectionRows label="Capital Account" items={equityBuckets["Capital Account"]} onDrillDown={onDrillDown} comparePY={comparePY} prevByAccount={prevByAccount} />}
-                <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Equity</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(totalEquity)}</td>{comparePY && <><td colSpan={2}></td></>}</tr>
-                <tr><td colSpan={comparePY ? 4 : 2} className="px-5 py-2 font-semibold text-[#334155] bg-[#F8FAFC] text-[10px] uppercase tracking-wide">(B) Liabilities</td></tr>
-                {BS_LIAB_ORDER.map((bucket) => { const items = liabBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} onDrillDown={onDrillDown} comparePY={comparePY} prevByAccount={prevByAccount} />; })}
-                <tr className="border-t border-[#E2E8F0] font-semibold"><td className="px-5 py-2.5 text-[#1E293B]">Total Liabilities</td><td className="px-4 py-2.5 text-right font-mono text-[#0F172A]">{fmt(totalLiab)}</td>{comparePY && <><td colSpan={2}></td></>}</tr>
-                <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Equity & Liabilities</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(totalLiab + totalEquity)}</td>{comparePY && <><td colSpan={2}></td></>}</tr>
-              </tbody>
-            </table>
-          </div>
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-            <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#F1F5F9]">
-              <p className="text-xs font-bold text-[#475569] uppercase tracking-wide">II. Assets</p>
-            </div>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]">
-                  <th className="px-5 py-2 text-left font-semibold">Particulars</th>
-                  <th className="px-4 py-2 text-right font-semibold">Amount (₹)</th>
-                  {comparePY && <><th className="px-4 py-2 text-right font-semibold">FY {prevFY} (₹)</th><th className="px-4 py-2 text-right font-semibold">Change</th></>}
-                </tr>
-              </thead>
-              <tbody>
-                {BS_ASSET_ORDER.map((bucket) => { const items = assetBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} onDrillDown={onDrillDown} comparePY={comparePY} prevByAccount={prevByAccount} />; })}
-                <tr className="border-t-2 border-gray-300 font-bold bg-[#F8FAFC]"><td className="px-5 py-3 text-[#0F172A] text-sm">Total Assets</td><td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">{fmt(totalAssets)}</td>{comparePY && <><td colSpan={2}></td></>}</tr>
               </tbody>
             </table>
           </div>
           <div className={`rounded-lg px-4 py-3 text-xs font-medium ${isBalanced ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-            {isBalanced ? "✓ Balance Sheet balances — Assets = Equity + Liabilities" : `✗ Out of balance by ${fmt(Math.abs(totalAssets - totalLiab - totalEquity))} — check for unposted entries`}
+            {isBalanced ? "✓ Balance Sheet balances — Assets = Equity + Liabilities" : "✗ Out of balance in at least one period — check for unposted entries"}
           </div>
-          {balances.length === 0 && <div className="text-center py-8 text-[#94A3B8] text-sm">No posted journal entries found for this client.</div>}
+          {unionAccounts.length === 0 && <div className="text-center py-8 text-[#94A3B8] text-sm">No posted journal entries found for this client.</div>}
         </div>
       )}
     </div>
@@ -2182,30 +1898,24 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
 }
 
 function BSSectionRows({
-  label, items, onDrillDown, comparePY, prevByAccount,
+  label, items, columnMaps, onDrillDown,
 }: {
-  label: string; items: AccountBalance[]; onDrillDown: (accountId: string) => void;
-  comparePY: boolean; prevByAccount: Map<string, number>;
+  label: string; items: AccountBalance[]; columnMaps: Map<string, number>[]; onDrillDown: (accountId: string) => void;
 }) {
   const [open, setOpen] = useState(true);
-  const total = items.reduce((s, b) => s + b.net_paise, 0);
+  const totals = columnMaps.map((m) => items.reduce((s, b) => s + (m.get(b.account_id) ?? 0), 0));
   return (
     <>
       <tr className="cursor-pointer hover:bg-[#F8FAFC]" onClick={() => setOpen((o) => !o)}>
         <td className="px-5 py-2 text-[#334155] font-medium pl-8">{label}</td>
-        <td className="px-4 py-2 text-right font-mono text-[#334155]">{fmt(total)}</td>
-        {comparePY && <><td colSpan={2}></td></>}
+        {totals.map((t, i) => <td key={i} className="px-4 py-2 text-right font-mono text-[#334155]">{fmt(t)}</td>)}
       </tr>
       {open && items.map((item) => {
         const drillable = isDrillableAccount(item.account_id);
         return (
           <tr key={item.account_id} className={drillable ? "text-[#94A3B8] hover:bg-[#F8FAFC] cursor-pointer" : "text-[#94A3B8]"} onClick={drillable ? () => onDrillDown(item.account_id) : undefined}>
             <td className={`px-5 py-1.5 pl-14 ${drillable ? "hover:text-blue-700 hover:underline" : ""}`}>{item.account_name}</td>
-            <td className={`px-4 py-1.5 text-right font-mono ${drillable ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(item.net_paise)}</td>
-            {comparePY && <>
-              <td className="px-4 py-1.5 text-right font-mono">{prevByAccount.has(item.account_id) ? fmt(prevByAccount.get(item.account_id) as number) : "—"}</td>
-              <td className="px-4 py-1.5 text-right"><ChangeCell curr={item.net_paise} prev={prevByAccount.get(item.account_id)} /></td>
-            </>}
+            {columnMaps.map((m, i) => <td key={i} className={`px-4 py-1.5 text-right font-mono ${drillable ? "hover:text-blue-700 hover:underline" : ""}`}>{fmt(m.get(item.account_id) ?? 0)}</td>)}
           </tr>
         );
       })}
