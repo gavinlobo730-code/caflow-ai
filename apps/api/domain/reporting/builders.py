@@ -120,10 +120,17 @@ def trial_balance(lines: list[ProjectedLine], accounts: dict[str, Account],
 
     tb_lines, grand_dr, grand_cr = [], 0, 0
     for row in totals.values():
-        row["net_paise"] = row["total_debit_paise"] - row["total_credit_paise"]
-        # Drop net-zero accounts (e.g. A/R fully transformed away in cash basis).
-        if row["total_debit_paise"] == 0 and row["total_credit_paise"] == 0:
+        net = row["total_debit_paise"] - row["total_credit_paise"]
+        row["net_paise"] = net
+        # Drop net-zero accounts — netted, not gross, so equal offsetting
+        # debit/credit turnover (e.g. a fully-reversed entry, or A/R fully
+        # transformed away in cash basis) doesn't leave a phantom balance.
+        if net == 0:
             continue
+        # Trial Balance shows each account's net closing balance on its
+        # normal side, never gross turnover mirrored on both columns.
+        row["total_debit_paise"] = net if net > 0 else 0
+        row["total_credit_paise"] = -net if net < 0 else 0
         tb_lines.append(row)
         grand_dr += row["total_debit_paise"]
         grand_cr += row["total_credit_paise"]

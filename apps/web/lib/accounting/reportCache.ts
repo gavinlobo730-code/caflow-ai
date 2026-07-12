@@ -34,11 +34,19 @@ export function setReport(key: string, data: unknown): void {
 
 /**
  * Fetch-through cache: returns a fresh cached value without calling the backend;
- * otherwise runs `fetcher`, stores, and returns it.
+ * otherwise runs `fetcher`, stores, and returns it. Pass `force: true` (the
+ * refresh button) to always re-run `fetcher` and overwrite the cache, even
+ * within the TTL window.
  */
-export async function cachedReport(key: string, fetcher: () => Promise<unknown>): Promise<unknown> {
-  const hit = getReport(key);
-  if (hit && hit.fresh) return hit.data;
+export async function cachedReport(
+  key: string,
+  fetcher: () => Promise<unknown>,
+  opts?: { force?: boolean },
+): Promise<unknown> {
+  if (!opts?.force) {
+    const hit = getReport(key);
+    if (hit && hit.fresh) return hit.data;
+  }
   const data = await fetcher();
   setReport(key, data);
   return data;

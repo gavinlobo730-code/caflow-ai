@@ -1058,7 +1058,7 @@ function TrialBalance({ clientId, financialYear, onDrillDown }: { clientId: stri
     router.replace(`?${params.toString()}`, { scroll: false });
   };
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force?: boolean) => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
     // Both bases are computed server-side from the same posted ledger, scoped to
@@ -1068,6 +1068,7 @@ function TrialBalance({ clientId, financialYear, onDrillDown }: { clientId: stri
       const res = (await cachedReport(
         reportKey([clientId, financialYear, basis, "tb"]),
         () => api.accounting.trialBalance({ basis, as_of_date: end, client_id: clientId }),
+        { force },
       )) as { success: boolean; data: TBApiData | null };
       if (res.success && res.data) {
         setRows(res.data.lines ?? []);
@@ -1106,7 +1107,7 @@ function TrialBalance({ clientId, financialYear, onDrillDown }: { clientId: stri
             <button onClick={() => updateBasis("accrual")} className={`px-3 py-1 font-medium transition-colors ${basis === "accrual" ? "bg-[#1E293B] text-white" : "bg-white text-[#64748B] hover:bg-[#F8FAFC]"}`}>Accrual</button>
             <button onClick={() => updateBasis("cash")} className={`px-3 py-1 font-medium border-l border-[#E2E8F0] transition-colors ${basis === "cash" ? "bg-[#1E293B] text-white" : "bg-white text-[#64748B] hover:bg-[#F8FAFC]"}`}>Cash</button>
           </div>
-          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button onClick={() => load(true)} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
         </div>
       </div>
       {basis === "cash" && (
@@ -1510,7 +1511,7 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
     router.replace(`?${params.toString()}`, { scroll: false });
   };
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force?: boolean) => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
     // Both bases computed server-side from the same posted ledger, scoped to this
@@ -1521,6 +1522,7 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
       const res = (await cachedReport(
         reportKey([clientId, financialYear, basis, "pl"]),
         () => api.accounting.profitLoss({ basis, start_date: start, end_date: end, client_id: clientId }),
+        { force },
       )) as { success: boolean; data: PLApiData | null };
 
       if (basis === "cash") {
@@ -1672,7 +1674,7 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
             Compare vs FY {prevFY}
           </button>
           <BasisToggle />
-          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button onClick={() => load(true)} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
             onClick={() => downloadCsv(`profit-and-loss-fy-${financialYear}.csv`, toCsv(buildPlExportRows(), plExportColumns))}
             disabled={plExportDisabled}
@@ -1908,7 +1910,7 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
     router.replace(`?${params.toString()}`, { scroll: false });
   };
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force?: boolean) => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
     // Both bases computed server-side from the same posted ledger, scoped to this
@@ -1920,6 +1922,7 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
       const res = (await cachedReport(
         reportKey([clientId, financialYear, basis, "bs"]),
         () => api.accounting.balanceSheet({ basis, as_of_date: end, client_id: clientId }),
+        { force },
       )) as { success: boolean; data: BSApiData | null };
 
       if (basis === "cash") {
@@ -2091,7 +2094,7 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
             Compare vs FY {prevFY}
           </button>
           <BasisToggle />
-          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button onClick={() => load(true)} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
             onClick={() => downloadCsv(`balance-sheet-fy-${financialYear}.csv`, toCsv(buildBsExportRows(), bsExportColumns))}
             disabled={bsExportDisabled}
@@ -2360,7 +2363,7 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force?: boolean) => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
     // Scoped to THIS client (each client is a separate entity — never aggregated
@@ -2372,6 +2375,7 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
       const res = (await cachedReport(
         reportKey([clientId, financialYear, "accrual", "cf"]),
         () => api.accounting.cashFlow({ basis: "accrual", start_date: start, end_date: end, client_id: clientId }),
+        { force },
       )) as { success: boolean; data: CFData | null };
       setCf(res.success && res.data ? res.data : null);
     } catch {
@@ -2416,7 +2420,7 @@ function CashFlow({ clientId, financialYear }: { clientId: string; financialYear
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">Cash Flow Statement — FY {financialYear}</p>
         <div className="flex items-center gap-2">
-          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button onClick={() => load(true)} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
             onClick={() => downloadCsv(`cash-flow-fy-${financialYear}.csv`, toCsv(buildCfExportRows(), cfExportColumns))}
             disabled={!cf}
