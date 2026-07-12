@@ -117,6 +117,22 @@ test("a known product_service pre-fills description/hsn/rate/gst/unit", () => {
   assert.equal(invoices[0].lines[0].unit, "OTH");
 });
 
+test("a known product_service links the line (service_catalogue_id) so an issued invoice can draw down inventory", () => {
+  const { invoices, errors } = buildSalesInvoices(
+    [row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", product_service: "Statutory Audit", quantity: "1" })],
+    "client-1", CUSTOMERS, SERVICES);
+  assert.equal(errors.length, 0);
+  assert.equal(invoices[0].lines[0].service_catalogue_id, SERVICES.find((s) => s.name === "Statutory Audit")?.id);
+});
+
+test("no product_service leaves service_catalogue_id unset (free-text line, no inventory linkage)", () => {
+  const { invoices, errors } = buildSalesInvoices(
+    [row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "Freeform", rate: "500", gst_rate: "18", quantity: "1" })],
+    "client-1", CUSTOMERS, SERVICES);
+  assert.equal(errors.length, 0);
+  assert.equal(invoices[0].lines[0].service_catalogue_id, undefined);
+});
+
 test("row's own fields override the matched product_service's defaults", () => {
   const { invoices } = buildSalesInvoices(
     [row({

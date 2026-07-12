@@ -1119,7 +1119,11 @@ function SalesInvoices({
         .eq("is_active", true)
         .order("name")
         .order("id")),
-      api.serviceCatalogue.list(clientId, { limit: 100 }) as Promise<ApiResp<ServiceCatalogueItem[]>>,
+      // 500 = the endpoint's own max (models/service_catalogue... Query(..., le=500))
+      // — this list drives the CSV import's product_service resolver, which
+      // must be able to match against the WHOLE catalogue, not a search-typeahead
+      // subset (unlike ServiceCataloguePicker's own small limit).
+      api.serviceCatalogue.list(clientId, { limit: 500 }) as Promise<ApiResp<ServiceCatalogueItem[]>>,
     ]);
     setServices(servicesRes.data ?? []);
 

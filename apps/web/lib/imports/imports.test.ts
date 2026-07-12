@@ -10,6 +10,7 @@ import {
   buildReceipts,
   buildEmployees,
   type NameRef,
+  type PurchaseServiceRef,
 } from "./mappers.ts";
 
 const row = (o: Record<string, string>) => o;
@@ -218,6 +219,53 @@ test("purchase bills: unknown vendor and bill_no reused across vendors reported"
   assert.match(errors.join(" "), /unknown vendor/i);
   assert.match(errors.join(" "), /different vendor/i);
   assert.equal(bills.length, 1); // only B-9 for Supplier A
+});
+
+const PURCHASE_SERVICES: PurchaseServiceRef[] = [
+  { id: "s1", name: "TMT Steel Rod 12mm", description: "Steel bar", hsn_sac: "7214", gst_rate_bps: 1800, purchase_price_paise: 5800, unit: "KGS" },
+];
+
+test("purchase bills: product_service links the line (service_catalogue_id) so a received bill can restock inventory", () => {
+  const { bills, errors } = buildPurchaseBills([
+    row({ vendor: "Supplier A", bill_date: "2026-04-10", product_service: "TMT Steel Rod 12mm", quantity: "100" }),
+  ], "c1", VENDORS, PURCHASE_SERVICES);
+  assert.equal(errors.length, 0);
+  assert.equal(bills[0].lines[0].service_catalogue_id, "s1");
+  // Pre-filled from the matched product since the row gave none of its own.
+  assert.equal(bills[0].lines[0].description, "Steel bar");
+  assert.equal(bills[0].lines[0].hsn_sac, "7214");
+  assert.equal(bills[0].lines[0].rate_paise, 5800);
+  assert.equal(bills[0].lines[0].gst_rate_percent, 18);
+  assert.equal(bills[0].lines[0].unit, "KGS");
+});
+
+test("purchase bills: row-level description/hsn_sac/rate/gst_rate override the matched product's own values", () => {
+  const { bills, errors } = buildPurchaseBills([
+    row({ vendor: "Supplier A", bill_date: "2026-04-10", product_service: "TMT Steel Rod 12mm",
+          description: "Bulk order", hsn_sac: "7215", quantity: "50", rate: "60", gst_rate: "12" }),
+  ], "c1", VENDORS, PURCHASE_SERVICES);
+  assert.equal(errors.length, 0);
+  assert.equal(bills[0].lines[0].service_catalogue_id, "s1"); // still linked
+  assert.equal(bills[0].lines[0].description, "Bulk order");
+  assert.equal(bills[0].lines[0].hsn_sac, "7215");
+  assert.equal(bills[0].lines[0].rate_paise, 6000);
+  assert.equal(bills[0].lines[0].gst_rate_percent, 12);
+});
+
+test("purchase bills: unknown product_service is reported, not silently ignored", () => {
+  const { bills, errors } = buildPurchaseBills([
+    row({ vendor: "Supplier A", bill_date: "2026-04-10", product_service: "Nonexistent Widget", quantity: "1" }),
+  ], "c1", VENDORS, PURCHASE_SERVICES);
+  assert.equal(bills.length, 0);
+  assert.match(errors.join(" "), /unknown product\/service/i);
+});
+
+test("purchase bills: no product_service still requires description/rate/gst_rate (unlinked, free-text line)", () => {
+  const { bills, errors } = buildPurchaseBills([
+    row({ vendor: "Supplier A", bill_date: "2026-04-10", quantity: "1" }),
+  ], "c1", VENDORS, PURCHASE_SERVICES);
+  assert.equal(bills.length, 0);
+  assert.match(errors.join(" "), /description is required/i);
 });
 
 // ── Receipts ─────────────────────────────────────────────────────────────────
