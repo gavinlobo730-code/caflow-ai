@@ -457,7 +457,7 @@ def post_opening_stock_journal_entry(
     item_count: int, created_by: Optional[str] = None,
 ) -> Optional[str]:
     """Dr Inventory / Cr Opening Balance Equity for opening stock brought
-    onto the books — the SAME contra account opening_balance_service already
+    onto the books — the SAME contra ACCOUNT opening_balance_service already
     uses for customers'/vendors'/bank accounts' opening positions, so the
     Trial Balance and Balance Sheet reconcile with what the Inventory page
     shows instead of silently omitting it. This was the one inventory
@@ -465,6 +465,22 @@ def post_opening_stock_journal_entry(
     sale/purchase returns, write-offs and NRV write-downs above all post
     their own entry; seed_opening_balance / seed_opening_balances_batch only
     ever wrote the ledger row and the service_catalogue cache.
+
+    source_type is DELIBERATELY NOT "Opening" (services/opening_balance_
+    service.py's OPENING_SOURCE) even though entry_type is — that constant
+    is the identity marker services/opening_balance_service.py's
+    _current_opening_net() uses to find "the auto-maintained AR/AP/Bank
+    opening family it manages, per its own module docstring ("A user's own
+    manually-created 'Opening' entry uses source_type='manual', so it is
+    never touched by this service"). _plan_opening() deltas EVERY account
+    appearing in that family against its AR/AP/Bank targets, including ones
+    it has no target for (Inventory isn't one) — so an inventory-opening
+    entry tagged source_type="Opening" gets silently zeroed out (or double-
+    posted) the next time ANY customer/vendor/bank opening balance changes,
+    corrupting the Inventory account. Confirmed live: importing 40 vendors'
+    opening balances against a client that already had an inventory opening
+    balance posted a combined delta entry that credited Inventory by its
+    FULL original value on top of an otherwise-correct AR/AP adjustment.
 
     ONE combined entry for `item_count` items/value_paise, not one per item
     — Inventory is a single control account regardless of which item the
@@ -493,7 +509,7 @@ def post_opening_stock_journal_entry(
         return phase2_journal_service._create_journal(
             db=db, firm_id=firm_id, client_id=client_id, entry_date=movement_date,
             reference_no=reference_no, narration=narration,
-            entry_type="Opening", source_type="Opening", source_id=None, created_by=created_by,
+            entry_type="Opening", source_type="InventoryOpening", source_id=None, created_by=created_by,
             lines=[
                 {"account_id": inventory_id, "debit_paise": value_paise, "credit_paise": 0, "narration": "Opening stock"},
                 {"account_id": obe_id, "debit_paise": 0, "credit_paise": value_paise, "narration": "Opening balance contra"},
