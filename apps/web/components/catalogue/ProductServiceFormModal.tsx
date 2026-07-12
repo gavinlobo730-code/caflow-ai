@@ -167,7 +167,7 @@ export function ProductServiceFormModal({
           <Field label="Opening balance as of (optional)">
             <input type="date" value={form.openingBalanceDate} onChange={(e) => set("openingBalanceDate", e.target.value)} className={inputCls} />
             <span className="block text-[11px] text-[#94A3B8] mt-1">
-              The date this stock is on hand as of — not when you're entering it. Defaults to your client&apos;s financial-year start if left blank.
+              The date this stock is on hand as of — not when you&apos;re entering it. Defaults to your client&apos;s financial-year start if left blank.
             </span>
           </Field>
         )}

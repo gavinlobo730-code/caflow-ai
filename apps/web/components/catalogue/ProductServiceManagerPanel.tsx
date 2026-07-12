@@ -396,7 +396,7 @@ export function ProductServiceManagerPanel({
               className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </label>
-          <p className="text-xs text-[#94A3B8]">No opening stock in this file? Leave this blank and continue — it's ignored for rows with no opening quantity/value.</p>
+          <p className="text-xs text-[#94A3B8]">No opening stock in this file? Leave this blank and continue — it&apos;s ignored for rows with no opening quantity/value.</p>
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={() => setImportStep("closed")} className="text-sm px-3.5 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
             <button onClick={() => setImportStep("csv")} className="text-sm px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Continue</button>
