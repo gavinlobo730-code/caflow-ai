@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Plus, RefreshCw, Upload, CheckCircle, X, Printer, FileText, Download, Share2, Sparkles } from "lucide-react";
+import { Plus, RefreshCw, Upload, CheckCircle, X, Printer, FileText, Download, Share2 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise, formatMoney } from "@/lib/services/formatting";
@@ -171,81 +171,6 @@ function ChangeCell({ curr, prev }: { curr: number; prev: number | undefined }) 
   if (curr === prev) return <span className="text-[#94A3B8]">—</span>;
   const up = pct > 0;
   return <span className={up ? "text-green-700" : "text-red-700"}>{up ? "+" : ""}{pct.toFixed(1)}%</span>;
-}
-
-interface StatementAnalysis {
-  narrative: string;
-  ai_generated: boolean;
-  ratios: {
-    net_margin_pct: number | null;
-    expense_ratio_pct: number | null;
-    current_ratio: number | null;
-    current_assets_paise: number;
-    current_liabilities_paise: number;
-  };
-}
-
-// Short AI-generated narrative + a few ratios for the P&L/Balance Sheet —
-// backend-computed (domain/financial_analysis_service), never re-derived
-// here. Falls back to a deterministic (non-AI) narrative server-side when
-// Groq is unavailable; `ai_generated` distinguishes the two so this never
-// mislabels a computed fallback as an AI opinion.
-function StatementAnalysisPanel({ clientId, financialYear, basis }: { clientId: string; financialYear: string; basis: "accrual" | "cash" }) {
-  const [analysis, setAnalysis] = useState<StatementAnalysis | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!clientId || clientId === "_placeholder") return;
-    let cancelled = false;
-    setLoading(true);
-    (async () => {
-      try {
-        const res = (await cachedReport(
-          reportKey([clientId, financialYear, basis, "statement-analysis"]),
-          () => api.accounting.statementAnalysis({ client_id: clientId, financial_year: financialYear, basis }),
-        )) as { success: boolean; data: StatementAnalysis | null };
-        if (!cancelled) setAnalysis(res.success ? res.data : null);
-      } catch {
-        if (!cancelled) setAnalysis(null);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [clientId, financialYear, basis]);
-
-  if (loading) return <div className="h-24 rounded-lg bg-[#F8FAFC] animate-pulse" />;
-  if (!analysis) return null;
-
-  const { ratios } = analysis;
-  const stats = [
-    { label: "Net Margin", value: ratios.net_margin_pct !== null ? `${ratios.net_margin_pct}%` : "—" },
-    { label: "Expense Ratio", value: ratios.expense_ratio_pct !== null ? `${ratios.expense_ratio_pct}%` : "—" },
-    { label: "Current Ratio", value: ratios.current_ratio !== null ? `${ratios.current_ratio}x` : "—" },
-  ];
-
-  return (
-    <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-3.5">
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <Sparkles size={13} className="text-blue-600" />
-        <p className="text-[11px] font-semibold text-blue-900">
-          {analysis.ai_generated ? "AI Analysis" : "Analysis"}
-        </p>
-        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
-          {analysis.ai_generated ? "AI-generated — verify before relying on it" : "Computed"}
-        </span>
-      </div>
-      <p className="text-xs text-[#334155] leading-relaxed">{analysis.narrative}</p>
-      <div className="flex items-center gap-4 mt-2.5 pt-2.5 border-t border-blue-100">
-        {stats.map((s) => (
-          <div key={s.label}>
-            <p className="text-[9px] text-[#64748B] font-medium">{s.label}</p>
-            <p className="text-xs font-bold text-[#0F172A] font-mono">{s.value}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 // Report lines can carry a synthetic id (e.g. "__retained__" for a computed
@@ -1694,8 +1619,6 @@ function ProfitAndLoss({ clientId, financialYear, onDrillDown }: { clientId: str
         </div>
       )}
 
-      <StatementAnalysisPanel clientId={clientId} financialYear={financialYear} basis={basis} />
-
       {comparePY && (
         <div className="grid grid-cols-3 gap-3">
           {[
@@ -2113,8 +2036,6 @@ function BalanceSheet({ clientId, financialYear, onDrillDown }: { clientId: stri
           Cash basis — management reporting only (IT Act §145). Companies Act §128 requires accrual for statutory accounts. Unpaid receivables and payables are excluded from this view.
         </div>
       )}
-
-      <StatementAnalysisPanel clientId={clientId} financialYear={financialYear} basis={basis} />
 
       {comparePY && (
         <div className="grid grid-cols-3 gap-3">
