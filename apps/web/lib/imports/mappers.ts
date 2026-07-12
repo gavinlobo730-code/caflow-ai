@@ -87,6 +87,16 @@ export function buildCustomers(rows: Record<string, string>[], clientId: string)
     if (creditDaysRaw && (!Number.isFinite(creditDays) || creditDays < 0)) {
       errors.push(`Row ${rowNo}: credit_days must be a non-negative whole number`); return;
     }
+    // A blank/absent opening_balance must map to 0, not NaN — toPaise("") is
+    // NaN, which JSON.stringify turns into `null` on the wire, and the
+    // backend's opening_balance_paise: int = 0 (non-Optional) rejects a
+    // literal null with a validation error, failing every row that leaves
+    // this optional column blank.
+    const openingBalanceRaw = str(r.opening_balance);
+    const openingBalancePaise = openingBalanceRaw ? toPaise(r.opening_balance) : 0;
+    if (openingBalanceRaw && !Number.isFinite(openingBalancePaise)) {
+      errors.push(`Row ${rowNo}: opening_balance must be a valid number`); return;
+    }
 
     seen.add(name.toLowerCase());
     records.push({
@@ -99,7 +109,7 @@ export function buildCustomers(rows: Record<string, string>[], clientId: string)
       phone: str(r.phone) || undefined,
       city: str(r.city) || undefined,
       state: str(r.state) || undefined,
-      opening_balance_paise: toPaise(r.opening_balance),
+      opening_balance_paise: openingBalancePaise,
       credit_days: creditDays,
     });
   });
@@ -167,6 +177,17 @@ export function buildVendors(rows: Record<string, string>[], clientId: string): 
       }
     }
 
+    // A blank/absent opening_balance must map to 0, not NaN — toPaise("") is
+    // NaN, which JSON.stringify turns into `null` on the wire, and the
+    // backend's opening_balance_paise: int = 0 (non-Optional) rejects a
+    // literal null with a validation error, failing every row that leaves
+    // this optional column blank.
+    const openingBalanceRaw = str(r.opening_balance);
+    const openingBalancePaise = openingBalanceRaw ? toPaise(r.opening_balance) : 0;
+    if (openingBalanceRaw && !Number.isFinite(openingBalancePaise)) {
+      errors.push(`Row ${rowNo}: opening_balance must be a valid number`); return;
+    }
+
     seen.add(name.toLowerCase());
     records.push({
       client_id: clientId,
@@ -179,7 +200,7 @@ export function buildVendors(rows: Record<string, string>[], clientId: string): 
       tds_applicable: tdsApplicable,
       tds_section: tdsSection,
       tds_rate_bps: tdsRateBps,
-      opening_balance_paise: toPaise(r.opening_balance),
+      opening_balance_paise: openingBalancePaise,
     });
   });
 
