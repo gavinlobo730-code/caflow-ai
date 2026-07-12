@@ -20,6 +20,8 @@ import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices
 import { toInvoiceLinePayload } from "@/lib/invoices/lineItemPayload";
 import { buildCustomers, CUSTOMER_IMPORT_COLUMNS, buildReceipts, RECEIPT_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { clearReports } from "@/lib/accounting/reportCache";
+import PeriodPicker from "@/components/PeriodPicker";
+import { resolvePeriodRange, type PeriodMode } from "@/lib/dates/periods";
 import { InvoiceViewDrawer } from "@/components/invoices/InvoiceViewDrawer";
 import { CustomerFormModal } from "@/components/customers/CustomerFormModal";
 import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFormModal";
@@ -49,8 +51,6 @@ const TABS: { id: SalesTab; label: string }[] = [
   { id: "statements", label: "Statements" },
 ];
 
-
-type DateMode = "current" | "previous" | "custom";
 
 interface Receipt {
   id: string;
@@ -91,13 +91,6 @@ function fyRange(fy: string): { start: string; end: string } {
   const [y] = fy.split("-");
   const yr = parseInt(y, 10);
   return { start: `${yr}-04-01`, end: `${yr + 1}-03-31` };
-}
-
-/** Previous financial year string, e.g. "2025-26" → "2024-25". */
-function previousFy(fy: string): string {
-  const [y] = fy.split("-");
-  const yr = parseInt(y, 10) - 1;
-  return `${yr}-${String(yr + 1).slice(2)}`;
 }
 
 /** Format an ISO timestamp for display, or "—" when absent (shared formatter). */
@@ -1046,7 +1039,7 @@ function SalesInvoices({
   // (the FY selector renders in the table toolbar; the customer scope is also
   // seeded from ?cust= for cross-tab "View Invoices" navigation).
   const [customerFilter, setCustomerFilter] = useState<string>("all");
-  const [dateMode, setDateMode] = useState<DateMode>("current");
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("this_fy");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
 
@@ -1058,7 +1051,7 @@ function SalesInvoices({
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     if (p.get("cust")) setCustomerFilter(p.get("cust")!);
-    if (p.get("fy")) setDateMode(p.get("fy") as DateMode);
+    if (p.get("period")) setPeriodMode(p.get("period") as PeriodMode);
     if (p.get("from")) setCustomFrom(p.get("from")!);
     if (p.get("to")) setCustomTo(p.get("to")!);
     // Deep-link: ?invoice=<id> opens the View drawer directly (refresh-safe).
@@ -1078,23 +1071,20 @@ function SalesInvoices({
     const p = new URLSearchParams(window.location.search);
     const set = (k: string, v: string, def: string) => (v && v !== def ? p.set(k, v) : p.delete(k));
     set("cust", customerFilter, "all");
-    set("fy", dateMode, "current");
-    set("from", dateMode === "custom" ? customFrom : "", "");
-    set("to", dateMode === "custom" ? customTo : "", "");
+    set("period", periodMode, "this_fy");
+    set("from", periodMode === "custom" ? customFrom : "", "");
+    set("to", periodMode === "custom" ? customTo : "", "");
     // Mirror the open detail drawer as ?invoice=<id> for deep-linking.
     if (detailId) p.set("invoice", detailId); else p.delete("invoice");
     const qs = p.toString();
     window.history.replaceState(null, "", qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
-  }, [customerFilter, dateMode, customFrom, customTo, detailId]);
+  }, [customerFilter, periodMode, customFrom, customTo, detailId]);
 
   // The date window that scopes the server query (FY-aware).
-  const range = useMemo(() => {
-    if (dateMode === "custom" && (customFrom || customTo)) {
-      return { start: customFrom || "1900-01-01", end: customTo || "2999-12-31" };
-    }
-    if (dateMode === "previous") return fyRange(previousFy(financialYear));
-    return fyRange(financialYear);
-  }, [dateMode, customFrom, customTo, financialYear]);
+  const range = useMemo(
+    () => resolvePeriodRange(periodMode, financialYear, { from: customFrom, to: customTo }),
+    [periodMode, customFrom, customTo, financialYear],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1666,35 +1656,16 @@ function SalesInvoices({
                 ariaLabel="Filter by customer"
               />
             </div>
-            <select
-              value={dateMode}
-              onChange={(e) => setDateMode(e.target.value as DateMode)}
-              aria-label="Financial year"
-              className="px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
-            >
-              <option value="current">FY {financialYear}</option>
-              <option value="previous">FY {previousFy(financialYear)}</option>
-              <option value="custom">Custom range</option>
-            </select>
-            {dateMode === "custom" && (
-              <>
-                <input
-                  type="date"
-                  value={customFrom}
-                  onChange={(e) => setCustomFrom(e.target.value)}
-                  aria-label="From date"
-                  className="px-2 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
-                />
-                <span className="text-xs text-[#94A3B8]">to</span>
-                <input
-                  type="date"
-                  value={customTo}
-                  onChange={(e) => setCustomTo(e.target.value)}
-                  aria-label="To date"
-                  className="px-2 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-[#475569]"
-                />
-              </>
-            )}
+            <PeriodPicker
+              mode={periodMode}
+              onModeChange={setPeriodMode}
+              financialYear={financialYear}
+              customFrom={customFrom}
+              customTo={customTo}
+              onCustomFromChange={setCustomFrom}
+              onCustomToChange={setCustomTo}
+              ariaLabel="Date range"
+            />
           </div>
         }
         rowActions={(inv) => (

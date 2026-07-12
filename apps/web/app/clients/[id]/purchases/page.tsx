@@ -21,6 +21,8 @@ import CsvImportModal, { type ImportRow, type ReferenceResolver } from "@/compon
 import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS, type NameRef, type PurchaseServiceRef } from "@/lib/imports/mappers";
 import { dnLineGst } from "@/lib/purchases/debitNoteGst";
 import { UQC_CODES } from "@/lib/constants/uqc";
+import PeriodPicker from "@/components/PeriodPicker";
+import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/dates/periods";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -290,6 +292,16 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   const [extracting, setExtracting] = useState(false);
   const [aiExtracted, setAiExtracted] = useState<Record<string, unknown> | null>(null);
 
+  // Date-window selector that SCOPES THE SERVER QUERY (which rows load) —
+  // mirrors the Sales Invoices tab's own PeriodPicker.
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("this_fy");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const range = useMemo(
+    () => resolvePeriodRange(periodMode, financialYear, { from: customFrom, to: customTo }),
+    [periodMode, customFrom, customTo, financialYear],
+  );
+
   // Form state
   const [vendorId, setVendorId] = useState("");
   const [billNo, setBillNo] = useState("");
@@ -341,7 +353,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = getSupabaseClient();
-    const { start, end } = fyRange(financialYear);
+    const { start, end } = range;
     const [billsRes, vendorsRes, accsRes, servicesRes] = await Promise.all([
       selectAll(() => supabase
         .from("purchase_bills")
@@ -379,7 +391,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
     setAccounts(accsRes.data ?? []);
     setServices((servicesRes.data as ServiceCatalogueItem[]) ?? []);
     setLoading(false);
-  }, [clientId, financialYear]);
+  }, [clientId, range]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -742,17 +754,17 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
           <p className="text-lg font-bold text-orange-700 tabular-nums">{fmt(totalPayable)}</p>
         </div>
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-          <p className="text-[10px] text-[#64748B] mb-1">Total Bills (FY)</p>
+          <p className="text-[10px] text-[#64748B] mb-1">Total Bills (Selected Period)</p>
           <p className="text-lg font-bold text-[#1E293B] tabular-nums">{fmt(totalThisFy)}</p>
         </div>
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-          <p className="text-[10px] text-[#64748B] mb-1">Bills This FY</p>
+          <p className="text-[10px] text-[#64748B] mb-1">Bills in Selected Period</p>
           <p className="text-lg font-bold text-[#1E293B] tabular-nums">{bills.length}</p>
         </div>
       </div>
 
       <div className="flex justify-between items-center">
-        <p className="text-xs font-semibold text-[#334155]">Purchase Bills — FY {financialYear}</p>
+        <p className="text-xs font-semibold text-[#334155]">Purchase Bills — {periodOptionLabel(periodMode, financialYear)}</p>
       </div>
 
       {showImport && (
@@ -1024,9 +1036,19 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
         exportFilename="purchase-bills"
         persistKey="purchases.bills"
         emptyTitle="No purchase bills"
-        emptyDescription={`No purchase bills for FY ${financialYear}.`}
+        emptyDescription={`No purchase bills for ${periodOptionLabel(periodMode, financialYear)}.`}
         toolbarExtra={
           <>
+            <PeriodPicker
+              mode={periodMode}
+              onModeChange={setPeriodMode}
+              financialYear={financialYear}
+              customFrom={customFrom}
+              customTo={customTo}
+              onCustomFromChange={setCustomFrom}
+              onCustomToChange={setCustomTo}
+              ariaLabel="Date range"
+            />
             <button
               onClick={() => setShowImport(true)}
               className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
