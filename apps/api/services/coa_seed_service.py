@@ -34,13 +34,25 @@ def _db():
 # ILIKE patterns (so posting always resolves); income accounts use the
 # production "Revenue" type (the reporting model also accepts "Income"). It is a
 # CA-practice superset so a firm's own books need no extra accounts.
+#
+# account_subtype ALSO drives Schedule III Balance Sheet/P&L presentation
+# grouping — apps/web/app/clients/[id]/accounting/page.tsx's bsBucket()/
+# plBucket() substring-scan account_subtype.lower() for keywords like
+# "inventor", "payable", "long term", "salary", "depreciation" (see migration
+# 197). A subtype that doesn't contain the keyword its account's own Schedule
+# III line needs silently falls into a generic "Other ..." bucket instead —
+# the money still posts to the right ACCOUNT, only the statement PRESENTATION
+# is wrong, so this is easy to miss without a firm's Balance Sheet in front of
+# you. Adding/renaming a subtype here must be checked against bsBucket()/
+# plBucket() (and their duplicate in domain/reporting/schedule_iii.py) —
+# there is no shared/enforced vocabulary between the two.
 STANDARD_COA: list[tuple[str, str, str, str]] = [
     # ── Assets ──
     ("1001", "Cash in Hand",                 "Asset", "Cash"),
     ("1002", "Petty Cash",                   "Asset", "Cash"),
     ("1101", "Bank Account",                 "Asset", "Bank"),          # %Bank%
     ("1201", "Trade Receivables",            "Asset", "Receivable"),    # %Trade Receivable%
-    ("1202", "Inventory",                    "Asset", "Current Asset"), # %Inventor% (domain/inventory_service.py)
+    ("1202", "Inventory",                    "Asset", "Inventory"),     # %Inventor% (domain/inventory_service.py)
     ("1301", "GST Input Tax Credit",         "Asset", "Tax"),           # %GST Input%
     ("1401", "TDS Receivable",               "Asset", "Tax"),
     ("1402", "Advance Tax Paid",             "Asset", "Tax"),
@@ -53,7 +65,7 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     ("1506", "Intangible Assets",            "Asset", "Fixed Asset"),   # %Intangible Assets%
     ("1590", "Accumulated Depreciation",     "Asset", "Fixed Asset"),   # %Accumulated Depreciation%
     # ── Liabilities ──
-    ("2001", "Trade Payables",               "Liability", "Current Liability"),  # %Trade Payable%
+    ("2001", "Trade Payables",               "Liability", "Payable"),           # %Trade Payable%
     ("2002", "GST Output Tax Payable",       "Liability", "Current Liability"),  # %GST Output%
     ("2003", "TDS Payable",                  "Liability", "Current Liability"),  # %TDS Payable%
     ("2004", "TDS Payable - Salary",         "Liability", "Current Liability"),  # %TDS Payable - Salary%
@@ -62,8 +74,8 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     ("2007", "PT Payable",                   "Liability", "Current Liability"),  # %PT Payable%
     ("2008", "Net Salary Payable",           "Liability", "Current Liability"),  # %Net Salary Payable%
     ("2009", "Income Tax Payable",           "Liability", "Current Liability"),
-    ("2101", "Short Term Loan",              "Liability", "Loan"),
-    ("2201", "Long Term Loan",               "Liability", "Loan"),
+    ("2101", "Short Term Loan",              "Liability", "Short Term Loan"),
+    ("2201", "Long Term Loan",               "Liability", "Long Term Loan"),
     # ── Equity ──
     ("3001", "Capital Account",              "Equity", "Capital"),
     ("3002", "Retained Earnings",            "Equity", "Reserves & Surplus"),
@@ -80,12 +92,12 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     ("4102", "Other Income",                 "Revenue", "Other Income"),
     ("4901", "Profit on Asset Disposal",     "Revenue", "Other Income"), # %Profit on Asset Disposal%
     # ── Expenses ──
-    ("5000", "Cost of Goods Sold",           "Expense", "Direct Expense"),     # %Cost of Goods Sold% (domain/inventory_service.py)
-    ("5001", "Purchases",                    "Expense", "Direct Expense"),     # %Purchase%
-    ("5002", "Salaries Expense",             "Expense", "Personnel"),          # %Salaries Expense%
-    ("5003", "Depreciation Expense",         "Expense", "Non-cash Expense"),   # %Depreciation Expense%
+    ("5000", "Cost of Goods Sold",           "Expense", "Cost of Goods Sold"), # %Cost of Goods Sold% (domain/inventory_service.py)
+    ("5001", "Purchases",                    "Expense", "Purchases"),         # %Purchase%
+    ("5002", "Salaries Expense",             "Expense", "Salary"),            # %Salaries Expense%
+    ("5003", "Depreciation Expense",         "Expense", "Depreciation"),      # %Depreciation Expense%
     ("5004", "Office Rent",                  "Expense", "Overhead"),
-    ("5005", "Bank Charges",                 "Expense", "Overhead"),
+    ("5005", "Bank Charges",                 "Expense", "Bank Charges"),
     ("5006", "General Expenses",             "Expense", "Overhead"),           # %Expense% fallback
     ("5007", "Software Subscriptions",       "Expense", "Overhead"),
     ("5008", "Electricity & Utilities",      "Expense", "Overhead"),
@@ -93,7 +105,7 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     ("5010", "Travel & Conveyance",          "Expense", "Overhead"),
     ("5011", "Professional Fees Paid",       "Expense", "Professional"),
     ("5012", "Office Supplies & Stationery", "Expense", "Overhead"),
-    ("5013", "Staff Welfare",                "Expense", "Personnel"),
+    ("5013", "Staff Welfare",                "Expense", "Staff Welfare"),
     ("5014", "Interest on Loans",            "Expense", "Finance Cost"),
     ("5015", "Round Off",                    "Expense", "Overhead"),           # %Round Off% (invoice round-off; migration 174)
     ("5901", "Loss on Asset Disposal",       "Expense", "Other Expense"),      # %Loss on Asset Disposal%
