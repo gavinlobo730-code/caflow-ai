@@ -37,6 +37,29 @@ test("customers: invalid GSTIN and duplicate name reported", () => {
   assert.match(errors.join(" "), /duplicate name/i);
 });
 
+test("customers: blank/absent opening_balance maps to 0, never NaN", () => {
+  // toPaise("") is NaN, and JSON.stringify(NaN) becomes `null` on the wire —
+  // the backend's opening_balance_paise: int = 0 (non-Optional) rejects a
+  // literal null, so every row leaving this optional column blank used to
+  // fail bulk import outright.
+  const { records, errors } = buildCustomers([
+    row({ name: "No Opening Balance Field" }),           // column absent entirely
+    row({ name: "Blank Opening Balance", opening_balance: "" }),
+  ], "c1");
+  assert.equal(errors.length, 0);
+  assert.equal(records[0].opening_balance_paise, 0);
+  assert.equal(Number.isNaN(records[0].opening_balance_paise), false);
+  assert.equal(records[1].opening_balance_paise, 0);
+});
+
+test("customers: garbage opening_balance is a clear per-row error, not a silent NaN", () => {
+  const { records, errors } = buildCustomers([
+    row({ name: "Garbage Balance", opening_balance: "not-a-number" }),
+  ], "c1");
+  assert.equal(records.length, 0);
+  assert.match(errors[0], /opening_balance must be a valid number/i);
+});
+
 // ── Vendors ──────────────────────────────────────────────────────────────────
 test("vendors: TDS rate % → bps when applicable", () => {
   const { records, errors } = buildVendors([
@@ -54,6 +77,25 @@ test("vendors: TDS applicable without valid section is rejected", () => {
   ], "c1");
   assert.equal(records.length, 0);
   assert.match(errors[0], /tds_section/i);
+});
+
+test("vendors: blank/absent opening_balance maps to 0, never NaN", () => {
+  const { records, errors } = buildVendors([
+    row({ name: "No Opening Balance Field" }),           // column absent entirely
+    row({ name: "Blank Opening Balance", opening_balance: "" }),
+  ], "c1");
+  assert.equal(errors.length, 0);
+  assert.equal(records[0].opening_balance_paise, 0);
+  assert.equal(Number.isNaN(records[0].opening_balance_paise), false);
+  assert.equal(records[1].opening_balance_paise, 0);
+});
+
+test("vendors: garbage opening_balance is a clear per-row error, not a silent NaN", () => {
+  const { records, errors } = buildVendors([
+    row({ name: "Garbage Balance", opening_balance: "not-a-number" }),
+  ], "c1");
+  assert.equal(records.length, 0);
+  assert.match(errors[0], /opening_balance must be a valid number/i);
 });
 
 // ── Products & Services ──────────────────────────────────────────────────────
