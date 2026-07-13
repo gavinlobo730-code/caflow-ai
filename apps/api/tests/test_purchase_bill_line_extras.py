@@ -141,3 +141,93 @@ def test_update_rejects_any_edit_once_cancelled(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         pb.update_purchase_bill(bill_id, PurchaseBillUpdateIn(notes="too late"), CALLER)
     assert exc.value.status_code == 422
+
+
+def test_update_draft_recomputes_lines_and_replaces_old_ones(monkeypatch):
+    """Draft bills accept a full lines replace (Edit Draft flow) — the update
+    endpoint previously declared PurchaseBillUpdateIn.lines but never handled
+    it at all (would 400: purchase_bills has no `lines` column). Now it must
+    recompute GST via the same engine create uses and delete-then-reinsert
+    purchase_bill_lines, matching sales_invoices.py's update_invoice."""
+    db = _setup(monkeypatch)
+    res = pb.create_purchase_bill(PurchaseBillIn(
+        client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no="B-EDIT",
+        lines=[PurchaseBillLineIn(description="Original line", rate_paise=1_000_00, quantity=1, gst_rate_percent=18.0)],
+    ), CALLER)
+    assert res["success"] is True
+    bill_id = res["data"]["id"]
+    assert res["data"]["taxable_amount_paise"] == 1_000_00
+
+    resp = pb.update_purchase_bill(bill_id, PurchaseBillUpdateIn(
+        lines=[PurchaseBillLineIn(description="Replacement line", rate_paise=2_500_00, quantity=2, gst_rate_percent=18.0)],
+    ), CALLER)
+    assert resp["success"] is True
+
+    lines = db.rows("purchase_bill_lines")
+    assert len(lines) == 1, "the stale line must be deleted, not left alongside the new one"
+    assert lines[0]["description"] == "Replacement line"
+    assert lines[0]["taxable_amount_paise"] == 5_000_00  # 2 x 2500
+
+    bill = next(b for b in db.rows("purchase_bills") if b["id"] == bill_id)
+    assert bill["taxable_amount_paise"] == 5_000_00
+    assert bill["cgst_paise"] == 45_000  # 9% of 500000
+    assert bill["sgst_paise"] == 45_000
+    assert bill["total_paise"] == 5_000_00 + 45_000 + 45_000
+
+
+def test_update_draft_lines_rejects_empty_list(monkeypatch):
+    db = _setup(monkeypatch)
+    res = pb.create_purchase_bill(PurchaseBillIn(
+        client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no="B-EMPTY",
+        lines=[PurchaseBillLineIn(description="Only line", rate_paise=100_00, quantity=1, gst_rate_percent=18.0)],
+    ), CALLER)
+    bill_id = res["data"]["id"]
+    with pytest.raises(HTTPException) as exc:
+        pb.update_purchase_bill(bill_id, PurchaseBillUpdateIn(lines=[]), CALLER)
+    assert exc.value.status_code == 422
+
+
+def test_update_draft_lines_tds_fy_aggregate_excludes_bills_own_stale_amount(monkeypatch):
+    """§194C's ₹1L FY-aggregate threshold (domain/tds/section_rates.py) must be
+    checked against OTHER bills only — the bill being edited already exists in
+    the DB with its pre-edit taxable_amount_paise, which would otherwise be
+    counted as "prior" against itself, double-counting and applying TDS a step
+    too early. Numbers are engineered so the two readings disagree: with the
+    bill's own stale value wrongly included, the aggregate crosses ₹1L and TDS
+    incorrectly applies; correctly excluded, it stays under and TDS does not."""
+    db = _setup(monkeypatch)
+    db.seed("vendors", {"id": "VEND-TDS", "firm_id": FIRM, "client_id": "CLI", "name": "TDS Contractor",
+                        "state_code": "27", "gstin": "27CCCCC2222C1Z1",
+                        "tds_applicable": True, "tds_section": "194C", "tds_rate_bps": 200})
+
+    # Other bill contributing ₹78,000 to this vendor's FY-194C aggregate.
+    other = pb.create_purchase_bill(PurchaseBillIn(
+        client_id="CLI", vendor_id="VEND-TDS", bill_date="2025-06-01", bill_no="B-OTHER",
+        lines=[PurchaseBillLineIn(description="Other work", rate_paise=78_000_00, quantity=1, gst_rate_percent=18.0)],
+    ), CALLER)
+    assert other["success"] is True
+
+    # This bill originally ₹15,000 — well under both the ₹30k single threshold
+    # and, combined with the ₹78k above (₹93k total), under the ₹1L aggregate.
+    res = pb.create_purchase_bill(PurchaseBillIn(
+        client_id="CLI", vendor_id="VEND-TDS", bill_date="2025-06-15", bill_no="B-EDITME",
+        lines=[PurchaseBillLineIn(description="Small job", rate_paise=15_000_00, quantity=1, gst_rate_percent=18.0)],
+    ), CALLER)
+    assert res["success"] is True
+    assert res["data"]["tds_paise"] == 0
+    bill_id = res["data"]["id"]
+
+    # Edit to ₹19,000 (still under the ₹30k single threshold on its own).
+    # Correct: prior = ₹78,000 (other bill only) -> total ₹97,000 <= ₹1L -> no TDS.
+    # Buggy (self-counted): prior = ₹78,000 + ₹15,000 (this bill's stale value)
+    #   = ₹93,000 -> total ₹112,000 > ₹1L -> TDS would incorrectly apply.
+    resp = pb.update_purchase_bill(bill_id, PurchaseBillUpdateIn(
+        lines=[PurchaseBillLineIn(description="Small job, revised", rate_paise=19_000_00, quantity=1, gst_rate_percent=18.0)],
+    ), CALLER)
+    assert resp["success"] is True
+    bill = next(b for b in db.rows("purchase_bills") if b["id"] == bill_id)
+    assert bill["taxable_amount_paise"] == 19_000_00
+    assert bill["tds_paise"] == 0, (
+        "TDS FY-aggregate must exclude this bill's own pre-edit amount — "
+        "counting it against itself falsely crosses the §194C ₹1L threshold"
+    )

@@ -10,8 +10,9 @@
  */
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
-import type { PurchaseVendor } from "@/components/purchases/PurchaseBillEditor";
+import type { PurchaseVendor, PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import type { AccountLike } from "@/components/lookups/AccountLookup";
+import { apiGet, getAuthToken } from "@/lib/invoices/shared";
 
 export interface PurchaseBillEditorContext {
   vendors: PurchaseVendor[];
@@ -48,4 +49,11 @@ export async function loadPurchaseBillEditorContext(clientId: string): Promise<P
     clientStateCode,
     clientName: c?.client_name ?? "",
   };
+}
+
+/** Load a single purchase bill's full detail (Edit route). Returns null when not found. */
+export async function loadPurchaseBillDetail(billId: string): Promise<PurchaseBillDetail | null> {
+  const token = await getAuthToken();
+  const r = await apiGet(`/api/purchase-bills/${billId}`, token);
+  return r.success && r.data ? (r.data as PurchaseBillDetail) : null;
 }

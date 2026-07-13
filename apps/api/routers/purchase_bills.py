@@ -157,6 +157,156 @@ def create_purchase_bill(
         return api_response(False, None, "Unable to create purchase bill. Please try again.")
 
 
+def _compute_bill_lines_and_totals(
+    lines_data: list[dict],
+    is_interstate: bool,
+    vendor: dict,
+    bill_date: str,
+    firm_id: str,
+    dc,
+    db=None,
+    exclude_bill_id: Optional[str] = None,
+) -> dict:
+    """Compute GST-split lines + vendor TDS for a purchase bill, in integer
+    paise. Shared by create (_create_purchase_bill_core) and update
+    (update_purchase_bill's draft-only full line edit) so the two paths can
+    never silently compute different totals for identical inputs — the same
+    class of bug this codebase has hit before with duplicated financial math.
+
+    `exclude_bill_id` excludes the bill being edited from the TDS FY-prior
+    aggregate query: on update the bill already exists with its own (stale)
+    taxable_amount_paise, which would otherwise double-count against itself
+    when checking the §194C-style aggregate threshold. Always None on create,
+    since the bill doesn't exist yet.
+    """
+    computed_lines: list[dict] = []
+    total_taxable = 0
+    total_cgst    = 0
+    total_sgst    = 0
+    total_igst    = 0
+
+    for ln in lines_data:
+        qty          = ln.get("quantity", 1)
+        rate_paise   = int(ln.get("rate_paise", 0))
+        # Model uses gst_rate_percent (e.g. 18.0), convert to bps (10000 bps = 100%)
+        gst_rate_percent = float(ln.get("gst_rate_percent", 0) or ln.get("gst_rate_bps", 0) / 100)
+        gst_rate_bps = int(round(gst_rate_percent * 100))
+        taxable      = int(Decimal(str(qty)) * rate_paise)
+        cgst, sgst, igst = _compute_line_gst(taxable, gst_rate_bps, is_interstate)
+
+        total_taxable += taxable
+        total_cgst    += cgst
+        total_sgst    += sgst
+        total_igst    += igst
+
+        computed_lines.append({
+            "description":          ln.get("description", ""),
+            "hsn_sac":              ln.get("hsn_sac", ""),
+            "expense_account_id":   ln.get("expense_account_id"),
+            "quantity":             qty,
+            "unit":                 ln.get("unit") or "NOS",
+            "rate_paise":           rate_paise,
+            "gst_rate_bps":         gst_rate_bps,
+            "taxable_amount_paise": taxable,
+            "cgst_paise":           cgst,
+            "sgst_paise":           sgst,
+            "igst_paise":           igst,
+            "line_total_paise":     taxable + cgst + sgst + igst,
+            "service_catalogue_id": ln.get("service_catalogue_id"),
+        })
+
+    # Multi-Currency (Phase 3): the line totals above are in the txn currency's
+    # minor units; convert each to base (INR) paise (sum = base total, exact GL
+    # balance) BEFORE TDS, because statutory TDS is always computed on the
+    # INR-equivalent taxable.
+    txn_taxable   = total_taxable
+    txn_total_gst = total_cgst + total_sgst + total_igst
+    txn_total     = txn_taxable + txn_total_gst
+    total_taxable = dc.to_base(total_taxable)
+    total_cgst    = dc.to_base(total_cgst)
+    total_sgst    = dc.to_base(total_sgst)
+    total_igst    = dc.to_base(total_igst)
+    total_paise   = total_taxable + total_cgst + total_sgst + total_igst
+
+    # ── TDS — routed through the central engine (domain/tds/tds_computer).
+    # No inline rate maths: the engine owns thresholds, FY aggregation, payee-type
+    # rates, unknown-section handling and the rate bound (audit H5/H6/L1/L6).
+    # TDS base is the taxable amount, excluding GST — IT Act §194C/194I/194J.
+    tds_paise = 0
+    tds_rate_bps = 0
+    tds_section = (vendor.get("tds_section") or "").upper().strip() or None
+    if vendor.get("tds_applicable"):
+        if not tds_section:
+            raise HTTPException(
+                status_code=422,
+                detail="Vendor is marked TDS-applicable but has no TDS section set.",
+            )
+        from domain.tds.tds_computer import TDSComputer, is_company_pan, has_pan
+        # FY-aggregate of this vendor's prior taxable under the same section, so the
+        # §194C ₹1L aggregate threshold is honoured across multiple bills.
+        fy_prior = 0
+        if not _USE_MOCK and db is not None:
+            fy_start, fy_end = _fy_bounds(bill_date)
+            prior = (db.table("purchase_bills")
+                     .select("id, taxable_amount_paise")
+                     .eq("firm_id", firm_id).eq("vendor_id", vendor.get("id"))
+                     .eq("tds_section", tds_section).neq("status", "cancelled")
+                     .gte("bill_date", fy_start).lte("bill_date", fy_end)
+                     .execute().data) or []
+            fy_prior = sum(
+                int(b.get("taxable_amount_paise") or 0)
+                for b in prior if b.get("id") != exclude_bill_id
+            )
+        # Resolve thresholds/rates for the FY the BILL falls in, not "today" —
+        # a bill entered late for a prior FY must use that year's law.
+        try:
+            _bill_d = datetime.strptime(str(bill_date)[:10], "%Y-%m-%d").date()
+            _fy_start_year = _bill_d.year if _bill_d.month >= 4 else _bill_d.year - 1
+            bill_fy = f"{_fy_start_year}-{str(_fy_start_year + 1)[2:]}"
+        except (ValueError, KeyError):
+            bill_fy = None  # malformed/missing date → registry defaults to current FY
+        try:
+            _tds = TDSComputer().resolve_tds(
+                section=tds_section,
+                taxable_paise=total_taxable,
+                fy_prior_taxable_paise=fy_prior,
+                is_company=is_company_pan(vendor.get("pan")),
+                fy=bill_fy,
+                # IT Act §206AA: no real PAN on file floors the rate at
+                # 20% (R3.10) — previously computed with zero PAN
+                # awareness, silently under-deducting for no-PAN vendors.
+                has_pan=has_pan(vendor.get("pan")),
+            )
+        except ValueError as ve:
+            raise HTTPException(status_code=422, detail=str(ve))
+        tds_paise = _tds.tds_paise
+        # Persist the rate ACTUALLY applied — 0 when below threshold (nothing
+        # deducted), the section/payee rate when TDS was deducted (H6, §203 audit).
+        tds_rate_bps = _tds.rate_bps if _tds.applies else 0
+
+    net_payable_paise = total_paise - tds_paise
+    total_gst_paise = total_cgst + total_sgst + total_igst   # M1: persist on the bill
+
+    return {
+        "computed_lines":       computed_lines,
+        "taxable_amount_paise": total_taxable,
+        "cgst_paise":           total_cgst,
+        "sgst_paise":           total_sgst,
+        "igst_paise":           total_igst,
+        "total_paise":          total_paise,
+        "total_gst_paise":      total_gst_paise,
+        "tds_paise":            tds_paise,
+        "tds_rate_bps":         tds_rate_bps,
+        "tds_section":          tds_section,
+        "net_payable_paise":    net_payable_paise,
+        # Currency columns (INR identity leaves them inert).
+        "txn_taxable":          txn_taxable,
+        "txn_total_gst":        txn_total_gst,
+        "txn_total":            txn_total,
+        "txn_net_payable":      txn_total - dc.to_txn(tds_paise),
+    }
+
+
 def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optional[dict] = None) -> dict:
     """Shared purchase-bill-creation logic used by both create_purchase_bill
     and the bulk import endpoint below — extracted verbatim (no behavior
@@ -230,50 +380,8 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         vendor.get("credit_days"),
     )
 
-    # Compute lines — all in integer paise
-    computed_lines: list[dict] = []
-    total_taxable = 0
-    total_cgst    = 0
-    total_sgst    = 0
-    total_igst    = 0
-
-    for ln in lines_data:
-        qty          = ln.get("quantity", 1)
-        rate_paise   = int(ln.get("rate_paise", 0))
-        # Model uses gst_rate_percent (e.g. 18.0), convert to bps (10000 bps = 100%)
-        gst_rate_percent = float(ln.get("gst_rate_percent", 0) or ln.get("gst_rate_bps", 0) / 100)
-        gst_rate_bps = int(round(gst_rate_percent * 100))
-        taxable      = int(Decimal(str(qty)) * rate_paise)
-        cgst, sgst, igst = _compute_line_gst(taxable, gst_rate_bps, is_interstate)
-
-        total_taxable += taxable
-        total_cgst    += cgst
-        total_sgst    += sgst
-        total_igst    += igst
-
-        computed_lines.append({
-            "description":          ln.get("description", ""),
-            "hsn_sac":              ln.get("hsn_sac", ""),
-            "expense_account_id":   ln.get("expense_account_id"),
-            "quantity":             qty,
-            "unit":                 ln.get("unit") or "NOS",
-            "rate_paise":           rate_paise,
-            "gst_rate_bps":         gst_rate_bps,
-            "taxable_amount_paise": taxable,
-            "cgst_paise":           cgst,
-            "sgst_paise":           sgst,
-            "igst_paise":           igst,
-            "line_total_paise":     taxable + cgst + sgst + igst,
-            "service_catalogue_id": ln.get("service_catalogue_id"),
-        })
-
-    total_paise = total_taxable + total_cgst + total_sgst + total_igst
-
     # ── Multi-Currency (Phase 3): resolve + freeze the bill currency ──────────
-    # INR / feature-off → identity. For a foreign bill the line totals above are
-    # in the txn currency's minor units; convert each to base (INR) paise (sum =
-    # base total, exact GL balance) BEFORE TDS, because statutory TDS is always
-    # computed on the INR-equivalent taxable.
+    # INR / feature-off → identity.
     from domain.currency.document_currency import resolve_document_currency, identity_currency
     req_ccy = (data.get("currency") or "INR").strip().upper()
     if _USE_MOCK or req_ccy == "INR":
@@ -286,81 +394,32 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             exchange_rate=data.get("exchange_rate"), rate_date=data["bill_date"],
             rate_selected_by=current_user.get("id"))
 
-    txn_taxable   = total_taxable
-    txn_total_gst = total_cgst + total_sgst + total_igst
-    txn_total     = txn_taxable + txn_total_gst
-    total_taxable = dc.to_base(total_taxable)
-    total_cgst    = dc.to_base(total_cgst)
-    total_sgst    = dc.to_base(total_sgst)
-    total_igst    = dc.to_base(total_igst)
-    total_paise   = total_taxable + total_cgst + total_sgst + total_igst
-
-    # ── TDS — routed through the central engine (domain/tds/tds_computer).
-    # No inline rate maths: the engine owns thresholds, FY aggregation, payee-type
-    # rates, unknown-section handling and the rate bound (audit H5/H6/L1/L6).
-    # TDS base is the taxable amount, excluding GST — IT Act §194C/194I/194J.
     is_reverse_charge = bool(data.get("is_reverse_charge", False))
-    tds_paise = 0
-    tds_rate_bps = 0
-    tds_section = (vendor.get("tds_section") or "").upper().strip() or None
-    if vendor.get("tds_applicable"):
-        if not tds_section:
-            raise HTTPException(
-                status_code=422,
-                detail="Vendor is marked TDS-applicable but has no TDS section set.",
-            )
-        from domain.tds.tds_computer import TDSComputer, is_company_pan, has_pan
-        # FY-aggregate of this vendor's prior taxable under the same section, so the
-        # §194C ₹1L aggregate threshold is honoured across multiple bills.
-        fy_prior = 0
-        if not _USE_MOCK:
-            fy_start, fy_end = _fy_bounds(data["bill_date"])
-            prior = (db.table("purchase_bills")
-                     .select("taxable_amount_paise")
-                     .eq("firm_id", firm_id).eq("vendor_id", vendor_id)
-                     .eq("tds_section", tds_section).neq("status", "cancelled")
-                     .gte("bill_date", fy_start).lte("bill_date", fy_end)
-                     .execute().data) or []
-            fy_prior = sum(int(b.get("taxable_amount_paise") or 0) for b in prior)
-        # Resolve thresholds/rates for the FY the BILL falls in, not "today" —
-        # a bill entered late for a prior FY must use that year's law.
-        try:
-            _bill_d = datetime.strptime(str(data["bill_date"])[:10], "%Y-%m-%d").date()
-            _fy_start_year = _bill_d.year if _bill_d.month >= 4 else _bill_d.year - 1
-            bill_fy = f"{_fy_start_year}-{str(_fy_start_year + 1)[2:]}"
-        except (ValueError, KeyError):
-            bill_fy = None  # malformed/missing date → registry defaults to current FY
-        try:
-            _tds = TDSComputer().resolve_tds(
-                section=tds_section,
-                taxable_paise=total_taxable,
-                fy_prior_taxable_paise=fy_prior,
-                is_company=is_company_pan(vendor.get("pan")),
-                fy=bill_fy,
-                # IT Act §206AA: no real PAN on file floors the rate at
-                # 20% (R3.10) — previously computed with zero PAN
-                # awareness, silently under-deducting for no-PAN vendors.
-                has_pan=has_pan(vendor.get("pan")),
-            )
-        except ValueError as ve:
-            raise HTTPException(status_code=422, detail=str(ve))
-        tds_paise = _tds.tds_paise
-        # Persist the rate ACTUALLY applied — 0 when below threshold (nothing
-        # deducted), the section/payee rate when TDS was deducted (H6, §203 audit).
-        tds_rate_bps = _tds.rate_bps if _tds.applies else 0
-
-    net_payable_paise = total_paise - tds_paise
-    total_gst_paise = total_cgst + total_sgst + total_igst   # M1: persist on the bill
+    computed = _compute_bill_lines_and_totals(
+        lines_data, is_interstate, vendor, data["bill_date"], firm_id or "", dc,
+        db=(db if not _USE_MOCK else None),
+    )
+    computed_lines    = computed["computed_lines"]
+    total_taxable     = computed["taxable_amount_paise"]
+    total_cgst        = computed["cgst_paise"]
+    total_sgst        = computed["sgst_paise"]
+    total_igst        = computed["igst_paise"]
+    total_paise       = computed["total_paise"]
+    total_gst_paise   = computed["total_gst_paise"]
+    tds_paise         = computed["tds_paise"]
+    tds_rate_bps      = computed["tds_rate_bps"]
+    tds_section       = computed["tds_section"]
+    net_payable_paise = computed["net_payable_paise"]
 
     # Currency columns (INR identity leaves them inert). Foreign net payable is
     # the foreign total less TDS expressed in the txn currency at the frozen rate.
     _ccy_cols = {
         "txn_currency":     dc.currency,
         "exchange_rate":    str(dc.rate),
-        "txn_taxable":      txn_taxable,
-        "txn_total_gst":    txn_total_gst,
-        "txn_total":        txn_total,
-        "txn_net_payable":  txn_total - dc.to_txn(tds_paise),
+        "txn_taxable":      computed["txn_taxable"],
+        "txn_total_gst":    computed["txn_total_gst"],
+        "txn_total":        computed["txn_total"],
+        "txn_net_payable":  computed["txn_net_payable"],
         "rate_source":      dc.rate_source,
         "rate_type":        dc.rate_type,
         "rate_date":        dc.rate_date,
@@ -701,6 +760,11 @@ def update_purchase_bill(
     see _reject_locked_bill_fields. CANCELLED: cannot be updated at all."""
     try:
         data = data.model_dump(exclude_none=True)
+        # The request model field is is_inter_state; the DB column is
+        # is_interstate — same mapping sales_invoices.py's update_invoice
+        # applies (without it, sending this field 400s: no such column).
+        if "is_inter_state" in data:
+            data["is_interstate"] = data.pop("is_inter_state")
         # Always allowed regardless of status — unit alone never touches
         # rate/quantity/amount/GST.
         line_units = data.pop("line_units", None)
@@ -721,6 +785,44 @@ def update_purchase_bill(
                         for ln in MOCK_PURCHASE_BILL_LINES:
                             if ln.get("id") in line_units and ln.get("bill_id") == bill_id:
                                 ln["unit"] = line_units[ln["id"]] or "NOS"
+                    if "lines" in data:
+                        # Draft-only (guarded above via _reject_locked_bill_fields —
+                        # "lines" isn't in _SOFT_BILL_UPDATE_FIELDS, so this branch is
+                        # unreachable for a non-draft bill). Recompute GST + TDS with
+                        # the exact same engine create uses (_compute_bill_lines_and_totals)
+                        # so an edited draft can never diverge from a freshly-created one.
+                        lines_data = data.pop("lines")
+                        if not lines_data:
+                            raise HTTPException(status_code=422, detail="At least one line item is required")
+                        from routers.vendors import MOCK_VENDORS
+                        vendor = next((v for v in MOCK_VENDORS if v.get("id") == b.get("vendor_id")), None) or {}
+                        is_interstate = data.get("is_interstate", b.get("is_interstate", False))
+                        from domain.currency.document_currency import identity_currency
+                        bill_date_for_calc = data.get("bill_date") or b.get("bill_date")
+                        dc = identity_currency(bill_date_for_calc)
+                        computed = _compute_bill_lines_and_totals(
+                            lines_data, is_interstate, vendor, bill_date_for_calc,
+                            current_user.get("firm_id") or "", dc, db=None, exclude_bill_id=bill_id,
+                        )
+                        MOCK_PURCHASE_BILL_LINES[:] = [ln for ln in MOCK_PURCHASE_BILL_LINES if ln.get("bill_id") != bill_id]
+                        for ln in computed["computed_lines"]:
+                            MOCK_PURCHASE_BILL_LINES.append({**ln, "id": str(uuid.uuid4()), "bill_id": bill_id})
+                        data.update({
+                            "taxable_amount_paise": computed["taxable_amount_paise"],
+                            "cgst_paise":            computed["cgst_paise"],
+                            "sgst_paise":            computed["sgst_paise"],
+                            "igst_paise":            computed["igst_paise"],
+                            "total_paise":           computed["total_paise"],
+                            "total_gst_paise":       computed["total_gst_paise"],
+                            "tds_paise":             computed["tds_paise"],
+                            "tds_rate_bps":          computed["tds_rate_bps"],
+                            "tds_section":           computed["tds_section"],
+                            "net_payable_paise":     computed["net_payable_paise"],
+                            "txn_taxable":           computed["txn_taxable"],
+                            "txn_total_gst":         computed["txn_total_gst"],
+                            "txn_total":             computed["txn_total"],
+                            "txn_net_payable":       computed["txn_net_payable"],
+                        })
                     MOCK_PURCHASE_BILLS[i] = {**b, **data, "updated_at": datetime.now(timezone.utc).isoformat()}
                     return api_response(True, MOCK_PURCHASE_BILLS[i])
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
@@ -729,10 +831,13 @@ def update_purchase_bill(
         db = get_supabase()
         # Tenant isolation (OOS-5): firm-scope the guard read and the write so a
         # foreign-firm bill id cannot be read or mutated under service-role.
-        resp = db.table("purchase_bills").select("status, bill_date").eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
+        # select("*") — a "lines" edit needs vendor_id/is_interstate/currency
+        # columns off this same row, not just status/bill_date.
+        resp = db.table("purchase_bills").select("*").eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
-        status = resp.data[0]["status"]
+        bill_row = resp.data[0]
+        status = bill_row["status"]
         if status == "cancelled":
             raise HTTPException(status_code=422, detail="Cancelled bills cannot be updated")
         if status != "draft":
@@ -740,7 +845,7 @@ def update_purchase_bill(
         # FY-lock: block editing a bill dated in a locked year, and block moving it
         # INTO a locked year. (Create already validates; edits were the gap.)
         firm_id = current_user.get("firm_id") or ""
-        existing_date = resp.data[0].get("bill_date")
+        existing_date = bill_row.get("bill_date")
         if existing_date:
             period_validation_service.validate_posting_date(firm_id, existing_date)
         if data.get("bill_date"):
@@ -762,6 +867,64 @@ def update_purchase_bill(
                 db.table("purchase_bill_lines").update(
                     {"unit": unit or "NOS"}
                 ).eq("id", line_id).eq("bill_id", bill_id).execute()
+
+        if "lines" in data:
+            # Draft-only (guarded above via _reject_locked_bill_fields — "lines"
+            # isn't in _SOFT_BILL_UPDATE_FIELDS, so this branch is unreachable
+            # for a non-draft bill). Recompute GST + TDS with the exact same
+            # engine create uses (_compute_bill_lines_and_totals) so an edited
+            # draft can never diverge from a freshly-created one.
+            lines_data = data.pop("lines")
+            if not lines_data:
+                raise HTTPException(status_code=422, detail="At least one line item is required")
+            v_resp = db.table("vendors").select("*").eq("id", bill_row.get("vendor_id")).eq("firm_id", firm_id).limit(1).execute()
+            if not v_resp.data:
+                raise HTTPException(status_code=404, detail="Vendor not found")
+            vendor = v_resp.data[0]
+            is_interstate = data.get("is_interstate", bill_row.get("is_interstate", False))
+            from domain.currency.document_currency import document_currency_from_row
+            dc = document_currency_from_row(db, bill_row)
+            computed = _compute_bill_lines_and_totals(
+                lines_data, is_interstate, vendor, data.get("bill_date") or existing_date,
+                firm_id, dc, db=db, exclude_bill_id=bill_id,
+            )
+            db.table("purchase_bill_lines").delete().eq("bill_id", bill_id).execute()
+            line_payloads = [
+                {
+                    "bill_id":               bill_id,
+                    "description":           ln["description"],
+                    "hsn_sac":               ln["hsn_sac"],
+                    "expense_account_id":    ln.get("expense_account_id"),
+                    "quantity":              ln["quantity"],
+                    "unit":                  ln.get("unit") or "NOS",
+                    "rate_paise":            ln["rate_paise"],
+                    "gst_rate_bps":          ln["gst_rate_bps"],
+                    "taxable_amount_paise":  ln["taxable_amount_paise"],
+                    "cgst_paise":            ln["cgst_paise"],
+                    "sgst_paise":            ln["sgst_paise"],
+                    "igst_paise":            ln["igst_paise"],
+                    "line_total_paise":      ln["line_total_paise"],
+                    "service_catalogue_id":  ln.get("service_catalogue_id"),
+                }
+                for ln in computed["computed_lines"]
+            ]
+            db.table("purchase_bill_lines").insert(line_payloads).execute()
+            data.update({
+                "taxable_amount_paise": computed["taxable_amount_paise"],
+                "cgst_paise":            computed["cgst_paise"],
+                "sgst_paise":            computed["sgst_paise"],
+                "igst_paise":            computed["igst_paise"],
+                "total_paise":           computed["total_paise"],
+                "total_gst_paise":       computed["total_gst_paise"],
+                "tds_paise":             computed["tds_paise"],
+                "tds_rate_bps":          computed["tds_rate_bps"],
+                "tds_section":           computed["tds_section"],
+                "net_payable_paise":     computed["net_payable_paise"],
+                "txn_taxable":           computed["txn_taxable"],
+                "txn_total_gst":         computed["txn_total_gst"],
+                "txn_total":             computed["txn_total"],
+                "txn_net_payable":       computed["txn_net_payable"],
+            })
 
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
         upd = db.table("purchase_bills").update(data).eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
