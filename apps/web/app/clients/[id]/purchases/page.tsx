@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Upload, AlertCircle, CheckCircle, Trash2, X, Loader2 } from "lucide-react";
+import { Plus, Upload, AlertCircle, CheckCircle, Trash2, X, Loader2, Paperclip } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
@@ -19,6 +19,7 @@ import { Combobox } from "@/components/ui/combobox";
 import CsvImportModal, { type ImportRow, type ReferenceResolver } from "@/components/CsvImportModal";
 import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS, type NameRef, type PurchaseServiceRef } from "@/lib/imports/mappers";
 import { dnLineGst } from "@/lib/purchases/debitNoteGst";
+import { PAYMENT_TERM_PRESETS, CUSTOM_TERM, termLabelForDays, daysForTermLabel } from "@/lib/sales/paymentTerms";
 import PeriodPicker from "@/components/PeriodPicker";
 import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/dates/periods";
 
@@ -252,6 +253,7 @@ interface PurchaseBillRow {
   total_paise: number;
   status: string;
   is_ai_extracted: boolean;
+  document_url: string | null;
 }
 
 function PurchaseBills({ clientId, financialYear }: { clientId: string; financialYear: string }) {
@@ -333,6 +335,24 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
       await apiCall(`/api/purchase-bills/${billId}/receive`, "POST", undefined, token);
       load();
     } catch { /* skip */ }
+  }
+
+  // The "Documents" bucket is private — document_url on the bill is a
+  // storage path, not a browser-openable URL — so mint a fresh signed URL
+  // on demand rather than trying to open it directly.
+  async function viewAttachment(billId: string) {
+    try {
+      const token = await getAuthToken();
+      const result = await apiGet(`/api/purchase-bills/${billId}/document-url`, token);
+      const url = (result.data as { url?: string } | null)?.url;
+      if (result.success && url) {
+        window.open(url, "_blank", "noopener,noreferrer");
+      } else {
+        setMsg({ type: "err", text: result.error || "Unable to open the attached invoice." });
+      }
+    } catch {
+      setMsg({ type: "err", text: "Unable to open the attached invoice." });
+    }
   }
 
   // Bulk receive over the DataTable's selected rows. POST
@@ -435,9 +455,19 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
       render: (b) => <span className="font-mono text-[10px] text-[#475569]">{b.our_reference ?? "—"}</span> },
     { key: "bill_no", header: "Vendor Invoice", accessor: (b) => b.bill_no ?? "", searchable: true,
       render: (b) => (
-        <span className="text-[#475569]">
+        <span className="text-[#475569] inline-flex items-center gap-1">
           {b.bill_no ?? "—"}
-          {b.is_ai_extracted && <span className="ml-1 text-[9px] bg-amber-100 text-amber-600 px-1 rounded">AI</span>}
+          {b.is_ai_extracted && <span className="text-[9px] bg-amber-100 text-amber-600 px-1 rounded">AI</span>}
+          {b.document_url && (
+            <button
+              onClick={(e) => { e.stopPropagation(); viewAttachment(b.id); }}
+              title="View attached invoice"
+              aria-label="View attached invoice"
+              className="text-[#94A3B8] hover:text-blue-600"
+            >
+              <Paperclip size={11} />
+            </button>
+          )}
         </span>
       ) },
     { key: "vendor", header: "Vendor", accessor: (b) => b.vendors?.name ?? "", searchable: true, sticky: true, hideable: false,
@@ -609,6 +639,7 @@ interface VendorRow {
   tds_section: string | null;
   tds_rate_bps: number;
   opening_balance_paise: number;
+  credit_days: number;
   is_active: boolean;
 }
 
@@ -631,6 +662,10 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
   const [tdsSection, setTdsSection] = useState("194C");
   const [tdsRate, setTdsRate] = useState("2");
   const [openingBalance, setOpeningBalance] = useState("");
+  // Payment Terms ("Net 30" etc.) — default credit period for this vendor's
+  // bills, mirroring CustomerFormModal's identical field.
+  const [creditDays, setCreditDays] = useState(String(30));
+  const [termCustom, setTermCustom] = useState<boolean>(() => termLabelForDays(30) === CUSTOM_TERM);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -675,6 +710,15 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
     return { imported, errors };
   }
 
+  const termValue = termCustom ? CUSTOM_TERM : termLabelForDays(parseInt(creditDays, 10));
+  function onTermChange(label: string) {
+    if (label === CUSTOM_TERM) { setTermCustom(true); return; }
+    const d = daysForTermLabel(label);
+    if (d == null) return;
+    setTermCustom(false);
+    setCreditDays(String(d));
+  }
+
   async function handleSave() {
     if (!name.trim()) { setMsg({ type: "err", text: "Name is required" }); return; }
     if (gstin && !GSTIN_RE.test(gstin.trim().toUpperCase())) { setMsg({ type: "err", text: "Invalid GSTIN format (15 chars: 2-digit state + PAN + entity + Z + check)" }); return; }
@@ -701,6 +745,7 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
           tds_section: tdsApplicable ? tdsSection : undefined,
           tds_rate_bps: rateBps,
           opening_balance_paise: Math.round(parseFloat(openingBalance || "0") * 100),
+          credit_days: parseInt(creditDays, 10) || 30,
         },
         token
       );
@@ -709,6 +754,7 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
       setShowForm(false);
       setName(""); setGstin(""); setPan(""); setEmail(""); setPhone("");
       setTdsApplicable(false); setTdsSection("194C"); setTdsRate("2"); setOpeningBalance("");
+      setCreditDays("30"); setTermCustom(false);
       load();
     } catch (e) {
       setMsg({ type: "err", text: e instanceof Error ? e.message : "Save failed" });
@@ -795,6 +841,18 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Opening Balance (₹ payable)</label>
               <input type="number" min="0" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Payment Terms</label>
+              <select value={termValue} onChange={(e) => onTermChange(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                {PAYMENT_TERM_PRESETS.map((t) => <option key={t.label} value={t.label}>{t.label}</option>)}
+                <option value={CUSTOM_TERM}>Custom</option>
+              </select>
+              {termCustom && (
+                <input type="number" min="0" value={creditDays} onChange={(e) => setCreditDays(e.target.value)} placeholder="Credit days" aria-label="Custom credit days"
+                  className="mt-1 w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              )}
+              <p className="mt-1 text-[10px] text-[#94A3B8]">Default terms for this vendor&apos;s new bills.</p>
             </div>
           </div>
 

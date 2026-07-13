@@ -17,6 +17,7 @@ from models.common import api_response
 from models.invoices import PurchaseBillIn, PurchaseBillUpdateIn, BillFromDocumentIn
 from core.permissions import rbac
 from services.audit_service import log_event
+from services.credit_terms import resolve_credit_terms, apply_credit_days_due_date, apply_due_date_credit_days
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
 
@@ -221,6 +222,14 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
                 client_state = _get_state_code_from_gstin(client_resp.data[0].get("gstin")) or ""
         is_interstate = bool(vendor_state and client_state and vendor_state != client_state)
 
+    # Snapshot credit terms onto the bill. The vendor's credit_days is the
+    # DEFAULT; an explicit due_date or credit_days on the request overrides
+    # it. Mirrors sales_invoices.py's identical snapshot for customers.
+    eff_due_date, eff_credit_days = resolve_credit_terms(
+        data["bill_date"], data.get("due_date"), data.get("credit_days"),
+        vendor.get("credit_days"),
+    )
+
     # Compute lines — all in integer paise
     computed_lines: list[dict] = []
     total_taxable = 0
@@ -377,7 +386,8 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             "bill_no":               data.get("bill_no", ""),
             "our_reference":         data.get("our_reference"),
             "bill_date":             data["bill_date"],
-            "due_date":              data.get("due_date"),
+            "due_date":              eff_due_date,
+            "credit_days":           eff_credit_days,
             "is_interstate":         is_interstate,
             "taxable_amount_paise":  total_taxable,
             "cgst_paise":            total_cgst,
@@ -392,6 +402,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             "net_payable_paise":     net_payable_paise,
             "status":                "draft",
             "notes":                 data.get("notes", ""),
+            "document_url":          data.get("document_url"),
             "created_at":            datetime.now(timezone.utc).isoformat(),
             **_ccy_cols,
             "lines":                 computed_lines,
@@ -410,7 +421,8 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         "bill_no":               data.get("bill_no", ""),
         "our_reference":         data.get("our_reference"),
         "bill_date":             data["bill_date"],
-        "due_date":              data.get("due_date"),
+        "due_date":              eff_due_date,
+        "credit_days":           eff_credit_days,
         "is_interstate":         is_interstate,
         "taxable_amount_paise":  total_taxable,
         "cgst_paise":            total_cgst,
@@ -425,6 +437,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         "net_payable_paise":     net_payable_paise,
         "status":                "draft",
         "notes":                 data.get("notes", ""),
+        "document_url":          data.get("document_url"),
         "created_at":            datetime.now(timezone.utc).isoformat(),
         **_ccy_cols,
     }
@@ -615,10 +628,49 @@ def get_purchase_bill(
         return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
 
 
+@router.get("/{bill_id}/document-url")
+def get_purchase_bill_document_url(
+    bill_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Mint a fresh signed URL for the bill's attached original invoice.
+    document_url on the bill is a private-bucket storage PATH, not a
+    browser-openable URL — signed URLs expire, so one is generated on
+    demand here rather than stored (mirrors routers/documents.py's
+    get_download_url). 404 when no document is attached."""
+    try:
+        if _USE_MOCK:
+            bill = next((b for b in MOCK_PURCHASE_BILLS if b["id"] == bill_id), None)
+            if not bill:
+                raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
+            if not bill.get("document_url"):
+                raise HTTPException(status_code=404, detail="No document attached to this bill")
+            return api_response(True, {"url": bill["document_url"]})
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        resp = db.table("purchase_bills").select("document_url").eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
+        if not resp.data:
+            raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
+        path = resp.data[0].get("document_url")
+        if not path:
+            raise HTTPException(status_code=404, detail="No document attached to this bill")
+        signed = db.storage.from_("Documents").create_signed_url(path, expires_in=3600)
+        url = signed.get("signedURL") if isinstance(signed, dict) else None
+        if not url:
+            raise HTTPException(status_code=502, detail="Unable to generate a download link. Please try again.")
+        return api_response(True, {"url": url})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("get_purchase_bill_document_url: %s", e)
+        return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
+
+
 # Once a bill is received, only these fields may still change — mirrors the
 # same rule on sales invoices (routers/sales_invoices.py:_SOFT_UPDATE_FIELDS).
 # line_units is handled separately, always allowed regardless of status.
-_SOFT_BILL_UPDATE_FIELDS = {"notes", "due_date", "our_reference"}
+_SOFT_BILL_UPDATE_FIELDS = {"notes", "due_date", "credit_days", "our_reference", "document_url"}
 
 
 def _reject_locked_bill_fields(data: dict) -> None:
@@ -631,8 +683,9 @@ def _reject_locked_bill_fields(data: dict) -> None:
             status_code=422,
             detail=(
                 f"Cannot change {', '.join(locked)} on a received bill — only "
-                "our reference, notes and due date can still be edited. Issue "
-                "a Debit Note to correct anything else (CGST Act §34)."
+                "our reference, notes, payment terms, due date and the attached "
+                "invoice can still be edited. Issue a Debit Note to correct "
+                "anything else (CGST Act §34)."
             ),
         )
 
@@ -660,6 +713,10 @@ def update_purchase_bill(
                         raise HTTPException(status_code=422, detail="Cancelled bills cannot be updated")
                     if status != "draft":
                         _reject_locked_bill_fields(data)
+                    if data.get("credit_days") is not None or data.get("due_date"):
+                        base_date = data.get("bill_date") or b.get("bill_date")
+                        apply_credit_days_due_date(data, base_date)
+                        apply_due_date_credit_days(data, base_date)
                     if line_units:
                         for ln in MOCK_PURCHASE_BILL_LINES:
                             if ln.get("id") in line_units and ln.get("bill_id") == bill_id:
@@ -688,6 +745,15 @@ def update_purchase_bill(
             period_validation_service.validate_posting_date(firm_id, existing_date)
         if data.get("bill_date"):
             period_validation_service.validate_posting_date(firm_id, data["bill_date"])
+
+        # Keep due_date and credit_days in sync whichever one was edited
+        # directly (credit_days -> due_date, or due_date -> credit_days), so
+        # the derived "Terms" label never goes stale relative to the actual
+        # due date. Mirrors sales_invoices.py's identical update-time sync.
+        if data.get("credit_days") is not None or data.get("due_date"):
+            base_date = data.get("bill_date") or existing_date
+            apply_credit_days_due_date(data, base_date)
+            apply_due_date_credit_days(data, base_date)
 
         # Per-line unit correction — safe on any non-cancelled status since
         # unit never affects rate/quantity/amount/GST.
