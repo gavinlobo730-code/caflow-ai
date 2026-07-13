@@ -533,7 +533,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   ];
 
   return (
-    <div className="space-y-4 max-w-5xl">
+    <div className="space-y-4 max-w-screen-2xl">
       {msg && (
         <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
           {msg.type === "ok" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
@@ -616,7 +616,10 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
         bulkActions={bulkActions}
         rowActions={(b) =>
           b.status === "draft" ? (
-            <button onClick={() => handleReceive(b.id)} className="text-xs text-blue-600 hover:underline">Receive</button>
+            <span className="inline-flex items-center gap-2">
+              <button onClick={() => router.push(`/clients/${clientId}/purchases/bills/${b.id}/edit`)} className="text-xs text-[#475569] hover:underline">Edit</button>
+              <button onClick={() => handleReceive(b.id)} className="text-xs text-blue-600 hover:underline">Receive</button>
+            </span>
           ) : null
         }
       />
@@ -771,7 +774,7 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
   ], []);
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 max-w-screen-2xl">
       {msg && (
         <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
           {msg.type === "ok" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
@@ -1067,7 +1070,7 @@ function Payments({ clientId, financialYear }: { clientId: string; financialYear
   ], [vendors]);
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 max-w-screen-2xl">
       {msg && (
         <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
           {msg.type === "ok" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}

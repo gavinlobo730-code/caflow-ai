@@ -67,8 +67,56 @@ interface ExtractedInvoice {
   line_items?: { description?: string; hsn_sac?: string; quantity?: number; rate_paise?: number; gst_rate_bps?: number }[];
 }
 
+/** Server line shape (from GET /api/purchase-bills/{id}). */
+export interface PurchaseBillLineDetail {
+  id?: string;
+  description: string;
+  hsn_sac: string | null;
+  quantity: number;
+  unit?: string | null;
+  rate_paise: number;
+  gst_rate_bps: number;
+  expense_account_id?: string | null;
+  service_catalogue_id?: string | null;
+}
+
+/** Full purchase-bill detail (Edit route). vendor_id is NOT editable via
+ * PATCH (backend has no vendor_id field on PurchaseBillUpdateIn — changing
+ * the vendor would invalidate the frozen TDS section/rate) so the Edit
+ * route only ever shows this for context, never mutates it. */
+export interface PurchaseBillDetail {
+  id: string;
+  vendor_id: string;
+  bill_no: string;
+  our_reference?: string | null;
+  bill_date: string;
+  due_date: string | null;
+  is_reverse_charge?: boolean;
+  status: string;
+  document_url?: string | null;
+  txn_currency?: string | null;
+  exchange_rate?: string | null;
+  lines: PurchaseBillLineDetail[];
+}
+
+/** existing.lines is the server line shape — shared here so re-editing a
+ * draft can't drift from how it was originally saved. */
+function detailLinesToEditorLines(lines: PurchaseBillDetail["lines"]): EditorLine[] {
+  return lines.map((l, i) => ({
+    description: l.description ?? "",
+    hsn_sac: l.hsn_sac ?? "",
+    qty: String(l.quantity ?? 1),
+    rate: String((l.rate_paise ?? 0) / 100),
+    gst_rate: Math.round((l.gst_rate_bps ?? 0) / 100),
+    unit: l.unit ?? "NOS",
+    expense_account_id: l.expense_account_id ?? "",
+    service_catalogue_id: l.service_catalogue_id ?? "",
+    _k: i,
+  }));
+}
+
 export function PurchaseBillEditor({
-  clientId, clientName, clientStateCode, vendors, accounts, onDone, onCancel,
+  clientId, clientName, clientStateCode, vendors, accounts, existing, onDone, onCancel,
 }: {
   clientId: string;
   clientName?: string;
@@ -79,19 +127,25 @@ export function PurchaseBillEditor({
   clientStateCode: string;
   vendors: PurchaseVendor[];
   accounts: AccountLike[];
+  /** Set → edit an existing draft bill (PATCH). Absent/null → create (POST). */
+  existing?: PurchaseBillDetail | null;
   onDone: (message: string) => void;
   onCancel: () => void;
 }) {
   const today = todayISO();
-  const initialLines: EditorLine[] = [{ ...EMPTY_LINE, _k: 0 }];
+  const isEdit = !!existing;
+  const initialLines: EditorLine[] =
+    existing && existing.lines.length > 0 ? detailLinesToEditorLines(existing.lines) : [{ ...EMPTY_LINE, _k: 0 }];
 
-  const [vendorId, setVendorId] = useState("");
-  const [selectedVendor, setSelectedVendor] = useState<PurchaseVendor | null>(null);
-  const [billNo, setBillNo] = useState("");
-  const [ourReference, setOurReference] = useState("");
-  const [billDate, setBillDate] = useState(today);
-  const [dueDate, setDueDate] = useState("");
-  const [isReverseCharge, setIsReverseCharge] = useState(false);
+  const [vendorId, setVendorId] = useState(existing?.vendor_id ?? "");
+  const [selectedVendor, setSelectedVendor] = useState<PurchaseVendor | null>(
+    () => (existing ? vendors.find((v) => v.id === existing.vendor_id) ?? null : null),
+  );
+  const [billNo, setBillNo] = useState(existing?.bill_no ?? "");
+  const [ourReference, setOurReference] = useState(existing?.our_reference ?? "");
+  const [billDate, setBillDate] = useState(existing?.bill_date ?? today);
+  const [dueDate, setDueDate] = useState(existing?.due_date ?? "");
+  const [isReverseCharge, setIsReverseCharge] = useState(existing?.is_reverse_charge ?? false);
   const [lines, setLines] = useState<EditorLine[]>(initialLines);
   const keyRef = useRef(initialLines.length);
   const nextKey = () => keyRef.current++;
@@ -99,7 +153,8 @@ export function PurchaseBillEditor({
   const [error, setError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
 
-  // AI Upload (Extract)
+  // AI Upload (Extract) — create-only; re-extracting into an already-saved
+  // draft would silently overwrite manually-corrected fields.
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [aiExtracted, setAiExtracted] = useState<Record<string, unknown> | null>(null);
@@ -107,16 +162,23 @@ export function PurchaseBillEditor({
   // "Documents" bucket is private) — set on any upload attempt, whether or
   // not AI extraction itself succeeds, so the original file is retained as
   // ITC/audit evidence (CGST Rule 36(1)) even on a failed extraction.
-  const [documentUrl, setDocumentUrl] = useState<string | null>(null);
+  const [documentUrl, setDocumentUrl] = useState<string | null>(existing?.document_url ?? null);
 
-  // Multi-currency (create-only)
-  const [currency, setCurrency] = useState("");
-  const [exchangeRate, setExchangeRate] = useState("");
+  // Multi-currency — frozen at creation; not user-editable in edit mode
+  // (PurchaseBillUpdateIn has no currency/exchange_rate field), but still
+  // seeded from `existing` so preview totals render in the bill's own
+  // currency rather than silently reverting to INR.
+  const [currency, setCurrency] = useState(
+    isEdit && existing?.txn_currency && existing.txn_currency !== "INR" ? existing.txn_currency : "",
+  );
+  const [exchangeRate, setExchangeRate] = useState(
+    isEdit && existing?.exchange_rate ? String(existing.exchange_rate) : "",
+  );
   const [mcActive, setMcActive] = useState(false);
   const [currencies, setCurrencies] = useState<CurrencyOption[]>([]);
 
   useEffect(() => {
-    if (!clientId) return;
+    if (isEdit || !clientId) return;
     let cancelled = false;
     (async () => {
       try {
@@ -131,7 +193,7 @@ export function PurchaseBillEditor({
       } catch { /* best-effort: multi-currency is optional */ }
     })();
     return () => { cancelled = true; };
-  }, [clientId]);
+  }, [clientId, isEdit]);
 
   const isForeign = currency !== "" && currency !== "INR";
   const rateNum = parseFloat(exchangeRate);
@@ -140,7 +202,15 @@ export function PurchaseBillEditor({
   }
 
   // ── Dirty detection ──────────────────────────────────────────────────────
-  const initialSnapshot = useRef({ vendorId: "", billNo: "", ourReference: "", billDate: today, dueDate: "", isReverseCharge: false, lines: initialLines, currency: "", exchangeRate: "" });
+  const initialSnapshot = useRef({
+    vendorId: existing?.vendor_id ?? "",
+    billNo: existing?.bill_no ?? "",
+    ourReference: existing?.our_reference ?? "",
+    billDate: existing?.bill_date ?? today,
+    dueDate: existing?.due_date ?? "",
+    isReverseCharge: existing?.is_reverse_charge ?? false,
+    lines: initialLines, currency, exchangeRate,
+  });
   const currentSnapshot = { vendorId, billNo, ourReference, billDate, dueDate, isReverseCharge, lines, currency, exchangeRate };
   const dirty = hasChanges(initialSnapshot.current, currentSnapshot);
   const { confirmLeave } = useUnsavedChanges(dirty && !saving, undefined, confirmDialog);
@@ -167,6 +237,10 @@ export function PurchaseBillEditor({
   const blockedCreditHits = findBlockedCreditHits(lines, accountNameById);
 
   function onVendorChange(id: string) {
+    // Vendor is locked once a draft exists — PurchaseBillUpdateIn has no
+    // vendor_id field (changing it would invalidate the frozen TDS section/
+    // rate resolution), so the picker itself is disabled in edit mode too.
+    if (isEdit) return;
     setVendorId(id);
     setSelectedVendor(vendors.find((v) => v.id === id) ?? null);
   }
@@ -257,36 +331,50 @@ export function PurchaseBillEditor({
     setError(null);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(
-        "/api/purchase-bills/",
-        "POST",
-        {
-          client_id: clientId,
-          vendor_id: vendorId,
+      const linePayload = lines.filter(isValidBillLine).map((l) => ({
+        description: l.description,
+        hsn_sac: l.hsn_sac || undefined,
+        quantity: parseFloat(l.qty) || 0,
+        unit: l.unit || undefined,
+        rate_paise: Math.round((parseFloat(l.rate) || 0) * 100),
+        gst_rate_percent: l.gst_rate,
+        expense_account_id: l.expense_account_id || undefined,
+        service_catalogue_id: l.service_catalogue_id || undefined,
+      }));
+
+      if (isEdit && existing) {
+        const upd = await apiCall(`/api/purchase-bills/${existing.id}`, "PATCH", {
           bill_date: billDate,
           due_date: dueDate || undefined,
           bill_no: billNo.trim() || undefined,
           our_reference: ourReference.trim() || undefined,
-          is_reverse_charge: isReverseCharge,
           document_url: documentUrl || undefined,
-          lines: lines.filter(isValidBillLine).map((l) => ({
-            description: l.description,
-            hsn_sac: l.hsn_sac || undefined,
-            quantity: parseFloat(l.qty) || 0,
-            unit: l.unit || undefined,
-            rate_paise: Math.round((parseFloat(l.rate) || 0) * 100),
-            gst_rate_percent: l.gst_rate,
-            expense_account_id: l.expense_account_id || undefined,
-            service_catalogue_id: l.service_catalogue_id || undefined,
-          })),
-          currency: isForeign ? currency : undefined,
-          exchange_rate: isForeign ? exchangeRate : undefined,
-        },
-        token,
-      );
-      if (!result.success) throw new Error(result.error ?? "Failed to create bill");
+          lines: linePayload,
+        }, token);
+        if (!upd.success) throw new Error(upd.error ?? "Failed to update bill");
+      } else {
+        const result = await apiCall(
+          "/api/purchase-bills/",
+          "POST",
+          {
+            client_id: clientId,
+            vendor_id: vendorId,
+            bill_date: billDate,
+            due_date: dueDate || undefined,
+            bill_no: billNo.trim() || undefined,
+            our_reference: ourReference.trim() || undefined,
+            is_reverse_charge: isReverseCharge,
+            document_url: documentUrl || undefined,
+            lines: linePayload,
+            currency: isForeign ? currency : undefined,
+            exchange_rate: isForeign ? exchangeRate : undefined,
+          },
+          token,
+        );
+        if (!result.success) throw new Error(result.error ?? "Failed to create bill");
+      }
       const label = billNo.trim() || "Purchase bill";
-      onDone(`${label} saved as draft`);
+      onDone(isEdit ? `${label} updated` : `${label} saved as draft`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save purchase bill");
     } finally {
@@ -307,7 +395,7 @@ export function PurchaseBillEditor({
         Cancel
       </button>
       <button onClick={save} disabled={busy} className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5">
-        {saving && <Loader2 size={12} className="animate-spin" />} Save Draft
+        {saving && <Loader2 size={12} className="animate-spin" />} {isEdit ? "Save Changes" : "Save Draft"}
       </button>
     </>
   );
@@ -356,42 +444,54 @@ export function PurchaseBillEditor({
       breadcrumbs={[
         { label: clientName || "Client", href: `/clients/${clientId}` },
         { label: "Purchases", href: `/clients/${clientId}/purchases` },
-        { label: "New Purchase Bill" },
+        { label: isEdit ? `Edit ${billNo || "Purchase Bill"}` : "New Purchase Bill" },
       ]}
-      title="New Purchase Bill"
+      title={isEdit ? `Edit ${billNo || "Purchase Bill"}` : "New Purchase Bill"}
       statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">Draft</span>}
       dirtyHint={dirty ? <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Unsaved changes</span> : undefined}
       toolbar={toolbar}
       summary={summary}
     >
       <div className="space-y-5">
-        {/* AI Upload */}
-        <section className="bg-amber-50 border border-amber-100 rounded-lg p-3 space-y-2">
-          <p className="text-xs font-medium text-amber-800 flex items-center gap-1.5"><Upload size={12} /> Upload Invoice (AI Extract)</p>
-          <div className="flex items-center gap-2">
-            <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-[#475569]" />
-            <button onClick={handleExtract} disabled={!uploadFile || extracting} className="text-xs px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40">
-              {extracting ? "Extracting…" : "Extract"}
-            </button>
-          </div>
-          {aiExtracted && (
-            <div className="mt-1 text-[10px] text-amber-700 bg-amber-100 rounded px-2 py-1.5">
-              ✓ AI extracted data pre-filled below. <strong>Review before saving.</strong>
+        {/* AI Upload — create-only; re-extracting into an already-saved draft
+            would silently overwrite manually-corrected fields. */}
+        {isEdit ? (
+          documentUrl && (
+            <section className="bg-amber-50 border border-amber-100 rounded-lg p-3">
+              <p className="text-[10px] text-amber-700">
+                📎 Original invoice attached — retained on this bill as supporting evidence (CGST Rule 36).
+              </p>
+            </section>
+          )
+        ) : (
+          <section className="bg-amber-50 border border-amber-100 rounded-lg p-3 space-y-2">
+            <p className="text-xs font-medium text-amber-800 flex items-center gap-1.5"><Upload size={12} /> Upload Invoice (AI Extract)</p>
+            <div className="flex items-center gap-2">
+              <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-[#475569]" />
+              <button onClick={handleExtract} disabled={!uploadFile || extracting} className="text-xs px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40">
+                {extracting ? "Extracting…" : "Extract"}
+              </button>
             </div>
-          )}
-          {documentUrl && (
-            <p className="text-[10px] text-amber-700">
-              📎 Original invoice attached — retained on this bill as supporting evidence (CGST Rule 36).
-            </p>
-          )}
-        </section>
+            {aiExtracted && (
+              <div className="mt-1 text-[10px] text-amber-700 bg-amber-100 rounded px-2 py-1.5">
+                ✓ AI extracted data pre-filled below. <strong>Review before saving.</strong>
+              </div>
+            )}
+            {documentUrl && (
+              <p className="text-[10px] text-amber-700">
+                📎 Original invoice attached — retained on this bill as supporting evidence (CGST Rule 36).
+              </p>
+            )}
+          </section>
+        )}
 
         {/* Party + metadata */}
         <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-[#475569] mb-1">Vendor *</label>
-              <VendorLookup vendors={vendors} value={vendorId} onChange={onVendorChange} ariaLabel="Vendor" />
+              <VendorLookup vendors={vendors} value={vendorId} onChange={onVendorChange} ariaLabel="Vendor" disabled={isEdit} />
+              {isEdit && <p className="mt-1 text-[10px] text-[#94A3B8]">Vendor can&apos;t be changed once a bill exists — it&apos;s locked to the TDS section resolved at creation.</p>}
               {fieldErr(validation.errors.vendor)}
             </div>
             <div>
@@ -416,11 +516,13 @@ export function PurchaseBillEditor({
                 className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div className="flex flex-col justify-end pb-1.5">
-              <label className="flex items-center gap-2 text-xs text-[#475569] cursor-pointer">
-                <input type="checkbox" checked={isReverseCharge} onChange={(e) => setIsReverseCharge(e.target.checked)} className="rounded" />
+              <label className={`flex items-center gap-2 text-xs text-[#475569] ${isEdit ? "opacity-50" : "cursor-pointer"}`}>
+                <input type="checkbox" checked={isReverseCharge} disabled={isEdit} onChange={(e) => setIsReverseCharge(e.target.checked)} className="rounded" />
                 Reverse Charge (RCM)
               </label>
-              <p className="mt-1 text-[10px] text-[#94A3B8]">CGST Act §9(3)/(4) — GTA, import of services, notified supplies, or purchases from an unregistered person in a specified category.</p>
+              <p className="mt-1 text-[10px] text-[#94A3B8]">
+                {isEdit ? "Locked once a bill exists." : "CGST Act §9(3)/(4) — GTA, import of services, notified supplies, or purchases from an unregistered person in a specified category."}
+              </p>
             </div>
           </div>
 
