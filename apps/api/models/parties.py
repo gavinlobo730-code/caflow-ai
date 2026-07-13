@@ -126,13 +126,22 @@ class VendorIn(BaseModel):
     pincode: Optional[str] = None
     opening_balance_paise: int = 0
     opening_balance_date: Optional[str] = None
-    # Must match the vendors.credit_days DB column default (migration 201).
-    # BUG (found live): this was previously 0, and create_vendor/
+    # Optional — genuinely unset ("no payment terms confirmed for this
+    # vendor yet") is a different fact from 0 ("Due on Receipt", a real
+    # choice a CA can make). BUG FOUND LIVE (migration 202): this used to
+    # default to 0 with a non-Optional int, and create_vendor/
     # create_vendors_bulk call model_dump() with no exclusion — Pydantic
     # always emits every field, so any caller that didn't explicitly set
-    # credit_days silently wrote 0 ("Due on Receipt"), overriding the DB's
-    # own DEFAULT 30. Every vendor created before this fix has credit_days=0.
-    credit_days: int = 30
+    # credit_days silently wrote 0, which every existing vendor's row had
+    # baked in despite the Payment Terms UI never having offered a way to
+    # choose it. No default is assumed here or anywhere downstream
+    # (PurchaseBillEditor only auto-fills Payment Terms/Due Date on vendor
+    # pick when credit_days is not None; services/credit_terms.py still
+    # falls back to 30 days ONLY at the point a bill is actually created
+    # with no term specified anywhere, purely so the bill itself has a
+    # trackable due date — that fallback does not get written back onto
+    # the vendor).
+    credit_days: Optional[int] = None
     tds_applicable: bool = False
     tds_section: Optional[str] = None
     tds_rate_bps: int = 0
