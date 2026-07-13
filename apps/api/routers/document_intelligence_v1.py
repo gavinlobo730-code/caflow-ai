@@ -6,6 +6,7 @@ Creates a DRAFT purchase bill — human CA approval required before posting.
 import os
 import base64
 import logging
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -29,6 +30,10 @@ _GROQ_TEXT_MODEL = os.environ.get("GROQ_TEXT_MODEL", "llama-3.3-70b-versatile")
 _GROQ_VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "meta-llama/llama-4-maverick-17b-128e-instruct")
 
 router = APIRouter(prefix="/api/document-intelligence-v1", tags=["document_intelligence_v1"])
+
+# Same private Storage bucket routers/documents.py uses — reusing its bucket/
+# path convention rather than inventing a second one.
+_BUCKET = "Documents"
 
 _EXTRACTION_PROMPT = """
 You are an expert Indian accountant. Analyse the following invoice document text and extract
@@ -93,19 +98,57 @@ async def extract_invoice(
     content_type = (file.content_type or "").lower()
     filename = file.filename or ""
 
+    # Retain the original file as ITC/audit evidence regardless of whether AI
+    # extraction succeeds — CGST Rule 36(1) conditions ITC on possession of
+    # the vendor's tax invoice, and extraction only ever reads the bytes into
+    # memory. Best-effort: a storage failure must never block extraction or
+    # manual bill entry.
+    document_url = _upload_bill_document(content, content_type, filename, current_user.get("firm_id"), client_id)
+
     extracted, error, status_code = _run_extraction(content, content_type, filename)
     if error:
         # R2.8/F19: no more fabricated fallback data — surface the failure
         # honestly so the CA knows to enter the bill manually, instead of a
         # plausible-looking invoice silently flowing into the draft bill form.
-        return JSONResponse(status_code=status_code, content=api_response(False, None, error))
+        # The attachment (if it uploaded) is still worth returning — the CA
+        # can enter the bill by hand and the original stays attached.
+        data = {"document_url": document_url} if document_url else None
+        return JSONResponse(status_code=status_code, content=api_response(False, data, error))
 
     return api_response(True, {
         "extracted": extracted,
         "confidence": _estimate_confidence(extracted),
         "requires_review": True,  # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
         "client_id": client_id,
+        "document_url": document_url,
     })
+
+
+def _upload_bill_document(
+    content: bytes, content_type: str, filename: str, firm_id: Optional[str], client_id: str
+) -> Optional[str]:
+    """Best-effort: persist the original uploaded invoice to Supabase Storage
+    (bucket/path convention shared with routers/documents.py) so it stays
+    retrievable after AI extraction discards the in-memory bytes. Returns the
+    storage PATH (never a signed URL — those expire; GET
+    /api/purchase-bills/{id}/document-url mints a fresh one on read), or None
+    when storage isn't configured or the upload fails. A failed attachment
+    must never block extraction or manual bill entry."""
+    if not os.environ.get("SUPABASE_URL") or not firm_id:
+        return None
+    try:
+        from core.supabase_client import get_supabase
+        sb = get_supabase()
+        safe_name = (filename or "upload").replace("/", "_")
+        storage_path = f"{firm_id}/{client_id}/purchase_bill/{uuid.uuid4()}_{safe_name}"
+        sb.storage.from_(_BUCKET).upload(
+            path=storage_path, file=content,
+            file_options={"content-type": content_type or "application/octet-stream"},
+        )
+        return storage_path
+    except Exception as e:
+        _logger.warning("Purchase-bill invoice attachment upload failed (non-fatal): %s", e)
+        return None
 
 
 def _run_extraction(

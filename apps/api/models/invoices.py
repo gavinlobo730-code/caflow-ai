@@ -206,6 +206,11 @@ class PurchaseBillIn(BaseModel):
     vendor_id: str
     bill_date: str  # YYYY-MM-DD
     due_date: Optional[str] = None
+    # Optional override of the credit period (days). When neither due_date nor
+    # credit_days is given, the vendor's credit_days is used as the default and
+    # the resulting due_date + credit_days are snapshotted onto the bill.
+    # Mirrors SalesInvoiceIn.credit_days.
+    credit_days: Optional[int] = None
     bill_no: Optional[str] = None
     # The firm's OWN internal reference/tracking number for this bill —
     # distinct from bill_no (the vendor's own document number). Optional,
@@ -219,6 +224,11 @@ class PurchaseBillIn(BaseModel):
     # currency is given, line rate_paise are that currency's minor units.
     currency: Optional[str] = None
     exchange_rate: Optional[Decimal] = None
+    # Supabase Storage PATH (not a signed URL — those expire) of the original
+    # uploaded invoice, set by document-intelligence-v1's extract-invoice
+    # response. Retained as ITC/audit evidence — CGST Rule 36(1) conditions
+    # ITC on possession of the vendor's tax invoice.
+    document_url: Optional[str] = None
 
     @field_validator("lines")
     @classmethod
@@ -233,17 +243,22 @@ class PurchaseBillUpdateIn(BaseModel):
 
     Draft bills: every field below is editable. Once received (or later),
     the router (routers/purchase_bills.py: update_purchase_bill) only
-    accepts our_reference, notes, due_date and line_units — bill_no,
-    bill_date, lines and is_inter_state are locked post-receipt, matching
-    the same rule applied to sales invoices (routers/sales_invoices.py).
+    accepts our_reference, notes, due_date, credit_days, document_url and
+    line_units — bill_no, bill_date, lines and is_inter_state are locked
+    post-receipt, matching the same rule applied to sales invoices
+    (routers/sales_invoices.py).
     """
     bill_date: Optional[str] = None
     due_date: Optional[str] = None
+    credit_days: Optional[int] = None
     bill_no: Optional[str] = None
     our_reference: Optional[str] = None
     lines: Optional[list[PurchaseBillLineIn]] = None
     notes: Optional[str] = None
     is_inter_state: Optional[bool] = None
+    # Attach (or replace) the original invoice after the bill was already
+    # created — e.g. the CA scans a paper copy later. See PurchaseBillIn.
+    document_url: Optional[str] = None
     # {line_id: new unit} — always allowed regardless of status, same
     # rationale as SalesInvoiceUpdateIn.line_units above.
     line_units: Optional[dict[str, str]] = None

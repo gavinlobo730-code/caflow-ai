@@ -21,6 +21,8 @@ import { UQC_CODES } from "@/lib/constants/uqc";
 import { estimateBaseMinor, estimateForeignTds, convertBaseToForeignMinor } from "@/lib/services/currencyPreview";
 import { formatMoney } from "@/lib/services/formatting";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
+import { PAYMENT_TERM_PRESETS, CUSTOM_TERM, termLabelForDays, daysForTermLabel } from "@/lib/sales/paymentTerms";
+import { addDaysISO, diffDaysISO } from "@/lib/sales/dateMath";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { apiCall, apiGet, getAuthToken, fmt, GST_RATES, type CurrencyOption } from "@/lib/invoices/shared";
 import {
@@ -35,6 +37,9 @@ export interface PurchaseVendor extends VendorLike {
   tds_section?: string | null;
   tds_rate_bps?: number;
   is_active?: boolean;
+  /** Default payment terms (days) — auto-fills Due Date on vendor pick,
+   * mirroring customer.credit_days on Sales Invoices. */
+  credit_days?: number | null;
 }
 
 type EditorLine = PurchaseBillLine & { _k: number; product?: ServiceCatalogueItem | null };
@@ -91,6 +96,11 @@ export function PurchaseBillEditor({
   const [ourReference, setOurReference] = useState("");
   const [billDate, setBillDate] = useState(today);
   const [dueDate, setDueDate] = useState("");
+  // Payment Terms ("Net 30" etc.) — a thin presentational layer over
+  // creditDays, mirroring Sales Invoices' identical customer.credit_days
+  // auto-fill (lib/sales/paymentTerms.ts is already party-agnostic).
+  const [creditDays, setCreditDays] = useState<string>("");
+  const [termCustom, setTermCustom] = useState<boolean>(false);
   const [isReverseCharge, setIsReverseCharge] = useState(false);
   const [lines, setLines] = useState<EditorLine[]>(initialLines);
   const keyRef = useRef(initialLines.length);
@@ -103,6 +113,11 @@ export function PurchaseBillEditor({
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [aiExtracted, setAiExtracted] = useState<Record<string, unknown> | null>(null);
+  // Storage PATH of the uploaded invoice (not a browser-openable URL — the
+  // "Documents" bucket is private) — set on any upload attempt, whether or
+  // not AI extraction itself succeeds, so the original file is retained as
+  // ITC/audit evidence (CGST Rule 36(1)) even on a failed extraction.
+  const [documentUrl, setDocumentUrl] = useState<string | null>(null);
 
   // Multi-currency (create-only)
   const [currency, setCurrency] = useState("");
@@ -135,8 +150,8 @@ export function PurchaseBillEditor({
   }
 
   // ── Dirty detection ──────────────────────────────────────────────────────
-  const initialSnapshot = useRef({ vendorId: "", billNo: "", ourReference: "", billDate: today, dueDate: "", isReverseCharge: false, lines: initialLines, currency: "", exchangeRate: "" });
-  const currentSnapshot = { vendorId, billNo, ourReference, billDate, dueDate, isReverseCharge, lines, currency, exchangeRate };
+  const initialSnapshot = useRef({ vendorId: "", billNo: "", ourReference: "", billDate: today, dueDate: "", creditDays: "", isReverseCharge: false, lines: initialLines, currency: "", exchangeRate: "" });
+  const currentSnapshot = { vendorId, billNo, ourReference, billDate, dueDate, creditDays, isReverseCharge, lines, currency, exchangeRate };
   const dirty = hasChanges(initialSnapshot.current, currentSnapshot);
   const { confirmLeave } = useUnsavedChanges(dirty && !saving, undefined, confirmDialog);
 
@@ -163,7 +178,44 @@ export function PurchaseBillEditor({
 
   function onVendorChange(id: string) {
     setVendorId(id);
-    setSelectedVendor(vendors.find((v) => v.id === id) ?? null);
+    const v = vendors.find((v) => v.id === id) ?? null;
+    setSelectedVendor(v);
+    // Auto-fill payment terms from the vendor's default credit_days, same as
+    // Sales Invoices does from the customer — still editable per bill below.
+    if (v?.credit_days != null) {
+      setCreditDays(String(v.credit_days));
+      setTermCustom(termLabelForDays(v.credit_days) === CUSTOM_TERM);
+      setDueDate(addDaysISO(billDate, v.credit_days));
+    }
+  }
+
+  const termValue = termCustom
+    ? CUSTOM_TERM
+    : (creditDays === "" ? "" : termLabelForDays(Number.isNaN(parseInt(creditDays, 10)) ? null : parseInt(creditDays, 10)));
+
+  function onTermChange(label: string) {
+    if (label === CUSTOM_TERM) { setTermCustom(true); return; }
+    const d = daysForTermLabel(label);
+    if (d == null) return;
+    setTermCustom(false);
+    setCreditDays(String(d));
+    if (billDate) setDueDate(addDaysISO(billDate, d));
+  }
+  function onBillDateChange(v: string) {
+    setBillDate(v);
+    const n = parseInt(creditDays, 10);
+    if (!Number.isNaN(n) && v) setDueDate(addDaysISO(v, n));
+  }
+  function onCreditDaysChange(v: string) {
+    setCreditDays(v);
+    const n = parseInt(v, 10);
+    if (!Number.isNaN(n) && billDate) setDueDate(addDaysISO(billDate, n));
+  }
+  function onDueDateChange(v: string) {
+    setDueDate(v);
+    const n = diffDaysISO(billDate, v);
+    if (n != null && n >= 0) setCreditDays(String(n));
+    setTermCustom(true);
   }
 
   function setLine(idx: number, patch: Partial<EditorLine>) {
@@ -197,6 +249,9 @@ export function PurchaseBillEditor({
         body: formData,
       });
       const json = await res.json();
+      // The uploaded file is retained server-side as ITC/audit evidence
+      // regardless of whether AI extraction itself succeeded.
+      if (json.data?.document_url) setDocumentUrl(json.data.document_url as string);
       if (json.success && json.data?.extracted) {
         const ex = json.data.extracted as ExtractedInvoice;
         setAiExtracted(ex as unknown as Record<string, unknown>);
@@ -257,9 +312,11 @@ export function PurchaseBillEditor({
           vendor_id: vendorId,
           bill_date: billDate,
           due_date: dueDate || undefined,
+          credit_days: creditDays !== "" ? parseInt(creditDays, 10) : undefined,
           bill_no: billNo.trim() || undefined,
           our_reference: ourReference.trim() || undefined,
           is_reverse_charge: isReverseCharge,
+          document_url: documentUrl || undefined,
           lines: lines.filter(isValidBillLine).map((l) => ({
             description: l.description,
             hsn_sac: l.hsn_sac || undefined,
@@ -370,6 +427,11 @@ export function PurchaseBillEditor({
               ✓ AI extracted data pre-filled below. <strong>Review before saving.</strong>
             </div>
           )}
+          {documentUrl && (
+            <p className="text-[10px] text-amber-700">
+              📎 Original invoice attached — retained on this bill as supporting evidence (CGST Rule 36).
+            </p>
+          )}
         </section>
 
         {/* Party + metadata */}
@@ -392,14 +454,29 @@ export function PurchaseBillEditor({
             </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Bill Date *</label>
-              <input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)}
+              <input type="date" value={billDate} onChange={(e) => onBillDateChange(e.target.value)}
                 className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               {fieldErr(validation.errors.billDate)}
             </div>
             <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Payment Terms</label>
+              <select value={termValue} onChange={(e) => onTermChange(e.target.value)}
+                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                {termValue === "" && <option value="">— Select —</option>}
+                {PAYMENT_TERM_PRESETS.map((t) => <option key={t.label} value={t.label}>{t.label}</option>)}
+                <option value={CUSTOM_TERM}>Custom</option>
+              </select>
+              {termCustom && (
+                <input type="number" min={0} value={creditDays} onChange={(e) => onCreditDaysChange(e.target.value)}
+                  placeholder="Credit days" aria-label="Custom credit days"
+                  className="mt-1 w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              )}
+            </div>
+            <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Due Date</label>
-              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
+              <input type="date" value={dueDate} onChange={(e) => onDueDateChange(e.target.value)}
                 className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <p className="mt-1 text-[10px] text-[#94A3B8]">Auto-set from terms; edit for a custom date.</p>
             </div>
             <div className="flex flex-col justify-end pb-1.5">
               <label className="flex items-center gap-2 text-xs text-[#475569] cursor-pointer">

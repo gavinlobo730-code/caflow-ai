@@ -25,7 +25,7 @@ export async function loadPurchaseBillEditorContext(clientId: string): Promise<P
   const [{ data: vendorData }, { data: accData }, { data: clientData }] = await Promise.all([
     selectAll(() => supabase
       .from("vendors")
-      .select("id, name, gstin, pan, email, phone, state_code, tds_applicable, tds_section, tds_rate_bps, is_active")
+      .select("id, name, gstin, pan, email, phone, state_code, tds_applicable, tds_section, tds_rate_bps, credit_days, is_active")
       .eq("client_id", clientId)
       .eq("is_active", true)
       .order("name")
