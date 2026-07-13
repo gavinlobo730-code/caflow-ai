@@ -1,0 +1,544 @@
+"use client";
+
+/**
+ * PurchaseBillEditor — dedicated create experience for Purchase Bills,
+ * mirroring the Sales Invoice editor's architecture (InvoiceWorkspaceLayout,
+ * dirty-changes guard, per-field validation, live GST preview) instead of
+ * the old inline modal. No business logic is duplicated: totals shown here
+ * are a preview (lib/purchases/billEditor.ts, unit-tested, floor-based —
+ * matches the backend's own _compute_line_gst exactly); the backend remains
+ * authoritative and recomputes everything on save.
+ */
+import { useState, useRef, useEffect } from "react";
+import { Trash2, Plus, Loader2, AlertCircle, AlertTriangle, Upload } from "lucide-react";
+import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
+import { VendorLookup, type VendorLike } from "@/components/lookups/VendorLookup";
+import { AccountLookup, type AccountLike } from "@/components/lookups/AccountLookup";
+import { HsnLookup } from "@/components/lookups/HsnLookup";
+import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
+import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
+import { UQC_CODES } from "@/lib/constants/uqc";
+import { estimateBaseMinor, estimateForeignTds, convertBaseToForeignMinor } from "@/lib/services/currencyPreview";
+import { formatMoney } from "@/lib/services/formatting";
+import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { apiCall, apiGet, getAuthToken, fmt, GST_RATES, type CurrencyOption } from "@/lib/invoices/shared";
+import {
+  isValidBillLine, previewBillTotals, validateBillEditor, findBlockedCreditHits,
+  type PurchaseBillLine,
+} from "@/lib/purchases/billEditor";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+export interface PurchaseVendor extends VendorLike {
+  tds_applicable?: boolean;
+  tds_section?: string | null;
+  tds_rate_bps?: number;
+  is_active?: boolean;
+}
+
+type EditorLine = PurchaseBillLine & { _k: number; product?: ServiceCatalogueItem | null };
+const EMPTY_LINE: PurchaseBillLine = { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "NOS", expense_account_id: "", service_catalogue_id: "" };
+
+/** Purchase-side product/service prefill — uses purchase_price_paise, NOT
+ * default_rate_paise (the SELL price). The old inline-modal form used
+ * lib/catalogue/service.ts's serviceToLine here, which is sales-side and
+ * silently pre-filled the SELL price on every purchase bill line picked
+ * from the catalogue — fixed here. */
+function purchaseServiceToLine(item: ServiceCatalogueItem): Partial<PurchaseBillLine> {
+  return {
+    description: (item.description ?? "").trim(),
+    hsn_sac: item.hsn_sac ?? "",
+    rate: item.purchase_price_paise ? String(item.purchase_price_paise / 100) : "",
+    gst_rate: item.gst_rate_bps == null ? 0 : item.gst_rate_bps / 100,
+    unit: item.unit ?? "NOS",
+  };
+}
+
+function todayISO(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+interface ExtractedInvoice {
+  vendor_name?: string;
+  vendor_gstin?: string;
+  invoice_no?: string;
+  invoice_date?: string;
+  line_items?: { description?: string; hsn_sac?: string; quantity?: number; rate_paise?: number; gst_rate_bps?: number }[];
+}
+
+export function PurchaseBillEditor({
+  clientId, clientName, clientStateCode, vendors, accounts, onDone, onCancel,
+}: {
+  clientId: string;
+  clientName?: string;
+  /** This client's own GST state code — vendor.state_code differing from
+   * this drives the CGST+SGST vs IGST preview split (CGST Act §8). The
+   * backend independently recomputes is_interstate from the live vendor/
+   * client rows on save; this is preview-only. */
+  clientStateCode: string;
+  vendors: PurchaseVendor[];
+  accounts: AccountLike[];
+  onDone: (message: string) => void;
+  onCancel: () => void;
+}) {
+  const today = todayISO();
+  const initialLines: EditorLine[] = [{ ...EMPTY_LINE, _k: 0 }];
+
+  const [vendorId, setVendorId] = useState("");
+  const [selectedVendor, setSelectedVendor] = useState<PurchaseVendor | null>(null);
+  const [billNo, setBillNo] = useState("");
+  const [ourReference, setOurReference] = useState("");
+  const [billDate, setBillDate] = useState(today);
+  const [dueDate, setDueDate] = useState("");
+  const [isReverseCharge, setIsReverseCharge] = useState(false);
+  const [lines, setLines] = useState<EditorLine[]>(initialLines);
+  const keyRef = useRef(initialLines.length);
+  const nextKey = () => keyRef.current++;
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [attempted, setAttempted] = useState(false);
+
+  // AI Upload (Extract)
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [aiExtracted, setAiExtracted] = useState<Record<string, unknown> | null>(null);
+
+  // Multi-currency (create-only)
+  const [currency, setCurrency] = useState("");
+  const [exchangeRate, setExchangeRate] = useState("");
+  const [mcActive, setMcActive] = useState(false);
+  const [currencies, setCurrencies] = useState<CurrencyOption[]>([]);
+
+  useEffect(() => {
+    if (!clientId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAuthToken();
+        const pol = await apiGet(`/api/currencies/policy?client_id=${clientId}`, token);
+        if (cancelled) return;
+        const active = Boolean(pol.success && (pol.data as { active?: boolean } | null)?.active);
+        setMcActive(active);
+        if (!active) return;
+        const list = await apiGet(`/api/currencies?active_only=true`, token);
+        if (!cancelled && list.success) setCurrencies((list.data as CurrencyOption[]) ?? []);
+      } catch { /* best-effort: multi-currency is optional */ }
+    })();
+    return () => { cancelled = true; };
+  }, [clientId]);
+
+  const isForeign = currency !== "" && currency !== "INR";
+  const rateNum = parseFloat(exchangeRate);
+  function fmtAmt(paise: number): string {
+    return isForeign ? formatMoney(paise, currency) : fmt(paise);
+  }
+
+  // ── Dirty detection ──────────────────────────────────────────────────────
+  const initialSnapshot = useRef({ vendorId: "", billNo: "", ourReference: "", billDate: today, dueDate: "", isReverseCharge: false, lines: initialLines, currency: "", exchangeRate: "" });
+  const currentSnapshot = { vendorId, billNo, ourReference, billDate, dueDate, isReverseCharge, lines, currency, exchangeRate };
+  const dirty = hasChanges(initialSnapshot.current, currentSnapshot);
+  const { confirmLeave } = useUnsavedChanges(dirty && !saving, undefined, confirmDialog);
+
+  // ── Interstate preview (CGST Act §8) — server recomputes independently ──
+  const isInterstate = !!(clientStateCode && selectedVendor?.state_code && clientStateCode !== selectedVendor.state_code);
+  const gstAuto = !!(clientStateCode && selectedVendor?.state_code);
+
+  // ── Live preview totals + validation ────────────────────────────────────
+  const totals = previewBillTotals(lines, isInterstate);
+  const validation = validateBillEditor({ vendorId, billDate, lines, isForeign, exchangeRate });
+  const estBaseTaxable = isForeign && rateNum > 0 ? estimateBaseMinor(totals.taxable_paise, rateNum) : totals.taxable_paise;
+  const estBaseTotal = isForeign && rateNum > 0 ? estimateBaseMinor(totals.grand_total_paise, rateNum) : totals.grand_total_paise;
+  // TDS is a purely domestic, INR-only concept (IT Act §194) computed off the
+  // INR-equivalent taxable value — never the raw foreign figure.
+  const tdsPaise = selectedVendor?.tds_applicable && (selectedVendor.tds_rate_bps ?? 0) > 0
+    ? estimateForeignTds(estBaseTaxable, selectedVendor.tds_rate_bps ?? 0)
+    : 0;
+  const netPayable = isForeign
+    ? totals.grand_total_paise - convertBaseToForeignMinor(tdsPaise, rateNum)
+    : totals.grand_total_paise - tdsPaise;
+
+  const accountNameById = new Map(accounts.map((a) => [a.id ?? "", a.account_name ?? a.name ?? ""]));
+  const blockedCreditHits = findBlockedCreditHits(lines, accountNameById);
+
+  function onVendorChange(id: string) {
+    setVendorId(id);
+    setSelectedVendor(vendors.find((v) => v.id === id) ?? null);
+  }
+
+  function setLine(idx: number, patch: Partial<EditorLine>) {
+    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+  }
+  function removeLine(idx: number) {
+    if (lines.length <= 1) return;
+    setLines((prev) => prev.filter((_, i) => i !== idx));
+  }
+  function onPickProduct(idx: number, item: ServiceCatalogueItem) {
+    setLine(idx, { ...purchaseServiceToLine(item), product: item, service_catalogue_id: item.id });
+  }
+  function addLine() {
+    setLines((prev) => [...prev, { ...EMPTY_LINE, _k: nextKey() }]);
+  }
+
+  // ── AI document extraction ───────────────────────────────────────────────
+  async function handleExtract() {
+    if (!uploadFile) return;
+    setExtracting(true);
+    setAiExtracted(null);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+      formData.append("client_id", clientId);
+      const token = await getAuthToken();
+      const res = await fetch(`${API}/api/document-intelligence-v1/extract-invoice`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      const json = await res.json();
+      if (json.success && json.data?.extracted) {
+        const ex = json.data.extracted as ExtractedInvoice;
+        setAiExtracted(ex as unknown as Record<string, unknown>);
+        if (ex.invoice_no) setBillNo(ex.invoice_no);
+        if (ex.invoice_date) setBillDate(ex.invoice_date);
+        // Match the extracted vendor — GSTIN first (exact, authoritative),
+        // then name (fuzzy) — mirrors bill_from_document's own server-side
+        // matching (routers/purchase_bills.py). Previously this extraction
+        // path never attempted a vendor match at all, so the Vendor field
+        // silently stayed empty even on a successful extraction.
+        const gstin = ex.vendor_gstin?.trim().toUpperCase();
+        const name = ex.vendor_name?.trim().toLowerCase();
+        const matched = (gstin && vendors.find((v) => v.gstin?.toUpperCase() === gstin))
+          ?? (name && vendors.find((v) => v.name.trim().toLowerCase() === name))
+          ?? null;
+        if (matched) onVendorChange(matched.id);
+        if (ex.line_items?.length) {
+          setLines(
+            ex.line_items.map((li) => ({
+              description: li.description ?? "", hsn_sac: li.hsn_sac ?? "",
+              qty: String(li.quantity ?? 1), unit: "NOS",
+              rate: String(Math.floor((li.rate_paise ?? 0)) / 100),
+              gst_rate: (li.gst_rate_bps ?? 1800) / 100,
+              expense_account_id: "", service_catalogue_id: "",
+              _k: nextKey(),
+            })),
+          );
+        }
+        if (!matched && (gstin || name)) {
+          setError(`AI extracted vendor "${ex.vendor_name ?? gstin}" but no matching vendor was found — select one manually.`);
+        }
+      } else {
+        setError(json.error || "AI extraction failed. Please enter the bill details manually.");
+      }
+    } catch {
+      setError("AI extraction failed. Please enter the bill details manually.");
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  // ── Save ─────────────────────────────────────────────────────────────────
+  async function save() {
+    setAttempted(true);
+    if (!validation.ok) {
+      setError(validation.errors.vendor ?? validation.errors.billDate ?? validation.errors.lines ?? validation.errors.exchangeRate ?? "Fix the highlighted fields.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const token = await getAuthToken();
+      const result = await apiCall(
+        "/api/purchase-bills/",
+        "POST",
+        {
+          client_id: clientId,
+          vendor_id: vendorId,
+          bill_date: billDate,
+          due_date: dueDate || undefined,
+          bill_no: billNo.trim() || undefined,
+          our_reference: ourReference.trim() || undefined,
+          is_reverse_charge: isReverseCharge,
+          lines: lines.filter(isValidBillLine).map((l) => ({
+            description: l.description,
+            hsn_sac: l.hsn_sac || undefined,
+            quantity: parseFloat(l.qty) || 0,
+            unit: l.unit || undefined,
+            rate_paise: Math.round((parseFloat(l.rate) || 0) * 100),
+            gst_rate_percent: l.gst_rate,
+            expense_account_id: l.expense_account_id || undefined,
+            service_catalogue_id: l.service_catalogue_id || undefined,
+          })),
+          currency: isForeign ? currency : undefined,
+          exchange_rate: isForeign ? exchangeRate : undefined,
+        },
+        token,
+      );
+      if (!result.success) throw new Error(result.error ?? "Failed to create bill");
+      const label = billNo.trim() || "Purchase bill";
+      onDone(`${label} saved as draft`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save purchase bill");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCancel() {
+    if (await confirmLeave()) onCancel();
+  }
+
+  const busy = saving;
+  const fieldErr = (msg?: string) => (attempted && msg ? <p className="mt-1 text-[10px] text-red-600">{msg}</p> : null);
+
+  const toolbar = (
+    <>
+      <button onClick={handleCancel} disabled={busy} className="mr-auto text-xs px-3 py-1.5 text-[#64748B] hover:text-[#334155] disabled:opacity-50">
+        Cancel
+      </button>
+      <button onClick={save} disabled={busy} className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+        {saving && <Loader2 size={12} className="animate-spin" />} Save Draft
+      </button>
+    </>
+  );
+
+  const summary = (
+    <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-2 text-xs">
+      <p className="font-semibold text-[#334155]">Summary{isForeign ? ` (${currency})` : ""}</p>
+      <Row label="Taxable value" value={fmtAmt(totals.taxable_paise)} />
+      {isInterstate ? (
+        <Row label="IGST" value={fmtAmt(totals.igst_paise)} />
+      ) : (
+        <>
+          <Row label="CGST" value={fmtAmt(totals.cgst_paise)} />
+          <Row label="SGST" value={fmtAmt(totals.sgst_paise)} />
+        </>
+      )}
+      <p className="text-[10px] text-[#94A3B8]">
+        {gstAuto ? `${isInterstate ? "Interstate" : "Intra-state"} — ${isInterstate ? "IGST" : "CGST + SGST"} (CGST Act §8)` : "Pick a vendor to preview CGST/SGST vs IGST."}
+      </p>
+      <div className="flex justify-between font-semibold text-[#0F172A] border-t border-[#E2E8F0] pt-1.5 mt-1">
+        <span>Grand Total{isForeign ? ` (${currency})` : ""}</span>
+        <span className="font-mono">{fmtAmt(totals.grand_total_paise)}</span>
+      </div>
+      {isForeign && rateNum > 0 && <Row label="≈ INR total" value={fmt(estBaseTotal)} muted />}
+      {selectedVendor?.tds_applicable && (
+        <div className="border-t border-[#F1F5F9] pt-2 mt-1 space-y-1.5">
+          <Row label={`TDS §${selectedVendor.tds_section} @ ${((selectedVendor.tds_rate_bps ?? 0) / 100).toFixed(1)}%`} value={fmt(tdsPaise)} />
+          <Row label="Net payable" value={fmtAmt(netPayable)} />
+          {isForeign && <p className="text-[10px] text-[#94A3B8]">TDS is always deducted in ₹ per IT Act §194.</p>}
+        </div>
+      )}
+      <p className="text-[10px] text-[#94A3B8] pt-1">
+        Preview — GST and TDS are confirmed by the server on save.
+      </p>
+      {attempted && !validation.ok && (
+        <div className="flex items-start gap-1.5 text-[10px] text-red-600 bg-red-50 rounded px-2 py-1.5">
+          <AlertCircle size={12} className="mt-px flex-shrink-0" />
+          <span>{validation.errors.vendor ?? validation.errors.billDate ?? validation.errors.lines ?? validation.errors.exchangeRate}</span>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <InvoiceWorkspaceLayout
+      breadcrumbs={[
+        { label: clientName || "Client", href: `/clients/${clientId}` },
+        { label: "Purchases", href: `/clients/${clientId}/purchases` },
+        { label: "New Purchase Bill" },
+      ]}
+      title="New Purchase Bill"
+      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">Draft</span>}
+      dirtyHint={dirty ? <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Unsaved changes</span> : undefined}
+      toolbar={toolbar}
+      summary={summary}
+    >
+      <div className="space-y-5">
+        {/* AI Upload */}
+        <section className="bg-amber-50 border border-amber-100 rounded-lg p-3 space-y-2">
+          <p className="text-xs font-medium text-amber-800 flex items-center gap-1.5"><Upload size={12} /> Upload Invoice (AI Extract)</p>
+          <div className="flex items-center gap-2">
+            <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-[#475569]" />
+            <button onClick={handleExtract} disabled={!uploadFile || extracting} className="text-xs px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40">
+              {extracting ? "Extracting…" : "Extract"}
+            </button>
+          </div>
+          {aiExtracted && (
+            <div className="mt-1 text-[10px] text-amber-700 bg-amber-100 rounded px-2 py-1.5">
+              ✓ AI extracted data pre-filled below. <strong>Review before saving.</strong>
+            </div>
+          )}
+        </section>
+
+        {/* Party + metadata */}
+        <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-[#475569] mb-1">Vendor *</label>
+              <VendorLookup vendors={vendors} value={vendorId} onChange={onVendorChange} ariaLabel="Vendor" />
+              {fieldErr(validation.errors.vendor)}
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Vendor Invoice No.</label>
+              <input value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="INV-001"
+                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Our Reference</label>
+              <input value={ourReference} onChange={(e) => setOurReference(e.target.value)} placeholder="Internal tracking no."
+                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Bill Date *</label>
+              <input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)}
+                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              {fieldErr(validation.errors.billDate)}
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Due Date</label>
+              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
+                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div className="flex flex-col justify-end pb-1.5">
+              <label className="flex items-center gap-2 text-xs text-[#475569] cursor-pointer">
+                <input type="checkbox" checked={isReverseCharge} onChange={(e) => setIsReverseCharge(e.target.checked)} className="rounded" />
+                Reverse Charge (RCM)
+              </label>
+              <p className="mt-1 text-[10px] text-[#94A3B8]">CGST Act §9(3)/(4) — GTA, import of services, notified supplies, or purchases from an unregistered person in a specified category.</p>
+            </div>
+          </div>
+
+          {mcActive && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3 pt-3 border-t border-[#F1F5F9]">
+              <div>
+                <label className="block text-xs font-medium text-[#475569] mb-1">Currency</label>
+                <select value={currency} onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); }}
+                  className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">INR (default)</option>
+                  {currencies.filter((c) => c.code !== "INR").map((c) => (
+                    <option key={c.code} value={c.code}>{c.code}{c.display_name ? ` — ${c.display_name}` : ""}</option>
+                  ))}
+                </select>
+              </div>
+              {isForeign && (
+                <div>
+                  <label className="block text-xs font-medium text-[#475569] mb-1">Exchange Rate *</label>
+                  <input type="number" min="0" step="0.0001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)}
+                    placeholder={`1 ${currency} = ? INR`}
+                    className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono" />
+                  {fieldErr(validation.errors.exchangeRate)}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {blockedCreditHits.length > 0 && (
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-800">
+            <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+            <div className="space-y-1">
+              <p className="font-medium">Possible blocked ITC — review before saving (CGST Act §17(5))</p>
+              {blockedCreditHits.map((h, i) => (
+                <p key={i}>Line {h.lineIndex + 1} ({h.label}): {h.note}</p>
+              ))}
+              <p className="text-[10px] text-amber-700">This is a heuristic prompt, not a legal determination — confirm eligibility before claiming ITC.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Line items */}
+        <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+          <h2 className="text-xs font-semibold text-[#334155] mb-2">Line items</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs min-w-[860px]">
+              <thead>
+                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                  <th className="pb-2 text-left font-semibold w-36">Product/Service</th>
+                  <th className="pb-2 text-left font-semibold">Description *</th>
+                  <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
+                  <th className="pb-2 text-left font-semibold w-28">Expense Account</th>
+                  <th className="pb-2 text-right font-semibold w-16">Qty</th>
+                  <th className="pb-2 text-left font-semibold w-16">Unit</th>
+                  <th className="pb-2 text-right font-semibold w-24">Rate ({isForeign ? currency : "₹"})</th>
+                  <th className="pb-2 text-right font-semibold w-20">GST %</th>
+                  <th className="pb-2 text-right font-semibold w-24">Amount</th>
+                  <th className="pb-2 w-6" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F8FAFC]">
+                {lines.map((line, idx) => {
+                  const g = previewBillTotals([line], isInterstate);
+                  const invalid = attempted && !isValidBillLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
+                  return (
+                    <tr key={line._k} className={invalid ? "bg-red-50/40" : undefined}>
+                      <td className="py-1.5 pr-2">
+                        <ServiceCataloguePicker clientId={clientId} value={line.product} onPick={(item) => onPickProduct(idx, item)} size="sm" ariaLabel={`Line ${idx + 1} product or service`} />
+                      </td>
+                      <td className="py-1.5 pr-2">
+                        <input value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" aria-label={`Line ${idx + 1} description`}
+                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
+                      </td>
+                      <td className="py-1.5 px-1">
+                        <HsnLookup clientId={clientId} value={line.hsn_sac} onChange={(v) => setLine(idx, { hsn_sac: v })}
+                          onPick={(p) => { if (p.gst_rate_bps != null) setLine(idx, { gst_rate: p.gst_rate_bps / 100 }); }}
+                          size="sm" chrome="plain" placeholder="Set HSN/SAC" ariaLabel="HSN or SAC code" />
+                      </td>
+                      <td className="py-1.5 px-1">
+                        <AccountLookup accounts={accounts} value={line.expense_account_id} onChange={(id) => setLine(idx, { expense_account_id: id })} size="sm" placeholder="— Account —" ariaLabel="Expense account" />
+                      </td>
+                      <td className="py-1.5 px-1">
+                        <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })} aria-label={`Line ${idx + 1} quantity`}
+                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                      </td>
+                      <td className="py-1.5 px-1">
+                        <select value={line.unit || "NOS"} onChange={(e) => setLine(idx, { unit: e.target.value })} aria-label={`Line ${idx + 1} unit`}
+                          className="w-full px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs">
+                          {UQC_CODES.map((u) => <option key={u.code} value={u.code}>{u.code}</option>)}
+                        </select>
+                      </td>
+                      <td className="py-1.5 px-1">
+                        <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })} placeholder="0.00" aria-label={`Line ${idx + 1} rate`}
+                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                      </td>
+                      <td className="py-1.5 px-1">
+                        <select value={line.gst_rate} onChange={(e) => setLine(idx, { gst_rate: parseFloat(e.target.value) })} aria-label={`Line ${idx + 1} GST rate`}
+                          className="w-full px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs">
+                          {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
+                        </select>
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono text-[#334155]">{g.grand_total_paise > 0 ? fmtAmt(g.grand_total_paise) : "—"}</td>
+                      <td className="py-1.5">
+                        {lines.length > 1 && (
+                          <button onClick={() => removeLine(idx)} className="text-[#CBD5E1] hover:text-red-600" aria-label="Remove line">
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <button type="button" onClick={addLine} className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700">
+            <Plus size={13} /> Add line
+          </button>
+          {fieldErr(validation.errors.lines)}
+        </section>
+
+        {error && <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+      </div>
+    </InvoiceWorkspaceLayout>
+  );
+}
+
+function Row({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+  return (
+    <div className={`flex justify-between ${muted ? "text-[#94A3B8]" : "text-[#475569]"}`}>
+      <span>{label}</span>
+      <span className="font-mono">{value}</span>
+    </div>
+  );
+}
