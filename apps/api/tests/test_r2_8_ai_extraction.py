@@ -104,14 +104,16 @@ class TestInvoiceExtractionV1:
         assert not hasattr(mod, "_mock_extraction")
 
     def test_image_upload_routes_through_the_vision_extractor_not_text(self, monkeypatch):
-        """BUG FIX: a JPEG/PNG upload must call _groq_extract_image (which
+        """BUG FIX: a JPEG/PNG upload must call _gemini_extract_image (which
         sends the actual image bytes to a vision-capable model), never
         _groq_extract_text (which previously received nothing but a
         meaningless base64 snippet of the raw bytes dressed up as a text
         "note" — the model had no way to read the image, so every photo
-        upload silently returned near-empty fields)."""
+        upload silently returned near-empty fields). Images route through
+        Gemini specifically because Groq's own vision model returned a live
+        404 model_not_found on this account — see _run_extraction."""
         import routers.document_intelligence_v1 as mod
-        monkeypatch.setattr(mod, "_GROQ_KEY", "fake-key")
+        monkeypatch.setattr(mod, "_GEMINI_KEY", "fake-key")
         text_mock = MagicMock(side_effect=AssertionError("must not call the text extractor for an image"))
         image_mock = MagicMock(return_value={
             "vendor_name": "Photo Vendor", "vendor_gstin": None, "invoice_no": "PH-1",
@@ -119,7 +121,7 @@ class TestInvoiceExtractionV1:
             "sgst_paise": 0, "igst_paise": 0, "total_paise": 0, "line_items": [],
         })
         monkeypatch.setattr(mod, "_groq_extract_text", text_mock)
-        monkeypatch.setattr(mod, "_groq_extract_image", image_mock)
+        monkeypatch.setattr(mod, "_gemini_extract_image", image_mock)
         c = _client_for(mod.router, PARTNER_A)
         files = {"file": ("bill.jpg", b"\xff\xd8\xff fake jpeg bytes", "image/jpeg")}
         data = {"client_id": "c-001"}
@@ -141,7 +143,7 @@ class TestInvoiceExtractionV1:
         })
         image_mock = MagicMock(side_effect=AssertionError("must not call the vision extractor for a PDF"))
         monkeypatch.setattr(mod, "_groq_extract_text", text_mock)
-        monkeypatch.setattr(mod, "_groq_extract_image", image_mock)
+        monkeypatch.setattr(mod, "_gemini_extract_image", image_mock)
         c = _client_for(mod.router, PARTNER_A)
         files = {"file": ("invoice.pdf", b"%PDF-1.4 fake bytes", "application/pdf")}
         data = {"client_id": "c-001"}
@@ -150,6 +152,22 @@ class TestInvoiceExtractionV1:
         assert r.json()["data"]["extracted"]["vendor_name"] == "PDF Vendor"
         text_mock.assert_called_once()
         image_mock.assert_not_called()
+
+    def test_image_upload_without_gemini_key_returns_honest_failure(self, monkeypatch):
+        """PDFs and images now need different provider keys — an image
+        upload must not silently fall through to the PDF/Groq path or
+        fabricate data just because GROQ_API_KEY happens to be set."""
+        import routers.document_intelligence_v1 as mod
+        monkeypatch.setattr(mod, "_GROQ_KEY", "fake-key")
+        monkeypatch.setattr(mod, "_GEMINI_KEY", "")
+        c = _client_for(mod.router, PARTNER_A)
+        files = {"file": ("bill.jpg", b"\xff\xd8\xff fake jpeg bytes", "image/jpeg")}
+        data = {"client_id": "c-001"}
+        r = c.post("/api/document-intelligence-v1/extract-invoice", files=files, data=data)
+        assert r.status_code == 503
+        body = r.json()
+        assert body["success"] is False
+        assert "GEMINI_API_KEY" in body["error"]
 
     def test_parse_extraction_json_strips_markdown_fences_and_coerces_paise_fields(self):
         import routers.document_intelligence_v1 as mod
@@ -172,49 +190,40 @@ class TestInvoiceExtractionV1:
         assert li["quantity"] == 2.0
         assert li["gst_rate_bps"] == 1800  # missing/null defaults to 18%
 
-    def test_groq_extract_image_sends_the_actual_image_bytes_as_a_data_url(self, monkeypatch):
+    def test_gemini_extract_image_sends_the_actual_image_bytes(self, monkeypatch):
         """Regression guard for the fix itself: the vision call must include
-        an image_url content block built from the real uploaded bytes, not
-        a text-only prompt."""
-        import base64
+        a Part built from the real uploaded bytes (not a text-only prompt),
+        and must go to the configured Gemini model."""
         import routers.document_intelligence_v1 as mod
+        from google.genai import types
 
         captured = {}
 
-        class _FakeMessage:
-            content = '{"vendor_name": "V", "vendor_gstin": null, "invoice_no": null, "invoice_date": null, "taxable_amount_paise": 0, "cgst_paise": 0, "sgst_paise": 0, "igst_paise": 0, "total_paise": 0, "line_items": []}'
+        class _FakeResponse:
+            text = '{"vendor_name": "V", "vendor_gstin": null, "invoice_no": null, "invoice_date": null, "taxable_amount_paise": 0, "cgst_paise": 0, "sgst_paise": 0, "igst_paise": 0, "total_paise": 0, "line_items": []}'
 
-        class _FakeChoice:
-            message = _FakeMessage()
-
-        class _FakeCompletion:
-            choices = [_FakeChoice()]
-
-        class _FakeCompletions:
-            def create(self, **kwargs):
+        class _FakeModels:
+            def generate_content(self, **kwargs):
                 captured.update(kwargs)
-                return _FakeCompletion()
+                return _FakeResponse()
 
-        class _FakeChat:
-            completions = _FakeCompletions()
-
-        class _FakeGroqClient:
+        class _FakeGeminiClient:
             def __init__(self, api_key=None):
                 captured["api_key"] = api_key
-            chat = _FakeChat()
+            models = _FakeModels()
 
-        monkeypatch.setattr(mod, "_GROQ_KEY", "fake-key")
-        monkeypatch.setattr("groq.Groq", _FakeGroqClient)
+        monkeypatch.setattr(mod, "_GEMINI_KEY", "fake-key")
+        monkeypatch.setattr("google.genai.Client", _FakeGeminiClient)
 
         content = b"\xff\xd8\xff fake jpeg bytes"
-        mod._groq_extract_image(content, "image/jpeg")
+        mod._gemini_extract_image(content, "image/jpeg")
 
-        messages = captured["messages"]
-        blocks = messages[0]["content"]
-        image_block = next(b for b in blocks if b["type"] == "image_url")
-        expected_b64 = base64.b64encode(content).decode()
-        assert image_block["image_url"]["url"] == f"data:image/jpeg;base64,{expected_b64}"
-        assert captured["model"] == mod._GROQ_VISION_MODEL
+        assert captured["api_key"] == "fake-key"
+        assert captured["model"] == mod._GEMINI_VISION_MODEL
+        image_part = next(p for p in captured["contents"] if isinstance(p, types.Part))
+        assert image_part.inline_data.data == content
+        assert image_part.inline_data.mime_type == "image/jpeg"
+        assert any(isinstance(p, str) and "expert Indian accountant" in p for p in captured["contents"])
 
 
 # ─── 2. document-intelligence-v2: notice extraction ─────────────────────────
