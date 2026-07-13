@@ -78,7 +78,11 @@ class TestInvoiceExtractionV1:
         body = r.json()
         assert body["success"] is False
         assert body["data"] is None
-        assert "GROQ_API_KEY" in body["error"]
+        assert "not configured" in body["error"]
+        # Never leak which AI provider/env var backs this feature — an
+        # internal implementation detail, and not actionable for the CA
+        # (they can't set env vars on the server themselves).
+        assert "GROQ" not in body["error"]
         # The old mock fallback must be completely gone.
         assert "Sample Vendor" not in str(body)
         assert "INV-2025-001" not in str(body)
@@ -167,7 +171,8 @@ class TestInvoiceExtractionV1:
         assert r.status_code == 503
         body = r.json()
         assert body["success"] is False
-        assert "GEMINI_API_KEY" in body["error"]
+        assert "not configured" in body["error"]
+        assert "GEMINI" not in body["error"]
 
     def test_parse_extraction_json_strips_markdown_fences_and_coerces_paise_fields(self):
         import routers.document_intelligence_v1 as mod
@@ -274,7 +279,8 @@ class TestNoticeExtractionV2:
         body = r.json()
         assert body["success"] is False
         assert body["data"] is None
-        assert "GROQ_API_KEY" in body["error"]
+        assert "not configured" in body["error"]
+        assert "GROQ" not in body["error"]
         # Nothing must be persisted for a failed/unavailable extraction.
         assert mod._MOCK_NOTICES == {}
         assert "REF-MOCK-001" not in str(body)

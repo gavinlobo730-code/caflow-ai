@@ -95,7 +95,7 @@ def _run_notice_extraction(document_text: str) -> tuple[Optional[dict], Optional
     """
     if not _GROQ_KEY:
         _logger.info("No GROQ_API_KEY — refusing to fabricate a notice extraction")
-        return None, "AI extraction unavailable — GROQ_API_KEY is not configured on the server", 503
+        return None, "AI extraction is not configured on the server", 503
 
     try:
         return _extract_with_groq(document_text), None, 200
