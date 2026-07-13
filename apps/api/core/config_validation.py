@@ -15,7 +15,8 @@ _CONFIG = [
     ("SUPABASE_URL",              True,  "Postgres/PostgREST endpoint"),
     ("SUPABASE_SERVICE_ROLE_KEY", True,  "service-role key (RLS bypass — keep secret, server-only)"),
     ("SUPABASE_ANON_KEY",         False, "anon key (client)"),
-    ("GROQ_API_KEY",              False, "AI features (document extraction) — disabled if unset"),
+    ("GROQ_API_KEY",              False, "AI chat/text features + PDF invoice extraction — disabled if unset"),
+    ("GEMINI_API_KEY",            False, "AI image-based invoice extraction — disabled if unset"),
     ("SENTRY_DSN",                False, "error monitoring — disabled if unset"),
 ]
 

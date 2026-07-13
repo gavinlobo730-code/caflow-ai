@@ -18,16 +18,20 @@ from services.internal_client_service import assert_partner_for_internal_id
 
 _logger = logging.getLogger("caflow.doc_intelligence_v1")
 _GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
-# Text-only model for PDFs with embedded text. Overridable without a code
-# change — Groq's model lineup changes over time and neither of these could be
-# verified against a live API key in development (no network access to
-# console.groq.com from this environment). CA/engineering REVIEW REQUIRED:
-# confirm these model ids are still current on Groq before relying on uploads.
+# Text-only model for PDFs with embedded text — this path works and is
+# unchanged. Overridable without a code change since Groq's model lineup
+# changes over time.
 _GROQ_TEXT_MODEL = os.environ.get("GROQ_TEXT_MODEL", "llama-3.3-70b-versatile")
 # Vision-capable model for photo/scanned invoice uploads (JPEG/PNG) — a
 # text-only model cannot read pixels (see _run_extraction's docstring for the
-# bug this replaces: images used to be silently unreadable).
-_GROQ_VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "meta-llama/llama-4-maverick-17b-128e-instruct")
+# original bug this replaced: images used to be silently unreadable).
+# Previously routed through Groq (meta-llama/llama-4-maverick-17b-128e-
+# instruct), which returned a live 404 model_not_found on this account.
+# Gemini's free tier is multimodal-native, requires no billing setup, and
+# was already provisioned for this project — switched the image path only;
+# the PDF/text path above still works fine on Groq and is untouched.
+_GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
+_GEMINI_VISION_MODEL = os.environ.get("GEMINI_VISION_MODEL", "gemini-2.5-flash")
 
 router = APIRouter(prefix="/api/document-intelligence-v1", tags=["document_intelligence_v1"])
 
@@ -155,29 +159,29 @@ def _run_extraction(
     content: bytes, content_type: str, filename: str
 ) -> tuple[Optional[dict], Optional[str], int]:
     """
-    Attempt AI extraction via Groq. Never fabricates data: on any failure
-    returns (None, reason, http_status) instead of falling back to a mock.
+    Attempt AI extraction. Never fabricates data: on any failure returns
+    (None, reason, http_status) instead of falling back to a mock.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
 
-    BUG FIX: images (JPEG/PNG — the common case, e.g. a WhatsApp photo of a
-    vendor bill) used to be routed through the same TEXT-only model as PDFs,
-    fed nothing but a meaningless base64 snippet of the raw bytes (not real
-    image content) dressed up as a prompt "note" — the model had no way to
-    actually read the invoice, so extraction silently returned near-empty
-    fields for every image upload. Images now go through a real vision-
-    capable model via the chat-completions image_url content block; only
-    PDFs use the text-extraction path (pdfminer + text-only model).
+    PDFs use Groq (pdfminer text extraction + a text-only model). Images use
+    Gemini (a genuinely vision-capable model, sent the real image bytes) —
+    a text-only model cannot read pixels, and Groq's own vision offering was
+    unavailable on this account (live 404 model_not_found), so the two paths
+    now use two different providers rather than forcing one non-working fit.
     """
-    if not _GROQ_KEY:
+    is_pdf = "pdf" in content_type or filename.lower().endswith(".pdf")
+    if is_pdf and not _GROQ_KEY:
         _logger.info("No GROQ_API_KEY — refusing to fabricate an extraction")
         return None, "AI extraction unavailable — GROQ_API_KEY is not configured on the server", 503
+    if not is_pdf and not _GEMINI_KEY:
+        _logger.info("No GEMINI_API_KEY — refusing to fabricate an extraction")
+        return None, "AI extraction unavailable — GEMINI_API_KEY is not configured on the server", 503
 
-    is_pdf = "pdf" in content_type or filename.lower().endswith(".pdf")
     try:
         if is_pdf:
             doc_text = _extract_pdf_text(content)
             return _groq_extract_text(doc_text), None, 200
-        return _groq_extract_image(content, content_type), None, 200
+        return _gemini_extract_image(content, content_type), None, 200
     except Exception as e:
         _logger.error("AI extraction failed (%s): %s", type(e).__name__, e)
         # Surface the concrete failure reason (model/network/parsing) instead
@@ -247,28 +251,23 @@ def _groq_extract_text(doc_text: str) -> dict:
     return _parse_extraction_json(response.choices[0].message.content)
 
 
-def _groq_extract_image(content: bytes, content_type: str) -> dict:
-    """Call Groq's vision-capable model with the actual image bytes (base64
-    data URL, the standard OpenAI-compatible chat-completions vision format)
-    so it can genuinely read a photographed or scanned invoice."""
-    from groq import Groq
+def _gemini_extract_image(content: bytes, content_type: str) -> dict:
+    """Call Gemini's vision-capable model with the actual image bytes so it
+    can genuinely read a photographed or scanned invoice. See _run_extraction
+    for why this is Gemini rather than Groq."""
+    from google import genai
+    from google.genai import types
 
-    client = Groq(api_key=_GROQ_KEY)
+    client = genai.Client(api_key=_GEMINI_KEY)
     mime = content_type if content_type.startswith("image/") else "image/jpeg"
-    b64 = base64.b64encode(content).decode()
-    response = client.chat.completions.create(
-        model=_GROQ_VISION_MODEL,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": _EXTRACTION_PROMPT.strip()},
-                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-            ],
-        }],
-        temperature=0.0,
-        max_tokens=1024,
+    response = client.models.generate_content(
+        model=_GEMINI_VISION_MODEL,
+        contents=[
+            types.Part.from_bytes(data=content, mime_type=mime),
+            _EXTRACTION_PROMPT.strip(),
+        ],
     )
-    return _parse_extraction_json(response.choices[0].message.content)
+    return _parse_extraction_json(response.text)
 
 
 def _estimate_confidence(extracted: dict) -> str:
