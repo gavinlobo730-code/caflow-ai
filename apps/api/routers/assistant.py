@@ -35,7 +35,7 @@ class AssistantRequest(BaseModel):
 async def assistant(request: AssistantRequest, current_user: dict = Depends(rbac("ai", "read"))):
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
+        raise HTTPException(status_code=500, detail="AI assistant is not configured on the server")
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     messages += [{"role": m.role, "content": m.content} for m in (request.conversation_history or [])]

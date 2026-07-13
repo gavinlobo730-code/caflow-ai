@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { success: false, data: null, error: "GROQ_API_KEY is not configured" },
+        { success: false, data: null, error: "AI assistant is not configured on the server" },
         { status: 500 }
       );
     }

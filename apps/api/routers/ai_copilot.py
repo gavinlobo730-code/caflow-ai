@@ -3,6 +3,7 @@ AI Copilot Router — Enhanced AI assistant with firm context.
 Different from /api/assistant (simple Q&A). Serves /api/ai-copilot.
 """
 import os
+import logging
 import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -11,6 +12,8 @@ from fastapi import Request
 from models.common import api_response
 from core.permissions import rbac
 from middleware.rate_limit import check_rate_limit
+
+_logger = logging.getLogger("caflow.ai_copilot")
 
 router = APIRouter(prefix="/api/ai-copilot", tags=["ai-copilot"])
 
@@ -218,7 +221,7 @@ async def client_copilot_chat(
     """Client-level copilot: same model, context scoped to a single client."""
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        return api_response(False, None, "GROQ_API_KEY not configured")
+        return api_response(False, None, "AI Copilot is not configured on the server")
 
     client_context = _build_client_context(current_user["firm_id"], client_id)
     if not client_context:
@@ -244,7 +247,8 @@ async def client_copilot_chat(
         answer: str = response.json()["choices"][0]["message"]["content"]
         return api_response(True, {"answer": answer, "client_id": client_id})
     except Exception as e:
-        return api_response(False, None, f"AI Copilot error: {str(e)}")
+        _logger.error("AI Copilot (client) error: %s", e)
+        return api_response(False, None, "AI Copilot is temporarily unavailable. Please try again.")
 
 
 @router.post("/chat")
@@ -252,7 +256,7 @@ async def copilot_chat(request: Request, body: CopilotRequest, current_user: dic
     check_rate_limit(request, current_user["firm_id"])
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        return api_response(False, None, "GROQ_API_KEY not configured")
+        return api_response(False, None, "AI Copilot is not configured on the server")
 
     try:
         firm_context = _build_firm_context(current_user["firm_id"])
@@ -296,4 +300,5 @@ async def copilot_chat(request: Request, body: CopilotRequest, current_user: dic
         })
 
     except Exception as e:
-        return api_response(False, None, f"AI Copilot error: {str(e)}")
+        _logger.error("AI Copilot (firm) error: %s", e)
+        return api_response(False, None, "AI Copilot is temporarily unavailable. Please try again.")

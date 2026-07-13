@@ -31,7 +31,11 @@ _GROQ_TEXT_MODEL = os.environ.get("GROQ_TEXT_MODEL", "llama-3.3-70b-versatile")
 # was already provisioned for this project — switched the image path only;
 # the PDF/text path above still works fine on Groq and is untouched.
 _GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
-_GEMINI_VISION_MODEL = os.environ.get("GEMINI_VISION_MODEL", "gemini-2.5-flash")
+# gemini-2.5-flash was retired by Google ahead of its announced shutdown
+# date (confirmed live 404 "no longer available to new users" — a known,
+# reported issue, not specific to this account). gemini-3.5-flash is the
+# current free-tier vision-capable model as of this fix.
+_GEMINI_VISION_MODEL = os.environ.get("GEMINI_VISION_MODEL", "gemini-3.5-flash")
 
 router = APIRouter(prefix="/api/document-intelligence-v1", tags=["document_intelligence_v1"])
 
@@ -172,10 +176,10 @@ def _run_extraction(
     is_pdf = "pdf" in content_type or filename.lower().endswith(".pdf")
     if is_pdf and not _GROQ_KEY:
         _logger.info("No GROQ_API_KEY — refusing to fabricate an extraction")
-        return None, "AI extraction unavailable — GROQ_API_KEY is not configured on the server", 503
+        return None, "AI extraction is not configured on the server", 503
     if not is_pdf and not _GEMINI_KEY:
         _logger.info("No GEMINI_API_KEY — refusing to fabricate an extraction")
-        return None, "AI extraction unavailable — GEMINI_API_KEY is not configured on the server", 503
+        return None, "AI extraction is not configured on the server", 503
 
     try:
         if is_pdf:
@@ -183,15 +187,13 @@ def _run_extraction(
             return _groq_extract_text(doc_text), None, 200
         return _gemini_extract_image(content, content_type), None, 200
     except Exception as e:
+        # Full failure reason (provider, model, exact error) goes to server
+        # logs only — never to the client. Which AI vendor/model this app
+        # uses under the hood is an internal implementation detail, not
+        # something to surface to the CA using the product; it's also not
+        # actionable for them ("retry or enter manually" already is).
         _logger.error("AI extraction failed (%s): %s", type(e).__name__, e)
-        # Surface the concrete failure reason (model/network/parsing) instead
-        # of a single generic message — a CA hitting this repeatedly has no
-        # other way to tell "Groq is unreachable" apart from "the model
-        # returned something we couldn't parse" apart from "the model id is
-        # invalid". No secrets in a Groq SDK exception message; truncated as
-        # a precaution against an unexpectedly large echo.
-        reason = f"{type(e).__name__}: {str(e)[:300]}"
-        return None, f"AI extraction failed ({reason}) — please retry or enter the bill details manually", 502
+        return None, "AI extraction failed — please retry or enter the bill details manually", 502
 
 
 def _extract_pdf_text(content: bytes) -> str:
