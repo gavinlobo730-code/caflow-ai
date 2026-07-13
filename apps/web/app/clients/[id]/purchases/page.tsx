@@ -1,16 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, Upload, AlertCircle, CheckCircle, Trash2, X, Loader2 } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise, formatMoney } from "@/lib/services/formatting";
-import { estimateBaseMinor, estimateForeignTds, convertBaseToForeignMinor } from "@/lib/services/currencyPreview";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { VendorLookup } from "@/components/lookups/VendorLookup";
-import { AccountLookup } from "@/components/lookups/AccountLookup";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
 import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
@@ -20,7 +19,6 @@ import { Combobox } from "@/components/ui/combobox";
 import CsvImportModal, { type ImportRow, type ReferenceResolver } from "@/components/CsvImportModal";
 import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS, type NameRef, type PurchaseServiceRef } from "@/lib/imports/mappers";
 import { dnLineGst } from "@/lib/purchases/debitNoteGst";
-import { UQC_CODES } from "@/lib/constants/uqc";
 import PeriodPicker from "@/components/PeriodPicker";
 import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/dates/periods";
 
@@ -223,25 +221,6 @@ const GST_RATES = [
 
 // ── Purchase Bills ─────────────────────────────────────────────────────────
 
-interface BillLine {
-  description: string;
-  hsn_sac: string;
-  quantity: number;
-  // Unit of measure (UQC), e.g. "NOS", "KGS" — migration 190. Blank = server
-  // default "NOS".
-  unit: string;
-  rate: number; // rupees, or txn-currency major units when foreign
-  gst_rate_bps: number;
-  expense_account_id: string;
-  // Which Product/Service (goods only, in practice) this line restocks —
-  // required so a received bill line can be recognised as a stock-in
-  // movement for a specific item (domain/inventory_service.py). Pure
-  // traceability, same as the sales-invoice line's own field: never read by
-  // any GST/journal computation.
-  service_catalogue_id: string;
-  product?: ServiceCatalogueItem | null;
-}
-
 interface CurrencyOption {
   code: string;
   symbol: string | null;
@@ -278,19 +257,28 @@ interface PurchaseBillRow {
 function PurchaseBills({ clientId, financialYear }: { clientId: string; financialYear: string }) {
   const [bills, setBills] = useState<PurchaseBillRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [accounts, setAccounts] = useState<{ id: string; account_code: string; account_name: string }[]>([]);
   // Client's own Product/Service catalogue — only needed for the CSV import's
   // "resolve missing references" step (product_service column), same role
   // this plays on the Sales Invoices tab.
   const [services, setServices] = useState<ServiceCatalogueItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [extracting, setExtracting] = useState(false);
-  const [aiExtracted, setAiExtracted] = useState<Record<string, unknown> | null>(null);
+  const router = useRouter();
+
+  // One-shot success feedback after creating a bill on the dedicated create
+  // page (mirrors the Sales Invoices tab's own ?flash= pattern) — read once
+  // on mount, then strip the param so a refresh doesn't repeat the toast.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const flash = p.get("flash");
+    if (flash) {
+      setMsg({ type: "ok", text: flash });
+      p.delete("flash");
+      const qs = p.toString();
+      window.history.replaceState(null, "", qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+    }
+  }, []);
 
   // Date-window selector that SCOPES THE SERVER QUERY (which rows load) —
   // mirrors the Sales Invoices tab's own PeriodPicker.
@@ -302,59 +290,11 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
     [periodMode, customFrom, customTo, financialYear],
   );
 
-  // Form state
-  const [vendorId, setVendorId] = useState("");
-  const [billNo, setBillNo] = useState("");
-  const [ourReference, setOurReference] = useState("");
-  const [billDate, setBillDate] = useState(toDate());
-  const [dueDate, setDueDate] = useState("");
-  const [lines, setLines] = useState<BillLine[]>([
-    { description: "", hsn_sac: "", quantity: 1, unit: "", rate: 0, gst_rate_bps: 1800, expense_account_id: "", service_catalogue_id: "" },
-  ]);
-
-  // Multi-Currency (Phase 3 backend already ships this; UI wired up here).
-  // This create form always makes a draft (currency is picked/frozen at
-  // creation); a received bill's our_reference/notes/due_date/line units can
-  // still be corrected afterward via PATCH (routers/purchase_bills.py) —
-  // just not surfaced in this form, which is create-only. Currency resets
-  // manually after each save (see handleSave), since this form never unmounts.
-  const [currency, setCurrency] = useState("");
-  const [exchangeRate, setExchangeRate] = useState("");
-  const [mcActive, setMcActive] = useState(false);
-  const [currencies, setCurrencies] = useState<CurrencyOption[]>([]);
-
-  useEffect(() => {
-    if (!clientId) return;
-    let cancelled = false;
-    (async () => {
-      const token = await getAuthToken();
-      const pol = await apiGet(`/api/currencies/policy?client_id=${clientId}`, token);
-      if (cancelled) return;
-      const active = Boolean(pol.success && (pol.data as { active?: boolean } | null)?.active);
-      setMcActive(active);
-      if (!active) return;
-      const list = await apiGet(`/api/currencies?active_only=true`, token);
-      if (!cancelled && list.success) setCurrencies((list.data as CurrencyOption[]) ?? []);
-    })();
-    return () => { cancelled = true; };
-  }, [clientId]);
-
-  const isForeign = currency !== "" && currency !== "INR";
-  const rateNum = parseFloat(exchangeRate);
-
-  // Rough client-side preview only — the backend recomputes everything from
-  // `lines` + `vendor_id` on save (this form's POST body never sends totals).
-  function fmtAmt(paise: number): string {
-    return isForeign ? formatMoney(paise, currency) : fmt(paise);
-  }
-
-  const selectedVendor = vendors.find((v) => v.id === vendorId);
-
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = getSupabaseClient();
     const { start, end } = range;
-    const [billsRes, vendorsRes, accsRes, servicesRes] = await Promise.all([
+    const [billsRes, vendorsRes, servicesRes] = await Promise.all([
       selectAll(() => supabase
         .from("purchase_bills")
         .select("*, vendors(name)")
@@ -371,14 +311,6 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
         .order("name")
         .order("id")),
       selectAll(() => supabase
-        .from("chart_of_accounts")
-        .select("id, account_code, account_name")
-        .or(`client_id.eq.${clientId},client_id.is.null`)
-        .in("account_type", ["Expense", "Asset"])
-        .eq("is_active", true)
-        .order("account_code")
-        .order("id")),
-      selectAll(() => supabase
         .from("service_catalogue")
         .select("id, name, description, hsn_sac, gst_rate_bps, purchase_price_paise, unit, kind, is_active")
         .eq("client_id", clientId)
@@ -388,177 +320,11 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
     ]);
     setBills((billsRes.data as PurchaseBillRow[]) ?? []);
     setVendors((vendorsRes.data as Vendor[]) ?? []);
-    setAccounts(accsRes.data ?? []);
     setServices((servicesRes.data as ServiceCatalogueItem[]) ?? []);
     setLoading(false);
   }, [clientId, range]);
 
   useEffect(() => { load(); }, [load]);
-
-  // Compute GST for a line (integer basis points)
-  function lineGst(line: BillLine) {
-    const taxable = Math.round(line.quantity * line.rate * 100); // paise
-    const gst_paise = Math.floor((taxable * line.gst_rate_bps) / 10000);
-    return {
-      taxable_paise: taxable,
-      gst_paise,
-      line_total: taxable + gst_paise,
-    };
-  }
-
-  const totals = lines.reduce(
-    (acc, l) => {
-      const g = lineGst(l);
-      return {
-        taxable: acc.taxable + g.taxable_paise,
-        gst: acc.gst + g.gst_paise,
-        total: acc.total + g.line_total,
-      };
-    },
-    { taxable: 0, gst: 0, total: 0 }
-  );
-
-  // TDS is a purely domestic, INR-only concept (IT Act §194) — the backend
-  // always computes it off the INR-equivalent taxable value, converting a
-  // foreign bill's txn-currency taxable to base BEFORE applying the TDS rate
-  // (never off the raw foreign figure). Mirror that same order here so the
-  // preview doesn't understate/overstate TDS by the exchange-rate factor.
-  // See lib/services/currencyPreview.ts (unit-tested) for the exact math.
-  const estBaseTaxable = isForeign && rateNum > 0 ? estimateBaseMinor(totals.taxable, rateNum) : totals.taxable;
-  const estBaseTotal = isForeign && rateNum > 0 ? estimateBaseMinor(totals.total, rateNum) : totals.total;
-
-  const tds_paise = // always INR paise — never formatted via fmtAmt()
-    selectedVendor?.tds_applicable && selectedVendor.tds_rate_bps > 0
-      ? estimateForeignTds(estBaseTaxable, selectedVendor.tds_rate_bps)
-      : 0;
-
-  // Net payable to a foreign vendor is actionable in their own currency — the
-  // amount actually wired — so convert the INR TDS back at the entered rate.
-  const net_payable = isForeign
-    ? totals.total - convertBaseToForeignMinor(tds_paise, rateNum)
-    : totals.total - tds_paise;
-
-  function setLine(idx: number, patch: Partial<BillLine>) {
-    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
-  }
-  // A Product/Service picked on this row pre-fills description/HSN/rate/unit,
-  // same as the sales-invoice line editor, and links the line for inventory
-  // stock-in tracking (kept even for a service pick — apply_purchase_to_inventory
-  // only acts on kind='good' items server-side, so a service link is inert).
-  function onPickProduct(idx: number, item: ServiceCatalogueItem) {
-    const line = serviceToLine(item);
-    setLine(idx, {
-      description: line.description, hsn_sac: line.hsn_sac,
-      gst_rate_bps: Math.round((line.gst_rate ?? 0) * 100),
-      rate: line.rate ? parseFloat(line.rate) : 0,
-      unit: line.unit || "",
-      product: item, service_catalogue_id: item.id,
-    });
-  }
-
-  // AI document extraction
-  async function handleExtract() {
-    if (!uploadFile) return;
-    setExtracting(true);
-    setAiExtracted(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", uploadFile);
-      formData.append("client_id", clientId);
-      const token = (await getSupabaseClient().auth.getSession()).data.session?.access_token;
-      const res = await fetch(`${API}/api/document-intelligence-v1/extract-invoice`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      });
-      const json = await res.json();
-      if (json.success && json.data?.extracted) {
-        const ex = json.data.extracted;
-        setAiExtracted(ex);
-        // Pre-fill form
-        if (ex.invoice_no) setBillNo(ex.invoice_no);
-        if (ex.invoice_date) setBillDate(ex.invoice_date);
-        if (ex.line_items?.length) {
-          setLines(
-            (ex.line_items as Array<Record<string, unknown>>).map((li) => ({
-              description: String(li.description ?? ""),
-              hsn_sac: String(li.hsn_sac ?? ""),
-              quantity: Number(li.quantity ?? 1),
-              unit: "",
-              rate: Math.floor(Number(li.rate_paise ?? 0)) / 100,
-              gst_rate_bps: Number(li.gst_rate_bps ?? 1800),
-              expense_account_id: "",
-              service_catalogue_id: "",
-            }))
-          );
-        }
-      } else {
-        // R2.8/F19: the backend no longer fabricates a plausible-looking
-        // invoice when AI extraction is unavailable or fails — surface the
-        // honest error instead of silently leaving the form blank.
-        setMsg({ type: "err", text: json.error || "AI extraction failed. Please enter the bill details manually." });
-      }
-    } catch {
-      setMsg({ type: "err", text: "AI extraction failed. Please enter the bill details manually." });
-    } finally {
-      setExtracting(false);
-    }
-  }
-
-  async function handleSave() {
-    if (!vendorId) { setMsg({ type: "err", text: "Select a vendor" }); return; }
-    if (lines.some((l) => !l.description)) { setMsg({ type: "err", text: "All lines need a description" }); return; }
-    if (isForeign && (!exchangeRate.trim() || !(rateNum > 0))) {
-      setMsg({ type: "err", text: `Enter a valid exchange rate for ${currency} → INR` });
-      return;
-    }
-    setSaving(true);
-    setMsg(null);
-    try {
-      const token = await getAuthToken();
-      const result = await apiCall(
-        "/api/purchase-bills/",
-        "POST",
-        {
-          client_id: clientId,
-          vendor_id: vendorId,
-          bill_date: billDate,
-          due_date: dueDate || undefined,
-          bill_no: billNo || undefined,
-          our_reference: ourReference || undefined,
-          lines: lines.map((l) => ({
-            description: l.description,
-            hsn_sac: l.hsn_sac || undefined,
-            quantity: l.quantity,
-            unit: l.unit || undefined,
-            rate_paise: Math.round(l.rate * 100),
-            // PurchaseBillLineIn (apps/api/models/invoices.py) declares
-            // gst_rate_percent, not gst_rate_bps — the latter is silently
-            // dropped by Pydantic and every line falls back to the model's
-            // 18% default regardless of the rate picked here (Part 4, Beta batch).
-            gst_rate_percent: l.gst_rate_bps / 100,
-            expense_account_id: l.expense_account_id || undefined,
-            service_catalogue_id: l.service_catalogue_id || undefined,
-          })),
-          currency: isForeign ? currency : undefined,
-          exchange_rate: isForeign ? exchangeRate : undefined,
-        },
-        token
-      );
-      if (!result.success) throw new Error(result.error ?? "Failed to create bill");
-
-      setMsg({ type: "ok", text: "Purchase bill saved as draft." });
-      setShowForm(false);
-      setLines([{ description: "", hsn_sac: "", quantity: 1, unit: "", rate: 0, gst_rate_bps: 1800, expense_account_id: "", service_catalogue_id: "" }]);
-      setBillNo(""); setOurReference(""); setVendorId(""); setBillDate(toDate()); setDueDate(""); setAiExtracted(null);
-      setCurrency(""); setExchangeRate("");
-      load();
-    } catch (e) {
-      setMsg({ type: "err", text: e instanceof Error ? e.message : "Save failed" });
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function handleReceive(billId: string) {
     try {
@@ -778,251 +544,6 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
         />
       )}
 
-      {/* Create form */}
-      {showForm && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-[#0F172A]">New Purchase Bill</h3>
-            <button onClick={() => setShowForm(false)} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
-          </div>
-
-          {/* AI Upload */}
-          <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 space-y-2">
-            <p className="text-xs font-medium text-amber-800 flex items-center gap-1.5"><Upload size={12} /> Upload Invoice (AI Extract)</p>
-            <div className="flex items-center gap-2">
-              <input
-                type="file"
-                accept=".pdf,.png,.jpg,.jpeg"
-                onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                className="text-xs text-[#475569]"
-              />
-              <button
-                onClick={handleExtract}
-                disabled={!uploadFile || extracting}
-                className="text-xs px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40"
-              >
-                {extracting ? "Extracting…" : "Extract"}
-              </button>
-            </div>
-            {aiExtracted && (
-              <div className="mt-1 text-[10px] text-amber-700 bg-amber-100 rounded px-2 py-1.5">
-                ✓ AI extracted data pre-filled below. <strong>Review before saving.</strong>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-[#475569] mb-1">Vendor *</label>
-              <VendorLookup
-                vendors={vendors}
-                value={vendorId}
-                onChange={setVendorId}
-                ariaLabel="Vendor"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Vendor Invoice No.</label>
-              <input value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="INV-001" className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Our Reference</label>
-              <input value={ourReference} onChange={(e) => setOurReference(e.target.value)} placeholder="Internal tracking no." className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Bill Date *</label>
-              <input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Due Date</label>
-              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-          </div>
-
-          {/* Multi-Currency (Phase 3 backend, UI added here) — mirrors the
-              Sales Invoice selector. This create form has no locked/read-only
-              variant to show (currency is frozen at creation either way). */}
-          {mcActive && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Currency</label>
-                <select
-                  value={currency}
-                  onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); }}
-                  className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">INR (default)</option>
-                  {currencies.filter((c) => c.code !== "INR").map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.code}{c.display_name ? ` — ${c.display_name}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {isForeign && (
-                <>
-                  <div>
-                    <label className="block text-xs font-medium text-[#475569] mb-1">Exchange Rate *</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.0001"
-                      value={exchangeRate}
-                      onChange={(e) => setExchangeRate(e.target.value)}
-                      placeholder={`1 ${currency} = ? INR`}
-                      className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
-                    />
-                    <p className="mt-1 text-[10px] text-[#94A3B8]">Today&apos;s rate — recorded as a manual booking rate, frozen on save.</p>
-                  </div>
-                  <div className="col-span-2 flex flex-col justify-end pb-1.5">
-                    <span className="text-xs font-medium text-[#475569] mb-1">Estimated INR total</span>
-                    <span className="font-mono text-sm text-[#0F172A]">
-                      {rateNum > 0 && totals.total > 0 ? `≈ ${fmt(estBaseTotal)}` : "— enter a rate to preview —"}
-                    </span>
-                    <p className="mt-1 text-[10px] text-[#94A3B8]">Estimate only — the exact INR total is confirmed on save.</p>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* TDS info banner */}
-          {selectedVendor?.tds_applicable && (
-            <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs text-blue-700">
-              TDS applicable — §{selectedVendor.tds_section} @ {(selectedVendor.tds_rate_bps / 100).toFixed(1)}%
-              {totals.taxable > 0 && ` | TDS: ${fmt(tds_paise)}${isForeign ? " (₹ — always deducted in INR, per IT Act)" : ""} | Net payable: ${fmtAmt(net_payable)}`}
-            </div>
-          )}
-
-          {/* Lines */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
-                  <th className="pb-2 text-left font-semibold w-36">Product/Service</th>
-                  <th className="pb-2 text-left font-semibold">Description *</th>
-                  <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
-                  <th className="pb-2 text-left font-semibold w-28">Expense Account</th>
-                  <th className="pb-2 text-right font-semibold w-16">Qty</th>
-                  <th className="pb-2 text-left font-semibold w-20">Unit</th>
-                  <th className="pb-2 text-right font-semibold w-28">Rate ({isForeign ? currency : "₹"})</th>
-                  <th className="pb-2 text-right font-semibold w-20">GST %</th>
-                  <th className="pb-2 text-right font-semibold w-28">Amount{isForeign ? ` (${currency})` : ""}</th>
-                  <th className="pb-2 w-6" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                {lines.map((line, idx) => {
-                  const g = lineGst(line);
-                  return (
-                    <tr key={idx}>
-                      <td className="py-1.5 pr-2">
-                        {/* Links this line to a Product/Service for inventory
-                            stock-in tracking (goods only, in practice — a
-                            service pick is harmless traceability). Optional:
-                            leaving it unset just means this bill line never
-                            restocks anything. */}
-                        <ServiceCataloguePicker
-                          clientId={clientId}
-                          value={line.product}
-                          onPick={(item) => onPickProduct(idx, item)}
-                          size="sm"
-                          ariaLabel={`Line ${idx + 1} product or service`}
-                        />
-                      </td>
-                      <td className="py-1.5 pr-2">
-                        <input value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
-                      </td>
-                      <td className="py-1.5 px-1">
-                        <HsnLookup
-                          clientId={clientId}
-                          value={line.hsn_sac}
-                          onChange={(v) => setLine(idx, { hsn_sac: v })}
-                          onPick={(p) => { if (p.gst_rate_bps != null) setLine(idx, { gst_rate_bps: p.gst_rate_bps }); }}
-                          size="sm"
-                          ariaLabel="HSN or SAC code"
-                        />
-                      </td>
-                      <td className="py-1.5 px-1">
-                        <AccountLookup
-                          accounts={accounts}
-                          value={line.expense_account_id}
-                          onChange={(id) => setLine(idx, { expense_account_id: id })}
-                          size="sm"
-                          placeholder="— Account —"
-                          ariaLabel="Expense account"
-                        />
-                      </td>
-                      <td className="py-1.5 px-1">
-                        <input type="number" min="0.001" step="0.001" value={line.quantity} onChange={(e) => setLine(idx, { quantity: parseFloat(e.target.value) || 1 })} className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs text-right" />
-                      </td>
-                      <td className="py-1.5 px-1">
-                        <select value={line.unit || "NOS"} onChange={(e) => setLine(idx, { unit: e.target.value })} className="w-full px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs">
-                          {UQC_CODES.map((u) => <option key={u.code} value={u.code}>{u.code}</option>)}
-                        </select>
-                      </td>
-                      <td className="py-1.5 px-1">
-                        <input type="number" min="0" step="0.01" value={line.rate || ""} onChange={(e) => setLine(idx, { rate: parseFloat(e.target.value) || 0 })} placeholder="0.00" className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs text-right" />
-                      </td>
-                      <td className="py-1.5 px-1">
-                        <select value={line.gst_rate_bps} onChange={(e) => setLine(idx, { gst_rate_bps: parseInt(e.target.value) })} className="w-full px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs">
-                          {GST_RATES.map((r) => <option key={r.bps} value={r.bps}>{r.label}</option>)}
-                        </select>
-                      </td>
-                      <td className="py-1.5 px-1 text-right font-mono text-[#334155]">
-                        {g.taxable_paise > 0 ? fmtAmt(g.line_total) : "—"}
-                      </td>
-                      <td className="py-1.5 pl-1">
-                        {lines.length > 1 && <button onClick={() => setLines((prev) => prev.filter((_, i) => i !== idx))} className="text-[#CBD5E1] hover:text-red-600 font-bold">×</button>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-[#F1F5F9] text-xs font-semibold">
-                  <td colSpan={7} className="pt-2 text-right text-[#64748B] pr-2">Taxable{isForeign ? ` (${currency})` : ""}</td>
-                  <td className="pt-2 text-right font-mono text-[#334155] px-1">{fmtAmt(totals.taxable)}</td>
-                  <td />
-                </tr>
-                <tr className="text-xs">
-                  <td colSpan={7} className="text-right text-[#94A3B8] pr-2">Total GST</td>
-                  <td className="text-right font-mono text-[#64748B] px-1">{fmtAmt(totals.gst)}</td>
-                  <td />
-                </tr>
-                {tds_paise > 0 && (
-                  <tr className="text-xs">
-                    <td colSpan={7} className="text-right text-blue-600 pr-2">Less: TDS{isForeign ? " (₹)" : ""}</td>
-                    <td className="text-right font-mono text-blue-600 px-1">({fmt(tds_paise)})</td>
-                    <td />
-                  </tr>
-                )}
-                <tr className="text-xs font-bold border-t border-[#E2E8F0]">
-                  <td colSpan={7} className="pt-1 text-right text-[#1E293B] pr-2">Net Payable{isForeign ? ` (${currency})` : ""}</td>
-                  <td className="pt-1 text-right font-mono text-[#0F172A] px-1">{fmtAmt(net_payable)}</td>
-                  <td />
-                </tr>
-                {isForeign && rateNum > 0 && totals.total > 0 && (
-                  <tr className="text-xs">
-                    <td colSpan={7} className="text-right text-[#94A3B8] pr-2">≈ Estimated INR total</td>
-                    <td className="text-right font-mono text-[#94A3B8] px-1">{fmt(estBaseTotal)}</td>
-                    <td />
-                  </tr>
-                )}
-              </tfoot>
-            </table>
-          </div>
-          <button onClick={() => setLines((prev) => [...prev, { description: "", hsn_sac: "", quantity: 1, unit: "", rate: 0, gst_rate_bps: 1800, expense_account_id: "", service_catalogue_id: "" }])} className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Plus size={12} /> Add line</button>
-
-          <div className="flex gap-3 justify-end pt-1">
-            <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
-            <button onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
-              {saving ? "Saving…" : "Save Draft"}
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Bills table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
       <DataTable
         data={bills}
@@ -1056,7 +577,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
               <Upload size={12} /> Import
             </button>
             <button
-              onClick={() => setShowForm((s) => !s)}
+              onClick={() => router.push(`/clients/${clientId}/purchases/bills/new`)}
               className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
             >
               <Plus size={12} /> New Bill

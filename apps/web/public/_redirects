@@ -48,6 +48,8 @@
 /clients/:id/portal.txt                                       /clients/_placeholder/portal/index.txt  200
 /clients/:id/purchases                                        /clients/_placeholder/purchases/  200
 /clients/:id/purchases.txt                                    /clients/_placeholder/purchases/index.txt  200
+/clients/:id/purchases/bills/new                              /clients/_placeholder/purchases/bills/new/  200
+/clients/:id/purchases/bills/new.txt                          /clients/_placeholder/purchases/bills/new/index.txt  200
 /clients/:id/relationships                                    /clients/_placeholder/relationships/  200
 /clients/:id/relationships.txt                                /clients/_placeholder/relationships/index.txt  200
 /clients/:id/reports                                          /clients/_placeholder/reports/  200

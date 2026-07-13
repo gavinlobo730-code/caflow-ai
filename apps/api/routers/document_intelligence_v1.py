@@ -17,6 +17,16 @@ from services.internal_client_service import assert_partner_for_internal_id
 
 _logger = logging.getLogger("caflow.doc_intelligence_v1")
 _GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
+# Text-only model for PDFs with embedded text. Overridable without a code
+# change — Groq's model lineup changes over time and neither of these could be
+# verified against a live API key in development (no network access to
+# console.groq.com from this environment). CA/engineering REVIEW REQUIRED:
+# confirm these model ids are still current on Groq before relying on uploads.
+_GROQ_TEXT_MODEL = os.environ.get("GROQ_TEXT_MODEL", "llama-3.3-70b-versatile")
+# Vision-capable model for photo/scanned invoice uploads (JPEG/PNG) — a
+# text-only model cannot read pixels (see _run_extraction's docstring for the
+# bug this replaces: images used to be silently unreadable).
+_GROQ_VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "meta-llama/llama-4-maverick-17b-128e-instruct")
 
 router = APIRouter(prefix="/api/document-intelligence-v1", tags=["document_intelligence_v1"])
 
@@ -105,56 +115,54 @@ def _run_extraction(
     Attempt AI extraction via Groq. Never fabricates data: on any failure
     returns (None, reason, http_status) instead of falling back to a mock.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+
+    BUG FIX: images (JPEG/PNG — the common case, e.g. a WhatsApp photo of a
+    vendor bill) used to be routed through the same TEXT-only model as PDFs,
+    fed nothing but a meaningless base64 snippet of the raw bytes (not real
+    image content) dressed up as a prompt "note" — the model had no way to
+    actually read the invoice, so extraction silently returned near-empty
+    fields for every image upload. Images now go through a real vision-
+    capable model via the chat-completions image_url content block; only
+    PDFs use the text-extraction path (pdfminer + text-only model).
     """
     if not _GROQ_KEY:
         _logger.info("No GROQ_API_KEY — refusing to fabricate an extraction")
         return None, "AI extraction unavailable — GROQ_API_KEY is not configured on the server", 503
 
+    is_pdf = "pdf" in content_type or filename.lower().endswith(".pdf")
     try:
-        doc_text = _read_document_text(content, content_type, filename)
-        return _groq_extract(doc_text), None, 200
+        if is_pdf:
+            doc_text = _extract_pdf_text(content)
+            return _groq_extract_text(doc_text), None, 200
+        return _groq_extract_image(content, content_type), None, 200
     except Exception as e:
         _logger.error("AI extraction failed: %s", e)
         return None, "AI extraction failed — please retry or enter the bill details manually", 502
 
 
-def _read_document_text(content: bytes, content_type: str, filename: str) -> str:
-    """Convert uploaded file to text for the AI prompt."""
-    # PDF: attempt basic text extraction; images: describe as base64 note
-    if "pdf" in content_type or filename.lower().endswith(".pdf"):
-        try:
-            import io
-            # Attempt pdfminer extraction
-            from pdfminer.high_level import extract_text as pdf_extract
-            text = pdf_extract(io.BytesIO(content))
+def _extract_pdf_text(content: bytes) -> str:
+    """Best-effort text extraction from a PDF. Scanned/image-only PDFs (no
+    embedded text layer) fall back to base64 noise, same limitation as
+    before — pdfminer can't OCR a raster PDF. A genuinely scanned PDF should
+    be uploaded as an image instead so it goes through the vision path."""
+    try:
+        import io
+        from pdfminer.high_level import extract_text as pdf_extract
+        text = pdf_extract(io.BytesIO(content))
+        if text and text.strip():
             return text[:8000]  # cap at 8000 chars for token budget
-        except Exception:
-            # Fallback: base64-encode and pass as note
-            b64 = base64.b64encode(content[:4096]).decode()
-            return f"[PDF content — base64 prefix]: {b64[:200]}..."
-    else:
-        # Image: pass as descriptive note (vision not available on Groq text models)
-        b64 = base64.b64encode(content[:4096]).decode()
-        return f"[Image invoice — base64 preview]: {b64[:200]}... (image filename: {filename})"
+    except Exception:
+        pass
+    b64 = base64.b64encode(content[:4096]).decode()
+    return f"[PDF content — base64 prefix, no extractable text layer]: {b64[:200]}..."
 
 
-def _groq_extract(doc_text: str) -> dict:
-    """Call Groq API with llama-3.3-70b-versatile to extract invoice fields."""
+def _parse_extraction_json(raw: str) -> dict:
+    """Shared JSON parsing + paise-field coercion for both the text and
+    vision extraction paths — same response shape (_EXTRACTION_PROMPT)."""
     import json
-    from groq import Groq
 
-    client = Groq(api_key=_GROQ_KEY)
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "user", "content": _EXTRACTION_PROMPT + doc_text},
-        ],
-        temperature=0.0,
-        max_tokens=1024,
-    )
-    raw = response.choices[0].message.content.strip()
-
-    # Strip markdown code fences if present
+    raw = raw.strip()
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
@@ -162,7 +170,6 @@ def _groq_extract(doc_text: str) -> dict:
 
     data = json.loads(raw)
 
-    # Coerce all paise fields to int
     for field in ("taxable_amount_paise", "cgst_paise", "sgst_paise", "igst_paise", "total_paise"):
         data[field] = int(data.get(field) or 0)
 
@@ -172,6 +179,46 @@ def _groq_extract(doc_text: str) -> dict:
         item["quantity"] = float(item.get("quantity") or 1)
 
     return data
+
+
+def _groq_extract_text(doc_text: str) -> dict:
+    """Call Groq's text model to extract invoice fields from PDF-extracted text."""
+    from groq import Groq
+
+    client = Groq(api_key=_GROQ_KEY)
+    response = client.chat.completions.create(
+        model=_GROQ_TEXT_MODEL,
+        messages=[
+            {"role": "user", "content": _EXTRACTION_PROMPT + doc_text},
+        ],
+        temperature=0.0,
+        max_tokens=1024,
+    )
+    return _parse_extraction_json(response.choices[0].message.content)
+
+
+def _groq_extract_image(content: bytes, content_type: str) -> dict:
+    """Call Groq's vision-capable model with the actual image bytes (base64
+    data URL, the standard OpenAI-compatible chat-completions vision format)
+    so it can genuinely read a photographed or scanned invoice."""
+    from groq import Groq
+
+    client = Groq(api_key=_GROQ_KEY)
+    mime = content_type if content_type.startswith("image/") else "image/jpeg"
+    b64 = base64.b64encode(content).decode()
+    response = client.chat.completions.create(
+        model=_GROQ_VISION_MODEL,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": _EXTRACTION_PROMPT.strip()},
+                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+            ],
+        }],
+        temperature=0.0,
+        max_tokens=1024,
+    )
+    return _parse_extraction_json(response.choices[0].message.content)
 
 
 def _estimate_confidence(extracted: dict) -> str:
