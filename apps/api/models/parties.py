@@ -22,7 +22,13 @@ class CustomerIn(BaseModel):
     pincode: Optional[str] = None
     opening_balance_paise: int = 0
     opening_balance_date: Optional[str] = None
-    credit_days: int = 0
+    # Must match the customers.credit_days DB column default (migration 049) —
+    # model_dump() always includes this field (Pydantic has no way to
+    # distinguish "caller omitted it" from "caller sent the default"), so any
+    # caller that omits credit_days writes this literal value, silently
+    # overriding the DB's own DEFAULT. See VendorIn.credit_days for the
+    # identical bug that left every existing vendor at 0 instead of 30.
+    credit_days: int = 30
 
     @field_validator("name")
     @classmethod
@@ -120,7 +126,13 @@ class VendorIn(BaseModel):
     pincode: Optional[str] = None
     opening_balance_paise: int = 0
     opening_balance_date: Optional[str] = None
-    credit_days: int = 0
+    # Must match the vendors.credit_days DB column default (migration 201).
+    # BUG (found live): this was previously 0, and create_vendor/
+    # create_vendors_bulk call model_dump() with no exclusion — Pydantic
+    # always emits every field, so any caller that didn't explicitly set
+    # credit_days silently wrote 0 ("Due on Receipt"), overriding the DB's
+    # own DEFAULT 30. Every vendor created before this fix has credit_days=0.
+    credit_days: int = 30
     tds_applicable: bool = False
     tds_section: Optional[str] = None
     tds_rate_bps: int = 0

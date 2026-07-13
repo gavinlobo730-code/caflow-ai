@@ -176,7 +176,12 @@ export function PurchaseBillEditor({
   const accountNameById = new Map(accounts.map((a) => [a.id ?? "", a.account_name ?? a.name ?? ""]));
   const blockedCreditHits = findBlockedCreditHits(lines, accountNameById);
 
-  function onVendorChange(id: string) {
+  // dateOverride lets handleExtract pass the just-extracted invoice date
+  // explicitly — billDate here is a closure over this render's state, so
+  // relying on it after handleExtract's own setBillDate() call in the same
+  // synchronous block would compute the due date off the STALE (pre-
+  // extraction) bill date instead of the one just extracted.
+  function onVendorChange(id: string, dateOverride?: string) {
     setVendorId(id);
     const v = vendors.find((v) => v.id === id) ?? null;
     setSelectedVendor(v);
@@ -185,7 +190,7 @@ export function PurchaseBillEditor({
     if (v?.credit_days != null) {
       setCreditDays(String(v.credit_days));
       setTermCustom(termLabelForDays(v.credit_days) === CUSTOM_TERM);
-      setDueDate(addDaysISO(billDate, v.credit_days));
+      setDueDate(addDaysISO(dateOverride || billDate, v.credit_days));
     }
   }
 
@@ -267,7 +272,7 @@ export function PurchaseBillEditor({
         const matched = (gstin && vendors.find((v) => v.gstin?.toUpperCase() === gstin))
           ?? (name && vendors.find((v) => v.name.trim().toLowerCase() === name))
           ?? null;
-        if (matched) onVendorChange(matched.id);
+        if (matched) onVendorChange(matched.id, ex.invoice_date || undefined);
         if (ex.line_items?.length) {
           setLines(
             ex.line_items.map((li) => ({
