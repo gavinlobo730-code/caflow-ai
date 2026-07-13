@@ -19,7 +19,6 @@ import { Combobox } from "@/components/ui/combobox";
 import CsvImportModal, { type ImportRow, type ReferenceResolver } from "@/components/CsvImportModal";
 import { buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS, type NameRef, type PurchaseServiceRef } from "@/lib/imports/mappers";
 import { dnLineGst } from "@/lib/purchases/debitNoteGst";
-import { PAYMENT_TERM_PRESETS, CUSTOM_TERM, termLabelForDays, daysForTermLabel } from "@/lib/sales/paymentTerms";
 import PeriodPicker from "@/components/PeriodPicker";
 import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/dates/periods";
 
@@ -639,10 +638,6 @@ interface VendorRow {
   tds_section: string | null;
   tds_rate_bps: number;
   opening_balance_paise: number;
-  // Genuinely unset ("no payment terms confirmed for this vendor yet") is a
-  // different fact from 0 ("Due on Receipt", a real choice) — no default is
-  // assumed. See models/parties.py:VendorIn.credit_days.
-  credit_days: number | null;
   is_active: boolean;
 }
 
@@ -665,12 +660,6 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
   const [tdsSection, setTdsSection] = useState("194C");
   const [tdsRate, setTdsRate] = useState("2");
   const [openingBalance, setOpeningBalance] = useState("");
-  // Payment Terms ("Net 30" etc.) — default credit period for this vendor's
-  // bills. Starts unset ("— Select —") rather than defaulting to a preset —
-  // no default is assumed until the CA actually picks one (see
-  // models/parties.py:VendorIn.credit_days for the bug this avoids).
-  const [creditDays, setCreditDays] = useState("");
-  const [termCustom, setTermCustom] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -715,17 +704,6 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
     return { imported, errors };
   }
 
-  const termValue = termCustom
-    ? CUSTOM_TERM
-    : (creditDays === "" ? "" : termLabelForDays(Number.isNaN(parseInt(creditDays, 10)) ? null : parseInt(creditDays, 10)));
-  function onTermChange(label: string) {
-    if (label === CUSTOM_TERM) { setTermCustom(true); return; }
-    const d = daysForTermLabel(label);
-    if (d == null) return;
-    setTermCustom(false);
-    setCreditDays(String(d));
-  }
-
   async function handleSave() {
     if (!name.trim()) { setMsg({ type: "err", text: "Name is required" }); return; }
     if (gstin && !GSTIN_RE.test(gstin.trim().toUpperCase())) { setMsg({ type: "err", text: "Invalid GSTIN format (15 chars: 2-digit state + PAN + entity + Z + check)" }); return; }
@@ -752,7 +730,6 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
           tds_section: tdsApplicable ? tdsSection : undefined,
           tds_rate_bps: rateBps,
           opening_balance_paise: Math.round(parseFloat(openingBalance || "0") * 100),
-          credit_days: creditDays !== "" ? parseInt(creditDays, 10) : undefined,
         },
         token
       );
@@ -761,7 +738,6 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
       setShowForm(false);
       setName(""); setGstin(""); setPan(""); setEmail(""); setPhone("");
       setTdsApplicable(false); setTdsSection("194C"); setTdsRate("2"); setOpeningBalance("");
-      setCreditDays(""); setTermCustom(false);
       load();
     } catch (e) {
       setMsg({ type: "err", text: e instanceof Error ? e.message : "Save failed" });
@@ -848,19 +824,6 @@ function Vendors({ clientId }: { clientId: string; financialYear: string }) {
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Opening Balance (₹ payable)</label>
               <input type="number" min="0" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Payment Terms</label>
-              <select value={termValue} onChange={(e) => onTermChange(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                {termValue === "" && <option value="">— Select —</option>}
-                {PAYMENT_TERM_PRESETS.map((t) => <option key={t.label} value={t.label}>{t.label}</option>)}
-                <option value={CUSTOM_TERM}>Custom</option>
-              </select>
-              {termCustom && (
-                <input type="number" min="0" value={creditDays} onChange={(e) => setCreditDays(e.target.value)} placeholder="Credit days" aria-label="Custom credit days"
-                  className="mt-1 w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              )}
-              <p className="mt-1 text-[10px] text-[#94A3B8]">Leave blank if unknown — no default is assumed.</p>
             </div>
           </div>
 

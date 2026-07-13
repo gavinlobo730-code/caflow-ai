@@ -99,24 +99,6 @@ test("vendors: garbage opening_balance is a clear per-row error, not a silent Na
   assert.match(errors[0], /opening_balance must be a valid number/i);
 });
 
-test("vendors: credit_days stays unset when blank (no assumed default), honours an explicit value", () => {
-  const { records, errors } = buildVendors([
-    row({ name: "No Credit Days Field" }),
-    row({ name: "Explicit Credit Days", credit_days: "45" }),
-  ], "c1");
-  assert.equal(errors.length, 0);
-  assert.equal(records[0].credit_days, undefined);
-  assert.equal(records[1].credit_days, 45);
-});
-
-test("vendors: negative credit_days is a clear per-row error", () => {
-  const { records, errors } = buildVendors([
-    row({ name: "Negative Credit Days", credit_days: "-5" }),
-  ], "c1");
-  assert.equal(records.length, 0);
-  assert.match(errors[0], /credit_days must be a non-negative whole number/i);
-});
-
 // ── Products & Services ──────────────────────────────────────────────────────
 test("services: only name required, rest defaults sensibly", () => {
   const { records, errors } = buildServices([row({ name: "Bare Minimum" })], "c1");

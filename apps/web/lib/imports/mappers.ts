@@ -133,10 +133,6 @@ export interface BuiltVendor {
   tds_section?: string;
   tds_rate_bps: number;
   opening_balance_paise: number;
-  // Genuinely unset ("no payment terms confirmed for this vendor") is a
-  // different fact from 0 ("Due on Receipt") — no default is assumed for a
-  // blank cell. See models/parties.py:VendorIn.credit_days.
-  credit_days?: number;
 }
 
 export const VENDOR_IMPORT_COLUMNS: ImportColumn[] = [
@@ -149,7 +145,6 @@ export const VENDOR_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "tds_section", label: "TDS Section", required: false, hint: "194C / 194I / 194J / 194H / 194A (if TDS applicable)" },
   { key: "tds_rate", label: "TDS Rate %", required: false, hint: "e.g. 2 (for 2%); required if TDS applicable" },
   { key: "opening_balance", label: "Opening Balance (₹)", required: false, hint: "Opening payable in rupees, e.g. 0" },
-  { key: "credit_days", label: "Credit Days", required: false, hint: "Leave blank if unknown — no default is assumed" },
 ];
 
 export function buildVendors(rows: Record<string, string>[], clientId: string): { records: BuiltVendor[]; errors: string[] } {
@@ -193,15 +188,6 @@ export function buildVendors(rows: Record<string, string>[], clientId: string): 
       errors.push(`Row ${rowNo}: opening_balance must be a valid number`); return;
     }
 
-    // Unlike customers (which always default a blank cell to 30), a blank
-    // credit_days cell here stays unset — "unknown" and "Due on Receipt"
-    // (0) are different facts, and no default is assumed. See BuiltVendor.
-    const creditDaysRaw = str(r.credit_days);
-    const creditDays = creditDaysRaw ? parseInt(creditDaysRaw, 10) : undefined;
-    if (creditDaysRaw && (!Number.isFinite(creditDays) || (creditDays as number) < 0)) {
-      errors.push(`Row ${rowNo}: credit_days must be a non-negative whole number`); return;
-    }
-
     seen.add(name.toLowerCase());
     records.push({
       client_id: clientId,
@@ -215,7 +201,6 @@ export function buildVendors(rows: Record<string, string>[], clientId: string): 
       tds_section: tdsSection,
       tds_rate_bps: tdsRateBps,
       opening_balance_paise: openingBalancePaise,
-      credit_days: creditDays,
     });
   });
 
