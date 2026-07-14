@@ -23,6 +23,7 @@ import { formatMoney } from "@/lib/services/formatting";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { apiCall, apiGet, getAuthToken, fmt, GST_RATES, type CurrencyOption } from "@/lib/invoices/shared";
+import { getSupabaseClient } from "@/lib/supabase/client";
 import {
   isValidBillLine, previewBillTotals, validateBillEditor, findBlockedCreditHits,
   type PurchaseBillLine,
@@ -37,7 +38,17 @@ export interface PurchaseVendor extends VendorLike {
   is_active?: boolean;
 }
 
-type EditorLine = PurchaseBillLine & { _k: number; product?: ServiceCatalogueItem | null };
+type EditorLine = PurchaseBillLine & {
+  _k: number;
+  product?: ServiceCatalogueItem | null;
+  /** Catalogue items sharing this line's HSN/SAC, looked up right after AI
+   * extraction (see handleExtract) — undefined means "not looked up" (e.g.
+   * a manually-added blank line), [] means "looked up, no match". A single
+   * match auto-links; multiple render as one-click chips instead of forcing
+   * a manual catalogue search the CA has no way to aim (they only know the
+   * HSN code shown on the line, not which preset name it maps to). */
+  hsnMatches?: ServiceCatalogueItem[];
+};
 const EMPTY_LINE: PurchaseBillLine = { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "NOS", expense_account_id: "", service_catalogue_id: "" };
 
 /** Purchase-side product/service prefill — uses purchase_price_paise, NOT
@@ -281,6 +292,43 @@ export function PurchaseBillEditor({
     setLines((prev) => [...prev, { ...EMPTY_LINE, _k: nextKey() }]);
   }
 
+  // Look up catalogue items sharing each extracted line's HSN/SAC (one
+  // batched query, not one search per line) and either auto-link a single
+  // confident match or attach the candidate list for the chip UI below.
+  // Never touches description/rate/gst_rate/unit — those came straight off
+  // the actual invoice and are authoritative for this specific bill; the
+  // catalogue item is a link for reuse/inventory, not a source of truth.
+  async function matchLinesByHsn(rawLines: EditorLine[]): Promise<EditorLine[]> {
+    const codes = Array.from(new Set(rawLines.map((l) => l.hsn_sac.trim()).filter(Boolean)));
+    if (!codes.length) return rawLines;
+    try {
+      const supabase = getSupabaseClient();
+      const { data } = await supabase
+        .from("service_catalogue")
+        .select("*")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .in("hsn_sac", codes);
+      const byHsn = new Map<string, ServiceCatalogueItem[]>();
+      for (const item of (data as ServiceCatalogueItem[]) ?? []) {
+        const code = (item.hsn_sac ?? "").trim();
+        if (!code) continue;
+        byHsn.set(code, [...(byHsn.get(code) ?? []), item]);
+      }
+      return rawLines.map((l) => {
+        const code = l.hsn_sac.trim();
+        if (!code) return l;
+        const matches = byHsn.get(code) ?? [];
+        return matches.length === 1
+          ? { ...l, service_catalogue_id: matches[0].id, product: matches[0], hsnMatches: matches }
+          : { ...l, hsnMatches: matches };
+      });
+    } catch {
+      // Best-effort: a failed lookup just leaves lines unlinked, same as before.
+      return rawLines;
+    }
+  }
+
   // ── AI document extraction ───────────────────────────────────────────────
   async function handleExtract() {
     if (!uploadFile) return;
@@ -318,16 +366,15 @@ export function PurchaseBillEditor({
           ?? null;
         if (matched) onVendorChange(matched.id);
         if (ex.line_items?.length) {
-          setLines(
-            ex.line_items.map((li) => ({
-              description: li.description ?? "", hsn_sac: li.hsn_sac ?? "",
-              qty: String(li.quantity ?? 1), unit: "NOS",
-              rate: String(Math.floor((li.rate_paise ?? 0)) / 100),
-              gst_rate: (li.gst_rate_bps ?? 1800) / 100,
-              expense_account_id: "", service_catalogue_id: "",
-              _k: nextKey(),
-            })),
-          );
+          const rawLines: EditorLine[] = ex.line_items.map((li) => ({
+            description: li.description ?? "", hsn_sac: li.hsn_sac ?? "",
+            qty: String(li.quantity ?? 1), unit: "NOS",
+            rate: String(Math.floor((li.rate_paise ?? 0)) / 100),
+            gst_rate: (li.gst_rate_bps ?? 1800) / 100,
+            expense_account_id: "", service_catalogue_id: "",
+            _k: nextKey(),
+          }));
+          setLines(await matchLinesByHsn(rawLines));
         }
         if (!matched && (gstin || name)) {
           setError(`AI extracted vendor "${ex.vendor_name ?? gstin}" but no matching vendor was found — select one manually.`);
@@ -613,6 +660,26 @@ export function PurchaseBillEditor({
                     <tr key={line._k} className={invalid ? "bg-red-50/40" : undefined}>
                       <td className="py-1.5 pr-2">
                         <ServiceCataloguePicker clientId={clientId} value={line.product} onPick={(item) => onPickProduct(idx, item)} size="sm" ariaLabel={`Line ${idx + 1} product or service`} />
+                        {/* HSN-based catalogue hints (see matchLinesByHsn) — only
+                            relevant right after AI extraction; a manually-added
+                            blank line has hsnMatches === undefined and shows nothing. */}
+                        {line.hsnMatches && line.hsnMatches.length > 1 && !line.service_catalogue_id && (
+                          <div className="mt-1 flex flex-wrap gap-1 items-center">
+                            <span className="text-[9px] text-[#94A3B8]">HSN {line.hsn_sac} matches:</span>
+                            {line.hsnMatches.map((m) => (
+                              <button key={m.id} type="button" onClick={() => onPickProduct(idx, m)}
+                                className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200">
+                                {m.name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {line.hsnMatches && line.hsnMatches.length === 0 && line.hsn_sac.trim() && !line.service_catalogue_id && (
+                          <p className="mt-1 text-[9px] text-[#CBD5E1]">No catalogue match for HSN {line.hsn_sac}</p>
+                        )}
+                        {line.hsnMatches?.length === 1 && line.service_catalogue_id === line.hsnMatches[0].id && (
+                          <p className="mt-1 text-[9px] text-emerald-600">✓ Auto-linked from catalogue</p>
+                        )}
                       </td>
                       <td className="py-1.5 pr-2">
                         <input value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" aria-label={`Line ${idx + 1} description`}
