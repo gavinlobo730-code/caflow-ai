@@ -76,6 +76,11 @@ export interface PurchaseBillLineDetail {
   unit?: string | null;
   rate_paise: number;
   gst_rate_bps: number;
+  taxable_amount_paise?: number;
+  cgst_paise?: number;
+  sgst_paise?: number;
+  igst_paise?: number;
+  line_total_paise?: number;
   expense_account_id?: string | null;
   service_catalogue_id?: string | null;
 }
@@ -91,11 +96,28 @@ export interface PurchaseBillDetail {
   our_reference?: string | null;
   bill_date: string;
   due_date: string | null;
+  credit_days?: number | null;
   is_reverse_charge?: boolean;
+  is_interstate?: boolean;
   status: string;
+  notes?: string | null;
   document_url?: string | null;
   txn_currency?: string | null;
   exchange_rate?: string | null;
+  taxable_amount_paise?: number;
+  cgst_paise?: number;
+  sgst_paise?: number;
+  igst_paise?: number;
+  total_gst_paise?: number;
+  total_paise?: number;
+  tds_paise?: number;
+  tds_rate_bps?: number;
+  tds_section?: string | null;
+  net_payable_paise?: number;
+  paid_paise?: number;
+  journal_entry_id?: string | null;
+  received_at?: string | null;
+  created_at?: string | null;
   lines: PurchaseBillLineDetail[];
 }
 
@@ -575,7 +597,7 @@ export function PurchaseBillEditor({
                   <th className="pb-2 text-left font-semibold">Description *</th>
                   <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
                   <th className="pb-2 text-left font-semibold w-28">Expense Account</th>
-                  <th className="pb-2 text-right font-semibold w-16">Qty</th>
+                  <th className="pb-2 text-right font-semibold w-20">Qty</th>
                   <th className="pb-2 text-left font-semibold w-16">Unit</th>
                   <th className="pb-2 text-right font-semibold w-24">Rate ({isForeign ? currency : "₹"})</th>
                   <th className="pb-2 text-right font-semibold w-20">GST %</th>

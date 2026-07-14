@@ -107,7 +107,7 @@ def list_purchase_bills(
     """List purchase bills with optional filters."""
     try:
         if _USE_MOCK:
-            result = [b for b in MOCK_PURCHASE_BILLS if b["client_id"] == client_id]
+            result = [b for b in MOCK_PURCHASE_BILLS if b["client_id"] == client_id and not b.get("deleted_at")]
             if vendor_id:
                 result = [b for b in result if b.get("vendor_id") == vendor_id]
             if status:
@@ -121,7 +121,7 @@ def list_purchase_bills(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        q = db.table("purchase_bills").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+        q = db.table("purchase_bills").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).is_("deleted_at", None)
         if vendor_id:
             q = q.eq("vendor_id", vendor_id)
         if status:
@@ -665,7 +665,7 @@ def get_purchase_bill(
     """Get a purchase bill with line items."""
     try:
         if _USE_MOCK:
-            bill = next((b for b in MOCK_PURCHASE_BILLS if b["id"] == bill_id), None)
+            bill = next((b for b in MOCK_PURCHASE_BILLS if b["id"] == bill_id and not b.get("deleted_at")), None)
             if not bill:
                 raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
             bill["lines"] = [ln for ln in MOCK_PURCHASE_BILL_LINES if ln.get("bill_id") == bill_id]
@@ -673,7 +673,7 @@ def get_purchase_bill(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("purchase_bills").select("*").eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
+        resp = db.table("purchase_bills").select("*").eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).is_("deleted_at", None).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
         bill = resp.data[0]
@@ -723,6 +723,80 @@ def get_purchase_bill_document_url(
         raise
     except Exception as e:
         _logger.error("get_purchase_bill_document_url: %s", e)
+        return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
+
+
+# Human-readable phrasing for statuses that block deletion.
+_BILL_DELETE_BLOCKED = {
+    "received":         "a received",
+    "partially_paid":   "a partially-paid",
+    "paid":             "a paid",
+    "cancelled":        "a cancelled",
+}
+
+
+@router.delete("/{bill_id}")
+def delete_purchase_bill(
+    bill_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Soft-delete a DRAFT purchase bill. Mirrors sales_invoices.py's
+    delete_invoice exactly.
+
+    Only drafts may be deleted. Received / partially-paid / paid / cancelled
+    bills are protected — they have a posted journal (and, for received
+    bills, possible ITC/inventory effects) and must never be removed. A
+    draft never appears in any accounting report or ITC computation, so
+    removing it has zero effect on the Trial Balance / P&L / Balance Sheet.
+    """
+    try:
+        if _USE_MOCK:
+            for i, b in enumerate(MOCK_PURCHASE_BILLS):
+                if b["id"] == bill_id:
+                    st = b.get("status")
+                    if st != "draft":
+                        raise HTTPException(
+                            status_code=422,
+                            detail=f"Cannot delete {_BILL_DELETE_BLOCKED.get(st, st)} bill — only drafts can be deleted",
+                        )
+                    MOCK_PURCHASE_BILLS.pop(i)
+                    return api_response(True, {"id": bill_id, "deleted": True})
+            raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        resp = (
+            db.table("purchase_bills").select("*")
+            .eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).is_("deleted_at", None).limit(1).execute()
+        )
+        if not resp.data:
+            raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
+        bill = resp.data[0]
+        st = bill.get("status")
+        if st != "draft":
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cannot delete {_BILL_DELETE_BLOCKED.get(st, st)} bill — only drafts can be deleted",
+            )
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        db.table("purchase_bills").update({"deleted_at": now_iso}).eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
+
+        log_event(
+            current_user.get("firm_id", ""), "purchase_bill", bill_id,
+            "delete", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            old_data={
+                "bill_no":     bill.get("bill_no"),
+                "status":      st,
+                "total_paise": bill.get("total_paise"),
+            },
+        )
+        return api_response(True, {"id": bill_id, "deleted": True})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("delete_purchase_bill: %s", e)
         return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
 
 

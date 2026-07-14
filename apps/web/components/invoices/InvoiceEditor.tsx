@@ -613,13 +613,14 @@ export function InvoiceEditor({
         <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
           <h2 className="text-xs font-semibold text-[#334155] mb-2">Line items</h2>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs min-w-[760px]">
+            <table className="w-full text-xs min-w-[820px]">
               <thead>
                 <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
                   <th className="pb-2 text-left font-semibold w-40">Product/Service</th>
                   <th className="pb-2 text-left font-semibold">Description</th>
                   <th className="pb-2 text-left font-semibold w-28">HSN/SAC</th>
-                  <th className="pb-2 text-right font-semibold w-16">Qty</th>
+                  <th className="pb-2 text-right font-semibold w-20">Qty</th>
+                  <th className="pb-2 text-left font-semibold w-16">Unit</th>
                   <th className="pb-2 text-right font-semibold w-24">Rate ({isForeign ? currency : "₹"})</th>
                   <th className="pb-2 text-right font-semibold w-20">GST %</th>
                   <th className="pb-2 text-right font-semibold w-24">Amount</th>
@@ -672,25 +673,30 @@ export function InvoiceEditor({
                           size="sm" chrome="plain" placeholder="Set HSN/SAC" ariaLabel="HSN or SAC code" />
                       </td>
                       <td className="py-1.5 pr-2">
+                        <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })}
+                          onKeyDown={(e) => onLineKeyDown(e, idx)} aria-label={`Line ${idx + 1} quantity`}
+                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                      </td>
+                      <td className="py-1.5 pr-2">
                         {/* Unit (UQC) only for goods — CGST Rule 46(h) requires
                             it for goods lines, not services. `line.product`
                             is only populated by a pick THIS session (existing
                             lines aren't rehydrated with the full product), so
                             a saved good line is recognised by already having
-                            a unit value once one has been set. */}
-                        <div className="flex items-center gap-1">
-                          <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })}
-                            onKeyDown={(e) => onLineKeyDown(e, idx)} aria-label={`Line ${idx + 1} quantity`}
-                            className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
-                          {(line.product?.kind === "good" || !!line.unit) && (
-                            <select value={line.unit} onChange={(e) => setLine(idx, { unit: e.target.value })}
-                              aria-label={`Line ${idx + 1} unit`}
-                              className="shrink-0 w-16 px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-[10px] text-[#64748B]">
-                              <option value="">Unit</option>
-                              {UQC_CODES.map((u) => <option key={u.code} value={u.code}>{u.code}</option>)}
-                            </select>
-                          )}
-                        </div>
+                            a unit value once one has been set. Its own column
+                            (not squeezed into the Qty cell) — that used to
+                            shrink the Qty input to a sliver whenever a goods
+                            line made the Unit select appear alongside it. */}
+                        {(line.product?.kind === "good" || !!line.unit) ? (
+                          <select value={line.unit} onChange={(e) => setLine(idx, { unit: e.target.value })}
+                            aria-label={`Line ${idx + 1} unit`}
+                            className="w-full px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs text-[#64748B]">
+                            <option value="">Unit</option>
+                            {UQC_CODES.map((u) => <option key={u.code} value={u.code}>{u.code}</option>)}
+                          </select>
+                        ) : (
+                          <span className="text-[#CBD5E1]">—</span>
+                        )}
                       </td>
                       <td className="py-1.5 pr-2">
                         <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })}

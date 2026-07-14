@@ -48,8 +48,12 @@
 /clients/:id/portal.txt                                       /clients/_placeholder/portal/index.txt  200
 /clients/:id/purchases                                        /clients/_placeholder/purchases/  200
 /clients/:id/purchases.txt                                    /clients/_placeholder/purchases/index.txt  200
+/clients/:id/purchases/bills/:billId/edit                     /clients/_placeholder/purchases/bills/_placeholder/edit/  200
+/clients/:id/purchases/bills/:billId/edit.txt                 /clients/_placeholder/purchases/bills/_placeholder/edit/index.txt  200
 /clients/:id/purchases/bills/new                              /clients/_placeholder/purchases/bills/new/  200
 /clients/:id/purchases/bills/new.txt                          /clients/_placeholder/purchases/bills/new/index.txt  200
+/clients/:id/purchases/bills/new/                             /clients/_placeholder/purchases/bills/new/  200
+/clients/:id/purchases/bills/new/index.txt                    /clients/_placeholder/purchases/bills/new/index.txt  200
 /clients/:id/relationships                                    /clients/_placeholder/relationships/  200
 /clients/:id/relationships.txt                                /clients/_placeholder/relationships/index.txt  200
 /clients/:id/reports                                          /clients/_placeholder/reports/  200
@@ -99,6 +103,7 @@
 /relationships/:entity_id                                     /relationships/_placeholder/  200
 /relationships/:entity_id.txt                                 /relationships/_placeholder/index.txt  200
 
+/clients/:id/purchases/bills/:billId/*                        /clients/_placeholder/purchases/bills/_placeholder/:splat  200
 /clients/:id/sales/invoices/:invoiceId/*                      /clients/_placeholder/sales/invoices/_placeholder/:splat  200
 /clients/:id/year-end/:engagementId/*                         /clients/_placeholder/year-end/_placeholder/:splat  200
 /clients/:id/*                                                /clients/_placeholder/:splat  200

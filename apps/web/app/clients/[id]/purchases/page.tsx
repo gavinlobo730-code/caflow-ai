@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Upload, AlertCircle, CheckCircle, Trash2, X, Loader2, Paperclip } from "lucide-react";
+import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loader2, Paperclip, MoreHorizontal } from "lucide-react";
+import { PurchaseBillViewDrawer } from "@/components/purchases/PurchaseBillViewDrawer";
+import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
@@ -300,6 +302,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
         .from("purchase_bills")
         .select("*, vendors(name)")
         .eq("client_id", clientId)
+        .is("deleted_at", null)
         .gte("bill_date", start)
         .lte("bill_date", end)
         .order("bill_date", { ascending: false })
@@ -334,6 +337,26 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
       await apiCall(`/api/purchase-bills/${billId}/receive`, "POST", undefined, token);
       load();
     } catch { /* skip */ }
+  }
+
+  // View drawer + row overflow menu (View details / Edit / Delete) — mirrors
+  // the Sales Invoices tab's own menu pattern. Anchored to the viewport since
+  // the table scrolls/clips an in-flow dropdown.
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PurchaseBillRow | PurchaseBillDetail | null>(null);
+  function openMenuFor(e: React.MouseEvent, bill: PurchaseBillRow) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setMenu({ id: bill.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+  }
+
+  async function deleteBill(bill: PurchaseBillRow | PurchaseBillDetail) {
+    const token = await getAuthToken();
+    const result = await apiCall(`/api/purchase-bills/${bill.id}`, "DELETE", undefined, token);
+    if (!result.success) throw new Error(result.error ?? "Failed to delete purchase bill");
+    setMsg({ type: "ok", text: `${bill.bill_no || "Purchase bill"} deleted` });
+    setDeleteTarget(null);
+    load();
   }
 
   // The "Documents" bucket is private — document_url on the bill is a
@@ -614,15 +637,133 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
           </>
         }
         bulkActions={bulkActions}
-        rowActions={(b) =>
-          b.status === "draft" ? (
-            <span className="inline-flex items-center gap-2">
-              <button onClick={() => router.push(`/clients/${clientId}/purchases/bills/${b.id}/edit`)} className="text-xs text-[#475569] hover:underline">Edit</button>
-              <button onClick={() => handleReceive(b.id)} className="text-xs text-blue-600 hover:underline">Receive</button>
-            </span>
-          ) : null
-        }
+        rowActions={(b) => (
+          <div className="flex items-center justify-end gap-2">
+            {b.status === "draft" && (
+              <button onClick={() => handleReceive(b.id)} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                <CheckCircle size={11} /> Receive
+              </button>
+            )}
+            <button
+              onClick={(e) => openMenuFor(e, b)}
+              aria-label={`Actions for bill ${b.bill_no || b.id}`}
+              className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
+            >
+              <MoreHorizontal size={16} />
+            </button>
+          </div>
+        )}
       />
+
+      {/* Row overflow menu — View details always; Edit/Delete for drafts only. */}
+      {menu && (() => {
+        const b = bills.find((x) => x.id === menu.id);
+        if (!b) return null;
+        return (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
+            <div
+              className="fixed z-50 w-44 bg-white rounded-lg border border-[#E2E8F0] shadow-lg py-1 text-xs"
+              style={{ top: menu.top, left: menu.left }}
+            >
+              <button onClick={() => { setMenu(null); setDetailId(b.id); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                View details
+              </button>
+              {b.status === "draft" && (
+                <>
+                  <button onClick={() => { setMenu(null); router.push(`/clients/${clientId}/purchases/bills/${b.id}/edit`); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                    Edit draft
+                  </button>
+                  <div className="my-1 border-t border-[#F1F5F9]" />
+                  <button onClick={() => { setMenu(null); setDeleteTarget(b); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                    Delete draft
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        );
+      })()}
+
+      {detailId && (
+        <PurchaseBillViewDrawer
+          billId={detailId}
+          clientId={clientId}
+          vendorName={
+            bills.find((b) => b.id === detailId)?.vendors?.name
+            ?? vendors.find((v) => v.id === bills.find((b) => b.id === detailId)?.vendor_id)?.name
+            ?? ""
+          }
+          onClose={() => setDetailId(null)}
+          onEdit={(id) => router.push(`/clients/${clientId}/purchases/bills/${id}/edit`)}
+          onReceive={(id) => { setDetailId(null); handleReceive(id); }}
+          onDelete={(bill) => { setDetailId(null); setDeleteTarget(bill); }}
+          onToast={(text, type) => setMsg({ type: type === "success" ? "ok" : "err", text })}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteBillModal
+          bill={deleteTarget}
+          onConfirm={() => deleteBill(deleteTarget)}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function DeleteBillModal({
+  bill,
+  onConfirm,
+  onClose,
+}: {
+  bill: PurchaseBillRow | PurchaseBillDetail;
+  onConfirm: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handle() {
+    setDeleting(true); setError(null);
+    try {
+      await onConfirm();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete purchase bill");
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 w-full max-w-md shadow-xl">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="p-2 rounded-full bg-red-50 text-red-600 flex-shrink-0"><AlertTriangle size={16} /></div>
+          <div>
+            <h3 className="text-sm font-semibold text-[#0F172A]">Delete draft purchase bill?</h3>
+            <p className="text-xs text-[#64748B] mt-1">
+              <span className="font-mono">{bill.bill_no || "This bill"}</span> will be removed from your purchase
+              bill list. Only drafts can be deleted — received, partially-paid, paid and cancelled bills are
+              permanent records and are protected.
+            </p>
+          </div>
+        </div>
+        {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2 mb-3">{error}</p>}
+        <div className="flex gap-3 justify-end">
+          <button onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+          <button
+            onClick={handle}
+            disabled={deleting}
+            className="text-xs px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-1.5"
+          >
+            {deleting ? "Deleting…" : <><Trash2 size={12} /> Delete Draft</>}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

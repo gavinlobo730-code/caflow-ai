@@ -231,3 +231,45 @@ def test_update_draft_lines_tds_fy_aggregate_excludes_bills_own_stale_amount(mon
         "TDS FY-aggregate must exclude this bill's own pre-edit amount — "
         "counting it against itself falsely crosses the §194C ₹1L threshold"
     )
+
+
+def _draft_bill(db, bill_no="B-DRAFT"):
+    res = pb.create_purchase_bill(PurchaseBillIn(
+        client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no=bill_no,
+        lines=[PurchaseBillLineIn(description="svc", rate_paise=100_00, quantity=1, gst_rate_percent=18.0)],
+    ), CALLER)
+    assert res["success"] is True
+    return res["data"]["id"]
+
+
+def test_delete_draft_bill_soft_deletes_and_disappears_from_list(monkeypatch):
+    db = _setup(monkeypatch)
+    bill_id = _draft_bill(db)
+    resp = pb.delete_purchase_bill(bill_id, CALLER)
+    assert resp["success"] is True
+    bill = next(b for b in db.rows("purchase_bills") if b["id"] == bill_id)
+    assert bill["deleted_at"] is not None
+
+    listed = pb.list_purchase_bills(client_id="CLI", vendor_id=None, status=None, from_date=None, to_date=None, limit=50, offset=0, current_user=CALLER)
+    assert bill_id not in [b["id"] for b in listed["data"]]
+
+    with pytest.raises(HTTPException) as exc:
+        pb.get_purchase_bill(bill_id, CALLER)
+    assert exc.value.status_code == 404
+
+
+def test_delete_rejects_once_received(monkeypatch):
+    db = _setup(monkeypatch)
+    bill_id, _ = _received_bill(db)
+    with pytest.raises(HTTPException) as exc:
+        pb.delete_purchase_bill(bill_id, CALLER)
+    assert exc.value.status_code == 422
+    bill = next(b for b in db.rows("purchase_bills") if b["id"] == bill_id)
+    assert bill.get("deleted_at") is None
+
+
+def test_delete_missing_bill_404s(monkeypatch):
+    _setup(monkeypatch)
+    with pytest.raises(HTTPException) as exc:
+        pb.delete_purchase_bill("does-not-exist", CALLER)
+    assert exc.value.status_code == 404
