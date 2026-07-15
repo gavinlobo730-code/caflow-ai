@@ -29,6 +29,8 @@ def _setup(monkeypatch):
     db.seed("customers", {"id": "CUST1", "firm_id": FIRM, "client_id": "CLI", "name": "Acme",
                           "is_active": True, "opening_balance_paise": 0})
     seed_standard_coa(db, FIRM, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
+                                  "name": "Returned Goods", "kind": "good"})
     return db
 
 
@@ -135,7 +137,7 @@ def test_create_credit_note_computes_gst_from_percent(monkeypatch):
     res = cn.create_credit_note(cn.CreditNoteIn(
         client_id="CLI", customer_id="CUST1", credit_note_date="2025-06-05",
         sales_invoice_id=inv_id,
-        lines=[InvoiceLineIn(description="return", quantity=1, rate_paise=100000, gst_rate_percent=18.0)],
+        lines=[InvoiceLineIn(description="return", quantity=1, rate_paise=100000, gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
     ), CALLER)
     assert res["success"] is True
     data = res["data"]

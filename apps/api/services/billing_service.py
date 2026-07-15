@@ -203,6 +203,7 @@ def generate_for_schedule(firm_id: str, schedule: dict, current_user: dict,
     customer_id = ensure_customer_link(firm_id, schedule["client_id"], internal_id)
 
     line = InvoiceLineIn(
+        service_catalogue_id=schedule["service_id"],
         description=schedule.get("description") or "Professional fees",
         hsn_sac=CA_SERVICE_SAC, quantity=1,
         rate_paise=int(schedule["amount_paise"]),

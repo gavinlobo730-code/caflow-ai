@@ -34,6 +34,8 @@ def _setup(monkeypatch):
                         "state_code": "27", "gstin": "27BBBBB1111B1Z3",
                         "tds_applicable": False, "tds_section": None, "tds_rate_bps": 0})
     seed_standard_coa(db, FIRM, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
+                                  "name": "Raw Material", "kind": "good"})
     return db
 
 
@@ -41,7 +43,7 @@ def _received_bill(db, bill_no="BILL-1", rate=100000):
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no=bill_no,
         lines=[PurchaseBillLineIn(description="raw material", rate_paise=rate,
-                                  quantity=1, gst_rate_percent=18.0)],
+                                  quantity=1, gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
     ), CALLER)
     assert res["success"] is True
     bill_id = res["data"]["id"]
@@ -116,7 +118,7 @@ def test_cannot_cancel_draft_bill(monkeypatch):
     db = _setup(monkeypatch)
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no="BILL-DRAFT",
-        lines=[PurchaseBillLineIn(description="x", rate_paise=100000, quantity=1, gst_rate_percent=18.0)],
+        lines=[PurchaseBillLineIn(description="x", rate_paise=100000, quantity=1, gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
     ), CALLER)
     bill_id = res["data"]["id"]                               # still draft — not received
     with pytest.raises(HTTPException) as ex:

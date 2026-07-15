@@ -76,6 +76,21 @@ class InvoiceLineIn(BaseModel):
             return None
         return v.strip().upper()
 
+    # model_validator (not field_validator) — Pydantic v2 skips field_validator
+    # on a field that was simply omitted (uses its `= None` default) unless
+    # validate_default=True; model_validator(mode="after") always runs, so
+    # this is the only reliable way to reject "field left out entirely",
+    # not just "field explicitly sent blank". Every Product/Service catalogue
+    # link is now mandatory (decision: every line — including pure-expense/
+    # service lines — must reference a catalogue item), covering Sales
+    # Invoices, Credit Notes and Debit Notes at once since all three share
+    # this model.
+    @model_validator(mode="after")
+    def require_service_catalogue_id(self) -> "InvoiceLineIn":
+        if not self.service_catalogue_id or not self.service_catalogue_id.strip():
+            raise ValueError("Product/Service is required on every line item.")
+        return self
+
 
 class SalesInvoiceIn(BaseModel):
     """Create a new sales invoice. CGST Act §31."""
@@ -198,6 +213,15 @@ class PurchaseBillLineIn(BaseModel):
         if v is None or v == "":
             return None
         return v.strip().upper()
+
+    # See InvoiceLineIn.require_service_catalogue_id — model_validator, not
+    # field_validator, for the same "must fire even when the field is
+    # omitted, not just sent blank" reason.
+    @model_validator(mode="after")
+    def require_service_catalogue_id(self) -> "PurchaseBillLineIn":
+        if not self.service_catalogue_id or not self.service_catalogue_id.strip():
+            raise ValueError("Product/Service is required on every line item.")
+        return self
 
 
 class PurchaseBillIn(BaseModel):

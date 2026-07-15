@@ -8,6 +8,8 @@ import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
+import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
 
 interface Schedule {
   id: string; client_id: string; arrangement: string; cadence: string;
@@ -22,6 +24,12 @@ function Billing() {
   const [msg, setMsg] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ client_id: "", arrangement: "retainer", cadence: "monthly", amount_rupees: "", gst_rate: "18" });
+  const [product, setProduct] = useState<ServiceCatalogueItem | null>(null);
+  // The practice's own internal client (Guardrail G1/G2: never shown as a
+  // regular client) — its Product/Service catalogue is what a retainer fee
+  // gets linked to, same as any other document. GET /api/practice already
+  // resolves this server-side and is Partner-gated, matching this page.
+  const [internalClientId, setInternalClientId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -29,6 +37,8 @@ function Billing() {
       const r = await api.billing.listSchedules() as ApiResp<Schedule[]>;
       setSchedules(r.data ?? []);
       setClients(await getClients());
+      const p = await api.practice.get() as ApiResp<{ internal_client_id: string | null }>;
+      setInternalClientId(p.data?.internal_client_id ?? null);
     } catch (e) { setError(e instanceof Error ? e.message : "Failed to load billing"); }
     finally { setLoading(false); }
   }, []);
@@ -39,13 +49,15 @@ function Billing() {
   async function createSchedule(e: React.FormEvent) {
     e.preventDefault();
     setMsg(null);
+    if (!product) { setMsg("Select a Product/Service for this fee"); return; }
     try {
       await api.billing.createSchedule({
         client_id: form.client_id, arrangement: form.arrangement, cadence: form.cadence,
         amount_paise: Math.round(parseFloat(form.amount_rupees || "0") * 100),  // ₹→paise for submission only
         gst_rate: parseFloat(form.gst_rate || "18"),
+        service_id: product.id,
       });
-      setShowForm(false); setForm({ ...form, client_id: "", amount_rupees: "" }); await load();
+      setShowForm(false); setForm({ ...form, client_id: "", amount_rupees: "" }); setProduct(null); await load();
     } catch (e) { setMsg(e instanceof Error ? e.message : "Create failed"); }
   }
 
@@ -95,6 +107,19 @@ function Billing() {
           <select value={form.cadence} onChange={(e) => setForm({ ...form, cadence: e.target.value })} className="border rounded-lg px-2 py-1.5">
             <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option><option value="one_time">One-time</option>
           </select>
+          {internalClientId ? (
+            <ServiceCataloguePicker
+              clientId={internalClientId}
+              value={product}
+              onPick={setProduct}
+              ariaLabel="Product/Service"
+              placeholder="Product/Service…"
+            />
+          ) : (
+            <p className="text-[11px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2 col-span-1 flex items-center">
+              Provision the practice (internal client) before billing — see Practice settings.
+            </p>
+          )}
           <input required type="number" step="0.01" placeholder="Fee (₹)" value={form.amount_rupees} onChange={(e) => setForm({ ...form, amount_rupees: e.target.value })} className="border rounded-lg px-2 py-1.5" />
           <input type="number" step="0.01" placeholder="GST %" value={form.gst_rate} onChange={(e) => setForm({ ...form, gst_rate: e.target.value })} className="border rounded-lg px-2 py-1.5" />
           <button type="submit" className="px-3 py-1.5 rounded-lg bg-[#182350] text-white">Create</button>

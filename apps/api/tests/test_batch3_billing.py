@@ -29,7 +29,7 @@ def _make_schedule(amount_paise=100000, cadence="monthly", gst_rate=18.0, next_r
     return billing.create_schedule("F1", {
         "client_id": "PRACTICE_CLIENT_1", "arrangement": "retainer",
         "cadence": cadence, "amount_paise": amount_paise, "gst_rate": gst_rate,
-        "next_run_date": next_run_date,
+        "next_run_date": next_run_date, "service_id": "SVC-1",
     }, created_by="p")
 
 

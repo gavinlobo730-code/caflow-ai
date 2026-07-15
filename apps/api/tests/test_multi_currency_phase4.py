@@ -40,6 +40,8 @@ def _setup(monkeypatch):
     db.seed("currencies", {"code": "USD", "symbol": "$", "display_name": "US Dollar", "minor_unit": 2, "is_active": True})
     db.seed("currencies", {"code": "INR", "symbol": "₹", "display_name": "Indian Rupee", "minor_unit": 2, "is_active": True})
     seed_standard_coa(db, FIRM, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
+                                  "name": "Services", "kind": "service"})
     return cu, si, rc, pb, pp, ve, db
 
 
@@ -48,7 +50,7 @@ def _usd_invoice(si, cust_id, rate, *, date="2025-06-01", cents=100000, invoice_
         client_id="CLI", customer_id=cust_id, invoice_date=date,
         invoice_no=invoice_no,
         currency="USD", exchange_rate=str(rate),
-        lines=[InvoiceLineIn(description="Export", hsn_sac="9982", quantity=1,
+        lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="Export", hsn_sac="9982", quantity=1,
                              rate_paise=cents, gst_rate_percent=0.0)]), CALLER)["data"]
     si.issue_invoice(inv["id"], CALLER)
     return inv
@@ -124,7 +126,7 @@ def test_realized_fx_on_vendor_payment(monkeypatch):
     bill = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id=vend["id"], bill_date="2025-06-01", bill_no="UB1",
         currency="USD", exchange_rate="80.0",
-        lines=[PurchaseBillLineIn(description="svc", rate_paise=100000, quantity=1, gst_rate_percent=0.0)]), CALLER)["data"]
+        lines=[PurchaseBillLineIn(service_catalogue_id="SVC-1", description="svc", rate_paise=100000, quantity=1, gst_rate_percent=0.0)]), CALLER)["data"]
     pb.receive_purchase_bill(bill["id"], CALLER)
     assert account_balance(db, coa_id(db, FIRM, "ap")) == -8_000_000        # AP credit
     # Pay $1000 @ 83 → we paid MORE INR than booked → loss
@@ -172,7 +174,7 @@ def test_ap_revaluation_posts_loss(monkeypatch):
     bill = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id=vend["id"], bill_date="2025-06-01", bill_no="UB2",
         currency="USD", exchange_rate="80.0",
-        lines=[PurchaseBillLineIn(description="svc", rate_paise=100000, quantity=1, gst_rate_percent=0.0)]), CALLER)["data"]
+        lines=[PurchaseBillLineIn(service_catalogue_id="SVC-1", description="svc", rate_paise=100000, quantity=1, gst_rate_percent=0.0)]), CALLER)["data"]
     pb.receive_purchase_bill(bill["id"], CALLER)                    # open $1000 AP at ₹80,000
     r = REVAL.revalue(db, FIRM, "CLI", "2026-03-31", {"USD": "84.0"}, CALLER)
     adj = [a for a in r["adjustments"] if a["item_type"] == "payable"][0]

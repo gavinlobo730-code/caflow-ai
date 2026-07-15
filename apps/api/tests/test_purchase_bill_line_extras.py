@@ -67,9 +67,9 @@ def test_create_persists_unit_defaulting_to_nos(monkeypatch):
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no="B2",
         lines=[
-            PurchaseBillLineIn(description="With unit", rate_paise=100_00, quantity=1,
+            PurchaseBillLineIn(service_catalogue_id="PROD-1", description="With unit", rate_paise=100_00, quantity=1,
                                gst_rate_percent=18.0, unit="kgs"),
-            PurchaseBillLineIn(description="No unit given", rate_paise=100_00, quantity=1,
+            PurchaseBillLineIn(service_catalogue_id="PROD-1", description="No unit given", rate_paise=100_00, quantity=1,
                                gst_rate_percent=18.0),
         ],
     ), CALLER)
@@ -85,7 +85,7 @@ def test_create_persists_our_reference(monkeypatch):
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no="B3",
         our_reference="INTERNAL-REF-42",
-        lines=[PurchaseBillLineIn(description="svc", rate_paise=100_00, quantity=1, gst_rate_percent=18.0)],
+        lines=[PurchaseBillLineIn(service_catalogue_id="PROD-1", description="svc", rate_paise=100_00, quantity=1, gst_rate_percent=18.0)],
     ), CALLER)
     assert res["success"] is True
     assert res["data"]["our_reference"] == "INTERNAL-REF-42"
@@ -95,7 +95,7 @@ def test_create_persists_our_reference(monkeypatch):
 def _received_bill(db, bill_no="B-RECV"):
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no=bill_no,
-        lines=[PurchaseBillLineIn(description="svc", rate_paise=100_00, quantity=1, gst_rate_percent=18.0)],
+        lines=[PurchaseBillLineIn(service_catalogue_id="PROD-1", description="svc", rate_paise=100_00, quantity=1, gst_rate_percent=18.0)],
     ), CALLER)
     assert res["success"] is True
     bill_id = res["data"]["id"]
@@ -152,14 +152,14 @@ def test_update_draft_recomputes_lines_and_replaces_old_ones(monkeypatch):
     db = _setup(monkeypatch)
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no="B-EDIT",
-        lines=[PurchaseBillLineIn(description="Original line", rate_paise=1_000_00, quantity=1, gst_rate_percent=18.0)],
+        lines=[PurchaseBillLineIn(service_catalogue_id="PROD-1", description="Original line", rate_paise=1_000_00, quantity=1, gst_rate_percent=18.0)],
     ), CALLER)
     assert res["success"] is True
     bill_id = res["data"]["id"]
     assert res["data"]["taxable_amount_paise"] == 1_000_00
 
     resp = pb.update_purchase_bill(bill_id, PurchaseBillUpdateIn(
-        lines=[PurchaseBillLineIn(description="Replacement line", rate_paise=2_500_00, quantity=2, gst_rate_percent=18.0)],
+        lines=[PurchaseBillLineIn(service_catalogue_id="PROD-1", description="Replacement line", rate_paise=2_500_00, quantity=2, gst_rate_percent=18.0)],
     ), CALLER)
     assert resp["success"] is True
 
@@ -179,7 +179,7 @@ def test_update_draft_lines_rejects_empty_list(monkeypatch):
     db = _setup(monkeypatch)
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no="B-EMPTY",
-        lines=[PurchaseBillLineIn(description="Only line", rate_paise=100_00, quantity=1, gst_rate_percent=18.0)],
+        lines=[PurchaseBillLineIn(service_catalogue_id="PROD-1", description="Only line", rate_paise=100_00, quantity=1, gst_rate_percent=18.0)],
     ), CALLER)
     bill_id = res["data"]["id"]
     with pytest.raises(HTTPException) as exc:
@@ -203,7 +203,7 @@ def test_update_draft_lines_tds_fy_aggregate_excludes_bills_own_stale_amount(mon
     # Other bill contributing ₹78,000 to this vendor's FY-194C aggregate.
     other = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND-TDS", bill_date="2025-06-01", bill_no="B-OTHER",
-        lines=[PurchaseBillLineIn(description="Other work", rate_paise=78_000_00, quantity=1, gst_rate_percent=18.0)],
+        lines=[PurchaseBillLineIn(service_catalogue_id="PROD-1", description="Other work", rate_paise=78_000_00, quantity=1, gst_rate_percent=18.0)],
     ), CALLER)
     assert other["success"] is True
 
@@ -211,7 +211,7 @@ def test_update_draft_lines_tds_fy_aggregate_excludes_bills_own_stale_amount(mon
     # and, combined with the ₹78k above (₹93k total), under the ₹1L aggregate.
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND-TDS", bill_date="2025-06-15", bill_no="B-EDITME",
-        lines=[PurchaseBillLineIn(description="Small job", rate_paise=15_000_00, quantity=1, gst_rate_percent=18.0)],
+        lines=[PurchaseBillLineIn(service_catalogue_id="PROD-1", description="Small job", rate_paise=15_000_00, quantity=1, gst_rate_percent=18.0)],
     ), CALLER)
     assert res["success"] is True
     assert res["data"]["tds_paise"] == 0
@@ -222,7 +222,7 @@ def test_update_draft_lines_tds_fy_aggregate_excludes_bills_own_stale_amount(mon
     # Buggy (self-counted): prior = ₹78,000 + ₹15,000 (this bill's stale value)
     #   = ₹93,000 -> total ₹112,000 > ₹1L -> TDS would incorrectly apply.
     resp = pb.update_purchase_bill(bill_id, PurchaseBillUpdateIn(
-        lines=[PurchaseBillLineIn(description="Small job, revised", rate_paise=19_000_00, quantity=1, gst_rate_percent=18.0)],
+        lines=[PurchaseBillLineIn(service_catalogue_id="PROD-1", description="Small job, revised", rate_paise=19_000_00, quantity=1, gst_rate_percent=18.0)],
     ), CALLER)
     assert resp["success"] is True
     bill = next(b for b in db.rows("purchase_bills") if b["id"] == bill_id)
@@ -236,7 +236,7 @@ def test_update_draft_lines_tds_fy_aggregate_excludes_bills_own_stale_amount(mon
 def _draft_bill(db, bill_no="B-DRAFT"):
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no=bill_no,
-        lines=[PurchaseBillLineIn(description="svc", rate_paise=100_00, quantity=1, gst_rate_percent=18.0)],
+        lines=[PurchaseBillLineIn(service_catalogue_id="PROD-1", description="svc", rate_paise=100_00, quantity=1, gst_rate_percent=18.0)],
     ), CALLER)
     assert res["success"] is True
     return res["data"]["id"]

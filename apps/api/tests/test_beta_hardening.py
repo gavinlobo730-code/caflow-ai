@@ -69,6 +69,8 @@ def _setup(monkeypatch, *, customer_active=True, vendor_active=True):
     db.seed("vendors", {"id": "VEND1", "firm_id": FIRM, "client_id": "CLI", "name": "V",
                         "state_code": "27", "tds_applicable": False, "is_active": vendor_active})
     seed_standard_coa(db, FIRM, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
+                                  "name": "Materials", "kind": "good"})
     return db
 
 
@@ -77,7 +79,7 @@ def test_inactive_vendor_bill_rejected(monkeypatch):
     with pytest.raises(HTTPException) as ex:
         pb.create_purchase_bill(PurchaseBillIn(
             client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no="B1",
-            lines=[PurchaseBillLineIn(description="m", rate_paise=1000, quantity=1, gst_rate_percent=18.0)],
+            lines=[PurchaseBillLineIn(description="m", rate_paise=1000, quantity=1, gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
         ), CALLER)
     assert ex.value.status_code == 422 and "inactive" in ex.value.detail.lower()
 
@@ -103,6 +105,6 @@ def test_active_masters_still_work(monkeypatch):
     db = _setup(monkeypatch)                      # both active
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no="B-OK",
-        lines=[PurchaseBillLineIn(description="m", rate_paise=1000, quantity=1, gst_rate_percent=18.0)],
+        lines=[PurchaseBillLineIn(description="m", rate_paise=1000, quantity=1, gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
     ), CALLER)
     assert res["success"] is True

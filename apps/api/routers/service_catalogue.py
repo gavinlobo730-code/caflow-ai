@@ -737,6 +737,22 @@ def _find_service_usage(db, service_id: str) -> list[str]:
     if (db.table("inventory_stock_ledger").select("id")
             .eq("service_catalogue_id", service_id).limit(1).execute().data or []):
         found.append("your inventory stock ledger (it has recorded stock movements)")
+    # recurring_invoice_template_lines.service_catalogue_id is NOT NULL (migration
+    # 206) — the FK would block the delete anyway; check first for a friendly
+    # message. "archived" templates never generate again, so they don't count.
+    rt_lines = (db.table("recurring_invoice_template_lines").select("id, template_id")
+                .eq("service_catalogue_id", service_id).execute().data or [])
+    rt_ids = list({ln["template_id"] for ln in rt_lines if ln.get("template_id")})
+    if rt_ids:
+        templates = (db.table("recurring_invoice_templates").select("id, status")
+                     .in_("id", rt_ids).execute().data or [])
+        if any(t.get("status") != "archived" for t in templates):
+            found.append("a recurring invoice template")
+    # billing_schedules.service_id is NOT NULL (migration 206), same reasoning —
+    # a deactivated schedule (is_active=false) never generates again.
+    if (db.table("billing_schedules").select("id")
+            .eq("service_id", service_id).eq("is_active", True).limit(1).execute().data or []):
+        found.append("a billing schedule")
     return found
 
 
@@ -777,6 +793,23 @@ def _find_service_usage_mock(service_id: str) -> list[str]:
         for ln in MOCK_DEBIT_NOTE_LINES if ln.get("service_catalogue_id") == service_id
     ):
         found.append("a debit note")
+
+    from services.recurring_invoice_service import MOCK_RECURRING_TEMPLATES
+    if any(
+        t.get("status") != "archived"
+        for t in MOCK_RECURRING_TEMPLATES
+        for ln in t.get("lines", [])
+        if ln.get("service_catalogue_id") == service_id
+    ):
+        found.append("a recurring invoice template")
+
+    from services.billing_service import MOCK_BILLING_SCHEDULES
+    if any(
+        s.get("is_active", True)
+        for s in MOCK_BILLING_SCHEDULES
+        if s.get("service_id") == service_id
+    ):
+        found.append("a billing schedule")
 
     return found
 

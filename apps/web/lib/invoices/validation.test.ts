@@ -6,7 +6,8 @@ import { validateInvoiceEditor, validateInvoiceNo, isValidLine } from "./gst.ts"
 import type { InvoiceLine } from "./gst.ts";
 
 const line = (over: Partial<InvoiceLine> = {}): InvoiceLine => ({
-  description: "Consulting", hsn_sac: "", qty: "1", rate: "1000", gst_rate: 18, ...over,
+  description: "Consulting", hsn_sac: "", qty: "1", rate: "1000", gst_rate: 18, unit: "",
+  serviceCatalogueId: "SVC-1", ...over,
 });
 
 test("a complete INR invoice validates", () => {
@@ -34,12 +35,23 @@ test("validateInvoiceNo enforces CGST Rule 46(b) shape", () => {
   assert.ok(validateInvoiceNo("INV 0001")); // spaces not allowed
 });
 
-test("a line needs description + positive qty + positive rate", () => {
+test("a line needs description + positive qty + positive rate + a Product/Service", () => {
   assert.equal(isValidLine(line()), true);
   assert.equal(isValidLine(line({ description: "  " })), false);
   assert.equal(isValidLine(line({ qty: "0" })), false);
   assert.equal(isValidLine(line({ rate: "0" })), false);
   assert.equal(isValidLine(line({ rate: "" })), false);
+  assert.equal(isValidLine(line({ serviceCatalogueId: null })), false);
+  assert.equal(isValidLine(line({ serviceCatalogueId: undefined })), false);
+});
+
+test("an invoice with no Product/Service on its only line is rejected", () => {
+  const v = validateInvoiceEditor({
+    customerId: "c1", invoiceNo: "INV-0001", invoiceDate: "2026-07-06",
+    lines: [line({ serviceCatalogueId: null })], isForeign: false, exchangeRate: "",
+  });
+  assert.equal(v.ok, false);
+  assert.ok(v.errors.lines);
 });
 
 test("foreign invoice requires a positive exchange rate", () => {

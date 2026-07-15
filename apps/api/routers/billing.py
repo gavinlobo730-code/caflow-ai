@@ -30,11 +30,18 @@ class BillingScheduleIn(BaseModel):
     cadence: str                        # monthly | quarterly | annual | one_time
     amount_paise: int                   # integer paise
     gst_rate: float = 18.0              # percentage rate
-    service_id: Optional[str] = None
+    service_id: str                     # -> service_catalogue; mandatory (migration 206)
     next_run_date: Optional[str] = None  # YYYY-MM-DD; defaults to today
     description: Optional[str] = None
     due_date: Optional[str] = None
     is_active: bool = True
+
+    @field_validator("service_id")
+    @classmethod
+    def _service(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Product/Service is required.")
+        return v
 
     @field_validator("arrangement")
     @classmethod

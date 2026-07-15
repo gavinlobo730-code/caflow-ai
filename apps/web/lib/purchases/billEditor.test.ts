@@ -10,16 +10,17 @@ import {
 function line(over: Partial<PurchaseBillLine> = {}): PurchaseBillLine {
   return {
     description: "Test line", hsn_sac: "998221", qty: "1", rate: "1000", gst_rate: 18,
-    unit: "NOS", expense_account_id: "", service_catalogue_id: "",
+    unit: "NOS", expense_account_id: "", service_catalogue_id: "SVC-1",
     ...over,
   };
 }
 
-test("isValidBillLine requires description, positive qty and positive rate", () => {
+test("isValidBillLine requires description, positive qty, positive rate and a Product/Service", () => {
   assert.equal(isValidBillLine(line()), true);
   assert.equal(isValidBillLine(line({ description: "" })), false);
   assert.equal(isValidBillLine(line({ qty: "0" })), false);
   assert.equal(isValidBillLine(line({ rate: "" })), false);
+  assert.equal(isValidBillLine(line({ service_catalogue_id: "" })), false);
 });
 
 test("previewBillTotals: intra-state splits 18% into 9% CGST + 9% SGST, no round-off", () => {

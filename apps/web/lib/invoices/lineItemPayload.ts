@@ -18,11 +18,10 @@ export interface InvoiceLineInput {
   gst_rate: number; // percentage, e.g. 18
   unit?: string; // UQC, e.g. "NOS", "KGS"; blank -> server default "NOS"
   /**
-   * Which service_catalogue preset (if any) this line was picked from — pure
-   * traceability for the Products & Services delete-guard (migration 184),
-   * never read by any GST/journal computation. Only Sales Invoices actually
-   * set this (via ServiceCataloguePicker); Credit Notes share this same
-   * payload shape but have no product picker, so it's always undefined there.
+   * Which service_catalogue preset this line was picked from — mandatory on
+   * every line (migration 206), and also the traceability link for the
+   * Products & Services delete-guard (migration 184). Never read by any GST/
+   * journal computation.
    */
   serviceCatalogueId?: string | null;
 }

@@ -57,10 +57,11 @@ const EMPTY_LINE: InvoiceLine = { description: "", hsn_sac: "", qty: "1", rate: 
 // `product` is likewise presentational only — it just lets the row's
 // Product/Service cell display the current pick; toInvoiceLinePayload
 // explicitly picks fields rather than spreading, so it never reaches the API.
-// `serviceCatalogueId` DOES reach the API (as service_catalogue_id) — kept
-// separate from `product` so the link survives a re-edit even when `product`
-// isn't rehydrated as a full object on load (see initialLines below).
-type EditorLine = InvoiceLine & { _k: number; product?: ServiceCatalogueItem | null; serviceCatalogueId?: string | null };
+// `serviceCatalogueId` (on the shared InvoiceLine type) DOES reach the API
+// (as service_catalogue_id) — kept separate from `product` so the link
+// survives a re-edit even when `product` isn't rehydrated as a full object
+// on load (see initialLines below).
+type EditorLine = InvoiceLine & { _k: number; product?: ServiceCatalogueItem | null };
 
 /** existing.lines / duplicateSeed.lines are the same InvoiceDetail shape —
  * shared so the two seeding paths below can't drift apart. */

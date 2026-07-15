@@ -62,6 +62,8 @@ export interface InvoiceLine {
   gst_rate: number; // 0,5,12,18,28
   /** Unit of measure (UQC), e.g. "NOS", "KGS", "HRS". Blank = server default "NOS". */
   unit: string;
+  /** service_catalogue pick for this line — mandatory on every line (migration 206). */
+  serviceCatalogueId?: string | null;
 }
 
 /** Server line shape (from GET /api/sales-invoices/{id}). */
@@ -295,12 +297,14 @@ export function validateInvoiceNo(invoiceNo: string): string | undefined {
   return undefined;
 }
 
-/** A line is "valid" (postable) when it has a description and positive qty & rate. */
+/** A line is "valid" (postable) when it has a description, positive qty & rate,
+ * and a linked Product/Service (mandatory on every line — migration 206). */
 export function isValidLine(l: InvoiceLine): boolean {
   return (
     l.description.trim().length > 0 &&
     (parseFloat(l.qty) || 0) > 0 &&
-    (parseFloat(l.rate) || 0) > 0
+    (parseFloat(l.rate) || 0) > 0 &&
+    !!l.serviceCatalogueId
   );
 }
 
@@ -313,7 +317,7 @@ export function validateInvoiceEditor(input: EditorValidationInput): EditorValid
 
   const validLineCount = input.lines.filter(isValidLine).length;
   if (validLineCount === 0) {
-    errors.lines = "Add at least one line with a description, quantity and rate.";
+    errors.lines = "Add at least one line with a description, quantity, rate and Product/Service.";
   }
 
   if (input.isForeign && (!input.exchangeRate.trim() || !(parseFloat(input.exchangeRate) > 0))) {

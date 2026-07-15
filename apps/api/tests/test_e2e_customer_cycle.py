@@ -38,6 +38,8 @@ def _setup(monkeypatch):
     monkeypatch.setattr(col, "_dispatch_invoice_reminder", lambda *a, **k: True)  # stub email transport
     db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27ABCDE1234F1Z5"})
     seed_standard_coa(db, FIRM, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
+                                  "name": "Consulting", "kind": "service"})
     return cu, si, rc, cs, col, db
 
 
@@ -54,7 +56,7 @@ def test_customer_cycle_end_to_end(monkeypatch):
     inv = si.create_invoice(SalesInvoiceIn(
         client_id="CLI", customer_id=cust_id, invoice_date="2020-01-10", due_date="2020-01-25",
         invoice_no="CC-E2E-001",
-        lines=[InvoiceLineIn(description="Consulting", hsn_sac="9982", quantity=1,
+        lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="Consulting", hsn_sac="9982", quantity=1,
                              rate_paise=1_000_000, gst_rate_percent=18.0)]), CALLER)["data"]
     inv_id = inv["id"]
     assert si.issue_invoice(inv_id, CALLER)["data"]["status"] == "issued"
@@ -101,7 +103,7 @@ def test_f7_journal_failure_does_not_settle_ar(monkeypatch):
     inv = si.create_invoice(SalesInvoiceIn(
         client_id="CLI", customer_id=cust["id"], invoice_date="2020-01-10", due_date="2020-01-25",
         invoice_no="CC-E2E-002",
-        lines=[InvoiceLineIn(description="x", hsn_sac="9982", quantity=1,
+        lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="x", hsn_sac="9982", quantity=1,
                              rate_paise=1_000_000, gst_rate_percent=18.0)]), CALLER)["data"]
     si.issue_invoice(inv["id"], CALLER)
     inv_id = inv["id"]
@@ -143,7 +145,7 @@ def test_f7_over_allocated_receipt_posts_no_phantom_journal(monkeypatch):
     inv = si.create_invoice(SalesInvoiceIn(
         client_id="CLI", customer_id=cust["id"], invoice_date="2020-01-10", due_date="2020-01-25",
         invoice_no="CC-E2E-003",
-        lines=[InvoiceLineIn(description="x", hsn_sac="9982", quantity=1,
+        lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="x", hsn_sac="9982", quantity=1,
                              rate_paise=1_000_000, gst_rate_percent=18.0)]), CALLER)["data"]
     si.issue_invoice(inv["id"], CALLER)
     inv_id = inv["id"]
@@ -171,7 +173,7 @@ def test_customer_cycle_reminder_only_when_overdue(monkeypatch):
     inv = si.create_invoice(SalesInvoiceIn(
         client_id="CLI", customer_id=cust["id"], invoice_date="2099-01-01", due_date="2099-02-01",
         invoice_no="CC-E2E-004",
-        lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=18.0)]), CALLER)["data"]
+        lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="x", rate_paise=100000, gst_rate_percent=18.0)]), CALLER)["data"]
     si.issue_invoice(inv["id"], CALLER)
     with pytest.raises(HTTPException) as ei:               # not yet due
         col.send_invoice_reminder(FIRM, inv["id"], db=db)
@@ -184,7 +186,7 @@ def test_customer_cycle_cross_firm_isolation(monkeypatch):
     inv = si.create_invoice(SalesInvoiceIn(
         client_id="CLI", customer_id=cust["id"], invoice_date="2020-01-10", due_date="2020-01-25",
         invoice_no="CC-E2E-005",
-        lines=[InvoiceLineIn(description="x", rate_paise=100000, gst_rate_percent=18.0)]), CALLER)["data"]
+        lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="x", rate_paise=100000, gst_rate_percent=18.0)]), CALLER)["data"]
     si.issue_invoice(inv["id"], CALLER)
 
     # Foreign firm cannot issue, remind on, or view a statement for this customer.

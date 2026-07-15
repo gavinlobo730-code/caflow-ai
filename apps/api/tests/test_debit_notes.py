@@ -29,13 +29,15 @@ def _setup(monkeypatch):
                         "state_code": "27", "gstin": "27CCCCC2222C1Z5", "tds_applicable": False,
                         "opening_balance_paise": 0})
     seed_standard_coa(db, FIRM, "CLI")
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
+                                  "name": "Materials", "kind": "good"})
     return db
 
 
 def _received_bill(db, no="BILL-1", rate=1_00000):
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no=no,
-        lines=[PurchaseBillLineIn(description="mat", rate_paise=rate, quantity=1, gst_rate_percent=18.0)],
+        lines=[PurchaseBillLineIn(description="mat", rate_paise=rate, quantity=1, gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
     ), CALLER)
     assert res["success"] is True
     bill_id = res["data"]["id"]
@@ -47,7 +49,7 @@ def _create_dn(db, bill_id, rate, no="DN-1"):
     res = dn.create_debit_note(dn.DebitNoteIn(
         client_id="CLI", vendor_id="VEND1", debit_note_date="2025-06-05",
         purchase_bill_id=bill_id,
-        lines=[InvoiceLineIn(description="return", quantity=1, rate_paise=rate, gst_rate_percent=18.0)],
+        lines=[InvoiceLineIn(description="return", quantity=1, rate_paise=rate, gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
     ), CALLER)
     assert res["success"] is True
     return res["data"]["id"], res["data"]["total_paise"]

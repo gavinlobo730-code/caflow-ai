@@ -235,6 +235,7 @@ export default function SalesPage() {
 // auto-issued, never auto-emailed. All money/GST math is server-side.
 
 interface RecurringLine {
+  service_catalogue_id?: string | null;
   description: string; hsn_sac: string | null; quantity: number;
   rate_paise: number; gst_rate_bps: number; is_service: boolean; sort_order?: number;
 }
@@ -249,7 +250,10 @@ interface RecurringRun {
   id: string; occurrence_date: string; status: string; created_at: string;
   invoice: { id: string; invoice_no: string | null; status: string | null; total_paise: number | null } | null;
 }
-type RecEditorLine = { description: string; hsn_sac: string; quantity: string; rate: string; gst: number; is_service: boolean };
+type RecEditorLine = {
+  description: string; hsn_sac: string; quantity: string; rate: string; gst: number; is_service: boolean;
+  service_catalogue_id?: string; product?: ServiceCatalogueItem | null;
+};
 
 const FREQ_LABEL: Record<string, string> = {
   weekly: "Weekly", monthly: "Monthly", quarterly: "Quarterly", half_yearly: "Half-Yearly", yearly: "Yearly",
@@ -541,6 +545,7 @@ function RecurringEditor({
       ? existing.lines.map((l) => ({
           description: l.description, hsn_sac: l.hsn_sac ?? "", quantity: String(l.quantity ?? 1),
           rate: String((l.rate_paise ?? 0) / 100), gst: (l.gst_rate_bps ?? 1800) / 100, is_service: l.is_service,
+          service_catalogue_id: l.service_catalogue_id ?? undefined,
         }))
       : [{ description: "", hsn_sac: "", quantity: "1", rate: "", gst: 18, is_service: true }]
   );
@@ -551,6 +556,15 @@ function RecurringEditor({
     setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   const addLine = () => setLines((ls) => [...ls, { description: "", hsn_sac: "", quantity: "1", rate: "", gst: 18, is_service: true }]);
   const removeLine = (i: number) => setLines((ls) => (ls.length > 1 ? ls.filter((_, idx) => idx !== i) : ls));
+  // A Product/Service pick pre-fills description/HSN/rate/GST — the CA can
+  // still edit description afterwards, same as every other line editor.
+  function onPickProduct(i: number, item: ServiceCatalogueItem) {
+    const mapped = serviceToLine(item);
+    setLine(i, {
+      description: mapped.description, hsn_sac: mapped.hsn_sac ?? "", gst: mapped.gst_rate,
+      rate: mapped.rate, service_catalogue_id: item.id, product: item,
+    });
+  }
 
   const baseTotal = lines.reduce((s, l) => s + Math.round((parseFloat(l.rate) || 0) * (parseFloat(l.quantity) || 0) * 100), 0);
 
@@ -558,7 +572,11 @@ function RecurringEditor({
     e.preventDefault();
     if (!customerId) { setError("Select a customer"); return; }
     if (!title.trim()) { setError("Title is required"); return; }
+    if (lines.some((l) => l.description.trim() && !l.service_catalogue_id)) {
+      setError("Select a Product/Service for every line item"); return;
+    }
     const payloadLines = lines.filter((l) => l.description.trim()).map((l) => ({
+      service_catalogue_id: l.service_catalogue_id,
       description: l.description.trim(), hsn_sac: l.hsn_sac.trim() || null,
       quantity: parseFloat(l.quantity) || 1, rate_paise: Math.round((parseFloat(l.rate) || 0) * 100),
       gst_rate_percent: l.gst, is_service: l.is_service,
@@ -651,20 +669,30 @@ function RecurringEditor({
             </div>
             <div className="space-y-2">
               {lines.map((l, i) => (
-                <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                  <input value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} placeholder="Description"
-                    className="col-span-4 px-2 py-1.5 border border-[#E2E8F0] rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                  <input value={l.hsn_sac} onChange={(e) => setLine(i, { hsn_sac: e.target.value })} placeholder="HSN/SAC"
-                    className="col-span-2 px-2 py-1.5 border border-[#E2E8F0] rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                  <input value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} placeholder="Qty" inputMode="decimal"
-                    className="col-span-1 px-2 py-1.5 border border-[#E2E8F0] rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                  <input value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })} placeholder="Rate ₹" inputMode="decimal"
-                    className="col-span-2 px-2 py-1.5 border border-[#E2E8F0] rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                  <select value={l.gst} onChange={(e) => setLine(i, { gst: parseFloat(e.target.value) })}
-                    className="col-span-2 px-1 py-1.5 border border-[#E2E8F0] rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
-                    {[0, 5, 12, 18, 28].map((g) => <option key={g} value={g}>{g}%</option>)}
-                  </select>
-                  <button type="button" onClick={() => removeLine(i)} className="col-span-1 text-[#CBD5E1] hover:text-red-600 flex justify-center"><Trash2 size={13} /></button>
+                <div key={i} className="border border-[#F1F5F9] rounded-lg p-2 space-y-1.5">
+                  <ServiceCataloguePicker
+                    clientId={clientId}
+                    value={l.product}
+                    onPick={(item) => onPickProduct(i, item)}
+                    size="sm"
+                    ariaLabel={`Line ${i + 1} product or service`}
+                    placeholder="Product/Service…"
+                  />
+                  <div className="grid grid-cols-12 gap-2 items-center">
+                    <input value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} placeholder="Description"
+                      className="col-span-4 px-2 py-1.5 border border-[#E2E8F0] rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                    <input value={l.hsn_sac} onChange={(e) => setLine(i, { hsn_sac: e.target.value })} placeholder="HSN/SAC"
+                      className="col-span-2 px-2 py-1.5 border border-[#E2E8F0] rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                    <input value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} placeholder="Qty" inputMode="decimal"
+                      className="col-span-1 px-2 py-1.5 border border-[#E2E8F0] rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                    <input value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })} placeholder="Rate ₹" inputMode="decimal"
+                      className="col-span-2 px-2 py-1.5 border border-[#E2E8F0] rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                    <select value={l.gst} onChange={(e) => setLine(i, { gst: parseFloat(e.target.value) })}
+                      className="col-span-2 px-1 py-1.5 border border-[#E2E8F0] rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                      {[0, 5, 12, 18, 28].map((g) => <option key={g} value={g}>{g}%</option>)}
+                    </select>
+                    <button type="button" onClick={() => removeLine(i)} className="col-span-1 text-[#CBD5E1] hover:text-red-600 flex justify-center"><Trash2 size={13} /></button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -3469,6 +3497,7 @@ function CreditNoteForm({
     if (!reason.trim()) { setError("Reason is required"); return; }
     const validLines = lines.filter((l) => l.description.trim() && parseFloat(l.rate) > 0);
     if (validLines.length === 0) { setError("Add at least one line with description and rate"); return; }
+    if (validLines.some((l) => !l.service_catalogue_id)) { setError("Select a Product/Service for every line item"); return; }
 
     setSaving(true); setError(null);
     try {
