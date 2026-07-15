@@ -134,7 +134,7 @@ def list_purchase_bills(
         return api_response(True, resp.data or [])
     except Exception as e:
         _logger.error("list_purchase_bills: %s", e)
-        return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
+        return api_response(False, None, f"Unable to complete purchase bill operation: {e}")
 
 
 @router.post("/")
@@ -684,7 +684,7 @@ def get_purchase_bill(
         raise
     except Exception as e:
         _logger.error("get_purchase_bill: %s", e)
-        return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
+        return api_response(False, None, f"Unable to complete purchase bill operation: {e}")
 
 
 @router.get("/{bill_id}/document-url")
@@ -723,7 +723,7 @@ def get_purchase_bill_document_url(
         raise
     except Exception as e:
         _logger.error("get_purchase_bill_document_url: %s", e)
-        return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
+        return api_response(False, None, f"Unable to complete purchase bill operation: {e}")
 
 
 # Human-readable phrasing for statuses that block deletion.
@@ -797,7 +797,7 @@ def delete_purchase_bill(
         raise
     except Exception as e:
         _logger.error("delete_purchase_bill: %s", e)
-        return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
+        return api_response(False, None, f"Unable to complete purchase bill operation: {e}")
 
 
 # Once a bill is received, only these fields may still change — mirrors the
@@ -1013,7 +1013,7 @@ def update_purchase_bill(
         raise
     except Exception as e:
         _logger.error("update_purchase_bill: %s", e)
-        return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
+        return api_response(False, None, f"Unable to complete purchase bill operation: {e}")
 
 
 @router.post("/{bill_id}/receive")
@@ -1122,7 +1122,7 @@ def receive_purchase_bill(
         raise
     except Exception as e:
         _logger.error("receive_purchase_bill: %s", e)
-        return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
+        return api_response(False, None, f"Unable to complete purchase bill operation: {e}")
 
 
 @router.post("/{bill_id}/cancel")
@@ -1224,7 +1224,7 @@ def cancel_purchase_bill(
         raise
     except Exception as e:
         _logger.error("cancel_purchase_bill: %s", e)
-        return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
+        return api_response(False, None, f"Unable to complete purchase bill operation: {e}")
 
 
 @router.post("/from-document")
@@ -1370,4 +1370,4 @@ def create_bill_from_document(
         raise
     except Exception as e:
         _logger.error("create_bill_from_document: %s", e)
-        return api_response(False, None, "Unable to complete purchase bill operation. Please try again.")
+        return api_response(False, None, f"Unable to complete purchase bill operation: {e}")
