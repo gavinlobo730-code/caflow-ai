@@ -267,6 +267,7 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   const [loading, setLoading] = useState(true);
   const [showImport, setShowImport] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [receivingId, setReceivingId] = useState<string | null>(null);
   const router = useRouter();
 
   // One-shot success feedback after creating a bill on the dedicated create
@@ -331,6 +332,8 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
   useEffect(() => { load(); }, [load]);
 
   async function handleReceive(billId: string) {
+    if (receivingId) return; // already receiving one — avoid a double-submit race
+    setReceivingId(billId);
     try {
       const token = await getAuthToken();
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
@@ -340,6 +343,8 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
       load();
     } catch (err) {
       setMsg({ type: "err", text: err instanceof Error ? err.message : "Failed to receive purchase bill" });
+    } finally {
+      setReceivingId(null);
     }
   }
 
@@ -644,8 +649,9 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
         rowActions={(b) => (
           <div className="flex items-center justify-end gap-2">
             {b.status === "draft" && (
-              <button onClick={() => handleReceive(b.id)} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-                <CheckCircle size={11} /> Receive
+              <button onClick={() => handleReceive(b.id)} disabled={receivingId === b.id}
+                className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline">
+                <CheckCircle size={11} /> {receivingId === b.id ? "Receiving…" : "Receive"}
               </button>
             )}
             <button
