@@ -61,7 +61,10 @@ const EMPTY_LINE: InvoiceLine = { description: "", hsn_sac: "", qty: "1", rate: 
 // (as service_catalogue_id) — kept separate from `product` so the link
 // survives a re-edit even when `product` isn't rehydrated as a full object
 // on load (see initialLines below).
-type EditorLine = InvoiceLine & { _k: number; product?: ServiceCatalogueItem | null };
+// `id` is the server line id, round-tripped so a locked (issued) edit can
+// build the line_units map keyed by it (the only per-line change allowed once
+// issued). Absent on a brand-new line; never sent by toInvoiceLinePayload.
+type EditorLine = InvoiceLine & { _k: number; id?: string; product?: ServiceCatalogueItem | null };
 
 /** existing.lines / duplicateSeed.lines are the same InvoiceDetail shape —
  * shared so the two seeding paths below can't drift apart. */
@@ -78,6 +81,7 @@ function detailLinesToEditorLines(lines: InvoiceDetail["lines"]): EditorLine[] {
     // silently drop the delete-guard link — update_invoice deletes and
     // reinserts every line from whatever gets sent back.
     serviceCatalogueId: l.service_catalogue_id ?? null,
+    id: l.id,
     _k: i,
   }));
 }
@@ -108,6 +112,16 @@ export function InvoiceEditor({
 }) {
   const today = new Date().toISOString().split("T")[0];
   const isEdit = !!existing;
+  // Once an invoice is issued, the backend only accepts reference_no/notes/
+  // due_date/credit_days (+ per-line units) on PATCH (routers/sales_invoices.py
+  // _SOFT_UPDATE_FIELDS) — customer, number, date, supply state and all line
+  // amounts are frozen; a correction to those needs a Credit Note (CGST Act
+  // §34). isLocked mirrors that here so the full-page editor opens for an
+  // issued invoice (parity with the Purchase Bill editor) but shows the frozen
+  // fields disabled with an inline reason, rather than letting the CA fill in a
+  // full edit only to have it rejected on save. Cancelled invoices never reach
+  // this component — the edit route redirects them away.
+  const isLocked = isEdit && existing?.status !== "draft";
 
   const initialLines: EditorLine[] =
     existing && existing.lines.length > 0 ? detailLinesToEditorLines(existing.lines)
@@ -330,7 +344,12 @@ export function InvoiceEditor({
   // ── Save flow: create/PATCH → (issue) → (send), reusing existing endpoints ─────
   async function save(action: SaveAction) {
     setAttempted(true);
-    if (!validation.ok) {
+    // Locked (issued) edit only touches soft fields — the frozen fields are the
+    // already-saved invoice and needn't (and might not) satisfy current
+    // create-time validation, e.g. a line saved before service_catalogue_id
+    // became mandatory (migration 206). Skip the create-time gate and PATCH the
+    // soft fields directly.
+    if (!isLocked && !validation.ok) {
       setError(validation.errors.customer ?? validation.errors.invoiceNo ?? validation.errors.invoiceDate ?? validation.errors.lines ?? validation.errors.exchangeRate ?? "Fix the highlighted fields.");
       return;
     }
@@ -349,6 +368,28 @@ export function InvoiceEditor({
       const trimmedInvoiceNo = invoiceNo.trim();
 
       if (isEdit && existing) {
+        if (isLocked) {
+          // Issued invoice: only soft fields change (reference/notes/due date/
+          // terms + per-line units); everything else is frozen and needs a
+          // Credit Note (CGST Act §34). Send ONLY those keys — the backend
+          // rejects a non-draft PATCH that carries any locked field, even
+          // unchanged (the guard is "was the key present", not "did it change"),
+          // so mirroring isLocked here keeps a soft-field edit from failing on
+          // fields the CA never touched.
+          const lineUnits = Object.fromEntries(
+            lines.filter((l) => l.id).map((l) => [l.id as string, l.unit || "NOS"]),
+          );
+          const upd = await apiCall(`/api/sales-invoices/${existing.id}`, "PATCH", {
+            reference_no: referenceNo.trim() || undefined,
+            notes: notes.trim() || undefined,
+            due_date: dueDate || undefined,
+            credit_days: creditDays !== "" ? parseInt(creditDays, 10) : undefined,
+            line_units: Object.keys(lineUnits).length ? lineUnits : undefined,
+          }, token);
+          if (!upd.success) throw new Error(upd.error ?? "Failed to update invoice");
+          onDone(`${trimmedInvoiceNo || "Invoice"} updated`);
+          return;
+        }
         const upd = await apiCall(`/api/sales-invoices/${existing.id}`, "PATCH", {
           customer_id: customerId,
           invoice_no: trimmedInvoiceNo,
@@ -417,10 +458,33 @@ export function InvoiceEditor({
   }
 
   const busy = saving !== null;
-  const fieldErr = (msg?: string) => (attempted && msg ? <p className="mt-1 text-[10px] text-red-600">{msg}</p> : null);
+  // In locked mode the frozen fields aren't validated (see save()) — never
+  // surface a create-time field error on a field the CA can't change here.
+  const fieldErr = (msg?: string) => (!isLocked && attempted && msg ? <p className="mt-1 text-[10px] text-red-600">{msg}</p> : null);
 
   // ── Toolbar (workspace shell slot) ────────────────────────────────────────────
-  const toolbar = (
+  // Locked (issued) edit: the only outcome is saving the soft-field changes —
+  // Save Draft / Save & Issue / Save & Send don't apply to an already-issued
+  // invoice, so this collapses to a single "Save Changes" (mirrors the Purchase
+  // Bill editor's locked toolbar).
+  const toolbar = isLocked ? (
+    <>
+      <button
+        onClick={handleCancel}
+        disabled={busy}
+        className="mr-auto text-xs px-3 py-1.5 text-[#64748B] hover:text-[#334155] disabled:opacity-50"
+      >
+        Cancel
+      </button>
+      <button
+        onClick={() => save("draft")}
+        disabled={busy}
+        className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5"
+      >
+        {saving === "draft" && <Loader2 size={12} className="animate-spin" />} Save Changes
+      </button>
+    </>
+  ) : (
     <>
       <button
         onClick={handleCancel}
@@ -484,7 +548,7 @@ export function InvoiceEditor({
       <p className="text-[10px] text-[#94A3B8] pt-1">
         Preview — GST, round-off and the exact total are confirmed by the server on save.
       </p>
-      {attempted && !validation.ok && (
+      {!isLocked && attempted && !validation.ok && (
         <div className="flex items-start gap-1.5 text-[10px] text-red-600 bg-red-50 rounded px-2 py-1.5">
           <AlertCircle size={12} className="mt-px flex-shrink-0" />
           <span>{validation.errors.customer ?? validation.errors.invoiceNo ?? validation.errors.invoiceDate ?? validation.errors.lines ?? validation.errors.exchangeRate}</span>
@@ -497,7 +561,11 @@ export function InvoiceEditor({
     <InvoiceWorkspaceLayout
       breadcrumbs={invoiceBreadcrumbs(clientId, clientName, isEdit ? `Edit ${existing?.invoice_no ?? ""}` : "New Invoice")}
       title={isEdit ? `Edit ${existing?.invoice_no ?? "Invoice"}` : "New Sales Invoice"}
-      statusPill={<span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE.draft}`}>Draft</span>}
+      statusPill={
+        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[existing?.status ?? "draft"] ?? STATUS_BADGE.draft}`}>
+          {(existing?.status ?? "draft").replace("_", " ")}
+        </span>
+      }
       dirtyHint={dirty ? <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Unsaved changes</span> : undefined}
       toolbar={toolbar}
       summary={summary}
@@ -508,25 +576,28 @@ export function InvoiceEditor({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-[#475569] mb-1">Customer *</label>
-              <CustomerLookup customers={customers} value={customerId} onChange={onCustomerChange} ariaLabel="Customer" />
+              <CustomerLookup customers={customers} value={customerId} onChange={onCustomerChange} ariaLabel="Customer" disabled={isLocked} />
+              {isLocked && <p className="mt-1 text-[10px] text-[#94A3B8]">Customer can&apos;t be changed once issued — issue a Credit Note to correct (CGST Act §34).</p>}
               {fieldErr(validation.errors.customer)}
             </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Invoice Number *</label>
               <input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)}
-                disabled={isEdit && existing?.status !== "draft"}
+                disabled={isLocked}
                 placeholder="e.g. INV-0001" aria-label="Invoice number" maxLength={16}
                 className="w-full px-3 py-1.5 text-xs font-mono border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
               {fieldErr(validation.errors.invoiceNo)}
-              {isEdit && existing?.status !== "draft" && (
+              {isLocked && (
                 <p className="mt-1 text-[10px] text-[#94A3B8]">Frozen once issued.</p>
               )}
             </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Invoice Date *</label>
               <input type="date" value={invoiceDate} onChange={(e) => onInvoiceDateChange(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                disabled={isLocked}
+                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
               {fieldErr(validation.errors.invoiceDate)}
+              {isLocked && <p className="mt-1 text-[10px] text-[#94A3B8]">Frozen once issued — issue a Credit Note to correct (CGST Act §34).</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Payment Terms</label>
@@ -551,7 +622,8 @@ export function InvoiceEditor({
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Supply State</label>
               <StateLookup states={INDIAN_STATES} value={supplyStateCode ?? ""} onChange={onSupplyStateChange}
-                placeholder="— Select —" ariaLabel="Supply state" />
+                placeholder="— Select —" ariaLabel="Supply state" disabled={isLocked} />
+              {isLocked && <p className="mt-1 text-[10px] text-[#94A3B8]">Frozen once issued (CGST Act §34).</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Reference</label>
@@ -559,12 +631,14 @@ export function InvoiceEditor({
                 className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div className="flex flex-col justify-end pb-1.5">
-              <label className="flex items-center gap-2 text-xs text-[#475569] cursor-pointer">
-                <input type="checkbox" checked={isInterstate} onChange={(e) => setIsInterstate(e.target.checked)} className="rounded" />
+              <label className={`flex items-center gap-2 text-xs text-[#475569] ${isLocked ? "opacity-50" : "cursor-pointer"}`}>
+                <input type="checkbox" checked={isInterstate} disabled={isLocked} onChange={(e) => setIsInterstate(e.target.checked)} className="rounded" />
                 Interstate (IGST)
               </label>
               <p className="mt-1 text-[10px] text-[#94A3B8]">
-                {gstAuto
+                {isLocked
+                  ? "Frozen once issued (CGST Act §34)."
+                  : gstAuto
                   ? `Auto: ${stateNameForCode(clientStateCode)} → ${stateNameForCode(supplyStateCode)} = ${isInterstate ? "IGST" : "CGST + SGST"}`
                   : "Set automatically from the supply state."}
               </p>
@@ -613,6 +687,11 @@ export function InvoiceEditor({
             Description box. */}
         <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
           <h2 className="text-xs font-semibold text-[#334155] mb-2">Line items</h2>
+          {isLocked && (
+            <p className="mb-2 text-[10px] text-[#94A3B8]">
+              Frozen once issued — issue a Credit Note to correct a quantity, rate, or item (CGST Act §34). Units stay editable.
+            </p>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[820px]">
               <thead>
@@ -632,7 +711,7 @@ export function InvoiceEditor({
                 {lines.map((line, idx) => {
                   const lineTaxable = Math.round((parseFloat(line.qty) || 0) * (parseFloat(line.rate) || 0) * 100);
                   const lineTotal = lineTaxable + Math.round((lineTaxable * line.gst_rate) / 100);
-                  const invalid = attempted && !isValidLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
+                  const invalid = !isLocked && attempted && !isValidLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
                   return (
                     <tr key={line._k} className={invalid ? "bg-red-50/40" : undefined}>
                       <td className="py-1.5 pr-2">
@@ -642,6 +721,7 @@ export function InvoiceEditor({
                           value={line.product}
                           onPick={(item) => onPickProduct(idx, item)}
                           size="sm"
+                          disabled={isLocked}
                           ariaLabel={`Line ${idx + 1} product or service`}
                         />
                       </td>
@@ -654,8 +734,9 @@ export function InvoiceEditor({
                         <input ref={(el) => { descRefs.current[idx] = el; }}
                           value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })}
                           onKeyDown={(e) => onLineKeyDown(e, idx)}
+                          disabled={isLocked}
                           placeholder="Description" aria-label={`Line ${idx + 1} description`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
+                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
                       </td>
                       <td className="py-1.5 pr-2">
                         {/* Auto-filled from the Product/Service pick; renders
@@ -671,12 +752,12 @@ export function InvoiceEditor({
                             if (p.uqc) patch.unit = p.uqc;
                             setLine(idx, patch);
                           }}
-                          size="sm" chrome="plain" placeholder="Set HSN/SAC" ariaLabel="HSN or SAC code" />
+                          size="sm" chrome="plain" placeholder="Set HSN/SAC" ariaLabel="HSN or SAC code" disabled={isLocked} />
                       </td>
                       <td className="py-1.5 pr-2">
                         <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })}
-                          onKeyDown={(e) => onLineKeyDown(e, idx)} aria-label={`Line ${idx + 1} quantity`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                          onKeyDown={(e) => onLineKeyDown(e, idx)} disabled={isLocked} aria-label={`Line ${idx + 1} quantity`}
+                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
                       </td>
                       <td className="py-1.5 pr-2">
                         {/* Unit (UQC) only for goods — CGST Rule 46(h) requires
@@ -701,8 +782,8 @@ export function InvoiceEditor({
                       </td>
                       <td className="py-1.5 pr-2">
                         <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })}
-                          onKeyDown={(e) => onLineKeyDown(e, idx)} placeholder="0.00" aria-label={`Line ${idx + 1} rate`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                          onKeyDown={(e) => onLineKeyDown(e, idx)} disabled={isLocked} placeholder="0.00" aria-label={`Line ${idx + 1} rate`}
+                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
                       </td>
                       <td className="py-1.5 pr-2">
                         {/* Last editable column: spreadsheet-style Tab here
@@ -711,14 +792,15 @@ export function InvoiceEditor({
                             one (see onGstKeyDown). */}
                         <select value={line.gst_rate} onChange={(e) => setLine(idx, { gst_rate: parseInt(e.target.value) })}
                           onKeyDown={(e) => onGstKeyDown(e, idx)}
+                          disabled={isLocked}
                           aria-label={`Line ${idx + 1} GST rate`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs">
+                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]">
                           {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
                         </select>
                       </td>
                       <td className="py-1.5 px-2 text-right font-mono text-[#334155]">{lineTotal > 0 ? fmtAmt(lineTotal) : "—"}</td>
                       <td className="py-1.5">
-                        {lines.length > 1 && (
+                        {lines.length > 1 && !isLocked && (
                           <button onClick={() => removeLine(idx)} className="text-[#CBD5E1] hover:text-red-600" aria-label="Remove line">
                             <Trash2 size={13} />
                           </button>
@@ -730,13 +812,15 @@ export function InvoiceEditor({
               </tbody>
             </table>
           </div>
-          <button
-            type="button"
-            onClick={addLine}
-            className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
-          >
-            <Plus size={13} /> Add line
-          </button>
+          {!isLocked && (
+            <button
+              type="button"
+              onClick={addLine}
+              className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+            >
+              <Plus size={13} /> Add line
+            </button>
+          )}
           {fieldErr(validation.errors.lines)}
         </section>
 
@@ -746,9 +830,15 @@ export function InvoiceEditor({
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
             placeholder="Optional notes shown on the invoice (terms, PO reference…)"
             className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          {isEdit && (
+          {isEdit && !isLocked && (
             <p className="mt-2 text-[10px] text-[#94A3B8]">
-              Editing a draft. GST is recomputed by the backend on save; only drafts are editable.
+              Editing a draft. GST is recomputed by the backend on save.
+            </p>
+          )}
+          {isLocked && (
+            <p className="mt-2 text-[10px] text-[#94A3B8]">
+              This invoice is issued — only reference, notes, payment terms, due date and line units can still change.
+              To correct the amount, dates, customer or line items, issue a Credit Note instead (CGST Act §34).
             </p>
           )}
         </section>
