@@ -1,19 +1,30 @@
 "use client";
 
 /**
- * Security settings — Multi-Factor Authentication (TOTP) enrollment.
+ * Security settings — password change + Multi-Factor Authentication (TOTP).
  *
- * Lets any signed-in user enrol an authenticator app (Google Authenticator,
- * Authy, 1Password, …) as a TOTP second factor, scan a QR code, and verify a
- * 6-digit code. Required before REQUIRE_MFA is enabled for MFA-required roles
- * (default: Partner) — otherwise those users would be locked out.
+ * Change Password requires the CURRENT password before accepting a new one
+ * (via a throwaway signInWithPassword check) — a live session alone isn't
+ * proof of identity here; without this, anyone who gets to an unlocked,
+ * already-signed-in browser could silently lock the real owner out by just
+ * setting a new password. This is on top of, not instead of, Supabase's own
+ * session auth — a stolen/left-open SESSION and knowledge of the CURRENT
+ * PASSWORD are different things, and this form demands both.
  *
- * Uses Supabase Auth MFA: enroll → challenge → verify. The verified factor lets
- * the user elevate to aal2 at login (see app/login).
+ * MFA section: lets any signed-in user enrol an authenticator app (Google
+ * Authenticator, Authy, 1Password, …) as a TOTP second factor, scan a QR
+ * code, and verify a 6-digit code. Required before REQUIRE_MFA is enabled
+ * for MFA-required roles (default: Partner) — otherwise those users would be
+ * locked out. Uses Supabase Auth MFA: enroll → challenge → verify. The
+ * verified factor lets the user elevate to aal2 at login (see app/login).
  */
 import { useState, useEffect, useCallback } from "react";
-import { ShieldCheck, Smartphone, Trash2, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { ShieldCheck, Smartphone, Trash2, CheckCircle2, Loader2, AlertCircle, KeyRound, Eye, EyeOff } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth/AuthContext";
+import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
+
+const MIN_PASSWORD_LENGTH = 10;
 
 interface Factor {
   id: string;
@@ -29,6 +40,182 @@ interface Enrolling {
 }
 
 export default function SecuritySettingsPage() {
+  return (
+    <div className="p-6 max-w-2xl mx-auto space-y-5">
+      <div>
+        <h1 className="text-xl font-semibold text-[#0F172A]">Security</h1>
+        <p className="text-sm text-[#64748B] mt-0.5">Manage your password and two-factor authentication</p>
+      </div>
+      <ChangePasswordCard />
+      <MfaCard />
+    </div>
+  );
+}
+
+/** ── Change Password ─────────────────────────────────────────────────────── */
+function ChangePasswordCard() {
+  const supabase = getSupabaseClient();
+  const { user } = useAuth();
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  // Reauthentication-nonce fallback — same "Secure password change" gap
+  // onboarding's password step and /auth/reset-password already handle.
+  const [needsReauth, setNeedsReauth] = useState(false);
+  const [reauthOtp, setReauthOtp] = useState("");
+
+  function reset() {
+    setCurrent(""); setNext(""); setConfirm("");
+    setNeedsReauth(false); setReauthOtp("");
+  }
+
+  async function submit() {
+    setError(null); setNotice(null);
+    if (!current) { setError("Enter your current password."); return; }
+    if (next.length < MIN_PASSWORD_LENGTH) { setError(`New password must be at least ${MIN_PASSWORD_LENGTH} characters.`); return; }
+    if (next !== confirm) { setError("New passwords do not match."); return; }
+    if (!user?.email) { setError("Could not determine your account email. Please refresh and try again."); return; }
+    setBusy(true);
+    try {
+      // Prove identity with the CURRENT password before changing it — a live
+      // session is not sufficient on its own (see the card's doc comment).
+      // signInWithPassword re-validates credentials without disturbing the
+      // caller's existing session state beyond a token refresh.
+      const { error: verifyErr } = await supabase.auth.signInWithPassword({ email: user.email, password: current });
+      if (verifyErr) { setError("Current password is incorrect."); return; }
+
+      const { error: upErr } = await supabase.auth.updateUser({ password: next });
+      if (upErr) {
+        if (upErr.message.toLowerCase().includes("reauthentication")) {
+          const { error: raErr } = await supabase.auth.reauthenticate();
+          if (raErr) { setError("Could not send a verification code. Please try again."); return; }
+          setNeedsReauth(true);
+          return;
+        }
+        setError(upErr.message);
+        return;
+      }
+      setNotice("Your password has been updated.");
+      reset();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update your password. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verifyReauth() {
+    setError(null);
+    setBusy(true);
+    try {
+      const { error: upErr } = await setPasswordWithReauthNonce(supabase.auth, next, reauthOtp);
+      if (upErr) {
+        setError(isInvalidNonceError(upErr) ? "That code is incorrect or has expired. Try changing your password again." : upErr.message);
+        return;
+      }
+      setNotice("Your password has been updated.");
+      reset();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Verification failed. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+        <KeyRound size={15} className="text-blue-600" />
+        <h2 className="text-sm font-semibold text-[#0F172A]">Change Password</h2>
+      </div>
+
+      <div className="px-5 py-4 space-y-4">
+        {error && (
+          <p className="text-xs text-red-600 flex items-start gap-1.5"><AlertCircle size={13} className="mt-0.5 shrink-0" /> {error}</p>
+        )}
+        {notice && (
+          <p className="text-xs text-green-700 flex items-start gap-1.5"><CheckCircle2 size={13} className="mt-0.5 shrink-0" /> {notice}</p>
+        )}
+
+        {needsReauth ? (
+          <div className="space-y-3">
+            <p className="text-sm text-[#334155]">
+              For your security, we sent a verification code to your email. Enter it below to finish changing your password.
+            </p>
+            <div className="flex gap-2">
+              <input
+                value={reauthOtp}
+                onChange={(e) => setReauthOtp(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                inputMode="numeric" maxLength={8} placeholder="123456"
+                className="w-36 text-center tracking-widest font-mono text-base border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={verifyReauth}
+                disabled={busy || reauthOtp.length < 6}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {busy ? "Verifying…" : "Verify & update"}
+              </button>
+              <button
+                onClick={() => { setNeedsReauth(false); setReauthOtp(""); }}
+                className="px-4 py-2 text-sm text-[#64748B] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="block text-xs font-medium text-[#475569]">Current password</label>
+              <input
+                type={showPw ? "text" : "password"} value={current} onChange={(e) => setCurrent(e.target.value)}
+                autoComplete="current-password"
+                className="w-full max-w-sm px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-medium text-[#475569]">New password</label>
+              <div className="relative max-w-sm">
+                <input
+                  type={showPw ? "text" : "password"} value={next} onChange={(e) => setNext(e.target.value)}
+                  autoComplete="new-password" placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+                  className="w-full px-3 py-2 pr-10 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide passwords" : "Show passwords"}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#475569]">
+                  {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-medium text-[#475569]">Confirm new password</label>
+              <input
+                type={showPw ? "text" : "password"} value={confirm} onChange={(e) => setConfirm(e.target.value)}
+                autoComplete="new-password"
+                className="w-full max-w-sm px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <button
+              onClick={submit}
+              disabled={busy || !current || !next || !confirm}
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              {busy ? "Updating…" : "Update password"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** ── Two-Factor Authentication (TOTP) ────────────────────────────────────── */
+function MfaCard() {
   const supabase = getSupabaseClient();
   const [factors, setFactors] = useState<Factor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,22 +305,16 @@ export default function SecuritySettingsPage() {
   }
 
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-5">
-      <div>
-        <h1 className="text-xl font-semibold text-[#0F172A]">Security</h1>
-        <p className="text-sm text-[#64748B] mt-0.5">Protect your account with two-factor authentication</p>
+    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+        <ShieldCheck size={15} className="text-blue-600" />
+        <h2 className="text-sm font-semibold text-[#0F172A]">Two-Factor Authentication (TOTP)</h2>
+        {mfaEnabled && (
+          <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+            <CheckCircle2 size={11} /> Enabled
+          </span>
+        )}
       </div>
-
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-          <ShieldCheck size={15} className="text-blue-600" />
-          <h2 className="text-sm font-semibold text-[#0F172A]">Two-Factor Authentication (TOTP)</h2>
-          {mfaEnabled && (
-            <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
-              <CheckCircle2 size={11} /> Enabled
-            </span>
-          )}
-        </div>
 
         <div className="px-5 py-4 space-y-4">
           {error && (
@@ -231,6 +412,5 @@ export default function SecuritySettingsPage() {
           )}
         </div>
       </div>
-    </div>
   );
 }
