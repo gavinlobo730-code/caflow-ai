@@ -414,38 +414,59 @@ def post_cogs_journal_entry(
 
 def post_inventory_receipt_journal_entry(
     db, *, firm_id: str, client_id: str, movement_date: str, item_name: str,
-    value_paise: int, expense_account_id: Optional[str], reference_no: str,
+    reference_no: str, items: list[dict],
     source_type: Optional[str] = None, source_id: Optional[str] = None, created_by: Optional[str] = None,
 ) -> Optional[str]:
-    """Dr Inventory / Cr [the account this purchase-bill line's own journal
-    entry debited] — a reclassification that moves a restocked line's value
-    OUT of the expense account it landed on by default and INTO Inventory,
-    so a purchased good is capitalised rather than expensed until it sells.
-    Resolves the credit side with the SAME fallback order
+    """Dr Inventory (one combined total) / Cr [each line's own resolved
+    expense account, grouped] — a reclassification that moves EVERY
+    stock-tracked line on this document OUT of the expense account(s) it
+    landed on by default and INTO Inventory, posted as ONE journal entry for
+    the whole document (not one per line — a per-line journal would share
+    this document's reference_no across all its calls, and
+    _create_journal's idempotency guard, keyed on
+    firm+client+reference_no+entry_date, would mistake lines 2+ for
+    duplicate postings of line 1 and silently drop their value from the
+    General Ledger while the stock ledger still recorded them correctly).
+    Resolves each line's credit side with the SAME fallback order
     journal_for_purchase_bill itself uses (explicit expense_account_id →
-    "%Purchase%" → "%Expense%"), so this always nets against whatever
-    account actually received the debit."""
-    if value_paise <= 0:
+    "%Purchase%" → "%Expense%"), grouped by resolved account exactly like
+    journal_for_purchase_bill's own by_account grouping, so this always nets
+    against whatever account(s) actually received the debit.
+
+    items: [{"value_paise": int, "expense_account_id": Optional[str]}, ...]
+    — one entry per qualifying stock-in line on this document."""
+    total_value = sum(int(i["value_paise"]) for i in items if int(i["value_paise"]) > 0)
+    if total_value <= 0:
         return None
     try:
         from services.phase2_journal_service import phase2_journal_service
 
         inventory_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Inventor%", system_key="inventory")
-        if expense_account_id:
-            from_account_id = expense_account_id
-        else:
-            try:
-                from_account_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Purchase%")
-            except ValueError:
-                from_account_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Expense%")
+        try:
+            purchases_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Purchase%")
+        except ValueError:
+            purchases_id = phase2_journal_service._find_account(db, firm_id, client_id, "%Expense%")
+
+        by_account: dict = {}
+        for i in items:
+            value_paise = int(i["value_paise"])
+            if value_paise <= 0:
+                continue
+            acc = i.get("expense_account_id") or purchases_id
+            by_account[acc] = by_account.get(acc, 0) + value_paise
+
+        lines = [
+            {"account_id": inventory_id, "debit_paise": total_value, "credit_paise": 0, "narration": f"Inventory — {item_name}"},
+        ]
+        lines.extend(
+            {"account_id": acc, "debit_paise": 0, "credit_paise": amt, "narration": f"Reclassify from expense — {item_name}"}
+            for acc, amt in by_account.items()
+        )
         return phase2_journal_service._create_journal(
             db=db, firm_id=firm_id, client_id=client_id, entry_date=movement_date,
             reference_no=f"{reference_no}-INV", narration=f"Capitalise purchase as inventory — {item_name}",
             entry_type="Journal", source_type=source_type, source_id=source_id, created_by=created_by,
-            lines=[
-                {"account_id": inventory_id, "debit_paise": value_paise, "credit_paise": 0, "narration": f"Inventory — {item_name}"},
-                {"account_id": from_account_id, "debit_paise": 0, "credit_paise": value_paise, "narration": f"Reclassify from expense — {item_name}"},
-            ],
+            lines=lines,
         )
     except Exception as e:
         _logger.warning("post_inventory_receipt_journal_entry skipped (%s): %s", reference_no, e)
@@ -542,6 +563,9 @@ def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, 
             .in_("id", catalogue_ids).execute().data
         ) or []
         goods_by_id = {i["id"]: i for i in items if i.get("kind") == "good"}
+        invoice_no = invoice.get("invoice_no") or invoice["id"]
+        total_value = 0
+        movement_ids = []
         for line in lines:
             item = goods_by_id.get(line.get("service_catalogue_id"))
             qty = line.get("quantity")
@@ -553,17 +577,26 @@ def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, 
                 source_type="sales_invoice", source_id=invoice["id"], reference_no=invoice.get("invoice_no"),
                 created_by=created_by,
             )
-            # A movement with no cost basis (Rs 0, "oversold") has nothing to
-            # recognise as COGS yet — post_cogs_journal_entry's own value_paise
-            # <= 0 guard skips it cleanly until a real average cost exists.
+            total_value += abs(int(movement["value_delta_paise"]))
+            if movement and movement.get("id"):
+                movement_ids.append(movement["id"])
+        # ONE combined COGS journal for the WHOLE invoice, not one per line —
+        # every line shares the same reference_no, and _create_journal's
+        # idempotency guard (keyed on firm+client+reference_no+entry_date)
+        # would otherwise mistake lines 2+ for duplicate postings of line 1
+        # and silently drop their value from the General Ledger while the
+        # stock ledger still records them correctly. A movement with no cost
+        # basis (Rs 0, "oversold") contributes nothing here; total_value<=0
+        # then skips posting entirely until a real average cost exists.
+        if total_value > 0:
             journal_id = post_cogs_journal_entry(
                 db, firm_id=firm_id, client_id=client_id, movement_date=invoice.get("invoice_date"),
-                item_name=item.get("name") or line.get("description") or "item",
-                value_paise=abs(int(movement["value_delta_paise"])),
-                reference_no=invoice.get("invoice_no") or invoice["id"],
+                item_name=f"invoice {invoice_no}", value_paise=total_value,
+                reference_no=invoice_no,
                 source_type="sales_invoice", source_id=invoice["id"], created_by=created_by,
             )
-            _set_ledger_journal_entry_id(db, movement.get("id"), journal_id)
+            for mid in movement_ids:
+                _set_ledger_journal_entry_id(db, mid, journal_id)
     except Exception as e:
         _logger.error("apply_sale_to_inventory failed for invoice %s: %s", invoice.get("id"), e, exc_info=True)
 
@@ -585,6 +618,8 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
         ) or []
         goods_by_id = {i["id"]: i for i in items if i.get("kind") == "good"}
         reference_no = bill.get("bill_no") or bill.get("our_reference") or bill["id"]
+        receipt_items = []
+        movement_ids = []
         for line in lines:
             item = goods_by_id.get(line.get("service_catalogue_id"))
             qty = line.get("quantity")
@@ -597,13 +632,28 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
                 movement_type="purchase", source_type="purchase_bill", source_id=bill["id"],
                 reference_no=reference_no, created_by=created_by,
             )
+            receipt_items.append({
+                "value_paise": int(movement["value_delta_paise"]),
+                "expense_account_id": line.get("expense_account_id"),
+            })
+            if movement and movement.get("id"):
+                movement_ids.append(movement["id"])
+        # ONE combined journal for the WHOLE bill (grouped by resolved expense
+        # account — see post_inventory_receipt_journal_entry's docstring),
+        # not one per line — every line shares the same reference_no, and
+        # _create_journal's idempotency guard (keyed on firm+client+
+        # reference_no+entry_date) would otherwise mistake lines 2+ for
+        # duplicate postings of line 1 and silently drop their value from the
+        # General Ledger while the stock ledger still records them correctly.
+        if receipt_items:
             journal_id = post_inventory_receipt_journal_entry(
                 db, firm_id=firm_id, client_id=client_id, movement_date=bill.get("bill_date"),
-                item_name=item.get("name") or line.get("description") or "item",
-                value_paise=int(movement["value_delta_paise"]), expense_account_id=line.get("expense_account_id"),
-                reference_no=reference_no, source_type="purchase_bill", source_id=bill["id"], created_by=created_by,
+                item_name=f"purchase bill {reference_no}", reference_no=reference_no,
+                items=receipt_items,
+                source_type="purchase_bill", source_id=bill["id"], created_by=created_by,
             )
-            _set_ledger_journal_entry_id(db, movement.get("id"), journal_id)
+            for mid in movement_ids:
+                _set_ledger_journal_entry_id(db, mid, journal_id)
     except Exception as e:
         _logger.error("apply_purchase_to_inventory failed for bill %s: %s", bill.get("id"), e, exc_info=True)
 
