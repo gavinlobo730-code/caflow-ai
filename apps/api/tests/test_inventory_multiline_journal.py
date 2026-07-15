@@ -26,6 +26,7 @@ from domain.inventory_service import (
     apply_sale_to_inventory,
     record_stock_in,
 )
+from services.phase2_journal_service import purchase_bill_journal_ref
 from tests.e2e_harness import FakeDB, account_balance
 
 FIRM = "firm-multiline-1"
@@ -86,7 +87,10 @@ def test_purchase_bill_with_three_lines_posts_one_journal_with_full_combined_val
 
     apply_purchase_to_inventory(db, firm_id=FIRM, client_id=CLIENT, bill=bill)
 
-    entries = [e for e in db.rows("journal_entries") if e.get("reference_no") == "BILL-ML-1-INV"]
+    # Journal reference is the system-unique PB-{id} base (vendor bill numbers
+    # collide across vendors), suffixed -INV for the capitalisation entry.
+    inv_ref = f"{purchase_bill_journal_ref(bill_id)}-INV"
+    entries = [e for e in db.rows("journal_entries") if e.get("reference_no") == inv_ref]
     assert len(entries) == 1, "must be exactly one combined journal for the whole bill, not one per line"
     total = 760_000 + 850_000 + 225_000
     assert account_balance(db, coa["inventory"]) == total
@@ -119,7 +123,8 @@ def test_purchase_bill_lines_with_different_expense_accounts_group_the_credit_si
 
     apply_purchase_to_inventory(db, firm_id=FIRM, client_id=CLIENT, bill=bill)
 
-    entries = [e for e in db.rows("journal_entries") if e.get("reference_no") == "BILL-ML-2-INV"]
+    inv_ref = f"{purchase_bill_journal_ref(bill_id)}-INV"
+    entries = [e for e in db.rows("journal_entries") if e.get("reference_no") == inv_ref]
     assert len(entries) == 1
     assert account_balance(db, coa["inventory"]) == 150_000
     assert account_balance(db, coa["Consumables Expense"]) == -100_000

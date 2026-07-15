@@ -82,6 +82,16 @@ def _compute_stock_out(prev_qty: Decimal, prev_value_paise: int, prev_avg_paise:
         raise ValueError("Stock-out quantity must be positive.")
     new_qty = prev_qty - quantity
     out_value = _round_paise(quantity * prev_avg_paise)
+    # Force-close: when the quantity is exhausted (or oversold), the movement
+    # relieves EXACTLY what was on the books — value_delta = -prev_value, not
+    # -(qty × avg). The two differ by the rounding residue (or, on an
+    # oversell, by the whole phantom cost of units that never had value), and
+    # value_delta drives the COGS journal — the old -(qty × avg) delta posted
+    # COGS for value the ledger never held, driving the Inventory GL negative
+    # while the ledger's running value force-closed to 0. With this, the
+    # deltas always sum to the running value.
+    if new_qty <= 0:
+        out_value = prev_value_paise
     new_value = 0 if new_qty <= 0 else prev_value_paise - out_value
     new_avg = _round_paise(new_value / new_qty) if new_qty > 0 else 0
     return {
@@ -95,11 +105,25 @@ def _compute_stock_out(prev_qty: Decimal, prev_value_paise: int, prev_avg_paise:
 
 
 def _last_ledger_row(db, service_catalogue_id: str) -> Optional[dict]:
+    """The row every new movement chains its running totals from.
+
+    INSERTION order (created_at), NOT movement_date: each row's running
+    totals are computed once, at insert time, from the row inserted before
+    it. Ordering by movement_date here made a BACKDATED document — a bill
+    dated July 1 received on July 15, after a July-10 sale was already
+    recorded — permanently fall out of the chain: the next movement's
+    "previous row" was still the July-10 sale (later movement_date), so the
+    backdated purchase's quantity and value vanished from every future
+    running total (and from the service_catalogue cache) while its journal
+    stayed on the GL. Late entry of documents is routine for CAs; chaining
+    strictly by when each movement was RECORDED keeps the running ledger,
+    the cache, and the GL consistent — the standard perpetual-system
+    behaviour (cost applied as at time of recording). movement_date remains
+    the document's own "as of" date for display/filtering."""
     resp = (
         db.table("inventory_stock_ledger")
         .select("running_qty_units, running_value_paise, running_avg_cost_paise")
         .eq("service_catalogue_id", service_catalogue_id)
-        .order("movement_date", desc=True)
         .order("created_at", desc=True)
         .limit(1)
         .execute()
@@ -128,6 +152,11 @@ def _insert_and_cache(
         "source_id": source_id,
         "reference_no": reference_no,
         "created_by": created_by,
+        # Stamped explicitly (not left to the DB default) because
+        # _last_ledger_row chains running totals by insertion order — an
+        # explicit microsecond timestamp keeps that ordering deterministic
+        # and identical between production and the in-memory test doubles.
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
     inserted = db.table("inventory_stock_ledger").insert(row).execute()
     db.table("service_catalogue").update({
@@ -175,7 +204,15 @@ def seed_opening_balance(
     )
     if existing.data:
         return None
-    calc = _compute_stock_in(Decimal("0"), 0, qty, int(opening_cost_paise))
+    # Chain from the CURRENT running totals, not a hardcoded zero baseline —
+    # an opening balance added AFTER movements already exist (e.g. the item
+    # was sold/oversold before the CA set up its opening stock) previously
+    # recorded running_qty = opening qty alone and overwrote the cache with
+    # it, silently discarding the prior movements from the running position.
+    prev = _last_ledger_row(db, service_catalogue_id)
+    prev_qty = Decimal(str(prev["running_qty_units"])) if prev else Decimal("0")
+    prev_value = int(prev["running_value_paise"]) if prev else 0
+    calc = _compute_stock_in(prev_qty, prev_value, qty, int(opening_cost_paise))
     row = _insert_and_cache(
         db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
         movement_date=movement_date, movement_type="opening", calc=calc,
@@ -250,6 +287,9 @@ def seed_opening_balances_batch(
             "client_id": client_id,
             "service_catalogue_id": row["id"],
             "movement_date": movement_date,
+            # created_at stamped explicitly — see _insert_and_cache: the
+            # running-total chain orders by insertion time.
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "movement_type": "opening",
             "quantity_delta": str(calc["quantity_delta"]),
             "unit_cost_paise": calc["unit_cost_paise"],
@@ -318,6 +358,50 @@ def record_stock_in(
     prev_qty = Decimal(str(prev["running_qty_units"])) if prev else Decimal("0")
     prev_value = int(prev["running_value_paise"]) if prev else 0
     calc = _compute_stock_in(prev_qty, prev_value, Decimal(str(quantity)), int(total_cost_paise))
+    return _insert_and_cache(
+        db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
+        movement_date=movement_date, movement_type=movement_type, calc=calc,
+        source_type=source_type, source_id=source_id, reference_no=reference_no, created_by=created_by,
+    )
+
+
+def record_stock_out_at_value(
+    db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
+    quantity, value_paise: int, movement_type: str,
+    source_type: Optional[str] = None, source_id: Optional[str] = None,
+    reference_no: Optional[str] = None, created_by: Optional[str] = None,
+) -> dict:
+    """Stock-OUT at an EXPLICIT value instead of the current moving average —
+    used by cancellation reversals, which must remove exactly the value the
+    original movement added (the journal side reverses the original entry at
+    its original value; pricing the reversal at the CURRENT average instead
+    permanently split the Inventory GL from the stock ledger whenever the
+    average had moved between receive and cancel). The value is clamped to
+    what's actually on the books so a reversal can never drive the running
+    value negative; the mismatch case logs a warning for the CA."""
+    prev = _last_ledger_row(db, service_catalogue_id)
+    prev_qty = Decimal(str(prev["running_qty_units"])) if prev else Decimal("0")
+    prev_value = int(prev["running_value_paise"]) if prev else 0
+    qty = Decimal(str(quantity))
+    if qty <= 0:
+        raise ValueError("Stock-out quantity must be positive.")
+    new_qty = prev_qty - qty
+    out_value = prev_value if new_qty <= 0 else min(int(value_paise), prev_value)
+    if out_value != int(value_paise):
+        _logger.warning(
+            "record_stock_out_at_value: service_catalogue_id=%s requested value %d clamped to %d (books held less)",
+            service_catalogue_id, int(value_paise), out_value,
+        )
+    new_value = prev_value - out_value
+    new_avg = _round_paise(new_value / new_qty) if new_qty > 0 else 0
+    calc = {
+        "quantity_delta": -qty,
+        "unit_cost_paise": _round_paise(Decimal(out_value) / qty) if qty else 0,
+        "value_delta_paise": -out_value,
+        "running_qty_units": new_qty,
+        "running_avg_cost_paise": new_avg,
+        "running_value_paise": new_value if new_qty > 0 else 0,
+    }
     return _insert_and_cache(
         db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
         movement_date=movement_date, movement_type=movement_type, calc=calc,
@@ -617,7 +701,12 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
             .in_("id", catalogue_ids).execute().data
         ) or []
         goods_by_id = {i["id"]: i for i in items if i.get("kind") == "good"}
+        # Stock-ledger rows keep the human-facing bill number; the JOURNAL
+        # reference must be system-unique (vendor bill numbers collide across
+        # vendors — see phase2_journal_service.purchase_bill_journal_ref).
         reference_no = bill.get("bill_no") or bill.get("our_reference") or bill["id"]
+        from services.phase2_journal_service import purchase_bill_journal_ref
+        journal_ref = purchase_bill_journal_ref(bill["id"])
         receipt_items = []
         movement_ids = []
         for line in lines:
@@ -648,7 +737,7 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
         if receipt_items:
             journal_id = post_inventory_receipt_journal_entry(
                 db, firm_id=firm_id, client_id=client_id, movement_date=bill.get("bill_date"),
-                item_name=f"purchase bill {reference_no}", reference_no=reference_no,
+                item_name=f"purchase bill {reference_no}", reference_no=journal_ref,
                 items=receipt_items,
                 source_type="purchase_bill", source_id=bill["id"], created_by=created_by,
             )
@@ -704,7 +793,11 @@ def reverse_sale_stock(db, *, firm_id: str, client_id: str, invoice_id: str, inv
                 movement_ids.append(movement["id"])
 
         from services.phase2_journal_service import phase2_journal_service
-        cogs_ref = f"{invoice_no}-COGS"
+        # Same invoice_no-or-id fallback apply_sale_to_inventory used when it
+        # POSTED the COGS journal — an invoice with no invoice_no otherwise
+        # posted "{id}-COGS" but this reverse path searched "-COGS" and never
+        # found it (stock restored, COGS journal left standing).
+        cogs_ref = f"{invoice_no or invoice_id}-COGS"
         jr = (
             db.table("journal_entries").select("id")
             .eq("firm_id", firm_id).eq("client_id", client_id).eq("reference_no", cogs_ref).eq("is_posted", True)
@@ -792,16 +885,38 @@ def post_purchase_return_journal_entry(
         return None
 
 
+def _sale_unit_cost_for_return(db, service_catalogue_id: str, invoice_id: Optional[str]) -> Optional[int]:
+    """Cost basis for goods coming BACK into stock on a sales return: the
+    unit cost the original sale relieved them at (the invoice's own 'sale'
+    ledger rows), so the return restores exactly what the sale took out.
+    None when the CN isn't linked to an invoice or the invoice had no sale
+    movement for this item — the caller falls back to the current average."""
+    if not invoice_id:
+        return None
+    rows = (
+        db.table("inventory_stock_ledger").select("unit_cost_paise")
+        .eq("source_type", "sales_invoice").eq("source_id", invoice_id)
+        .eq("service_catalogue_id", service_catalogue_id).eq("movement_type", "sale")
+        .limit(1).execute().data
+    ) or []
+    return int(rows[0]["unit_cost_paise"]) if rows else None
+
+
 def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_note: dict, created_by: Optional[str] = None) -> None:
-    """Sales return: goods physically return to stock. Stock-IN at the
-    returned line's own taxable value (same convention a purchase receipt
-    uses to value its stock-in), plus a separate Dr Inventory / Cr COGS
-    journal entry for the same total. Called AFTER the credit note is
-    already issued and its own GL journal + AR sub-ledger application have
-    committed (routers/credit_notes.py) — fail-soft, never raises."""
+    """Sales return: goods physically return to stock AT COST — the original
+    sale's unit cost when the credit note references its invoice, else the
+    item's current moving average — never at the credit note's taxable
+    (SELLING) value. AS-2/Ind AS 2: inventory is carried at cost; restocking
+    at the selling price inflated inventory by the sales margin and
+    over-credited COGS (a full-margin return produced phantom negative
+    COGS). A separate Dr Inventory / Cr COGS journal posts for the same
+    realized total. Called AFTER the credit note is already issued and its
+    own GL journal + AR sub-ledger application have committed
+    (routers/credit_notes.py) — fail-soft, never raises."""
     try:
         cn_id = credit_note.get("id")
         cn_no = credit_note.get("credit_note_no") or cn_id
+        invoice_id = credit_note.get("sales_invoice_id")
         lines = (
             db.table("credit_note_lines")
             .select("id, description, quantity, taxable_amount_paise, service_catalogue_id")
@@ -821,9 +936,13 @@ def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_n
         for line in lines:
             item = goods_by_id.get(line.get("service_catalogue_id"))
             qty = line.get("quantity")
-            value = int(line.get("taxable_amount_paise") or 0)
-            if not item or not qty or float(qty) <= 0 or value <= 0:
+            if not item or not qty or float(qty) <= 0:
                 continue
+            unit_cost = _sale_unit_cost_for_return(db, item["id"], invoice_id)
+            if unit_cost is None:
+                prev = _last_ledger_row(db, item["id"])
+                unit_cost = int(prev["running_avg_cost_paise"]) if prev else 0
+            value = _round_paise(Decimal(str(qty)) * unit_cost)
             movement = record_stock_in(
                 db, firm_id=firm_id, client_id=client_id, service_catalogue_id=item["id"],
                 movement_date=credit_note.get("credit_note_date"), quantity=qty, total_cost_paise=value,
@@ -916,21 +1035,32 @@ def reverse_purchase_stock(db, *, firm_id: str, client_id: str, bill_id: str, bi
             qty = abs(Decimal(str(mv["quantity_delta"])))
             if qty <= 0:
                 continue
-            movement = record_stock_out(
+            # Reverse at the ORIGINAL received value, not the current moving
+            # average — the journal side reverses the original "-INV" entry at
+            # its original value, and the two sides must remove the same
+            # amount or Inventory GL permanently drifts from the stock ledger.
+            movement = record_stock_out_at_value(
                 db, firm_id=firm_id, client_id=client_id, service_catalogue_id=mv["service_catalogue_id"],
-                movement_date=today, quantity=qty, movement_type="purchase_reversal",
+                movement_date=today, quantity=qty, value_paise=abs(int(mv["value_delta_paise"])),
+                movement_type="purchase_reversal",
                 source_type="purchase_bill", source_id=bill_id, reference_no=bill_reference, created_by=created_by,
             )
             if movement.get("id"):
                 movement_ids.append(movement["id"])
 
-        from services.phase2_journal_service import phase2_journal_service
-        inv_ref = f"{bill_reference}-INV"
-        jr = (
-            db.table("journal_entries").select("id")
-            .eq("firm_id", firm_id).eq("client_id", client_id).eq("reference_no", inv_ref).eq("is_posted", True)
-            .limit(1).execute().data
-        )
+        from services.phase2_journal_service import phase2_journal_service, purchase_bill_journal_ref
+        # New receipts post the capitalisation journal under the system-unique
+        # PB-{id} base ref; receipts from before that fix used the vendor's
+        # bill number — try both so old bills stay reversible.
+        jr = None
+        for inv_ref in (f"{purchase_bill_journal_ref(bill_id)}-INV", f"{bill_reference}-INV"):
+            jr = (
+                db.table("journal_entries").select("id")
+                .eq("firm_id", firm_id).eq("client_id", client_id).eq("reference_no", inv_ref).eq("is_posted", True)
+                .limit(1).execute().data
+            )
+            if jr:
+                break
         if jr:
             jrnl_id = jr[0]["id"]
             already_reversed = (

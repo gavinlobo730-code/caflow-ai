@@ -271,17 +271,22 @@ export function PurchaseBillEditor({
 
   // ── Live preview totals + validation ────────────────────────────────────
   const totals = previewBillTotals(lines, isInterstate);
+  // RCM (CGST Act §9(3)/(4)): the vendor invoices WITHOUT tax — the GST shown
+  // is self-assessed (paid via GSTR-3B, ITC claimable), so the amount owed to
+  // the vendor is the taxable value alone. Mirrors the backend's
+  // _compute_bill_lines_and_totals; the server remains authoritative.
+  const vendorTotalPaise = isReverseCharge ? totals.taxable_paise : totals.grand_total_paise;
   const validation = validateBillEditor({ vendorId, billDate, lines, isForeign, exchangeRate });
   const estBaseTaxable = isForeign && rateNum > 0 ? estimateBaseMinor(totals.taxable_paise, rateNum) : totals.taxable_paise;
-  const estBaseTotal = isForeign && rateNum > 0 ? estimateBaseMinor(totals.grand_total_paise, rateNum) : totals.grand_total_paise;
+  const estBaseTotal = isForeign && rateNum > 0 ? estimateBaseMinor(vendorTotalPaise, rateNum) : vendorTotalPaise;
   // TDS is a purely domestic, INR-only concept (IT Act §194) computed off the
   // INR-equivalent taxable value — never the raw foreign figure.
   const tdsPaise = selectedVendor?.tds_applicable && (selectedVendor.tds_rate_bps ?? 0) > 0
     ? estimateForeignTds(estBaseTaxable, selectedVendor.tds_rate_bps ?? 0)
     : 0;
   const netPayable = isForeign
-    ? totals.grand_total_paise - convertBaseToForeignMinor(tdsPaise, rateNum)
-    : totals.grand_total_paise - tdsPaise;
+    ? vendorTotalPaise - convertBaseToForeignMinor(tdsPaise, rateNum)
+    : vendorTotalPaise - tdsPaise;
 
   const accountNameById = new Map(accounts.map((a) => [a.id ?? "", a.account_name ?? a.name ?? ""]));
   const blockedCreditHits = findBlockedCreditHits(lines, accountNameById);
@@ -517,9 +522,14 @@ export function PurchaseBillEditor({
       <p className="text-[10px] text-[#94A3B8]">
         {gstAuto ? `${isInterstate ? "Interstate" : "Intra-state"} — ${isInterstate ? "IGST" : "CGST + SGST"} (CGST Act §8)` : "Pick a vendor to preview CGST/SGST vs IGST."}
       </p>
+      {isReverseCharge && (
+        <p className="text-[10px] text-amber-700">
+          Reverse charge — the GST above is self-assessed by you (GSTR-3B 3.1(d)), not payable to the vendor.
+        </p>
+      )}
       <div className="flex justify-between font-semibold text-[#0F172A] border-t border-[#E2E8F0] pt-1.5 mt-1">
-        <span>Grand Total{isForeign ? ` (${currency})` : ""}</span>
-        <span className="font-mono">{fmtAmt(totals.grand_total_paise)}</span>
+        <span>{isReverseCharge ? "Payable to Vendor" : "Grand Total"}{isForeign ? ` (${currency})` : ""}</span>
+        <span className="font-mono">{fmtAmt(vendorTotalPaise)}</span>
       </div>
       {isForeign && rateNum > 0 && <Row label="≈ INR total" value={fmt(estBaseTotal)} muted />}
       {selectedVendor?.tds_applicable && (
