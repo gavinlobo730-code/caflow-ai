@@ -149,7 +149,7 @@ function detailLinesToEditorLines(lines: PurchaseBillDetail["lines"]): EditorLin
 }
 
 export function PurchaseBillEditor({
-  clientId, clientName, clientStateCode, vendors, accounts, existing, onDone, onCancel,
+  clientId, clientName, clientStateCode, vendors, accounts, existing, duplicateSeed, onDone, onCancel,
 }: {
   clientId: string;
   clientName?: string;
@@ -162,24 +162,32 @@ export function PurchaseBillEditor({
   accounts: AccountLike[];
   /** Set → edit an existing draft bill (PATCH). Absent/null → create (POST). */
   existing?: PurchaseBillDetail | null;
+  /** "Duplicate bill" prefill (lib/purchases/duplicateSeed) — create mode
+   * only. Copies vendor, lines, RCM flag and notes; deliberately NOT the
+   * vendor invoice number (each vendor bill has its own), dates, reference,
+   * or the attachment (which belongs to the original bill). */
+  duplicateSeed?: PurchaseBillDetail | null;
   onDone: (message: string) => void;
   onCancel: () => void;
 }) {
   const today = todayISO();
   const isEdit = !!existing;
   const initialLines: EditorLine[] =
-    existing && existing.lines.length > 0 ? detailLinesToEditorLines(existing.lines) : [{ ...EMPTY_LINE, _k: 0 }];
+    existing && existing.lines.length > 0 ? detailLinesToEditorLines(existing.lines)
+    : duplicateSeed && duplicateSeed.lines.length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
+    : [{ ...EMPTY_LINE, _k: 0 }];
 
-  const [vendorId, setVendorId] = useState(existing?.vendor_id ?? "");
-  const [selectedVendor, setSelectedVendor] = useState<PurchaseVendor | null>(
-    () => (existing ? vendors.find((v) => v.id === existing.vendor_id) ?? null : null),
-  );
+  const [vendorId, setVendorId] = useState(existing?.vendor_id ?? duplicateSeed?.vendor_id ?? "");
+  const [selectedVendor, setSelectedVendor] = useState<PurchaseVendor | null>(() => {
+    const seedVendorId = existing?.vendor_id ?? duplicateSeed?.vendor_id;
+    return seedVendorId ? vendors.find((v) => v.id === seedVendorId) ?? null : null;
+  });
   const [billNo, setBillNo] = useState(existing?.bill_no ?? "");
   const [ourReference, setOurReference] = useState(existing?.our_reference ?? "");
-  const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [notes, setNotes] = useState(existing?.notes ?? duplicateSeed?.notes ?? "");
   const [billDate, setBillDate] = useState(existing?.bill_date ?? today);
   const [dueDate, setDueDate] = useState(existing?.due_date ?? "");
-  const [isReverseCharge, setIsReverseCharge] = useState(existing?.is_reverse_charge ?? false);
+  const [isReverseCharge, setIsReverseCharge] = useState(existing?.is_reverse_charge ?? duplicateSeed?.is_reverse_charge ?? false);
   // Once a bill is received/partially-paid/paid, the backend only accepts
   // our_reference/notes/due_date/document_url on PATCH (routers/purchase_bills.py
   // _SOFT_BILL_UPDATE_FIELDS) — bill_no/bill_date/lines are frozen; a correction
@@ -541,7 +549,7 @@ export function PurchaseBillEditor({
         { label: isEdit ? `Edit ${billNo || "Purchase Bill"}` : "New Purchase Bill" },
       ]}
       title={isEdit ? `Edit ${billNo || "Purchase Bill"}` : "New Purchase Bill"}
-      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">Draft</span>}
+      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">{isEdit ? (existing?.status ?? "draft").replace("_", " ") : "Draft"}</span>}
       dirtyHint={dirty ? <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Unsaved changes</span> : undefined}
       toolbar={toolbar}
       summary={summary}

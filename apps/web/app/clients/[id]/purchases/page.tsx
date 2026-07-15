@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loader2, Paperclip, MoreHorizontal } from "lucide-react";
 import { PurchaseBillViewDrawer } from "@/components/purchases/PurchaseBillViewDrawer";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
+import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
@@ -368,6 +370,40 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
     load();
   }
 
+  // "Duplicate bill" — stash the full loaded detail and open New Bill, which
+  // prefills from it (vendor, lines, RCM, notes; NOT the vendor invoice no.).
+  // Same sessionStorage hand-off as Sales (lib/purchases/duplicateSeed).
+  function duplicateBill(bill: PurchaseBillDetail) {
+    writePurchaseBillDuplicateSeed(bill);
+    setDetailId(null);
+    router.push(`/clients/${clientId}/purchases/bills/new`);
+  }
+
+  // Cancel a RECEIVED bill: reverses its posted journal and inventory stock-in
+  // server-side (POST /cancel refuses drafts — those are deleted — and bills
+  // with payments). Partner-only on the backend (accounting.approve).
+  async function cancelBill(bill: PurchaseBillRow | PurchaseBillDetail) {
+    const ok = await confirmDialog({
+      title: `Cancel ${bill.bill_no || "this bill"}?`,
+      message:
+        "This reverses the bill's posted journal entry and returns its stock movements. " +
+        "The bill stays on record as cancelled. This cannot be undone.",
+      confirmLabel: "Cancel Bill",
+      danger: true,
+    });
+    if (!ok) return;
+    setDetailId(null);
+    try {
+      const token = await getAuthToken();
+      const result = await apiCall(`/api/purchase-bills/${bill.id}/cancel`, "POST", undefined, token);
+      if (!result.success) throw new Error(result.error ?? "Failed to cancel purchase bill");
+      setMsg({ type: "ok", text: `${bill.bill_no || "Purchase bill"} cancelled — journal and stock reversed` });
+      load();
+    } catch (err) {
+      setMsg({ type: "err", text: err instanceof Error ? err.message : "Failed to cancel purchase bill" });
+    }
+  }
+
   // The "Documents" bucket is private — document_url on the bill is a
   // storage path, not a browser-openable URL — so mint a fresh signed URL
   // on demand rather than trying to open it directly.
@@ -698,6 +734,15 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
                   </button>
                 </>
               )}
+              {b.status === "received" && (
+                <>
+                  <div className="my-1 border-t border-[#F1F5F9]" />
+                  <button onClick={() => { setMenu(null); cancelBill(b); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                    Cancel bill
+                  </button>
+                </>
+              )}
             </div>
           </>
         );
@@ -716,6 +761,8 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
           onEdit={(id) => router.push(`/clients/${clientId}/purchases/bills/${id}/edit`)}
           onReceive={(id) => { setDetailId(null); handleReceive(id); }}
           onDelete={(bill) => { setDetailId(null); setDeleteTarget(bill); }}
+          onDuplicate={duplicateBill}
+          onCancelBill={cancelBill}
           onToast={(text, type) => setMsg({ type: type === "success" ? "ok" : "err", text })}
         />
       )}

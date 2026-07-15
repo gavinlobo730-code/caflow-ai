@@ -1,9 +1,11 @@
 "use client";
 
 /**
- * Edit Draft Purchase Bill — client view. Only drafts are editable — anything
- * else redirects to the Purchases list. Mirrors
- * sales/invoices/[invoiceId]/edit/_page.tsx exactly (same static-export id
+ * Edit Purchase Bill — client view. Drafts get the full editor; received/
+ * partially-paid/paid bills get the same editor in its locked mode (soft
+ * fields only — our reference, notes, due date, attachment; see
+ * PurchaseBillEditor's isLocked). Only cancelled bills redirect away.
+ * Mirrors sales/invoices/[invoiceId]/edit/_page.tsx (same static-export id
  * resolution, same loading/error skeleton shell).
  *
  * Ids come from window.location.pathname, NOT useParams(): under `output:
@@ -56,7 +58,10 @@ export default function EditPurchaseBillPageClient() {
       .then(([c, b]) => {
         if (cancelled) return;
         if (!b) { setError("Purchase bill not found."); return; }
-        if (b.status !== "draft") { router.replace(`/clients/${clientId}/purchases`); return; }
+        // Cancelled bills are immutable end-to-end (backend rejects every
+        // PATCH) — everything else opens: drafts fully editable, received/
+        // partially-paid/paid in the editor's locked soft-fields-only mode.
+        if (b.status === "cancelled") { router.replace(`/clients/${clientId}/purchases?flash=${encodeURIComponent("Cancelled bills cannot be edited.")}`); return; }
         setCtx(c); setBill(b);
       })
       .catch(() => { if (!cancelled) setError("Failed to load the purchase bill."); });
@@ -87,8 +92,8 @@ export default function EditPurchaseBillPageClient() {
         { label: "Purchases", href: `/clients/${clientId}/purchases` },
         { label: bill ? `Edit ${bill.bill_no}` : "Edit Purchase Bill" },
       ]}
-      title={bill ? `Edit ${bill.bill_no}` : "Edit Draft Purchase Bill"}
-      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">Draft</span>}
+      title={bill ? `Edit ${bill.bill_no}` : "Edit Purchase Bill"}
+      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">{bill ? bill.status.replace("_", " ") : "…"}</span>}
       toolbar={!error ? <InvoiceToolbarSkeleton /> : undefined}
       summary={!error ? <SummaryPanelSkeleton /> : undefined}
     >
