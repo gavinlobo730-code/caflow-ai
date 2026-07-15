@@ -665,7 +665,10 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
         )}
       />
 
-      {/* Row overflow menu — View details always; Edit/Delete for drafts only. */}
+      {/* Row overflow menu — View details always; Edit for any non-cancelled
+          bill (draft gets the full editor, received/partially-paid/paid
+          gets the same editor scoped to its soft fields — see
+          PurchaseBillEditor's isLocked handling); Delete for drafts only. */}
       {menu && (() => {
         const b = bills.find((x) => x.id === menu.id);
         if (!b) return null;
@@ -680,12 +683,14 @@ function PurchaseBills({ clientId, financialYear }: { clientId: string; financia
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
                 View details
               </button>
+              {b.status !== "cancelled" && (
+                <button onClick={() => { setMenu(null); router.push(`/clients/${clientId}/purchases/bills/${b.id}/edit`); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                  {b.status === "draft" ? "Edit draft" : "Edit"}
+                </button>
+              )}
               {b.status === "draft" && (
                 <>
-                  <button onClick={() => { setMenu(null); router.push(`/clients/${clientId}/purchases/bills/${b.id}/edit`); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
-                    Edit draft
-                  </button>
                   <div className="my-1 border-t border-[#F1F5F9]" />
                   <button onClick={() => { setMenu(null); setDeleteTarget(b); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
