@@ -1,0 +1,92 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { Logo } from "./Logo";
+import { Menu, X, ArrowRight } from "./icons";
+import { NAV, appLinks } from "@/lib/site";
+
+export function SiteHeader() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <header className="sticky top-0 z-50 border-b border-ps-border/70 bg-white/85 backdrop-blur-md">
+      <div className="container-ps flex h-16 items-center justify-between gap-4">
+        <Logo />
+
+        {/* Desktop nav */}
+        <nav className="hidden items-center gap-7 lg:flex">
+          {NAV.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="text-[14px] font-medium text-slate-600 transition-colors hover:text-brand"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        {/* Desktop actions */}
+        <div className="hidden items-center gap-2 lg:flex">
+          <Link
+            href="/access"
+            className="rounded-lg px-4 py-2 text-[14px] font-semibold text-brand transition-colors hover:bg-ps-muted"
+          >
+            Login
+          </Link>
+          <a
+            href={appLinks.signup}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-hover"
+          >
+            Start free trial
+            <ArrowRight size={15} />
+          </a>
+        </div>
+
+        {/* Mobile toggle */}
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="rounded-lg p-2 text-brand hover:bg-ps-muted lg:hidden"
+          aria-label={open ? "Close menu" : "Open menu"}
+          aria-expanded={open}
+        >
+          {open ? <X size={22} /> : <Menu size={22} />}
+        </button>
+      </div>
+
+      {/* Mobile panel */}
+      {open && (
+        <div className="border-t border-ps-border bg-white lg:hidden">
+          <div className="container-ps flex flex-col gap-1 py-4">
+            {NAV.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setOpen(false)}
+                className="rounded-lg px-3 py-2.5 text-[15px] font-medium text-slate-700 hover:bg-ps-muted"
+              >
+                {item.label}
+              </Link>
+            ))}
+            <div className="mt-2 flex flex-col gap-2 border-t border-ps-border pt-4">
+              <Link
+                href="/access"
+                onClick={() => setOpen(false)}
+                className="rounded-lg border border-ps-border px-4 py-2.5 text-center text-[15px] font-semibold text-brand"
+              >
+                Login
+              </Link>
+              <a
+                href={appLinks.signup}
+                className="rounded-lg bg-brand px-4 py-2.5 text-center text-[15px] font-semibold text-white"
+              >
+                Start free trial
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+    </header>
+  );
+}
