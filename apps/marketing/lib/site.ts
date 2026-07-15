@@ -4,7 +4,7 @@
 // plain link to that origin — the marketing site holds no auth logic itself.
 
 export const APP_URL =
-  process.env.NEXT_PUBLIC_APP_URL || "https://app.practicesync.com";
+  process.env.NEXT_PUBLIC_APP_URL || "https://practicesync-ai.pages.dev";
 
 /** Cross-app destinations (routes that live in apps/web). */
 export const appLinks = {
