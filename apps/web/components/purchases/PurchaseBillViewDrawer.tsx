@@ -219,7 +219,12 @@ export function PurchaseBillViewDrawer({
           {/* ── Action bar (status-gated) ───────────────────────────────── */}
           {!isCancelled && (
             <div className="flex flex-wrap gap-2 pt-1">
-              {isDraft && <Action onClick={() => onEdit(bill.id)} icon={<Pencil size={12} />}>Edit</Action>}
+              {/* Edit is available for any non-cancelled bill — a draft gets
+                  the full editor, a received/partially-paid/paid bill opens
+                  the same editor scoped to its soft fields only (our
+                  reference, notes, payment terms, due date, attachment); see
+                  PurchaseBillEditor's isLocked handling. */}
+              <Action onClick={() => onEdit(bill.id)} icon={<Pencil size={12} />}>Edit</Action>
               {isDraft && <Action primary onClick={() => onReceive(bill.id)} icon={<CheckCircle size={12} />}>Receive</Action>}
               {isDraft && <Action danger onClick={() => onDelete(bill)} icon={<Trash2 size={12} />}>Delete</Action>}
               {bill.document_url && (
