@@ -1,0 +1,11 @@
+# Cloudflare Pages project for the PracticeSync marketing site.
+# This is a SEPARATE project from apps/web (practicesync-ai). Point it at the
+# apex domain (practicesync.com); apps/web keeps the app subdomain (app.).
+name = "practicesync-marketing"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "out"
+
+[vars]
+# Origin of the actual application (apps/web). Overridden per-environment in the
+# Cloudflare dashboard if the app subdomain differs.
+NEXT_PUBLIC_APP_URL = "https://app.practicesync.com"

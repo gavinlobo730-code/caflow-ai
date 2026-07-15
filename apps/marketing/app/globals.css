@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── PracticeSync marketing — base ──────────────────────────────────────────
+   Palette (shared with apps/web):
+     Deep Blue   #182350   Powder Blue #AFD2FA   Gold #B9915E
+     Background  #F8FAFC    Heading navy #0D1635
+   ──────────────────────────────────────────────────────────────────────────── */
+:root {
+  --brand: #182350;
+  --brand-light: #afd2fa;
+  --gold: #b9915e;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: #ffffff;
+  color: #0d1635;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+::selection {
+  background: #afd2fa;
+  color: #0d1635;
+}
+
+/* Centered content column used across every section. */
+.container-ps {
+  width: 100%;
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+/* Subtle dotted grid used behind dark hero/CTA panels. */
+.bg-grid {
+  background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.07) 1px, transparent 0);
+  background-size: 28px 28px;
+}
+
+/* Gold "AI" gradient text accent. */
+.text-gold-gradient {
+  background: linear-gradient(90deg, #b9915e 0%, #e0c9a3 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@keyframes ps-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-up {
+  animation: ps-fade-up 0.5s ease both;
+}
