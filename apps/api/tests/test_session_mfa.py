@@ -15,6 +15,7 @@ class _Q:
     def select(self,*a,**k): return self
     def eq(self,*a,**k): return self
     def single(self): return self
+    def maybe_single(self): return self
     def execute(self): return _Res(self._d)
 class _Supa:
     def __init__(self, d): self._d = d

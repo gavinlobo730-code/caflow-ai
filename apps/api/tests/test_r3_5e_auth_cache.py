@@ -35,6 +35,9 @@ class _Q:
     def single(self):
         return self
 
+    def maybe_single(self):
+        return self
+
     def execute(self):
         self._counters[self._table] = self._counters.get(self._table, 0) + 1
         return _Res(self._row)
