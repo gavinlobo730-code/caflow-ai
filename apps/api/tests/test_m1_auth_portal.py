@@ -27,6 +27,7 @@ class _FakeQuery:
     def select(self, *_a, **_k):  return self
     def eq(self, *_a, **_k):      return self
     def single(self):            return self
+    def maybe_single(self):      return self
     def execute(self):           return _FakeResult(self._data)
 
 
